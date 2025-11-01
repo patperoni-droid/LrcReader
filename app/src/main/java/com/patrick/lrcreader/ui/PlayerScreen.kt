@@ -33,7 +33,7 @@ fun PlayerScreen(
     isPlaying: Boolean,
     onIsPlayingChange: (Boolean) -> Unit,
     parsedLines: List<LrcLine>,
-    onParsedLinesChange: (List<LrcLine>) -> Unit, // on le garde pour compatibilité
+    onParsedLinesChange: (List<LrcLine>) -> Unit, // on le garde
 ) {
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
@@ -46,7 +46,9 @@ fun PlayerScreen(
             val index = parsedLines.indexOfLast { it.timeMs <= pos }
             if (index != -1 && index != currentLineIndex) {
                 currentLineIndex = index
-                scope.launch { listState.animateScrollToItem(index) }
+                // 👉 on essaye d’afficher aussi la ligne d’avant
+                val target = if (index > 0) index - 1 else 0
+                scope.launch { listState.animateScrollToItem(target) }
             }
             delay(120)
         }
@@ -73,7 +75,8 @@ fun PlayerScreen(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally
+            horizontalAlignment = Alignment.CenterHorizontally,
+            contentPadding = PaddingValues(top = 40.dp, bottom = 16.dp) // 👈 espace en haut
         ) {
             if (parsedLines.isEmpty()) {
                 item {
@@ -99,7 +102,9 @@ fun PlayerScreen(
                                 try {
                                     mediaPlayer.seekTo(line.timeMs.toInt())
                                     currentLineIndex = index
-                                    scope.launch { listState.scrollToItem(index) }
+                                    // même logique : on remonte un peu
+                                    val target = if (index > 0) index - 1 else 0
+                                    scope.launch { listState.scrollToItem(target) }
                                 } catch (_: Exception) {
                                 }
                             }
