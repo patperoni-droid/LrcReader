@@ -8,8 +8,14 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material3.*
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -25,7 +31,13 @@ fun PlaylistDetailScreen(
     onBack: () -> Unit,
     onPlaySong: (String) -> Unit
 ) {
-    val songs = PlaylistRepository.getSongsFor(playlistName)
+    // 👇 on “écoute” la version
+    val version = PlaylistRepository.version
+
+    // 👇 à chaque changement de version, on relit
+    val songs = remember(playlistName, version) {
+        PlaylistRepository.getSongsFor(playlistName)
+    }
 
     Column(
         modifier = modifier
@@ -68,6 +80,9 @@ fun PlaylistDetailScreen(
                         uriString
                     }
 
+                    // 👇 maintenant on peut vraiment savoir
+                    val isPlayed = PlaylistRepository.isSongPlayed(playlistName, uriString)
+
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -84,7 +99,7 @@ fun PlaylistDetailScreen(
 
                         Text(
                             text = displayName,
-                            color = Color.White,
+                            color = if (isPlayed) Color.Red else Color.White,
                             modifier = Modifier
                                 .weight(1f)
                                 .clickable { onPlaySong(uriString) }

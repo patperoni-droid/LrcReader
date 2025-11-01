@@ -1,5 +1,6 @@
 package com.patrick.lrcreader
 
+import android.content.Context
 import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Bundle
@@ -13,13 +14,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import com.patrick.lrcreader.core.LrcLine
+import com.patrick.lrcreader.core.PlaylistRepository
 import com.patrick.lrcreader.core.parseLrc
 import com.patrick.lrcreader.core.readUsltFromUri
 import com.patrick.lrcreader.ui.*
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.*
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -38,13 +37,23 @@ class MainActivity : ComponentActivity() {
                 // pour l’onglet "Toutes" (détail d’une playlist)
                 var openedPlaylist by remember { mutableStateOf<String?>(null) }
 
-                // 🔴 un seul callback pour lancer un titre AVEC fondu
-                val playWithCrossfade: (String) -> Unit = remember {
-                    { uriString ->
+                // 👇 token de lecture courant (augmente à chaque nouveau titre lancé)
+                var currentPlayToken by remember { mutableStateOf(0L) }
+
+                // 👇 callback unique que tous les écrans vont utiliser
+                val playWithCrossfade: (String, String?) -> Unit = remember {
+                    { uriString, playlistName ->
+                        // on fabrique un token unique pour CETTE lecture
+                        val myToken = currentPlayToken + 1
+                        currentPlayToken = myToken
+
                         crossfadePlay(
                             context = ctx,
                             mediaPlayer = mediaPlayer,
                             uriString = uriString,
+                            playlistName = playlistName,          // peut être null
+                            playToken = myToken,
+                            getCurrentToken = { currentPlayToken },
                             onLyricsLoaded = { text ->
                                 parsedLines = if (!text.isNullOrBlank()) {
                                     parseLrc(text)
@@ -55,11 +64,13 @@ class MainActivity : ComponentActivity() {
                             onStart = { isPlaying = true },
                             onError = { isPlaying = false }
                         )
-                        // une fois lancé, on affiche le lecteur
+
+                        // on affiche le player après lancement
                         selectedTab = BottomTab.Player
                     }
                 }
 
+                // libération du player
                 DisposableEffect(Unit) {
                     onDispose { mediaPlayer.release() }
                 }
@@ -90,11 +101,11 @@ class MainActivity : ComponentActivity() {
                         }
 
                         is BottomTab.QuickPlaylists -> {
-                            // 👉 maintenant ça passe par le crossfade
+                            // 👉 depuis ici : pas de playlistName → null
                             QuickPlaylistsScreen(
                                 modifier = Modifier.padding(innerPadding),
                                 onPlaySong = { uriString ->
-                                    playWithCrossfade(uriString)
+                                    playWithCrossfade(uriString, null)
                                 }
                             )
                         }
@@ -120,7 +131,8 @@ class MainActivity : ComponentActivity() {
                                     playlistName = openedPlaylist!!,
                                     onBack = { openedPlaylist = null },
                                     onPlaySong = { uriString ->
-                                        playWithCrossfade(uriString)
+                                        // 👉 ici on sait de quelle playlist ça vient
+                                        playWithCrossfade(uriString, openedPlaylist)
                                     }
                                 )
                             }
@@ -132,20 +144,21 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-// ---------------------------------------------------------
-//  FONCTION DE LECTURE AVEC FONDU
-// ---------------------------------------------------------
+// -------- lecture avec fondu + marquage après 10 s --------
 private fun crossfadePlay(
-    context: android.content.Context,
+    context: Context,
     mediaPlayer: MediaPlayer,
     uriString: String,
+    playlistName: String?,                 // peut être null
+    playToken: Long,
+    getCurrentToken: () -> Long,
     onLyricsLoaded: (String?) -> Unit,
     onStart: () -> Unit,
     onError: () -> Unit,
     fadeDurationMs: Long = 500
 ) {
     CoroutineScope(Dispatchers.Main).launch {
-        // 1) fade-out de l’ancien si besoin
+        // 1) on baisse l’ancien s’il y en a un
         if (mediaPlayer.isPlaying) {
             fadeVolume(mediaPlayer, 1f, 0f, fadeDurationMs)
         } else {
@@ -158,7 +171,7 @@ private fun crossfadePlay(
             mediaPlayer.setDataSource(context, uri)
             mediaPlayer.prepare()
 
-            // 2) paroles éventuelles
+            // 2) paroles
             val lrcText = readUsltFromUri(context, uri)
             onLyricsLoaded(lrcText)
 
@@ -168,6 +181,18 @@ private fun crossfadePlay(
 
             // 4) fade-in
             fadeVolume(mediaPlayer, 0f, 1f, fadeDurationMs)
+
+            // 5) marquage “joué” après 10s UNIQUEMENT si on vient d’une playlist
+            if (playlistName != null) {
+                val thisSong = uriString
+                CoroutineScope(Dispatchers.Main).launch {
+                    delay(10_000)
+                    // on vérifie qu’entre-temps on n’a pas lancé un autre morceau
+                    if (getCurrentToken() == playToken && mediaPlayer.isPlaying) {
+                        PlaylistRepository.markSongPlayed(playlistName, thisSong)
+                    }
+                }
+            }
 
         } catch (e: Exception) {
             e.printStackTrace()

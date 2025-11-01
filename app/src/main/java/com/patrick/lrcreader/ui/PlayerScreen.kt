@@ -1,9 +1,6 @@
 package com.patrick.lrcreader.ui
 
 import android.media.MediaPlayer
-import android.net.Uri
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -15,7 +12,6 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
-import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -23,13 +19,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.core.LrcLine
-import com.patrick.lrcreader.core.parseLrc
-import com.patrick.lrcreader.core.readUsltFromUri
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -40,67 +33,24 @@ fun PlayerScreen(
     isPlaying: Boolean,
     onIsPlayingChange: (Boolean) -> Unit,
     parsedLines: List<LrcLine>,
-    onParsedLinesChange: (List<LrcLine>) -> Unit,
+    onParsedLinesChange: (List<LrcLine>) -> Unit, // on le garde pour compatibilité
 ) {
-    val context = LocalContext.current
-    val coroutineScope = rememberCoroutineScope()
     val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
     var currentLineIndex by remember { mutableStateOf(0) }
 
-    // suivi auto des paroles
+    // défilement auto
     LaunchedEffect(isPlaying, parsedLines) {
         while (isPlaying && parsedLines.isNotEmpty()) {
             val pos = mediaPlayer.currentPosition
             val index = parsedLines.indexOfLast { it.timeMs <= pos }
             if (index != -1 && index != currentLineIndex) {
                 currentLineIndex = index
-                coroutineScope.launch { listState.animateScrollToItem(index) }
+                scope.launch { listState.animateScrollToItem(index) }
             }
             delay(120)
         }
     }
-
-    // choisir un MP3
-    val pickAudioLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument(),
-        onResult = { uri: Uri? ->
-            if (uri != null) {
-                // on passe en coroutine pour pouvoir faire le fade
-                coroutineScope.launch {
-                    // fade-out de l’ancien si ça joue
-                    if (mediaPlayer.isPlaying) {
-                        fadeVolume(mediaPlayer, from = 1f, to = 0f, durationMs = 500)
-                    } else {
-                        // on part de 0 pour le prochain fade-in
-                        mediaPlayer.setVolume(0f, 0f)
-                    }
-
-                    try {
-                        mediaPlayer.reset()
-                        mediaPlayer.setDataSource(context, uri)
-                        mediaPlayer.prepare()
-
-                        // paroles
-                        val lrcText = readUsltFromUri(context, uri)
-                        val lines = if (!lrcText.isNullOrBlank()) parseLrc(lrcText) else emptyList()
-                        onParsedLinesChange(lines)
-
-                        currentLineIndex = 0
-                        listState.scrollToItem(0)
-
-                        mediaPlayer.start()
-                        onIsPlayingChange(true)
-
-                        // fade-in du nouveau morceau
-                        fadeVolume(mediaPlayer, from = 0f, to = 1f, durationMs = 500)
-
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                    }
-                }
-            }
-        }
-    )
 
     Column(
         modifier = modifier
@@ -109,25 +59,6 @@ fun PlayerScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.SpaceBetween
     ) {
-        Button(
-            onClick = {
-                pickAudioLauncher.launch(
-                    arrayOf(
-                        "audio/*",
-                        "audio/mpeg",
-                        "audio/mp3",
-                        "application/octet-stream"
-                    )
-                )
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(48.dp)
-        ) {
-            Text("Choisir un MP3", color = Color.White)
-        }
-
-        Spacer(Modifier.height(8.dp))
 
         Text(
             text = "Paroles synchronisées",
@@ -147,17 +78,19 @@ fun PlayerScreen(
             if (parsedLines.isEmpty()) {
                 item {
                     Text(
-                        "Aucune parole LRC trouvée dans ce MP3",
+                        "Aucune parole LRC trouvée dans ce titre",
                         color = Color.Gray,
-                        modifier = Modifier.padding(top = 40.dp)
+                        modifier = Modifier.padding(top = 40.dp),
+                        textAlign = TextAlign.Center
                     )
                 }
             } else {
                 itemsIndexed(parsedLines) { index, line ->
+                    val isActive = index == currentLineIndex
                     Text(
                         text = line.text,
-                        color = if (index == currentLineIndex) Color.White else Color(0xFFB0B0B0),
-                        fontSize = if (index == currentLineIndex) 26.sp else 20.sp,
+                        color = if (isActive) Color.White else Color(0xFFB0B0B0),
+                        fontSize = if (isActive) 26.sp else 20.sp,
                         textAlign = TextAlign.Center,
                         modifier = Modifier
                             .fillMaxWidth()
@@ -166,9 +99,8 @@ fun PlayerScreen(
                                 try {
                                     mediaPlayer.seekTo(line.timeMs.toInt())
                                     currentLineIndex = index
-                                    coroutineScope.launch { listState.scrollToItem(index) }
-                                } catch (e: Exception) {
-                                    e.printStackTrace()
+                                    scope.launch { listState.scrollToItem(index) }
+                                } catch (_: Exception) {
                                 }
                             }
                     )
@@ -190,7 +122,7 @@ fun PlayerScreen(
             onPrev = {
                 mediaPlayer.seekTo(0)
                 currentLineIndex = 0
-                coroutineScope.launch { listState.scrollToItem(0) }
+                scope.launch { listState.scrollToItem(0) }
             },
             onNext = {
                 mediaPlayer.seekTo(mediaPlayer.duration)
@@ -199,29 +131,6 @@ fun PlayerScreen(
             }
         )
     }
-}
-
-/**
- * Petit fondu de volume très simple.
- * On reste en linéaire, 20 steps.
- */
-private suspend fun fadeVolume(
-    player: MediaPlayer,
-    from: Float,
-    to: Float,
-    durationMs: Long
-) {
-    val steps = 20
-    val stepTime = durationMs / steps
-    val delta = (to - from) / steps
-
-    for (i in 0..steps) {
-        val v = (from + delta * i).coerceIn(0f, 1f)
-        player.setVolume(v, v)
-        delay(stepTime)
-    }
-    // pour être sûr de finir à la bonne valeur
-    player.setVolume(to, to)
 }
 
 @Composable
