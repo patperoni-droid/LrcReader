@@ -17,16 +17,22 @@ import java.net.URLDecoder
 @Composable
 fun QuickPlaylistsScreen(
     modifier: Modifier = Modifier,
-    onPlaySong: (String) -> Unit   // ← envoyé par MainActivity
+    onPlaySong: (String, String) -> Unit,   // ← uri + nom de playlist
+    refreshKey: Int                         // ← pour forcer le refresh
 ) {
-    // on récupère les playlists existantes
-    val playlists = remember { PlaylistRepository.getPlaylists() }
+    // on lit les playlists à chaque refresh
+    val playlists = remember(refreshKey) { PlaylistRepository.getPlaylists() }
 
-    // playlist actuellement choisie dans cet onglet
-    var selectedPlaylist by remember { mutableStateOf<String?>(playlists.firstOrNull()) }
+    // playlist actuellement choisie
+    var selectedPlaylist by remember(refreshKey) {
+        mutableStateOf<String?>(playlists.firstOrNull())
+    }
+
+    // menu déroulant
+    var showMenu by remember { mutableStateOf(false) }
 
     // chansons de cette playlist
-    val songs = remember(selectedPlaylist) {
+    val songs = remember(selectedPlaylist, refreshKey) {
         selectedPlaylist?.let { PlaylistRepository.getSongsFor(it) } ?: emptyList()
     }
 
@@ -36,49 +42,48 @@ fun QuickPlaylistsScreen(
             .background(Color.Black)
             .padding(16.dp)
     ) {
-        Text("Playlists (live)", color = Color.White, fontSize = 20.sp)
+        // titre + menu déroulant
+        Box {
+            Text(
+                text = selectedPlaylist ?: "Sélectionne une playlist",
+                color = Color.White,
+                fontSize = 20.sp,
+                modifier = Modifier
+                    .clickable { showMenu = true }
+                    .padding(bottom = 8.dp)
+            )
+
+            DropdownMenu(
+                expanded = showMenu,
+                onDismissRequest = { showMenu = false }
+            ) {
+                playlists.forEach { name ->
+                    DropdownMenuItem(
+                        text = { Text(name) },
+                        onClick = {
+                            selectedPlaylist = name
+                            showMenu = false
+                        }
+                    )
+                }
+            }
+        }
+
         Spacer(Modifier.height(12.dp))
 
-        // liste horizontale / simple de playlists
-        if (playlists.isEmpty()) {
+        if (selectedPlaylist == null) {
             Text(
-                "Aucune playlist.\nVa dans l’onglet “Toutes” pour en créer.",
+                "Aucune playlist.\nVa dans “Toutes” pour en créer.",
                 color = Color.Gray
             )
         } else {
-            // petites puces cliquables
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                playlists.forEach { name ->
-                    val isSelected = name == selectedPlaylist
-                    Surface(
-                        color = if (isSelected) Color(0xFF1DB954) else Color.Transparent,
-                        border = if (isSelected) null else ButtonDefaults.outlinedButtonBorder,
-                        shape = MaterialTheme.shapes.small,
-                        modifier = Modifier.clickable { selectedPlaylist = name }
-                    ) {
-                        Text(
-                            text = name,
-                            color = if (isSelected) Color.Black else Color.White,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                        )
-                    }
-                }
-            }
-
-            Spacer(Modifier.height(16.dp))
-
-            // titre de section
             Text(
-                text = "Chansons de “${selectedPlaylist ?: "-"}”",
+                text = "Chansons de “$selectedPlaylist”",
                 color = Color.White,
                 fontSize = 16.sp
             )
             Spacer(Modifier.height(8.dp))
 
-            // liste des chansons
             LazyColumn(
                 modifier = Modifier.weight(1f)
             ) {
@@ -89,21 +94,30 @@ fun QuickPlaylistsScreen(
                         uriString
                     }
 
+                    val isPlayed = selectedPlaylist?.let {
+                        PlaylistRepository.isSongPlayed(it, uriString)
+                    } ?: false
+
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { onPlaySong(uriString) }
+                            .clickable {
+                                // 👉 on envoie URI + nom de la playlist courante
+                                selectedPlaylist?.let { plName ->
+                                    onPlaySong(uriString, plName)
+                                }
+                            }
                             .padding(vertical = 8.dp),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
                             text = displayName,
-                            color = Color.White,
+                            color = if (isPlayed) Color.Gray else Color.White,
                             modifier = Modifier.weight(1f)
                         )
                         Text(
                             text = "▶",
-                            color = Color.White,
+                            color = if (isPlayed) Color.Gray else Color.White,
                             modifier = Modifier.padding(start = 8.dp)
                         )
                     }

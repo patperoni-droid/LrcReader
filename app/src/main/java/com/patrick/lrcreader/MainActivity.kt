@@ -31,19 +31,20 @@ class MainActivity : ComponentActivity() {
 
                 var isPlaying by remember { mutableStateOf(false) }
                 var parsedLines by remember { mutableStateOf<List<LrcLine>>(emptyList()) }
-
                 var selectedTab by remember { mutableStateOf<BottomTab>(BottomTab.Player) }
 
-                // pour l’onglet "Toutes" (détail d’une playlist)
+                // détail d’une playlist (onglet “Toutes”)
                 var openedPlaylist by remember { mutableStateOf<String?>(null) }
 
-                // 👇 token de lecture courant (augmente à chaque nouveau titre lancé)
+                // token de lecture courant
                 var currentPlayToken by remember { mutableStateOf(0L) }
 
-                // 👇 callback unique que tous les écrans vont utiliser
+                // ✅ lire directement la valeur Int
+                val repoVersion by PlaylistRepository.version
+
+                // callback unique
                 val playWithCrossfade: (String, String?) -> Unit = remember {
                     { uriString, playlistName ->
-                        // on fabrique un token unique pour CETTE lecture
                         val myToken = currentPlayToken + 1
                         currentPlayToken = myToken
 
@@ -51,7 +52,7 @@ class MainActivity : ComponentActivity() {
                             context = ctx,
                             mediaPlayer = mediaPlayer,
                             uriString = uriString,
-                            playlistName = playlistName,          // peut être null
+                            playlistName = playlistName,
                             playToken = myToken,
                             getCurrentToken = { currentPlayToken },
                             onLyricsLoaded = { text ->
@@ -65,12 +66,10 @@ class MainActivity : ComponentActivity() {
                             onError = { isPlaying = false }
                         )
 
-                        // on affiche le player après lancement
                         selectedTab = BottomTab.Player
                     }
                 }
 
-                // libération du player
                 DisposableEffect(Unit) {
                     onDispose { mediaPlayer.release() }
                 }
@@ -80,41 +79,34 @@ class MainActivity : ComponentActivity() {
                     bottomBar = {
                         BottomTabsBar(
                             selected = selectedTab,
-                            onSelected = { tab ->
-                                selectedTab = tab
-                            }
+                            onSelected = { tab -> selectedTab = tab }
                         )
                     }
                 ) { innerPadding ->
 
                     when (selectedTab) {
 
-                        is BottomTab.Player -> {
-                            PlayerScreen(
-                                modifier = Modifier.padding(innerPadding),
-                                mediaPlayer = mediaPlayer,
-                                isPlaying = isPlaying,
-                                onIsPlayingChange = { isPlaying = it },
-                                parsedLines = parsedLines,
-                                onParsedLinesChange = { parsedLines = it },
-                            )
-                        }
+                        is BottomTab.Player -> PlayerScreen(
+                            modifier = Modifier.padding(innerPadding),
+                            mediaPlayer = mediaPlayer,
+                            isPlaying = isPlaying,
+                            onIsPlayingChange = { isPlaying = it },
+                            parsedLines = parsedLines,
+                            onParsedLinesChange = { parsedLines = it },
+                        )
 
-                        is BottomTab.QuickPlaylists -> {
-                            // 👉 depuis ici : pas de playlistName → null
-                            QuickPlaylistsScreen(
-                                modifier = Modifier.padding(innerPadding),
-                                onPlaySong = { uriString ->
-                                    playWithCrossfade(uriString, null)
-                                }
-                            )
-                        }
+                        // 🟠 playlists “live”
+                        is BottomTab.QuickPlaylists -> QuickPlaylistsScreen(
+                            modifier = Modifier.padding(innerPadding),
+                            onPlaySong = { uri, playlistName ->
+                                playWithCrossfade(uri, playlistName)
+                            },
+                            refreshKey = repoVersion
+                        )
 
-                        is BottomTab.Library -> {
-                            LibraryScreen(
-                                modifier = Modifier.padding(innerPadding)
-                            )
-                        }
+                        is BottomTab.Library -> LibraryScreen(
+                            modifier = Modifier.padding(innerPadding)
+                        )
 
                         is BottomTab.AllPlaylists -> {
                             val m = Modifier.padding(innerPadding)
@@ -131,7 +123,6 @@ class MainActivity : ComponentActivity() {
                                     playlistName = openedPlaylist!!,
                                     onBack = { openedPlaylist = null },
                                     onPlaySong = { uriString ->
-                                        // 👉 ici on sait de quelle playlist ça vient
                                         playWithCrossfade(uriString, openedPlaylist)
                                     }
                                 )
@@ -144,7 +135,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-// -------- lecture avec fondu + marquage après 10 s --------
+// -------- lecture avec fondu + marquage “joué” après 10 s --------
 private fun crossfadePlay(
     context: Context,
     mediaPlayer: MediaPlayer,
@@ -158,7 +149,6 @@ private fun crossfadePlay(
     fadeDurationMs: Long = 500
 ) {
     CoroutineScope(Dispatchers.Main).launch {
-        // 1) on baisse l’ancien s’il y en a un
         if (mediaPlayer.isPlaying) {
             fadeVolume(mediaPlayer, 1f, 0f, fadeDurationMs)
         } else {
@@ -171,24 +161,21 @@ private fun crossfadePlay(
             mediaPlayer.setDataSource(context, uri)
             mediaPlayer.prepare()
 
-            // 2) paroles
             val lrcText = readUsltFromUri(context, uri)
             onLyricsLoaded(lrcText)
 
-            // 3) on démarre
             mediaPlayer.start()
             onStart()
 
-            // 4) fade-in
             fadeVolume(mediaPlayer, 0f, 1f, fadeDurationMs)
 
-            // 5) marquage “joué” après 10s UNIQUEMENT si on vient d’une playlist
+            // ⏱️ après 10 s → marque joué
             if (playlistName != null) {
+                val thisToken = playToken
                 val thisSong = uriString
                 CoroutineScope(Dispatchers.Main).launch {
                     delay(10_000)
-                    // on vérifie qu’entre-temps on n’a pas lancé un autre morceau
-                    if (getCurrentToken() == playToken && mediaPlayer.isPlaying) {
+                    if (getCurrentToken() == thisToken && mediaPlayer.isPlaying) {
                         PlaylistRepository.markSongPlayed(playlistName, thisSong)
                     }
                 }

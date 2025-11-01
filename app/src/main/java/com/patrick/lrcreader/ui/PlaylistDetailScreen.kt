@@ -12,10 +12,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -29,13 +26,11 @@ fun PlaylistDetailScreen(
     modifier: Modifier = Modifier,
     playlistName: String,
     onBack: () -> Unit,
-    onPlaySong: (String) -> Unit
+    onPlaySong: (String) -> Unit,
+    refreshKey: Long = 0L               // 👈 ajouté
 ) {
-    // 👇 on “écoute” la version
-    val version = PlaylistRepository.version
-
-    // 👇 à chaque changement de version, on relit
-    val songs = remember(playlistName, version) {
+    // on relit la liste à chaque changement de refreshKey
+    val songs = remember(playlistName, refreshKey) {
         PlaylistRepository.getSongsFor(playlistName)
     }
 
@@ -80,8 +75,8 @@ fun PlaylistDetailScreen(
                         uriString
                     }
 
-                    // 👇 maintenant on peut vraiment savoir
-                    val isPlayed = PlaylistRepository.isSongPlayed(playlistName, uriString)
+                    // 👇 on regarde si ce titre est marqué joué
+                    val played = PlaylistRepository.isSongPlayed(playlistName, uriString)
 
                     Row(
                         modifier = Modifier
@@ -99,7 +94,7 @@ fun PlaylistDetailScreen(
 
                         Text(
                             text = displayName,
-                            color = if (isPlayed) Color.Red else Color.White,
+                            color = if (played) Color(0xFF888888) else Color.White,
                             modifier = Modifier
                                 .weight(1f)
                                 .clickable { onPlaySong(uriString) }
