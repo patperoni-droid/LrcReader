@@ -47,7 +47,7 @@ fun PlayerScreen(
     val listState = rememberLazyListState()
     var currentLineIndex by remember { mutableStateOf(0) }
 
-    // suivi auto
+    // suivi auto des paroles
     LaunchedEffect(isPlaying, parsedLines) {
         while (isPlaying && parsedLines.isNotEmpty()) {
             val pos = mediaPlayer.currentPosition
@@ -65,20 +65,38 @@ fun PlayerScreen(
         contract = ActivityResultContracts.OpenDocument(),
         onResult = { uri: Uri? ->
             if (uri != null) {
-                try {
-                    mediaPlayer.reset()
-                    mediaPlayer.setDataSource(context, uri)
-                    mediaPlayer.prepare()
+                // on passe en coroutine pour pouvoir faire le fade
+                coroutineScope.launch {
+                    // fade-out de l’ancien si ça joue
+                    if (mediaPlayer.isPlaying) {
+                        fadeVolume(mediaPlayer, from = 1f, to = 0f, durationMs = 500)
+                    } else {
+                        // on part de 0 pour le prochain fade-in
+                        mediaPlayer.setVolume(0f, 0f)
+                    }
 
-                    val lrcText = readUsltFromUri(context, uri)
-                    val lines = if (!lrcText.isNullOrBlank()) parseLrc(lrcText) else emptyList()
-                    onParsedLinesChange(lines)
+                    try {
+                        mediaPlayer.reset()
+                        mediaPlayer.setDataSource(context, uri)
+                        mediaPlayer.prepare()
 
-                    currentLineIndex = 0
-                    coroutineScope.launch { listState.scrollToItem(0) }
+                        // paroles
+                        val lrcText = readUsltFromUri(context, uri)
+                        val lines = if (!lrcText.isNullOrBlank()) parseLrc(lrcText) else emptyList()
+                        onParsedLinesChange(lines)
 
-                } catch (e: Exception) {
-                    e.printStackTrace()
+                        currentLineIndex = 0
+                        listState.scrollToItem(0)
+
+                        mediaPlayer.start()
+                        onIsPlayingChange(true)
+
+                        // fade-in du nouveau morceau
+                        fadeVolume(mediaPlayer, from = 0f, to = 1f, durationMs = 500)
+
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
                 }
             }
         }
@@ -181,6 +199,29 @@ fun PlayerScreen(
             }
         )
     }
+}
+
+/**
+ * Petit fondu de volume très simple.
+ * On reste en linéaire, 20 steps.
+ */
+private suspend fun fadeVolume(
+    player: MediaPlayer,
+    from: Float,
+    to: Float,
+    durationMs: Long
+) {
+    val steps = 20
+    val stepTime = durationMs / steps
+    val delta = (to - from) / steps
+
+    for (i in 0..steps) {
+        val v = (from + delta * i).coerceIn(0f, 1f)
+        player.setVolume(v, v)
+        delay(stepTime)
+    }
+    // pour être sûr de finir à la bonne valeur
+    player.setVolume(to, to)
 }
 
 @Composable

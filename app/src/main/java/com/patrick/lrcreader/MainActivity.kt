@@ -16,6 +16,10 @@ import com.patrick.lrcreader.core.LrcLine
 import com.patrick.lrcreader.core.parseLrc
 import com.patrick.lrcreader.core.readUsltFromUri
 import com.patrick.lrcreader.ui.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -34,6 +38,28 @@ class MainActivity : ComponentActivity() {
                 // pour l’onglet "Toutes" (détail d’une playlist)
                 var openedPlaylist by remember { mutableStateOf<String?>(null) }
 
+                // 🔴 un seul callback pour lancer un titre AVEC fondu
+                val playWithCrossfade: (String) -> Unit = remember {
+                    { uriString ->
+                        crossfadePlay(
+                            context = ctx,
+                            mediaPlayer = mediaPlayer,
+                            uriString = uriString,
+                            onLyricsLoaded = { text ->
+                                parsedLines = if (!text.isNullOrBlank()) {
+                                    parseLrc(text)
+                                } else {
+                                    emptyList()
+                                }
+                            },
+                            onStart = { isPlaying = true },
+                            onError = { isPlaying = false }
+                        )
+                        // une fois lancé, on affiche le lecteur
+                        selectedTab = BottomTab.Player
+                    }
+                }
+
                 DisposableEffect(Unit) {
                     onDispose { mediaPlayer.release() }
                 }
@@ -45,7 +71,6 @@ class MainActivity : ComponentActivity() {
                             selected = selectedTab,
                             onSelected = { tab ->
                                 selectedTab = tab
-                                // si tu veux: quand on revient sur "Toutes", on ne reset pas
                             }
                         )
                     }
@@ -65,32 +90,11 @@ class MainActivity : ComponentActivity() {
                         }
 
                         is BottomTab.QuickPlaylists -> {
-                            // 🔴 ICI : notre nouvel écran
+                            // 👉 maintenant ça passe par le crossfade
                             QuickPlaylistsScreen(
                                 modifier = Modifier.padding(innerPadding),
                                 onPlaySong = { uriString ->
-                                    try {
-                                        val uri = Uri.parse(uriString)
-                                        mediaPlayer.reset()
-                                        mediaPlayer.setDataSource(ctx, uri)
-                                        mediaPlayer.prepare()
-                                        mediaPlayer.start()
-                                        isPlaying = true
-
-                                        // on recharge les paroles si le MP3 en a
-                                        val lrcText = readUsltFromUri(ctx, uri)
-                                        parsedLines = if (!lrcText.isNullOrBlank()) {
-                                            parseLrc(lrcText)
-                                        } else {
-                                            emptyList()
-                                        }
-
-                                        // et on bascule vers le lecteur
-                                        selectedTab = BottomTab.Player
-
-                                    } catch (e: Exception) {
-                                        e.printStackTrace()
-                                    }
+                                    playWithCrossfade(uriString)
                                 }
                             )
                         }
@@ -116,25 +120,7 @@ class MainActivity : ComponentActivity() {
                                     playlistName = openedPlaylist!!,
                                     onBack = { openedPlaylist = null },
                                     onPlaySong = { uriString ->
-                                        try {
-                                            val uri = Uri.parse(uriString)
-                                            mediaPlayer.reset()
-                                            mediaPlayer.setDataSource(ctx, uri)
-                                            mediaPlayer.prepare()
-                                            mediaPlayer.start()
-                                            isPlaying = true
-
-                                            val lrcText = readUsltFromUri(ctx, uri)
-                                            parsedLines = if (!lrcText.isNullOrBlank()) {
-                                                parseLrc(lrcText)
-                                            } else {
-                                                emptyList()
-                                            }
-
-                                            selectedTab = BottomTab.Player
-                                        } catch (e: Exception) {
-                                            e.printStackTrace()
-                                        }
+                                        playWithCrossfade(uriString)
                                     }
                                 )
                             }
@@ -144,4 +130,65 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+}
+
+// ---------------------------------------------------------
+//  FONCTION DE LECTURE AVEC FONDU
+// ---------------------------------------------------------
+private fun crossfadePlay(
+    context: android.content.Context,
+    mediaPlayer: MediaPlayer,
+    uriString: String,
+    onLyricsLoaded: (String?) -> Unit,
+    onStart: () -> Unit,
+    onError: () -> Unit,
+    fadeDurationMs: Long = 500
+) {
+    CoroutineScope(Dispatchers.Main).launch {
+        // 1) fade-out de l’ancien si besoin
+        if (mediaPlayer.isPlaying) {
+            fadeVolume(mediaPlayer, 1f, 0f, fadeDurationMs)
+        } else {
+            mediaPlayer.setVolume(0f, 0f)
+        }
+
+        try {
+            val uri = Uri.parse(uriString)
+            mediaPlayer.reset()
+            mediaPlayer.setDataSource(context, uri)
+            mediaPlayer.prepare()
+
+            // 2) paroles éventuelles
+            val lrcText = readUsltFromUri(context, uri)
+            onLyricsLoaded(lrcText)
+
+            // 3) on démarre
+            mediaPlayer.start()
+            onStart()
+
+            // 4) fade-in
+            fadeVolume(mediaPlayer, 0f, 1f, fadeDurationMs)
+
+        } catch (e: Exception) {
+            e.printStackTrace()
+            onError()
+        }
+    }
+}
+
+private suspend fun fadeVolume(
+    player: MediaPlayer,
+    from: Float,
+    to: Float,
+    durationMs: Long
+) {
+    val steps = 20
+    val stepTime = durationMs / steps
+    val delta = (to - from) / steps
+    for (i in 0..steps) {
+        val v = (from + delta * i).coerceIn(0f, 1f)
+        player.setVolume(v, v)
+        delay(stepTime)
+    }
+    player.setVolume(to, to)
 }
