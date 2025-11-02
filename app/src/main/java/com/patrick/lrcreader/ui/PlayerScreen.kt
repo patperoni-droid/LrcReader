@@ -2,6 +2,7 @@ package com.patrick.lrcreader.ui
 
 import android.media.MediaPlayer
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -17,6 +18,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -25,7 +27,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.core.LrcLine
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import kotlin.math.abs
 
 @Composable
@@ -38,25 +39,27 @@ fun PlayerScreen(
     onParsedLinesChange: (List<LrcLine>) -> Unit,
 ) {
     val scrollState = rememberScrollState()
-    val scope = rememberCoroutineScope()
     val density = LocalDensity.current
 
-    // hauteur de la zone qui affiche les paroles
+    // zone d'affichage des paroles
     var lyricsBoxHeightPx by remember { mutableStateOf(0) }
 
-    // index de la ligne dont le timing est le + proche du temps courant
+    // ligne LRC la plus proche du temps courant
     var currentLrcIndex by remember { mutableStateOf(0) }
 
-    // hauteur d’une ligne (un peu plus grande pour ne pas couper)
-    val lineHeightDp = 72.dp      // ← tu peux monter à 50.dp si tu veux encore plus d’air
+    // on laisse de la place pour 2 lignes -> pas de phrase "bouffée"
+    val lineHeightDp = 80.dp              // ← tu peux monter à 84.dp si besoin
     val lineHeightPx = with(density) { lineHeightDp.toPx() }
 
-    // on fait partir du bas : on met un spacer de la hauteur de la box
+    // faire partir du bas
     val baseTopSpacerPx = remember(lyricsBoxHeightPx) {
         lyricsBoxHeightPx
     }
 
-    // 1) on regarde tout le temps où en est la musique → on choisit la ligne la plus proche
+    // vrai scroll utilisateur (doigt)
+    var userScrolling by remember { mutableStateOf(false) }
+
+    // 1) on suit le player
     LaunchedEffect(isPlaying, parsedLines) {
         if (parsedLines.isEmpty()) return@LaunchedEffect
         while (isPlaying) {
@@ -73,28 +76,22 @@ fun PlayerScreen(
         }
     }
 
-    // 2) on force la ligne orange à rester au centre tout le temps
+    // 2) on recentre en continu (sauf si le doigt est dessus)
     LaunchedEffect(isPlaying, parsedLines, lyricsBoxHeightPx) {
         if (parsedLines.isEmpty()) return@LaunchedEffect
         if (lyricsBoxHeightPx == 0) return@LaunchedEffect
 
         while (isPlaying) {
-            val centerPx = lyricsBoxHeightPx / 2f
-
-            // position de la ligne dans le contenu scrollé
-            val lineAbsY = baseTopSpacerPx + currentLrcIndex * lineHeightPx
-
-            // pour la mettre au centre → scroll = positionLigne - centre
-            val wantedScroll = (lineAbsY - centerPx).toInt().coerceAtLeast(0)
-
-            // on y va direct pour que ça ne dérive pas vers le bas
-            scrollState.scrollTo(wantedScroll)
-
-            delay(16)   // ~60 fps
+            if (!userScrolling) {
+                val centerPx = lyricsBoxHeightPx / 2f
+                val lineAbsY = baseTopSpacerPx + currentLrcIndex * lineHeightPx
+                val wantedScroll = (lineAbsY - centerPx).toInt().coerceAtLeast(0)
+                scrollState.scrollTo(wantedScroll)
+            }
+            delay(16)
         }
     }
 
-    // 3) UI
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -103,7 +100,6 @@ fun PlayerScreen(
         verticalArrangement = Arrangement.SpaceBetween
     ) {
 
-        // titre
         Text(
             text = "Paroles synchronisées",
             color = Color.LightGray,
@@ -114,7 +110,6 @@ fun PlayerScreen(
             textAlign = TextAlign.Start
         )
 
-        // ZONE PAROLES
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -122,15 +117,31 @@ fun PlayerScreen(
                 .onGloballyPositioned { coords ->
                     lyricsBoxHeightPx = coords.size.height
                 }
+                // 👉 ici on capte VRAIMENT le doigt
+                .pointerInput(Unit) {
+                    detectDragGestures(
+                        onDragStart = {
+                            userScrolling = true
+                        },
+                        onDragEnd = {
+                            userScrolling = false
+                        },
+                        onDragCancel = {
+                            userScrolling = false
+                        }
+                    ) { change, dragAmount ->
+                        // on laisse le Column gérer le scroll
+                        change.consume()
+                    }
+                }
         ) {
-
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .verticalScroll(scrollState),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // gros espace pour faire “partir du bas”
+                // départ du bas
                 if (baseTopSpacerPx > 0) {
                     Spacer(Modifier.height(with(density) { baseTopSpacerPx.toDp() }))
                 }
@@ -153,9 +164,9 @@ fun PlayerScreen(
                             textAlign = TextAlign.Center,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                // on force une vraie hauteur de ligne pour ne pas couper
+                                // case haute + padding -> évite les phrases mangées
                                 .height(lineHeightDp)
-                                .padding(horizontal = 8.dp)
+                                .padding(horizontal = 8.dp, vertical = 8.dp)
                         )
                     }
                 }
@@ -174,7 +185,6 @@ fun PlayerScreen(
             )
         }
 
-        // CONTROLES
         PlayerControls(
             isPlaying = isPlaying,
             onPlayPause = {
