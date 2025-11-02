@@ -16,6 +16,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
@@ -41,23 +42,15 @@ fun PlayerScreen(
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
 
-    // hauteur de la zone d’affichage
     var lyricsBoxHeightPx by remember { mutableStateOf(0) }
-
-    // index de la ligne LRC la plus proche du temps courant
     var currentLrcIndex by remember { mutableStateOf(0) }
-
-    // est-ce que l’utilisateur est en train de scroller ?
     var userScrolling by remember { mutableStateOf(false) }
 
-    // hauteur confortable pour ne pas couper les phrases longues
-    val lineHeightDp = 80.dp          // tu peux baisser à 72 si tu veux
+    val lineHeightDp = 80.dp
     val lineHeightPx = with(density) { lineHeightDp.toPx() }
-
-    // on fait partir du bas
     val baseTopSpacerPx = remember(lyricsBoxHeightPx) { lyricsBoxHeightPx }
 
-    // 1) on suit le player et on détermine la ligne orange
+    // 1️⃣ Suivi de la lecture pour trouver la ligne en cours
     LaunchedEffect(isPlaying, parsedLines) {
         if (parsedLines.isEmpty()) return@LaunchedEffect
         while (isPlaying) {
@@ -74,7 +67,7 @@ fun PlayerScreen(
         }
     }
 
-    // 2) on surveille le scroll utilisateur (sans pointerInput)
+    // 2️⃣ Détection du scroll utilisateur
     LaunchedEffect(scrollState) {
         while (true) {
             userScrolling = scrollState.isScrollInProgress
@@ -82,31 +75,25 @@ fun PlayerScreen(
         }
     }
 
-    // petite fonction pour recadrer la ligne orange
+    // Fonction qui centre la ligne orange
     fun centerCurrentLine() {
         if (lyricsBoxHeightPx == 0) return
         val centerPx = lyricsBoxHeightPx / 2f
         val lineAbsY = baseTopSpacerPx + currentLrcIndex * lineHeightPx
         val wantedScroll = (lineAbsY - centerPx).toInt().coerceAtLeast(0)
-        scope.launch {
-            scrollState.scrollTo(wantedScroll)
-        }
+        scope.launch { scrollState.scrollTo(wantedScroll) }
     }
 
-    // 3) tant que ça joue et que l’utilisateur ne touche pas → on centre
+    // 3️⃣ Centrage automatique si pas de scroll manuel
     LaunchedEffect(isPlaying, parsedLines, lyricsBoxHeightPx) {
-        if (parsedLines.isEmpty()) return@LaunchedEffect
-        if (lyricsBoxHeightPx == 0) return@LaunchedEffect
-
+        if (parsedLines.isEmpty() || lyricsBoxHeightPx == 0) return@LaunchedEffect
         while (isPlaying) {
-            if (!userScrolling) {
-                centerCurrentLine()
-            }
-            delay(16) // fluide
+            if (!userScrolling) centerCurrentLine()
+            delay(16)
         }
     }
 
-    // 4) UI
+    // 4️⃣ UI
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -129,18 +116,16 @@ fun PlayerScreen(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .onGloballyPositioned { coords ->
-                    lyricsBoxHeightPx = coords.size.height
-                }
+                .onGloballyPositioned { coords -> lyricsBoxHeightPx = coords.size.height }
         ) {
 
+            // colonne scrollable des paroles
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .verticalScroll(scrollState),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // gros espace pour faire démarrer du bas
                 if (baseTopSpacerPx > 0) {
                     Spacer(Modifier.height(with(density) { baseTopSpacerPx.toDp() }))
                 }
@@ -172,7 +157,7 @@ fun PlayerScreen(
                 Spacer(Modifier.height(80.dp))
             }
 
-            // ligne de repère (centre)
+            // ligne de repère au centre
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -181,8 +166,41 @@ fun PlayerScreen(
                     .align(Alignment.TopStart)
                     .offset(y = (lyricsBoxHeightPx / 2).dp)
             )
+
+            // 🟣 FADE HAUT (resserré à ~2 lignes)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(60.dp)
+                    .align(Alignment.TopCenter)
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color.Black,
+                                Color.Black.copy(alpha = 0f)
+                            )
+                        )
+                    )
+            )
+
+            // 🟣 FADE BAS (resserré aussi)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(60.dp)
+                    .align(Alignment.BottomCenter)
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color.Black.copy(alpha = 0f),
+                                Color.Black
+                            )
+                        )
+                    )
+            )
         }
 
+        // Contrôles du lecteur
         PlayerControls(
             isPlaying = isPlaying,
             onPlayPause = {
