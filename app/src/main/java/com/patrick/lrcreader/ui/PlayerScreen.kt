@@ -5,7 +5,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
@@ -19,6 +18,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -33,22 +34,43 @@ fun PlayerScreen(
     isPlaying: Boolean,
     onIsPlayingChange: (Boolean) -> Unit,
     parsedLines: List<LrcLine>,
-    onParsedLinesChange: (List<LrcLine>) -> Unit, // on le garde
+    onParsedLinesChange: (List<LrcLine>) -> Unit,
 ) {
-    val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
+    val listState = rememberLazyListState()
+
     var currentLineIndex by remember { mutableStateOf(0) }
 
-    // défilement auto
+    // hauteur réelle de la zone paroles
+    var lyricsHeightPx by remember { mutableStateOf(0) }
+    val density = LocalDensity.current
+
+    // hauteur “moyenne” d’une ligne (pour centrer un peu mieux)
+    val approxLineHeightDp = 40.dp
+    val approxLineHeightPx = with(density) { approxLineHeightDp.toPx() }
+
+    // padding haut dynamique : moitié de la zone - moitié d’une ligne
+    val topPaddingDp by remember(lyricsHeightPx) {
+        mutableStateOf(
+            if (lyricsHeightPx == 0) 0.dp
+            else with(density) {
+                val px = (lyricsHeightPx / 2f - approxLineHeightPx / 2f).coerceAtLeast(0f)
+                px.toDp()
+            }
+        )
+    }
+
+    // suivi auto
     LaunchedEffect(isPlaying, parsedLines) {
         while (isPlaying && parsedLines.isNotEmpty()) {
             val pos = mediaPlayer.currentPosition
             val index = parsedLines.indexOfLast { it.timeMs <= pos }
             if (index != -1 && index != currentLineIndex) {
                 currentLineIndex = index
-                // 👉 on essaye d’afficher aussi la ligne d’avant
-                val target = if (index > 0) index - 1 else 0
-                scope.launch { listState.animateScrollToItem(target) }
+                // on défile MAIS on garde le padding → la ligne reste au milieu
+                scope.launch {
+                    listState.animateScrollToItem(index)
+                }
             }
             delay(120)
         }
@@ -70,47 +92,84 @@ fun PlayerScreen(
             textAlign = TextAlign.Start
         )
 
-        LazyColumn(
-            state = listState,
+        // zone des paroles
+        Box(
             modifier = Modifier
                 .weight(1f)
-                .fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            contentPadding = PaddingValues(top = 40.dp, bottom = 16.dp) // 👈 espace en haut
-        ) {
-            if (parsedLines.isEmpty()) {
-                item {
-                    Text(
-                        "Aucune parole LRC trouvée dans ce titre",
-                        color = Color.Gray,
-                        modifier = Modifier.padding(top = 40.dp),
-                        textAlign = TextAlign.Center
-                    )
+                .fillMaxWidth()
+                .onGloballyPositioned { coords ->
+                    lyricsHeightPx = coords.size.height
                 }
-            } else {
-                itemsIndexed(parsedLines) { index, line ->
-                    val isActive = index == currentLineIndex
-                    Text(
-                        text = line.text,
-                        color = if (isActive) Color.White else Color(0xFFB0B0B0),
-                        fontSize = if (isActive) 26.sp else 20.sp,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 6.dp)
-                            .clickable {
-                                try {
-                                    mediaPlayer.seekTo(line.timeMs.toInt())
-                                    currentLineIndex = index
-                                    // même logique : on remonte un peu
-                                    val target = if (index > 0) index - 1 else 0
-                                    scope.launch { listState.scrollToItem(target) }
-                                } catch (_: Exception) {
+        ) {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                contentPadding = PaddingValues(
+                    top = topPaddingDp,
+                    bottom = 80.dp
+                )
+            ) {
+                if (parsedLines.isEmpty()) {
+                    item {
+                        Text(
+                            "Aucune parole LRC trouvée dans ce titre",
+                            color = Color.Gray,
+                            modifier = Modifier.padding(top = 40.dp),
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                } else {
+                    items(parsedLines.size) { index ->
+                        val line = parsedLines[index]
+
+                        // 3 niveaux de lumière
+                        val isCurrent = index == currentLineIndex
+                        val isBefore = index == currentLineIndex - 1
+                        val isAfter = index == currentLineIndex + 1
+
+                        val color = when {
+                            isCurrent -> Color.White
+                            isBefore || isAfter -> Color(0xFFDDDDDD)
+                            else -> Color(0xFF666666)
+                        }
+                        val size = when {
+                            isCurrent -> 26.sp
+                            isBefore || isAfter -> 22.sp
+                            else -> 18.sp
+                        }
+
+                        Text(
+                            text = line.text,
+                            color = color,
+                            fontSize = size,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 6.dp)
+                                .clickable {
+                                    try {
+                                        mediaPlayer.seekTo(line.timeMs.toInt())
+                                        currentLineIndex = index
+                                        scope.launch {
+                                            listState.animateScrollToItem(index)
+                                        }
+                                    } catch (_: Exception) {
+                                    }
                                 }
-                            }
-                    )
+                        )
+                    }
                 }
             }
+
+            // si tu veux voir le centre pour débug :
+            // Box(
+            //     modifier = Modifier
+            //         .fillMaxWidth()
+            //         .height(1.dp)
+            //         .align(Alignment.Center)
+            //         .background(Color(0x33FFFFFF))
+            // )
         }
 
         PlayerControls(
@@ -127,7 +186,9 @@ fun PlayerScreen(
             onPrev = {
                 mediaPlayer.seekTo(0)
                 currentLineIndex = 0
-                scope.launch { listState.scrollToItem(0) }
+                scope.launch {
+                    listState.scrollToItem(0)   // ← avec le padding, ça restera centré
+                }
             },
             onNext = {
                 mediaPlayer.seekTo(mediaPlayer.duration)
