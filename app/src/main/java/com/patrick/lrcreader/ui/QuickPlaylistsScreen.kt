@@ -36,6 +36,10 @@ fun QuickPlaylistsScreen(
         selectedPlaylist?.let { PlaylistRepository.getSongsFor(it) } ?: emptyList()
     }
 
+    // couleur des titres
+    val songColor = Color(0xFFE86FFF)   // violet rosé
+    val menuBg = Color(0xFF222222)
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -55,15 +59,25 @@ fun QuickPlaylistsScreen(
 
             DropdownMenu(
                 expanded = showMenu,
-                onDismissRequest = { showMenu = false }
+                onDismissRequest = { showMenu = false },
+                modifier = Modifier
+                    .background(menuBg)
             ) {
                 playlists.forEach { name ->
+                    val isCurrent = name == selectedPlaylist
                     DropdownMenuItem(
-                        text = { Text(name) },
+                        text = {
+                            Text(
+                                text = name,
+                                color = if (isCurrent) songColor else Color.White,
+                                fontSize = 16.sp
+                            )
+                        },
                         onClick = {
                             selectedPlaylist = name
                             showMenu = false
-                        }
+                        },
+                        modifier = Modifier.background(if (isCurrent) Color(0x22E86FFF) else Color.Transparent)
                     )
                 }
             }
@@ -102,7 +116,6 @@ fun QuickPlaylistsScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable {
-                                // 👉 on envoie URI + nom de la playlist courante
                                 selectedPlaylist?.let { plName ->
                                     onPlaySong(uriString, plName)
                                 }
@@ -112,12 +125,12 @@ fun QuickPlaylistsScreen(
                     ) {
                         Text(
                             text = displayName,
-                            color = if (isPlayed) Color.Gray else Color.White,
+                            color = if (isPlayed) Color.Gray else songColor,
                             modifier = Modifier.weight(1f)
                         )
                         Text(
                             text = "▶",
-                            color = if (isPlayed) Color.Gray else Color.White,
+                            color = if (isPlayed) Color.Gray else songColor,
                             modifier = Modifier.padding(start = 8.dp)
                         )
                     }

@@ -6,13 +6,17 @@ import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.core.LrcLine
 import com.patrick.lrcreader.core.PlaylistRepository
 import com.patrick.lrcreader.core.parseLrc
@@ -66,6 +70,7 @@ class MainActivity : ComponentActivity() {
                             onError = { isPlaying = false }
                         )
 
+                        // on bascule sur l’onglet “Lecteur”
                         selectedTab = BottomTab.Player
                     }
                 }
@@ -79,7 +84,13 @@ class MainActivity : ComponentActivity() {
                     bottomBar = {
                         BottomTabsBar(
                             selected = selectedTab,
-                            onSelected = { tab -> selectedTab = tab }
+                            onSelected = { tab ->
+                                // si on clique sur “Toutes” on ferme le détail
+                                if (tab is BottomTab.AllPlaylists) {
+                                    openedPlaylist = null
+                                }
+                                selectedTab = tab
+                            }
                         )
                     }
                 ) { innerPadding ->
@@ -128,6 +139,11 @@ class MainActivity : ComponentActivity() {
                                 )
                             }
                         }
+
+                        // 🆕 onglet “Plus…”
+                        is BottomTab.More -> MoreScreen(
+                            modifier = Modifier.padding(innerPadding)
+                        )
                     }
                 }
             }
@@ -203,4 +219,22 @@ private suspend fun fadeVolume(
         delay(stepTime)
     }
     player.setVolume(to, to)
+}
+
+// 👇 petit écran “Plus…” (provisoire)
+@Composable
+fun MoreScreen(modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            .padding(16.dp)
+    ) {
+        Text(text = "Plus / paramètres", color = Color.White, fontSize = 22.sp)
+        Spacer(Modifier.height(12.dp))
+        Text(text = "Préférences", color = Color(0xFFBBBBBB), fontSize = 16.sp)
+        Text(text = "Aide", color = Color(0xFFBBBBBB), fontSize = 16.sp)
+        Text(text = "À propos", color = Color(0xFFBBBBBB), fontSize = 16.sp)
+        Text(text = "Export / Import", color = Color(0xFFBBBBBB), fontSize = 16.sp)
+    }
 }

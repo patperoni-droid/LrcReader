@@ -5,6 +5,7 @@ import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PlaylistPlay
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
@@ -55,6 +56,17 @@ sealed class BottomTab(val id: String, val label: String) {
             )
         }
     }
+
+    // 👇 NOUVEL ONGLET "Plus"
+    object More : BottomTab("more", "Plus") {
+        @Composable
+        override fun Icon() {
+            androidx.compose.material3.Icon(
+                imageVector = Icons.Filled.MoreVert,
+                contentDescription = null
+            )
+        }
+    }
 }
 
 @Composable
@@ -66,7 +78,8 @@ fun BottomTabsBar(
         BottomTab.QuickPlaylists,
         BottomTab.Player,
         BottomTab.Library,
-        BottomTab.AllPlaylists
+        BottomTab.AllPlaylists,
+        BottomTab.More            // 👈 ajouté à la fin
     )
 
     NavigationBar(
