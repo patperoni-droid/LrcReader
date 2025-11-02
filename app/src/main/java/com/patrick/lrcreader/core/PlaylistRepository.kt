@@ -5,7 +5,7 @@ import androidx.compose.runtime.mutableStateOf
 // petit repo en mémoire pour l’instant
 object PlaylistRepository {
 
-    // nom de playlist -> liste de chansons (Uri en string)
+    // nom de playlist -> liste de chansons (Uri en string) dans l’ordre
     private val playlists: MutableMap<String, MutableList<String>> = linkedMapOf()
 
     // nom de playlist -> chansons déjà jouées
@@ -14,6 +14,8 @@ object PlaylistRepository {
     // 👇 clé de rafraîchissement pour Compose
     var version = mutableStateOf(0)
         private set
+
+    // ------------------ EXISTANT ------------------
 
     fun getPlaylists(): List<String> = playlists.keys.toList()
 
@@ -55,6 +57,51 @@ object PlaylistRepository {
         val set = playedSongs.getOrPut(playlistName) { mutableSetOf() }
         if (set.add(uri)) {
             bump()
+        }
+    }
+
+    // ------------------ AJOUTS POUR SAUVEGARDE ------------------
+
+    /**
+     * Vide complètement le repo (playlists + titres joués).
+     * Utile quand on importe une sauvegarde complète.
+     */
+    fun clearAll() {
+        playlists.clear()
+        playedSongs.clear()
+        bump()
+    }
+
+    /**
+     * Pour être sûr qu’une playlist existe (pratique à l’import).
+     */
+    fun createIfNotExists(name: String) {
+        addPlaylist(name)
+    }
+
+    /**
+     * Ajoute une chanson sans vérifier l’ordre “non joué / joué”.
+     * On garde le même comportement que assignSongToPlaylist.
+     */
+    fun addSong(name: String, uri: String) {
+        assignSongToPlaylist(name, uri)
+    }
+
+    /**
+     * Marque une chanson comme jouée lors d’un import.
+     * (c’est juste un alias lisible)
+     */
+    fun importMarkPlayed(playlistName: String, uri: String) {
+        markSongPlayed(playlistName, uri)
+    }
+
+    /**
+     * Pour debug / sauvegarde : renvoie une vue brute de ce qu’on a.
+     */
+    fun exportRaw(): Map<String, Pair<List<String>, Set<String>>> {
+        return playlists.mapValues { (plName, list) ->
+            val played = playedSongs[plName] ?: emptySet()
+            list.toList() to played.toSet()
         }
     }
 
