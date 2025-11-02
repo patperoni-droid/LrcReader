@@ -2,10 +2,9 @@ package com.patrick.lrcreader.ui
 
 import android.media.MediaPlayer
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -20,12 +19,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.core.LrcLine
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 
 @Composable
 fun PlayerScreen(
@@ -36,142 +37,144 @@ fun PlayerScreen(
     parsedLines: List<LrcLine>,
     onParsedLinesChange: (List<LrcLine>) -> Unit,
 ) {
+    val scrollState = rememberScrollState()
     val scope = rememberCoroutineScope()
-    val listState = rememberLazyListState()
-
-    var currentLineIndex by remember { mutableStateOf(0) }
-
-    // hauteur réelle de la zone paroles
-    var lyricsHeightPx by remember { mutableStateOf(0) }
     val density = LocalDensity.current
 
-    // hauteur “moyenne” d’une ligne (pour centrer un peu mieux)
-    val approxLineHeightDp = 40.dp
-    val approxLineHeightPx = with(density) { approxLineHeightDp.toPx() }
+    // hauteur de la zone qui affiche les paroles
+    var lyricsBoxHeightPx by remember { mutableStateOf(0) }
 
-    // padding haut dynamique : moitié de la zone - moitié d’une ligne
-    val topPaddingDp by remember(lyricsHeightPx) {
-        mutableStateOf(
-            if (lyricsHeightPx == 0) 0.dp
-            else with(density) {
-                val px = (lyricsHeightPx / 2f - approxLineHeightPx / 2f).coerceAtLeast(0f)
-                px.toDp()
-            }
-        )
+    // index de la ligne dont le timing est le + proche du temps courant
+    var currentLrcIndex by remember { mutableStateOf(0) }
+
+    // hauteur d’une ligne (un peu plus grande pour ne pas couper)
+    val lineHeightDp = 72.dp      // ← tu peux monter à 50.dp si tu veux encore plus d’air
+    val lineHeightPx = with(density) { lineHeightDp.toPx() }
+
+    // on fait partir du bas : on met un spacer de la hauteur de la box
+    val baseTopSpacerPx = remember(lyricsBoxHeightPx) {
+        lyricsBoxHeightPx
     }
 
-    // suivi auto
+    // 1) on regarde tout le temps où en est la musique → on choisit la ligne la plus proche
     LaunchedEffect(isPlaying, parsedLines) {
-        while (isPlaying && parsedLines.isNotEmpty()) {
-            val pos = mediaPlayer.currentPosition
-            val index = parsedLines.indexOfLast { it.timeMs <= pos }
-            if (index != -1 && index != currentLineIndex) {
-                currentLineIndex = index
-                // on défile MAIS on garde le padding → la ligne reste au milieu
-                scope.launch {
-                    listState.animateScrollToItem(index)
-                }
+        if (parsedLines.isEmpty()) return@LaunchedEffect
+        while (isPlaying) {
+            val posMs = try {
+                mediaPlayer.currentPosition.toLong()
+            } catch (_: Exception) {
+                0L
             }
+            val bestIndex = parsedLines.indices.minByOrNull {
+                abs(parsedLines[it].timeMs - posMs)
+            } ?: 0
+            currentLrcIndex = bestIndex
             delay(120)
         }
     }
 
+    // 2) on force la ligne orange à rester au centre tout le temps
+    LaunchedEffect(isPlaying, parsedLines, lyricsBoxHeightPx) {
+        if (parsedLines.isEmpty()) return@LaunchedEffect
+        if (lyricsBoxHeightPx == 0) return@LaunchedEffect
+
+        while (isPlaying) {
+            val centerPx = lyricsBoxHeightPx / 2f
+
+            // position de la ligne dans le contenu scrollé
+            val lineAbsY = baseTopSpacerPx + currentLrcIndex * lineHeightPx
+
+            // pour la mettre au centre → scroll = positionLigne - centre
+            val wantedScroll = (lineAbsY - centerPx).toInt().coerceAtLeast(0)
+
+            // on y va direct pour que ça ne dérive pas vers le bas
+            scrollState.scrollTo(wantedScroll)
+
+            delay(16)   // ~60 fps
+        }
+    }
+
+    // 3) UI
     Column(
         modifier = modifier
             .fillMaxSize()
             .background(Color.Black)
-            .padding(16.dp),
+            .padding(horizontal = 16.dp, vertical = 6.dp),
         verticalArrangement = Arrangement.SpaceBetween
     ) {
 
+        // titre
         Text(
             text = "Paroles synchronisées",
             color = Color.LightGray,
             fontSize = 14.sp,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 4.dp),
             textAlign = TextAlign.Start
         )
 
-        // zone des paroles
+        // ZONE PAROLES
         Box(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
                 .onGloballyPositioned { coords ->
-                    lyricsHeightPx = coords.size.height
+                    lyricsBoxHeightPx = coords.size.height
                 }
         ) {
-            LazyColumn(
-                state = listState,
-                modifier = Modifier.fillMaxSize(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                contentPadding = PaddingValues(
-                    top = topPaddingDp,
-                    bottom = 80.dp
-                )
+
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(scrollState),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
+                // gros espace pour faire “partir du bas”
+                if (baseTopSpacerPx > 0) {
+                    Spacer(Modifier.height(with(density) { baseTopSpacerPx.toDp() }))
+                }
+
                 if (parsedLines.isEmpty()) {
-                    item {
-                        Text(
-                            "Aucune parole LRC trouvée dans ce titre",
-                            color = Color.Gray,
-                            modifier = Modifier.padding(top = 40.dp),
-                            textAlign = TextAlign.Center
-                        )
-                    }
+                    Text(
+                        "Aucune parole",
+                        color = Color.Gray,
+                        modifier = Modifier.padding(30.dp),
+                        textAlign = TextAlign.Center
+                    )
                 } else {
-                    items(parsedLines.size) { index ->
-                        val line = parsedLines[index]
-
-                        // 3 niveaux de lumière
-                        val isCurrent = index == currentLineIndex
-                        val isBefore = index == currentLineIndex - 1
-                        val isAfter = index == currentLineIndex + 1
-
-                        val color = when {
-                            isCurrent -> Color.White
-                            isBefore || isAfter -> Color(0xFFDDDDDD)
-                            else -> Color(0xFF666666)
-                        }
-                        val size = when {
-                            isCurrent -> 26.sp
-                            isBefore || isAfter -> 22.sp
-                            else -> 18.sp
-                        }
-
+                    parsedLines.forEachIndexed { index, line ->
+                        val isCurrent = index == currentLrcIndex
                         Text(
                             text = line.text,
-                            color = color,
-                            fontSize = size,
+                            color = if (isCurrent) Color(0xFFFF9800) else Color.White,
+                            fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
+                            fontSize = 22.sp,
                             textAlign = TextAlign.Center,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 6.dp)
-                                .clickable {
-                                    try {
-                                        mediaPlayer.seekTo(line.timeMs.toInt())
-                                        currentLineIndex = index
-                                        scope.launch {
-                                            listState.animateScrollToItem(index)
-                                        }
-                                    } catch (_: Exception) {
-                                    }
-                                }
+                                // on force une vraie hauteur de ligne pour ne pas couper
+                                .height(lineHeightDp)
+                                .padding(horizontal = 8.dp)
                         )
                     }
                 }
+
+                Spacer(Modifier.height(80.dp))
             }
 
-            // si tu veux voir le centre pour débug :
-            // Box(
-            //     modifier = Modifier
-            //         .fillMaxWidth()
-            //         .height(1.dp)
-            //         .align(Alignment.Center)
-            //         .background(Color(0x33FFFFFF))
-            // )
+            // ligne de repère (centre)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(Color(0x33FFFFFF))
+                    .align(Alignment.TopStart)
+                    .offset(y = (lyricsBoxHeightPx / 2).dp)
+            )
         }
 
+        // CONTROLES
         PlayerControls(
             isPlaying = isPlaying,
             onPlayPause = {
@@ -185,10 +188,7 @@ fun PlayerScreen(
             },
             onPrev = {
                 mediaPlayer.seekTo(0)
-                currentLineIndex = 0
-                scope.launch {
-                    listState.scrollToItem(0)   // ← avec le padding, ça restera centré
-                }
+                onIsPlayingChange(true)
             },
             onNext = {
                 mediaPlayer.seekTo(mediaPlayer.duration)
@@ -209,7 +209,7 @@ private fun PlayerControls(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 16.dp),
+            .padding(vertical = 14.dp),
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically
     ) {
