@@ -91,7 +91,8 @@ fun BottomTabsBar(
                 selected = tab.id == selected.id,
                 onClick = { onSelected(tab) },
                 icon = { tab.Icon() },
-                label = { Text(tab.label) },
+                // 👇 On supprime complètement le texte
+                alwaysShowLabel = false,
                 colors = NavigationBarItemDefaults.colors(
                     selectedIconColor = Color.White,
                     selectedTextColor = Color.White,
