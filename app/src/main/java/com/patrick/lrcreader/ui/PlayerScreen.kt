@@ -2,6 +2,7 @@ package com.patrick.lrcreader.ui
 
 import android.media.MediaPlayer
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -45,44 +46,39 @@ fun PlayerScreen(
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
 
-    // ⇢ petit switch pour le style
+    // couleur violette/rose comme dans playlists
+    val highlightColor = Color(0xFFE040FB)
+
+    // petit décalage volontaire des paroles
+    val LYRICS_DELAY_MS = 1000L   // ← change à 300 / 500 si tu veux
+
     var isConcertMode by remember { mutableStateOf(true) }
-
-    // hauteur de la zone d’affichage
     var lyricsBoxHeightPx by remember { mutableStateOf(0) }
-
-    // index de la ligne LRC la plus proche du temps courant
     var currentLrcIndex by remember { mutableStateOf(0) }
-
-    // est-ce que l’utilisateur est en train de scroller ?
     var userScrolling by remember { mutableStateOf(false) }
 
-    // hauteur confortable pour ne pas couper les phrases longues
     val lineHeightDp = 80.dp
     val lineHeightPx = with(density) { lineHeightDp.toPx() }
-
-    // on fait partir du bas
     val baseTopSpacerPx = remember(lyricsBoxHeightPx) { lyricsBoxHeightPx }
 
-    // --- États temps / progression ---
+    // temps / progression
     var durationMs by remember { mutableStateOf(0) }
     var positionMs by remember { mutableStateOf(0) }
     var isDragging by remember { mutableStateOf(false) }
     var dragPosMs by remember { mutableStateOf(0) }
 
-    // 1) on suit le player et on détermine la ligne orange + la position
+    // suivi du player + choix de la ligne active (avec retard)
     LaunchedEffect(isPlaying, parsedLines) {
         while (true) {
-            // durée (si prête)
             val d = runCatching { mediaPlayer.duration }.getOrNull() ?: -1
             if (d > 0) durationMs = d
 
-            // position
             val p = runCatching { mediaPlayer.currentPosition }.getOrNull() ?: 0
             if (!isDragging) positionMs = p
 
             if (parsedLines.isNotEmpty()) {
-                val posMs = p.toLong()
+                // on applique le retard ici
+                val posMs = (p.toLong() - LYRICS_DELAY_MS).coerceAtLeast(0L)
                 val bestIndex = parsedLines.indices.minByOrNull {
                     abs(parsedLines[it].timeMs - posMs)
                 } ?: 0
@@ -91,14 +87,12 @@ fun PlayerScreen(
 
             delay(200)
             if (!isPlaying && !mediaPlayer.isPlaying) {
-                // si pause, on continue quand même doucement la mise à jour
-                // mais moins souvent pour économiser
                 delay(200)
             }
         }
     }
 
-    // 2) on surveille le scroll utilisateur (sans pointerInput)
+    // détecter si l’utilisateur scrolle
     LaunchedEffect(scrollState) {
         while (true) {
             userScrolling = scrollState.isScrollInProgress
@@ -106,7 +100,7 @@ fun PlayerScreen(
         }
     }
 
-    // fonction qui recentre la ligne orange
+    // recentrer la ligne active
     fun centerCurrentLine() {
         if (lyricsBoxHeightPx == 0) return
         val centerPx = lyricsBoxHeightPx / 2f
@@ -117,7 +111,24 @@ fun PlayerScreen(
         }
     }
 
-    // 3) tant que ça joue et que l’utilisateur ne touche pas → on centre
+    // quand on clique une ligne → seek + recentre
+    fun seekAndCenter(targetMs: Int, targetIndex: Int) {
+        runCatching { mediaPlayer.seekTo(targetMs) }
+        currentLrcIndex = targetIndex
+        positionMs = targetMs
+        if (!mediaPlayer.isPlaying) {
+            mediaPlayer.start()
+            onIsPlayingChange(true)
+        }
+        if (lyricsBoxHeightPx > 0) {
+            val centerPx = lyricsBoxHeightPx / 2f
+            val lineAbsY = baseTopSpacerPx + targetIndex * lineHeightPx
+            val wanted = (lineAbsY - centerPx).toInt().coerceAtLeast(0)
+            scope.launch { scrollState.scrollTo(wanted) }
+        }
+    }
+
+    // auto-centre pendant la lecture
     LaunchedEffect(isPlaying, parsedLines, lyricsBoxHeightPx) {
         if (parsedLines.isEmpty()) return@LaunchedEffect
         if (lyricsBoxHeightPx == 0) return@LaunchedEffect
@@ -137,8 +148,7 @@ fun PlayerScreen(
             .padding(horizontal = 16.dp, vertical = 6.dp),
         verticalArrangement = Arrangement.SpaceBetween
     ) {
-
-        // en-tête avec bouton de mode
+        // en-tête
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -156,11 +166,12 @@ fun PlayerScreen(
                 Icon(
                     imageVector = Icons.Filled.Tune,
                     contentDescription = "Changer de style",
-                    tint = if (isConcertMode) Color(0xFFFF9800) else Color.White
+                    tint = if (isConcertMode) highlightColor else Color.White
                 )
             }
         }
 
+        // zone paroles
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -169,14 +180,12 @@ fun PlayerScreen(
                     lyricsBoxHeightPx = coords.size.height
                 }
         ) {
-
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .verticalScroll(scrollState),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // gros espace pour faire démarrer du bas
                 if (baseTopSpacerPx > 0) {
                     Spacer(Modifier.height(with(density) { baseTopSpacerPx.toDp() }))
                 }
@@ -191,11 +200,8 @@ fun PlayerScreen(
                 } else {
                     parsedLines.forEachIndexed { index, line ->
                         val isCurrent = index == currentLrcIndex
-
-                        // distance à la ligne orange
                         val dist = abs(index - currentLrcIndex)
 
-                        // FADE sur 2 lignes seulement
                         val alpha: Float = if (!isConcertMode) {
                             1f
                         } else {
@@ -207,11 +213,7 @@ fun PlayerScreen(
                             }
                         }
 
-                        val color = when {
-                            isCurrent -> Color(0xFFFF9800)
-                            else -> Color.White.copy(alpha = alpha)
-                        }
-
+                        val color = if (isCurrent) highlightColor else Color.White.copy(alpha = alpha)
                         val weight = if (isCurrent) FontWeight.Bold else FontWeight.Normal
 
                         Text(
@@ -224,6 +226,10 @@ fun PlayerScreen(
                                 .fillMaxWidth()
                                 .height(lineHeightDp)
                                 .padding(horizontal = 8.dp, vertical = 8.dp)
+                                .clickable {
+                                    // on va directement au time de cette ligne
+                                    seekAndCenter(line.timeMs.toInt(), index)
+                                }
                         )
                     }
                 }
@@ -231,7 +237,7 @@ fun PlayerScreen(
                 Spacer(Modifier.height(80.dp))
             }
 
-            // ligne de repère (centre)
+            // ligne de repère
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -242,12 +248,11 @@ fun PlayerScreen(
             )
         }
 
-        // ==== BARRE DE PROGRESSION (temps + slider) ====
+        // barre de temps
         TimeBar(
             positionMs = if (isDragging) dragPosMs else positionMs,
             durationMs = durationMs,
             onSeekLivePreview = { newPos ->
-                // aperçu pendant le drag
                 isDragging = true
                 dragPosMs = newPos
             },
@@ -258,9 +263,11 @@ fun PlayerScreen(
                     else -> min(max(newPos, 0), durationMs)
                 }
                 runCatching { mediaPlayer.seekTo(safe) }
+                positionMs = safe
             }
         )
 
+        // contrôles
         PlayerControls(
             isPlaying = isPlaying,
             onPlayPause = {
@@ -268,11 +275,9 @@ fun PlayerScreen(
                     mediaPlayer.pause()
                     onIsPlayingChange(false)
                 } else {
-                    // démarrer seulement si une piste est prête
                     if (durationMs > 0) {
                         mediaPlayer.start()
                         onIsPlayingChange(true)
-                        // si on relance → on recadre
                         centerCurrentLine()
                     }
                 }
@@ -283,7 +288,6 @@ fun PlayerScreen(
                     mediaPlayer.start()
                     onIsPlayingChange(true)
                 }
-                // on recadre
                 centerCurrentLine()
             },
             onNext = {
@@ -366,20 +370,22 @@ private fun TimeBar(
             else -> positionMs.toFloat() / durationMs.toFloat()
         }
 
+        var lastPreview by remember { mutableStateOf(positionMs) }
+
         Slider(
             value = sliderValue,
             onValueChange = { frac ->
                 val preview = (frac * durationMs).toInt()
+                lastPreview = preview
                 onSeekLivePreview(preview)
             },
             onValueChangeFinished = {
-                onSeekCommit(positionMs)
+                onSeekCommit(lastPreview)
             },
             enabled = durationMs > 0,
             modifier = Modifier.fillMaxWidth()
         )
 
-        // durée totale en petit (optionnel)
         Text(durText, color = Color.Gray, fontSize = 11.sp, modifier = Modifier.align(Alignment.End))
     }
 }
