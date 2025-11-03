@@ -80,23 +80,21 @@ object PlaylistRepository {
     }
 
     /**
-     * Ajoute une chanson sans vérifier l’ordre “non joué / joué”.
-     * On garde le même comportement que assignSongToPlaylist.
+     * Ajoute une chanson sans logique d’affichage (utilisé à l’import).
      */
     fun addSong(name: String, uri: String) {
         assignSongToPlaylist(name, uri)
     }
 
     /**
-     * Marque une chanson comme jouée lors d’un import.
-     * (c’est juste un alias lisible)
+     * Alias lisible pour l’import.
      */
     fun importMarkPlayed(playlistName: String, uri: String) {
         markSongPlayed(playlistName, uri)
     }
 
     /**
-     * Pour debug / sauvegarde : renvoie une vue brute de ce qu’on a.
+     * Vue brute de tout le bazar (debug).
      */
     fun exportRaw(): Map<String, Pair<List<String>, Set<String>>> {
         return playlists.mapValues { (plName, list) ->
@@ -105,8 +103,25 @@ object PlaylistRepository {
         }
     }
 
+    /**
+     * Récupère la liste brute telle qu’elle est stockée (pour BackupManager).
+     */
+    fun getAllSongsRaw(playlistName: String): List<String> {
+        return playlists[playlistName]?.toList() ?: emptyList()
+    }
+
+    /**
+     * Récupère les morceaux joués bruts (pour BackupManager).
+     */
+    fun getPlayedRaw(playlistName: String): List<String> {
+        return playedSongs[playlistName]?.toList() ?: emptyList()
+    }
+
+    // ------------------ INTERNE ------------------
+
     private fun bump() {
         // on force la recomposition
         version.value = version.value + 1
     }
+
 }
