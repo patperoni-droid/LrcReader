@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import androidx.core.net.toUri
 import com.patrick.lrcreader.core.BackupManager
+import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.core.FillerSoundPrefs
 import com.patrick.lrcreader.core.LrcLine
 import com.patrick.lrcreader.core.PlaylistRepository
@@ -53,21 +54,24 @@ class MainActivity : ComponentActivity() {
             MaterialTheme(colorScheme = darkColorScheme()) {
 
                 val ctx = this
+                // player principal
                 val mediaPlayer = remember { MediaPlayer() }
 
                 var isPlaying by remember { mutableStateOf(false) }
                 var parsedLines by remember { mutableStateOf<List<LrcLine>>(emptyList()) }
-
                 var selectedTab by remember { mutableStateOf<BottomTab>(BottomTab.Player) }
-
-                // on peut la sauver, c’est juste un String?
                 var openedPlaylist by rememberSaveable { mutableStateOf<String?>(null) }
 
                 var currentPlayToken by remember { mutableStateOf(0L) }
                 val repoVersion by PlaylistRepository.version
 
+                // lecture d’un vrai morceau
                 val playWithCrossfade: (String, String?) -> Unit = remember {
                     { uriString, playlistName ->
+
+                        // 👉 avant de jouer le vrai titre, on coupe le son de remplissage
+                        FillerSoundManager.fadeOutAndStop(400)
+
                         val myToken = currentPlayToken + 1
                         currentPlayToken = myToken
 
@@ -82,7 +86,13 @@ class MainActivity : ComponentActivity() {
                                 parsedLines = if (!text.isNullOrBlank()) parseLrc(text) else emptyList()
                             },
                             onStart = { isPlaying = true },
-                            onError = { isPlaying = false }
+                            onError = { isPlaying = false },
+                            onNaturalEnd = {
+                                // morceau terminé naturellement
+                                isPlaying = false
+                                // on relance le son de remplissage si l’utilisateur en a choisi un
+                                FillerSoundManager.startIfConfigured(ctx)
+                            }
                         )
 
                         selectedTab = BottomTab.Player
@@ -90,7 +100,10 @@ class MainActivity : ComponentActivity() {
                 }
 
                 DisposableEffect(Unit) {
-                    onDispose { mediaPlayer.release() }
+                    onDispose {
+                        mediaPlayer.release()
+                        // le FillerSoundManager gère son propre player, donc rien à faire ici
+                    }
                 }
 
                 Scaffold(
@@ -109,7 +122,10 @@ class MainActivity : ComponentActivity() {
                             modifier = Modifier.padding(innerPadding),
                             mediaPlayer = mediaPlayer,
                             isPlaying = isPlaying,
-                            onIsPlayingChange = { isPlaying = it },
+                            onIsPlayingChange = { playing ->
+                                isPlaying = playing
+                                // si tu mets en pause manuelle → on ne lance pas le filler
+                            },
                             parsedLines = parsedLines,
                             onParsedLinesChange = { parsedLines = it },
                         )
@@ -151,7 +167,7 @@ class MainActivity : ComponentActivity() {
                             modifier = Modifier.padding(innerPadding),
                             context = ctx,
                             onAfterImport = {
-                                // ex: selectedTab = BottomTab.QuickPlaylists
+                                // rien de spécial
                             }
                         )
                     }
@@ -162,7 +178,7 @@ class MainActivity : ComponentActivity() {
 }
 
 /* -------------------------------------------------------------------------- */
-/*  LECTURE AVEC FONDU + SÉCURITÉ URI                                         */
+/*  LECTURE AVEC FONDU + CALLBACK FIN NATURELLE                               */
 /* -------------------------------------------------------------------------- */
 
 private fun hasReadAccess(ctx: Context, uri: Uri): Boolean {
@@ -186,9 +202,13 @@ private fun crossfadePlay(
     onLyricsLoaded: (String?) -> Unit,
     onStart: () -> Unit,
     onError: () -> Unit,
+    onNaturalEnd: () -> Unit,
     fadeDurationMs: Long = 500
 ) {
     CoroutineScope(Dispatchers.Main).launch {
+        // on coupe aussi ici, au cas où l’appelant a oublié
+        FillerSoundManager.fadeOutAndStop(400)
+
         if (mediaPlayer.isPlaying) {
             fadeVolume(mediaPlayer, 1f, 0f, fadeDurationMs)
         } else {
@@ -231,6 +251,12 @@ private fun crossfadePlay(
                 }
             }
 
+            mediaPlayer.setOnCompletionListener {
+                onNaturalEnd()
+                // on relance le filler si configuré
+                FillerSoundManager.startIfConfigured(context)
+            }
+
         } catch (e: Exception) {
             e.printStackTrace()
             Toast.makeText(
@@ -261,7 +287,7 @@ private suspend fun fadeVolume(
 }
 
 /* -------------------------------------------------------------------------- */
-/*  ÉCRAN "PLUS..." (EXPORT / IMPORT + SON)                                   */
+/*  MORE SCREEN (inchangé dans l’idée, je le laisse ici pour l’instant)       */
 /* -------------------------------------------------------------------------- */
 
 @Composable
@@ -270,13 +296,20 @@ fun MoreScreen(
     context: Context,
     onAfterImport: () -> Unit = {}
 ) {
+    // états export / import
     var exportText by remember { mutableStateOf("") }
     var saveName by remember { mutableStateOf("") }
     var lastImportFile by remember { mutableStateOf<String?>(null) }
     var lastImportTime by remember { mutableStateOf<String?>(null) }
     var lastImportSummary by remember { mutableStateOf<String?>(null) }
 
-    // import fichier .json
+    // états son de remplissage
+    var fillerUri by remember { mutableStateOf(FillerSoundPrefs.getFillerUri(context)) }
+    var fillerName by remember { mutableStateOf(fillerUri?.lastPathSegment ?: "Aucun son sélectionné") }
+
+    // --- launchers ---
+
+    // import JSON
     val fileLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
@@ -319,11 +352,7 @@ fun MoreScreen(
         }
     }
 
-    // 🎧 sélecteur pour le son de remplissage
-    var fillerUri by remember { mutableStateOf(FillerSoundPrefs.getFillerUri(context)) }
-    var fillerName by remember {
-        mutableStateOf(fillerUri?.lastPathSegment ?: "Aucun son sélectionné")
-    }
+    // choisir le son de remplissage
     val fillerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
@@ -335,6 +364,7 @@ fun MoreScreen(
         }
     }
 
+    // couleurs
     val onBg = Color(0xFFEEEEEE)
     val sub = Color(0xFFB9B9B9)
     val card = Color(0xFF141414)
@@ -352,7 +382,9 @@ fun MoreScreen(
         Text("Sauvegarde & restauration", color = sub, fontSize = 12.sp)
         Spacer(Modifier.height(10.dp))
 
-        // EXPORT
+        // =======================
+        //      EXPORT
+        // =======================
         Card(colors = CardDefaults.cardColors(containerColor = card)) {
             Column(Modifier.padding(12.dp)) {
                 Text("Exporter l’état", color = onBg, fontSize = 14.sp)
@@ -408,7 +440,9 @@ fun MoreScreen(
 
         Spacer(Modifier.height(12.dp))
 
-        // IMPORT
+        // =======================
+        //      IMPORT
+        // =======================
         Card(colors = CardDefaults.cardColors(containerColor = card)) {
             Column(Modifier.padding(12.dp)) {
                 Text("Importer une sauvegarde", color = onBg, fontSize = 14.sp)
@@ -442,7 +476,9 @@ fun MoreScreen(
             }
         }
 
-        // 🔊 SON DE REMPLISSAGE
+        // =======================
+        //  SON DE REMPLISSAGE
+        // =======================
         Spacer(Modifier.height(16.dp))
         Text("Son de remplissage", color = sub, fontSize = 12.sp)
         Spacer(Modifier.height(8.dp))
@@ -451,7 +487,7 @@ fun MoreScreen(
                 Text("Sélection du son de remplissage", color = onBg, fontSize = 14.sp)
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "Ce son pourra être joué automatiquement quand un morceau se termine, pour éviter le silence.",
+                    "Ce son est joué automatiquement quand un morceau se termine.",
                     color = sub,
                     fontSize = 12.sp
                 )
@@ -482,9 +518,8 @@ fun MoreScreen(
         Spacer(Modifier.height(14.dp))
     }
 }
-
 /* -------------------------------------------------------------------------- */
-/*  UTILITAIRES EXPORT / PARTAGE                                              */
+/*  UTILITAIRES                                                               */
 /* -------------------------------------------------------------------------- */
 
 @SuppressLint("InlinedApi")
@@ -546,10 +581,6 @@ fun shareJson(context: Context, fileName: String, json: String) {
         e.printStackTrace()
     }
 }
-
-/* -------------------------------------------------------------------------- */
-/*  HELPERS “Dernier import”                                                  */
-/* -------------------------------------------------------------------------- */
 
 private fun getDisplayName(context: Context, uri: Uri): String? {
     return try {
