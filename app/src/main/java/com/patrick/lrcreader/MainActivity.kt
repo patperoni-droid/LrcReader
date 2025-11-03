@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import androidx.core.net.toUri
 import com.patrick.lrcreader.core.BackupManager
+import com.patrick.lrcreader.core.FillerSoundPrefs
 import com.patrick.lrcreader.core.LrcLine
 import com.patrick.lrcreader.core.PlaylistRepository
 import com.patrick.lrcreader.core.parseLrc
@@ -57,10 +58,9 @@ class MainActivity : ComponentActivity() {
                 var isPlaying by remember { mutableStateOf(false) }
                 var parsedLines by remember { mutableStateOf<List<LrcLine>>(emptyList()) }
 
-                // ✅ NE PAS saveable ici (BottomTab n'est pas saveable) -> évite le crash
                 var selectedTab by remember { mutableStateOf<BottomTab>(BottomTab.Player) }
 
-                // OK en saveable (String?)
+                // on peut la sauver, c’est juste un String?
                 var openedPlaylist by rememberSaveable { mutableStateOf<String?>(null) }
 
                 var currentPlayToken by remember { mutableStateOf(0L) }
@@ -261,7 +261,7 @@ private suspend fun fadeVolume(
 }
 
 /* -------------------------------------------------------------------------- */
-/*  ÉCRAN "PLUS..." (EXPORT / IMPORT)                                         */
+/*  ÉCRAN "PLUS..." (EXPORT / IMPORT + SON)                                   */
 /* -------------------------------------------------------------------------- */
 
 @Composable
@@ -316,6 +316,22 @@ fun MoreScreen(
                 )
                 Toast.makeText(context, "Accès au dossier autorisé", Toast.LENGTH_SHORT).show()
             } catch (_: Exception) { }
+        }
+    }
+
+    // 🎧 sélecteur pour le son de remplissage
+    var fillerUri by remember { mutableStateOf(FillerSoundPrefs.getFillerUri(context)) }
+    var fillerName by remember {
+        mutableStateOf(fillerUri?.lastPathSegment ?: "Aucun son sélectionné")
+    }
+    val fillerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) {
+            FillerSoundPrefs.saveFillerUri(context, uri)
+            fillerUri = uri
+            fillerName = uri.lastPathSegment ?: "Son choisi"
+            Toast.makeText(context, "Son enregistré : $fillerName", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -422,6 +438,43 @@ fun MoreScreen(
                     }
                 } else {
                     Text("Aucun import réalisé pour l’instant.", color = sub, fontSize = 12.sp)
+                }
+            }
+        }
+
+        // 🔊 SON DE REMPLISSAGE
+        Spacer(Modifier.height(16.dp))
+        Text("Son de remplissage", color = sub, fontSize = 12.sp)
+        Spacer(Modifier.height(8.dp))
+        Card(colors = CardDefaults.cardColors(containerColor = card)) {
+            Column(Modifier.padding(12.dp)) {
+                Text("Sélection du son de remplissage", color = onBg, fontSize = 14.sp)
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Ce son pourra être joué automatiquement quand un morceau se termine, pour éviter le silence.",
+                    color = sub,
+                    fontSize = 12.sp
+                )
+                Spacer(Modifier.height(8.dp))
+                FilledTonalButton(onClick = { fillerLauncher.launch("audio/*") }) {
+                    Text("Choisir un fichier audio…", fontSize = 12.sp)
+                }
+                Spacer(Modifier.height(8.dp))
+                Text("Fichier actuel :", color = sub, fontSize = 11.sp)
+                Text(
+                    fillerName,
+                    color = if (fillerUri != null) Color(0xFFE040FB) else Color.Gray,
+                    fontSize = 12.sp
+                )
+                if (fillerUri != null) {
+                    Spacer(Modifier.height(6.dp))
+                    TextButton(onClick = {
+                        FillerSoundPrefs.clear(context)
+                        fillerUri = null
+                        fillerName = "Aucun son sélectionné"
+                    }) {
+                        Text("🗑 Supprimer le son", fontSize = 12.sp, color = Color(0xFFFF8A80))
+                    }
                 }
             }
         }
