@@ -36,16 +36,13 @@ object PlaylistRepository {
     }
 
     /**
-     * On renvoie d'abord les titres NON joués,
-     * puis les titres joués.
+     * On renvoie d'abord les titres NON joués, puis les titres joués.
      */
     fun getSongsFor(playlistName: String): List<String> {
         val all = playlists[playlistName] ?: emptyList()
         val played = playedSongs[playlistName] ?: emptySet()
-
         val notPlayed = all.filter { it !in played }
         val alreadyPlayed = all.filter { it in played }
-
         return notPlayed + alreadyPlayed
     }
 
@@ -62,40 +59,29 @@ object PlaylistRepository {
 
     // ------------------ AJOUTS POUR SAUVEGARDE ------------------
 
-    /**
-     * Vide complètement le repo (playlists + titres joués).
-     * Utile quand on importe une sauvegarde complète.
-     */
+    /** Vide complètement le repo (playlists + titres joués). */
     fun clearAll() {
         playlists.clear()
         playedSongs.clear()
         bump()
     }
 
-    /**
-     * Pour être sûr qu’une playlist existe (pratique à l’import).
-     */
+    /** Pour être sûr qu’une playlist existe (pratique à l’import). */
     fun createIfNotExists(name: String) {
         addPlaylist(name)
     }
 
-    /**
-     * Ajoute une chanson sans logique d’affichage (utilisé à l’import).
-     */
+    /** Ajoute une chanson sans logique d’affichage (utilisé à l’import). */
     fun addSong(name: String, uri: String) {
         assignSongToPlaylist(name, uri)
     }
 
-    /**
-     * Alias lisible pour l’import.
-     */
+    /** Alias lisible pour l’import. */
     fun importMarkPlayed(playlistName: String, uri: String) {
         markSongPlayed(playlistName, uri)
     }
 
-    /**
-     * Vue brute de tout le bazar (debug).
-     */
+    /** Vue brute de tout le bazar (debug). */
     fun exportRaw(): Map<String, Pair<List<String>, Set<String>>> {
         return playlists.mapValues { (plName, list) ->
             val played = playedSongs[plName] ?: emptySet()
@@ -103,16 +89,12 @@ object PlaylistRepository {
         }
     }
 
-    /**
-     * Récupère la liste brute telle qu’elle est stockée (pour BackupManager).
-     */
+    /** Récupère la liste brute telle qu’elle est stockée (pour BackupManager). */
     fun getAllSongsRaw(playlistName: String): List<String> {
         return playlists[playlistName]?.toList() ?: emptyList()
     }
 
-    /**
-     * Récupère les morceaux joués bruts (pour BackupManager).
-     */
+    /** Récupère les morceaux joués bruts (pour BackupManager). */
     fun getPlayedRaw(playlistName: String): List<String> {
         return playedSongs[playlistName]?.toList() ?: emptyList()
     }
@@ -124,4 +106,6 @@ object PlaylistRepository {
         version.value = version.value + 1
     }
 
+    /** force une recomposition manuelle (utile après un import) */
+    fun touch() = bump()
 }

@@ -13,6 +13,7 @@ import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -29,6 +30,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.max
+import kotlin.math.min
 
 @Composable
 fun PlayerScreen(
@@ -62,20 +64,37 @@ fun PlayerScreen(
     // on fait partir du bas
     val baseTopSpacerPx = remember(lyricsBoxHeightPx) { lyricsBoxHeightPx }
 
-    // 1) on suit le player et on détermine la ligne orange
+    // --- États temps / progression ---
+    var durationMs by remember { mutableStateOf(0) }
+    var positionMs by remember { mutableStateOf(0) }
+    var isDragging by remember { mutableStateOf(false) }
+    var dragPosMs by remember { mutableStateOf(0) }
+
+    // 1) on suit le player et on détermine la ligne orange + la position
     LaunchedEffect(isPlaying, parsedLines) {
-        if (parsedLines.isEmpty()) return@LaunchedEffect
-        while (isPlaying) {
-            val posMs = try {
-                mediaPlayer.currentPosition.toLong()
-            } catch (_: Exception) {
-                0L
+        while (true) {
+            // durée (si prête)
+            val d = runCatching { mediaPlayer.duration }.getOrNull() ?: -1
+            if (d > 0) durationMs = d
+
+            // position
+            val p = runCatching { mediaPlayer.currentPosition }.getOrNull() ?: 0
+            if (!isDragging) positionMs = p
+
+            if (parsedLines.isNotEmpty()) {
+                val posMs = p.toLong()
+                val bestIndex = parsedLines.indices.minByOrNull {
+                    abs(parsedLines[it].timeMs - posMs)
+                } ?: 0
+                currentLrcIndex = bestIndex
             }
-            val bestIndex = parsedLines.indices.minByOrNull {
-                abs(parsedLines[it].timeMs - posMs)
-            } ?: 0
-            currentLrcIndex = bestIndex
-            delay(120)
+
+            delay(200)
+            if (!isPlaying && !mediaPlayer.isPlaying) {
+                // si pause, on continue quand même doucement la mise à jour
+                // mais moins souvent pour économiser
+                delay(200)
+            }
         }
     }
 
@@ -103,11 +122,11 @@ fun PlayerScreen(
         if (parsedLines.isEmpty()) return@LaunchedEffect
         if (lyricsBoxHeightPx == 0) return@LaunchedEffect
 
-        while (isPlaying) {
-            if (!userScrolling) {
+        while (true) {
+            if (isPlaying && !userScrolling && !isDragging) {
                 centerCurrentLine()
             }
-            delay(16)
+            delay(120)
         }
     }
 
@@ -223,6 +242,25 @@ fun PlayerScreen(
             )
         }
 
+        // ==== BARRE DE PROGRESSION (temps + slider) ====
+        TimeBar(
+            positionMs = if (isDragging) dragPosMs else positionMs,
+            durationMs = durationMs,
+            onSeekLivePreview = { newPos ->
+                // aperçu pendant le drag
+                isDragging = true
+                dragPosMs = newPos
+            },
+            onSeekCommit = { newPos ->
+                isDragging = false
+                val safe = when {
+                    durationMs <= 0 -> 0
+                    else -> min(max(newPos, 0), durationMs)
+                }
+                runCatching { mediaPlayer.seekTo(safe) }
+            }
+        )
+
         PlayerControls(
             isPlaying = isPlaying,
             onPlayPause = {
@@ -230,19 +268,26 @@ fun PlayerScreen(
                     mediaPlayer.pause()
                     onIsPlayingChange(false)
                 } else {
-                    mediaPlayer.start()
-                    onIsPlayingChange(true)
-                    // si on relance → on recadre
-                    centerCurrentLine()
+                    // démarrer seulement si une piste est prête
+                    if (durationMs > 0) {
+                        mediaPlayer.start()
+                        onIsPlayingChange(true)
+                        // si on relance → on recadre
+                        centerCurrentLine()
+                    }
                 }
             },
             onPrev = {
                 mediaPlayer.seekTo(0)
-                onIsPlayingChange(true)
+                if (!mediaPlayer.isPlaying) {
+                    mediaPlayer.start()
+                    onIsPlayingChange(true)
+                }
+                // on recadre
                 centerCurrentLine()
             },
             onNext = {
-                mediaPlayer.seekTo(mediaPlayer.duration)
+                mediaPlayer.seekTo(max(durationMs - 1, 0))
                 mediaPlayer.pause()
                 onIsPlayingChange(false)
             }
@@ -291,4 +336,60 @@ private fun PlayerControls(
             )
         }
     }
+}
+
+@Composable
+private fun TimeBar(
+    positionMs: Int,
+    durationMs: Int,
+    onSeekLivePreview: (Int) -> Unit,
+    onSeekCommit: (Int) -> Unit,
+) {
+    val posText = remember(positionMs) { formatMs(positionMs) }
+    val durText = remember(durationMs) { formatMs(durationMs.coerceAtLeast(0)) }
+    val remainingText = remember(positionMs, durationMs) {
+        if (durationMs > 0) "-${formatMs((durationMs - positionMs).coerceAtLeast(0))}" else "-00:00"
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 8.dp)
+    ) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(posText, color = Color.LightGray, fontSize = 12.sp)
+            Text(remainingText, color = Color.LightGray, fontSize = 12.sp)
+        }
+
+        val sliderValue = when {
+            durationMs <= 0 -> 0f
+            else -> positionMs.toFloat() / durationMs.toFloat()
+        }
+
+        Slider(
+            value = sliderValue,
+            onValueChange = { frac ->
+                val preview = (frac * durationMs).toInt()
+                onSeekLivePreview(preview)
+            },
+            onValueChangeFinished = {
+                onSeekCommit(positionMs)
+            },
+            enabled = durationMs > 0,
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        // durée totale en petit (optionnel)
+        Text(durText, color = Color.Gray, fontSize = 11.sp, modifier = Modifier.align(Alignment.End))
+    }
+}
+
+/** mm:ss (si > 1h: hh:mm:ss) */
+private fun formatMs(ms: Int): String {
+    if (ms <= 0) return "00:00"
+    val totalSeconds = ms / 1000
+    val s = totalSeconds % 60
+    val m = (totalSeconds / 60) % 60
+    val h = totalSeconds / 3600
+    return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%02d:%02d".format(m, s)
 }
