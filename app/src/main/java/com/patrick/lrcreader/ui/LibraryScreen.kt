@@ -38,7 +38,7 @@ fun LibraryScreen(
     var selectedSongs by remember { mutableStateOf<Set<Uri>>(emptySet()) }
     var showAssignDialog by remember { mutableStateOf(false) }
 
-    // 👉 picker de dossier AVEC prise de permission persistante
+    // picker de dossier AVEC prise de permission persistante
     val pickFolderLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree(),
         onResult = { uri ->
@@ -50,7 +50,7 @@ fun LibraryScreen(
                         Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
                     )
                 } catch (_: Exception) {
-                    // pas grave, on continue
+                    // pas grave
                 }
 
                 folders = folders + uri
@@ -77,7 +77,6 @@ fun LibraryScreen(
                 Text("Ajouter un dossier", color = Color.White)
             }
 
-            // petit bouton optionnel pour vider les permissions si besoin
             Button(
                 onClick = { clearPersistedUris(context) }
             ) {
@@ -107,7 +106,7 @@ fun LibraryScreen(
             }
         } else {
             Text(
-                "Aucun dossier pour l’instant.\nAjoute ton dossier Music → puis tes MP3.",
+                "Aucun dossier pour l’instant.\nAjoute ton dossier Music → puis tes MP3/WAV.",
                 color = Color.Gray
             )
         }
@@ -125,12 +124,14 @@ fun LibraryScreen(
                 items(songs) { songUri ->
                     val isSelected = selectedSongs.contains(songUri)
 
-                    val fullName = songUri.lastPathSegment ?: "inconnu.mp3"
+                    // ↓↓↓ seul endroit où on change l’affichage : on enlève .mp3 et .wav
+                    val fullName = songUri.lastPathSegment ?: "inconnu"
                     val displayName = fullName
                         .substringAfterLast('/')
                         .substringAfterLast(':')
                         .replace("%20", " ")
                         .replace(".mp3", "", ignoreCase = true)
+                        .replace(".wav", "", ignoreCase = true)
                         .trim()
 
                     Row(
@@ -253,12 +254,18 @@ fun LibraryScreen(
 
 /* ------------------ utils ------------------ */
 
+// ICI on ajoute le .wav au filtre
 private fun listSongsInFolder(context: Context, folderUri: Uri): List<Uri> {
     val docFile = DocumentFile.fromTreeUri(context, folderUri) ?: return emptyList()
     return docFile
         .listFiles()
-        .filter { it.isFile && (it.name?.endsWith(".mp3", ignoreCase = true) == true) }
-        .map { it.uri }
+        .filter { file ->
+            file.isFile && file.name?.let { name ->
+                name.endsWith(".mp3", ignoreCase = true) ||
+                        name.endsWith(".wav", ignoreCase = true)
+            } == true
+        }
+        .mapNotNull { it.uri }
 }
 
 private fun clearPersistedUris(context: Context) {
