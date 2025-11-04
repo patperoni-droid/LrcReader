@@ -7,6 +7,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -27,9 +28,9 @@ fun PlaylistDetailScreen(
     playlistName: String,
     onBack: () -> Unit,
     onPlaySong: (String) -> Unit,
-    refreshKey: Long = 0L               // 👈 ajouté
+    refreshKey: Long = 0L    // tu l’avais déjà
 ) {
-    // on relit la liste à chaque changement de refreshKey
+    // on relit la liste quand la playlist ou le refresh change
     val songs = remember(playlistName, refreshKey) {
         PlaylistRepository.getSongsFor(playlistName)
     }
@@ -42,7 +43,10 @@ fun PlaylistDetailScreen(
     ) {
         // barre du haut
         Row(
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .padding(top = 30.dp, bottom = 12.dp)
+                .fillMaxWidth()
         ) {
             IconButton(onClick = onBack) {
                 Icon(
@@ -59,8 +63,6 @@ fun PlaylistDetailScreen(
             )
         }
 
-        Spacer(Modifier.height(16.dp))
-
         if (songs.isEmpty()) {
             Text(
                 "Aucun titre dans cette liste.",
@@ -75,7 +77,7 @@ fun PlaylistDetailScreen(
                         uriString
                     }
 
-                    // 👇 on regarde si ce titre est marqué joué
+                    // griser si déjà joué
                     val played = PlaylistRepository.isSongPlayed(playlistName, uriString)
 
                     Row(
@@ -84,14 +86,17 @@ fun PlaylistDetailScreen(
                             .padding(vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        IconButton(onClick = { onPlaySong(uriString) }) {
-                            Icon(
-                                imageVector = Icons.Filled.PlayArrow,
-                                contentDescription = "Lire",
-                                tint = Color.White
-                            )
-                        }
+                        // 👇 icône comme dans Musicolet
+                        Icon(
+                            imageVector = Icons.Filled.DragHandle,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier
+                                .padding(end = 6.dp)
+                                .size(24.dp)
+                        )
 
+                        // texte cliquable → lire
                         Text(
                             text = displayName,
                             color = if (played) Color(0xFF888888) else Color.White,
@@ -99,6 +104,15 @@ fun PlaylistDetailScreen(
                                 .weight(1f)
                                 .clickable { onPlaySong(uriString) }
                         )
+
+                        // bouton play à droite (on garde ton comportement)
+                        IconButton(onClick = { onPlaySong(uriString) }) {
+                            Icon(
+                                imageVector = Icons.Filled.PlayArrow,
+                                contentDescription = "Lire",
+                                tint = Color.White
+                            )
+                        }
                     }
                 }
             }
