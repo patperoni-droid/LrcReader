@@ -1,15 +1,24 @@
 package com.patrick.lrcreader.ui
 
 import android.content.Context
-import android.widget.Toast
 import android.content.Intent
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.*
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Slider
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -17,11 +26,12 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.core.BackupManager
+import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.core.FillerSoundPrefs
-import com.patrick.lrcreader.saveJsonToDownloads
-import com.patrick.lrcreader.shareJson
 import com.patrick.lrcreader.getDisplayName
 import com.patrick.lrcreader.nowString
+import com.patrick.lrcreader.saveJsonToDownloads
+import com.patrick.lrcreader.shareJson
 
 @Composable
 fun MoreScreen(
@@ -39,10 +49,10 @@ fun MoreScreen(
     // états son de remplissage
     var fillerUri by remember { mutableStateOf(FillerSoundPrefs.getFillerUri(context)) }
     var fillerName by remember { mutableStateOf(fillerUri?.lastPathSegment ?: "Aucun son sélectionné") }
+    var fillerVolume by remember { mutableStateOf(FillerSoundPrefs.getFillerVolume(context)) }
+    var isPreviewing by remember { mutableStateOf(false) }
 
-    // --- launchers ---
-
-    // import JSON
+    // ---------- IMPORT JSON ----------
     val fileLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
@@ -70,7 +80,8 @@ fun MoreScreen(
         }
     }
 
-    // ré-autoriser un dossier
+    // ---------- RÉ-AUTORISER UN DOSSIER ----------
+    // (c’est ça qui te donne le “Utiliser ce dossier”)
     val treeLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree()
     ) { treeUri ->
@@ -81,11 +92,12 @@ fun MoreScreen(
                     Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
                 )
                 Toast.makeText(context, "Accès au dossier autorisé", Toast.LENGTH_SHORT).show()
-            } catch (_: Exception) { }
+            } catch (_: Exception) {
+            }
         }
     }
 
-    // choisir le son de remplissage
+    // ---------- CHOISIR LE SON DE REMPLISSAGE ----------
     val fillerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
@@ -235,14 +247,59 @@ fun MoreScreen(
                     color = if (fillerUri != null) Color(0xFFE040FB) else Color.Gray,
                     fontSize = 12.sp
                 )
-                if (fillerUri != null) {
-                    Spacer(Modifier.height(6.dp))
-                    TextButton(onClick = {
-                        FillerSoundPrefs.clear(context)
-                        fillerUri = null
-                        fillerName = "Aucun son sélectionné"
-                    }) {
-                        Text("🗑 Supprimer le son", fontSize = 12.sp, color = Color(0xFFFF8A80))
+
+                // slider volume
+                Spacer(Modifier.height(12.dp))
+                Text("Volume du remplissage", color = sub, fontSize = 11.sp)
+                Slider(
+                    value = fillerVolume,
+                    onValueChange = { v ->
+                        fillerVolume = v
+                        FillerSoundPrefs.saveFillerVolume(context, v)
+                        if (isPreviewing) {
+                            // on a un lecteur en cours -> on met juste son volume à jour
+                            FillerSoundManager.setVolume(v)
+                        }
+                    },
+                    valueRange = 0f..1f,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Text("${(fillerVolume * 100).toInt()} %", color = onBg, fontSize = 11.sp)
+
+                Spacer(Modifier.height(8.dp))
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilledTonalButton(
+                        onClick = {
+                            if (!isPreviewing) {
+                                // on démarre le filler (s’il y en a un)
+                                FillerSoundManager.startIfConfigured(context)
+                                // et on met le volume choisi
+                                FillerSoundManager.setVolume(fillerVolume)
+                                isPreviewing = true
+                            } else {
+                                FillerSoundManager.fadeOutAndStop(200)
+                                isPreviewing = false
+                            }
+                        },
+                        enabled = fillerUri != null
+                    ) {
+                        Text(
+                            text = if (isPreviewing) "Arrêter l’écoute" else "▶︎ Écouter",
+                            fontSize = 12.sp
+                        )
+                    }
+
+                    if (fillerUri != null) {
+                        TextButton(onClick = {
+                            FillerSoundManager.fadeOutAndStop(200)
+                            isPreviewing = false
+                            FillerSoundPrefs.clear(context)
+                            fillerUri = null
+                            fillerName = "Aucun son sélectionné"
+                        }) {
+                            Text("🗑 Supprimer le son", fontSize = 12.sp, color = Color(0xFFFF8A80))
+                        }
                     }
                 }
             }

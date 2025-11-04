@@ -8,28 +8,28 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlin.math.max
 
 /**
  * Petit gestionnaire pour le "son de remplissage".
- * - lit le son choisi dans MoreScreen (stocké dans FillerSoundPrefs)
- * - en boucle
- * - volume réduit
- * - peut faire un fade-out puis s'arrêter
+ * - lit en boucle
+ * - volume réglable
+ * - on peut faire un fadeOut avant de l’arrêter
  */
 object FillerSoundManager {
 
-    // player interne, seulement pour le filler
     private var player: MediaPlayer? = null
-
-    // job du fade-out en cours (pour l'annuler si on relance un titre)
     private var fadeJob: Job? = null
 
+    // volume qu’on garde en mémoire
+    private var currentVolume: Float = DEFAULT_VOLUME
+
     /**
-     * Démarre le son de remplissage si l'utilisateur en a choisi un.
+     * Démarre le son de remplissage si l’utilisateur en a choisi un.
      */
     fun startIfConfigured(context: Context) {
         val uri = FillerSoundPrefs.getFillerUri(context) ?: return
+        // on récupère le volume sauvegardé
+        currentVolume = FillerSoundPrefs.getFillerVolume(context)
         startFromUri(context, uri)
     }
 
@@ -37,66 +37,63 @@ object FillerSoundManager {
      * Lance réellement la lecture du filler.
      */
     private fun startFromUri(context: Context, uri: Uri) {
+        // si un player tourne déjà, on le coupe net
         stopNow()
 
-        val p = MediaPlayer()
-        try {
-            p.setDataSource(context, uri)
-            p.isLooping = true
-            p.setVolume(FILLER_VOLUME, FILLER_VOLUME)
-            p.prepare()
-            p.start()
-            player = p
-        } catch (e: Exception) {
-            e.printStackTrace()
-            p.release()
-            player = null
-        }
+        val mp = MediaPlayer()
+        mp.setDataSource(context, uri)
+        mp.isLooping = true
+        mp.prepare()
+        // on applique le volume courant
+        mp.setVolume(currentVolume, currentVolume)
+        mp.start()
+
+        player = mp
     }
 
     /**
-     * Fade-out sur [durationMs] puis stop et release.
+     * Appelé depuis l’écran "Plus" quand on bouge le slider.
      */
-    fun fadeOutAndStop(durationMs: Long = 400) {
+    fun setVolume(volume: Float) {
+        val v = volume.coerceIn(0f, 1f)
+        currentVolume = v
+        // on met à jour le player s’il tourne
+        player?.setVolume(v, v)
+    }
+
+    /**
+     * Arrêt avec petit fondu.
+     */
+    fun fadeOutAndStop(durationMs: Long = 200) {
         val p = player ?: return
 
-        // si un fade est déjà en cours, on l'annule
         fadeJob?.cancel()
-
         fadeJob = CoroutineScope(Dispatchers.Main).launch {
-            val steps = 12
+            val startVol = currentVolume
+            val steps = 16
             val stepTime = durationMs / steps
-            var currentVol = FILLER_VOLUME
-
-            for (i in 0 until steps) {
-                currentVol = max(0f, currentVol - (FILLER_VOLUME / steps))
-                p.setVolume(currentVol, currentVol)
+            for (i in 0..steps) {
+                val factor = 1f - i / steps.toFloat()
+                val v = (startVol * factor).coerceIn(0f, 1f)
+                p.setVolume(v, v)
                 delay(stepTime)
             }
-
-            // on coupe et on libère
-            try {
-                p.stop()
-            } catch (_: Exception) { }
-            p.release()
-            player = null
+            stopNow()
         }
     }
 
     /**
-     * Coupe immédiatement le filler.
+     * Arrêt immédiat.
      */
     private fun stopNow() {
         fadeJob?.cancel()
         fadeJob = null
-        player?.let { p ->
-            try {
-                p.stop()
-            } catch (_: Exception) { }
-            p.release()
+        player?.let { mp ->
+            try { mp.stop() } catch (_: Exception) { }
+            mp.release()
         }
         player = null
     }
 
-    private const val FILLER_VOLUME = 0.25f
+    private const val DEFAULT_VOLUME = 0.25f
 }

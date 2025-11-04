@@ -1,12 +1,13 @@
 package com.patrick.lrcreader.ui
 
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
-import androidx.compose.foundation.border
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
@@ -32,26 +33,28 @@ fun LibraryScreen(
 ) {
     val context = LocalContext.current
 
-    // dossiers choisis
     var folders by remember { mutableStateOf<List<Uri>>(emptyList()) }
-
-    // chansons du dossier courant
     var songs by remember { mutableStateOf<List<Uri>>(emptyList()) }
-
-    // sélection multiple
     var selectedSongs by remember { mutableStateOf<Set<Uri>>(emptySet()) }
-
-    // dialog "ajouter à playlist"
     var showAssignDialog by remember { mutableStateOf(false) }
 
-    // picker de dossier SAF
+    // 👉 picker de dossier AVEC prise de permission persistante
     val pickFolderLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree(),
         onResult = { uri ->
             if (uri != null) {
+                // on garde le droit de lire ce dossier
+                try {
+                    context.contentResolver.takePersistableUriPermission(
+                        uri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                    )
+                } catch (_: Exception) {
+                    // pas grave, on continue
+                }
+
                 folders = folders + uri
                 songs = listSongsInFolder(context, uri)
-                // on vide la sélection quand on change de dossier
                 selectedSongs = emptySet()
             }
         }
@@ -66,16 +69,24 @@ fun LibraryScreen(
         Text("Bibliothèque", color = Color.White)
         Spacer(Modifier.height(12.dp))
 
-        Button(
-            onClick = { pickFolderLauncher.launch(null) },
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Ajouter un dossier", color = Color.White)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(
+                onClick = { pickFolderLauncher.launch(null) },
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("Ajouter un dossier", color = Color.White)
+            }
+
+            // petit bouton optionnel pour vider les permissions si besoin
+            Button(
+                onClick = { clearPersistedUris(context) }
+            ) {
+                Text("Oublier", color = Color.White)
+            }
         }
 
         Spacer(Modifier.height(16.dp))
 
-        // dossiers enregistrés
         if (folders.isNotEmpty()) {
             Text("Dossiers enregistrés :", color = Color.Gray)
             Spacer(Modifier.height(8.dp))
@@ -103,13 +114,11 @@ fun LibraryScreen(
 
         Spacer(Modifier.height(16.dp))
 
-        // on met la liste dans un Box pour pouvoir coller un petit bandeau en bas
         Box(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
         ) {
-            // liste des morceaux
             LazyColumn(
                 modifier = Modifier.fillMaxSize()
             ) {
@@ -129,13 +138,11 @@ fun LibraryScreen(
                             .fillMaxWidth()
                             .combinedClickable(
                                 onClick = {
-                                    // toggle sélection
                                     selectedSongs =
                                         if (isSelected) selectedSongs - songUri
                                         else selectedSongs + songUri
                                 },
                                 onLongClick = {
-                                    // ancien comportement : une seule
                                     selectedSongs = setOf(songUri)
                                     showAssignDialog = true
                                 }
@@ -143,7 +150,6 @@ fun LibraryScreen(
                             .padding(vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // petit carré
                         Box(
                             modifier = Modifier
                                 .size(20.dp)
@@ -155,9 +161,7 @@ fun LibraryScreen(
                                     color = Color(0xFF2ECC71)
                                 )
                         )
-
                         Spacer(Modifier.width(10.dp))
-
                         Text(
                             text = displayName,
                             color = Color.White,
@@ -167,7 +171,6 @@ fun LibraryScreen(
                 }
             }
 
-            // 👉 petit bandeau de sélection, HAUT FIXE
             if (selectedSongs.isNotEmpty()) {
                 Row(
                     modifier = Modifier
@@ -204,7 +207,6 @@ fun LibraryScreen(
         }
     }
 
-    // dialog d’affectation à une playlist (multi)
     if (showAssignDialog) {
         val playlists = PlaylistRepository.getPlaylists()
         AlertDialog(
@@ -249,11 +251,26 @@ fun LibraryScreen(
     }
 }
 
-// utils
+/* ------------------ utils ------------------ */
+
 private fun listSongsInFolder(context: Context, folderUri: Uri): List<Uri> {
     val docFile = DocumentFile.fromTreeUri(context, folderUri) ?: return emptyList()
     return docFile
         .listFiles()
         .filter { it.isFile && (it.name?.endsWith(".mp3", ignoreCase = true) == true) }
-        .mapNotNull { it.uri }
+        .map { it.uri }
+}
+
+private fun clearPersistedUris(context: Context) {
+    val cr = context.contentResolver
+    val list = cr.persistedUriPermissions
+    list.forEach { perm ->
+        try {
+            cr.releasePersistableUriPermission(
+                perm.uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            )
+        } catch (_: Exception) {
+        }
+    }
 }
