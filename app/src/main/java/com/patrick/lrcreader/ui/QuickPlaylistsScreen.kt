@@ -103,6 +103,17 @@ fun QuickPlaylistsScreen(
                         }
                     )
                 }
+
+                // petite séparation visuelle
+                DropdownMenuItem(
+                    text = { Text("Réinitialiser cette playlist", color = Color(0xFFFFB74D)) },
+                    onClick = {
+                        selectedPlaylist?.let { pl ->
+                            PlaylistRepository.resetPlayedFor(pl)
+                        }
+                        showMenu = false
+                    }
+                )
             }
         }
 
