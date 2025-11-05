@@ -1,20 +1,24 @@
 package com.patrick.lrcreader.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -39,7 +43,7 @@ fun QuickPlaylistsScreen(
     }
     var showMenu by remember { mutableStateOf(false) }
 
-    // liste mutable pour bouger / enlever les titres
+    // liste mutable pour bouger les titres
     val songs = remember(selectedPlaylist, refreshKey) {
         mutableStateListOf<String>().apply {
             selectedPlaylist?.let { addAll(PlaylistRepository.getSongsFor(it)) }
@@ -56,6 +60,10 @@ fun QuickPlaylistsScreen(
 
     var draggingUri by remember { mutableStateOf<String?>(null) }
     var dragOffsetPx by remember { mutableStateOf(0f) }
+
+    // pour le rename
+    var renameTarget by remember { mutableStateOf<String?>(null) }
+    var renameText by remember { mutableStateOf("") }
 
     Column(
         modifier = modifier
@@ -114,11 +122,18 @@ fun QuickPlaylistsScreen(
                     items = songs,
                     key = { _, item -> item }
                 ) { _, uriString ->
-                    val displayName = try {
+
+                    // nom original
+                    val baseName = try {
                         URLDecoder.decode(uriString, "UTF-8").substringAfterLast('/')
                     } catch (e: Exception) {
                         uriString
                     }
+
+                    // nom custom ?
+                    val displayName = selectedPlaylist?.let {
+                        PlaylistRepository.getCustomTitle(it, uriString)
+                    } ?: baseName
 
                     val isPlayed = selectedPlaylist?.let {
                         PlaylistRepository.isSongPlayed(it, uriString)
@@ -136,7 +151,7 @@ fun QuickPlaylistsScreen(
                             .padding(vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // poignée drag – même couleur que le titre
+                        // poignée drag
                         Icon(
                             imageVector = Icons.Filled.DragHandle,
                             contentDescription = "Déplacer",
@@ -151,15 +166,12 @@ fun QuickPlaylistsScreen(
                                             dragOffsetPx = 0f
                                         },
                                         onDragEnd = {
-                                            // ➜ on sauvegarde l'ordre dans le repo
-                                            selectedPlaylist?.let { pl ->
-                                                PlaylistRepository.updatePlayListOrder(
-                                                    pl,
-                                                    songs.toList()
-                                                )
-                                            }
                                             draggingUri = null
                                             dragOffsetPx = 0f
+                                            // on sauvegarde l’ordre dans le repo
+                                            selectedPlaylist?.let { pl ->
+                                                PlaylistRepository.updatePlayListOrder(pl, songs.toList())
+                                            }
                                         },
                                         onDragCancel = {
                                             draggingUri = null
@@ -167,11 +179,13 @@ fun QuickPlaylistsScreen(
                                         }
                                     ) { _, dragAmount ->
                                         val currentUri = draggingUri ?: return@detectDragGesturesAfterLongPress
+
                                         val currentIndex = songs.indexOf(currentUri)
                                         if (currentIndex == -1) return@detectDragGesturesAfterLongPress
 
                                         dragOffsetPx += dragAmount.y
 
+                                        // descendre
                                         if (dragOffsetPx >= rowHeightPx / 2f) {
                                             val next = currentIndex + 1
                                             if (next < songs.size) {
@@ -179,6 +193,8 @@ fun QuickPlaylistsScreen(
                                             }
                                             dragOffsetPx = 0f
                                         }
+
+                                        // monter
                                         if (dragOffsetPx <= -rowHeightPx / 2f) {
                                             val prev = currentIndex - 1
                                             if (prev >= 0) {
@@ -203,43 +219,50 @@ fun QuickPlaylistsScreen(
                                 }
                         )
 
-                        // 3 petits points dans un petit cadre, même couleur que le titre
-                        var showRowMenu by remember { mutableStateOf(false) }
-
+                        // bouton menu (3 points) dans un petit cadre discret
                         Box {
-                            IconButton(
-                                onClick = { showRowMenu = true },
+                            var menuOpen by remember { mutableStateOf(false) }
+
+                            Box(
                                 modifier = Modifier
-                                    .size(30.dp)
-                                    .background(Color(0x22FFFFFF)) // léger fond
+                                    .size(28.dp)
+                                    .border(
+                                        width = 1.dp,
+                                        color = if (isPlayed) Color.Gray else songColor,
+                                        shape = RoundedCornerShape(6.dp)
+                                    )
+                                    .clickable { menuOpen = true },
+                                contentAlignment = Alignment.Center
                             ) {
                                 Icon(
                                     imageVector = Icons.Filled.MoreVert,
                                     contentDescription = "Options",
-                                    tint = if (isPlayed) Color.Gray else songColor
+                                    tint = if (isPlayed) Color.Gray else songColor,
+                                    modifier = Modifier.size(18.dp)
                                 )
                             }
 
                             DropdownMenu(
-                                expanded = showRowMenu,
-                                onDismissRequest = { showRowMenu = false },
-                                modifier = Modifier.background(Color(0xFF141414))
+                                expanded = menuOpen,
+                                onDismissRequest = { menuOpen = false },
+                                modifier = Modifier.background(Color(0xFF1E1E1E))
                             ) {
                                 DropdownMenuItem(
                                     text = { Text("Retirer de la liste", color = Color.White) },
                                     onClick = {
-                                        // 1) on enlève du state local
-                                        songs.remove(uriString)
-
-                                        // 2) on met à jour le repo pour que ça ne revienne plus
                                         selectedPlaylist?.let { pl ->
-                                            PlaylistRepository.updatePlayListOrder(
-                                                pl,
-                                                songs.toList()
-                                            )
+                                            PlaylistRepository.removeSongFromPlaylist(pl, uriString)
                                         }
-
-                                        showRowMenu = false
+                                        songs.remove(uriString)
+                                        menuOpen = false
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Renommer", color = Color.White) },
+                                    onClick = {
+                                        renameTarget = uriString
+                                        renameText = displayName
+                                        menuOpen = false
                                     }
                                 )
                             }
@@ -248,6 +271,37 @@ fun QuickPlaylistsScreen(
                 }
             }
         }
+    }
+
+    // dialog de renommage
+    if (renameTarget != null && selectedPlaylist != null) {
+        AlertDialog(
+            onDismissRequest = { renameTarget = null },
+            title = { Text("Renommer", color = Color.White) },
+            text = {
+                OutlinedTextField(
+                    value = renameText,
+                    onValueChange = { renameText = it },
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val targetUri = renameTarget ?: return@TextButton
+                    val pl = selectedPlaylist ?: return@TextButton
+                    PlaylistRepository.renameSongInPlaylist(pl, targetUri, renameText.trim())
+                    renameTarget = null
+                }) {
+                    Text("OK", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { renameTarget = null }) {
+                    Text("Annuler", color = Color.White)
+                }
+            },
+            containerColor = Color(0xFF222222)
+        )
     }
 }
 

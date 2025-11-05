@@ -11,6 +11,9 @@ object PlaylistRepository {
     // nom de playlist -> chansons déjà jouées
     private val playedSongs: MutableMap<String, MutableSet<String>> = mutableMapOf()
 
+    // 👇 nom de playlist -> (uri -> titre personnalisé)
+    private val customTitles: MutableMap<String, MutableMap<String, String>> = mutableMapOf()
+
     // 👇 clé de rafraîchissement pour Compose
     var version = mutableStateOf(0)
         private set
@@ -63,6 +66,7 @@ object PlaylistRepository {
     fun clearAll() {
         playlists.clear()
         playedSongs.clear()
+        customTitles.clear()
         bump()
     }
 
@@ -108,10 +112,33 @@ object PlaylistRepository {
 
     /** force une recomposition manuelle (utile après un import) */
     fun touch() = bump()
+
     fun updatePlayListOrder(playlistName: String, newOrder: List<String>) {
         val current = playlists[playlistName] ?: return
         current.clear()
         current.addAll(newOrder)
-        bump()   // 👈 pour forcer le rafraîchissement des écrans
+        bump()
+    }
+
+    // ------------------ NOUVEAU : titres personnalisés ------------------
+
+    /** Récupère un titre custom si on en a mis un pour cette playlist. */
+    fun getCustomTitle(playlistName: String, uri: String): String? {
+        return customTitles[playlistName]?.get(uri)
+    }
+
+    /** Définit / change le titre affiché pour une chanson dans une playlist. */
+    fun renameSongInPlaylist(playlistName: String, uri: String, newTitle: String) {
+        val map = customTitles.getOrPut(playlistName) { mutableMapOf() }
+        map[uri] = newTitle
+        bump()
+    }
+
+    /** Quand on retire un titre, on vire aussi son éventuel nom custom. */
+    fun removeSongFromPlaylist(playlistName: String, uri: String) {
+        val list = playlists[playlistName] ?: return
+        list.remove(uri)
+        customTitles[playlistName]?.remove(uri)
+        bump()
     }
 }
