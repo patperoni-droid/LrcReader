@@ -20,6 +20,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -36,18 +37,42 @@ fun QuickPlaylistsScreen(
     onPlaySong: (String, String) -> Unit,
     refreshKey: Int,
     currentPlayingUri: String? = null,
+    // 👇 nouvel état hoisté
+    selectedPlaylist: String? = null,
+    onSelectedPlaylistChange: (String?) -> Unit = {},
 ) {
+    // liste des playlists (dépend du repo)
     val playlists = remember(refreshKey) { PlaylistRepository.getPlaylists() }
 
-    var selectedPlaylist by remember(refreshKey) {
-        mutableStateOf<String?>(playlists.firstOrNull())
+    // état interne qui suit soit ce que dit le parent, soit la 1re playlist
+    var internalSelected by rememberSaveable {
+        mutableStateOf<String?>(selectedPlaylist ?: playlists.firstOrNull())
     }
+
+    // si le parent change (ex. on revient sur l’onglet), on se resynchronise
+    LaunchedEffect(selectedPlaylist) {
+        if (selectedPlaylist != null) {
+            internalSelected = selectedPlaylist
+        } else if (internalSelected == null) {
+            internalSelected = playlists.firstOrNull()
+        }
+    }
+
+    // si la liste des playlists change (supprimée, ajoutée…), on recale
+    LaunchedEffect(playlists) {
+        if (internalSelected !in playlists) {
+            val first = playlists.firstOrNull()
+            internalSelected = first
+            onSelectedPlaylistChange(first)
+        }
+    }
+
     var showMenu by remember { mutableStateOf(false) }
 
     // liste mutable pour bouger les titres
-    val songs = remember(selectedPlaylist, refreshKey) {
+    val songs = remember(internalSelected, refreshKey) {
         mutableStateListOf<String>().apply {
-            selectedPlaylist?.let { addAll(PlaylistRepository.getSongsFor(it)) }
+            internalSelected?.let { addAll(PlaylistRepository.getSongsFor(it)) }
         }
     }
 
@@ -76,20 +101,20 @@ fun QuickPlaylistsScreen(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            // Sélecteur de playlist
             Text(
-                text = selectedPlaylist ?: "Sélectionne une playlist",
+                text = internalSelected ?: "Sélectionne une playlist",
                 color = Color.White,
                 fontSize = 20.sp,
                 modifier = Modifier.clickable { showMenu = true }
             )
 
-            // Bouton “Réinitialiser” (à droite)
-            if (selectedPlaylist != null) {
+            if (internalSelected != null) {
                 TextButton(
                     onClick = {
-                        selectedPlaylist?.let { pl ->
+                        internalSelected?.let { pl ->
                             PlaylistRepository.resetPlayedFor(pl)
+                            // on force le parent à savoir qu’on est toujours sur cette playlist
+                            onSelectedPlaylistChange(pl)
                         }
                     }
                 ) {
@@ -98,14 +123,14 @@ fun QuickPlaylistsScreen(
             }
         }
 
-        // Menu déroulant des playlists
+        // menu déroulant
         DropdownMenu(
             expanded = showMenu,
             onDismissRequest = { showMenu = false },
             modifier = Modifier.background(menuBg)
         ) {
             playlists.forEach { name ->
-                val isCurrent = name == selectedPlaylist
+                val isCurrent = name == internalSelected
                 DropdownMenuItem(
                     text = {
                         Text(
@@ -115,22 +140,20 @@ fun QuickPlaylistsScreen(
                         )
                     },
                     onClick = {
-                        selectedPlaylist = name
+                        internalSelected = name
+                        onSelectedPlaylistChange(name)
                         showMenu = false
                     }
                 )
             }
         }
 
-        // --- Suite inchangée ---
-
-
         Spacer(Modifier.height(12.dp))
 
-        if (selectedPlaylist == null) {
+        if (internalSelected == null) {
             Text("Aucune playlist.\nVa dans “Toutes” pour en créer.", color = Color.Gray)
         } else {
-            Text("Chansons de “$selectedPlaylist”", color = Color.White, fontSize = 16.sp)
+            Text("Chansons de “$internalSelected”", color = Color.White, fontSize = 16.sp)
             Spacer(Modifier.height(8.dp))
 
             LazyColumn(
@@ -142,24 +165,21 @@ fun QuickPlaylistsScreen(
                     key = { _, item -> item }
                 ) { _, uriString ->
 
-                    // nom original
                     val baseName = try {
                         URLDecoder.decode(uriString, "UTF-8").substringAfterLast('/')
                     } catch (e: Exception) {
                         uriString
                     }
 
-                    // nom custom ?
-                    val displayName = selectedPlaylist?.let {
+                    val displayName = internalSelected?.let {
                         PlaylistRepository.getCustomTitle(it, uriString)
                     } ?: baseName
 
-                    val isPlayed = selectedPlaylist?.let {
+                    val isPlayed = internalSelected?.let {
                         PlaylistRepository.isSongPlayed(it, uriString)
                     } ?: false
 
                     val isCurrentPlaying = currentPlayingUri == uriString
-
                     val isDraggingThis = draggingUri == uriString
 
                     Row(
@@ -189,8 +209,7 @@ fun QuickPlaylistsScreen(
                                         onDragEnd = {
                                             draggingUri = null
                                             dragOffsetPx = 0f
-                                            // on sauvegarde l’ordre dans le repo
-                                            selectedPlaylist?.let { pl ->
+                                            internalSelected?.let { pl ->
                                                 PlaylistRepository.updatePlayListOrder(pl, songs.toList())
                                             }
                                         },
@@ -200,13 +219,11 @@ fun QuickPlaylistsScreen(
                                         }
                                     ) { _, dragAmount ->
                                         val currentUri = draggingUri ?: return@detectDragGesturesAfterLongPress
-
                                         val currentIndex = songs.indexOf(currentUri)
                                         if (currentIndex == -1) return@detectDragGesturesAfterLongPress
 
                                         dragOffsetPx += dragAmount.y
 
-                                        // descendre
                                         if (dragOffsetPx >= rowHeightPx / 2f) {
                                             val next = currentIndex + 1
                                             if (next < songs.size) {
@@ -215,7 +232,6 @@ fun QuickPlaylistsScreen(
                                             dragOffsetPx = 0f
                                         }
 
-                                        // monter
                                         if (dragOffsetPx <= -rowHeightPx / 2f) {
                                             val prev = currentIndex - 1
                                             if (prev >= 0) {
@@ -227,7 +243,6 @@ fun QuickPlaylistsScreen(
                                 }
                         )
 
-                        // titre
                         Text(
                             text = displayName,
                             color = when {
@@ -238,13 +253,15 @@ fun QuickPlaylistsScreen(
                             modifier = Modifier
                                 .weight(1f)
                                 .clickable {
-                                    selectedPlaylist?.let { pl ->
+                                    internalSelected?.let { pl ->
                                         onPlaySong(uriString, pl)
+                                        // on dit au parent "je suis sur cette playlist"
+                                        onSelectedPlaylistChange(pl)
                                     }
                                 }
                         )
 
-                        // bouton menu (3 points)
+                        // menu item
                         Box {
                             var menuOpen by remember { mutableStateOf(false) }
 
@@ -275,7 +292,7 @@ fun QuickPlaylistsScreen(
                                 DropdownMenuItem(
                                     text = { Text("Retirer de la liste", color = Color.White) },
                                     onClick = {
-                                        selectedPlaylist?.let { pl ->
+                                        internalSelected?.let { pl ->
                                             PlaylistRepository.removeSongFromPlaylist(pl, uriString)
                                         }
                                         songs.remove(uriString)
@@ -299,7 +316,7 @@ fun QuickPlaylistsScreen(
     }
 
     // dialog de renommage
-    if (renameTarget != null && selectedPlaylist != null) {
+    if (renameTarget != null && internalSelected != null) {
         AlertDialog(
             onDismissRequest = { renameTarget = null },
             title = { Text("Renommer", color = Color.White) },
@@ -313,7 +330,7 @@ fun QuickPlaylistsScreen(
             confirmButton = {
                 TextButton(onClick = {
                     val targetUri = renameTarget ?: return@TextButton
-                    val pl = selectedPlaylist ?: return@TextButton
+                    val pl = internalSelected ?: return@TextButton
                     PlaylistRepository.renameSongInPlaylist(pl, targetUri, renameText.trim())
                     renameTarget = null
                 }) {

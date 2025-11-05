@@ -1,19 +1,23 @@
 package com.patrick.lrcreader
 
-import android.content.Context
 import android.media.MediaPlayer
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.*
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import com.patrick.lrcreader.core.*
+import com.patrick.lrcreader.core.FillerSoundManager
+import com.patrick.lrcreader.core.LrcLine
+import com.patrick.lrcreader.core.PlaylistRepository
+import com.patrick.lrcreader.core.crossfadePlay
+import com.patrick.lrcreader.core.parseLrc
 import com.patrick.lrcreader.ui.*
-import kotlinx.coroutines.*
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -22,8 +26,14 @@ class MainActivity : ComponentActivity() {
         setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {
 
-                val ctx = this
+                val ctx = this@MainActivity
                 val mediaPlayer = remember { MediaPlayer() }
+
+                // playlist sélectionnée dans l’onglet "playlists rapides"
+                var selectedQuickPlaylist by rememberSaveable { mutableStateOf<String?>(null) }
+
+                // titre actuellement en lecture (pour surligner dans les listes)
+                var currentPlayingUri by remember { mutableStateOf<String?>(null) }
 
                 var isPlaying by remember { mutableStateOf(false) }
                 var parsedLines by remember { mutableStateOf<List<LrcLine>>(emptyList()) }
@@ -36,6 +46,9 @@ class MainActivity : ComponentActivity() {
                 // Fonction principale pour lancer un titre
                 val playWithCrossfade: (String, String?) -> Unit = remember {
                     { uriString, playlistName ->
+                        // on mémorise le titre pour l'UI
+                        currentPlayingUri = uriString
+
                         // 👉 On coupe le son de remplissage avant de lire le vrai titre
                         FillerSoundManager.fadeOutAndStop(400)
 
@@ -50,7 +63,8 @@ class MainActivity : ComponentActivity() {
                             playToken = myToken,
                             getCurrentToken = { currentPlayToken },
                             onLyricsLoaded = { text ->
-                                parsedLines = if (!text.isNullOrBlank()) parseLrc(text) else emptyList()
+                                parsedLines =
+                                    if (!text.isNullOrBlank()) parseLrc(text) else emptyList()
                             },
                             onStart = { isPlaying = true },
                             onError = { isPlaying = false },
@@ -62,6 +76,7 @@ class MainActivity : ComponentActivity() {
                             }
                         )
 
+                        // on repasse sur l’onglet player
                         selectedTab = BottomTab.Player
                     }
                 }
@@ -98,7 +113,10 @@ class MainActivity : ComponentActivity() {
                             onPlaySong = { uri, playlistName ->
                                 playWithCrossfade(uri, playlistName)
                             },
-                            refreshKey = repoVersion
+                            refreshKey = repoVersion,
+                            currentPlayingUri = currentPlayingUri,
+                            selectedPlaylist = selectedQuickPlaylist,
+                            onSelectedPlaylistChange = { selectedQuickPlaylist = it }
                         )
 
                         is BottomTab.Library -> LibraryScreen(
@@ -131,7 +149,7 @@ class MainActivity : ComponentActivity() {
                             context = ctx,
                         )
                     }
-                } // 👈 celle-ci ferme le Scaffold
+                } // 👈 ferme le Scaffold
             }
         }
     }
