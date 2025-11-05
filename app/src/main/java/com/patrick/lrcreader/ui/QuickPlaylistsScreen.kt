@@ -37,7 +37,7 @@ fun QuickPlaylistsScreen(
     onPlaySong: (String, String) -> Unit,
     refreshKey: Int,
     currentPlayingUri: String? = null,
-    // 👇 nouvel état hoisté
+    // 👇 état hoisté depuis MainActivity
     selectedPlaylist: String? = null,
     onSelectedPlaylistChange: (String?) -> Unit = {},
 ) {
@@ -101,50 +101,51 @@ fun QuickPlaylistsScreen(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text(
-                text = internalSelected ?: "Sélectionne une playlist",
-                color = Color.White,
-                fontSize = 20.sp,
-                modifier = Modifier.clickable { showMenu = true }
-            )
+            // 👇 on ancre le Dropdown sur ce Box
+            Box {
+                Text(
+                    text = internalSelected ?: "Sélectionne une playlist",
+                    color = Color.White,
+                    fontSize = 20.sp,
+                    modifier = Modifier.clickable { showMenu = true }
+                )
+
+                DropdownMenu(
+                    expanded = showMenu,
+                    onDismissRequest = { showMenu = false },
+                    modifier = Modifier.background(menuBg)
+                ) {
+                    playlists.forEach { name ->
+                        val isCurrent = name == internalSelected
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    text = name,
+                                    color = if (isCurrent) songColor else Color.White,
+                                    fontSize = 16.sp
+                                )
+                            },
+                            onClick = {
+                                internalSelected = name
+                                onSelectedPlaylistChange(name)
+                                showMenu = false
+                            }
+                        )
+                    }
+                }
+            }
 
             if (internalSelected != null) {
                 TextButton(
                     onClick = {
                         internalSelected?.let { pl ->
                             PlaylistRepository.resetPlayedFor(pl)
-                            // on force le parent à savoir qu’on est toujours sur cette playlist
                             onSelectedPlaylistChange(pl)
                         }
                     }
                 ) {
                     Text("Réinitialiser", color = Color(0xFFFFB74D))
                 }
-            }
-        }
-
-        // menu déroulant
-        DropdownMenu(
-            expanded = showMenu,
-            onDismissRequest = { showMenu = false },
-            modifier = Modifier.background(menuBg)
-        ) {
-            playlists.forEach { name ->
-                val isCurrent = name == internalSelected
-                DropdownMenuItem(
-                    text = {
-                        Text(
-                            text = name,
-                            color = if (isCurrent) songColor else Color.White,
-                            fontSize = 16.sp
-                        )
-                    },
-                    onClick = {
-                        internalSelected = name
-                        onSelectedPlaylistChange(name)
-                        showMenu = false
-                    }
-                )
             }
         }
 
@@ -165,12 +166,14 @@ fun QuickPlaylistsScreen(
                     key = { _, item -> item }
                 ) { _, uriString ->
 
+                    // nom original
                     val baseName = try {
                         URLDecoder.decode(uriString, "UTF-8").substringAfterLast('/')
                     } catch (e: Exception) {
                         uriString
                     }
 
+                    // nom custom ?
                     val displayName = internalSelected?.let {
                         PlaylistRepository.getCustomTitle(it, uriString)
                     } ?: baseName
@@ -210,7 +213,10 @@ fun QuickPlaylistsScreen(
                                             draggingUri = null
                                             dragOffsetPx = 0f
                                             internalSelected?.let { pl ->
-                                                PlaylistRepository.updatePlayListOrder(pl, songs.toList())
+                                                PlaylistRepository.updatePlayListOrder(
+                                                    pl,
+                                                    songs.toList()
+                                                )
                                             }
                                         },
                                         onDragCancel = {
@@ -218,12 +224,14 @@ fun QuickPlaylistsScreen(
                                             dragOffsetPx = 0f
                                         }
                                     ) { _, dragAmount ->
-                                        val currentUri = draggingUri ?: return@detectDragGesturesAfterLongPress
+                                        val currentUri =
+                                            draggingUri ?: return@detectDragGesturesAfterLongPress
                                         val currentIndex = songs.indexOf(currentUri)
                                         if (currentIndex == -1) return@detectDragGesturesAfterLongPress
 
                                         dragOffsetPx += dragAmount.y
 
+                                        // descendre
                                         if (dragOffsetPx >= rowHeightPx / 2f) {
                                             val next = currentIndex + 1
                                             if (next < songs.size) {
@@ -232,6 +240,7 @@ fun QuickPlaylistsScreen(
                                             dragOffsetPx = 0f
                                         }
 
+                                        // monter
                                         if (dragOffsetPx <= -rowHeightPx / 2f) {
                                             val prev = currentIndex - 1
                                             if (prev >= 0) {
@@ -243,6 +252,7 @@ fun QuickPlaylistsScreen(
                                 }
                         )
 
+                        // titre
                         Text(
                             text = displayName,
                             color = when {
@@ -255,13 +265,12 @@ fun QuickPlaylistsScreen(
                                 .clickable {
                                     internalSelected?.let { pl ->
                                         onPlaySong(uriString, pl)
-                                        // on dit au parent "je suis sur cette playlist"
                                         onSelectedPlaylistChange(pl)
                                     }
                                 }
                         )
 
-                        // menu item
+                        // bouton menu (3 points)
                         Box {
                             var menuOpen by remember { mutableStateOf(false) }
 
