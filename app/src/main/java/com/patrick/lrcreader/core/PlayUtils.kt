@@ -44,6 +44,7 @@ fun crossfadePlay(
         FillerSoundManager.fadeOutAndStop(400)
 
         if (mediaPlayer.isPlaying) {
+            // fade out de l'ancien titre
             fadeVolume(mediaPlayer, 1f, 0f, fadeDurationMs)
         } else {
             mediaPlayer.setVolume(0f, 0f)
@@ -72,12 +73,14 @@ fun crossfadePlay(
             mediaPlayer.start()
             onStart()
 
+            // fade in du nouveau titre
             fadeVolume(mediaPlayer, 0f, 1f, fadeDurationMs)
 
             if (playlistName != null) {
                 val thisToken = playToken
                 val thisSong = uriString
                 CoroutineScope(Dispatchers.Main).launch {
+                    // on attend un peu avant de marquer "joué" pour éviter les clics accidentels
                     delay(10_000)
                     if (getCurrentToken() == thisToken && mediaPlayer.isPlaying) {
                         PlaylistRepository.markSongPlayed(playlistName, thisSong)
@@ -118,4 +121,38 @@ suspend fun fadeVolume(
         delay(stepTime)
     }
     player.setVolume(to, to)
+}
+
+/* -------------------------------------------------------------------------- */
+/*  PAUSE AVEC FONDU (réutilise le même fade que crossfadePlay)               */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Met le MediaPlayer en pause en douceur (fade-out) puis pause.
+ *
+ * @param scope scope depuis le composable (rememberCoroutineScope())
+ * @param mediaPlayer ton player unique
+ * @param durationMs durée du fondu
+ */
+fun pauseWithFade(
+    scope: CoroutineScope,
+    mediaPlayer: MediaPlayer,
+    durationMs: Long = 400L,
+    onPaused: (() -> Unit)? = null
+) {
+    if (!mediaPlayer.isPlaying) {
+        mediaPlayer.pause()
+        onPaused?.invoke()
+        return
+    }
+
+    scope.launch {
+        // on baisse le volume avec la même fonction que le crossfade
+        fadeVolume(mediaPlayer, 1f, 0f, durationMs)
+        // puis on met en pause
+        mediaPlayer.pause()
+        // on remet le volume à 1 pour la prochaine lecture
+        mediaPlayer.setVolume(1f, 1f)
+        onPaused?.invoke()
+    }
 }

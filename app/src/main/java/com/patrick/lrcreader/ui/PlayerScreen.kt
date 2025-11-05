@@ -27,6 +27,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.core.LrcLine
+import com.patrick.lrcreader.core.pauseWithFade   // 👈 import ajouté
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.abs
@@ -272,10 +273,13 @@ fun PlayerScreen(
             isPlaying = isPlaying,
             onPlayPause = {
                 if (mediaPlayer.isPlaying) {
-                    mediaPlayer.pause()
-                    onIsPlayingChange(false)
+                    // 👇 maintenant on met en pause en fade
+                    pauseWithFade(scope, mediaPlayer, 2200L) {
+                        onIsPlayingChange(false)
+                    }
                 } else {
                     if (durationMs > 0) {
+                        mediaPlayer.setVolume(1f, 1f)
                         mediaPlayer.start()
                         onIsPlayingChange(true)
                         centerCurrentLine()
