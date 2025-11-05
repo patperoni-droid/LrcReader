@@ -48,13 +48,10 @@ fun PlayerScreen(
     val scrollState = rememberScrollState()
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
-    val context = LocalContext.current  // 👈 pour lancer/arrêter le fond sonore
+    val context = LocalContext.current  // pour lancer/arrêter le fond sonore
 
-    // couleur violette/rose comme dans playlists
     val highlightColor = Color(0xFFE040FB)
-
-    // petit décalage volontaire des paroles
-    val LYRICS_DELAY_MS = 1000L   // ← change à 300 / 500 si tu veux
+    val LYRICS_DELAY_MS = 1000L
 
     var isConcertMode by remember { mutableStateOf(true) }
     var lyricsBoxHeightPx by remember { mutableStateOf(0) }
@@ -65,13 +62,12 @@ fun PlayerScreen(
     val lineHeightPx = with(density) { lineHeightDp.toPx() }
     val baseTopSpacerPx = remember(lyricsBoxHeightPx) { lyricsBoxHeightPx }
 
-    // temps / progression
     var durationMs by remember { mutableStateOf(0) }
     var positionMs by remember { mutableStateOf(0) }
     var isDragging by remember { mutableStateOf(false) }
     var dragPosMs by remember { mutableStateOf(0) }
 
-    // suivi du player + choix de la ligne active (avec retard)
+    // suivi lecture + ligne active
     LaunchedEffect(isPlaying, parsedLines) {
         while (true) {
             val d = runCatching { mediaPlayer.duration }.getOrNull() ?: -1
@@ -81,7 +77,6 @@ fun PlayerScreen(
             if (!isDragging) positionMs = p
 
             if (parsedLines.isNotEmpty()) {
-                // on applique le retard ici
                 val posMs = (p.toLong() - LYRICS_DELAY_MS).coerceAtLeast(0L)
                 val bestIndex = parsedLines.indices.minByOrNull {
                     abs(parsedLines[it].timeMs - posMs)
@@ -96,7 +91,7 @@ fun PlayerScreen(
         }
     }
 
-    // détecter si l’utilisateur scrolle
+    // détecter le scroll manuel
     LaunchedEffect(scrollState) {
         while (true) {
             userScrolling = scrollState.isScrollInProgress
@@ -104,18 +99,14 @@ fun PlayerScreen(
         }
     }
 
-    // recentrer la ligne active
     fun centerCurrentLine() {
         if (lyricsBoxHeightPx == 0) return
         val centerPx = lyricsBoxHeightPx / 2f
         val lineAbsY = baseTopSpacerPx + currentLrcIndex * lineHeightPx
         val wantedScroll = (lineAbsY - centerPx).toInt().coerceAtLeast(0)
-        scope.launch {
-            scrollState.scrollTo(wantedScroll)
-        }
+        scope.launch { scrollState.scrollTo(wantedScroll) }
     }
 
-    // quand on clique une ligne → seek + recentre
     fun seekAndCenter(targetMs: Int, targetIndex: Int) {
         runCatching { mediaPlayer.seekTo(targetMs) }
         currentLrcIndex = targetIndex
@@ -123,8 +114,8 @@ fun PlayerScreen(
         if (!mediaPlayer.isPlaying) {
             mediaPlayer.start()
             onIsPlayingChange(true)
-            // si on relit le vrai morceau, on coupe le fond
-            FillerSoundManager.fadeOutAndStop(400)
+            // on coupe le fond si on repart sur le vrai titre
+            runCatching { FillerSoundManager.fadeOutAndStop(400) }
         }
         if (lyricsBoxHeightPx > 0) {
             val centerPx = lyricsBoxHeightPx / 2f
@@ -154,7 +145,7 @@ fun PlayerScreen(
             .padding(horizontal = 16.dp, vertical = 6.dp),
         verticalArrangement = Arrangement.SpaceBetween
     ) {
-        // en-tête
+        // header
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -177,7 +168,7 @@ fun PlayerScreen(
             }
         }
 
-        // zone paroles
+        // paroles
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -233,7 +224,6 @@ fun PlayerScreen(
                                 .height(lineHeightDp)
                                 .padding(horizontal = 8.dp, vertical = 8.dp)
                                 .clickable {
-                                    // on va directement au time de cette ligne
                                     seekAndCenter(line.timeMs.toInt(), index)
                                 }
                         )
@@ -278,10 +268,12 @@ fun PlayerScreen(
             isPlaying = isPlaying,
             onPlayPause = {
                 if (mediaPlayer.isPlaying) {
-                    // 👇 pause en fade + fond sonore qui repart
+                    // pause en fade + fond sonore qui repart (protégé)
                     pauseWithFade(scope, mediaPlayer, 2200L) {
                         onIsPlayingChange(false)
-                        FillerSoundManager.startIfConfigured(context)
+                        runCatching {
+                            FillerSoundManager.startIfConfigured(context)
+                        }
                     }
                 } else {
                     if (durationMs > 0) {
@@ -289,8 +281,10 @@ fun PlayerScreen(
                         mediaPlayer.start()
                         onIsPlayingChange(true)
                         centerCurrentLine()
-                        // quand on joue un vrai titre, on coupe le fond
-                        FillerSoundManager.fadeOutAndStop(400)
+                        // on coupe le filler si on relance la vraie musique
+                        runCatching {
+                            FillerSoundManager.fadeOutAndStop(400)
+                        }
                     }
                 }
             },
@@ -299,7 +293,7 @@ fun PlayerScreen(
                 if (!mediaPlayer.isPlaying) {
                     mediaPlayer.start()
                     onIsPlayingChange(true)
-                    FillerSoundManager.fadeOutAndStop(400)
+                    runCatching { FillerSoundManager.fadeOutAndStop(400) }
                 }
                 centerCurrentLine()
             },
@@ -307,8 +301,8 @@ fun PlayerScreen(
                 mediaPlayer.seekTo(max(durationMs - 1, 0))
                 mediaPlayer.pause()
                 onIsPlayingChange(false)
-                // si tu veux aussi relancer le fond quand tu “finis” le morceau :
-                FillerSoundManager.startIfConfigured(context)
+                // on relance le fond mais on protège
+                runCatching { FillerSoundManager.startIfConfigured(context) }
             }
         )
     }
@@ -401,7 +395,12 @@ private fun TimeBar(
             modifier = Modifier.fillMaxWidth()
         )
 
-        Text(durText, color = Color.Gray, fontSize = 11.sp, modifier = Modifier.align(Alignment.End))
+        Text(
+            durText,
+            color = Color.Gray,
+            fontSize = 11.sp,
+            modifier = Modifier.align(Alignment.End)
+        )
     }
 }
 

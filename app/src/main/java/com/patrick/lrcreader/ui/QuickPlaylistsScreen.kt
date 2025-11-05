@@ -37,28 +37,20 @@ fun QuickPlaylistsScreen(
     onPlaySong: (String, String) -> Unit,
     refreshKey: Int,
     currentPlayingUri: String? = null,
-    // 👇 état hoisté depuis MainActivity
     selectedPlaylist: String? = null,
     onSelectedPlaylistChange: (String?) -> Unit = {},
 ) {
-    // liste des playlists (dépend du repo)
     val playlists = remember(refreshKey) { PlaylistRepository.getPlaylists() }
 
-    // état interne qui suit soit ce que dit le parent, soit la 1re playlist
     var internalSelected by rememberSaveable {
         mutableStateOf<String?>(selectedPlaylist ?: playlists.firstOrNull())
     }
 
-    // si le parent change (ex. on revient sur l’onglet), on se resynchronise
     LaunchedEffect(selectedPlaylist) {
-        if (selectedPlaylist != null) {
-            internalSelected = selectedPlaylist
-        } else if (internalSelected == null) {
-            internalSelected = playlists.firstOrNull()
-        }
+        if (selectedPlaylist != null) internalSelected = selectedPlaylist
+        else if (internalSelected == null) internalSelected = playlists.firstOrNull()
     }
 
-    // si la liste des playlists change (supprimée, ajoutée…), on recale
     LaunchedEffect(playlists) {
         if (internalSelected !in playlists) {
             val first = playlists.firstOrNull()
@@ -69,7 +61,7 @@ fun QuickPlaylistsScreen(
 
     var showMenu by remember { mutableStateOf(false) }
 
-    // liste mutable pour bouger les titres
+    // liste des titres affichés
     val songs = remember(internalSelected, refreshKey) {
         mutableStateListOf<String>().apply {
             internalSelected?.let { addAll(PlaylistRepository.getSongsFor(it)) }
@@ -78,7 +70,6 @@ fun QuickPlaylistsScreen(
 
     val songColor = Color(0xFFE86FFF)
     val menuBg = Color(0xFF222222)
-
     val listState = rememberLazyListState()
     val rowHeight = 56.dp
     val rowHeightPx = with(LocalDensity.current) { rowHeight.toPx() }
@@ -101,7 +92,6 @@ fun QuickPlaylistsScreen(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            // 👇 on ancre le Dropdown sur ce Box
             Box {
                 Text(
                     text = internalSelected ?: "Sélectionne une playlist",
@@ -129,6 +119,9 @@ fun QuickPlaylistsScreen(
                                 internalSelected = name
                                 onSelectedPlaylistChange(name)
                                 showMenu = false
+                                // 👉 recharge les chansons à chaque changement
+                                songs.clear()
+                                songs.addAll(PlaylistRepository.getSongsFor(name))
                             }
                         )
                     }
@@ -139,7 +132,11 @@ fun QuickPlaylistsScreen(
                 TextButton(
                     onClick = {
                         internalSelected?.let { pl ->
+                            // on vide les "joués"
                             PlaylistRepository.resetPlayedFor(pl)
+                            // 👉 recharge la liste dans son ordre d’origine
+                            songs.clear()
+                            songs.addAll(PlaylistRepository.getSongsFor(pl))
                             onSelectedPlaylistChange(pl)
                         }
                     }
@@ -161,19 +158,13 @@ fun QuickPlaylistsScreen(
                 modifier = Modifier.weight(1f),
                 state = listState
             ) {
-                itemsIndexed(
-                    items = songs,
-                    key = { _, item -> item }
-                ) { _, uriString ->
-
-                    // nom original
+                itemsIndexed(items = songs, key = { _, item -> item }) { _, uriString ->
                     val baseName = try {
                         URLDecoder.decode(uriString, "UTF-8").substringAfterLast('/')
                     } catch (e: Exception) {
                         uriString
                     }
 
-                    // nom custom ?
                     val displayName = internalSelected?.let {
                         PlaylistRepository.getCustomTitle(it, uriString)
                     } ?: baseName
@@ -189,9 +180,7 @@ fun QuickPlaylistsScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(rowHeight)
-                            .background(
-                                if (isDraggingThis) Color(0x22FFFFFF) else Color.Transparent
-                            )
+                            .background(if (isDraggingThis) Color(0x22FFFFFF) else Color.Transparent)
                             .padding(vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -213,10 +202,7 @@ fun QuickPlaylistsScreen(
                                             draggingUri = null
                                             dragOffsetPx = 0f
                                             internalSelected?.let { pl ->
-                                                PlaylistRepository.updatePlayListOrder(
-                                                    pl,
-                                                    songs.toList()
-                                                )
+                                                PlaylistRepository.updatePlayListOrder(pl, songs.toList())
                                             }
                                         },
                                         onDragCancel = {
@@ -224,28 +210,21 @@ fun QuickPlaylistsScreen(
                                             dragOffsetPx = 0f
                                         }
                                     ) { _, dragAmount ->
-                                        val currentUri =
-                                            draggingUri ?: return@detectDragGesturesAfterLongPress
+                                        val currentUri = draggingUri ?: return@detectDragGesturesAfterLongPress
                                         val currentIndex = songs.indexOf(currentUri)
                                         if (currentIndex == -1) return@detectDragGesturesAfterLongPress
 
                                         dragOffsetPx += dragAmount.y
 
-                                        // descendre
                                         if (dragOffsetPx >= rowHeightPx / 2f) {
                                             val next = currentIndex + 1
-                                            if (next < songs.size) {
-                                                songs.swap(currentIndex, next)
-                                            }
+                                            if (next < songs.size) songs.swap(currentIndex, next)
                                             dragOffsetPx = 0f
                                         }
 
-                                        // monter
                                         if (dragOffsetPx <= -rowHeightPx / 2f) {
                                             val prev = currentIndex - 1
-                                            if (prev >= 0) {
-                                                songs.swap(currentIndex, prev)
-                                            }
+                                            if (prev >= 0) songs.swap(currentIndex, prev)
                                             dragOffsetPx = 0f
                                         }
                                     }
@@ -270,7 +249,7 @@ fun QuickPlaylistsScreen(
                                 }
                         )
 
-                        // bouton menu (3 points)
+                        // menu 3 points
                         Box {
                             var menuOpen by remember { mutableStateOf(false) }
 
@@ -324,7 +303,7 @@ fun QuickPlaylistsScreen(
         }
     }
 
-    // dialog de renommage
+    // dialog renommage
     if (renameTarget != null && internalSelected != null) {
         AlertDialog(
             onDismissRequest = { renameTarget = null },
@@ -356,7 +335,7 @@ fun QuickPlaylistsScreen(
     }
 }
 
-// util
+// utilitaire
 private fun <T> MutableList<T>.swap(i: Int, j: Int) {
     if (i == j) return
     val tmp = this[i]

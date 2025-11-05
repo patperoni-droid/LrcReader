@@ -15,6 +15,7 @@ import androidx.compose.ui.graphics.Color
 import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.core.LrcLine
 import com.patrick.lrcreader.core.PlaylistRepository
+import com.patrick.lrcreader.core.SessionPrefs
 import com.patrick.lrcreader.core.crossfadePlay
 import com.patrick.lrcreader.core.parseLrc
 import com.patrick.lrcreader.ui.*
@@ -23,33 +24,47 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // 👇 ON LIT ICI, AVANT setContent
+        val initialTabKey = SessionPrefs.getTab(this)
+        val initialQuickPlaylist = SessionPrefs.getQuickPlaylist(this)
+        val initialOpenedPlaylist = SessionPrefs.getOpenedPlaylist(this)
+
         setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {
 
                 val ctx = this@MainActivity
                 val mediaPlayer = remember { MediaPlayer() }
 
-                // playlist sélectionnée dans l’onglet "playlists rapides"
-                var selectedQuickPlaylist by rememberSaveable { mutableStateOf<String?>(null) }
+                // on reconvertit la clé en vrai onglet
+                var selectedTab by remember {
+                    mutableStateOf(
+                        initialTabKey?.let { tabFromKey(it) } ?: BottomTab.Player
+                    )
+                }
 
-                // titre actuellement en lecture (pour surligner dans les listes)
+                // ces deux-là peuvent rester en rememberSaveable
+                var selectedQuickPlaylist by rememberSaveable {
+                    mutableStateOf<String?>(initialQuickPlaylist)
+                }
+                var openedPlaylist by rememberSaveable {
+                    mutableStateOf<String?>(initialOpenedPlaylist)
+                }
+
+                // titre en cours
                 var currentPlayingUri by remember { mutableStateOf<String?>(null) }
 
                 var isPlaying by remember { mutableStateOf(false) }
                 var parsedLines by remember { mutableStateOf<List<LrcLine>>(emptyList()) }
-                var selectedTab by remember { mutableStateOf<BottomTab>(BottomTab.Player) }
-                var openedPlaylist by rememberSaveable { mutableStateOf<String?>(null) }
-
                 var currentPlayToken by remember { mutableStateOf(0L) }
+
                 val repoVersion by PlaylistRepository.version
 
-                // Fonction principale pour lancer un titre
+                // fonction de lecture
                 val playWithCrossfade: (String, String?) -> Unit = remember {
                     { uriString, playlistName ->
-                        // on mémorise le titre pour l'UI
                         currentPlayingUri = uriString
 
-                        // 👉 On coupe le son de remplissage avant de lire le vrai titre
+                        // stop filler
                         FillerSoundManager.fadeOutAndStop(400)
 
                         val myToken = currentPlayToken + 1
@@ -69,23 +84,20 @@ class MainActivity : ComponentActivity() {
                             onStart = { isPlaying = true },
                             onError = { isPlaying = false },
                             onNaturalEnd = {
-                                // morceau terminé naturellement
                                 isPlaying = false
-                                // on relance le son de remplissage si l’utilisateur en a choisi un
                                 FillerSoundManager.startIfConfigured(ctx)
                             }
                         )
 
-                        // on repasse sur l’onglet player
+                        // on repasse sur le player
                         selectedTab = BottomTab.Player
+                        SessionPrefs.saveTab(ctx, tabKeyOf(BottomTab.Player))
                     }
                 }
 
-                // Nettoyage du MediaPlayer à la fermeture
+                // libération
                 DisposableEffect(Unit) {
-                    onDispose {
-                        mediaPlayer.release()
-                    }
+                    onDispose { mediaPlayer.release() }
                 }
 
                 Scaffold(
@@ -93,7 +105,10 @@ class MainActivity : ComponentActivity() {
                     bottomBar = {
                         BottomTabsBar(
                             selected = selectedTab,
-                            onSelected = { tab: BottomTab -> selectedTab = tab }
+                            onSelected = { tab ->
+                                selectedTab = tab
+                                SessionPrefs.saveTab(ctx, tabKeyOf(tab))
+                            }
                         )
                     }
                 ) { innerPadding ->
@@ -116,7 +131,10 @@ class MainActivity : ComponentActivity() {
                             refreshKey = repoVersion,
                             currentPlayingUri = currentPlayingUri,
                             selectedPlaylist = selectedQuickPlaylist,
-                            onSelectedPlaylistChange = { selectedQuickPlaylist = it }
+                            onSelectedPlaylistChange = { newPl ->
+                                selectedQuickPlaylist = newPl
+                                SessionPrefs.saveQuickPlaylist(ctx, newPl)
+                            }
                         )
 
                         is BottomTab.Library -> LibraryScreen(
@@ -130,13 +148,17 @@ class MainActivity : ComponentActivity() {
                                     modifier = m,
                                     onPlaylistClick = { name ->
                                         openedPlaylist = name
+                                        SessionPrefs.saveOpenedPlaylist(ctx, name)
                                     }
                                 )
                             } else {
                                 PlaylistDetailScreen(
                                     modifier = m,
                                     playlistName = openedPlaylist!!,
-                                    onBack = { openedPlaylist = null },
+                                    onBack = {
+                                        openedPlaylist = null
+                                        SessionPrefs.saveOpenedPlaylist(ctx, null)
+                                    },
                                     onPlaySong = { uriString ->
                                         playWithCrossfade(uriString, openedPlaylist)
                                     }
@@ -149,8 +171,37 @@ class MainActivity : ComponentActivity() {
                             context = ctx,
                         )
                     }
-                } // 👈 ferme le Scaffold
+                }
             }
         }
     }
 }
+
+/* -------------------------------------------------------------------------- */
+/*  Conversion BottomTab <-> String                                           */
+/* -------------------------------------------------------------------------- */
+
+private const val TAB_PLAYER = "player"
+private const val TAB_QUICK = "quick"
+private const val TAB_LIBRARY = "library"
+private const val TAB_ALL = "all"
+private const val TAB_MORE = "more"
+
+private fun tabKeyOf(tab: BottomTab): String =
+    when (tab) {
+        is BottomTab.Player -> TAB_PLAYER
+        is BottomTab.QuickPlaylists -> TAB_QUICK
+        is BottomTab.Library -> TAB_LIBRARY
+        is BottomTab.AllPlaylists -> TAB_ALL
+        is BottomTab.More -> TAB_MORE
+    }
+
+private fun tabFromKey(key: String): BottomTab =
+    when (key) {
+        TAB_PLAYER -> BottomTab.Player
+        TAB_QUICK -> BottomTab.QuickPlaylists
+        TAB_LIBRARY -> BottomTab.Library
+        TAB_ALL -> BottomTab.AllPlaylists
+        TAB_MORE -> BottomTab.More
+        else -> BottomTab.Player
+    }
