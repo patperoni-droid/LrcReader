@@ -9,6 +9,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DragHandle
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -17,6 +18,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
@@ -52,7 +54,7 @@ fun QuickPlaylistsScreen(
     val rowHeight = 56.dp
     val rowHeightPx = with(LocalDensity.current) { rowHeight.toPx() }
 
-    // au lieu de stocker l'index → on stocke l'URI qu'on tient
+    // on stocke l’URI en cours de drag
     var draggingUri by remember { mutableStateOf<String?>(null) }
     var dragOffsetPx by remember { mutableStateOf(0f) }
 
@@ -125,6 +127,9 @@ fun QuickPlaylistsScreen(
 
                     val isDraggingThis = draggingUri == uriString
 
+                    // état du menu pour cette ligne
+                    var rowMenuExpanded by remember { mutableStateOf(false) }
+
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -135,7 +140,7 @@ fun QuickPlaylistsScreen(
                             .padding(vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // poignée drag
+                        // poignée de drag
                         Icon(
                             imageVector = Icons.Filled.DragHandle,
                             contentDescription = "Déplacer",
@@ -157,10 +162,11 @@ fun QuickPlaylistsScreen(
                                             draggingUri = null
                                             dragOffsetPx = 0f
                                         }
-                                    ) { _, dragAmount ->
+                                    ) { change: PointerInputChange, dragAmount ->
+                                        change.consume()
+
                                         val currentUri = draggingUri ?: return@detectDragGesturesAfterLongPress
 
-                                        // on retrouve à chaque move la vraie position de l'item tenu
                                         val currentIndex = songs.indexOf(currentUri)
                                         if (currentIndex == -1) return@detectDragGesturesAfterLongPress
 
@@ -200,12 +206,30 @@ fun QuickPlaylistsScreen(
                                 }
                         )
 
-                        // petit play
-                        Text(
-                            text = "▶",
-                            color = if (isPlayed) Color.Gray else songColor,
-                            modifier = Modifier.padding(start = 8.dp)
-                        )
+                        // bouton "⋯"
+                        Box {
+                            Icon(
+                                imageVector = Icons.Filled.MoreVert,
+                                contentDescription = "Options",
+                                tint = Color.White,
+                                modifier = Modifier
+                                    .size(28.dp)
+                                    .clickable { rowMenuExpanded = true }
+                            )
+
+                            DropdownMenu(
+                                expanded = rowMenuExpanded,
+                                onDismissRequest = { rowMenuExpanded = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Enlever de la liste") },
+                                    onClick = {
+                                        songs.removeAt(index)
+                                        rowMenuExpanded = false
+                                    }
+                                )
+                            }
+                        }
                     }
                 }
             }
