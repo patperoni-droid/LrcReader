@@ -1,20 +1,19 @@
 package com.patrick.lrcreader.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -40,6 +39,7 @@ fun QuickPlaylistsScreen(
     }
     var showMenu by remember { mutableStateOf(false) }
 
+    // liste mutable pour bouger / enlever les titres
     val songs = remember(selectedPlaylist, refreshKey) {
         mutableStateListOf<String>().apply {
             selectedPlaylist?.let { addAll(PlaylistRepository.getSongsFor(it)) }
@@ -48,7 +48,9 @@ fun QuickPlaylistsScreen(
 
     val songColor = Color(0xFFE86FFF)
     val menuBg = Color(0xFF222222)
+
     val listState = rememberLazyListState()
+
     val rowHeight = 56.dp
     val rowHeightPx = with(LocalDensity.current) { rowHeight.toPx() }
 
@@ -61,6 +63,7 @@ fun QuickPlaylistsScreen(
             .background(Color.Black)
             .padding(16.dp)
     ) {
+        // header playlist
         Box {
             Text(
                 text = selectedPlaylist ?: "Sélectionne une playlist",
@@ -107,7 +110,10 @@ fun QuickPlaylistsScreen(
                 modifier = Modifier.weight(1f),
                 state = listState
             ) {
-                itemsIndexed(songs, key = { _, item -> item }) { _, uriString ->
+                itemsIndexed(
+                    items = songs,
+                    key = { _, item -> item }
+                ) { _, uriString ->
                     val displayName = try {
                         URLDecoder.decode(uriString, "UTF-8").substringAfterLast('/')
                     } catch (e: Exception) {
@@ -124,11 +130,13 @@ fun QuickPlaylistsScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(rowHeight)
-                            .background(if (isDraggingThis) Color(0x22FFFFFF) else Color.Transparent)
+                            .background(
+                                if (isDraggingThis) Color(0x22FFFFFF) else Color.Transparent
+                            )
                             .padding(vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // poignée drag — même couleur que le titre
+                        // poignée drag – même couleur que le titre
                         Icon(
                             imageVector = Icons.Filled.DragHandle,
                             contentDescription = "Déplacer",
@@ -143,8 +151,12 @@ fun QuickPlaylistsScreen(
                                             dragOffsetPx = 0f
                                         },
                                         onDragEnd = {
+                                            // ➜ on sauvegarde l'ordre dans le repo
                                             selectedPlaylist?.let { pl ->
-                                                PlaylistRepository.updatePlayListOrder(pl, songs.toList())
+                                                PlaylistRepository.updatePlayListOrder(
+                                                    pl,
+                                                    songs.toList()
+                                                )
                                             }
                                             draggingUri = null
                                             dragOffsetPx = 0f
@@ -159,14 +171,19 @@ fun QuickPlaylistsScreen(
                                         if (currentIndex == -1) return@detectDragGesturesAfterLongPress
 
                                         dragOffsetPx += dragAmount.y
+
                                         if (dragOffsetPx >= rowHeightPx / 2f) {
                                             val next = currentIndex + 1
-                                            if (next < songs.size) songs.swap(currentIndex, next)
+                                            if (next < songs.size) {
+                                                songs.swap(currentIndex, next)
+                                            }
                                             dragOffsetPx = 0f
                                         }
                                         if (dragOffsetPx <= -rowHeightPx / 2f) {
                                             val prev = currentIndex - 1
-                                            if (prev >= 0) songs.swap(currentIndex, prev)
+                                            if (prev >= 0) {
+                                                songs.swap(currentIndex, prev)
+                                            }
                                             dragOffsetPx = 0f
                                         }
                                     }
@@ -186,42 +203,42 @@ fun QuickPlaylistsScreen(
                                 }
                         )
 
-                        // menu des options
+                        // 3 petits points dans un petit cadre, même couleur que le titre
                         var showRowMenu by remember { mutableStateOf(false) }
-                        Box(
-                            modifier = Modifier
-                                .size(32.dp)
-                                .border(1.dp, songColor, RoundedCornerShape(6.dp))
-                                .clickable { showRowMenu = true },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.MoreVert,
-                                contentDescription = "Options",
-                                tint = songColor,
-                                modifier = Modifier.size(20.dp)
-                            )
+
+                        Box {
+                            IconButton(
+                                onClick = { showRowMenu = true },
+                                modifier = Modifier
+                                    .size(30.dp)
+                                    .background(Color(0x22FFFFFF)) // léger fond
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.MoreVert,
+                                    contentDescription = "Options",
+                                    tint = if (isPlayed) Color.Gray else songColor
+                                )
+                            }
 
                             DropdownMenu(
                                 expanded = showRowMenu,
-                                onDismissRequest = { showRowMenu = false }
+                                onDismissRequest = { showRowMenu = false },
+                                modifier = Modifier.background(Color(0xFF141414))
                             ) {
                                 DropdownMenuItem(
-                                    text = { Text("Lire", color = Color.White) },
+                                    text = { Text("Retirer de la liste", color = Color.White) },
                                     onClick = {
+                                        // 1) on enlève du state local
+                                        songs.remove(uriString)
+
+                                        // 2) on met à jour le repo pour que ça ne revienne plus
                                         selectedPlaylist?.let { pl ->
-                                            onPlaySong(uriString, pl)
+                                            PlaylistRepository.updatePlayListOrder(
+                                                pl,
+                                                songs.toList()
+                                            )
                                         }
-                                        showRowMenu = false
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("Enlever de la liste", color = Color.White) },
-                                    onClick = {
-                                        selectedPlaylist?.let { pl ->
-                                            songs.remove(uriString)
-                                            // PlaylistRepository.removeSongFromPlaylist(pl, uriString) si ajoutée
-                                        }
+
                                         showRowMenu = false
                                     }
                                 )
