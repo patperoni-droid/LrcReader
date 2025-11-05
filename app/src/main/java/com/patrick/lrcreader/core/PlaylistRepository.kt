@@ -108,4 +108,10 @@ object PlaylistRepository {
 
     /** force une recomposition manuelle (utile après un import) */
     fun touch() = bump()
+    fun updatePlayListOrder(playlistName: String, newOrder: List<String>) {
+        val current = playlists[playlistName] ?: return
+        current.clear()
+        current.addAll(newOrder)
+        bump()   // 👈 pour forcer le rafraîchissement des écrans
+    }
 }
