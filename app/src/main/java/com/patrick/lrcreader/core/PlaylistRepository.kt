@@ -141,9 +141,17 @@ object PlaylistRepository {
         customTitles[playlistName]?.remove(uri)
         bump()
     }
+
     /** Remet tous les titres de la playlist en "non joués" */
     fun resetPlayedFor(playlistName: String) {
+        // on ne touche qu’à cette playlist
         playedSongs.remove(playlistName)
         bump() // pour forcer le refresh des écrans
+    }
+
+    /** (optionnel) remet tous les titres de toutes les playlists en "non joués" */
+    fun resetAllPlayed() {
+        playedSongs.clear()
+        bump()
     }
 }

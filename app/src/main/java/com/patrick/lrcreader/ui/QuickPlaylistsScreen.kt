@@ -34,7 +34,8 @@ import java.net.URLDecoder
 fun QuickPlaylistsScreen(
     modifier: Modifier = Modifier,
     onPlaySong: (String, String) -> Unit,
-    refreshKey: Int
+    refreshKey: Int,
+    currentPlayingUri: String? = null,
 ) {
     val playlists = remember(refreshKey) { PlaylistRepository.getPlaylists() }
 
@@ -54,14 +55,12 @@ fun QuickPlaylistsScreen(
     val menuBg = Color(0xFF222222)
 
     val listState = rememberLazyListState()
-
     val rowHeight = 56.dp
     val rowHeightPx = with(LocalDensity.current) { rowHeight.toPx() }
 
     var draggingUri by remember { mutableStateOf<String?>(null) }
     var dragOffsetPx by remember { mutableStateOf(0f) }
 
-    // pour le rename
     var renameTarget by remember { mutableStateOf<String?>(null) }
     var renameText by remember { mutableStateOf("") }
 
@@ -71,51 +70,60 @@ fun QuickPlaylistsScreen(
             .background(Color.Black)
             .padding(16.dp)
     ) {
-        // header playlist
-        Box {
+        // --- HEADER ---
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            // Sélecteur de playlist
             Text(
                 text = selectedPlaylist ?: "Sélectionne une playlist",
                 color = Color.White,
                 fontSize = 20.sp,
-                modifier = Modifier
-                    .clickable { showMenu = true }
-                    .padding(bottom = 8.dp)
+                modifier = Modifier.clickable { showMenu = true }
             )
 
-            DropdownMenu(
-                expanded = showMenu,
-                onDismissRequest = { showMenu = false },
-                modifier = Modifier.background(menuBg)
-            ) {
-                playlists.forEach { name ->
-                    val isCurrent = name == selectedPlaylist
-                    DropdownMenuItem(
-                        text = {
-                            Text(
-                                text = name,
-                                color = if (isCurrent) songColor else Color.White,
-                                fontSize = 16.sp
-                            )
-                        },
-                        onClick = {
-                            selectedPlaylist = name
-                            showMenu = false
-                        }
-                    )
-                }
-
-                // petite séparation visuelle
-                DropdownMenuItem(
-                    text = { Text("Réinitialiser cette playlist", color = Color(0xFFFFB74D)) },
+            // Bouton “Réinitialiser” (à droite)
+            if (selectedPlaylist != null) {
+                TextButton(
                     onClick = {
                         selectedPlaylist?.let { pl ->
                             PlaylistRepository.resetPlayedFor(pl)
                         }
+                    }
+                ) {
+                    Text("Réinitialiser", color = Color(0xFFFFB74D))
+                }
+            }
+        }
+
+        // Menu déroulant des playlists
+        DropdownMenu(
+            expanded = showMenu,
+            onDismissRequest = { showMenu = false },
+            modifier = Modifier.background(menuBg)
+        ) {
+            playlists.forEach { name ->
+                val isCurrent = name == selectedPlaylist
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            text = name,
+                            color = if (isCurrent) songColor else Color.White,
+                            fontSize = 16.sp
+                        )
+                    },
+                    onClick = {
+                        selectedPlaylist = name
                         showMenu = false
                     }
                 )
             }
         }
+
+        // --- Suite inchangée ---
+
 
         Spacer(Modifier.height(12.dp))
 
@@ -149,6 +157,8 @@ fun QuickPlaylistsScreen(
                     val isPlayed = selectedPlaylist?.let {
                         PlaylistRepository.isSongPlayed(it, uriString)
                     } ?: false
+
+                    val isCurrentPlaying = currentPlayingUri == uriString
 
                     val isDraggingThis = draggingUri == uriString
 
@@ -220,7 +230,11 @@ fun QuickPlaylistsScreen(
                         // titre
                         Text(
                             text = displayName,
-                            color = if (isPlayed) Color.Gray else songColor,
+                            color = when {
+                                isCurrentPlaying -> Color.White
+                                isPlayed -> Color.Gray
+                                else -> songColor
+                            },
                             modifier = Modifier
                                 .weight(1f)
                                 .clickable {
@@ -230,7 +244,7 @@ fun QuickPlaylistsScreen(
                                 }
                         )
 
-                        // bouton menu (3 points) dans un petit cadre discret
+                        // bouton menu (3 points)
                         Box {
                             var menuOpen by remember { mutableStateOf(false) }
 
