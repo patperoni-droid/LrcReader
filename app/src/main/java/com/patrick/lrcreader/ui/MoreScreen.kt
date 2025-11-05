@@ -200,11 +200,19 @@ private fun BackupScreen(
                     val finalName = (saveName.trim().ifBlank { "lrc_backup" }) + ".json"
 
                     FilledTonalButton(
-                        onClick = { saveJsonToDownloads(context, finalName, exportText) },
+                        onClick = {
+                            saveJsonToDownloads(context, finalName, exportText)
+                            Toast.makeText(
+                                context,
+                                "Sauvegarde enregistrée : $finalName",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        },
                         enabled = exportText.isNotBlank(),
                         colors = ButtonDefaults.filledTonalButtonColors(containerColor = Color(0xFF1E1E1E))
-                    ) { Text("Enregistrer", fontSize = 12.sp) }
-
+                    ) {
+                        Text("Enregistrer", fontSize = 12.sp)
+                    }
                     TextButton(
                         onClick = { shareJson(context, finalName, exportText) },
                         enabled = exportText.isNotBlank()
