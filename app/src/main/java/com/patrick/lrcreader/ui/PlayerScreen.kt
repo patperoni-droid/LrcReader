@@ -21,13 +21,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.core.LrcLine
-import com.patrick.lrcreader.core.pauseWithFade   // 👈 import ajouté
+import com.patrick.lrcreader.core.pauseWithFade
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.abs
@@ -46,6 +48,7 @@ fun PlayerScreen(
     val scrollState = rememberScrollState()
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
+    val context = LocalContext.current  // 👈 pour lancer/arrêter le fond sonore
 
     // couleur violette/rose comme dans playlists
     val highlightColor = Color(0xFFE040FB)
@@ -120,6 +123,8 @@ fun PlayerScreen(
         if (!mediaPlayer.isPlaying) {
             mediaPlayer.start()
             onIsPlayingChange(true)
+            // si on relit le vrai morceau, on coupe le fond
+            FillerSoundManager.fadeOutAndStop(400)
         }
         if (lyricsBoxHeightPx > 0) {
             val centerPx = lyricsBoxHeightPx / 2f
@@ -273,9 +278,10 @@ fun PlayerScreen(
             isPlaying = isPlaying,
             onPlayPause = {
                 if (mediaPlayer.isPlaying) {
-                    // 👇 maintenant on met en pause en fade
+                    // 👇 pause en fade + fond sonore qui repart
                     pauseWithFade(scope, mediaPlayer, 2200L) {
                         onIsPlayingChange(false)
+                        FillerSoundManager.startIfConfigured(context)
                     }
                 } else {
                     if (durationMs > 0) {
@@ -283,6 +289,8 @@ fun PlayerScreen(
                         mediaPlayer.start()
                         onIsPlayingChange(true)
                         centerCurrentLine()
+                        // quand on joue un vrai titre, on coupe le fond
+                        FillerSoundManager.fadeOutAndStop(400)
                     }
                 }
             },
@@ -291,6 +299,7 @@ fun PlayerScreen(
                 if (!mediaPlayer.isPlaying) {
                     mediaPlayer.start()
                     onIsPlayingChange(true)
+                    FillerSoundManager.fadeOutAndStop(400)
                 }
                 centerCurrentLine()
             },
@@ -298,6 +307,8 @@ fun PlayerScreen(
                 mediaPlayer.seekTo(max(durationMs - 1, 0))
                 mediaPlayer.pause()
                 onIsPlayingChange(false)
+                // si tu veux aussi relancer le fond quand tu “finis” le morceau :
+                FillerSoundManager.startIfConfigured(context)
             }
         )
     }
