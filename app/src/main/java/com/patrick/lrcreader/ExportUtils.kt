@@ -55,6 +55,23 @@ fun saveJsonToDownloads(context: Context, fileName: String, json: String): Boole
     }
 }
 
+/**
+ * Même chose que ci-dessus mais pour *n’importe quel* Uri choisi via ACTION_CREATE_DOCUMENT.
+ * C’est ce qu’on vient d’utiliser dans l’écran de sauvegarde.
+ */
+fun saveJsonToUri(context: Context, uri: Uri, json: String): Boolean {
+    return try {
+        context.contentResolver.openOutputStream(uri)?.use { out ->
+            out.write(json.toByteArray())
+            out.flush()
+        }
+        true
+    } catch (e: Exception) {
+        e.printStackTrace()
+        false
+    }
+}
+
 fun shareJson(context: Context, fileName: String, json: String) {
     try {
         val cacheFile = File(context.cacheDir, fileName)
@@ -78,7 +95,7 @@ fun shareJson(context: Context, fileName: String, json: String) {
 }
 
 /* -------------------------------------------------------------------------- */
-/*  HELPERS IMPORT                                                           */
+/*  HELPERS IMPORT                                                            */
 /* -------------------------------------------------------------------------- */
 
 fun getDisplayName(context: Context, uri: Uri): String? {
