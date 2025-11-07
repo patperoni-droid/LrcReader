@@ -16,6 +16,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.documentfile.provider.DocumentFile
@@ -23,8 +24,8 @@ import com.patrick.lrcreader.getDisplayName
 import com.patrick.lrcreader.nowString
 import com.patrick.lrcreader.saveJsonToUri
 import com.patrick.lrcreader.shareJson
-import com.patrick.lrcreader.core.BackupManager
 import com.patrick.lrcreader.core.BackupFolderPrefs
+import com.patrick.lrcreader.core.BackupManager
 import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.core.FillerSoundPrefs
 
@@ -198,7 +199,8 @@ private fun BackupScreen(
                 top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 12.dp,
                 start = 14.dp,
                 end = 14.dp,
-                bottom = 8.dp
+                // on laisse de la place pour la barre de navigation en bas
+                bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 60.dp
             )
             .verticalScroll(rememberScrollState())
     ) {
@@ -242,9 +244,12 @@ private fun BackupScreen(
                 }
                 if (backupFolderUri != null) {
                     Text(
-                        "Dossier actuel : ${backupFolderUri.toString().take(55)}…",
+                        text = "Dossier actuel : ${backupFolderUri}",
                         color = sub,
-                        fontSize = 10.sp
+                        fontSize = 10.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.fillMaxWidth()
                     )
                 }
 
@@ -346,7 +351,6 @@ private fun saveJsonToFolder(
 ): Boolean {
     return try {
         val docTree = DocumentFile.fromTreeUri(context, treeUri) ?: return false
-        // on regarde s'il existe déjà
         val existing = docTree.findFile(fileName)
         val targetFile = existing ?: docTree.createFile("application/json", fileName)
         if (targetFile == null) return false
@@ -363,7 +367,7 @@ private fun saveJsonToFolder(
 }
 
 // ─────────────────────────────────────────────
-// Sous-écran : Fond sonore (repris tel quel)
+// Sous-écran : Fond sonore
 // ─────────────────────────────────────────────
 @Composable
 private fun FillerSoundScreen(
@@ -400,7 +404,7 @@ private fun FillerSoundScreen(
                 top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 12.dp,
                 start = 14.dp,
                 end = 14.dp,
-                bottom = 8.dp
+                bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 40.dp
             )
             .verticalScroll(rememberScrollState())
     ) {

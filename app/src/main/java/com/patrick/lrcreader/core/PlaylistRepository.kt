@@ -11,10 +11,10 @@ object PlaylistRepository {
     // nom de playlist -> chansons déjà jouées
     private val playedSongs: MutableMap<String, MutableSet<String>> = mutableMapOf()
 
-    // 👇 nom de playlist -> (uri -> titre personnalisé)
+    // nom de playlist -> (uri -> titre personnalisé)
     private val customTitles: MutableMap<String, MutableMap<String, String>> = mutableMapOf()
 
-    // 👇 clé de rafraîchissement pour Compose
+    // clé de rafraîchissement pour Compose
     var version = mutableStateOf(0)
         private set
 
@@ -106,7 +106,6 @@ object PlaylistRepository {
     // ------------------ INTERNE ------------------
 
     private fun bump() {
-        // on force la recomposition
         version.value = version.value + 1
     }
 
@@ -144,14 +143,46 @@ object PlaylistRepository {
 
     /** Remet tous les titres de la playlist en "non joués" */
     fun resetPlayedFor(playlistName: String) {
-        // on ne touche qu’à cette playlist
         playedSongs.remove(playlistName)
-        bump() // pour forcer le refresh des écrans
+        bump()
     }
 
     /** (optionnel) remet tous les titres de toutes les playlists en "non joués" */
     fun resetAllPlayed() {
         playedSongs.clear()
         bump()
+    }
+
+    // ------------------ NOUVEAU : renommer une playlist ------------------
+
+    /**
+     * Renomme une playlist.
+     * On déplace aussi les infos "played" et les titres custom.
+     * Retourne true si ok, false si le nouveau nom existe déjà ou si l’ancien n’existe pas.
+     */
+    fun renamePlaylist(oldName: String, newName: String): Boolean {
+        val clean = newName.trim()
+        if (clean.isEmpty()) return false
+        if (!playlists.containsKey(oldName)) return false
+        if (playlists.containsKey(clean)) return false  // on ne veut pas écraser une autre
+
+        // 1. déplacer la liste de chansons
+        val songs = playlists.remove(oldName) ?: mutableListOf()
+        playlists[clean] = songs
+
+        // 2. déplacer l’état "joué"
+        val played = playedSongs.remove(oldName)
+        if (played != null) {
+            playedSongs[clean] = played
+        }
+
+        // 3. déplacer les titres custom
+        val custom = customTitles.remove(oldName)
+        if (custom != null) {
+            customTitles[clean] = custom
+        }
+
+        bump()
+        return true
     }
 }
