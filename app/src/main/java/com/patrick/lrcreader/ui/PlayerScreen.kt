@@ -269,7 +269,7 @@ fun PlayerScreen(
             onPlayPause = {
                 if (mediaPlayer.isPlaying) {
                     // pause en fade + fond sonore qui repart (protégé)
-                    pauseWithFade(scope, mediaPlayer, 2200L) {
+                    pauseWithFade(scope, mediaPlayer, 400L) {
                         onIsPlayingChange(false)
                         runCatching {
                             FillerSoundManager.startIfConfigured(context)
