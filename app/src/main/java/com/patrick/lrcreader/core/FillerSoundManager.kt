@@ -12,12 +12,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * Gère le fond sonore
- * - si un dossier est enregistré → on lit tous les mp3/wav dedans, un par un, et on reboucle
- * - sinon on lit le fichier unique en boucle
- * - volume réglable
- * - toggle possible
- * - protégé si le fichier/dossier n’est plus accessible
+ * Fond sonore :
+ * - peut lire un dossier mp3/wav en boucle (un par un)
+ * - ou un fichier unique en boucle
+ * - toggle
+ * - volume
  */
 object FillerSoundManager {
 
@@ -25,23 +24,18 @@ object FillerSoundManager {
     private var fadeJob: Job? = null
     private var currentVolume: Float = DEFAULT_VOLUME
 
-    // pour le mode dossier
+    // mode dossier
     private var folderPlaylist: List<Uri> = emptyList()
     private var folderIndex: Int = 0
 
-    /**
-     * Démarre le fond sonore selon ce qu’il y a en prefs.
-     */
     fun startIfConfigured(context: Context) {
-        // on récupère volume en premier
         currentVolume = FillerSoundPrefs.getFillerVolume(context)
 
-        // 1) d’abord on regarde si un dossier est enregistré
+        // 1) dossier ?
         val folderUri = FillerSoundPrefs.getFillerFolder(context)
         if (folderUri != null) {
             val list = buildPlaylistFromFolder(context, folderUri)
             if (list.isEmpty()) {
-                // dossier vide → on efface le dossier
                 FillerSoundPrefs.clear(context)
                 Toast.makeText(context, "Dossier vide ou inaccessible", Toast.LENGTH_SHORT).show()
                 return
@@ -58,20 +52,22 @@ object FillerSoundManager {
             return
         }
 
-        // 2) sinon on tombe sur le fichier unique
+        // 2) fichier seul
         val fileUri = FillerSoundPrefs.getFillerUri(context) ?: return
         try {
             startFromSingleFile(context, fileUri)
         } catch (e: Exception) {
             e.printStackTrace()
             FillerSoundPrefs.clear(context)
-            Toast.makeText(context, "Impossible de lire le fond sonore. Rechoisis le fichier.", Toast.LENGTH_SHORT).show()
+            Toast.makeText(
+                context,
+                "Impossible de lire le fond sonore. Rechoisis le fichier.",
+                Toast.LENGTH_SHORT
+            ).show()
         }
     }
 
-    /**
-     * Pour l’UI : si ça joue → stop, sinon → démarre selon prefs.
-     */
+    /** bouton haut droite → on/off */
     fun toggle(context: Context) {
         if (isPlaying()) {
             fadeOutAndStop(200)
@@ -80,25 +76,53 @@ object FillerSoundManager {
         }
     }
 
+    /** bouton "suivant" */
+    fun next(context: Context) {
+        if (folderPlaylist.isNotEmpty()) {
+            playNextInFolder(context)
+        } else {
+            // mode fichier seul → on relance le même
+            startIfConfigured(context)
+        }
+    }
+
+    /** si tu veux aussi revenir en arrière */
+    fun previous(context: Context) {
+        if (folderPlaylist.isEmpty()) {
+            startIfConfigured(context)
+            return
+        }
+        if (folderPlaylist.size == 1) {
+            startIfConfigured(context)
+            return
+        }
+        // on recule d’un cran en bouclant
+        folderIndex = (folderIndex - 1 + folderPlaylist.size) % folderPlaylist.size
+        try {
+            startFromFolderIndex(context, folderIndex)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
     fun isPlaying(): Boolean = player != null
 
-    // ---------- lecture fichier unique ----------
+    // ------------ fichier unique ------------
     private fun startFromSingleFile(context: Context, uri: Uri) {
         stopNow()
 
         val mp = MediaPlayer()
         mp.setDataSource(context, uri)
-        mp.isLooping = true          // fichier seul → on boucle
+        mp.isLooping = true
         mp.prepare()
         mp.setVolume(currentVolume, currentVolume)
         mp.start()
 
         player = mp
-        // on est dans le mode fichier, on vide la playlist
         folderPlaylist = emptyList()
     }
 
-    // ---------- lecture dossier ----------
+    // ------------ dossier ------------
     private fun buildPlaylistFromFolder(context: Context, folderUri: Uri): List<Uri> {
         val doc = DocumentFile.fromTreeUri(context, folderUri) ?: return emptyList()
         return doc.listFiles()
@@ -119,9 +143,8 @@ object FillerSoundManager {
 
         val mp = MediaPlayer()
         mp.setDataSource(context, uri)
-        mp.isLooping = false  // on veut la fin pour passer au suivant
+        mp.isLooping = false
         mp.setOnCompletionListener {
-            // quand ce titre est fini → on lance le suivant
             playNextInFolder(context)
         }
         mp.prepare()
@@ -136,12 +159,12 @@ object FillerSoundManager {
             stopNow()
             return
         }
-        folderIndex = (folderIndex + 1) % folderPlaylist.size   // 👉 reboucle
+        folderIndex = (folderIndex + 1) % folderPlaylist.size
         try {
             startFromFolderIndex(context, folderIndex)
         } catch (e: Exception) {
             e.printStackTrace()
-            // si un fichier du dossier disparaît, on essaie le suivant
+            // si ce fichier-là est mort, on le saute
             folderPlaylist = folderPlaylist.filterIndexed { i, _ -> i != folderIndex }
             if (folderPlaylist.isNotEmpty()) {
                 folderIndex %= folderPlaylist.size
@@ -152,14 +175,14 @@ object FillerSoundManager {
         }
     }
 
-    // ---------- volume ----------
+    // ------------ volume ------------
     fun setVolume(volume: Float) {
         val v = volume.coerceIn(0f, 1f)
         currentVolume = v
         player?.setVolume(v, v)
     }
 
-    // ---------- stop ----------
+    // ------------ stop ------------
     fun fadeOutAndStop(durationMs: Long = 200) {
         val p = player ?: return
 

@@ -44,7 +44,7 @@ object BackupManager {
         }
         root.put("played", playedJson)
 
-        // 3) dossiers (si tu veux plus tard)
+        // 3) dossiers (optionnel / pour plus tard)
         root.put("libraryFolders", JSONArray(libraryFolders))
 
         // 4) dernier morceau
@@ -139,7 +139,11 @@ object BackupManager {
         val fillerJson = root.optJSONObject("fillerSound")
         if (fillerJson != null) {
             val uriStr = fillerJson.optString("uri", "")
-            val volume = fillerJson.optDouble("volume", 0.25).toFloat()
+            val volume = fillerJson
+                .optDouble("volume", 0.25)
+                .toFloat()
+                .coerceIn(0f, 1f)
+
             if (uriStr.isNotBlank()) {
                 try {
                     val uri = Uri.parse(uriStr)
