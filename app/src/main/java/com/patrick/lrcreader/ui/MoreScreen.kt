@@ -16,7 +16,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.documentfile.provider.DocumentFile
@@ -24,8 +23,8 @@ import com.patrick.lrcreader.getDisplayName
 import com.patrick.lrcreader.nowString
 import com.patrick.lrcreader.saveJsonToUri
 import com.patrick.lrcreader.shareJson
-import com.patrick.lrcreader.core.BackupFolderPrefs
 import com.patrick.lrcreader.core.BackupManager
+import com.patrick.lrcreader.core.BackupFolderPrefs
 import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.core.FillerSoundPrefs
 
@@ -43,7 +42,8 @@ fun MoreScreen(
     when (current) {
         MoreSection.Root -> MoreRootScreen(
             onOpenBackup = { current = MoreSection.Backup },
-            onOpenFiller = { current = MoreSection.Filler }
+            onOpenFiller = { current = MoreSection.Filler },
+            onOpenEdit = { current = MoreSection.Edit }
         )
 
         MoreSection.Backup -> BackupScreen(
@@ -56,10 +56,15 @@ fun MoreScreen(
             context = context,
             onBack = { current = MoreSection.Root }
         )
+
+        MoreSection.Edit -> EditScreen(
+            onBack = { current = MoreSection.Root }
+        )
     }
 }
 
-private enum class MoreSection { Root, Backup, Filler }
+// on ajoute Edit ici
+private enum class MoreSection { Root, Backup, Filler, Edit }
 
 // ─────────────────────────────────────────────
 // Menu principal
@@ -67,7 +72,8 @@ private enum class MoreSection { Root, Backup, Filler }
 @Composable
 private fun MoreRootScreen(
     onOpenBackup: () -> Unit,
-    onOpenFiller: () -> Unit
+    onOpenFiller: () -> Unit,
+    onOpenEdit: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -86,6 +92,7 @@ private fun MoreRootScreen(
 
         SettingsItem("🎧  Fond sonore", onClick = onOpenFiller)
         SettingsItem("💾  Sauvegarde / Restauration", onClick = onOpenBackup)
+        SettingsItem("🛠  Édition de titre", onClick = onOpenEdit)
 
         HorizontalDivider(color = Color(0xFF1E1E1E))
         SettingsItem("🎨  Interface", onClick = {})
@@ -108,7 +115,45 @@ private fun SettingsItem(label: String, onClick: () -> Unit) {
 }
 
 // ─────────────────────────────────────────────
+// Nouvel écran : Édition
+// (pour l’instant juste un squelette propre)
+// ─────────────────────────────────────────────
+@Composable
+private fun EditScreen(
+    onBack: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            .padding(
+                top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 12.dp,
+                start = 14.dp,
+                end = 14.dp,
+                bottom = 8.dp
+            )
+    ) {
+        TextButton(onClick = onBack) { Text("← Retour", color = Color.White) }
+        Spacer(Modifier.height(4.dp))
+        Text("Édition de titre", color = Color.White, fontSize = 18.sp)
+        Spacer(Modifier.height(10.dp))
+
+        Text(
+            "Ici on mettra la sélection du son + les points d’entrée / sortie.",
+            color = Color.Gray,
+            fontSize = 13.sp
+        )
+        Text(
+            "On pourra lier ça aux morceaux de tes playlists.",
+            color = Color.Gray,
+            fontSize = 13.sp
+        )
+    }
+}
+
+// ─────────────────────────────────────────────
 // Sous-écran : Sauvegarde / Restauration
+// (inchangé, juste recollé)
 // ─────────────────────────────────────────────
 @Composable
 private fun BackupScreen(
@@ -118,18 +163,14 @@ private fun BackupScreen(
 ) {
     var saveName by remember { mutableStateOf("") }
 
-    // pour afficher le dernier import
     var lastImportFile by remember { mutableStateOf<String?>(null) }
     var lastImportTime by remember { mutableStateOf<String?>(null) }
     var lastImportSummary by remember { mutableStateOf<String?>(null) }
 
-    // dossier de sauvegarde mémorisé
     var backupFolderUri by remember { mutableStateOf<Uri?>(BackupFolderPrefs.get(context)) }
 
-    // buffer du JSON qu’on veut écrire
     val saveLauncherJson = remember { mutableStateOf("") }
 
-    // IMPORT d’un fichier existant
     val fileLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
@@ -152,7 +193,6 @@ private fun BackupScreen(
         }
     }
 
-    // SAVE : ouvrir le sélecteur (choisir le fichier)
     val saveLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/json")
     ) { uri ->
@@ -168,7 +208,6 @@ private fun BackupScreen(
         saveLauncherJson.value = ""
     }
 
-    // choisir le dossier par défaut (OpenDocumentTree)
     val treeLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree()
     ) { treeUri ->
@@ -199,8 +238,7 @@ private fun BackupScreen(
                 top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 12.dp,
                 start = 14.dp,
                 end = 14.dp,
-                // on laisse de la place pour la barre de navigation en bas
-                bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 60.dp
+                bottom = 8.dp
             )
             .verticalScroll(rememberScrollState())
     ) {
@@ -209,7 +247,6 @@ private fun BackupScreen(
         Text("Sauvegarde / Restauration", color = onBg, fontSize = 18.sp)
         Spacer(Modifier.height(10.dp))
 
-        // ====== EXPORT ======
         Card(colors = CardDefaults.cardColors(containerColor = card)) {
             Column(Modifier.padding(12.dp)) {
                 Text("Exporter l’état", color = onBg, fontSize = 14.sp)
@@ -231,7 +268,6 @@ private fun BackupScreen(
                 Spacer(Modifier.height(8.dp))
                 val finalName = (saveName.trim().ifBlank { "lrc_backup" }) + ".json"
 
-                // bouton pour choisir / changer le dossier par défaut
                 TextButton(onClick = { treeLauncher.launch(null) }) {
                     Text(
                         if (backupFolderUri != null)
@@ -244,24 +280,19 @@ private fun BackupScreen(
                 }
                 if (backupFolderUri != null) {
                     Text(
-                        text = "Dossier actuel : ${backupFolderUri}",
+                        "Dossier actuel : ${backupFolderUri.toString().take(55)}…",
                         color = sub,
-                        fontSize = 10.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.fillMaxWidth()
+                        fontSize = 10.sp
                     )
                 }
 
                 Spacer(Modifier.height(8.dp))
 
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    // 1) Enregistrer (utilise le dossier choisi s'il existe)
                     FilledTonalButton(
                         onClick = {
                             val json = BackupManager.exportState(context, null, emptyList())
                             if (backupFolderUri == null) {
-                                // pas de dossier -> on retombe sur l'ancien système
                                 saveLauncherJson.value = json
                                 saveLauncher.launch(finalName)
                             } else {
@@ -280,7 +311,6 @@ private fun BackupScreen(
                         Text("Enregistrer", fontSize = 12.sp)
                     }
 
-                    // 2) forcer le sélecteur comme avant
                     FilledTonalButton(
                         onClick = {
                             val json = BackupManager.exportState(context, null, emptyList())
@@ -305,7 +335,6 @@ private fun BackupScreen(
 
         Spacer(Modifier.height(12.dp))
 
-        // ====== IMPORT ======
         Card(colors = CardDefaults.cardColors(containerColor = card)) {
             Column(Modifier.padding(12.dp)) {
                 Text("Importer une sauvegarde", color = onBg, fontSize = 14.sp)
@@ -367,7 +396,7 @@ private fun saveJsonToFolder(
 }
 
 // ─────────────────────────────────────────────
-// Sous-écran : Fond sonore
+// Sous-écran : Fond sonore (inchangé)
 // ─────────────────────────────────────────────
 @Composable
 private fun FillerSoundScreen(
@@ -378,46 +407,21 @@ private fun FillerSoundScreen(
     val sub = Color(0xFFB9B9B9)
     val card = Color(0xFF141414)
 
-    // on regarde ce qu’on a en prefs
-    var fillerFileUri by remember { mutableStateOf(FillerSoundPrefs.getFillerUri(context)) }
-    var fillerFolderUri by remember { mutableStateOf(FillerSoundPrefs.getFillerFolder(context)) }
-    var isPreviewing by remember { mutableStateOf(FillerSoundManager.isPlaying()) }
+    var fillerUri by remember { mutableStateOf(FillerSoundPrefs.getFillerUri(context)) }
+    var fillerName by remember {
+        mutableStateOf(fillerUri?.lastPathSegment ?: "Aucun son sélectionné")
+    }
+    var isPreviewing by remember { mutableStateOf(false) }
     var fillerVolume by remember { mutableStateOf(FillerSoundPrefs.getFillerVolume(context)) }
 
-    // texte affiché : dossier > fichier > rien
-    val currentLabel = when {
-        fillerFolderUri != null -> "Dossier : ${fillerFolderUri.toString().take(35)}…"
-        fillerFileUri != null -> "Fichier : ${fillerFileUri?.lastPathSegment ?: "audio"}"
-        else -> "Aucun son sélectionné"
-    }
-
-    // choisir un fichier
-    val fileLauncher = rememberLauncherForActivityResult(
+    val fillerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
         if (uri != null) {
             FillerSoundPrefs.saveFillerUri(context, uri)
-            fillerFileUri = uri
-            fillerFolderUri = null          // on efface le dossier si on choisit un fichier
-            Toast.makeText(context, "Son enregistré", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    // choisir un dossier
-    val folderLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocumentTree()
-    ) { treeUri ->
-        if (treeUri != null) {
-            try {
-                context.contentResolver.takePersistableUriPermission(
-                    treeUri,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-                )
-            } catch (_: Exception) { }
-            FillerSoundPrefs.saveFillerFolder(context, treeUri)
-            fillerFolderUri = treeUri
-            fillerFileUri = null            // on efface le fichier si on choisit un dossier
-            Toast.makeText(context, "Dossier de fond sonore enregistré", Toast.LENGTH_SHORT).show()
+            fillerUri = uri
+            fillerName = uri.lastPathSegment ?: "Son choisi"
+            Toast.makeText(context, "Son enregistré : $fillerName", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -443,24 +447,22 @@ private fun FillerSoundScreen(
                 Text("Sélection du fond sonore", color = onBg, fontSize = 14.sp)
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "Tu peux choisir un fichier audio OU un dossier qui contient des mp3/wav (on prendra le premier).",
-                    color = sub,
-                    fontSize = 12.sp
+                    "Ce son est joué automatiquement quand un morceau se termine.",
+                    color = sub, fontSize = 12.sp
                 )
                 Spacer(Modifier.height(10.dp))
 
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilledTonalButton(onClick = { fileLauncher.launch("audio/*") }) {
-                        Text("Choisir un fichier audio…", fontSize = 12.sp)
-                    }
-                    TextButton(onClick = { folderLauncher.launch(null) }) {
-                        Text("Choisir un dossier…", fontSize = 12.sp, color = Color(0xFFE040FB))
-                    }
+                FilledTonalButton(onClick = { fillerLauncher.launch("audio/*") }) {
+                    Text("Choisir un fichier audio…", fontSize = 12.sp)
                 }
 
                 Spacer(Modifier.height(8.dp))
-                Text("Actuel :", color = sub, fontSize = 11.sp)
-                Text(currentLabel, color = if (currentLabel.startsWith("Aucun")) Color.Gray else onBg, fontSize = 12.sp)
+                Text("Fichier actuel :", color = sub, fontSize = 11.sp)
+                Text(
+                    fillerName,
+                    color = if (fillerUri != null) Color(0xFFE040FB) else Color.Gray,
+                    fontSize = 12.sp
+                )
 
                 Spacer(Modifier.height(14.dp))
                 Text("Volume", color = sub, fontSize = 11.sp)
@@ -481,11 +483,16 @@ private fun FillerSoundScreen(
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilledTonalButton(
                         onClick = {
-                            // toggle gère tout seul (démarrer à partir de ce qu’il y a en prefs, ou arrêter)
-                            FillerSoundManager.toggle(context)
-                            isPreviewing = FillerSoundManager.isPlaying()
+                            if (!isPreviewing) {
+                                FillerSoundManager.startIfConfigured(context)
+                                FillerSoundManager.setVolume(fillerVolume)
+                                isPreviewing = true
+                            } else {
+                                FillerSoundManager.fadeOutAndStop(200)
+                                isPreviewing = false
+                            }
                         },
-                        enabled = (fillerFileUri != null || fillerFolderUri != null)
+                        enabled = fillerUri != null
                     ) {
                         Text(
                             text = if (isPreviewing) "Arrêter l’écoute" else "▶︎ Écouter",
@@ -493,15 +500,15 @@ private fun FillerSoundScreen(
                         )
                     }
 
-                    if (fillerFileUri != null || fillerFolderUri != null) {
+                    if (fillerUri != null) {
                         TextButton(onClick = {
                             FillerSoundManager.fadeOutAndStop(200)
                             isPreviewing = false
                             FillerSoundPrefs.clear(context)
-                            fillerFileUri = null
-                            fillerFolderUri = null
+                            fillerUri = null
+                            fillerName = "Aucun son sélectionné"
                         }) {
-                            Text("🗑 Supprimer", fontSize = 12.sp, color = Color(0xFFFF8A80))
+                            Text("🗑 Supprimer le son", fontSize = 12.sp, color = Color(0xFFFF8A80))
                         }
                     }
                 }

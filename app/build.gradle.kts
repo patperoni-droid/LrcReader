@@ -12,25 +12,32 @@ android {
         applicationId = "com.patrick.lrcreader"
         minSdk = 23
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+
+        // 💡 Numéros de version officiels
+        versionCode = 1            // utilisé par le Play Store (doit toujours augmenter)
+        versionName = "1.0.0"      // affiché à l'utilisateur : "LRC Reader v1.0.0"
     }
 
     buildTypes {
         // --- version de développement ---
         getByName("debug") {
             applicationIdSuffix = ".dev"      // → "com.patrick.lrcreader.dev"
-            versionNameSuffix = "-dev"        // → "1.0-dev"
-            resValue("string", "app_name", "LRC (dev)")  // 👈 nom affiché sur le téléphone
+            versionNameSuffix = "-dev"        // → "1.0.0-dev"
+            resValue("string", "app_name", "LRC Reader (dev)")  // nom affiché sur le téléphone
         }
 
-        // --- version stable (pour la scène) ---
+        // --- version stable (pour la scène / production) ---
         getByName("release") {
             isMinifyEnabled = false
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
             // garde le nom normal défini dans res/values/strings.xml
         }
     }
 
+    // Active Compose
     buildFeatures {
         compose = true
     }
