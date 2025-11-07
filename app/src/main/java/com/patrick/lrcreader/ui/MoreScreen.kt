@@ -2,6 +2,7 @@ package com.patrick.lrcreader.ui
 
 import android.content.Context
 import android.content.Intent
+import android.media.MediaPlayer
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -23,8 +24,9 @@ import com.patrick.lrcreader.getDisplayName
 import com.patrick.lrcreader.nowString
 import com.patrick.lrcreader.saveJsonToUri
 import com.patrick.lrcreader.shareJson
-import com.patrick.lrcreader.core.BackupManager
 import com.patrick.lrcreader.core.BackupFolderPrefs
+import com.patrick.lrcreader.core.BackupManager
+import com.patrick.lrcreader.core.EditSoundPrefs
 import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.core.FillerSoundPrefs
 
@@ -57,13 +59,13 @@ fun MoreScreen(
             onBack = { current = MoreSection.Root }
         )
 
-        MoreSection.Edit -> EditScreen(
+        MoreSection.Edit -> EditSoundScreen(
+            context = context,
             onBack = { current = MoreSection.Root }
         )
     }
 }
 
-// on ajoute Edit ici
 private enum class MoreSection { Root, Backup, Filler, Edit }
 
 // ─────────────────────────────────────────────
@@ -115,45 +117,7 @@ private fun SettingsItem(label: String, onClick: () -> Unit) {
 }
 
 // ─────────────────────────────────────────────
-// Nouvel écran : Édition
-// (pour l’instant juste un squelette propre)
-// ─────────────────────────────────────────────
-@Composable
-private fun EditScreen(
-    onBack: () -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black)
-            .padding(
-                top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 12.dp,
-                start = 14.dp,
-                end = 14.dp,
-                bottom = 8.dp
-            )
-    ) {
-        TextButton(onClick = onBack) { Text("← Retour", color = Color.White) }
-        Spacer(Modifier.height(4.dp))
-        Text("Édition de titre", color = Color.White, fontSize = 18.sp)
-        Spacer(Modifier.height(10.dp))
-
-        Text(
-            "Ici on mettra la sélection du son + les points d’entrée / sortie.",
-            color = Color.Gray,
-            fontSize = 13.sp
-        )
-        Text(
-            "On pourra lier ça aux morceaux de tes playlists.",
-            color = Color.Gray,
-            fontSize = 13.sp
-        )
-    }
-}
-
-// ─────────────────────────────────────────────
 // Sous-écran : Sauvegarde / Restauration
-// (inchangé, juste recollé)
 // ─────────────────────────────────────────────
 @Composable
 private fun BackupScreen(
@@ -247,6 +211,7 @@ private fun BackupScreen(
         Text("Sauvegarde / Restauration", color = onBg, fontSize = 18.sp)
         Spacer(Modifier.height(10.dp))
 
+        // EXPORT
         Card(colors = CardDefaults.cardColors(containerColor = card)) {
             Column(Modifier.padding(12.dp)) {
                 Text("Exporter l’état", color = onBg, fontSize = 14.sp)
@@ -296,7 +261,12 @@ private fun BackupScreen(
                                 saveLauncherJson.value = json
                                 saveLauncher.launch(finalName)
                             } else {
-                                val ok = saveJsonToFolder(context, backupFolderUri!!, finalName, json)
+                                val ok = saveJsonToFolder(
+                                    context,
+                                    backupFolderUri!!,
+                                    finalName,
+                                    json
+                                )
                                 Toast.makeText(
                                     context,
                                     if (ok) "Sauvegarde enregistrée" else "Impossible d’enregistrer",
@@ -335,6 +305,7 @@ private fun BackupScreen(
 
         Spacer(Modifier.height(12.dp))
 
+        // IMPORT
         Card(colors = CardDefaults.cardColors(containerColor = card)) {
             Column(Modifier.padding(12.dp)) {
                 Text("Importer une sauvegarde", color = onBg, fontSize = 14.sp)
@@ -369,9 +340,6 @@ private fun BackupScreen(
     }
 }
 
-/**
- * Écrit un JSON dans le dossier SAF choisi (créé ou écrasé).
- */
 private fun saveJsonToFolder(
     context: Context,
     treeUri: Uri,
@@ -396,7 +364,7 @@ private fun saveJsonToFolder(
 }
 
 // ─────────────────────────────────────────────
-// Sous-écran : Fond sonore (inchangé)
+// Sous-écran : Fond sonore
 // ─────────────────────────────────────────────
 @Composable
 private fun FillerSoundScreen(
@@ -415,13 +383,20 @@ private fun FillerSoundScreen(
     var fillerVolume by remember { mutableStateOf(FillerSoundPrefs.getFillerVolume(context)) }
 
     val fillerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
+        contract = ActivityResultContracts.OpenDocumentTree()
     ) { uri ->
         if (uri != null) {
+            // on prend la permission + on enregistre le dossier
+            try {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                )
+            } catch (_: Exception) { }
             FillerSoundPrefs.saveFillerUri(context, uri)
             fillerUri = uri
-            fillerName = uri.lastPathSegment ?: "Son choisi"
-            Toast.makeText(context, "Son enregistré : $fillerName", Toast.LENGTH_SHORT).show()
+            fillerName = uri.lastPathSegment ?: "Dossier choisi"
+            Toast.makeText(context, "Dossier enregistré", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -447,17 +422,17 @@ private fun FillerSoundScreen(
                 Text("Sélection du fond sonore", color = onBg, fontSize = 14.sp)
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "Ce son est joué automatiquement quand un morceau se termine.",
+                    "Ce son (ou dossier) est joué automatiquement quand un morceau se termine.",
                     color = sub, fontSize = 12.sp
                 )
                 Spacer(Modifier.height(10.dp))
 
-                FilledTonalButton(onClick = { fillerLauncher.launch("audio/*") }) {
-                    Text("Choisir un fichier audio…", fontSize = 12.sp)
+                FilledTonalButton(onClick = { fillerLauncher.launch(null) }) {
+                    Text("Choisir un dossier audio…", fontSize = 12.sp)
                 }
 
                 Spacer(Modifier.height(8.dp))
-                Text("Fichier actuel :", color = sub, fontSize = 11.sp)
+                Text("Actuel :", color = sub, fontSize = 11.sp)
                 Text(
                     fillerName,
                     color = if (fillerUri != null) Color(0xFFE040FB) else Color.Gray,
@@ -508,11 +483,261 @@ private fun FillerSoundScreen(
                             fillerUri = null
                             fillerName = "Aucun son sélectionné"
                         }) {
-                            Text("🗑 Supprimer le son", fontSize = 12.sp, color = Color(0xFFFF8A80))
+                            Text("🗑 Supprimer", fontSize = 12.sp, color = Color(0xFFFF8A80))
                         }
                     }
                 }
             }
         }
     }
+}
+
+// ─────────────────────────────────────────────
+// Sous-écran : Édition de titre
+// ─────────────────────────────────────────────
+@Composable
+private fun EditSoundScreen(
+    context: Context,
+    onBack: () -> Unit
+) {
+    var pickedUri by remember { mutableStateOf<Uri?>(null) }
+    var pickedName by remember { mutableStateOf("Aucun fichier") }
+    var durationMs by remember { mutableStateOf(0) }
+
+    // points d’édition
+    var startMs by remember { mutableStateOf(0) }
+    var endMs by remember { mutableStateOf(0) }
+
+    // lecteur local
+    var mediaPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
+    var isPlaying by remember { mutableStateOf(false) }
+
+    // chooser audio
+    val audioPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) {
+            mediaPlayer?.release()
+            mediaPlayer = null
+
+            pickedUri = uri
+            pickedName = uri.lastPathSegment ?: "son"
+
+            try {
+                val mp = MediaPlayer()
+                mp.setDataSource(context, uri)
+                mp.prepare()
+                val d = mp.duration
+                durationMs = d
+                // si on a déjà un réglage pour ce fichier, on le recharge
+                val saved = com.patrick.lrcreader.core.EditSoundPrefs.get(context, uri)
+                if (saved != null) {
+                    startMs = saved.startMs.coerceIn(0, d)
+                    endMs = saved.endMs.coerceIn(startMs, d)
+                } else {
+                    startMs = 0
+                    endMs = d
+                }
+                mediaPlayer = mp
+            } catch (e: Exception) {
+                e.printStackTrace()
+                Toast.makeText(context, "Impossible de lire ce son", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    // nettoyer
+    DisposableEffect(Unit) {
+        onDispose {
+            mediaPlayer?.release()
+        }
+    }
+
+    val onBg = Color(0xFFEEEEEE)
+    val sub = Color(0xFFB9B9B9)
+    val card = Color(0xFF141414)
+
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            .padding(
+                top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 12.dp,
+                start = 14.dp,
+                end = 14.dp,
+                bottom = 8.dp
+            )
+            .verticalScroll(rememberScrollState())
+    ) {
+        TextButton(onClick = onBack) { Text("← Retour", color = onBg) }
+        Spacer(Modifier.height(4.dp))
+        Text("Édition de titre", color = onBg, fontSize = 18.sp)
+        Spacer(Modifier.height(10.dp))
+
+        // 1. choix du fichier
+        Card(colors = CardDefaults.cardColors(containerColor = card)) {
+            Column(Modifier.padding(12.dp)) {
+                Text("1. Choisir un fichier audio", color = onBg, fontSize = 14.sp)
+                Spacer(Modifier.height(6.dp))
+                FilledTonalButton(onClick = { audioPicker.launch("audio/*") }) {
+                    Text("Choisir un fichier…", fontSize = 12.sp)
+                }
+                Spacer(Modifier.height(6.dp))
+                Text("Fichier : $pickedName", color = sub, fontSize = 12.sp)
+                if (durationMs > 0) {
+                    Text("Durée : ${formatMs(durationMs)}", color = sub, fontSize = 12.sp)
+                }
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        // 2. réglage des points
+        Card(colors = CardDefaults.cardColors(containerColor = card)) {
+            Column(Modifier.padding(12.dp)) {
+                Text("2. Points d’entrée / sortie", color = onBg, fontSize = 14.sp)
+                Spacer(Modifier.height(8.dp))
+
+                if (durationMs <= 0) {
+                    Text(
+                        "Choisis d’abord un fichier pour afficher les contrôles.",
+                        color = sub,
+                        fontSize = 12.sp
+                    )
+                } else {
+                    // --- Point d'entrée ---
+                    Text("Point d’entrée : ${formatMs(startMs)}", color = onBg, fontSize = 12.sp)
+                    Slider(
+                        value = startMs.toFloat(),
+                        onValueChange = { v ->
+                            val newStart = v.toInt().coerceIn(0, endMs)
+                            startMs = newStart
+                        },
+                        valueRange = 0f..durationMs.toFloat()
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick = {
+                            startMs = (startMs - 1000).coerceIn(0, endMs)
+                        }) { Text("−1 s", color = onBg, fontSize = 11.sp) }
+                        TextButton(onClick = {
+                            startMs = (startMs + 1000).coerceIn(0, endMs)
+                        }) { Text("+1 s", color = onBg, fontSize = 11.sp) }
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+
+                    // --- Point de sortie ---
+                    Text("Point de sortie : ${formatMs(endMs)}", color = onBg, fontSize = 12.sp)
+                    Slider(
+                        value = endMs.toFloat(),
+                        onValueChange = { v ->
+                            val newEnd = v.toInt().coerceIn(startMs, durationMs)
+                            endMs = newEnd
+                        },
+                        valueRange = 0f..durationMs.toFloat()
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick = {
+                            endMs = (endMs - 1000).coerceIn(startMs, durationMs)
+                        }) { Text("−1 s", color = onBg, fontSize = 11.sp) }
+                        TextButton(onClick = {
+                            endMs = (endMs + 1000).coerceIn(startMs, durationMs)
+                        }) { Text("+1 s", color = onBg, fontSize = 11.sp) }
+                    }
+
+                    Spacer(Modifier.height(12.dp))
+
+                    // --- Boutons de lecture ---
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilledTonalButton(
+                            onClick = {
+                                val mp = mediaPlayer ?: return@FilledTonalButton
+                                try {
+                                    mp.seekTo(startMs)
+                                    mp.start()
+                                    isPlaying = true
+                                } catch (e: Exception) {
+                                    e.printStackTrace()
+                                }
+                            },
+                            enabled = mediaPlayer != null
+                        ) {
+                            Text("▶️ Lire le segment", fontSize = 12.sp)
+                        }
+
+                        FilledTonalButton(
+                            onClick = {
+                                val mp = mediaPlayer ?: return@FilledTonalButton
+                                val startPreview =
+                                    (endMs - 10_000).coerceAtLeast(startMs).coerceAtLeast(0)
+                                try {
+                                    mp.seekTo(startPreview)
+                                    mp.start()
+                                    isPlaying = true
+                                } catch (e: Exception) {
+                                    e.printStackTrace()
+                                }
+                            },
+                            enabled = mediaPlayer != null
+                        ) {
+                            Text("▶️ Écouter fin (10s)", fontSize = 12.sp)
+                        }
+
+                        TextButton(
+                            onClick = {
+                                mediaPlayer?.pause()
+                                isPlaying = false
+                            },
+                            enabled = mediaPlayer != null && isPlaying
+                        ) {
+                            Text("⏹ Stop", color = onBg, fontSize = 12.sp)
+                        }
+                    }
+
+                    Spacer(Modifier.height(14.dp))
+
+                    // --- BOUTON ENREGISTRER ---
+                    FilledTonalButton(
+                        onClick = {
+                            val uri = pickedUri
+                            if (uri != null) {
+                                com.patrick.lrcreader.core.EditSoundPrefs.save(
+                                    context = context,
+                                    uri = uri,
+                                    startMs = startMs,
+                                    endMs = endMs
+                                )
+                                Toast.makeText(context, "Réglages enregistrés ✅", Toast.LENGTH_SHORT)
+                                    .show()
+                            } else {
+                                Toast.makeText(
+                                    context,
+                                    "Choisis d’abord un fichier",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        }
+                    ) {
+                        Text("💾 Enregistrer ces réglages", fontSize = 12.sp)
+                    }
+
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Ces valeurs seront dans les prefs et on pourra les ajouter à la sauvegarde globale.",
+                        color = sub,
+                        fontSize = 10.sp
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun formatMs(ms: Int): String {
+    if (ms <= 0) return "00:00"
+    val totalSeconds = ms / 1000
+    val s = totalSeconds % 60
+    val m = (totalSeconds / 60) % 60
+    val h = totalSeconds / 3600
+    return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%02d:%02d".format(m, s)
 }

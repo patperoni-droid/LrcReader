@@ -8,7 +8,7 @@ import org.json.JSONObject
 
 /**
  * Gère l’export / import de l’état de l’appli
- * (playlists + chansons jouées + dernier morceau + fond sonore)
+ * (playlists + chansons jouées + dernier morceau + fond sonore + réglages d’édition)
  */
 object BackupManager {
 
@@ -18,9 +18,6 @@ object BackupManager {
         val positionMs: Long
     )
 
-    /**
-     * Export complet vers JSON
-     */
     fun exportState(
         context: Context,
         lastPlayer: LastPlayed?,          // peut être null
@@ -44,7 +41,7 @@ object BackupManager {
         }
         root.put("played", playedJson)
 
-        // 3) dossiers (optionnel / pour plus tard)
+        // 3) dossiers (optionnel, tu l’avais déjà)
         root.put("libraryFolders", JSONArray(libraryFolders))
 
         // 4) dernier morceau
@@ -70,12 +67,25 @@ object BackupManager {
             }
         }
 
+        // 6) réglages d’édition (nouveau)
+        run {
+            val allEdits = EditPrefs.getAllEdits(context)
+            if (allEdits.isNotEmpty()) {
+                val editsJson = JSONObject()
+                allEdits.forEach { (uriString, data) ->
+                    val one = JSONObject().apply {
+                        put("startMs", data.startMs)
+                        put("endMs", data.endMs)
+                    }
+                    editsJson.put(uriString, one)
+                }
+                root.put("edits", editsJson)
+            }
+        }
+
         return root.toString(2)
     }
 
-    /**
-     * Import depuis JSON
-     */
     fun importState(
         context: Context,
         json: String,
@@ -139,30 +149,51 @@ object BackupManager {
         val fillerJson = root.optJSONObject("fillerSound")
         if (fillerJson != null) {
             val uriStr = fillerJson.optString("uri", "")
-            val volume = fillerJson
-                .optDouble("volume", 0.25)
-                .toFloat()
-                .coerceIn(0f, 1f)
-
+            val volume = fillerJson.optDouble("volume", 0.25).toFloat()
             if (uriStr.isNotBlank()) {
                 try {
                     val uri = Uri.parse(uriStr)
-                    // on remet dans les prefs
                     FillerSoundPrefs.saveFillerUri(context, uri)
                     FillerSoundPrefs.saveFillerVolume(context, volume)
 
-                    // on ESSAIE de reprendre la permission
+                    // on essaie de reprendre la permission
                     try {
                         context.contentResolver.takePersistableUriPermission(
                             uri,
                             Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
                         )
-                    } catch (_: Exception) {
-                        // si Android refuse, on n'explose pas
-                    }
-                } catch (_: Exception) {
-                    // URI pas valide → on ignore
-                }
+                    } catch (_: Exception) { }
+                } catch (_: Exception) { }
+            }
+        }
+
+        // 5) réglages d’édition
+        val editsJson = root.optJSONObject("edits")
+        if (editsJson != null) {
+            // on repart propre
+            EditPrefs.clearAll(context)
+
+            val keys = editsJson.keys()
+            while (keys.hasNext()) {
+                val uriString = keys.next()
+                val one = editsJson.getJSONObject(uriString)
+                val startMs = one.optLong("startMs", 0L)
+                val endMs = one.optLong("endMs", 0L)
+
+                EditPrefs.saveEdit(
+                    context,
+                    uriString,
+                    EditPrefs.EditData(startMs, endMs)
+                )
+
+                // bonus : on tente de reprendre la permission sur ce fichier-là aussi
+                try {
+                    val uri = Uri.parse(uriString)
+                    context.contentResolver.takePersistableUriPermission(
+                        uri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    )
+                } catch (_: Exception) { }
             }
         }
     }
