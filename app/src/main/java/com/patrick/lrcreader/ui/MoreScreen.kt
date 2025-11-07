@@ -404,7 +404,7 @@ private fun FillerSoundScreen(
                 top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 12.dp,
                 start = 14.dp,
                 end = 14.dp,
-                bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 40.dp
+                bottom = 8.dp
             )
             .verticalScroll(rememberScrollState())
     ) {
@@ -455,9 +455,18 @@ private fun FillerSoundScreen(
                     FilledTonalButton(
                         onClick = {
                             if (!isPreviewing) {
+                                // on essaie de le lancer
                                 FillerSoundManager.startIfConfigured(context)
-                                FillerSoundManager.setVolume(fillerVolume)
-                                isPreviewing = true
+                                if (FillerSoundManager.isPlaying()) {
+                                    FillerSoundManager.setVolume(fillerVolume)
+                                    isPreviewing = true
+                                } else {
+                                    Toast.makeText(
+                                        context,
+                                        "Impossible de lire le fichier. Rechoisis-le.",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
                             } else {
                                 FillerSoundManager.fadeOutAndStop(200)
                                 isPreviewing = false

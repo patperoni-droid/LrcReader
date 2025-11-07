@@ -1,11 +1,14 @@
 package com.patrick.lrcreader.core
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Gère l’export / import de l’état de l’appli (playlists + chansons jouées + dernier morceau)
+ * Gère l’export / import de l’état de l’appli
+ * (playlists + chansons jouées + dernier morceau + fond sonore)
  */
 object BackupManager {
 
@@ -20,7 +23,7 @@ object BackupManager {
      */
     fun exportState(
         context: Context,
-        lastPlayer: LastPlayed?,          // 👈 nouveau
+        lastPlayer: LastPlayed?,          // peut être null
         libraryFolders: List<String>
     ): String {
         val root = JSONObject()
@@ -28,7 +31,7 @@ object BackupManager {
         // 1) playlists
         val playlistsJson = JSONObject()
         PlaylistRepository.getPlaylists().forEach { plName ->
-            val songs = PlaylistRepository.getAllSongsRaw(plName)   // on ajoute un accès brut
+            val songs = PlaylistRepository.getAllSongsRaw(plName)
             playlistsJson.put(plName, JSONArray(songs))
         }
         root.put("playlists", playlistsJson)
@@ -41,10 +44,10 @@ object BackupManager {
         }
         root.put("played", playedJson)
 
-        // 3) dossiers (pour plus tard)
+        // 3) dossiers (si tu veux plus tard)
         root.put("libraryFolders", JSONArray(libraryFolders))
 
-        // 4) 👇 dernier morceau
+        // 4) dernier morceau
         if (lastPlayer != null) {
             val lp = JSONObject().apply {
                 put("uri", lastPlayer.uri)
@@ -54,12 +57,24 @@ object BackupManager {
             root.put("lastPlayed", lp)
         }
 
+        // 5) fond sonore
+        run {
+            val uri = FillerSoundPrefs.getFillerUri(context)
+            val vol = FillerSoundPrefs.getFillerVolume(context)
+            if (uri != null) {
+                val fillerJson = JSONObject().apply {
+                    put("uri", uri.toString())
+                    put("volume", vol)
+                }
+                root.put("fillerSound", fillerJson)
+            }
+        }
+
         return root.toString(2)
     }
 
     /**
      * Import depuis JSON
-     * @param onLastPlayed retrouvé → on te la redonne
      */
     fun importState(
         context: Context,
@@ -71,7 +86,6 @@ object BackupManager {
         // 1) playlists
         val playlistsJson = root.optJSONObject("playlists")
         if (playlistsJson != null) {
-            // on purgera d'abord
             PlaylistRepository.clearAll()
             val names = playlistsJson.keys()
             while (names.hasNext()) {
@@ -103,7 +117,8 @@ object BackupManager {
         val lpJson = root.optJSONObject("lastPlayed")
         if (lpJson != null) {
             val uri = lpJson.optString("uri", "")
-            val playlistName = if (lpJson.isNull("playlistName")) null else lpJson.optString("playlistName", null)
+            val playlistName =
+                if (lpJson.isNull("playlistName")) null else lpJson.optString("playlistName", null)
             val pos = lpJson.optLong("positionMs", 0L)
             if (uri.isNotBlank()) {
                 onLastPlayed(
@@ -118,6 +133,33 @@ object BackupManager {
             }
         } else {
             onLastPlayed(null)
+        }
+
+        // 4) fond sonore
+        val fillerJson = root.optJSONObject("fillerSound")
+        if (fillerJson != null) {
+            val uriStr = fillerJson.optString("uri", "")
+            val volume = fillerJson.optDouble("volume", 0.25).toFloat()
+            if (uriStr.isNotBlank()) {
+                try {
+                    val uri = Uri.parse(uriStr)
+                    // on remet dans les prefs
+                    FillerSoundPrefs.saveFillerUri(context, uri)
+                    FillerSoundPrefs.saveFillerVolume(context, volume)
+
+                    // on ESSAIE de reprendre la permission
+                    try {
+                        context.contentResolver.takePersistableUriPermission(
+                            uri,
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                        )
+                    } catch (_: Exception) {
+                        // si Android refuse, on n'explose pas
+                    }
+                } catch (_: Exception) {
+                    // URI pas valide → on ignore
+                }
+            }
         }
     }
 }

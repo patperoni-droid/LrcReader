@@ -3,6 +3,7 @@ package com.patrick.lrcreader.core
 import android.content.Context
 import android.media.MediaPlayer
 import android.net.Uri
+import android.widget.Toast
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -14,6 +15,7 @@ import kotlinx.coroutines.launch
  * - lit en boucle
  * - volume réglable
  * - on peut faire un fadeOut avant de l’arrêter
+ * - et on ne plante pas si le fichier n’est plus accessible
  */
 object FillerSoundManager {
 
@@ -30,8 +32,34 @@ object FillerSoundManager {
         val uri = FillerSoundPrefs.getFillerUri(context) ?: return
         // on récupère le volume sauvegardé
         currentVolume = FillerSoundPrefs.getFillerVolume(context)
-        startFromUri(context, uri)
+
+        try {
+            startFromUri(context, uri)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            // on efface pour ne pas replanter à chaque fois
+            FillerSoundPrefs.clear(context)
+            Toast.makeText(
+                context,
+                "Impossible de lire le fond sonore. Rechoisis le fichier.",
+                Toast.LENGTH_SHORT
+            ).show()
+        }
     }
+
+    /**
+     * Pour l’UI : si ça joue → on stoppe, sinon on relance.
+     */
+    fun toggle(context: Context) {
+        if (isPlaying()) {
+            fadeOutAndStop(200)
+        } else {
+            startIfConfigured(context)
+        }
+    }
+
+    /** Vrai si un fond sonore tourne. */
+    fun isPlaying(): Boolean = player != null
 
     /**
      * Lance réellement la lecture du filler.
@@ -89,7 +117,10 @@ object FillerSoundManager {
         fadeJob?.cancel()
         fadeJob = null
         player?.let { mp ->
-            try { mp.stop() } catch (_: Exception) { }
+            try {
+                mp.stop()
+            } catch (_: Exception) {
+            }
             mp.release()
         }
         player = null
