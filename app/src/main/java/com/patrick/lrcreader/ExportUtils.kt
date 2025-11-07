@@ -12,6 +12,9 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+// ajoute ces imports en haut du fichier ExportUtils.kt
+import androidx.documentfile.provider.DocumentFile
+
 
 /* -------------------------------------------------------------------------- */
 /*  EXPORT / IMPORT JSON                                                      */
@@ -112,4 +115,29 @@ fun getDisplayName(context: Context, uri: Uri): String? {
 fun nowString(): String {
     val sdf = SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.getDefault())
     return sdf.format(Date())
+}
+/**
+ * Sauvegarde dans un dossier choisi avec OpenDocumentTree (persistant).
+ * Si le fichier existe, on le réécrit.
+ */
+fun saveJsonToTree(context: Context, treeUri: Uri, fileName: String, json: String): Boolean {
+    return try {
+        val tree = DocumentFile.fromTreeUri(context, treeUri) ?: return false
+
+        // On cherche si un fichier avec ce nom existe déjà
+        val existing = tree.findFile(fileName)
+
+        val target = existing ?: tree.createFile("application/json", fileName)
+        if (target == null) return false
+
+        context.contentResolver.openOutputStream(target.uri, "w")?.use { out ->
+            out.write(json.toByteArray())
+            out.flush()
+        }
+
+        true
+    } catch (e: Exception) {
+        e.printStackTrace()
+        false
+    }
 }

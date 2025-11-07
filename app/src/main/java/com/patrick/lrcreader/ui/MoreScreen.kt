@@ -2,6 +2,7 @@ package com.patrick.lrcreader.ui
 
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -17,11 +18,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.documentfile.provider.DocumentFile
 import com.patrick.lrcreader.getDisplayName
 import com.patrick.lrcreader.nowString
 import com.patrick.lrcreader.saveJsonToUri
 import com.patrick.lrcreader.shareJson
 import com.patrick.lrcreader.core.BackupManager
+import com.patrick.lrcreader.core.BackupFolderPrefs
 import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.core.FillerSoundPrefs
 
@@ -113,11 +116,16 @@ private fun BackupScreen(
     onBack: () -> Unit
 ) {
     var saveName by remember { mutableStateOf("") }
+
+    // pour afficher le dernier import
     var lastImportFile by remember { mutableStateOf<String?>(null) }
     var lastImportTime by remember { mutableStateOf<String?>(null) }
     var lastImportSummary by remember { mutableStateOf<String?>(null) }
 
-    // buffer du JSON à écrire après avoir choisi le fichier
+    // dossier de sauvegarde mémorisé
+    var backupFolderUri by remember { mutableStateOf<Uri?>(BackupFolderPrefs.get(context)) }
+
+    // buffer du JSON qu’on veut écrire
     val saveLauncherJson = remember { mutableStateOf("") }
 
     // IMPORT d’un fichier existant
@@ -143,7 +151,7 @@ private fun BackupScreen(
         }
     }
 
-    // SAVE : on demande à Android où écrire
+    // SAVE : ouvrir le sélecteur (choisir le fichier)
     val saveLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/json")
     ) { uri ->
@@ -156,11 +164,10 @@ private fun BackupScreen(
                 Toast.LENGTH_SHORT
             ).show()
         }
-        // on vide
         saveLauncherJson.value = ""
     }
 
-    // ré-autoriser un dossier
+    // choisir le dossier par défaut (OpenDocumentTree)
     val treeLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree()
     ) { treeUri ->
@@ -170,7 +177,9 @@ private fun BackupScreen(
                     treeUri,
                     Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
                 )
-                Toast.makeText(context, "Accès au dossier autorisé", Toast.LENGTH_SHORT).show()
+                BackupFolderPrefs.save(context, treeUri)
+                backupFolderUri = treeUri
+                Toast.makeText(context, "Dossier de sauvegarde choisi", Toast.LENGTH_SHORT).show()
             } catch (_: Exception) {
             }
         }
@@ -198,7 +207,7 @@ private fun BackupScreen(
         Text("Sauvegarde / Restauration", color = onBg, fontSize = 18.sp)
         Spacer(Modifier.height(10.dp))
 
-        // -------- EXPORT ----------
+        // ====== EXPORT ======
         Card(colors = CardDefaults.cardColors(containerColor = card)) {
             Column(Modifier.padding(12.dp)) {
                 Text("Exporter l’état", color = onBg, fontSize = 14.sp)
@@ -218,22 +227,63 @@ private fun BackupScreen(
                     modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(Modifier.height(8.dp))
-
                 val finalName = (saveName.trim().ifBlank { "lrc_backup" }) + ".json"
 
+                // bouton pour choisir / changer le dossier par défaut
+                TextButton(onClick = { treeLauncher.launch(null) }) {
+                    Text(
+                        if (backupFolderUri != null)
+                            "📁 Changer de dossier de sauvegarde"
+                        else
+                            "📁 Choisir un dossier de sauvegarde",
+                        fontSize = 12.sp,
+                        color = accent
+                    )
+                }
+                if (backupFolderUri != null) {
+                    Text(
+                        "Dossier actuel : ${backupFolderUri.toString().take(55)}…",
+                        color = sub,
+                        fontSize = 10.sp
+                    )
+                }
+
+                Spacer(Modifier.height(8.dp))
+
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    // bouton unique : génère + ouvre le sélecteur
+                    // 1) Enregistrer (utilise le dossier choisi s'il existe)
                     FilledTonalButton(
                         onClick = {
                             val json = BackupManager.exportState(context, null, emptyList())
-                            saveLauncherJson.value = json
-                            saveLauncher.launch(finalName)
+                            if (backupFolderUri == null) {
+                                // pas de dossier -> on retombe sur l'ancien système
+                                saveLauncherJson.value = json
+                                saveLauncher.launch(finalName)
+                            } else {
+                                val ok = saveJsonToFolder(context, backupFolderUri!!, finalName, json)
+                                Toast.makeText(
+                                    context,
+                                    if (ok) "Sauvegarde enregistrée" else "Impossible d’enregistrer",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
                         },
                         colors = ButtonDefaults.filledTonalButtonColors(
                             containerColor = Color(0xFF1E1E1E)
                         )
                     ) {
                         Text("Enregistrer", fontSize = 12.sp)
+                    }
+
+                    // 2) forcer le sélecteur comme avant
+                    FilledTonalButton(
+                        onClick = {
+                            val json = BackupManager.exportState(context, null, emptyList())
+                            saveLauncherJson.value = json
+                            saveLauncher.launch(finalName)
+                        }
+                    ) {
+                        Text("Enregistrer dans…", fontSize = 12.sp)
                     }
 
                     TextButton(
@@ -250,7 +300,7 @@ private fun BackupScreen(
 
         Spacer(Modifier.height(12.dp))
 
-        // -------- IMPORT ----------
+        // ====== IMPORT ======
         Card(colors = CardDefaults.cardColors(containerColor = card)) {
             Column(Modifier.padding(12.dp)) {
                 Text("Importer une sauvegarde", color = onBg, fontSize = 14.sp)
@@ -285,8 +335,35 @@ private fun BackupScreen(
     }
 }
 
+/**
+ * Écrit un JSON dans le dossier SAF choisi (créé ou écrasé).
+ */
+private fun saveJsonToFolder(
+    context: Context,
+    treeUri: Uri,
+    fileName: String,
+    json: String
+): Boolean {
+    return try {
+        val docTree = DocumentFile.fromTreeUri(context, treeUri) ?: return false
+        // on regarde s'il existe déjà
+        val existing = docTree.findFile(fileName)
+        val targetFile = existing ?: docTree.createFile("application/json", fileName)
+        if (targetFile == null) return false
+
+        context.contentResolver.openOutputStream(targetFile.uri, "rwt")?.use { out ->
+            out.write(json.toByteArray())
+            out.flush()
+        }
+        true
+    } catch (e: Exception) {
+        e.printStackTrace()
+        false
+    }
+}
+
 // ─────────────────────────────────────────────
-// Sous-écran : Fond sonore
+// Sous-écran : Fond sonore (repris tel quel)
 // ─────────────────────────────────────────────
 @Composable
 private fun FillerSoundScreen(

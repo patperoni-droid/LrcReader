@@ -24,6 +24,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.documentfile.provider.DocumentFile
+import com.patrick.lrcreader.core.BackupFolderPrefs   // 👈 ajouté
 import com.patrick.lrcreader.core.PlaylistRepository
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -33,7 +34,14 @@ fun LibraryScreen(
 ) {
     val context = LocalContext.current
 
-    var folders by remember { mutableStateOf<List<Uri>>(emptyList()) }
+    // 👇 on essaye de récupérer le dossier déjà autorisé (sauvegarde)
+    val initialFolder = remember {
+        BackupFolderPrefs.get(context)
+    }
+
+    var folders by remember {
+        mutableStateOf<List<Uri>>(initialFolder?.let { listOf(it) } ?: emptyList())
+    }
     var songs by remember { mutableStateOf<List<Uri>>(emptyList()) }
     var selectedSongs by remember { mutableStateOf<Set<Uri>>(emptySet()) }
     var showAssignDialog by remember { mutableStateOf(false) }
@@ -53,12 +61,22 @@ fun LibraryScreen(
                     // pas grave
                 }
 
-                folders = folders + uri
+                // on l’enregistre pour toute l’appli
+                BackupFolderPrefs.save(context, uri)
+
+                folders = listOf(uri)   // ← on remplace par ce nouveau dossier
                 songs = listSongsInFolder(context, uri)
                 selectedSongs = emptySet()
             }
         }
     )
+
+    // si on avait déjà un dossier au démarrage → on charge les chansons
+    LaunchedEffect(initialFolder) {
+        if (initialFolder != null) {
+            songs = listSongsInFolder(context, initialFolder)
+        }
+    }
 
     Column(
         modifier = modifier
@@ -78,7 +96,13 @@ fun LibraryScreen(
             }
 
             Button(
-                onClick = { clearPersistedUris(context) }
+                onClick = {
+                    clearPersistedUris(context)
+                    BackupFolderPrefs.clear(context)   // 👈 on oublie aussi notre pref
+                    folders = emptyList()
+                    songs = emptyList()
+                    selectedSongs = emptySet()
+                }
             ) {
                 Text("Oublier", color = Color.White)
             }
