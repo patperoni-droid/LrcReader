@@ -378,21 +378,46 @@ private fun FillerSoundScreen(
     val sub = Color(0xFFB9B9B9)
     val card = Color(0xFF141414)
 
-    var fillerUri by remember { mutableStateOf(FillerSoundPrefs.getFillerUri(context)) }
-    var fillerName by remember {
-        mutableStateOf(fillerUri?.lastPathSegment ?: "Aucun son sélectionné")
-    }
-    var isPreviewing by remember { mutableStateOf(false) }
+    // on regarde ce qu’on a en prefs
+    var fillerFileUri by remember { mutableStateOf(FillerSoundPrefs.getFillerUri(context)) }
+    var fillerFolderUri by remember { mutableStateOf(FillerSoundPrefs.getFillerFolder(context)) }
+    var isPreviewing by remember { mutableStateOf(FillerSoundManager.isPlaying()) }
     var fillerVolume by remember { mutableStateOf(FillerSoundPrefs.getFillerVolume(context)) }
 
-    val fillerLauncher = rememberLauncherForActivityResult(
+    // texte affiché : dossier > fichier > rien
+    val currentLabel = when {
+        fillerFolderUri != null -> "Dossier : ${fillerFolderUri.toString().take(35)}…"
+        fillerFileUri != null -> "Fichier : ${fillerFileUri?.lastPathSegment ?: "audio"}"
+        else -> "Aucun son sélectionné"
+    }
+
+    // choisir un fichier
+    val fileLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
         if (uri != null) {
             FillerSoundPrefs.saveFillerUri(context, uri)
-            fillerUri = uri
-            fillerName = uri.lastPathSegment ?: "Son choisi"
-            Toast.makeText(context, "Son enregistré : $fillerName", Toast.LENGTH_SHORT).show()
+            fillerFileUri = uri
+            fillerFolderUri = null          // on efface le dossier si on choisit un fichier
+            Toast.makeText(context, "Son enregistré", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // choisir un dossier
+    val folderLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree()
+    ) { treeUri ->
+        if (treeUri != null) {
+            try {
+                context.contentResolver.takePersistableUriPermission(
+                    treeUri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                )
+            } catch (_: Exception) { }
+            FillerSoundPrefs.saveFillerFolder(context, treeUri)
+            fillerFolderUri = treeUri
+            fillerFileUri = null            // on efface le fichier si on choisit un dossier
+            Toast.makeText(context, "Dossier de fond sonore enregistré", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -418,22 +443,24 @@ private fun FillerSoundScreen(
                 Text("Sélection du fond sonore", color = onBg, fontSize = 14.sp)
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "Ce son est joué automatiquement quand un morceau se termine.",
-                    color = sub, fontSize = 12.sp
+                    "Tu peux choisir un fichier audio OU un dossier qui contient des mp3/wav (on prendra le premier).",
+                    color = sub,
+                    fontSize = 12.sp
                 )
                 Spacer(Modifier.height(10.dp))
 
-                FilledTonalButton(onClick = { fillerLauncher.launch("audio/*") }) {
-                    Text("Choisir un fichier audio…", fontSize = 12.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilledTonalButton(onClick = { fileLauncher.launch("audio/*") }) {
+                        Text("Choisir un fichier audio…", fontSize = 12.sp)
+                    }
+                    TextButton(onClick = { folderLauncher.launch(null) }) {
+                        Text("Choisir un dossier…", fontSize = 12.sp, color = Color(0xFFE040FB))
+                    }
                 }
 
                 Spacer(Modifier.height(8.dp))
-                Text("Fichier actuel :", color = sub, fontSize = 11.sp)
-                Text(
-                    fillerName,
-                    color = if (fillerUri != null) Color(0xFFE040FB) else Color.Gray,
-                    fontSize = 12.sp
-                )
+                Text("Actuel :", color = sub, fontSize = 11.sp)
+                Text(currentLabel, color = if (currentLabel.startsWith("Aucun")) Color.Gray else onBg, fontSize = 12.sp)
 
                 Spacer(Modifier.height(14.dp))
                 Text("Volume", color = sub, fontSize = 11.sp)
@@ -454,25 +481,11 @@ private fun FillerSoundScreen(
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilledTonalButton(
                         onClick = {
-                            if (!isPreviewing) {
-                                // on essaie de le lancer
-                                FillerSoundManager.startIfConfigured(context)
-                                if (FillerSoundManager.isPlaying()) {
-                                    FillerSoundManager.setVolume(fillerVolume)
-                                    isPreviewing = true
-                                } else {
-                                    Toast.makeText(
-                                        context,
-                                        "Impossible de lire le fichier. Rechoisis-le.",
-                                        Toast.LENGTH_SHORT
-                                    ).show()
-                                }
-                            } else {
-                                FillerSoundManager.fadeOutAndStop(200)
-                                isPreviewing = false
-                            }
+                            // toggle gère tout seul (démarrer à partir de ce qu’il y a en prefs, ou arrêter)
+                            FillerSoundManager.toggle(context)
+                            isPreviewing = FillerSoundManager.isPlaying()
                         },
-                        enabled = fillerUri != null
+                        enabled = (fillerFileUri != null || fillerFolderUri != null)
                     ) {
                         Text(
                             text = if (isPreviewing) "Arrêter l’écoute" else "▶︎ Écouter",
@@ -480,15 +493,15 @@ private fun FillerSoundScreen(
                         )
                     }
 
-                    if (fillerUri != null) {
+                    if (fillerFileUri != null || fillerFolderUri != null) {
                         TextButton(onClick = {
                             FillerSoundManager.fadeOutAndStop(200)
                             isPreviewing = false
                             FillerSoundPrefs.clear(context)
-                            fillerUri = null
-                            fillerName = "Aucun son sélectionné"
+                            fillerFileUri = null
+                            fillerFolderUri = null
                         }) {
-                            Text("🗑 Supprimer le son", fontSize = 12.sp, color = Color(0xFFFF8A80))
+                            Text("🗑 Supprimer", fontSize = 12.sp, color = Color(0xFFFF8A80))
                         }
                     }
                 }
