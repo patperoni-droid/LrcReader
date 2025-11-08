@@ -2,6 +2,8 @@ package com.patrick.lrcreader.ui
 
 import android.content.Context
 import android.content.Intent
+import androidx.compose.ui.Alignment
+import androidx.compose.material.icons.filled.Folder
 import android.media.MediaPlayer
 import android.net.Uri
 import android.widget.Toast
@@ -11,7 +13,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -133,8 +137,10 @@ private fun BackupScreen(
 
     var backupFolderUri by remember { mutableStateOf<Uri?>(BackupFolderPrefs.get(context)) }
 
+    // pour le "CreateDocument"
     val saveLauncherJson = remember { mutableStateOf("") }
 
+    // import fichier
     val fileLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
@@ -157,6 +163,7 @@ private fun BackupScreen(
         }
     }
 
+    // export vers fichier choisi
     val saveLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/json")
     ) { uri ->
@@ -172,6 +179,7 @@ private fun BackupScreen(
         saveLauncherJson.value = ""
     }
 
+    // choisir dossier de sauvegarde
     val treeLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree()
     ) { treeUri ->
@@ -189,10 +197,10 @@ private fun BackupScreen(
         }
     }
 
+    val accent = Color(0xFFE386FF)
+    val card = Color(0xFF141414)
     val onBg = Color(0xFFEEEEEE)
     val sub = Color(0xFFB9B9B9)
-    val card = Color(0xFF141414)
-    val accent = Color(0xFFB06CFF)
 
     Column(
         Modifier
@@ -208,135 +216,186 @@ private fun BackupScreen(
     ) {
         TextButton(onClick = onBack) { Text("← Retour", color = onBg) }
         Spacer(Modifier.height(4.dp))
-        Text("Sauvegarde / Restauration", color = onBg, fontSize = 18.sp)
-        Spacer(Modifier.height(10.dp))
-
-        // EXPORT
-        Card(colors = CardDefaults.cardColors(containerColor = card)) {
-            Column(Modifier.padding(12.dp)) {
-                Text("Exporter l’état", color = onBg, fontSize = 14.sp)
-                Spacer(Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = saveName,
-                    onValueChange = { saveName = it },
-                    label = { Text("Nom du fichier", color = sub, fontSize = 11.sp) },
-                    placeholder = { Text("lrc_backup", color = sub, fontSize = 11.sp) },
-                    singleLine = true,
-                    textStyle = TextStyle(color = onBg, fontSize = 13.sp),
-                    colors = TextFieldDefaults.colors(
-                        focusedIndicatorColor = accent,
-                        unfocusedIndicatorColor = Color(0xFF3A3A3A),
-                        cursorColor = onBg
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Spacer(Modifier.height(8.dp))
-                val finalName = (saveName.trim().ifBlank { "lrc_backup" }) + ".json"
-
-                TextButton(onClick = { treeLauncher.launch(null) }) {
-                    Text(
-                        if (backupFolderUri != null)
-                            "📁 Changer de dossier de sauvegarde"
-                        else
-                            "📁 Choisir un dossier de sauvegarde",
-                        fontSize = 12.sp,
-                        color = accent
-                    )
-                }
-                if (backupFolderUri != null) {
-                    Text(
-                        "Dossier actuel : ${backupFolderUri.toString().take(55)}…",
-                        color = sub,
-                        fontSize = 10.sp
-                    )
-                }
-
-                Spacer(Modifier.height(8.dp))
-
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilledTonalButton(
-                        onClick = {
-                            val json = BackupManager.exportState(context, null, emptyList())
-                            if (backupFolderUri == null) {
-                                saveLauncherJson.value = json
-                                saveLauncher.launch(finalName)
-                            } else {
-                                val ok = saveJsonToFolder(
-                                    context,
-                                    backupFolderUri!!,
-                                    finalName,
-                                    json
-                                )
-                                Toast.makeText(
-                                    context,
-                                    if (ok) "Sauvegarde enregistrée" else "Impossible d’enregistrer",
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                            }
-                        },
-                        colors = ButtonDefaults.filledTonalButtonColors(
-                            containerColor = Color(0xFF1E1E1E)
-                        )
-                    ) {
-                        Text("Enregistrer", fontSize = 12.sp)
-                    }
-
-                    FilledTonalButton(
-                        onClick = {
-                            val json = BackupManager.exportState(context, null, emptyList())
-                            saveLauncherJson.value = json
-                            saveLauncher.launch(finalName)
-                        }
-                    ) {
-                        Text("Enregistrer dans…", fontSize = 12.sp)
-                    }
-
-                    TextButton(
-                        onClick = {
-                            val json = BackupManager.exportState(context, null, emptyList())
-                            shareJson(context, finalName, json)
-                        }
-                    ) {
-                        Text("Partager", fontSize = 12.sp, color = accent)
-                    }
-                }
-            }
-        }
-
+        Text("Sauvegarde / Restauration", color = onBg, fontSize = 20.sp)
         Spacer(Modifier.height(12.dp))
 
-        // IMPORT
-        Card(colors = CardDefaults.cardColors(containerColor = card)) {
-            Column(Modifier.padding(12.dp)) {
-                Text("Importer une sauvegarde", color = onBg, fontSize = 14.sp)
-                Spacer(Modifier.height(8.dp))
-                FilledTonalButton(onClick = { fileLauncher.launch("application/json") }) {
-                    Text("Choisir un fichier…", fontSize = 12.sp)
-                }
-                Spacer(Modifier.height(6.dp))
-                TextButton(onClick = { treeLauncher.launch(null) }) {
-                    Text("🔓 Ré-autoriser l’accès à un dossier", fontSize = 12.sp, color = accent)
+        // ─── EXPORT ─────────────────────────────
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(card, shape = RoundedCornerShape(18.dp))
+                .padding(14.dp)
+        ) {
+            Text("Exporter l’état", color = onBg, fontSize = 16.sp)
+            Spacer(Modifier.height(8.dp))
+
+            OutlinedTextField(
+                value = saveName,
+                onValueChange = { saveName = it },
+                label = { Text("Nom du fichier", color = sub, fontSize = 11.sp) },
+                placeholder = { Text("lrc_backup", color = sub, fontSize = 11.sp) },
+                singleLine = true,
+                textStyle = TextStyle(color = onBg, fontSize = 13.sp),
+                shape = RoundedCornerShape(12.dp),
+                colors = TextFieldDefaults.colors(
+                    focusedIndicatorColor = accent,
+                    unfocusedIndicatorColor = Color(0xFF3A3A3A),
+                    cursorColor = onBg,
+                    focusedContainerColor = Color.Transparent,
+                    unfocusedContainerColor = Color.Transparent
+                ),
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(Modifier.height(8.dp))
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.clickable { treeLauncher.launch(null) }
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Folder,
+                    contentDescription = null,
+                    tint = accent
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    text = if (backupFolderUri != null)
+                        "Changer de dossier de sauvegarde"
+                    else
+                        "Choisir un dossier de sauvegarde",
+                    color = accent,
+                    fontSize = 12.sp
+                )
+            }
+
+            if (backupFolderUri != null) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = "Dossier actuel : ${backupFolderUri.toString().take(55)}…",
+                    color = sub,
+                    fontSize = 11.sp
+                )
+            }
+
+            Spacer(Modifier.height(10.dp))
+
+            val finalName = (saveName.trim().ifBlank { "lrc_backup" }) + ".json"
+
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                FilledTonalButton(
+                    onClick = {
+                        val json = BackupManager.exportState(context, null, emptyList())
+                        if (backupFolderUri == null) {
+                            // pas de dossier → on demande un fichier
+                            saveLauncherJson.value = json
+                            saveLauncher.launch(finalName)
+                        } else {
+                            val ok = saveJsonToFolder(
+                                context,
+                                backupFolderUri!!,
+                                finalName,
+                                json
+                            )
+                            Toast.makeText(
+                                context,
+                                if (ok) "Sauvegarde enregistrée" else "Impossible d’enregistrer",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.filledTonalButtonColors(
+                        containerColor = Color(0xFF1E1E1E),
+                        contentColor = Color.White
+                    ),
+                    shape = RoundedCornerShape(999.dp)
+                ) {
+                    Text("Enregistrer", fontSize = 12.sp)
                 }
 
-                Spacer(Modifier.height(10.dp))
-                if (lastImportFile != null || lastImportTime != null || lastImportSummary != null) {
-                    HorizontalDivider(color = Color(0xFF2A2A2A))
-                    Spacer(Modifier.height(8.dp))
-                    Text("Dernier import", color = sub, fontSize = 11.sp)
-                    lastImportFile?.let { Text("• Fichier : $it", color = onBg, fontSize = 12.sp) }
-                    lastImportTime?.let { Text("• Heure : $it", color = onBg, fontSize = 12.sp) }
-                    lastImportSummary?.let {
-                        Text(
-                            "• État : $it",
-                            color = if (it.startsWith("Import réussi")) Color(0xFF6CFF9C) else Color(0xFFFF8A80),
-                            fontSize = 12.sp
-                        )
-                    }
-                } else {
-                    Text("Aucun import réalisé pour l’instant.", color = sub, fontSize = 12.sp)
+                FilledTonalButton(
+                    onClick = {
+                        val json = BackupManager.exportState(context, null, emptyList())
+                        saveLauncherJson.value = json
+                        saveLauncher.launch(finalName)
+                    },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.filledTonalButtonColors(
+                        containerColor = Color(0xFF46405A),
+                        contentColor = Color.White
+                    ),
+                    shape = RoundedCornerShape(999.dp)
+                ) {
+                    Text("Enregistrer dans…", fontSize = 12.sp)
+                }
+
+                TextButton(onClick = {
+                    val json = BackupManager.exportState(context, null, emptyList())
+                    shareJson(context, finalName, json)
+                }) {
+                    Text("Partager", fontSize = 12.sp, color = accent)
                 }
             }
         }
+
+        Spacer(Modifier.height(14.dp))
+
+        // ─── IMPORT ─────────────────────────────
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(card, shape = RoundedCornerShape(18.dp))
+                .padding(14.dp)
+        ) {
+            Text("Importer une sauvegarde", color = onBg, fontSize = 16.sp)
+            Spacer(Modifier.height(8.dp))
+
+            FilledTonalButton(
+                onClick = { fileLauncher.launch("application/json") },
+                colors = ButtonDefaults.filledTonalButtonColors(
+                    containerColor = Color(0xFF46405A),
+                    contentColor = Color.White
+                ),
+                shape = RoundedCornerShape(999.dp)
+            ) {
+                Text("Choisir un fichier…", fontSize = 12.sp)
+            }
+
+            Spacer(Modifier.height(6.dp))
+
+            TextButton(onClick = { treeLauncher.launch(null) }) {
+                Text(
+                    "🔓 Ré-autoriser l’accès à un dossier",
+                    fontSize = 12.sp,
+                    color = accent
+                )
+            }
+
+            Spacer(Modifier.height(10.dp))
+
+            if (lastImportFile != null || lastImportTime != null || lastImportSummary != null) {
+                HorizontalDivider(color = Color(0xFF2A2A2A))
+                Spacer(Modifier.height(8.dp))
+                Text("Dernier import", color = sub, fontSize = 11.sp)
+                lastImportFile?.let { Text("• Fichier : $it", color = onBg, fontSize = 12.sp) }
+                lastImportTime?.let { Text("• Heure : $it", color = onBg, fontSize = 12.sp) }
+                lastImportSummary?.let {
+                    Text(
+                        "• État : $it",
+                        color = if (it.startsWith("Import réussi")) Color(0xFF6CFF9C) else Color(0xFFFF8A80),
+                        fontSize = 12.sp
+                    )
+                }
+            } else {
+                Text("Aucun import réalisé pour l’instant.", color = sub, fontSize = 12.sp)
+            }
+        }
+
+        Spacer(Modifier.height(24.dp))
     }
 }
 
@@ -386,13 +445,12 @@ private fun FillerSoundScreen(
         contract = ActivityResultContracts.OpenDocumentTree()
     ) { uri ->
         if (uri != null) {
-            // on prend la permission + on enregistre le dossier
             try {
                 context.contentResolver.takePersistableUriPermission(
                     uri,
                     Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
                 )
-            } catch (_: Exception) { }
+            } catch (_: Exception) {}
             FillerSoundPrefs.saveFillerUri(context, uri)
             fillerUri = uri
             fillerName = uri.lastPathSegment ?: "Dossier choisi"
@@ -504,15 +562,12 @@ private fun EditSoundScreen(
     var pickedName by remember { mutableStateOf("Aucun fichier") }
     var durationMs by remember { mutableStateOf(0) }
 
-    // points d’édition
     var startMs by remember { mutableStateOf(0) }
     var endMs by remember { mutableStateOf(0) }
 
-    // lecteur local
     var mediaPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
     var isPlaying by remember { mutableStateOf(false) }
 
-    // chooser audio
     val audioPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
@@ -529,8 +584,7 @@ private fun EditSoundScreen(
                 mp.prepare()
                 val d = mp.duration
                 durationMs = d
-                // si on a déjà un réglage pour ce fichier, on le recharge
-                val saved = com.patrick.lrcreader.core.EditSoundPrefs.get(context, uri)
+                val saved = EditSoundPrefs.get(context, uri)
                 if (saved != null) {
                     startMs = saved.startMs.coerceIn(0, d)
                     endMs = saved.endMs.coerceIn(startMs, d)
@@ -546,7 +600,6 @@ private fun EditSoundScreen(
         }
     }
 
-    // nettoyer
     DisposableEffect(Unit) {
         onDispose {
             mediaPlayer?.release()
@@ -605,7 +658,6 @@ private fun EditSoundScreen(
                         fontSize = 12.sp
                     )
                 } else {
-                    // --- Point d'entrée ---
                     Text("Point d’entrée : ${formatMs(startMs)}", color = onBg, fontSize = 12.sp)
                     Slider(
                         value = startMs.toFloat(),
@@ -626,7 +678,6 @@ private fun EditSoundScreen(
 
                     Spacer(Modifier.height(8.dp))
 
-                    // --- Point de sortie ---
                     Text("Point de sortie : ${formatMs(endMs)}", color = onBg, fontSize = 12.sp)
                     Slider(
                         value = endMs.toFloat(),
@@ -647,7 +698,6 @@ private fun EditSoundScreen(
 
                     Spacer(Modifier.height(12.dp))
 
-                    // --- Boutons de lecture ---
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         FilledTonalButton(
                             onClick = {
@@ -696,12 +746,11 @@ private fun EditSoundScreen(
 
                     Spacer(Modifier.height(14.dp))
 
-                    // --- BOUTON ENREGISTRER ---
                     FilledTonalButton(
                         onClick = {
                             val uri = pickedUri
                             if (uri != null) {
-                                com.patrick.lrcreader.core.EditSoundPrefs.save(
+                                EditSoundPrefs.save(
                                     context = context,
                                     uri = uri,
                                     startMs = startMs,
