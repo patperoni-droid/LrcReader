@@ -13,11 +13,15 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
@@ -30,8 +34,6 @@ import androidx.compose.ui.unit.sp
 import androidx.documentfile.provider.DocumentFile
 import com.patrick.lrcreader.core.BackupFolderPrefs
 import com.patrick.lrcreader.core.PlaylistRepository
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.MoreVert
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -40,14 +42,25 @@ fun LibraryScreen(
 ) {
     val context = LocalContext.current
 
+    // dossier racine enregistré (celui qu’on choisit dans le menu)
     val initialFolder = remember { BackupFolderPrefs.get(context) }
 
-    var folders by remember { mutableStateOf<List<Uri>>(initialFolder?.let { listOf(it) } ?: emptyList()) }
-    var songs by remember { mutableStateOf<List<Uri>>(emptyList()) }
+    // dossier courant dans lequel on navigue
+    var currentFolderUri by remember { mutableStateOf<Uri?>(initialFolder) }
+
+    // pile de navigation pour revenir en arrière
+    var folderStack by remember { mutableStateOf<List<Uri>>(emptyList()) }
+
+    // entrées (dossiers + fichiers audio) dans le dossier courant
+    var entries by remember { mutableStateOf<List<DocumentFile>>(emptyList()) }
+
+    // sélection de fichiers audio
     var selectedSongs by remember { mutableStateOf<Set<Uri>>(emptySet()) }
+
     var showAssignDialog by remember { mutableStateOf(false) }
     var actionsExpanded by remember { mutableStateOf(false) }
 
+    // launcher pour choisir le dossier racine
     val pickFolderLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree(),
         onResult = { uri ->
@@ -59,15 +72,20 @@ fun LibraryScreen(
                     )
                 } catch (_: Exception) {}
                 BackupFolderPrefs.save(context, uri)
-                folders = listOf(uri)
-                songs = listSongsInFolder(context, uri)
+
+                currentFolderUri = uri
+                folderStack = emptyList()
+                entries = listEntriesInFolder(context, uri)
                 selectedSongs = emptySet()
             }
         }
     )
 
+    // au démarrage, si on avait déjà un dossier → on le charge
     LaunchedEffect(initialFolder) {
-        if (initialFolder != null) songs = listSongsInFolder(context, initialFolder)
+        if (initialFolder != null) {
+            entries = listEntriesInFolder(context, initialFolder)
+        }
     }
 
     Column(
@@ -81,7 +99,30 @@ fun LibraryScreen(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("Bibliothèque", color = Color.White, fontSize = 20.sp, modifier = Modifier.weight(1f))
+            // bouton retour dossier parent SI on est dans un sous-dossier
+            if (folderStack.isNotEmpty()) {
+                IconButton(onClick = {
+                    val newStack = folderStack.dropLast(1)
+                    val parentUri = newStack.lastOrNull() ?: initialFolder
+                    currentFolderUri = parentUri
+                    entries = parentUri?.let { listEntriesInFolder(context, it) } ?: emptyList()
+                    folderStack = newStack
+                    selectedSongs = emptySet()
+                }) {
+                    Icon(
+                        imageVector = Icons.Default.ArrowBack,
+                        contentDescription = "Retour",
+                        tint = Color.White
+                    )
+                }
+            }
+
+            Text(
+                "Bibliothèque",
+                color = Color.White,
+                fontSize = 20.sp,
+                modifier = Modifier.weight(1f)
+            )
 
             IconButton(onClick = { actionsExpanded = true }) {
                 Icon(
@@ -108,9 +149,10 @@ fun LibraryScreen(
                         actionsExpanded = false
                         clearPersistedUris(context)
                         BackupFolderPrefs.clear(context)
-                        folders = emptyList()
-                        songs = emptyList()
+                        currentFolderUri = null
+                        entries = emptyList()
                         selectedSongs = emptySet()
+                        folderStack = emptyList()
                     }
                 )
             }
@@ -118,125 +160,146 @@ fun LibraryScreen(
 
         Spacer(Modifier.height(12.dp))
 
-        if (folders.isNotEmpty()) {
-            Text("Dossiers enregistrés :", color = Color.Gray)
-            Spacer(Modifier.height(8.dp))
-
-            folders.forEach { folderUri ->
-                val folderName = DocumentFile.fromTreeUri(context, folderUri)?.name ?: "Dossier"
-                Text(
-                    text = "📁 $folderName",
-                    color = Color.White,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            songs = listSongsInFolder(context, folderUri)
-                            selectedSongs = emptySet()
-                        }
-                        .padding(vertical = 4.dp)
-                )
-            }
-        } else {
+        if (currentFolderUri == null) {
             Text(
                 "Aucun dossier pour l’instant.\nAjoute ton dossier Music → puis tes MP3/WAV.",
                 color = Color.Gray
             )
-        }
+        } else {
+            // chemin actuel (facultatif)
+            Text(
+                text = "Dossier actuel : " +
+                        (DocumentFile.fromTreeUri(context, currentFolderUri!!)?.name ?: "…"),
+                color = Color.Gray,
+                fontSize = 12.sp
+            )
 
-        Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(12.dp))
 
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-        ) {
-            LazyColumn(modifier = Modifier.fillMaxSize()) {
-                items(songs) { songUri ->
-                    val isSelected = selectedSongs.contains(songUri)
-                    val fullName = songUri.lastPathSegment ?: "inconnu"
-                    val displayName = fullName
-                        .substringAfterLast('/')
-                        .substringAfterLast(':')
-                        .replace("%20", " ")
-                        .replace(".mp3", "", ignoreCase = true)
-                        .replace(".wav", "", ignoreCase = true)
-                        .trim()
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .combinedClickable(
-                                onClick = {
-                                    selectedSongs =
-                                        if (isSelected) selectedSongs - songUri
-                                        else selectedSongs + songUri
-                                },
-                                onLongClick = {
-                                    selectedSongs = setOf(songUri)
-                                    showAssignDialog = true
-                                }
-                            )
-                            .padding(vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        // 💜 couleur harmonisée (rose-violet)
-                        Box(
-                            modifier = Modifier
-                                .size(20.dp)
-                                .background(
-                                    if (isSelected) Color(0xFFE386FF) else Color.Transparent
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+            ) {
+                LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    items(entries, key = { it.uri.toString() }) { file ->
+                        // dossier
+                        if (file.isDirectory) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        // on entre dans le dossier
+                                        val old = currentFolderUri
+                                        if (old != null) {
+                                            folderStack = folderStack + old
+                                        }
+                                        currentFolderUri = file.uri
+                                        entries = listEntriesInFolder(context, file.uri)
+                                        selectedSongs = emptySet()
+                                    }
+                                    .padding(vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Folder,
+                                    contentDescription = null,
+                                    tint = Color(0xFFE386FF),
+                                    modifier = Modifier.size(22.dp)
                                 )
-                                .border(
-                                    width = 1.dp,
-                                    color = Color(0xFFE386FF)
+                                Spacer(Modifier.width(10.dp))
+                                Text(
+                                    text = file.name ?: "Dossier",
+                                    color = Color.White,
+                                    fontSize = 15.sp
                                 )
-                        )
-                        Spacer(Modifier.width(10.dp))
-                        Text(
-                            text = displayName,
-                            color = Color.White,
-                            modifier = Modifier.weight(1f)
-                        )
+                            }
+                        } else {
+                            // fichier audio
+                            val uri = file.uri
+                            val isSelected = selectedSongs.contains(uri)
+                            val displayName = (file.name ?: "inconnu")
+                                .replace(".mp3", "", true)
+                                .replace(".wav", "", true)
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .combinedClickable(
+                                        onClick = {
+                                            selectedSongs =
+                                                if (isSelected) selectedSongs - uri
+                                                else selectedSongs + uri
+                                        },
+                                        onLongClick = {
+                                            selectedSongs = setOf(uri)
+                                            showAssignDialog = true
+                                        }
+                                    )
+                                    .padding(vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(20.dp)
+                                        .background(
+                                            if (isSelected) Color(0xFFE386FF) else Color.Transparent
+                                        )
+                                        .border(
+                                            width = 1.dp,
+                                            color = Color(0xFFE386FF)
+                                        )
+                                )
+                                Spacer(Modifier.width(10.dp))
+                                Text(
+                                    text = displayName,
+                                    color = Color.White,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                        }
                     }
                 }
-            }
 
-            if (selectedSongs.isNotEmpty()) {
-                Row(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .height(48.dp)
-                        .background(Color(0xFF1E1E1E)),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = "${selectedSongs.size} sélectionné(s)",
-                        color = Color.White,
-                        modifier = Modifier.padding(start = 16.dp)
-                    )
-                    Row {
+                // barre de sélection en bas
+                if (selectedSongs.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .height(48.dp)
+                            .background(Color(0xFF1E1E1E)),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
                         Text(
-                            text = "Tout effacer",
-                            color = Color(0xFFE386FF),
-                            modifier = Modifier
-                                .padding(end = 16.dp)
-                                .clickable { selectedSongs = emptySet() }
+                            text = "${selectedSongs.size} sélectionné(s)",
+                            color = Color.White,
+                            modifier = Modifier.padding(start = 16.dp)
                         )
-                        Text(
-                            text = "Attribuer",
-                            color = Color(0xFFE386FF),
-                            modifier = Modifier
-                                .padding(end = 16.dp)
-                                .clickable { showAssignDialog = true }
-                        )
+                        Row {
+                            Text(
+                                text = "Tout effacer",
+                                color = Color(0xFFE386FF),
+                                modifier = Modifier
+                                    .padding(end = 16.dp)
+                                    .clickable { selectedSongs = emptySet() }
+                            )
+                            Text(
+                                text = "Attribuer",
+                                color = Color(0xFFE386FF),
+                                modifier = Modifier
+                                    .padding(end = 16.dp)
+                                    .clickable { showAssignDialog = true }
+                            )
+                        }
                     }
                 }
             }
         }
     }
 
+    // ─── dialogue d’attribution à une playlist ─────────────────────
     if (showAssignDialog) {
         val playlists = PlaylistRepository.getPlaylists()
         AlertDialog(
@@ -265,6 +328,7 @@ fun LibraryScreen(
                                             )
                                         }
                                         showAssignDialog = false
+                                        // on garde la sélection ou pas ? à toi de voir
                                     }
                             )
                         }
@@ -283,17 +347,29 @@ fun LibraryScreen(
 
 /* ------------------ utils ------------------ */
 
-private fun listSongsInFolder(context: Context, folderUri: Uri): List<Uri> {
+/**
+ * Liste à la fois :
+ * - les dossiers
+ * - les fichiers audio (.mp3, .wav)
+ */
+private fun listEntriesInFolder(context: Context, folderUri: Uri): List<DocumentFile> {
     val docFile = DocumentFile.fromTreeUri(context, folderUri) ?: return emptyList()
-    return docFile
-        .listFiles()
+    val all = docFile.listFiles()
+
+    val folders = all
+        .filter { it.isDirectory }
+        .sortedBy { it.name?.lowercase() ?: "" }
+
+    val audioFiles = all
         .filter { file ->
             file.isFile && file.name?.let { name ->
                 name.endsWith(".mp3", ignoreCase = true) ||
                         name.endsWith(".wav", ignoreCase = true)
             } == true
         }
-        .mapNotNull { it.uri }
+        .sortedBy { it.name?.lowercase() ?: "" }
+
+    return folders + audioFiles
 }
 
 private fun clearPersistedUris(context: Context) {
