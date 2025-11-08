@@ -14,7 +14,10 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
@@ -23,9 +26,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.documentfile.provider.DocumentFile
-import com.patrick.lrcreader.core.BackupFolderPrefs   // 👈 ajouté
+import com.patrick.lrcreader.core.BackupFolderPrefs
 import com.patrick.lrcreader.core.PlaylistRepository
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MoreVert
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -34,48 +40,34 @@ fun LibraryScreen(
 ) {
     val context = LocalContext.current
 
-    // 👇 on essaye de récupérer le dossier déjà autorisé (sauvegarde)
-    val initialFolder = remember {
-        BackupFolderPrefs.get(context)
-    }
+    val initialFolder = remember { BackupFolderPrefs.get(context) }
 
-    var folders by remember {
-        mutableStateOf<List<Uri>>(initialFolder?.let { listOf(it) } ?: emptyList())
-    }
+    var folders by remember { mutableStateOf<List<Uri>>(initialFolder?.let { listOf(it) } ?: emptyList()) }
     var songs by remember { mutableStateOf<List<Uri>>(emptyList()) }
     var selectedSongs by remember { mutableStateOf<Set<Uri>>(emptySet()) }
     var showAssignDialog by remember { mutableStateOf(false) }
+    var actionsExpanded by remember { mutableStateOf(false) }
 
-    // picker de dossier AVEC prise de permission persistante
     val pickFolderLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree(),
         onResult = { uri ->
             if (uri != null) {
-                // on garde le droit de lire ce dossier
                 try {
                     context.contentResolver.takePersistableUriPermission(
                         uri,
                         Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
                     )
-                } catch (_: Exception) {
-                    // pas grave
-                }
-
-                // on l’enregistre pour toute l’appli
+                } catch (_: Exception) {}
                 BackupFolderPrefs.save(context, uri)
-
-                folders = listOf(uri)   // ← on remplace par ce nouveau dossier
+                folders = listOf(uri)
                 songs = listSongsInFolder(context, uri)
                 selectedSongs = emptySet()
             }
         }
     )
 
-    // si on avait déjà un dossier au démarrage → on charge les chansons
     LaunchedEffect(initialFolder) {
-        if (initialFolder != null) {
-            songs = listSongsInFolder(context, initialFolder)
-        }
+        if (initialFolder != null) songs = listSongsInFolder(context, initialFolder)
     }
 
     Column(
@@ -84,31 +76,47 @@ fun LibraryScreen(
             .background(Color.Black)
             .padding(16.dp)
     ) {
-        Text("Bibliothèque", color = Color.White)
-        Spacer(Modifier.height(12.dp))
+        // ─── HEADER ─────────────────────────────────────────────
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("Bibliothèque", color = Color.White, fontSize = 20.sp, modifier = Modifier.weight(1f))
 
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(
-                onClick = { pickFolderLauncher.launch(null) },
-                modifier = Modifier.weight(1f)
-            ) {
-                Text("Ajouter un dossier", color = Color.White)
+            IconButton(onClick = { actionsExpanded = true }) {
+                Icon(
+                    imageVector = Icons.Default.MoreVert,
+                    contentDescription = "Actions",
+                    tint = Color.White
+                )
             }
 
-            Button(
-                onClick = {
-                    clearPersistedUris(context)
-                    BackupFolderPrefs.clear(context)   // 👈 on oublie aussi notre pref
-                    folders = emptyList()
-                    songs = emptyList()
-                    selectedSongs = emptySet()
-                }
+            DropdownMenu(
+                expanded = actionsExpanded,
+                onDismissRequest = { actionsExpanded = false }
             ) {
-                Text("Oublier", color = Color.White)
+                DropdownMenuItem(
+                    text = { Text("Ajouter un dossier") },
+                    onClick = {
+                        actionsExpanded = false
+                        pickFolderLauncher.launch(null)
+                    }
+                )
+                DropdownMenuItem(
+                    text = { Text("Oublier le dossier") },
+                    onClick = {
+                        actionsExpanded = false
+                        clearPersistedUris(context)
+                        BackupFolderPrefs.clear(context)
+                        folders = emptyList()
+                        songs = emptyList()
+                        selectedSongs = emptySet()
+                    }
+                )
             }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(12.dp))
 
         if (folders.isNotEmpty()) {
             Text("Dossiers enregistrés :", color = Color.Gray)
@@ -142,13 +150,9 @@ fun LibraryScreen(
                 .weight(1f)
                 .fillMaxWidth()
         ) {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize()
-            ) {
+            LazyColumn(modifier = Modifier.fillMaxSize()) {
                 items(songs) { songUri ->
                     val isSelected = selectedSongs.contains(songUri)
-
-                    // ↓↓↓ seul endroit où on change l’affichage : on enlève .mp3 et .wav
                     val fullName = songUri.lastPathSegment ?: "inconnu"
                     val displayName = fullName
                         .substringAfterLast('/')
@@ -175,15 +179,16 @@ fun LibraryScreen(
                             .padding(vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        // 💜 couleur harmonisée (rose-violet)
                         Box(
                             modifier = Modifier
                                 .size(20.dp)
                                 .background(
-                                    if (isSelected) Color(0xFF2ECC71) else Color.Transparent
+                                    if (isSelected) Color(0xFFE386FF) else Color.Transparent
                                 )
                                 .border(
                                     width = 1.dp,
-                                    color = Color(0xFF2ECC71)
+                                    color = Color(0xFFE386FF)
                                 )
                         )
                         Spacer(Modifier.width(10.dp))
@@ -278,7 +283,6 @@ fun LibraryScreen(
 
 /* ------------------ utils ------------------ */
 
-// ICI on ajoute le .wav au filtre
 private fun listSongsInFolder(context: Context, folderUri: Uri): List<Uri> {
     val docFile = DocumentFile.fromTreeUri(context, folderUri) ?: return emptyList()
     return docFile
@@ -301,7 +305,6 @@ private fun clearPersistedUris(context: Context) {
                 perm.uri,
                 Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
             )
-        } catch (_: Exception) {
-        }
+        } catch (_: Exception) {}
     }
 }
