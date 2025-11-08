@@ -153,12 +153,7 @@ fun PlayerScreen(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text(
-                text = if (isConcertMode) "Paroles synchronisées" else "Paroles (mode clair)",
-                color = Color.LightGray,
-                fontSize = 14.sp,
-                textAlign = TextAlign.Start
-            )
+
             IconButton(onClick = { isConcertMode = !isConcertMode }) {
                 Icon(
                     imageVector = Icons.Filled.Tune,

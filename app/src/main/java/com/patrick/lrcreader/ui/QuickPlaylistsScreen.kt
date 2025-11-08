@@ -225,8 +225,6 @@ fun QuickPlaylistsScreen(
         if (internalSelected == null) {
             Text("Aucune playlist.\nVa dans “Toutes” pour en créer.", color = Color.Gray)
         } else {
-            Text("Chansons de “$internalSelected”", color = Color.White, fontSize = 16.sp)
-            Spacer(Modifier.height(8.dp))
 
             LazyColumn(
                 modifier = Modifier.weight(1f),
