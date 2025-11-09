@@ -13,6 +13,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.VolumeOff
@@ -82,6 +83,10 @@ fun QuickPlaylistsScreen(
     // état local du fond sonore
     var isFillerRunning by remember { mutableStateOf(FillerSoundManager.isPlaying()) }
 
+    // couleur de la liste de lecture (modifiable via palette)
+    var currentListColor by remember { mutableStateOf(Color(0xFFE86FFF)) }
+    var colorMenuOpen by remember { mutableStateOf(false) }
+
     // si le parent change de playlist
     LaunchedEffect(selectedPlaylist) {
         if (selectedPlaylist != null) {
@@ -111,7 +116,6 @@ fun QuickPlaylistsScreen(
         }
     }
 
-    val songColor = Color(0xFFE86FFF)
     val menuBg = Color(0xFF222222)
 
     Column(
@@ -146,7 +150,7 @@ fun QuickPlaylistsScreen(
                             text = {
                                 Text(
                                     text = name,
-                                    color = if (isCurrent) songColor else Color.White,
+                                    color = if (isCurrent) currentListColor else Color.White,
                                     fontSize = 16.sp
                                 )
                             },
@@ -162,8 +166,52 @@ fun QuickPlaylistsScreen(
                 }
             }
 
-            // droite : 3 icônes
-            Row {
+            // droite : icônes
+            Row(verticalAlignment = Alignment.CenterVertically) {
+
+                // bouton palette (choix couleur de liste)
+                Box {
+                    IconButton(onClick = { colorMenuOpen = true }) {
+                        Icon(
+                            imageVector = Icons.Filled.Palette,
+                            contentDescription = "Couleur de la liste",
+                            tint = currentListColor
+                        )
+                    }
+
+                    DropdownMenu(
+                        expanded = colorMenuOpen,
+                        onDismissRequest = { colorMenuOpen = false },
+                        modifier = Modifier.background(Color(0xFF1E1E1E))
+                    ) {
+                        val colors = listOf(
+                            Color.White,       // blanc
+                            Color(0xFFE86FFF), // rose-violet
+                            Color(0xFF6AC5FE), // bleu
+                            Color(0xFFFFB74D), // orange
+                            Color(0xFF81C784), // vert
+                            Color(0xFFFF6F91), // rose punchy
+                        )
+                        colors.forEach { c ->
+                            DropdownMenuItem(
+                                text = { Text("") },
+                                leadingIcon = {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(22.dp)
+                                            .background(c, RoundedCornerShape(999.dp))
+                                            .border(1.dp, Color.White, RoundedCornerShape(999.dp))
+                                    )
+                                },
+                                onClick = {
+                                    currentListColor = c
+                                    colorMenuOpen = false
+                                }
+                            )
+                        }
+                    }
+                }
+
                 // 1) réinitialiser cette playlist
                 if (internalSelected != null) {
                     IconButton(
@@ -198,7 +246,7 @@ fun QuickPlaylistsScreen(
                     Icon(
                         imageVector = if (isFillerRunning) Icons.Filled.VolumeOff else Icons.Filled.VolumeUp,
                         contentDescription = if (isFillerRunning) "Arrêter le fond sonore" else "Lancer le fond sonore",
-                        tint = Color(0xFFE86FFF)
+                        tint = currentListColor
                     )
                 }
 
@@ -206,14 +254,13 @@ fun QuickPlaylistsScreen(
                 IconButton(
                     onClick = {
                         FillerSoundManager.next(context)
-                        // on reste en "running" si on passe au suivant
                         isFillerRunning = FillerSoundManager.isPlaying()
                     }
                 ) {
                     Icon(
                         imageVector = Icons.Filled.SkipNext,
                         contentDescription = "Son suivant",
-                        tint = Color(0xFFE86FFF)
+                        tint = currentListColor
                     )
                 }
             }
@@ -231,15 +278,14 @@ fun QuickPlaylistsScreen(
                 state = listState
             ) {
                 itemsIndexed(songs, key = { _, item -> item }) { _, uriString ->
-                    // 1) décoder proprement
+                    // décodage + nettoyage
                     val decoded = runCatching {
                         URLDecoder.decode(uriString, "UTF-8")
                     }.getOrElse { uriString }
 
-                    // 2) extraire juste le nom et virer l’extension
                     val baseNameClean = decoded
-                        .substringAfterLast('/')    // après le dernier /
-                        .substringAfterLast(':')    // pour les content://...:123
+                        .substringAfterLast('/')
+                        .substringAfterLast(':')
                         .let { name ->
                             when {
                                 name.endsWith(".mp3", ignoreCase = true) -> name.dropLast(4)
@@ -249,7 +295,6 @@ fun QuickPlaylistsScreen(
                         }
                         .trim()
 
-                    // 3) si la playlist a un titre personnalisé pour ce morceau, on le prend
                     val displayName = internalSelected?.let {
                         PlaylistRepository.getCustomTitle(it, uriString)
                     } ?: baseNameClean
@@ -273,7 +318,7 @@ fun QuickPlaylistsScreen(
                         Icon(
                             imageVector = Icons.Filled.DragHandle,
                             contentDescription = "Déplacer",
-                            tint = songColor,
+                            tint = currentListColor,
                             modifier = Modifier
                                 .size(34.dp)
                                 .padding(end = 8.dp)
@@ -301,13 +346,11 @@ fun QuickPlaylistsScreen(
 
                                         dragOffsetPx += dragAmount.y
 
-                                        // descendre
                                         if (dragOffsetPx >= rowHeightPx / 2f) {
                                             val next = currentIndex + 1
                                             if (next < songs.size) songs.swap(currentIndex, next)
                                             dragOffsetPx = 0f
                                         }
-                                        // monter
                                         if (dragOffsetPx <= -rowHeightPx / 2f) {
                                             val prev = currentIndex - 1
                                             if (prev >= 0) songs.swap(currentIndex, prev)
@@ -323,7 +366,7 @@ fun QuickPlaylistsScreen(
                             color = when {
                                 isCurrentPlaying -> Color.White
                                 isPlayed -> Color.Gray
-                                else -> songColor
+                                else -> currentListColor
                             },
                             modifier = Modifier
                                 .weight(1f)
@@ -335,7 +378,7 @@ fun QuickPlaylistsScreen(
                                 }
                         )
 
-                        // menu 3 points (le reste de ton code d’origine)
+                        // menu 3 points
                         Box {
                             var menuOpen by remember { mutableStateOf(false) }
 
@@ -344,7 +387,7 @@ fun QuickPlaylistsScreen(
                                     .size(28.dp)
                                     .border(
                                         width = 1.dp,
-                                        color = if (isPlayed) Color.Gray else songColor,
+                                        color = if (isPlayed) Color.Gray else currentListColor,
                                         shape = RoundedCornerShape(6.dp)
                                     )
                                     .clickable { menuOpen = true },
@@ -353,7 +396,7 @@ fun QuickPlaylistsScreen(
                                 Icon(
                                     imageVector = Icons.Filled.MoreVert,
                                     contentDescription = "Options",
-                                    tint = if (isPlayed) Color.Gray else songColor,
+                                    tint = if (isPlayed) Color.Gray else currentListColor,
                                     modifier = Modifier.size(18.dp)
                                 )
                             }
