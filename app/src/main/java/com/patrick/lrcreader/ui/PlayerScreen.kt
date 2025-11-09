@@ -44,7 +44,8 @@ fun PlayerScreen(
     onIsPlayingChange: (Boolean) -> Unit,
     parsedLines: List<LrcLine>,
     onParsedLinesChange: (List<LrcLine>) -> Unit,
-    // 👇 couleur qu’on reçoit de la liste de lecture
+    // on garde un param pour la couleur au cas où,
+    // mais on garde aussi la valeur par défaut
     highlightColor: Color = Color(0xFFE040FB)
 ) {
     val scrollState = rememberScrollState()
@@ -52,7 +53,6 @@ fun PlayerScreen(
     val density = LocalDensity.current
     val context = LocalContext.current
 
-    // on ne la redéfinit plus ici !
     val LYRICS_DELAY_MS = 1000L
 
     var isConcertMode by remember { mutableStateOf(true) }
@@ -69,7 +69,7 @@ fun PlayerScreen(
     var isDragging by remember { mutableStateOf(false) }
     var dragPosMs by remember { mutableStateOf(0) }
 
-    // suivi lecture + ligne active
+    // suivi lecture + index courant
     LaunchedEffect(isPlaying, parsedLines) {
         while (true) {
             val d = runCatching { mediaPlayer.duration }.getOrNull() ?: -1
@@ -126,7 +126,7 @@ fun PlayerScreen(
         }
     }
 
-    // auto-centre pendant la lecture
+    // auto centre pendant la lecture
     LaunchedEffect(isPlaying, parsedLines, lyricsBoxHeightPx) {
         if (parsedLines.isEmpty()) return@LaunchedEffect
         if (lyricsBoxHeightPx == 0) return@LaunchedEffect
@@ -194,8 +194,8 @@ fun PlayerScreen(
                         val isCurrent = index == currentLrcIndex
                         val dist = abs(index - currentLrcIndex)
 
-                        val alpha: Float = if (!isConcertMode) {
-                            1f
+                        val lineAlpha: Float = if (!isConcertMode) {
+                            if (isCurrent) 1f else 0.4f
                         } else {
                             when (dist) {
                                 0 -> 1f
@@ -205,7 +205,7 @@ fun PlayerScreen(
                             }
                         }
 
-                        val color = if (isCurrent) highlightColor else Color.White.copy(alpha = alpha)
+                        val color = highlightColor.copy(alpha = lineAlpha)
                         val weight = if (isCurrent) FontWeight.Bold else FontWeight.Normal
 
                         Text(
@@ -216,7 +216,7 @@ fun PlayerScreen(
                             textAlign = TextAlign.Center,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(lineHeightDp)
+                                .height(80.dp)
                                 .padding(horizontal = 8.dp, vertical = 8.dp)
                                 .clickable {
                                     seekAndCenter(line.timeMs.toInt(), index)
@@ -239,7 +239,7 @@ fun PlayerScreen(
             )
         }
 
-        // barre de temps
+        // barre de temps → on lui passe highlightColor
         TimeBar(
             positionMs = if (isDragging) dragPosMs else positionMs,
             durationMs = durationMs,
@@ -255,7 +255,8 @@ fun PlayerScreen(
                 }
                 runCatching { mediaPlayer.seekTo(safe) }
                 positionMs = safe
-            }
+            },
+            highlightColor = highlightColor
         )
 
         // contrôles
@@ -265,9 +266,7 @@ fun PlayerScreen(
                 if (mediaPlayer.isPlaying) {
                     pauseWithFade(scope, mediaPlayer, 400L) {
                         onIsPlayingChange(false)
-                        runCatching {
-                            FillerSoundManager.startIfConfigured(context)
-                        }
+                        runCatching { FillerSoundManager.startIfConfigured(context) }
                     }
                 } else {
                     if (durationMs > 0) {
@@ -275,9 +274,7 @@ fun PlayerScreen(
                         mediaPlayer.start()
                         onIsPlayingChange(true)
                         centerCurrentLine()
-                        runCatching {
-                            FillerSoundManager.fadeOutAndStop(400)
-                        }
+                        runCatching { FillerSoundManager.fadeOutAndStop(400) }
                     }
                 }
             },
@@ -349,28 +346,31 @@ private fun TimeBar(
     durationMs: Int,
     onSeekLivePreview: (Int) -> Unit,
     onSeekCommit: (Int) -> Unit,
+    highlightColor: Color,          // 👈 ajouté
 ) {
     val posText = remember(positionMs) { formatMs(positionMs) }
     val durText = remember(durationMs) { formatMs(durationMs.coerceAtLeast(0)) }
-    val remainingText = remember(positionMs, durationMs) {
-        if (durationMs > 0) "-${formatMs((durationMs - positionMs).coerceAtLeast(0))}" else "-00:00"
-    }
 
-    Column(
+    // on dérive les couleurs à partir de la couleur de la playlist
+    val trackColor = highlightColor.copy(alpha = 0.25f)
+
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(bottom = 8.dp)
+            .padding(bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(posText, color = Color.LightGray, fontSize = 12.sp)
-            Text(remainingText, color = Color.LightGray, fontSize = 12.sp)
-        }
+        Text(
+            posText,
+            color = Color.LightGray,
+            fontSize = 12.sp,
+            modifier = Modifier.padding(end = 6.dp)
+        )
 
         val sliderValue = when {
             durationMs <= 0 -> 0f
             else -> positionMs.toFloat() / durationMs.toFloat()
         }
-
         var lastPreview by remember { mutableStateOf(positionMs) }
 
         Slider(
@@ -384,19 +384,25 @@ private fun TimeBar(
                 onSeekCommit(lastPreview)
             },
             enabled = durationMs > 0,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .weight(1f)
+                .height(20.dp),
+            colors = androidx.compose.material3.SliderDefaults.colors(
+                thumbColor = highlightColor,
+                activeTrackColor = trackColor,
+                inactiveTrackColor = trackColor.copy(alpha = 0.4f)
+            )
         )
 
         Text(
             durText,
-            color = Color.Gray,
-            fontSize = 11.sp,
-            modifier = Modifier.align(Alignment.End)
+            color = Color.LightGray,
+            fontSize = 12.sp,
+            modifier = Modifier.padding(start = 6.dp)
         )
     }
 }
 
-/** mm:ss (si > 1h: hh:mm:ss) */
 private fun formatMs(ms: Int): String {
     if (ms <= 0) return "00:00"
     val totalSeconds = ms / 1000
