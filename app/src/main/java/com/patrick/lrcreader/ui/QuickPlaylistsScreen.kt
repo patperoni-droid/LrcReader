@@ -319,7 +319,7 @@ fun QuickPlaylistsScreen(
 
                         // titre
                         Text(
-                            text = displayName,
+                            text = displayName.uppercase(),
                             color = when {
                                 isCurrentPlaying -> Color.White
                                 isPlayed -> Color.Gray
