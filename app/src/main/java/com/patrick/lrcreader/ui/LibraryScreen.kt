@@ -35,6 +35,30 @@ import androidx.documentfile.provider.DocumentFile
 import com.patrick.lrcreader.core.BackupFolderPrefs
 import com.patrick.lrcreader.core.PlaylistRepository
 
+/* -----------------------------------------------------------
+   Cache global pour la bibliothèque
+   (reste vivant tant que l'appli tourne)
+   ----------------------------------------------------------- */
+private object LibraryFolderCache {
+    // clé = uri.toString()
+    private val cache = mutableMapOf<String, List<LibraryEntry>>()
+
+    fun get(uri: Uri): List<LibraryEntry>? = cache[uri.toString()]
+
+    fun put(uri: Uri, list: List<LibraryEntry>) {
+        cache[uri.toString()] = list
+    }
+
+    fun clear() = cache.clear()
+}
+
+/* ce qu’on affiche dans la liste */
+private data class LibraryEntry(
+    val uri: Uri,
+    val name: String,
+    val isDirectory: Boolean
+)
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun LibraryScreen(
@@ -42,11 +66,12 @@ fun LibraryScreen(
 ) {
     val context = LocalContext.current
 
+    // dossier racine enregistré
     val initialFolder = remember { BackupFolderPrefs.get(context) }
 
     var currentFolderUri by remember { mutableStateOf<Uri?>(initialFolder) }
     var folderStack by remember { mutableStateOf<List<Uri>>(emptyList()) }
-    var entries by remember { mutableStateOf<List<DocumentFile>>(emptyList()) }
+    var entries by remember { mutableStateOf<List<LibraryEntry>>(emptyList()) }
     var selectedSongs by remember { mutableStateOf<Set<Uri>>(emptySet()) }
 
     var showAssignDialog by remember { mutableStateOf(false) }
@@ -66,15 +91,28 @@ fun LibraryScreen(
 
                 currentFolderUri = uri
                 folderStack = emptyList()
-                entries = listEntriesInFolder(context, uri)
+
+                // on lit une fois et on met en cache global
+                val fresh = listEntriesInFolder(context, uri)
+                entries = fresh
+                LibraryFolderCache.put(uri, fresh)
+
                 selectedSongs = emptySet()
             }
         }
     )
 
+    // premier chargement
     LaunchedEffect(initialFolder) {
         if (initialFolder != null) {
-            entries = listEntriesInFolder(context, initialFolder)
+            val cached = LibraryFolderCache.get(initialFolder)
+            if (cached != null) {
+                entries = cached
+            } else {
+                val fresh = listEntriesInFolder(context, initialFolder)
+                entries = fresh
+                LibraryFolderCache.put(initialFolder, fresh)
+            }
         }
     }
 
@@ -84,6 +122,7 @@ fun LibraryScreen(
             .background(Color.Black)
             .padding(16.dp)
     ) {
+        // HEADER
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
@@ -93,7 +132,12 @@ fun LibraryScreen(
                     val newStack = folderStack.dropLast(1)
                     val parentUri = newStack.lastOrNull() ?: initialFolder
                     currentFolderUri = parentUri
-                    entries = parentUri?.let { listEntriesInFolder(context, it) } ?: emptyList()
+
+                    entries = parentUri?.let { uri ->
+                        LibraryFolderCache.get(uri)
+                            ?: listEntriesInFolder(context, uri).also { LibraryFolderCache.put(uri, it) }
+                    } ?: emptyList()
+
                     folderStack = newStack
                     selectedSongs = emptySet()
                 }) {
@@ -141,6 +185,7 @@ fun LibraryScreen(
                         entries = emptyList()
                         selectedSongs = emptySet()
                         folderStack = emptyList()
+                        LibraryFolderCache.clear()
                     }
                 )
             }
@@ -169,16 +214,25 @@ fun LibraryScreen(
                     .fillMaxWidth()
             ) {
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
-                    items(entries, key = { it.uri.toString() }) { file ->
-                        if (file.isDirectory) {
+                    items(entries, key = { it.uri.toString() }) { entry ->
+                        if (entry.isDirectory) {
+                            // dossier
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable {
                                         val old = currentFolderUri
                                         if (old != null) folderStack = folderStack + old
-                                        currentFolderUri = file.uri
-                                        entries = listEntriesInFolder(context, file.uri)
+                                        currentFolderUri = entry.uri
+
+                                        val cached = LibraryFolderCache.get(entry.uri)
+                                        if (cached != null) {
+                                            entries = cached
+                                        } else {
+                                            val fresh = listEntriesInFolder(context, entry.uri)
+                                            entries = fresh
+                                            LibraryFolderCache.put(entry.uri, fresh)
+                                        }
                                         selectedSongs = emptySet()
                                     }
                                     .padding(vertical = 8.dp),
@@ -192,17 +246,15 @@ fun LibraryScreen(
                                 )
                                 Spacer(Modifier.width(10.dp))
                                 Text(
-                                    text = file.name ?: "Dossier",
+                                    text = entry.name,
                                     color = Color.White,
                                     fontSize = 15.sp
                                 )
                             }
                         } else {
-                            val uri = file.uri
+                            // fichier audio
+                            val uri = entry.uri
                             val isSelected = selectedSongs.contains(uri)
-                            val displayName = (file.name ?: "inconnu")
-                                .replace(".mp3", "", true)
-                                .replace(".wav", "", true)
 
                             Row(
                                 modifier = Modifier
@@ -221,6 +273,7 @@ fun LibraryScreen(
                                     .padding(vertical = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
+                                // carré + croix centrée
                                 Box(
                                     modifier = Modifier
                                         .size(20.dp)
@@ -239,13 +292,13 @@ fun LibraryScreen(
                                             text = "✕",
                                             color = Color.White,
                                             fontSize = 13.sp,
-                                            modifier = Modifier.offset(y = (-6).dp)  // ← au lieu de -1.dp
+                                            modifier = Modifier.padding(bottom = 2.dp)
                                         )
                                     }
                                 }
                                 Spacer(Modifier.width(10.dp))
                                 Text(
-                                    text = displayName,
+                                    text = entry.name,
                                     color = Color.White,
                                     modifier = Modifier.weight(1f)
                                 )
@@ -254,6 +307,7 @@ fun LibraryScreen(
                     }
                 }
 
+                // barre de sélection
                 if (selectedSongs.isNotEmpty()) {
                     Row(
                         modifier = Modifier
@@ -291,6 +345,7 @@ fun LibraryScreen(
         }
     }
 
+    // DIALOG ATTRIBUTION
     if (showAssignDialog) {
         val playlists = PlaylistRepository.getPlaylists()
         AlertDialog(
@@ -337,13 +392,14 @@ fun LibraryScreen(
 
 /* ------------------ utils ------------------ */
 
-private fun listEntriesInFolder(context: Context, folderUri: Uri): List<DocumentFile> {
+private fun listEntriesInFolder(context: Context, folderUri: Uri): List<LibraryEntry> {
     val docFile = DocumentFile.fromTreeUri(context, folderUri) ?: return emptyList()
     val all = docFile.listFiles()
 
     val folders = all
         .filter { it.isDirectory }
         .sortedBy { it.name?.lowercase() ?: "" }
+        .map { LibraryEntry(it.uri, it.name ?: "Dossier", true) }
 
     val audioFiles = all
         .filter { file ->
@@ -353,6 +409,12 @@ private fun listEntriesInFolder(context: Context, folderUri: Uri): List<Document
             } == true
         }
         .sortedBy { it.name?.lowercase() ?: "" }
+        .map {
+            val cleanName = (it.name ?: "inconnu")
+                .replace(".mp3", "", true)
+                .replace(".wav", "", true)
+            LibraryEntry(it.uri, cleanName, false)
+        }
 
     return folders + audioFiles
 }
