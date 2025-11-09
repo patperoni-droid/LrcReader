@@ -292,7 +292,7 @@ fun LibraryScreen(
                                             text = "✕",
                                             color = Color.White,
                                             fontSize = 13.sp,
-                                            modifier = Modifier.padding(bottom = 2.dp)
+                                            modifier = Modifier.offset(y = (-6).dp)
                                         )
                                     }
                                 }
