@@ -137,7 +137,6 @@ private fun BackupScreen(
 
     var backupFolderUri by remember { mutableStateOf<Uri?>(BackupFolderPrefs.get(context)) }
 
-    // pour le "CreateDocument"
     val saveLauncherJson = remember { mutableStateOf("") }
 
     // import fichier
@@ -290,7 +289,6 @@ private fun BackupScreen(
                     onClick = {
                         val json = BackupManager.exportState(context, null, emptyList())
                         if (backupFolderUri == null) {
-                            // pas de dossier → on demande un fichier
                             saveLauncherJson.value = json
                             saveLauncher.launch(finalName)
                         } else {
@@ -451,6 +449,7 @@ private fun FillerSoundScreen(
                     Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
                 )
             } catch (_: Exception) {}
+            // on enregistre le dossier choisi comme source du fond sonore
             FillerSoundPrefs.saveFillerUri(context, uri)
             fillerUri = uri
             fillerName = uri.lastPathSegment ?: "Dossier choisi"
@@ -503,8 +502,10 @@ private fun FillerSoundScreen(
                     value = fillerVolume,
                     onValueChange = { v ->
                         fillerVolume = v
+                        // on sauvegarde le choix
                         FillerSoundPrefs.saveFillerVolume(context, v)
-                        if (isPreviewing) FillerSoundManager.setVolume(v)
+                        // et on pousse DIRECT dans le player, même si on n’est pas en "preview"
+                        FillerSoundManager.setVolume(v)
                     },
                     valueRange = 0f..1f,
                     modifier = Modifier.fillMaxWidth()
