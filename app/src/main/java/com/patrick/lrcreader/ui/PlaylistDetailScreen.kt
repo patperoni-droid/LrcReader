@@ -71,13 +71,25 @@ fun PlaylistDetailScreen(
         } else {
             LazyColumn {
                 items(songs) { uriString ->
-                    val displayName = try {
-                        URLDecoder.decode(uriString, "UTF-8").substringAfterLast('/')
-                    } catch (e: Exception) {
-                        uriString
-                    }
+                    // 1. on essaie de décoder, sinon on garde tel quel
+                    val decoded = runCatching {
+                        java.net.URLDecoder.decode(uriString, "UTF-8")
+                    }.getOrElse { uriString }
 
-                    // griser si déjà joué
+                    // 2. on récupère juste le nom de fichier
+                    val filePart = decoded
+                        .substringAfterLast('/')   // après le dernier /
+                        .substringAfterLast(':')   // certains URI Android ont un ":" à la fin
+
+                    // 3. on enlève l’extension seulement si elle est à la fin
+                    val displayName = when {
+                        filePart.endsWith(".mp3", ignoreCase = true) ->
+                            filePart.dropLast(4)   // ".mp3" = 4 caractères
+                        filePart.endsWith(".wav", ignoreCase = true) ->
+                            filePart.dropLast(4)   // ".wav" = 4 caractères
+                        else -> filePart
+                    }.trim()
+
                     val played = PlaylistRepository.isSongPlayed(playlistName, uriString)
 
                     Row(
@@ -86,7 +98,6 @@ fun PlaylistDetailScreen(
                             .padding(vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // 👇 icône comme dans Musicolet
                         Icon(
                             imageVector = Icons.Filled.DragHandle,
                             contentDescription = null,
@@ -96,7 +107,6 @@ fun PlaylistDetailScreen(
                                 .size(24.dp)
                         )
 
-                        // texte cliquable → lire
                         Text(
                             text = displayName,
                             color = if (played) Color(0xFF888888) else Color.White,
@@ -105,7 +115,6 @@ fun PlaylistDetailScreen(
                                 .clickable { onPlaySong(uriString) }
                         )
 
-                        // bouton play à droite (on garde ton comportement)
                         IconButton(onClick = { onPlaySong(uriString) }) {
                             Icon(
                                 imageVector = Icons.Filled.PlayArrow,

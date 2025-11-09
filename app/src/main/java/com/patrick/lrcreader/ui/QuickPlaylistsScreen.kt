@@ -231,15 +231,28 @@ fun QuickPlaylistsScreen(
                 state = listState
             ) {
                 itemsIndexed(songs, key = { _, item -> item }) { _, uriString ->
-                    val baseName = try {
-                        URLDecoder.decode(uriString, "UTF-8").substringAfterLast('/')
-                    } catch (_: Exception) {
-                        uriString
-                    }
+                    // 1) décoder proprement
+                    val decoded = runCatching {
+                        URLDecoder.decode(uriString, "UTF-8")
+                    }.getOrElse { uriString }
 
+                    // 2) extraire juste le nom et virer l’extension
+                    val baseNameClean = decoded
+                        .substringAfterLast('/')    // après le dernier /
+                        .substringAfterLast(':')    // pour les content://...:123
+                        .let { name ->
+                            when {
+                                name.endsWith(".mp3", ignoreCase = true) -> name.dropLast(4)
+                                name.endsWith(".wav", ignoreCase = true) -> name.dropLast(4)
+                                else -> name
+                            }
+                        }
+                        .trim()
+
+                    // 3) si la playlist a un titre personnalisé pour ce morceau, on le prend
                     val displayName = internalSelected?.let {
                         PlaylistRepository.getCustomTitle(it, uriString)
-                    } ?: baseName
+                    } ?: baseNameClean
 
                     val isPlayed = internalSelected?.let {
                         PlaylistRepository.isSongPlayed(it, uriString)
@@ -322,7 +335,7 @@ fun QuickPlaylistsScreen(
                                 }
                         )
 
-                        // menu 3 points
+                        // menu 3 points (le reste de ton code d’origine)
                         Box {
                             var menuOpen by remember { mutableStateOf(false) }
 
