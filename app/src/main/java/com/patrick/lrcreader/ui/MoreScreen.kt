@@ -32,6 +32,9 @@ import com.patrick.lrcreader.nowString
 import com.patrick.lrcreader.saveJsonToUri
 import com.patrick.lrcreader.shareJson
 
+/* ─────────────────────────────
+   Écran "Plus" (Paramètres)
+   ───────────────────────────── */
 @Composable
 fun MoreScreen(
     modifier: Modifier = Modifier,
@@ -67,6 +70,9 @@ fun MoreScreen(
 
 private enum class MoreSection { Root, Backup, Filler, Edit }
 
+/* ─────────────────────────────
+   Menu principal
+   ───────────────────────────── */
 @Composable
 private fun MoreRootScreen(
     onOpenBackup: () -> Unit,
@@ -112,9 +118,9 @@ private fun SettingsItem(label: String, onClick: () -> Unit) {
     HorizontalDivider(color = Color(0xFF1E1E1E))
 }
 
-/* ─────────────────────────────────────────────
+/* ─────────────────────────────
    Sauvegarde / Restauration
-   ───────────────────────────────────────────── */
+   ───────────────────────────── */
 @Composable
 private fun BackupScreen(
     context: Context,
@@ -127,10 +133,10 @@ private fun BackupScreen(
 
     var backupFolderUri by remember { mutableStateOf<Uri?>(BackupFolderPrefs.get(context)) }
 
-    // on garde le json le temps que l'utilisateur choisisse un fichier
+    // on garde le json en mémoire le temps que l’utilisateur choisisse la cible
     val saveLauncherJson = remember { mutableStateOf("") }
 
-    // import fichier
+    // IMPORT d’un fichier .json
     val fileLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
@@ -153,7 +159,7 @@ private fun BackupScreen(
         }
     }
 
-    // export vers fichier choisi
+    // EXPORT → "Enregistrer dans…"
     val saveLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/json")
     ) { uri ->
@@ -169,7 +175,7 @@ private fun BackupScreen(
         saveLauncherJson.value = ""
     }
 
-    // choisir dossier de sauvegarde (juste enregistré dans les prefs)
+    // choix d’un dossier de sauvegarde (juste mémorisé)
     val treeLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree()
     ) { treeUri ->
@@ -208,7 +214,7 @@ private fun BackupScreen(
         Text("Sauvegarde / Restauration", color = onBg, fontSize = 20.sp)
         Spacer(Modifier.height(12.dp))
 
-        /* ─── EXPORT ───────────────────────────── */
+        // ─── EXPORT ───────────────────────────────────
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -249,14 +255,13 @@ private fun BackupScreen(
 
             Spacer(Modifier.height(10.dp))
 
-            // nom de fichier fixé
             val finalName = "lrc_backup.json"
 
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                // il ne reste que "Enregistrer dans…"
+                // il reste juste ce bouton-là
                 FilledTonalButton(
                     onClick = {
                         val json = BackupManager.exportState(context, null, emptyList())
@@ -284,7 +289,7 @@ private fun BackupScreen(
 
         Spacer(Modifier.height(14.dp))
 
-        /* ─── IMPORT ───────────────────────────── */
+        // ─── IMPORT ───────────────────────────────────
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -339,9 +344,9 @@ private fun BackupScreen(
     }
 }
 
-/* ─────────────────────────────────────────────
+/* ─────────────────────────────
    Fond sonore
-   ───────────────────────────────────────────── */
+   ───────────────────────────── */
 @Composable
 private fun FillerSoundScreen(
     context: Context,
@@ -351,7 +356,6 @@ private fun FillerSoundScreen(
     val sub = Color(0xFFB9B9B9)
     val card = Color(0xFF141414)
 
-    // on lit le dossier enregistré
     var fillerUri by remember { mutableStateOf(FillerSoundPrefs.getFillerFolder(context)) }
     var fillerName by remember {
         mutableStateOf(fillerUri?.lastPathSegment ?: "Aucun son sélectionné")
@@ -468,9 +472,9 @@ private fun FillerSoundScreen(
     }
 }
 
-/* ─────────────────────────────────────────────
+/* ─────────────────────────────
    Édition de titre
-   ───────────────────────────────────────────── */
+   ───────────────────────────── */
 @Composable
 private fun EditSoundScreen(
     context: Context,
@@ -700,6 +704,7 @@ private fun EditSoundScreen(
     }
 }
 
+/* utilitaire pour l’affichage mm:ss */
 private fun formatMs(ms: Int): String {
     if (ms <= 0) return "00:00"
     val totalSeconds = ms / 1000

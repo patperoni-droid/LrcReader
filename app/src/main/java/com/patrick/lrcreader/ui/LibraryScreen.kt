@@ -42,7 +42,6 @@ fun LibraryScreen(
 ) {
     val context = LocalContext.current
 
-    // dossier racine enregistré
     val initialFolder = remember { BackupFolderPrefs.get(context) }
 
     var currentFolderUri by remember { mutableStateOf<Uri?>(initialFolder) }
@@ -73,7 +72,6 @@ fun LibraryScreen(
         }
     )
 
-    // premier chargement
     LaunchedEffect(initialFolder) {
         if (initialFolder != null) {
             entries = listEntriesInFolder(context, initialFolder)
@@ -86,7 +84,6 @@ fun LibraryScreen(
             .background(Color.Black)
             .padding(16.dp)
     ) {
-        // HEADER
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
@@ -174,7 +171,6 @@ fun LibraryScreen(
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
                     items(entries, key = { it.uri.toString() }) { file ->
                         if (file.isDirectory) {
-                            // dossier
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -202,7 +198,6 @@ fun LibraryScreen(
                                 )
                             }
                         } else {
-                            // fichier audio
                             val uri = file.uri
                             val isSelected = selectedSongs.contains(uri)
                             val displayName = (file.name ?: "inconnu")
@@ -226,19 +221,28 @@ fun LibraryScreen(
                                     .padding(vertical = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                // petit carré de sélection – version blanche
                                 Box(
                                     modifier = Modifier
                                         .size(20.dp)
                                         .background(
-                                            if (isSelected) Color.White.copy(alpha = 0.18f)
+                                            if (isSelected) Color.White.copy(alpha = 0.22f)
                                             else Color.Transparent
                                         )
                                         .border(
                                             width = 1.dp,
-                                            color = Color.White.copy(alpha = 0.65f)
+                                            color = Color.White.copy(alpha = 0.8f)
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (isSelected) {
+                                        Text(
+                                            text = "✕",
+                                            color = Color.White,
+                                            fontSize = 13.sp,
+                                            modifier = Modifier.offset(y = (-6).dp)  // ← au lieu de -1.dp
                                         )
-                                )
+                                    }
+                                }
                                 Spacer(Modifier.width(10.dp))
                                 Text(
                                     text = displayName,
@@ -250,7 +254,6 @@ fun LibraryScreen(
                     }
                 }
 
-                // barre de sélection en bas
                 if (selectedSongs.isNotEmpty()) {
                     Row(
                         modifier = Modifier
@@ -288,7 +291,6 @@ fun LibraryScreen(
         }
     }
 
-    // DIALOG ATTRIBUTION PLAYLIST
     if (showAssignDialog) {
         val playlists = PlaylistRepository.getPlaylists()
         AlertDialog(
