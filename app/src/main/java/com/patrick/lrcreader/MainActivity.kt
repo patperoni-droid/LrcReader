@@ -18,53 +18,57 @@ import com.patrick.lrcreader.core.PlaylistRepository
 import com.patrick.lrcreader.core.SessionPrefs
 import com.patrick.lrcreader.core.crossfadePlay
 import com.patrick.lrcreader.core.parseLrc
-import com.patrick.lrcreader.ui.*
+import com.patrick.lrcreader.ui.AllPlaylistsScreen
+import com.patrick.lrcreader.ui.BottomTab
+import com.patrick.lrcreader.ui.BottomTabsBar
+import com.patrick.lrcreader.ui.LibraryScreen
+import com.patrick.lrcreader.ui.MoreScreen
+import com.patrick.lrcreader.ui.PlayerScreen
+import com.patrick.lrcreader.ui.PlaylistDetailScreen
+import com.patrick.lrcreader.ui.QuickPlaylistsScreen
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // 👇 ON LIT ICI, AVANT setContent
         val initialTabKey = SessionPrefs.getTab(this)
         val initialQuickPlaylist = SessionPrefs.getQuickPlaylist(this)
         val initialOpenedPlaylist = SessionPrefs.getOpenedPlaylist(this)
 
         setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {
-
                 val ctx = this@MainActivity
                 val mediaPlayer = remember { MediaPlayer() }
 
-                // on reconvertit la clé en vrai onglet
+                // onglet courant
                 var selectedTab by remember {
                     mutableStateOf(
                         initialTabKey?.let { tabFromKey(it) } ?: BottomTab.Player
                     )
                 }
 
-                // ces deux-là peuvent rester en rememberSaveable
-                var selectedQuickPlaylist by rememberSaveable {
-                    mutableStateOf<String?>(initialQuickPlaylist)
-                }
-                var openedPlaylist by rememberSaveable {
-                    mutableStateOf<String?>(initialOpenedPlaylist)
-                }
+                // états sauvegardés
+                var selectedQuickPlaylist by rememberSaveable { mutableStateOf<String?>(initialQuickPlaylist) }
+                var openedPlaylist by rememberSaveable { mutableStateOf<String?>(initialOpenedPlaylist) }
 
-                // titre en cours
+                // lecture
                 var currentPlayingUri by remember { mutableStateOf<String?>(null) }
-
                 var isPlaying by remember { mutableStateOf(false) }
                 var parsedLines by remember { mutableStateOf<List<LrcLine>>(emptyList()) }
                 var currentPlayToken by remember { mutableStateOf(0L) }
 
+                // 👇 couleur qui doit aller dans PlayerScreen
+                var currentLyricsColor by remember { mutableStateOf(Color(0xFFE040FB)) }
+
+                // pour forcer un refresh après import
+                var refreshKey by remember { mutableStateOf(0) }
+
+                // on garde ça même si tu ne l’utilises pas tout de suite
                 val repoVersion by PlaylistRepository.version
 
-                // fonction de lecture
                 val playWithCrossfade: (String, String?) -> Unit = remember {
                     { uriString, playlistName ->
                         currentPlayingUri = uriString
-
-                        // stop filler
                         FillerSoundManager.fadeOutAndStop(400)
 
                         val myToken = currentPlayToken + 1
@@ -89,7 +93,6 @@ class MainActivity : ComponentActivity() {
                             }
                         )
 
-                        // on repasse sur le player
                         selectedTab = BottomTab.Player
                         SessionPrefs.saveTab(ctx, tabKeyOf(BottomTab.Player))
                     }
@@ -121,14 +124,23 @@ class MainActivity : ComponentActivity() {
                             onIsPlayingChange = { isPlaying = it },
                             parsedLines = parsedLines,
                             onParsedLinesChange = { parsedLines = it },
+                            // 👇 on la passe enfin
+                            highlightColor = currentLyricsColor
                         )
 
                         is BottomTab.QuickPlaylists -> QuickPlaylistsScreen(
                             modifier = Modifier.padding(innerPadding),
-                            onPlaySong = { uri, playlistName ->
+                            onPlaySong = { uri, playlistName, color ->
+                                // lecture
                                 playWithCrossfade(uri, playlistName)
+                                // on mémorise ce qu’on a vraiment lancé
+                                currentPlayingUri = uri
+                                selectedQuickPlaylist = playlistName
+                                SessionPrefs.saveQuickPlaylist(ctx, playlistName)
+                                // 👇 c’est cette ligne qui alimente le player
+                                currentLyricsColor = color
                             },
-                            refreshKey = repoVersion,
+                            refreshKey = refreshKey,
                             currentPlayingUri = currentPlayingUri,
                             selectedPlaylist = selectedQuickPlaylist,
                             onSelectedPlaylistChange = { newPl ->
@@ -169,6 +181,10 @@ class MainActivity : ComponentActivity() {
                         is BottomTab.More -> MoreScreen(
                             modifier = Modifier.padding(innerPadding),
                             context = ctx,
+                            onAfterImport = {
+                                // on force un petit refresh côté playlists rapides
+                                refreshKey++
+                            }
                         )
                     }
                 }
