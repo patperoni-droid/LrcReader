@@ -2,8 +2,6 @@ package com.patrick.lrcreader.ui
 
 import android.content.Context
 import android.content.Intent
-import androidx.compose.ui.Alignment
-import androidx.compose.material.icons.filled.Folder
 import android.media.MediaPlayer
 import android.net.Uri
 import android.widget.Toast
@@ -16,27 +14,24 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.documentfile.provider.DocumentFile
-import com.patrick.lrcreader.getDisplayName
-import com.patrick.lrcreader.nowString
-import com.patrick.lrcreader.saveJsonToUri
-import com.patrick.lrcreader.shareJson
 import com.patrick.lrcreader.core.BackupFolderPrefs
 import com.patrick.lrcreader.core.BackupManager
 import com.patrick.lrcreader.core.EditSoundPrefs
 import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.core.FillerSoundPrefs
+import com.patrick.lrcreader.getDisplayName
+import com.patrick.lrcreader.nowString
+import com.patrick.lrcreader.saveJsonToUri
+import com.patrick.lrcreader.shareJson
 
-// ─────────────────────────────────────────────
-// Écran principal : "Paramètres"
-// ─────────────────────────────────────────────
 @Composable
 fun MoreScreen(
     modifier: Modifier = Modifier,
@@ -72,9 +67,6 @@ fun MoreScreen(
 
 private enum class MoreSection { Root, Backup, Filler, Edit }
 
-// ─────────────────────────────────────────────
-// Menu principal
-// ─────────────────────────────────────────────
 @Composable
 private fun MoreRootScreen(
     onOpenBackup: () -> Unit,
@@ -120,23 +112,22 @@ private fun SettingsItem(label: String, onClick: () -> Unit) {
     HorizontalDivider(color = Color(0xFF1E1E1E))
 }
 
-// ─────────────────────────────────────────────
-// Sous-écran : Sauvegarde / Restauration
-// ─────────────────────────────────────────────
+/* ─────────────────────────────────────────────
+   Sauvegarde / Restauration
+   ───────────────────────────────────────────── */
 @Composable
 private fun BackupScreen(
     context: Context,
     onAfterImport: () -> Unit = {},
     onBack: () -> Unit
 ) {
-    var saveName by remember { mutableStateOf("") }
-
     var lastImportFile by remember { mutableStateOf<String?>(null) }
     var lastImportTime by remember { mutableStateOf<String?>(null) }
     var lastImportSummary by remember { mutableStateOf<String?>(null) }
 
     var backupFolderUri by remember { mutableStateOf<Uri?>(BackupFolderPrefs.get(context)) }
 
+    // on garde le json le temps que l'utilisateur choisisse un fichier
     val saveLauncherJson = remember { mutableStateOf("") }
 
     // import fichier
@@ -178,7 +169,7 @@ private fun BackupScreen(
         saveLauncherJson.value = ""
     }
 
-    // choisir dossier de sauvegarde
+    // choisir dossier de sauvegarde (juste enregistré dans les prefs)
     val treeLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree()
     ) { treeUri ->
@@ -191,8 +182,7 @@ private fun BackupScreen(
                 BackupFolderPrefs.save(context, treeUri)
                 backupFolderUri = treeUri
                 Toast.makeText(context, "Dossier de sauvegarde choisi", Toast.LENGTH_SHORT).show()
-            } catch (_: Exception) {
-            }
+            } catch (_: Exception) {}
         }
     }
 
@@ -218,7 +208,7 @@ private fun BackupScreen(
         Text("Sauvegarde / Restauration", color = onBg, fontSize = 20.sp)
         Spacer(Modifier.height(12.dp))
 
-        // ─── EXPORT ─────────────────────────────
+        /* ─── EXPORT ───────────────────────────── */
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -228,28 +218,8 @@ private fun BackupScreen(
             Text("Exporter l’état", color = onBg, fontSize = 16.sp)
             Spacer(Modifier.height(8.dp))
 
-            OutlinedTextField(
-                value = saveName,
-                onValueChange = { saveName = it },
-                label = { Text("Nom du fichier", color = sub, fontSize = 11.sp) },
-                placeholder = { Text("lrc_backup", color = sub, fontSize = 11.sp) },
-                singleLine = true,
-                textStyle = TextStyle(color = onBg, fontSize = 13.sp),
-                shape = RoundedCornerShape(12.dp),
-                colors = TextFieldDefaults.colors(
-                    focusedIndicatorColor = accent,
-                    unfocusedIndicatorColor = Color(0xFF3A3A3A),
-                    cursorColor = onBg,
-                    focusedContainerColor = Color.Transparent,
-                    unfocusedContainerColor = Color.Transparent
-                ),
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            Spacer(Modifier.height(8.dp))
-
             Row(
-                verticalAlignment = Alignment.CenterVertically,
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
                 modifier = Modifier.clickable { treeLauncher.launch(null) }
             ) {
                 Icon(
@@ -279,42 +249,14 @@ private fun BackupScreen(
 
             Spacer(Modifier.height(10.dp))
 
-            val finalName = (saveName.trim().ifBlank { "lrc_backup" }) + ".json"
+            // nom de fichier fixé
+            val finalName = "lrc_backup.json"
 
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                FilledTonalButton(
-                    onClick = {
-                        val json = BackupManager.exportState(context, null, emptyList())
-                        if (backupFolderUri == null) {
-                            saveLauncherJson.value = json
-                            saveLauncher.launch(finalName)
-                        } else {
-                            val ok = saveJsonToFolder(
-                                context,
-                                backupFolderUri!!,
-                                finalName,
-                                json
-                            )
-                            Toast.makeText(
-                                context,
-                                if (ok) "Sauvegarde enregistrée" else "Impossible d’enregistrer",
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        }
-                    },
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.filledTonalButtonColors(
-                        containerColor = Color(0xFF1E1E1E),
-                        contentColor = Color.White
-                    ),
-                    shape = RoundedCornerShape(999.dp)
-                ) {
-                    Text("Enregistrer", fontSize = 12.sp)
-                }
-
+                // il ne reste que "Enregistrer dans…"
                 FilledTonalButton(
                     onClick = {
                         val json = BackupManager.exportState(context, null, emptyList())
@@ -342,7 +284,7 @@ private fun BackupScreen(
 
         Spacer(Modifier.height(14.dp))
 
-        // ─── IMPORT ─────────────────────────────
+        /* ─── IMPORT ───────────────────────────── */
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -397,32 +339,9 @@ private fun BackupScreen(
     }
 }
 
-private fun saveJsonToFolder(
-    context: Context,
-    treeUri: Uri,
-    fileName: String,
-    json: String
-): Boolean {
-    return try {
-        val docTree = DocumentFile.fromTreeUri(context, treeUri) ?: return false
-        val existing = docTree.findFile(fileName)
-        val targetFile = existing ?: docTree.createFile("application/json", fileName)
-        if (targetFile == null) return false
-
-        context.contentResolver.openOutputStream(targetFile.uri, "rwt")?.use { out ->
-            out.write(json.toByteArray())
-            out.flush()
-        }
-        true
-    } catch (e: Exception) {
-        e.printStackTrace()
-        false
-    }
-}
-
-// ─────────────────────────────────────────────
-// Sous-écran : Fond sonore
-// ─────────────────────────────────────────────
+/* ─────────────────────────────────────────────
+   Fond sonore
+   ───────────────────────────────────────────── */
 @Composable
 private fun FillerSoundScreen(
     context: Context,
@@ -432,7 +351,8 @@ private fun FillerSoundScreen(
     val sub = Color(0xFFB9B9B9)
     val card = Color(0xFF141414)
 
-    var fillerUri by remember { mutableStateOf(FillerSoundPrefs.getFillerUri(context)) }
+    // on lit le dossier enregistré
+    var fillerUri by remember { mutableStateOf(FillerSoundPrefs.getFillerFolder(context)) }
     var fillerName by remember {
         mutableStateOf(fillerUri?.lastPathSegment ?: "Aucun son sélectionné")
     }
@@ -449,8 +369,7 @@ private fun FillerSoundScreen(
                     Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
                 )
             } catch (_: Exception) {}
-            // on enregistre le dossier choisi comme source du fond sonore
-            FillerSoundPrefs.saveFillerUri(context, uri)
+            FillerSoundPrefs.saveFillerFolder(context, uri)
             fillerUri = uri
             fillerName = uri.lastPathSegment ?: "Dossier choisi"
             Toast.makeText(context, "Dossier enregistré", Toast.LENGTH_SHORT).show()
@@ -479,7 +398,7 @@ private fun FillerSoundScreen(
                 Text("Sélection du fond sonore", color = onBg, fontSize = 14.sp)
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "Ce son (ou dossier) est joué automatiquement quand un morceau se termine.",
+                    "Ce dossier est joué automatiquement quand un morceau se termine.",
                     color = sub, fontSize = 12.sp
                 )
                 Spacer(Modifier.height(10.dp))
@@ -502,9 +421,7 @@ private fun FillerSoundScreen(
                     value = fillerVolume,
                     onValueChange = { v ->
                         fillerVolume = v
-                        // on sauvegarde le choix
                         FillerSoundPrefs.saveFillerVolume(context, v)
-                        // et on pousse DIRECT dans le player, même si on n’est pas en "preview"
                         FillerSoundManager.setVolume(v)
                     },
                     valueRange = 0f..1f,
@@ -551,9 +468,9 @@ private fun FillerSoundScreen(
     }
 }
 
-// ─────────────────────────────────────────────
-// Sous-écran : Édition de titre
-// ─────────────────────────────────────────────
+/* ─────────────────────────────────────────────
+   Édition de titre
+   ───────────────────────────────────────────── */
 @Composable
 private fun EditSoundScreen(
     context: Context,
