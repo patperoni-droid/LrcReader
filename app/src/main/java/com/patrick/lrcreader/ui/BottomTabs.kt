@@ -1,5 +1,6 @@
 package com.patrick.lrcreader.ui
 
+import androidx.compose.runtime.Composable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.Menu
@@ -9,10 +10,12 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
+import androidx.compose.material3.Icon
 import androidx.compose.ui.graphics.Color
 
+// ---------------------------------------------------------------------
+// Onglets
+// ---------------------------------------------------------------------
 sealed class BottomTab(val id: String, val label: String) {
     @Composable
     abstract fun Icon()
@@ -20,7 +23,7 @@ sealed class BottomTab(val id: String, val label: String) {
     object QuickPlaylists : BottomTab("quick", "Playlists") {
         @Composable
         override fun Icon() {
-            androidx.compose.material3.Icon(
+            Icon(
                 imageVector = Icons.Filled.PlaylistPlay,
                 contentDescription = null
             )
@@ -30,7 +33,7 @@ sealed class BottomTab(val id: String, val label: String) {
     object Player : BottomTab("player", "Lecteur") {
         @Composable
         override fun Icon() {
-            androidx.compose.material3.Icon(
+            Icon(
                 imageVector = Icons.Filled.MusicNote,
                 contentDescription = null
             )
@@ -40,7 +43,7 @@ sealed class BottomTab(val id: String, val label: String) {
     object Library : BottomTab("library", "Bibliothèque") {
         @Composable
         override fun Icon() {
-            androidx.compose.material3.Icon(
+            Icon(
                 imageVector = Icons.Filled.LibraryMusic,
                 contentDescription = null
             )
@@ -50,18 +53,17 @@ sealed class BottomTab(val id: String, val label: String) {
     object AllPlaylists : BottomTab("all", "Toutes") {
         @Composable
         override fun Icon() {
-            androidx.compose.material3.Icon(
+            Icon(
                 imageVector = Icons.Filled.Menu,
                 contentDescription = null
             )
         }
     }
 
-    // 👇 NOUVEL ONGLET "Plus"
     object More : BottomTab("more", "Plus") {
         @Composable
         override fun Icon() {
-            androidx.compose.material3.Icon(
+            Icon(
                 imageVector = Icons.Filled.MoreVert,
                 contentDescription = null
             )
@@ -69,6 +71,9 @@ sealed class BottomTab(val id: String, val label: String) {
     }
 }
 
+// ---------------------------------------------------------------------
+// Barre du bas
+// ---------------------------------------------------------------------
 @Composable
 fun BottomTabsBar(
     selected: BottomTab,
@@ -79,7 +84,7 @@ fun BottomTabsBar(
         BottomTab.Player,
         BottomTab.Library,
         BottomTab.AllPlaylists,
-        BottomTab.More            // 👈 ajouté à la fin
+        BottomTab.More
     )
 
     NavigationBar(
@@ -87,18 +92,19 @@ fun BottomTabsBar(
         contentColor = Color.White
     ) {
         tabs.forEach { tab ->
+            val isSelected = tab.id == selected.id
+
             NavigationBarItem(
-                selected = tab.id == selected.id,
+                selected = isSelected,
                 onClick = { onSelected(tab) },
                 icon = { tab.Icon() },
-                // 👇 On supprime complètement le texte
                 alwaysShowLabel = false,
                 colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = Color.White,
+                    selectedIconColor = Color.White.copy(alpha = 1f),
+                    unselectedIconColor = Color.White.copy(alpha = 0.4f),
+                    indicatorColor = Color.Transparent,
                     selectedTextColor = Color.White,
-                    indicatorColor = Color(0xFF1DB954),
-                    unselectedIconColor = Color(0xFFAAAAAA),
-                    unselectedTextColor = Color(0xFF888888)
+                    unselectedTextColor = Color.White.copy(alpha = 0.4f)
                 )
             )
         }

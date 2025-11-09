@@ -42,25 +42,17 @@ fun LibraryScreen(
 ) {
     val context = LocalContext.current
 
-    // dossier racine enregistré (celui qu’on choisit dans le menu)
+    // dossier racine enregistré
     val initialFolder = remember { BackupFolderPrefs.get(context) }
 
-    // dossier courant dans lequel on navigue
     var currentFolderUri by remember { mutableStateOf<Uri?>(initialFolder) }
-
-    // pile de navigation pour revenir en arrière
     var folderStack by remember { mutableStateOf<List<Uri>>(emptyList()) }
-
-    // entrées (dossiers + fichiers audio) dans le dossier courant
     var entries by remember { mutableStateOf<List<DocumentFile>>(emptyList()) }
-
-    // sélection de fichiers audio
     var selectedSongs by remember { mutableStateOf<Set<Uri>>(emptySet()) }
 
     var showAssignDialog by remember { mutableStateOf(false) }
     var actionsExpanded by remember { mutableStateOf(false) }
 
-    // launcher pour choisir le dossier racine
     val pickFolderLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree(),
         onResult = { uri ->
@@ -81,7 +73,7 @@ fun LibraryScreen(
         }
     )
 
-    // au démarrage, si on avait déjà un dossier → on le charge
+    // premier chargement
     LaunchedEffect(initialFolder) {
         if (initialFolder != null) {
             entries = listEntriesInFolder(context, initialFolder)
@@ -94,12 +86,11 @@ fun LibraryScreen(
             .background(Color.Black)
             .padding(16.dp)
     ) {
-        // ─── HEADER ─────────────────────────────────────────────
+        // HEADER
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // bouton retour dossier parent SI on est dans un sous-dossier
             if (folderStack.isNotEmpty()) {
                 IconButton(onClick = {
                     val newStack = folderStack.dropLast(1)
@@ -166,7 +157,6 @@ fun LibraryScreen(
                 color = Color.Gray
             )
         } else {
-            // chemin actuel (facultatif)
             Text(
                 text = "Dossier actuel : " +
                         (DocumentFile.fromTreeUri(context, currentFolderUri!!)?.name ?: "…"),
@@ -183,17 +173,14 @@ fun LibraryScreen(
             ) {
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
                     items(entries, key = { it.uri.toString() }) { file ->
-                        // dossier
                         if (file.isDirectory) {
+                            // dossier
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable {
-                                        // on entre dans le dossier
                                         val old = currentFolderUri
-                                        if (old != null) {
-                                            folderStack = folderStack + old
-                                        }
+                                        if (old != null) folderStack = folderStack + old
                                         currentFolderUri = file.uri
                                         entries = listEntriesInFolder(context, file.uri)
                                         selectedSongs = emptySet()
@@ -204,7 +191,7 @@ fun LibraryScreen(
                                 Icon(
                                     imageVector = Icons.Default.Folder,
                                     contentDescription = null,
-                                    tint = Color(0xFFE386FF),
+                                    tint = Color.White.copy(alpha = 0.9f),
                                     modifier = Modifier.size(22.dp)
                                 )
                                 Spacer(Modifier.width(10.dp))
@@ -239,15 +226,17 @@ fun LibraryScreen(
                                     .padding(vertical = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
+                                // petit carré de sélection – version blanche
                                 Box(
                                     modifier = Modifier
                                         .size(20.dp)
                                         .background(
-                                            if (isSelected) Color(0xFFE386FF) else Color.Transparent
+                                            if (isSelected) Color.White.copy(alpha = 0.18f)
+                                            else Color.Transparent
                                         )
                                         .border(
                                             width = 1.dp,
-                                            color = Color(0xFFE386FF)
+                                            color = Color.White.copy(alpha = 0.65f)
                                         )
                                 )
                                 Spacer(Modifier.width(10.dp))
@@ -280,14 +269,14 @@ fun LibraryScreen(
                         Row {
                             Text(
                                 text = "Tout effacer",
-                                color = Color(0xFFE386FF),
+                                color = Color.White,
                                 modifier = Modifier
                                     .padding(end = 16.dp)
                                     .clickable { selectedSongs = emptySet() }
                             )
                             Text(
                                 text = "Attribuer",
-                                color = Color(0xFFE386FF),
+                                color = Color.White,
                                 modifier = Modifier
                                     .padding(end = 16.dp)
                                     .clickable { showAssignDialog = true }
@@ -299,7 +288,7 @@ fun LibraryScreen(
         }
     }
 
-    // ─── dialogue d’attribution à une playlist ─────────────────────
+    // DIALOG ATTRIBUTION PLAYLIST
     if (showAssignDialog) {
         val playlists = PlaylistRepository.getPlaylists()
         AlertDialog(
@@ -328,7 +317,6 @@ fun LibraryScreen(
                                             )
                                         }
                                         showAssignDialog = false
-                                        // on garde la sélection ou pas ? à toi de voir
                                     }
                             )
                         }
@@ -347,11 +335,6 @@ fun LibraryScreen(
 
 /* ------------------ utils ------------------ */
 
-/**
- * Liste à la fois :
- * - les dossiers
- * - les fichiers audio (.mp3, .wav)
- */
 private fun listEntriesInFolder(context: Context, folderUri: Uri): List<DocumentFile> {
     val docFile = DocumentFile.fromTreeUri(context, folderUri) ?: return emptyList()
     val all = docFile.listFiles()
@@ -374,8 +357,7 @@ private fun listEntriesInFolder(context: Context, folderUri: Uri): List<Document
 
 private fun clearPersistedUris(context: Context) {
     val cr = context.contentResolver
-    val list = cr.persistedUriPermissions
-    list.forEach { perm ->
+    cr.persistedUriPermissions.forEach { perm ->
         try {
             cr.releasePersistableUriPermission(
                 perm.uri,
