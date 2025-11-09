@@ -10,6 +10,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.random.Random
 
 /**
  * Fond sonore :
@@ -41,7 +42,14 @@ object FillerSoundManager {
                 return
             }
             folderPlaylist = list
-            folderIndex = 0
+
+            // 👇 au lieu de démarrer toujours à 0 → on prend un index aléatoire
+            folderIndex = if (folderPlaylist.size == 1) {
+                0
+            } else {
+                Random.nextInt(folderPlaylist.size)
+            }
+
             try {
                 startFromFolderIndex(context, folderIndex)
             } catch (e: Exception) {
