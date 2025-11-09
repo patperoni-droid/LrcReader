@@ -185,13 +185,15 @@ object PlaylistRepository {
         bump()
         return true
     }
-    private val playlistColors = mutableMapOf<String, Long>()
+    private val playlistColors: MutableMap<String, Long> = mutableMapOf()
 
-    fun setPlaylistColor(playlistName: String, color: Long) {
-        playlistColors[playlistName] = color
+    fun setPlaylistColor(playlist: String, color: Long) {
+        playlistColors[playlist] = color
     }
 
-    fun getPlaylistColor(playlistName: String): Long {
-        return playlistColors[playlistName] ?: 0xFFE386FF // rose-violet par défaut
+    fun getPlaylistColor(playlist: String): Long {
+        return playlistColors[playlist] ?: 0xFFE86FFF  // ta couleur rose par défaut
     }
+
+    // ... le reste
 }
