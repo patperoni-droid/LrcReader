@@ -189,7 +189,7 @@ class MainActivity : ComponentActivity() {
                         is BottomTab.Dj -> DjScreen(
                             modifier = Modifier.padding(innerPadding),
                             context = ctx,
-                            onPlayTrack = { uriString: String ->
+                            onPlayTrack = { uriString ->
                                 playWithCrossfade(uriString, null)
                             }
                         )
