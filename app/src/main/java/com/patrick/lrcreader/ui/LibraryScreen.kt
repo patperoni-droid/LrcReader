@@ -13,7 +13,6 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.layout.offset
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Folder
@@ -349,7 +348,7 @@ fun LibraryScreen(
                     }
                 }
 
-                // roue centrée
+                // ─── roue centrée + texte ───
                 if (isLoading) {
                     Box(
                         modifier = Modifier
@@ -357,7 +356,15 @@ fun LibraryScreen(
                             .background(Color.Black.copy(alpha = 0.25f)),
                         contentAlignment = Alignment.Center
                     ) {
-                        CircularProgressIndicator(color = Color.White)
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            CircularProgressIndicator(color = Color.White)
+                            Spacer(Modifier.height(12.dp))
+                            Text(
+                                text = "Chargement des fichiers audio…",
+                                color = Color.White.copy(alpha = 0.8f),
+                                fontSize = 16.sp
+                            )
+                        }
                     }
                 }
 

@@ -7,6 +7,7 @@ import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
@@ -69,6 +70,17 @@ sealed class BottomTab(val id: String, val label: String) {
             )
         }
     }
+
+    // 👇 nouvel onglet DJ
+    object Dj : BottomTab("dj", "DJ") {
+        @Composable
+        override fun Icon() {
+            Icon(
+                imageVector = Icons.Filled.GraphicEq,
+                contentDescription = null
+            )
+        }
+    }
 }
 
 // ---------------------------------------------------------------------
@@ -84,7 +96,8 @@ fun BottomTabsBar(
         BottomTab.Player,
         BottomTab.Library,
         BottomTab.AllPlaylists,
-        BottomTab.More
+        BottomTab.More,
+        BottomTab.Dj,          // 👈 ajouté à la barre
     )
 
     NavigationBar(

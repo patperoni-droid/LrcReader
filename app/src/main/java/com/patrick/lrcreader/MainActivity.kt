@@ -12,23 +12,31 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import com.patrick.lrcreader.core.AutoRestore   // 👈 ajoute bien ça
+import com.patrick.lrcreader.core.AutoRestore
 import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.core.LrcLine
 import com.patrick.lrcreader.core.PlaylistRepository
 import com.patrick.lrcreader.core.SessionPrefs
 import com.patrick.lrcreader.core.crossfadePlay
 import com.patrick.lrcreader.core.parseLrc
-import com.patrick.lrcreader.ui.*
+import com.patrick.lrcreader.ui.AllPlaylistsScreen
+import com.patrick.lrcreader.ui.BottomTab
+import com.patrick.lrcreader.ui.BottomTabsBar
+import com.patrick.lrcreader.ui.DjScreen          // 👈👈 ICI
+import com.patrick.lrcreader.ui.LibraryScreen
+import com.patrick.lrcreader.ui.MoreScreen
+import com.patrick.lrcreader.ui.PlayerScreen
+import com.patrick.lrcreader.ui.PlaylistDetailScreen
+import com.patrick.lrcreader.ui.QuickPlaylistsScreen
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // 👇 on tente de restaurer silencieusement
+        // on essaye de recharger automatiquement la dernière sauvegarde
         AutoRestore.restoreIfNeeded(this)
 
-        // ensuite on relit ce qu’on avait dans les prefs de session
+        // on relit la session
         val initialTabKey = SessionPrefs.getTab(this)
         val initialQuickPlaylist = SessionPrefs.getQuickPlaylist(this)
         val initialOpenedPlaylist = SessionPrefs.getOpenedPlaylist(this)
@@ -38,24 +46,33 @@ class MainActivity : ComponentActivity() {
                 val ctx = this@MainActivity
                 val mediaPlayer = remember { MediaPlayer() }
 
+                // onglet courant
                 var selectedTab by remember {
                     mutableStateOf(
                         initialTabKey?.let { tabFromKey(it) } ?: BottomTab.Player
                     )
                 }
+
+                // navigation
                 var selectedQuickPlaylist by rememberSaveable { mutableStateOf<String?>(initialQuickPlaylist) }
                 var openedPlaylist by rememberSaveable { mutableStateOf<String?>(initialOpenedPlaylist) }
 
+                // lecture
                 var currentPlayingUri by remember { mutableStateOf<String?>(null) }
                 var isPlaying by remember { mutableStateOf(false) }
                 var parsedLines by remember { mutableStateOf<List<LrcLine>>(emptyList()) }
                 var currentPlayToken by remember { mutableStateOf(0L) }
 
+                // couleur “lyrics”
                 var currentLyricsColor by remember { mutableStateOf(Color(0xFFE040FB)) }
+
+                // refresh après import
                 var refreshKey by remember { mutableStateOf(0) }
 
+                // tient le repo en vie
                 val repoVersion by PlaylistRepository.version
 
+                // lecture avec fondu
                 val playWithCrossfade: (String, String?) -> Unit = remember {
                     { uriString, playlistName ->
                         currentPlayingUri = uriString
@@ -88,6 +105,7 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
+                // libère le MP
                 DisposableEffect(Unit) {
                     onDispose { mediaPlayer.release() }
                 }
@@ -165,8 +183,14 @@ class MainActivity : ComponentActivity() {
                         is BottomTab.More -> MoreScreen(
                             modifier = Modifier.padding(innerPadding),
                             context = ctx,
-                            onAfterImport = {
-                                refreshKey++
+                            onAfterImport = { refreshKey++ }
+                        )
+
+                        is BottomTab.Dj -> DjScreen(
+                            modifier = Modifier.padding(innerPadding),
+                            context = ctx,
+                            onPlayTrack = { uriString: String ->
+                                playWithCrossfade(uriString, null)
                             }
                         )
                     }
@@ -185,6 +209,7 @@ private const val TAB_QUICK = "quick"
 private const val TAB_LIBRARY = "library"
 private const val TAB_ALL = "all"
 private const val TAB_MORE = "more"
+private const val TAB_DJ = "dj"
 
 private fun tabKeyOf(tab: BottomTab): String =
     when (tab) {
@@ -193,6 +218,7 @@ private fun tabKeyOf(tab: BottomTab): String =
         is BottomTab.Library -> TAB_LIBRARY
         is BottomTab.AllPlaylists -> TAB_ALL
         is BottomTab.More -> TAB_MORE
+        is BottomTab.Dj -> TAB_DJ
     }
 
 private fun tabFromKey(key: String): BottomTab =
@@ -202,5 +228,6 @@ private fun tabFromKey(key: String): BottomTab =
         TAB_LIBRARY -> BottomTab.Library
         TAB_ALL -> BottomTab.AllPlaylists
         TAB_MORE -> BottomTab.More
+        TAB_DJ -> BottomTab.Dj
         else -> BottomTab.Player
     }
