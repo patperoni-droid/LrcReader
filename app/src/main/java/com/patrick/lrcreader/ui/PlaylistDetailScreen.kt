@@ -1,26 +1,25 @@
 package com.patrick.lrcreader.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.core.PlaylistRepository
-import java.net.URLDecoder
 
 @Composable
 fun PlaylistDetailScreen(
@@ -28,9 +27,11 @@ fun PlaylistDetailScreen(
     playlistName: String,
     onBack: () -> Unit,
     onPlaySong: (String) -> Unit,
-    refreshKey: Long = 0L    // tu l’avais déjà
+    refreshKey: Long = 0L
 ) {
-    // on relit la liste quand la playlist ou le refresh change
+    var menuExpanded by remember { mutableStateOf(false) }
+
+    // recharge les chansons à chaque changement de playlist
     val songs = remember(playlistName, refreshKey) {
         PlaylistRepository.getSongsFor(playlistName)
     }
@@ -41,7 +42,7 @@ fun PlaylistDetailScreen(
             .background(Color.Black)
             .padding(16.dp)
     ) {
-        // barre du haut
+        // ─── BARRE DU HAUT (façon Musicolet) ───────────────────────
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
@@ -56,13 +57,62 @@ fun PlaylistDetailScreen(
                 )
             }
 
-            Text(
-                text = playlistName,
-                color = Color.White,
-                fontSize = 22.sp
+            Spacer(Modifier.width(6.dp))
+
+            // le rectangle cliquable avec flèche
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .border(
+                        width = 1.dp,
+                        color = Color.White.copy(alpha = 0.25f),
+                        shape = RoundedCornerShape(14.dp)
+                    )
+                    .clickable { menuExpanded = true }
+                    .padding(horizontal = 14.dp, vertical = 6.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = playlistName,
+                        color = Color.White,
+                        fontSize = 18.sp,
+                        maxLines = 1
+                    )
+                    Icon(
+                        imageVector = Icons.Filled.ArrowDropDown,
+                        contentDescription = "Menu playlist",
+                        tint = Color.White
+                    )
+                }
+            }
+        }
+
+        // menu déroulant de la playlist
+        DropdownMenu(
+            expanded = menuExpanded,
+            onDismissRequest = { menuExpanded = false }
+        ) {
+            DropdownMenuItem(
+                text = { Text("Renommer") },
+                onClick = {
+                    // TODO : renommer playlist
+                    menuExpanded = false
+                }
+            )
+            DropdownMenuItem(
+                text = { Text("Supprimer") },
+                onClick = {
+                    // TODO : supprimer playlist
+                    menuExpanded = false
+                }
             )
         }
 
+        // ─── CONTENU ───────────────────────
         if (songs.isEmpty()) {
             Text(
                 "Aucun titre dans cette liste.",
@@ -71,22 +121,22 @@ fun PlaylistDetailScreen(
         } else {
             LazyColumn {
                 items(songs) { uriString ->
-                    // 1. on essaie de décoder, sinon on garde tel quel
+                    // 1. décodage propre
                     val decoded = runCatching {
                         java.net.URLDecoder.decode(uriString, "UTF-8")
                     }.getOrElse { uriString }
 
-                    // 2. on récupère juste le nom de fichier
+                    // 2. on récupère juste le nom du fichier
                     val filePart = decoded
-                        .substringAfterLast('/')   // après le dernier /
-                        .substringAfterLast(':')   // certains URI Android ont un ":" à la fin
+                        .substringAfterLast('/')
+                        .substringAfterLast(':')
 
-                    // 3. on enlève l’extension seulement si elle est à la fin
+                    // 3. on nettoie l’extension
                     val displayName = when {
                         filePart.endsWith(".mp3", ignoreCase = true) ->
-                            filePart.dropLast(4)   // ".mp3" = 4 caractères
+                            filePart.dropLast(4)
                         filePart.endsWith(".wav", ignoreCase = true) ->
-                            filePart.dropLast(4)   // ".wav" = 4 caractères
+                            filePart.dropLast(4)
                         else -> filePart
                     }.trim()
 

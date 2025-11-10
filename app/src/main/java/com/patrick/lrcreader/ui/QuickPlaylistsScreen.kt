@@ -1,7 +1,6 @@
 package com.patrick.lrcreader.ui
 
 import android.content.Context
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -12,6 +11,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Palette
@@ -32,6 +32,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -44,49 +45,40 @@ import java.net.URLDecoder
 @Composable
 fun QuickPlaylistsScreen(
     modifier: Modifier = Modifier,
-    onPlaySong: (String, String, Color) -> Unit,   // on envoie aussi la couleur
+    onPlaySong: (String, String, Color) -> Unit,
     refreshKey: Int,
     currentPlayingUri: String? = null,
     selectedPlaylist: String? = null,
     onSelectedPlaylistChange: (String?) -> Unit = {},
-    // 👇 nouveau : prévenir le parent quand la couleur change même sans lancer un son
     onPlaylistColorChange: (Color) -> Unit = {}
 ) {
     val context = LocalContext.current
 
-    // playlists dispo
     val playlists = remember(refreshKey) { PlaylistRepository.getPlaylists() }
 
-    // playlist affichée
     var internalSelected by rememberSaveable {
         mutableStateOf<String?>(selectedPlaylist ?: playlists.firstOrNull())
     }
 
-    // liste mutable de titres (on la garde vivante)
     val songs = remember { mutableStateListOf<String>() }
 
-    // couleur courante pour cette playlist
     var currentListColor by remember { mutableStateOf(Color(0xFFE86FFF)) }
     var colorMenuOpen by remember { mutableStateOf(false) }
 
-    // menus
     var showMenu by remember { mutableStateOf(false) }
 
-    // drag
     val listState = rememberLazyListState()
     val rowHeight = 56.dp
     val rowHeightPx = with(LocalDensity.current) { rowHeight.toPx() }
     var draggingUri by remember { mutableStateOf<String?>(null) }
     var dragOffsetPx by remember { mutableStateOf(0f) }
 
-    // renommage
     var renameTarget by remember { mutableStateOf<String?>(null) }
     var renameText by remember { mutableStateOf("") }
 
-    // fond sonore
     var isFillerRunning by remember { mutableStateOf(FillerSoundManager.isPlaying()) }
 
-    // quand la playlist change → on recharge les titres + la couleur
+    // recharge quand playlist change
     LaunchedEffect(internalSelected, refreshKey) {
         songs.clear()
         val pl = internalSelected
@@ -94,7 +86,6 @@ fun QuickPlaylistsScreen(
             songs.addAll(PlaylistRepository.getSongsFor(pl))
             val savedColor = loadPlaylistColor(context, pl)
             currentListColor = savedColor ?: Color(0xFFE86FFF)
-            // 👇 on pousse la couleur jusqu'au parent (player)
             onPlaylistColorChange(currentListColor)
         }
     }
@@ -135,21 +126,44 @@ fun QuickPlaylistsScreen(
             .background(Color.Black)
             .padding(16.dp)
     ) {
-        // ─── HEADER ───────────────────────────────
+        // ─── HEADER encadré + flèche + icônes ───────────────────────────────
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            // gauche : titre + menu
-            Box {
-                Text(
-                    text = internalSelected ?: "Sélectionne une playlist",
-                    color = Color.White,
-                    fontSize = 20.sp,
-                    modifier = Modifier.clickable { showMenu = true }
-                )
+            // bloc titre qui prend toute la largeur disponible
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .border(
+                        width = 1.dp,
+                        color = Color.White.copy(alpha = 0.25f),
+                        shape = RoundedCornerShape(14.dp)
+                    )
+                    .clickable { showMenu = true }
+                    .padding(horizontal = 14.dp, vertical = 6.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = internalSelected ?: "Sélectionne une playlist",
+                        color = Color.White,
+                        fontSize = 20.sp,
+                        maxLines = 1,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Icon(
+                        imageVector = Icons.Filled.ArrowDropDown,
+                        contentDescription = "Choisir une playlist",
+                        tint = Color.White
+                    )
+                }
 
+                // c'est ici qu'on laisse le menu, pour qu'il s'ouvre bien
                 DropdownMenu(
                     expanded = showMenu,
                     onDismissRequest = { showMenu = false },
@@ -169,14 +183,14 @@ fun QuickPlaylistsScreen(
                                 internalSelected = name
                                 onSelectedPlaylistChange(name)
                                 showMenu = false
-                                // le LaunchedEffect fera le reste
+                                // le LaunchedEffect recharge la liste + couleur
                             }
                         )
                     }
                 }
             }
 
-            // droite : icônes
+            // icônes à droite
             Row(verticalAlignment = Alignment.CenterVertically) {
                 // palette
                 Box {
@@ -213,12 +227,10 @@ fun QuickPlaylistsScreen(
                                 text = { Text("") },
                                 onClick = {
                                     currentListColor = c
-                                    // sauvegarde
                                     internalSelected?.let { pl ->
                                         savePlaylistColor(context, pl, c)
                                     }
                                     colorMenuOpen = false
-                                    // 👇 on envoie la nouvelle couleur au parent
                                     onPlaylistColorChange(c)
                                 }
                             )
@@ -226,7 +238,7 @@ fun QuickPlaylistsScreen(
                     }
                 }
 
-                // reset playlist
+                // reset
                 if (internalSelected != null) {
                     IconButton(
                         onClick = {
@@ -245,7 +257,7 @@ fun QuickPlaylistsScreen(
                     }
                 }
 
-                // toggle fond sonore
+                // toggle filler
                 IconButton(
                     onClick = {
                         if (isFillerRunning) {
@@ -291,7 +303,6 @@ fun QuickPlaylistsScreen(
                 state = listState
             ) {
                 itemsIndexed(songs, key = { _, item -> item }) { _, uriString ->
-                    // decode + clean
                     val decoded = runCatching {
                         URLDecoder.decode(uriString, "UTF-8")
                     }.getOrElse { uriString }
@@ -327,7 +338,6 @@ fun QuickPlaylistsScreen(
                             .padding(vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // poignée
                         Icon(
                             imageVector = Icons.Filled.DragHandle,
                             contentDescription = "Déplacer",
@@ -356,8 +366,7 @@ fun QuickPlaylistsScreen(
                                             dragOffsetPx = 0f
                                         }
                                     ) { _, dragAmount ->
-                                        val current = draggingUri
-                                            ?: return@detectDragGesturesAfterLongPress
+                                        val current = draggingUri ?: return@detectDragGesturesAfterLongPress
                                         val currentIndex = songs.indexOf(current)
                                         if (currentIndex == -1) return@detectDragGesturesAfterLongPress
 
@@ -377,7 +386,6 @@ fun QuickPlaylistsScreen(
                                 }
                         )
 
-                        // titre
                         Text(
                             text = displayName.uppercase(),
                             color = when {
@@ -489,7 +497,7 @@ private fun <T> MutableList<T>.swap(i: Int, j: Int) {
     this[j] = tmp
 }
 
-// prefs pour la couleur par playlist
+// prefs couleur
 private const val PLAYLIST_COLOR_PREF = "playlist_color_pref"
 
 private fun savePlaylistColor(context: Context, playlist: String, color: Color) {

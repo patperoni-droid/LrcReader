@@ -13,11 +13,13 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.offset
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -34,6 +36,10 @@ import androidx.compose.ui.unit.sp
 import androidx.documentfile.provider.DocumentFile
 import com.patrick.lrcreader.core.BackupFolderPrefs
 import com.patrick.lrcreader.core.PlaylistRepository
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /* -----------------------------------------------------------
    Cache global pour la bibliothèque
@@ -65,6 +71,7 @@ fun LibraryScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
 
     // dossier racine enregistré
     val initialFolder = remember { BackupFolderPrefs.get(context) }
@@ -77,27 +84,40 @@ fun LibraryScreen(
     var showAssignDialog by remember { mutableStateOf(false) }
     var actionsExpanded by remember { mutableStateOf(false) }
 
+    // roue
+    var isLoading by remember { mutableStateOf(false) }
+
     val pickFolderLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree(),
         onResult = { uri ->
             if (uri != null) {
-                try {
-                    context.contentResolver.takePersistableUriPermission(
-                        uri,
-                        Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-                    )
-                } catch (_: Exception) {}
-                BackupFolderPrefs.save(context, uri)
+                scope.launch {
+                    isLoading = true
+                    try {
+                        try {
+                            context.contentResolver.takePersistableUriPermission(
+                                uri,
+                                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                            )
+                        } catch (_: Exception) {}
+                        BackupFolderPrefs.save(context, uri)
 
-                currentFolderUri = uri
-                folderStack = emptyList()
+                        currentFolderUri = uri
+                        folderStack = emptyList()
 
-                // on lit une fois et on met en cache global
-                val fresh = listEntriesInFolder(context, uri)
-                entries = fresh
-                LibraryFolderCache.put(uri, fresh)
+                        // GROS I/O EN BACKGROUND
+                        val fresh = withContext(Dispatchers.IO) {
+                            listEntriesInFolder(context, uri)
+                        }
+                        entries = fresh
+                        LibraryFolderCache.put(uri, fresh)
 
-                selectedSongs = emptySet()
+                        selectedSongs = emptySet()
+                    } finally {
+                        delay(200)
+                        isLoading = false
+                    }
+                }
             }
         }
     )
@@ -105,13 +125,21 @@ fun LibraryScreen(
     // premier chargement
     LaunchedEffect(initialFolder) {
         if (initialFolder != null) {
+            isLoading = true
             val cached = LibraryFolderCache.get(initialFolder)
             if (cached != null) {
                 entries = cached
+                delay(200)
+                isLoading = false
             } else {
-                val fresh = listEntriesInFolder(context, initialFolder)
+                // on va lire le disque en background
+                val fresh = withContext(Dispatchers.IO) {
+                    listEntriesInFolder(context, initialFolder)
+                }
                 entries = fresh
                 LibraryFolderCache.put(initialFolder, fresh)
+                delay(200)
+                isLoading = false
             }
         }
     }
@@ -129,17 +157,24 @@ fun LibraryScreen(
         ) {
             if (folderStack.isNotEmpty()) {
                 IconButton(onClick = {
-                    val newStack = folderStack.dropLast(1)
-                    val parentUri = newStack.lastOrNull() ?: initialFolder
-                    currentFolderUri = parentUri
+                    scope.launch {
+                        isLoading = true
+                        val newStack = folderStack.dropLast(1)
+                        val parentUri = newStack.lastOrNull() ?: initialFolder
+                        currentFolderUri = parentUri
 
-                    entries = parentUri?.let { uri ->
-                        LibraryFolderCache.get(uri)
-                            ?: listEntriesInFolder(context, uri).also { LibraryFolderCache.put(uri, it) }
-                    } ?: emptyList()
+                        entries = parentUri?.let { uri ->
+                            LibraryFolderCache.get(uri)
+                                ?: withContext(Dispatchers.IO) {
+                                    listEntriesInFolder(context, uri)
+                                }.also { LibraryFolderCache.put(uri, it) }
+                        } ?: emptyList()
 
-                    folderStack = newStack
-                    selectedSongs = emptySet()
+                        folderStack = newStack
+                        selectedSongs = emptySet()
+                        delay(200)
+                        isLoading = false
+                    }
                 }) {
                     Icon(
                         imageVector = Icons.Default.ArrowBack,
@@ -221,19 +256,26 @@ fun LibraryScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable {
-                                        val old = currentFolderUri
-                                        if (old != null) folderStack = folderStack + old
-                                        currentFolderUri = entry.uri
+                                        scope.launch {
+                                            isLoading = true
+                                            val old = currentFolderUri
+                                            if (old != null) folderStack = folderStack + old
+                                            currentFolderUri = entry.uri
 
-                                        val cached = LibraryFolderCache.get(entry.uri)
-                                        if (cached != null) {
-                                            entries = cached
-                                        } else {
-                                            val fresh = listEntriesInFolder(context, entry.uri)
-                                            entries = fresh
-                                            LibraryFolderCache.put(entry.uri, fresh)
+                                            val cached = LibraryFolderCache.get(entry.uri)
+                                            if (cached != null) {
+                                                entries = cached
+                                            } else {
+                                                val fresh = withContext(Dispatchers.IO) {
+                                                    listEntriesInFolder(context, entry.uri)
+                                                }
+                                                entries = fresh
+                                                LibraryFolderCache.put(entry.uri, fresh)
+                                            }
+                                            selectedSongs = emptySet()
+                                            delay(200)
+                                            isLoading = false
                                         }
-                                        selectedSongs = emptySet()
                                     }
                                     .padding(vertical = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically
@@ -304,6 +346,18 @@ fun LibraryScreen(
                                 )
                             }
                         }
+                    }
+                }
+
+                // roue centrée
+                if (isLoading) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.25f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(color = Color.White)
                     }
                 }
 
