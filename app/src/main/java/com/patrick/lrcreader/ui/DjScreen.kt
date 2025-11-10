@@ -14,12 +14,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.Text
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -34,7 +30,10 @@ import com.patrick.lrcreader.core.DjFolderPrefs
 fun DjScreen(
     modifier: Modifier = Modifier,
     context: Context = LocalContext.current,
-    onPlayTrack: (String) -> Unit
+    onPlayTrack: (String) -> Unit,
+    onStop: () -> Unit,               // 👈 nouvelle lambda pour stopper
+    currentUri: String?,
+    progress: Float
 ) {
     // dossier DJ déjà enregistré ?
     var djFolderUri by remember { mutableStateOf<Uri?>(DjFolderPrefs.get(context)) }
@@ -104,12 +103,7 @@ fun DjScreen(
                 onDismissRequest = { menuOpen = false }
             ) {
                 DropdownMenuItem(
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Default.Folder,
-                            contentDescription = null
-                        )
-                    },
+                    leadingIcon = { Icon(Icons.Default.Folder, contentDescription = null) },
                     text = { Text("Choisir dossier DJ") },
                     onClick = {
                         menuOpen = false
@@ -132,39 +126,60 @@ fun DjScreen(
 
         Spacer(Modifier.height(10.dp))
 
-        // timeline en haut
-        LinearProgressIndicator(
-            progress = 0.35f,
+        // ───── TIMELINE + bouton STOP ──────────────────────────────
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(6.dp),
-            color = Color(0xFFE040FB),
-            trackColor = Color(0x33E040FB)
-        )
+                .height(28.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            LinearProgressIndicator(
+                progress = progress.coerceIn(0f, 1f),
+                modifier = Modifier
+                    .weight(1f)
+                    .height(6.dp),
+                color = Color(0xFFE040FB),
+                trackColor = Color(0x33E040FB)
+            )
+
+            IconButton(
+                onClick = onStop,
+                enabled = currentUri != null,
+                modifier = Modifier
+                    .padding(start = 6.dp)
+                    .size(28.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Stop,
+                    contentDescription = "Stop",
+                    tint = if (currentUri != null) Color(0xFFFF6F91) else Color.Gray
+                )
+            }
+        }
 
         Spacer(Modifier.height(10.dp))
 
-        // liste des titres DJ
+        // ───── LISTE DES TITRES DJ ──────────────────────────────
         if (djFolderUri == null) {
-            // message vide
             Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = "Choisis un dossier pour tes titres DJ.",
-                    color = Color.Gray
-                )
+                Text("Choisis un dossier pour tes titres DJ.", color = Color.Gray)
             }
         } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize()
-            ) {
+            LazyColumn(Modifier.fillMaxSize()) {
                 items(tracks, key = { it.uri.toString() }) { file ->
+                    val fileUriString = file.uri.toString()
+                    val isPlaying = currentUri != null && currentUri == fileUriString
+
                     DjTrackRow(
-                        title = file.name?.removeSuffix(".mp3")?.removeSuffix(".wav") ?: "Titre",
-                        isPlaying = false,
-                        onClick = { onPlayTrack(file.uri.toString()) }
+                        title = file.name
+                            ?.removeSuffix(".mp3")
+                            ?.removeSuffix(".wav")
+                            ?: "Titre",
+                        isPlaying = isPlaying,
+                        onClick = { onPlayTrack(fileUriString) }
                     )
                 }
             }
@@ -181,7 +196,7 @@ private fun DjTrackRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(42.dp) // resserré
+            .height(42.dp)
             .clickable { onClick() }
             .padding(horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -211,6 +226,11 @@ private fun DjTrackRow(
 private fun loadDjTracks(context: Context, folderUri: Uri): List<DocumentFile> {
     val doc = DocumentFile.fromTreeUri(context, folderUri) ?: return emptyList()
     return doc.listFiles()
-        .filter { it.isFile && (it.name?.endsWith(".mp3", true) == true || it.name?.endsWith(".wav", true) == true) }
+        .filter {
+            it.isFile && (
+                    it.name?.endsWith(".mp3", true) == true ||
+                            it.name?.endsWith(".wav", true) == true
+                    )
+        }
         .sortedBy { it.name?.lowercase() ?: "" }
 }
