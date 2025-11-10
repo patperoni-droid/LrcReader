@@ -33,10 +33,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // on essaye de recharger automatiquement la dernière sauvegarde
+        // recharge auto
         AutoRestore.restoreIfNeeded(this)
 
-        // on relit la session
+        // session
         val initialTabKey = SessionPrefs.getTab(this)
         val initialQuickPlaylist = SessionPrefs.getQuickPlaylist(this)
         val initialOpenedPlaylist = SessionPrefs.getOpenedPlaylist(this)
@@ -61,26 +61,25 @@ class MainActivity : ComponentActivity() {
                     mutableStateOf<String?>(initialOpenedPlaylist)
                 }
 
-                // lecture “globale” (player principal)
+                // lecture globale
                 var currentPlayingUri by remember { mutableStateOf<String?>(null) }
                 var isPlaying by remember { mutableStateOf(false) }
                 var parsedLines by remember { mutableStateOf<List<LrcLine>>(emptyList()) }
                 var currentPlayToken by remember { mutableStateOf(0L) }
 
-                // couleur “lyrics”
+                // couleur lyrics
                 var currentLyricsColor by remember { mutableStateOf(Color(0xFFE040FB)) }
 
                 // refresh après import
                 var refreshKey by remember { mutableStateOf(0) }
 
-                // tient le repo en vie
+                // pour garder le repo vivant
                 val repoVersion by PlaylistRepository.version
 
-                // lecture classique (vient des playlists, etc.) → on envoie vers Player
+                // lecture “normale” (pas DJ)
                 val playWithCrossfade: (String, String?) -> Unit = remember {
                     { uriString, playlistName ->
                         currentPlayingUri = uriString
-                        // coupe le fond sonore
                         FillerSoundManager.fadeOutAndStop(400)
 
                         val myToken = currentPlayToken + 1
@@ -105,13 +104,13 @@ class MainActivity : ComponentActivity() {
                             }
                         )
 
-                        // ici → on va sur le lecteur normal
+                        // on va sur le lecteur
                         selectedTab = BottomTab.Player
                         SessionPrefs.saveTab(ctx, tabKeyOf(BottomTab.Player))
                     }
                 }
 
-                // libère le MP
+                // libérer le player
                 DisposableEffect(Unit) {
                     onDispose { mediaPlayer.release() }
                 }
@@ -192,7 +191,7 @@ class MainActivity : ComponentActivity() {
                             onAfterImport = { refreshKey++ }
                         )
 
-                        // 👇 l’onglet DJ gère son propre double MediaPlayer en interne
+                        // 👇 DJ : tout est géré dans DjScreen maintenant
                         is BottomTab.Dj -> DjScreen(
                             modifier = Modifier.padding(innerPadding),
                             context = ctx
