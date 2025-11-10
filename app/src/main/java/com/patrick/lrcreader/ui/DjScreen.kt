@@ -1,9 +1,9 @@
 package com.patrick.lrcreader.ui
 
 import android.content.Context
-import android.content.Intent
 import android.media.MediaPlayer
 import android.net.Uri
+import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.LinearEasing
@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -44,28 +45,28 @@ import androidx.compose.ui.unit.sp
 import androidx.documentfile.provider.DocumentFile
 import com.patrick.lrcreader.core.DjFolderPrefs
 import com.patrick.lrcreader.core.FillerSoundManager
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.math.max
 
-// ---------------------------------------------------------------------
-// Modèle qu’on affiche dans la liste (dossier ou fichier audio)
-// ---------------------------------------------------------------------
+/* -------------------------------------------------------------------------- */
+/*  Modèle de ligne (dossier ou fichier)                                      */
+/* -------------------------------------------------------------------------- */
 private data class DjEntry(
     val uri: Uri,
     val name: String,
     val isDirectory: Boolean
 )
 
-// ---------------------------------------------------------------------
-// Petit cache en mémoire (clé = uri.toString())
-// ---------------------------------------------------------------------
+/* -------------------------------------------------------------------------- */
+/*  Cache mémoire pour navigation rapide                                      */
+/* -------------------------------------------------------------------------- */
 private object DjFolderCache {
     private val map = mutableMapOf<String, List<DjEntry>>()
     fun get(uri: Uri): List<DjEntry>? = map[uri.toString()]
-    fun put(uri: Uri, list: List<DjEntry>) {
-        map[uri.toString()] = list
-    }
+    fun put(uri: Uri, list: List<DjEntry>) { map[uri.toString()] = list }
     fun clear() = map.clear()
 }
 
@@ -74,45 +75,47 @@ fun DjScreen(
     modifier: Modifier = Modifier,
     context: Context = LocalContext.current
 ) {
-    // dossier racine DJ mémorisé
+    /* --------------------- état navigation dossiers --------------------- */
     var rootFolderUri by remember { mutableStateOf<Uri?>(DjFolderPrefs.get(context)) }
-
-    // dossier courant
     var currentFolderUri by remember { mutableStateOf<Uri?>(rootFolderUri) }
     var folderStack by remember { mutableStateOf<List<Uri>>(emptyList()) }
     var entries by remember { mutableStateOf<List<DjEntry>>(emptyList()) }
     var isLoading by remember { mutableStateOf(false) }
 
-    // 2 lecteurs
+    /* ------------------------ état lecteur DJ ---------------------------- */
     val scope = rememberCoroutineScope()
+
     var mpA by remember { mutableStateOf<MediaPlayer?>(null) }
     var mpB by remember { mutableStateOf<MediaPlayer?>(null) }
-    var activeSlot by remember { mutableStateOf(0) } // 0 rien, 1 = A, 2 = B
 
-    // ce qui joue vraiment
-    var playingUri by remember { mutableStateOf<String?>(null) }
-    // ce qu'on surligne tout de suite
-    var uiSelectedUri by remember { mutableStateOf<String?>(null) }
+    // 0 = rien, 1 = A joue, 2 = B joue
+    var activeSlot by remember { mutableStateOf(0) }
 
     // timeline
+    var playingUri by remember { mutableStateOf<String?>(null) }
     var progress by remember { mutableStateOf(0f) }
     var currentDurationMs by remember { mutableStateOf(0) }
 
-    // titres pour les deux decks
+    // retour visuel liste
+    var uiSelectedUri by remember { mutableStateOf<String?>(null) }
+
+    // infos decks
     var deckATitle by remember { mutableStateOf("A vide") }
     var deckBTitle by remember { mutableStateOf("B vide") }
+    var deckAUri by remember { mutableStateOf<String?>(null) }
+    var deckBUri by remember { mutableStateOf<String?>(null) }
 
-    // crossfader
+    // crossfader (0 = A, 1 = B)
     var crossfadePos by remember { mutableStateOf(0.5f) }
 
     // menu
     var menuOpen by remember { mutableStateOf(false) }
 
-    // animation rotation platines
+    /* --------------------- animation platines rondes --------------------- */
     val infinite = rememberInfiniteTransition(label = "dj-discs")
     val angleA by infinite.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
+        0f,
+        360f,
         animationSpec = infiniteRepeatable(
             animation = tween(5_000, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
@@ -120,8 +123,8 @@ fun DjScreen(
         label = "angleA"
     )
     val angleB by infinite.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
+        0f,
+        360f,
         animationSpec = infiniteRepeatable(
             animation = tween(5_000, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
@@ -129,7 +132,7 @@ fun DjScreen(
         label = "angleB"
     )
 
-    // choisir dossier DJ
+    /* -------------------------- choisir dossier -------------------------- */
     val pickFolderLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree(),
         onResult = { uri ->
@@ -142,13 +145,14 @@ fun DjScreen(
                 } catch (_: Exception) {}
                 DjFolderPrefs.save(context, uri)
                 DjFolderCache.clear()
+
                 rootFolderUri = uri
                 currentFolderUri = uri
                 folderStack = emptyList()
 
                 scope.launch {
                     isLoading = true
-                    val fresh = loadDjEntries(context, uri)
+                    val fresh = withContext(Dispatchers.IO) { loadDjEntries(context, uri) }
                     entries = fresh
                     DjFolderCache.put(uri, fresh)
                     isLoading = false
@@ -157,16 +161,15 @@ fun DjScreen(
         }
     )
 
-    // premier chargement
+    /* -------------------------- 1er chargement --------------------------- */
     LaunchedEffect(rootFolderUri) {
         val root = rootFolderUri
         if (root != null) {
-            val cached = DjFolderCache.get(root)
-            if (cached != null) {
-                entries = cached
-            } else {
+            DjFolderCache.get(root)?.let {
+                entries = it
+            } ?: run {
                 isLoading = true
-                val fresh = loadDjEntries(context, root)
+                val fresh = withContext(Dispatchers.IO) { loadDjEntries(context, root) }
                 entries = fresh
                 DjFolderCache.put(root, fresh)
                 isLoading = false
@@ -176,7 +179,7 @@ fun DjScreen(
         }
     }
 
-    // faire avancer la timeline
+    /* --------------------- avancer la timeline --------------------------- */
     LaunchedEffect(playingUri, activeSlot) {
         while (playingUri != null && (activeSlot == 1 || activeSlot == 2)) {
             delay(200)
@@ -184,9 +187,7 @@ fun DjScreen(
             if (dur > 0) {
                 val pos = try {
                     if (activeSlot == 1) mpA?.currentPosition ?: 0 else mpB?.currentPosition ?: 0
-                } catch (_: Exception) {
-                    0
-                }
+                } catch (_: Exception) { 0 }
                 progress = pos.toFloat() / dur.toFloat()
             } else {
                 progress = 0f
@@ -198,7 +199,7 @@ fun DjScreen(
         }
     }
 
-    // applique la position du crossfader aux 2 players existants
+    /* ----------------- applique la position du crossfader ---------------- */
     fun applyCrossfader() {
         val aVol = 1f - crossfadePos
         val bVol = crossfadePos
@@ -206,94 +207,153 @@ fun DjScreen(
         mpB?.setVolume(bVol, bVol)
     }
 
-    // lecture DJ
-    fun playDjTrack(uriString: String, displayName: String) {
-        // quand on lance un titre DJ → on coupe le fond sonore
-        FillerSoundManager.fadeOutAndStop(400)
-
+    /* ----------------- sélection dans la liste --------------------------- */
+    fun selectTrack(uriString: String, displayName: String) {
         uiSelectedUri = uriString
+
         scope.launch {
-            val useA = activeSlot != 1
-            val newPlayer = if (useA) {
+            if (activeSlot == 0) {
+                // premier titre → on joue A
+                FillerSoundManager.fadeOutAndStop(400)
                 mpA?.release()
-                MediaPlayer().also { mpA = it }
-            } else {
-                mpB?.release()
-                MediaPlayer().also { mpB = it }
-            }
-
-            try {
-                newPlayer.setDataSource(context, Uri.parse(uriString))
-                newPlayer.prepare()
-                currentDurationMs = newPlayer.duration
-                newPlayer.setVolume(0f, 0f)
-                newPlayer.start()
-
-                val oldPlayer = if (useA) mpB else mpA
-                val oldWasPlaying = if (useA) activeSlot == 2 else activeSlot == 1
-
-                if (useA) deckATitle = displayName else deckBTitle = displayName
-
-                activeSlot = if (useA) 1 else 2
-                playingUri = uriString
-
-                // crossfade 800 ms
-                val fadeSteps = 16
-                repeat(fadeSteps) { step ->
-                    val t = (step + 1) / fadeSteps.toFloat()
-                    val targetA = 1f - crossfadePos
-                    val targetB = crossfadePos
-
-                    if (useA) {
-                        val volA = targetA * t
-                        newPlayer.setVolume(volA, volA)
-                        if (oldWasPlaying) {
-                            val volB = targetB * (1f - t)
-                            oldPlayer?.setVolume(max(0f, volB), max(0f, volB))
-                        }
-                    } else {
-                        val volB = targetB * t
-                        newPlayer.setVolume(volB, volB)
-                        if (oldWasPlaying) {
-                            val volA = targetA * (1f - t)
-                            oldPlayer?.setVolume(max(0f, volA), max(0f, volA))
-                        }
+                val p = MediaPlayer()
+                mpA = p
+                try {
+                    withContext(Dispatchers.IO) {
+                        p.setDataSource(context, Uri.parse(uriString))
+                        p.prepare()
                     }
+                    currentDurationMs = p.duration
+                    p.setVolume(1f - crossfadePos, 1f - crossfadePos)
+                    p.start()
 
-                    delay(50)
+                    deckATitle = displayName
+                    deckAUri = uriString
+                    activeSlot = 1
+                    playingUri = uriString
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    mpA = null
                 }
-
-                if (oldWasPlaying) {
-                    oldPlayer?.stop()
-                    oldPlayer?.release()
-                    if (useA) mpB = null else mpA = null
-                }
-
-                applyCrossfader()
-            } catch (e: Exception) {
-                e.printStackTrace()
-                playingUri = null
-                currentDurationMs = 0
-                progress = 0f
-                if (useA) {
-                    mpA?.release(); mpA = null
+            } else {
+                // il y a déjà quelque chose qui joue
+                val loadIntoA = (activeSlot == 2) // si B joue, on prépare A
+                if (loadIntoA) {
+                    mpA?.release()
+                    val p = MediaPlayer()
+                    mpA = p
+                    try {
+                        withContext(Dispatchers.IO) {
+                            p.setDataSource(context, Uri.parse(uriString))
+                            p.prepare()
+                        }
+                        p.setVolume(0f, 0f)
+                        deckATitle = displayName
+                        deckAUri = uriString
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                        mpA = null
+                    }
                 } else {
-                    mpB?.release(); mpB = null
+                    mpB?.release()
+                    val p = MediaPlayer()
+                    mpB = p
+                    try {
+                        withContext(Dispatchers.IO) {
+                            p.setDataSource(context, Uri.parse(uriString))
+                            p.prepare()
+                        }
+                        p.setVolume(0f, 0f)
+                        deckBTitle = displayName
+                        deckBUri = uriString
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                        mpB = null
+                    }
                 }
             }
         }
     }
 
-    // stop
+    /* --------------------- bouton Lancer (2 sens) ------------------------ */
+    fun launchCrossfade() {
+        scope.launch {
+            // cas 1 : A joue, B prêt → A -> B
+            if (activeSlot == 1 && mpA != null && mpB != null) {
+                val playerA = mpA!!
+                val playerB = mpB!!
+
+                if (!playerB.isPlaying) {
+                    try { playerB.seekTo(0); playerB.start() } catch (_: Exception) {}
+                }
+
+                val fadeSteps = 20
+                val targetA = 1f - crossfadePos
+                val targetB = crossfadePos
+
+                repeat(fadeSteps) { i ->
+                    val t = (i + 1) / fadeSteps.toFloat()
+                    val volA = targetA * (1f - t)
+                    val volB = targetB * t
+                    playerA.setVolume(max(0f, volA), max(0f, volA))
+                    playerB.setVolume(max(0f, volB), max(0f, volB))
+                    delay(50)
+                }
+
+                try { playerA.stop() } catch (_: Exception) {}
+                playerA.release()
+                mpA = null
+
+                activeSlot = 2
+                playingUri = deckBUri
+                currentDurationMs = try { playerB.duration } catch (_: Exception) { 0 }
+                return@launch
+            }
+
+            // cas 2 : B joue, A prêt → B -> A
+            if (activeSlot == 2 && mpA != null && mpB != null) {
+                val playerA = mpA!!
+                val playerB = mpB!!
+
+                if (!playerA.isPlaying) {
+                    try { playerA.seekTo(0); playerA.start() } catch (_: Exception) {}
+                }
+
+                val fadeSteps = 20
+                val targetA = 1f - crossfadePos
+                val targetB = crossfadePos
+
+                repeat(fadeSteps) { i ->
+                    val t = (i + 1) / fadeSteps.toFloat()
+                    val volB = targetB * (1f - t)
+                    val volA = targetA * t
+                    playerB.setVolume(max(0f, volB), max(0f, volB))
+                    playerA.setVolume(max(0f, volA), max(0f, volA))
+                    delay(50)
+                }
+
+                try { playerB.stop() } catch (_: Exception) {}
+                playerB.release()
+                mpB = null
+
+                activeSlot = 1
+                playingUri = deckAUri
+                currentDurationMs = try { playerA.duration } catch (_: Exception) { 0 }
+            }
+        }
+    }
+
+    /* ----------------------------- STOP DJ ----------------------------- */
     fun stopDj() {
         mpA?.stop(); mpA?.release(); mpA = null
         mpB?.stop(); mpB?.release(); mpB = null
-        playingUri = null
         activeSlot = 0
+        playingUri = null
         progress = 0f
         currentDurationMs = 0
     }
 
+    /* ============================== UI ============================== */
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -313,13 +373,14 @@ fun DjScreen(
                     folderStack = newStack
 
                     if (parentUri != null) {
-                        val cached = DjFolderCache.get(parentUri)
-                        if (cached != null) {
-                            entries = cached
-                        } else {
+                        DjFolderCache.get(parentUri)?.let {
+                            entries = it
+                        } ?: run {
                             scope.launch {
                                 isLoading = true
-                                val fresh = loadDjEntries(context, parentUri)
+                                val fresh = withContext(Dispatchers.IO) {
+                                    loadDjEntries(context, parentUri)
+                                }
                                 entries = fresh
                                 DjFolderCache.put(parentUri, fresh)
                                 isLoading = false
@@ -387,11 +448,11 @@ fun DjScreen(
 
         Spacer(Modifier.height(10.dp))
 
-        // ───────────── Zone double platine ronde ─────────────
+        // PLATINES + CROSSFADER + BOUTON
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(130.dp),
+                .height(140.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             // Deck A
@@ -405,9 +466,7 @@ fun DjScreen(
                 Box(
                     modifier = Modifier
                         .size(70.dp)
-                        .graphicsLayer {
-                            rotationZ = if (activeSlot == 1) angleA else 0f
-                        }
+                        .graphicsLayer { rotationZ = if (activeSlot == 1) angleA else 0f }
                         .background(Color(0xFF1F1F1F), CircleShape)
                         .border(2.dp, Color(0xFF4CAF50), CircleShape),
                     contentAlignment = Alignment.Center
@@ -419,21 +478,16 @@ fun DjScreen(
                     )
                 }
                 Spacer(Modifier.height(6.dp))
-                Text(
-                    text = deckATitle,
-                    color = Color.White,
-                    fontSize = 11.sp,
-                    maxLines = 1
-                )
+                Text(deckATitle, color = Color.White, fontSize = 11.sp, maxLines = 1)
             }
 
-            // Crossfader au milieu
+            // centre
             Column(
                 modifier = Modifier
-                    .width(70.dp)
+                    .width(90.dp)
                     .fillMaxHeight(),
-                verticalArrangement = Arrangement.Center,
-                horizontalAlignment = Alignment.CenterHorizontally
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
             ) {
                 Text("X-Fade", color = Color.Gray, fontSize = 10.sp)
                 Slider(
@@ -442,8 +496,15 @@ fun DjScreen(
                         crossfadePos = it
                         applyCrossfader()
                     },
-                    modifier = Modifier.height(80.dp),
+                    modifier = Modifier.height(60.dp),
                 )
+                Spacer(Modifier.height(6.dp))
+                Button(
+                    onClick = { launchCrossfade() },
+                    enabled = (activeSlot == 1 && mpB != null) || (activeSlot == 2 && mpA != null)
+                ) {
+                    Text("Lancer", fontSize = 10.sp)
+                }
             }
 
             // Deck B
@@ -457,9 +518,7 @@ fun DjScreen(
                 Box(
                     modifier = Modifier
                         .size(70.dp)
-                        .graphicsLayer {
-                            rotationZ = if (activeSlot == 2) angleB else 0f
-                        }
+                        .graphicsLayer { rotationZ = if (activeSlot == 2) angleB else 0f }
                         .background(Color(0xFF1F1F1F), CircleShape)
                         .border(2.dp, Color(0xFFE040FB), CircleShape),
                     contentAlignment = Alignment.Center
@@ -471,18 +530,13 @@ fun DjScreen(
                     )
                 }
                 Spacer(Modifier.height(6.dp))
-                Text(
-                    text = deckBTitle,
-                    color = Color.White,
-                    fontSize = 11.sp,
-                    maxLines = 1
-                )
+                Text(deckBTitle, color = Color.White, fontSize = 11.sp, maxLines = 1)
             }
         }
 
         Spacer(Modifier.height(10.dp))
 
-        // timeline générale + stop
+        // timeline + stop
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -509,6 +563,7 @@ fun DjScreen(
 
         Spacer(Modifier.height(10.dp))
 
+        // contenu dossier
         Box(
             modifier = Modifier.fillMaxSize()
         ) {
@@ -539,7 +594,9 @@ fun DjScreen(
                                         } else {
                                             scope.launch {
                                                 isLoading = true
-                                                val fresh = loadDjEntries(context, entry.uri)
+                                                val fresh = withContext(Dispatchers.IO) {
+                                                    loadDjEntries(context, entry.uri)
+                                                }
                                                 entries = fresh
                                                 DjFolderCache.put(entry.uri, fresh)
                                                 isLoading = false
@@ -564,7 +621,7 @@ fun DjScreen(
                             DjTrackRow(
                                 title = entry.name,
                                 isPlaying = isSelected,
-                                onClick = { playDjTrack(uriStr, entry.name) }
+                                onClick = { selectTrack(uriStr, entry.name) }
                             )
                         }
                     }
@@ -627,7 +684,9 @@ private fun DjTrackRow(
     }
 }
 
-/* util : lit le dossier DJ et renvoie dossiers + fichiers audio */
+/* -------------------------------------------------------------------------- */
+/*  Lecture d’un dossier (à faire en IO)                                      */
+/* -------------------------------------------------------------------------- */
 private fun loadDjEntries(context: Context, folderUri: Uri): List<DjEntry> {
     val doc = DocumentFile.fromTreeUri(context, folderUri) ?: return emptyList()
     val all = doc.listFiles()
