@@ -17,12 +17,7 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.Text
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -37,14 +32,18 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.max
 
-// petit modèle pour la liste
+// ---------------------------------------------------------------------
+// Modèle qu’on affiche dans la liste (dossier ou fichier audio)
+// ---------------------------------------------------------------------
 private data class DjEntry(
     val uri: Uri,
     val name: String,
     val isDirectory: Boolean
 )
 
-// cache comme pour la bibliothèque
+// ---------------------------------------------------------------------
+// Petit cache en mémoire (clé = uri.toString())
+// ---------------------------------------------------------------------
 private object DjFolderCache {
     private val map = mutableMapOf<String, List<DjEntry>>()
     fun get(uri: Uri): List<DjEntry>? = map[uri.toString()]
@@ -60,19 +59,13 @@ fun DjScreen(
     context: Context = LocalContext.current
 ) {
     // dossier racine DJ mémorisé
-    val savedRoot = remember { DjFolderPrefs.get(context) }
+    var rootFolderUri by remember { mutableStateOf<Uri?>(DjFolderPrefs.get(context)) }
 
-    // racine DJ choisie
-    var djRootUri by remember { mutableStateOf<Uri?>(savedRoot) }
-
-    // dossier courant (peut être la racine ou un sous-dossier)
-    var currentFolderUri by remember { mutableStateOf<Uri?>(savedRoot) }
-
-    // pile de navigation
+    // dossier courant
+    var currentFolderUri by remember { mutableStateOf<Uri?>(rootFolderUri) }
     var folderStack by remember { mutableStateOf<List<Uri>>(emptyList()) }
-
-    // contenu du dossier courant
     var entries by remember { mutableStateOf<List<DjEntry>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(false) }
 
     // 2 lecteurs
     val scope = rememberCoroutineScope()
@@ -89,6 +82,13 @@ fun DjScreen(
     var progress by remember { mutableStateOf(0f) }
     var currentDurationMs by remember { mutableStateOf(0) }
 
+    // titres pour les deux decks
+    var deckATitle by remember { mutableStateOf("A vide") }
+    var deckBTitle by remember { mutableStateOf("B vide") }
+
+    // crossfader
+    var crossfadePos by remember { mutableStateOf(0.5f) }
+
     // menu
     var menuOpen by remember { mutableStateOf(false) }
 
@@ -102,34 +102,40 @@ fun DjScreen(
                         uri,
                         Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
                     )
-                } catch (_: Exception) { }
+                } catch (_: Exception) {}
                 DjFolderPrefs.save(context, uri)
-                djRootUri = uri
+                DjFolderCache.clear()
+                rootFolderUri = uri
                 currentFolderUri = uri
                 folderStack = emptyList()
-                val fresh = loadDjEntries(context, uri)
-                entries = fresh
-                DjFolderCache.put(uri, fresh)
+
+                scope.launch {
+                    isLoading = true
+                    val fresh = loadDjEntries(context, uri)
+                    entries = fresh
+                    DjFolderCache.put(uri, fresh)
+                    isLoading = false
+                }
             }
         }
     )
 
     // premier chargement
-    LaunchedEffect(djRootUri) {
-        val root = djRootUri
+    LaunchedEffect(rootFolderUri) {
+        val root = rootFolderUri
         if (root != null) {
             val cached = DjFolderCache.get(root)
             if (cached != null) {
                 entries = cached
             } else {
+                isLoading = true
                 val fresh = loadDjEntries(context, root)
                 entries = fresh
                 DjFolderCache.put(root, fresh)
+                isLoading = false
             }
         } else {
             entries = emptyList()
-            currentFolderUri = null
-            folderStack = emptyList()
         }
     }
 
@@ -155,13 +161,20 @@ fun DjScreen(
         }
     }
 
+    // applique la position du crossfader aux 2 players existants
+    fun applyCrossfader() {
+        val aVol = 1f - crossfadePos
+        val bVol = crossfadePos
+        mpA?.setVolume(aVol, aVol)
+        mpB?.setVolume(bVol, bVol)
+    }
+
     // lecture DJ
-    fun playDjTrack(uriString: String) {
-        // dès qu'on lance un titre DJ → stop fond sonore
+    fun playDjTrack(uriString: String, displayName: String) {
+        // quand on lance un titre DJ → on coupe le fond sonore
         FillerSoundManager.fadeOutAndStop(400)
 
         uiSelectedUri = uriString
-
         scope.launch {
             val useA = activeSlot != 1
             val newPlayer = if (useA) {
@@ -182,29 +195,44 @@ fun DjScreen(
                 val oldPlayer = if (useA) mpB else mpA
                 val oldWasPlaying = if (useA) activeSlot == 2 else activeSlot == 1
 
+                if (useA) deckATitle = displayName else deckBTitle = displayName
+
                 activeSlot = if (useA) 1 else 2
                 playingUri = uriString
 
-                // petit crossfade
+                // crossfade 800 ms
                 val fadeSteps = 16
                 repeat(fadeSteps) { step ->
                     val t = (step + 1) / fadeSteps.toFloat()
-                    val volIn = t
-                    val volOut = 1f - t
+                    val targetA = 1f - crossfadePos
+                    val targetB = crossfadePos
 
-                    newPlayer.setVolume(volIn, volIn)
-                    if (oldWasPlaying) {
-                        oldPlayer?.setVolume(max(0f, volOut), max(0f, volOut))
+                    if (useA) {
+                        val volA = targetA * t
+                        newPlayer.setVolume(volA, volA)
+                        if (oldWasPlaying) {
+                            val volB = targetB * (1f - t)
+                            oldPlayer?.setVolume(max(0f, volB), max(0f, volB))
+                        }
+                    } else {
+                        val volB = targetB * t
+                        newPlayer.setVolume(volB, volB)
+                        if (oldWasPlaying) {
+                            val volA = targetA * (1f - t)
+                            oldPlayer?.setVolume(max(0f, volA), max(0f, volA))
+                        }
                     }
+
                     delay(50)
                 }
 
-                // on coupe l'ancien une fois le fondu fini
                 if (oldWasPlaying) {
                     oldPlayer?.stop()
                     oldPlayer?.release()
                     if (useA) mpB = null else mpA = null
                 }
+
+                applyCrossfader()
             } catch (e: Exception) {
                 e.printStackTrace()
                 playingUri = null
@@ -240,22 +268,30 @@ fun DjScreen(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // bouton retour seulement si on est dans un sous-dossier
             if (folderStack.isNotEmpty()) {
-                IconButton(
-                    onClick = {
-                        // retour : on récupère le dernier dossier de la pile
-                        val newStack = folderStack.dropLast(1)
-                        val parent = newStack.lastOrNull() ?: djRootUri
-                        currentFolderUri = parent
-                        entries = parent?.let { uri ->
-                            DjFolderCache.get(uri) ?: loadDjEntries(context, uri).also {
-                                DjFolderCache.put(uri, it)
+                IconButton(onClick = {
+                    val newStack = folderStack.dropLast(1)
+                    val parentUri = newStack.lastOrNull() ?: rootFolderUri
+                    currentFolderUri = parentUri
+                    folderStack = newStack
+
+                    if (parentUri != null) {
+                        val cached = DjFolderCache.get(parentUri)
+                        if (cached != null) {
+                            entries = cached
+                        } else {
+                            scope.launch {
+                                isLoading = true
+                                val fresh = loadDjEntries(context, parentUri)
+                                entries = fresh
+                                DjFolderCache.put(parentUri, fresh)
+                                isLoading = false
                             }
-                        } ?: emptyList()
-                        folderStack = newStack
+                        }
+                    } else {
+                        entries = emptyList()
                     }
-                ) {
+                }) {
                     Icon(
                         imageVector = Icons.Default.ArrowBack,
                         contentDescription = "Retour",
@@ -267,12 +303,9 @@ fun DjScreen(
             Column(Modifier.weight(1f)) {
                 Text("DJ", color = Color.White, fontSize = 20.sp)
                 Text(
-                    text = when {
-                        currentFolderUri != null -> {
-                            DocumentFile.fromTreeUri(context, currentFolderUri!!)?.name ?: "…"
-                        }
-                        else -> "Aucun dossier DJ choisi"
-                    },
+                    text = currentFolderUri?.let {
+                        DocumentFile.fromTreeUri(context, it)?.name ?: "…"
+                    } ?: "Aucun dossier DJ choisi",
                     color = Color.Gray,
                     fontSize = 11.sp
                 )
@@ -298,17 +331,17 @@ fun DjScreen(
                         pickFolderLauncher.launch(null)
                     }
                 )
-                if (djRootUri != null) {
+                if (rootFolderUri != null) {
                     DropdownMenuItem(
                         text = { Text("Oublier le dossier") },
                         onClick = {
                             menuOpen = false
                             DjFolderPrefs.clear(context)
                             DjFolderCache.clear()
-                            djRootUri = null
+                            rootFolderUri = null
                             currentFolderUri = null
-                            entries = emptyList()
                             folderStack = emptyList()
+                            entries = emptyList()
                         }
                     )
                 }
@@ -317,7 +350,78 @@ fun DjScreen(
 
         Spacer(Modifier.height(10.dp))
 
-        // timeline + stop
+        // Zone double platine
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(110.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Deck A
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .background(Color(0xFF151515))
+                    .padding(8.dp)
+            ) {
+                Text("Deck A", color = Color.White.copy(alpha = 0.6f), fontSize = 11.sp)
+                Text(deckATitle, color = Color.White, fontSize = 13.sp, maxLines = 1)
+                Spacer(Modifier.height(6.dp))
+                LinearProgressIndicator(
+                    progress = if (activeSlot == 1) progress else 0f,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(4.dp),
+                    color = Color(0xFF4CAF50),
+                    trackColor = Color(0x224CAF50)
+                )
+            }
+
+            // Crossfader
+            Column(
+                modifier = Modifier
+                    .width(70.dp)
+                    .fillMaxHeight(),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text("X-Fade", color = Color.Gray, fontSize = 10.sp)
+                Slider(
+                    value = crossfadePos,
+                    onValueChange = {
+                        crossfadePos = it
+                        applyCrossfader()
+                    },
+                    modifier = Modifier.height(80.dp),
+                )
+            }
+
+            // Deck B
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .background(Color(0xFF151515))
+                    .padding(8.dp)
+            ) {
+                Text("Deck B", color = Color.White.copy(alpha = 0.6f), fontSize = 11.sp)
+                Text(deckBTitle, color = Color.White, fontSize = 13.sp, maxLines = 1)
+                Spacer(Modifier.height(6.dp))
+                LinearProgressIndicator(
+                    progress = if (activeSlot == 2) progress else 0f,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(4.dp),
+                    color = Color(0xFFE040FB),
+                    trackColor = Color(0x22E040FB)
+                )
+            }
+        }
+
+        Spacer(Modifier.height(10.dp))
+
+        // timeline générale + stop
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -344,61 +448,76 @@ fun DjScreen(
 
         Spacer(Modifier.height(10.dp))
 
-        if (djRootUri == null) {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                Text("Choisis un dossier pour tes titres DJ.", color = Color.Gray)
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize()
-            ) {
-                items(entries, key = { it.uri.toString() }) { entry ->
-                    if (entry.isDirectory) {
-                        // dossier
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    val old = currentFolderUri
-                                    if (old != null) {
-                                        folderStack = folderStack + old
-                                    }
-                                    currentFolderUri = entry.uri
+        Box(
+            modifier = Modifier.fillMaxSize()
+        ) {
+            if (currentFolderUri == null) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("Choisis un dossier pour tes titres DJ.", color = Color.Gray)
+                }
+            } else {
+                LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    items(entries, key = { it.uri.toString() }) { entry ->
+                        if (entry.isDirectory) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        val old = currentFolderUri
+                                        if (old != null) {
+                                            folderStack = folderStack + old
+                                        }
+                                        currentFolderUri = entry.uri
 
-                                    val cached = DjFolderCache.get(entry.uri)
-                                    if (cached != null) {
-                                        entries = cached
-                                    } else {
-                                        val fresh = loadDjEntries(context, entry.uri)
-                                        entries = fresh
-                                        DjFolderCache.put(entry.uri, fresh)
+                                        val cached = DjFolderCache.get(entry.uri)
+                                        if (cached != null) {
+                                            entries = cached
+                                        } else {
+                                            scope.launch {
+                                                isLoading = true
+                                                val fresh = loadDjEntries(context, entry.uri)
+                                                entries = fresh
+                                                DjFolderCache.put(entry.uri, fresh)
+                                                isLoading = false
+                                            }
+                                        }
                                     }
-                                }
-                                .padding(vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Folder,
-                                contentDescription = null,
-                                tint = Color.White.copy(alpha = 0.9f),
-                                modifier = Modifier.size(20.dp)
+                                    .padding(vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Folder,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(entry.name, color = Color.White)
+                            }
+                        } else {
+                            val uriStr = entry.uri.toString()
+                            val isSelected = uriStr == uiSelectedUri
+                            DjTrackRow(
+                                title = entry.name,
+                                isPlaying = isSelected,
+                                onClick = { playDjTrack(uriStr, entry.name) }
                             )
-                            Spacer(Modifier.width(8.dp))
-                            Text(entry.name, color = Color.White, fontSize = 13.sp)
                         }
-                    } else {
-                        // fichier audio
-                        val uriStr = entry.uri.toString()
-                        val isSelected = uriStr == uiSelectedUri
-                        DjTrackRow(
-                            title = entry.name,
-                            isPlaying = isSelected,
-                            onClick = { playDjTrack(uriStr) }
-                        )
                     }
+                }
+            }
+
+            if (isLoading) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.25f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(color = Color.White)
                 }
             }
         }
@@ -447,7 +566,7 @@ private fun DjTrackRow(
     }
 }
 
-/* charge dossiers + mp3/wav */
+/* util : lit le dossier DJ et renvoie dossiers + fichiers audio */
 private fun loadDjEntries(context: Context, folderUri: Uri): List<DjEntry> {
     val doc = DocumentFile.fromTreeUri(context, folderUri) ?: return emptyList()
     val all = doc.listFiles()
@@ -455,32 +574,23 @@ private fun loadDjEntries(context: Context, folderUri: Uri): List<DjEntry> {
     val folders = all
         .filter { it.isDirectory }
         .sortedBy { it.name?.lowercase() ?: "" }
-        .map {
-            DjEntry(
-                uri = it.uri,
-                name = it.name ?: "Dossier",
-                isDirectory = true
-            )
-        }
+        .map { DjEntry(uri = it.uri, name = it.name ?: "Dossier", isDirectory = true) }
 
     val audio = all
-        .filter { file ->
-            file.isFile && file.name?.let { n ->
-                n.endsWith(".mp3", true) || n.endsWith(".wav", true)
-            } == true
+        .filter {
+            it.isFile && (
+                    it.name?.endsWith(".mp3", true) == true ||
+                            it.name?.endsWith(".wav", true) == true
+                    )
         }
         .sortedBy { it.name?.lowercase() ?: "" }
         .map {
-            val clean = (it.name ?: "inconnu")
+            val clean = (it.name ?: "titre")
                 .removeSuffix(".mp3")
                 .removeSuffix(".MP3")
                 .removeSuffix(".wav")
                 .removeSuffix(".WAV")
-            DjEntry(
-                uri = it.uri,
-                name = clean,
-                isDirectory = false
-            )
+            DjEntry(uri = it.uri, name = clean, isDirectory = false)
         }
 
     return folders + audio
