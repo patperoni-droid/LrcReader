@@ -6,22 +6,38 @@ import android.media.MediaPlayer
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material3.*
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.Slider
+import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -91,6 +107,27 @@ fun DjScreen(
 
     // menu
     var menuOpen by remember { mutableStateOf(false) }
+
+    // animation rotation platines
+    val infinite = rememberInfiniteTransition(label = "dj-discs")
+    val angleA by infinite.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(5_000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "angleA"
+    )
+    val angleB by infinite.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(5_000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "angleB"
+    )
 
     // choisir dossier DJ
     val pickFolderLauncher = rememberLauncherForActivityResult(
@@ -350,35 +387,47 @@ fun DjScreen(
 
         Spacer(Modifier.height(10.dp))
 
-        // Zone double platine
+        // ───────────── Zone double platine ronde ─────────────
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(110.dp),
+                .height(130.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             // Deck A
             Column(
                 modifier = Modifier
                     .weight(1f)
-                    .fillMaxHeight()
-                    .background(Color(0xFF151515))
-                    .padding(8.dp)
+                    .fillMaxHeight(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
             ) {
-                Text("Deck A", color = Color.White.copy(alpha = 0.6f), fontSize = 11.sp)
-                Text(deckATitle, color = Color.White, fontSize = 13.sp, maxLines = 1)
-                Spacer(Modifier.height(6.dp))
-                LinearProgressIndicator(
-                    progress = if (activeSlot == 1) progress else 0f,
+                Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .height(4.dp),
-                    color = Color(0xFF4CAF50),
-                    trackColor = Color(0x224CAF50)
+                        .size(70.dp)
+                        .graphicsLayer {
+                            rotationZ = if (activeSlot == 1) angleA else 0f
+                        }
+                        .background(Color(0xFF1F1F1F), CircleShape)
+                        .border(2.dp, Color(0xFF4CAF50), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(16.dp)
+                            .background(Color.Black, CircleShape)
+                    )
+                }
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = deckATitle,
+                    color = Color.White,
+                    fontSize = 11.sp,
+                    maxLines = 1
                 )
             }
 
-            // Crossfader
+            // Crossfader au milieu
             Column(
                 modifier = Modifier
                     .width(70.dp)
@@ -401,20 +450,32 @@ fun DjScreen(
             Column(
                 modifier = Modifier
                     .weight(1f)
-                    .fillMaxHeight()
-                    .background(Color(0xFF151515))
-                    .padding(8.dp)
+                    .fillMaxHeight(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
             ) {
-                Text("Deck B", color = Color.White.copy(alpha = 0.6f), fontSize = 11.sp)
-                Text(deckBTitle, color = Color.White, fontSize = 13.sp, maxLines = 1)
-                Spacer(Modifier.height(6.dp))
-                LinearProgressIndicator(
-                    progress = if (activeSlot == 2) progress else 0f,
+                Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .height(4.dp),
-                    color = Color(0xFFE040FB),
-                    trackColor = Color(0x22E040FB)
+                        .size(70.dp)
+                        .graphicsLayer {
+                            rotationZ = if (activeSlot == 2) angleB else 0f
+                        }
+                        .background(Color(0xFF1F1F1F), CircleShape)
+                        .border(2.dp, Color(0xFFE040FB), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(16.dp)
+                            .background(Color.Black, CircleShape)
+                    )
+                }
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = deckBTitle,
+                    color = Color.White,
+                    fontSize = 11.sp,
+                    maxLines = 1
                 )
             }
         }
