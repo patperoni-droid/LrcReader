@@ -1,6 +1,7 @@
 package com.patrick.lrcreader
 
 import android.media.MediaPlayer
+import android.media.audiofx.LoudnessEnhancer
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -17,6 +18,7 @@ import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.core.LrcLine
 import com.patrick.lrcreader.core.PlaylistRepository
 import com.patrick.lrcreader.core.SessionPrefs
+import com.patrick.lrcreader.core.TrackVolumePrefs
 import com.patrick.lrcreader.core.crossfadePlay
 import com.patrick.lrcreader.core.parseLrc
 import com.patrick.lrcreader.ui.AllPlaylistsScreen
@@ -28,6 +30,7 @@ import com.patrick.lrcreader.ui.MoreScreen
 import com.patrick.lrcreader.ui.PlayerScreen
 import com.patrick.lrcreader.ui.PlaylistDetailScreen
 import com.patrick.lrcreader.ui.QuickPlaylistsScreen
+import kotlin.math.pow
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -45,6 +48,9 @@ class MainActivity : ComponentActivity() {
             MaterialTheme(colorScheme = darkColorScheme()) {
                 val ctx = this@MainActivity
                 val mediaPlayer = remember { MediaPlayer() }
+
+                // effet audio pour le boost positif
+                var loudnessEnhancer by remember { mutableStateOf<LoudnessEnhancer?>(null) }
 
                 // onglet courant
                 var selectedTab by remember {
@@ -67,6 +73,9 @@ class MainActivity : ComponentActivity() {
                 var parsedLines by remember { mutableStateOf<List<LrcLine>>(emptyList()) }
                 var currentPlayToken by remember { mutableStateOf(0L) }
 
+                // niveau mémorisé du titre courant (maintenant -12..+12)
+                var currentTrackGainDb by remember { mutableStateOf(0) }
+
                 // couleur lyrics
                 var currentLyricsColor by remember { mutableStateOf(Color(0xFFE040FB)) }
 
@@ -75,6 +84,32 @@ class MainActivity : ComponentActivity() {
 
                 // pour garder le repo vivant
                 val repoVersion by PlaylistRepository.version
+
+                // applique le dB au player (positif = enhancer, négatif = baisse)
+                fun applyGainToPlayer(gainDb: Int) {
+                    val enh = loudnessEnhancer
+                    if (gainDb > 0) {
+                        // boost
+                        if (enh != null) {
+                            enh.setTargetGain(gainDb * 100)
+                            enh.enabled = true
+                        }
+                        // on remet le volume du player à 1
+                        mediaPlayer.setVolume(1f, 1f)
+                    } else {
+                        // pas de boost, ou baisse
+                        enh?.enabled = false
+                        if (gainDb < 0) {
+                            // convert dB -> facteur
+                            val factor =
+                                10.0.pow(gainDb / 20.0).toFloat() // gainDb est négatif → <1
+                            mediaPlayer.setVolume(factor, factor)
+                        } else {
+                            // 0 dB → plein pot
+                            mediaPlayer.setVolume(1f, 1f)
+                        }
+                    }
+                }
 
                 // lecture “normale” (pas DJ)
                 val playWithCrossfade: (String, String?) -> Unit = remember {
@@ -104,15 +139,29 @@ class MainActivity : ComponentActivity() {
                             }
                         )
 
+                        // on s'assure d'avoir l'enhancer
+                        if (loudnessEnhancer == null) {
+                            loudnessEnhancer =
+                                LoudnessEnhancer(mediaPlayer.audioSessionId).apply { enabled = false }
+                        }
+
+                        // on récupère le dB mémorisé (peut être négatif maintenant)
+                        val savedDb = TrackVolumePrefs.getVolume(ctx, uriString)?.toInt() ?: 0
+                        currentTrackGainDb = savedDb
+                        applyGainToPlayer(savedDb)
+
                         // on va sur le lecteur
                         selectedTab = BottomTab.Player
                         SessionPrefs.saveTab(ctx, tabKeyOf(BottomTab.Player))
                     }
                 }
 
-                // libérer le player
+                // libérer le player + l’effet
                 DisposableEffect(Unit) {
-                    onDispose { mediaPlayer.release() }
+                    onDispose {
+                        loudnessEnhancer?.release()
+                        mediaPlayer.release()
+                    }
                 }
 
                 Scaffold(
@@ -135,7 +184,17 @@ class MainActivity : ComponentActivity() {
                             onIsPlayingChange = { isPlaying = it },
                             parsedLines = parsedLines,
                             onParsedLinesChange = { parsedLines = it },
-                            highlightColor = currentLyricsColor
+                            highlightColor = currentLyricsColor,
+                            currentTrackUri = currentPlayingUri,
+                            currentTrackGainDb = currentTrackGainDb,
+                            onTrackGainChange = { newDb ->
+                                val uri = currentPlayingUri
+                                if (uri != null) {
+                                    TrackVolumePrefs.saveVolume(ctx, uri, newDb.toFloat())
+                                }
+                                currentTrackGainDb = newDb
+                                applyGainToPlayer(newDb)
+                            }
                         )
 
                         is BottomTab.QuickPlaylists -> QuickPlaylistsScreen(
@@ -191,7 +250,6 @@ class MainActivity : ComponentActivity() {
                             onAfterImport = { refreshKey++ }
                         )
 
-                        // 👇 DJ : tout est géré dans DjScreen maintenant
                         is BottomTab.Dj -> DjScreen(
                             modifier = Modifier.padding(innerPadding),
                             context = ctx

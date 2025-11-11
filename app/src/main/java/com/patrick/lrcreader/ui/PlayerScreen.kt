@@ -44,9 +44,10 @@ fun PlayerScreen(
     onIsPlayingChange: (Boolean) -> Unit,
     parsedLines: List<LrcLine>,
     onParsedLinesChange: (List<LrcLine>) -> Unit,
-    // on garde un param pour la couleur au cas où,
-    // mais on garde aussi la valeur par défaut
-    highlightColor: Color = Color(0xFFE040FB)
+    highlightColor: Color = Color(0xFFE040FB),
+    currentTrackUri: String?,
+    currentTrackGainDb: Int,
+    onTrackGainChange: (Int) -> Unit
 ) {
     val scrollState = rememberScrollState()
     val scope = rememberCoroutineScope()
@@ -228,7 +229,7 @@ fun PlayerScreen(
                 Spacer(Modifier.height(80.dp))
             }
 
-            // ligne de repère
+            // ligne repère
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -239,7 +240,7 @@ fun PlayerScreen(
             )
         }
 
-        // barre de temps → on lui passe highlightColor
+        // barre de temps
         TimeBar(
             positionMs = if (isDragging) dragPosMs else positionMs,
             durationMs = durationMs,
@@ -259,6 +260,34 @@ fun PlayerScreen(
             highlightColor = highlightColor
         )
 
+        // réglage niveau du titre
+        if (currentTrackUri != null) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 4.dp, bottom = 4.dp)
+            ) {
+                Text(
+                    text = "Niveau du titre : ${currentTrackGainDb} dB",
+                    color = Color.White,
+                    fontSize = 12.sp
+                )
+                Slider(
+                    value = currentTrackGainDb.toFloat(),
+                    onValueChange = { v ->
+                        onTrackGainChange(v.toInt().coerceIn(-12, 12))
+                    },
+                    valueRange = -12f..12f,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = androidx.compose.material3.SliderDefaults.colors(
+                        thumbColor = highlightColor,
+                        activeTrackColor = highlightColor.copy(alpha = 0.3f),
+                        inactiveTrackColor = Color.DarkGray
+                    )
+                )
+            }
+        }
+
         // contrôles
         PlayerControls(
             isPlaying = isPlaying,
@@ -270,10 +299,9 @@ fun PlayerScreen(
                     }
                 } else {
                     if (durationMs > 0) {
-                        mediaPlayer.setVolume(1f, 1f)
+                        // on ne touche pas au volume ici, il est déjà réglé par l'effet
                         mediaPlayer.start()
                         onIsPlayingChange(true)
-                        centerCurrentLine()
                         runCatching { FillerSoundManager.fadeOutAndStop(400) }
                     }
                 }
@@ -285,7 +313,6 @@ fun PlayerScreen(
                     onIsPlayingChange(true)
                     runCatching { FillerSoundManager.fadeOutAndStop(400) }
                 }
-                centerCurrentLine()
             },
             onNext = {
                 mediaPlayer.seekTo(max(durationMs - 1, 0))
@@ -346,12 +373,11 @@ private fun TimeBar(
     durationMs: Int,
     onSeekLivePreview: (Int) -> Unit,
     onSeekCommit: (Int) -> Unit,
-    highlightColor: Color,          // 👈 ajouté
+    highlightColor: Color,
 ) {
     val posText = remember(positionMs) { formatMs(positionMs) }
     val durText = remember(durationMs) { formatMs(durationMs.coerceAtLeast(0)) }
 
-    // on dérive les couleurs à partir de la couleur de la playlist
     val trackColor = highlightColor.copy(alpha = 0.25f)
 
     Row(
