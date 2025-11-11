@@ -46,7 +46,7 @@ fun PlayerScreen(
     parsedLines: List<LrcLine>,
     onParsedLinesChange: (List<LrcLine>) -> Unit,
     highlightColor: Color = Color(0xFFE040FB),
-    // 👇 nouveaux paramètres
+    // nouveaux paramètres pour le niveau par titre
     currentTrackUri: String?,
     currentTrackGainDb: Int,
     onTrackGainChange: (Int) -> Unit
@@ -56,7 +56,7 @@ fun PlayerScreen(
     val density = LocalDensity.current
     val context = LocalContext.current
 
-    val LYRICS_DELAY_MS = 1000L
+    val lyricsDelayMs = 1000L
 
     var isConcertMode by remember { mutableStateOf(true) }
     var lyricsBoxHeightPx by remember { mutableStateOf(0) }
@@ -72,7 +72,7 @@ fun PlayerScreen(
     var isDragging by remember { mutableStateOf(false) }
     var dragPosMs by remember { mutableStateOf(0) }
 
-    // ---------- SUIVI LECTURE + LYRICS ----------
+    // suivi lecture + index
     LaunchedEffect(isPlaying, parsedLines) {
         while (true) {
             val d = runCatching { mediaPlayer.duration }.getOrNull() ?: -1
@@ -82,7 +82,7 @@ fun PlayerScreen(
             if (!isDragging) positionMs = p
 
             if (parsedLines.isNotEmpty()) {
-                val posMs = (p.toLong() - LYRICS_DELAY_MS).coerceAtLeast(0L)
+                val posMs = (p.toLong() - lyricsDelayMs).coerceAtLeast(0L)
                 val bestIndex = parsedLines.indices.minByOrNull {
                     abs(parsedLines[it].timeMs - posMs)
                 } ?: 0
@@ -96,7 +96,7 @@ fun PlayerScreen(
         }
     }
 
-    // ---------- DETECT SCROLL MANUEL ----------
+    // détecter le scroll manuel
     LaunchedEffect(scrollState) {
         while (true) {
             userScrolling = scrollState.isScrollInProgress
@@ -129,7 +129,7 @@ fun PlayerScreen(
         }
     }
 
-    // ---------- AUTO-CENTRAGE ----------
+    // auto centre
     LaunchedEffect(isPlaying, parsedLines, lyricsBoxHeightPx) {
         if (parsedLines.isEmpty()) return@LaunchedEffect
         if (lyricsBoxHeightPx == 0) return@LaunchedEffect
@@ -142,7 +142,6 @@ fun PlayerScreen(
         }
     }
 
-    // ---------- UI ----------
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -150,7 +149,7 @@ fun PlayerScreen(
             .padding(horizontal = 16.dp, vertical = 6.dp),
         verticalArrangement = Arrangement.SpaceBetween
     ) {
-        // header (bouton de style)
+        // header
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -167,7 +166,7 @@ fun PlayerScreen(
             }
         }
 
-        // PAROLES
+        // paroles
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -232,7 +231,7 @@ fun PlayerScreen(
                 Spacer(Modifier.height(80.dp))
             }
 
-            // ligne de repère
+            // ligne repère
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -243,7 +242,7 @@ fun PlayerScreen(
             )
         }
 
-        // BARRE DE TEMPS
+        // barre de temps
         TimeBar(
             positionMs = if (isDragging) dragPosMs else positionMs,
             durationMs = durationMs,
@@ -263,11 +262,10 @@ fun PlayerScreen(
             highlightColor = highlightColor
         )
 
-        // ====== BLOC NIVEAU PAR TITRE (-12 .. +12 dB) ======
+        // bloc niveau titre
         val minDb = -12
         val maxDb = 12
 
-        // on recalcule le slider à chaque nouveau morceau ou nouvelle valeur
         var gainSlider by remember(currentTrackUri, currentTrackGainDb) {
             mutableStateOf(
                 (currentTrackGainDb - minDb).toFloat() / (maxDb - minDb).toFloat()
@@ -300,7 +298,7 @@ fun PlayerScreen(
             )
         }
 
-        // CONTROLES
+        // contrôles
         PlayerControls(
             isPlaying = isPlaying,
             onPlayPause = {
