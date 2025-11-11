@@ -49,7 +49,7 @@ class MainActivity : ComponentActivity() {
                 val ctx = this@MainActivity
                 val mediaPlayer = remember { MediaPlayer() }
 
-                // effet audio pour le boost positif
+                // effet audio (on va le recréer à CHAQUE nouveau morceau)
                 var loudnessEnhancer by remember { mutableStateOf<LoudnessEnhancer?>(null) }
 
                 // onglet courant
@@ -73,7 +73,7 @@ class MainActivity : ComponentActivity() {
                 var parsedLines by remember { mutableStateOf<List<LrcLine>>(emptyList()) }
                 var currentPlayToken by remember { mutableStateOf(0L) }
 
-                // niveau mémorisé du titre courant (maintenant -12..+12)
+                // dB mémorisé du titre courant
                 var currentTrackGainDb by remember { mutableStateOf(0) }
 
                 // couleur lyrics
@@ -85,33 +85,41 @@ class MainActivity : ComponentActivity() {
                 // pour garder le repo vivant
                 val repoVersion by PlaylistRepository.version
 
-                // applique le dB au player (positif = enhancer, négatif = baisse)
+                // fonction utilitaire : applique le dB au player
                 fun applyGainToPlayer(gainDb: Int) {
-                    val enh = loudnessEnhancer
-                    if (gainDb > 0) {
-                        // boost
-                        if (enh != null) {
-                            enh.setTargetGain(gainDb * 100)
-                            enh.enabled = true
-                        }
-                        // on remet le volume du player à 1
-                        mediaPlayer.setVolume(1f, 1f)
-                    } else {
-                        // pas de boost, ou baisse
-                        enh?.enabled = false
-                        if (gainDb < 0) {
-                            // convert dB -> facteur
-                            val factor =
-                                10.0.pow(gainDb / 20.0).toFloat() // gainDb est négatif → <1
-                            mediaPlayer.setVolume(factor, factor)
-                        } else {
-                            // 0 dB → plein pot
+                    try {
+                        if (gainDb > 0) {
+                            // boost positif → passer par l’enhancer si on l’a
+                            loudnessEnhancer?.let { enh ->
+                                try {
+                                    enh.setTargetGain(gainDb * 100) // milli-dB
+                                    enh.enabled = true
+                                    mediaPlayer.setVolume(1f, 1f)
+                                    return
+                                } catch (_: Exception) {
+                                    // si ça foire on désactive
+                                    enh.enabled = false
+                                }
+                            }
+                            // si pas d’enhancer dispo, on reste à 1f
                             mediaPlayer.setVolume(1f, 1f)
+                        } else {
+                            // 0 ou négatif → on coupe l’enhancer
+                            loudnessEnhancer?.enabled = false
+                            if (gainDb < 0) {
+                                val factor = 10.0.pow(gainDb / 20.0).toFloat()
+                                mediaPlayer.setVolume(factor, factor)
+                            } else {
+                                mediaPlayer.setVolume(1f, 1f)
+                            }
                         }
+                    } catch (_: Exception) {
+                        // ne jamais planter pour un réglage de volume
+                        mediaPlayer.setVolume(1f, 1f)
                     }
                 }
 
-                // lecture “normale” (pas DJ)
+                // lecture “normale”
                 val playWithCrossfade: (String, String?) -> Unit = remember {
                     { uriString, playlistName ->
                         currentPlayingUri = uriString
@@ -119,6 +127,10 @@ class MainActivity : ComponentActivity() {
 
                         val myToken = currentPlayToken + 1
                         currentPlayToken = myToken
+
+                        // on lit le dB stocké pour ce titre AVANT de démarrer
+                        val savedDb = TrackVolumePrefs.getDb(ctx, uriString) ?: 0
+                        currentTrackGainDb = savedDb
 
                         crossfadePlay(
                             context = ctx,
@@ -131,24 +143,38 @@ class MainActivity : ComponentActivity() {
                                 parsedLines =
                                     if (!text.isNullOrBlank()) parseLrc(text) else emptyList()
                             },
-                            onStart = { isPlaying = true },
-                            onError = { isPlaying = false },
+                            onStart = {
+                                isPlaying = true
+
+                                // ⚠️ on détruit l’ancien effet (lié à l’ancienne session)
+                                try {
+                                    loudnessEnhancer?.release()
+                                } catch (_: Exception) {}
+                                loudnessEnhancer = null
+
+                                // ⚠️ on crée un effet tout neuf sur la session actuelle
+                                try {
+                                    val sessionId = mediaPlayer.audioSessionId
+                                    if (sessionId != 0) {
+                                        loudnessEnhancer = LoudnessEnhancer(sessionId).apply {
+                                            enabled = false
+                                        }
+                                    }
+                                } catch (_: Exception) {
+                                    loudnessEnhancer = null
+                                }
+
+                                // et on applique enfin le dB du titre courant
+                                applyGainToPlayer(currentTrackGainDb)
+                            },
+                            onError = {
+                                isPlaying = false
+                            },
                             onNaturalEnd = {
                                 isPlaying = false
                                 FillerSoundManager.startIfConfigured(ctx)
                             }
                         )
-
-                        // on s'assure d'avoir l'enhancer
-                        if (loudnessEnhancer == null) {
-                            loudnessEnhancer =
-                                LoudnessEnhancer(mediaPlayer.audioSessionId).apply { enabled = false }
-                        }
-
-                        // on récupère le dB mémorisé (peut être négatif maintenant)
-                        val savedDb = TrackVolumePrefs.getVolume(ctx, uriString)?.toInt() ?: 0
-                        currentTrackGainDb = savedDb
-                        applyGainToPlayer(savedDb)
 
                         // on va sur le lecteur
                         selectedTab = BottomTab.Player
@@ -159,7 +185,9 @@ class MainActivity : ComponentActivity() {
                 // libérer le player + l’effet
                 DisposableEffect(Unit) {
                     onDispose {
-                        loudnessEnhancer?.release()
+                        try {
+                            loudnessEnhancer?.release()
+                        } catch (_: Exception) {}
                         mediaPlayer.release()
                     }
                 }
@@ -190,7 +218,8 @@ class MainActivity : ComponentActivity() {
                             onTrackGainChange = { newDb ->
                                 val uri = currentPlayingUri
                                 if (uri != null) {
-                                    TrackVolumePrefs.saveVolume(ctx, uri, newDb.toFloat())
+                                    // on mémorise le nouveau dB
+                                    TrackVolumePrefs.saveDb(ctx, uri, newDb)
                                 }
                                 currentTrackGainDb = newDb
                                 applyGainToPlayer(newDb)

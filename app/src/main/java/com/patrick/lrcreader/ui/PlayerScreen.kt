@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -45,6 +46,7 @@ fun PlayerScreen(
     parsedLines: List<LrcLine>,
     onParsedLinesChange: (List<LrcLine>) -> Unit,
     highlightColor: Color = Color(0xFFE040FB),
+    // 👇 nouveaux paramètres
     currentTrackUri: String?,
     currentTrackGainDb: Int,
     onTrackGainChange: (Int) -> Unit
@@ -70,7 +72,7 @@ fun PlayerScreen(
     var isDragging by remember { mutableStateOf(false) }
     var dragPosMs by remember { mutableStateOf(0) }
 
-    // suivi lecture + index courant
+    // ---------- SUIVI LECTURE + LYRICS ----------
     LaunchedEffect(isPlaying, parsedLines) {
         while (true) {
             val d = runCatching { mediaPlayer.duration }.getOrNull() ?: -1
@@ -94,7 +96,7 @@ fun PlayerScreen(
         }
     }
 
-    // détecter le scroll manuel
+    // ---------- DETECT SCROLL MANUEL ----------
     LaunchedEffect(scrollState) {
         while (true) {
             userScrolling = scrollState.isScrollInProgress
@@ -127,7 +129,7 @@ fun PlayerScreen(
         }
     }
 
-    // auto centre pendant la lecture
+    // ---------- AUTO-CENTRAGE ----------
     LaunchedEffect(isPlaying, parsedLines, lyricsBoxHeightPx) {
         if (parsedLines.isEmpty()) return@LaunchedEffect
         if (lyricsBoxHeightPx == 0) return@LaunchedEffect
@@ -140,6 +142,7 @@ fun PlayerScreen(
         }
     }
 
+    // ---------- UI ----------
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -147,7 +150,7 @@ fun PlayerScreen(
             .padding(horizontal = 16.dp, vertical = 6.dp),
         verticalArrangement = Arrangement.SpaceBetween
     ) {
-        // header
+        // header (bouton de style)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -164,7 +167,7 @@ fun PlayerScreen(
             }
         }
 
-        // paroles
+        // PAROLES
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -229,7 +232,7 @@ fun PlayerScreen(
                 Spacer(Modifier.height(80.dp))
             }
 
-            // ligne repère
+            // ligne de repère
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -240,7 +243,7 @@ fun PlayerScreen(
             )
         }
 
-        // barre de temps
+        // BARRE DE TEMPS
         TimeBar(
             positionMs = if (isDragging) dragPosMs else positionMs,
             durationMs = durationMs,
@@ -260,35 +263,44 @@ fun PlayerScreen(
             highlightColor = highlightColor
         )
 
-        // réglage niveau du titre
-        if (currentTrackUri != null) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 4.dp, bottom = 4.dp)
-            ) {
-                Text(
-                    text = "Niveau du titre : ${currentTrackGainDb} dB",
-                    color = Color.White,
-                    fontSize = 12.sp
-                )
-                Slider(
-                    value = currentTrackGainDb.toFloat(),
-                    onValueChange = { v ->
-                        onTrackGainChange(v.toInt().coerceIn(-12, 12))
-                    },
-                    valueRange = -12f..12f,
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = androidx.compose.material3.SliderDefaults.colors(
-                        thumbColor = highlightColor,
-                        activeTrackColor = highlightColor.copy(alpha = 0.3f),
-                        inactiveTrackColor = Color.DarkGray
-                    )
-                )
-            }
+        // ====== BLOC NIVEAU PAR TITRE (-12 .. +12 dB) ======
+        val minDb = -12
+        val maxDb = 12
+
+        // on recalcule le slider à chaque nouveau morceau ou nouvelle valeur
+        var gainSlider by remember(currentTrackUri, currentTrackGainDb) {
+            mutableStateOf(
+                (currentTrackGainDb - minDb).toFloat() / (maxDb - minDb).toFloat()
+            )
         }
 
-        // contrôles
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 4.dp, bottom = 8.dp)
+        ) {
+            Text(
+                text = "Niveau titre : ${if (currentTrackGainDb >= 0) "+${currentTrackGainDb}" else currentTrackGainDb} dB",
+                color = Color.White,
+                fontSize = 12.sp
+            )
+            Slider(
+                value = gainSlider,
+                onValueChange = { v ->
+                    gainSlider = v
+                    val newDb = (minDb + v * (maxDb - minDb)).toInt()
+                    onTrackGainChange(newDb)
+                },
+                modifier = Modifier.fillMaxWidth(),
+                colors = SliderDefaults.colors(
+                    thumbColor = highlightColor,
+                    activeTrackColor = highlightColor.copy(alpha = 0.4f),
+                    inactiveTrackColor = Color.DarkGray
+                )
+            )
+        }
+
+        // CONTROLES
         PlayerControls(
             isPlaying = isPlaying,
             onPlayPause = {
@@ -299,9 +311,10 @@ fun PlayerScreen(
                     }
                 } else {
                     if (durationMs > 0) {
-                        // on ne touche pas au volume ici, il est déjà réglé par l'effet
+                        mediaPlayer.setVolume(1f, 1f)
                         mediaPlayer.start()
                         onIsPlayingChange(true)
+                        centerCurrentLine()
                         runCatching { FillerSoundManager.fadeOutAndStop(400) }
                     }
                 }
@@ -313,6 +326,7 @@ fun PlayerScreen(
                     onIsPlayingChange(true)
                     runCatching { FillerSoundManager.fadeOutAndStop(400) }
                 }
+                centerCurrentLine()
             },
             onNext = {
                 mediaPlayer.seekTo(max(durationMs - 1, 0))
@@ -377,7 +391,6 @@ private fun TimeBar(
 ) {
     val posText = remember(positionMs) { formatMs(positionMs) }
     val durText = remember(durationMs) { formatMs(durationMs.coerceAtLeast(0)) }
-
     val trackColor = highlightColor.copy(alpha = 0.25f)
 
     Row(
@@ -413,7 +426,7 @@ private fun TimeBar(
             modifier = Modifier
                 .weight(1f)
                 .height(20.dp),
-            colors = androidx.compose.material3.SliderDefaults.colors(
+            colors = SliderDefaults.colors(
                 thumbColor = highlightColor,
                 activeTrackColor = trackColor,
                 inactiveTrackColor = trackColor.copy(alpha = 0.4f)

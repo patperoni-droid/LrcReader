@@ -2,24 +2,22 @@ package com.patrick.lrcreader.core
 
 import android.content.Context
 
+/**
+ * Stocke un niveau en dB par URI de piste.
+ * On garde un Int (par ex. -12..+12).
+ */
 object TrackVolumePrefs {
-    private const val PREF = "track_volume_prefs"
+    private const val PREF = "track_volume_prefs_db"
 
-    // on stocke un volume 0f..1f par URI
-    fun saveVolume(context: Context, uri: String, volume: Float) {
-        val v = volume.coerceIn(0f, 1f)
+    fun saveDb(context: Context, uri: String, db: Int) {
         context.getSharedPreferences(PREF, Context.MODE_PRIVATE)
             .edit()
-            .putFloat(uri, v)
+            .putInt(uri, db)
             .apply()
     }
 
-    fun getVolume(context: Context, uri: String): Float? {
+    fun getDb(context: Context, uri: String): Int? {
         val sp = context.getSharedPreferences(PREF, Context.MODE_PRIVATE)
-        return if (sp.contains(uri)) {
-            sp.getFloat(uri, 1f)
-        } else {
-            null
-        }
+        return if (sp.contains(uri)) sp.getInt(uri, 0) else null
     }
 }
