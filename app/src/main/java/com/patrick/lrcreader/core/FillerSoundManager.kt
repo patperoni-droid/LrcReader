@@ -33,6 +33,10 @@ object FillerSoundManager {
     private const val CROSSFADE_MS = 1500L
 
     fun startIfConfigured(context: Context) {
+        if (!FillerSoundPrefs.isEnabled(context)) {
+            fadeOutAndStop(0)
+            return
+        }
         // on récupère le volume choisi par l’utilisateur
         currentVolume = FillerSoundPrefs.getFillerVolume(context)
 

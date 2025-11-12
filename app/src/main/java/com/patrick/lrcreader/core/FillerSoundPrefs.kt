@@ -9,6 +9,7 @@ object FillerSoundPrefs {
     private const val KEY_URI = "filler_uri"
     private const val KEY_FOLDER_URI = "filler_folder_uri"
     private const val KEY_VOLUME = "filler_volume"  // 0f..1f
+    private const val KEY_ENABLED = "filler_enabled" // NEW
 
     // ---------- fichier unique ----------
     fun saveFillerUri(context: Context, uri: Uri) {
@@ -44,6 +45,7 @@ object FillerSoundPrefs {
             .edit()
             .remove(KEY_URI)
             .remove(KEY_FOLDER_URI)
+            // on NE touche PAS à enabled ni au volume
             .apply()
     }
 
@@ -59,6 +61,20 @@ object FillerSoundPrefs {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit()
             .putFloat(KEY_VOLUME, volume.coerceIn(0f, 1f))
+            .apply()
+    }
+
+    // ---------- enabled (ON/OFF) ----------
+    /** Par défaut: activé (comportement actuel) */
+    fun isEnabled(context: Context): Boolean {
+        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(KEY_ENABLED, true)
+    }
+
+    fun setEnabled(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_ENABLED, enabled)
             .apply()
     }
 }

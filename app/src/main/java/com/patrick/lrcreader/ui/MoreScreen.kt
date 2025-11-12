@@ -73,6 +73,7 @@ private enum class MoreSection { Root, Backup, Filler, Edit }
 /* ─────────────────────────────
    Menu principal
    ───────────────────────────── */
+
 @Composable
 private fun MoreRootScreen(
     onOpenBackup: () -> Unit,
@@ -136,7 +137,7 @@ private fun BackupScreen(
     // on garde le json en mémoire le temps que l’utilisateur choisisse la cible
     val saveLauncherJson = remember { mutableStateOf("") }
 
-    // IMPORT via picker système (on garde quand même)
+    // IMPORT via picker système
     val fileLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
@@ -192,7 +193,7 @@ private fun BackupScreen(
         }
     }
 
-    // ⬇️ NOUVEAU : on lit les .json du dossier (si on en a un)
+    // Liste des .json présents dans le dossier choisi
     val jsonFilesInFolder by remember(backupFolderUri) {
         mutableStateOf(
             backupFolderUri?.let { uri ->
@@ -329,7 +330,7 @@ private fun BackupScreen(
 
             Spacer(Modifier.height(10.dp))
 
-            // ⬇️ NOUVEAU : liste des .json du dossier
+            // liste des .json du dossier
             if (backupFolderUri != null) {
                 Text("Fichiers dans le dossier :", color = sub, fontSize = 11.sp)
                 if (jsonFilesInFolder.isEmpty()) {
@@ -403,7 +404,7 @@ private fun BackupScreen(
 }
 
 /* ─────────────────────────────
-   Fond sonore
+   Fond sonore (avec ON/OFF)
    ───────────────────────────── */
 @Composable
 private fun FillerSoundScreen(
@@ -414,10 +415,9 @@ private fun FillerSoundScreen(
     val sub = Color(0xFFB9B9B9)
     val card = Color(0xFF141414)
 
+    var isEnabled by remember { mutableStateOf(FillerSoundPrefs.isEnabled(context)) }
     var fillerUri by remember { mutableStateOf(FillerSoundPrefs.getFillerFolder(context)) }
-    var fillerName by remember {
-        mutableStateOf(fillerUri?.lastPathSegment ?: "Aucun son sélectionné")
-    }
+    var fillerName by remember { mutableStateOf(fillerUri?.lastPathSegment ?: "Aucun son sélectionné") }
     var isPreviewing by remember { mutableStateOf(false) }
     var fillerVolume by remember { mutableStateOf(FillerSoundPrefs.getFillerVolume(context)) }
 
@@ -457,7 +457,35 @@ private fun FillerSoundScreen(
 
         Card(colors = CardDefaults.cardColors(containerColor = card)) {
             Column(Modifier.padding(12.dp)) {
-                Text("Sélection du fond sonore", color = onBg, fontSize = 14.sp)
+
+                // Ligne d’activation
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Activer le fond sonore", color = onBg, fontSize = 14.sp)
+                        Text(
+                            "Lecture automatique après la fin d’un morceau.",
+                            color = sub, fontSize = 12.sp
+                        )
+                    }
+                    Switch(
+                        checked = isEnabled,
+                        onCheckedChange = { checked ->
+                            isEnabled = checked
+                            FillerSoundPrefs.setEnabled(context, checked)
+                            if (!checked) {
+                                FillerSoundManager.fadeOutAndStop(0)
+                                isPreviewing = false
+                            }
+                        }
+                    )
+                }
+
+                Spacer(Modifier.height(12.dp))
+
+                Text("Sélection du dossier", color = onBg, fontSize = 14.sp)
                 Spacer(Modifier.height(8.dp))
                 Text(
                     "Ce dossier est joué automatiquement quand un morceau se termine.",
@@ -465,7 +493,10 @@ private fun FillerSoundScreen(
                 )
                 Spacer(Modifier.height(10.dp))
 
-                FilledTonalButton(onClick = { fillerLauncher.launch(null) }) {
+                FilledTonalButton(
+                    onClick = { fillerLauncher.launch(null) },
+                    enabled = isEnabled
+                ) {
                     Text("Choisir un dossier audio…", fontSize = 12.sp)
                 }
 
@@ -487,6 +518,7 @@ private fun FillerSoundScreen(
                         FillerSoundManager.setVolume(v)
                     },
                     valueRange = 0f..1f,
+                    enabled = isEnabled,
                     modifier = Modifier.fillMaxWidth()
                 )
                 Text("${(fillerVolume * 100).toInt()} %", color = onBg, fontSize = 11.sp)
@@ -505,7 +537,7 @@ private fun FillerSoundScreen(
                                 isPreviewing = false
                             }
                         },
-                        enabled = fillerUri != null
+                        enabled = isEnabled && fillerUri != null
                     ) {
                         Text(
                             text = if (isPreviewing) "Arrêter l’écoute" else "▶︎ Écouter",
@@ -513,16 +545,17 @@ private fun FillerSoundScreen(
                         )
                     }
 
-                    if (fillerUri != null) {
-                        TextButton(onClick = {
+                    TextButton(
+                        onClick = {
                             FillerSoundManager.fadeOutAndStop(200)
                             isPreviewing = false
                             FillerSoundPrefs.clear(context)
                             fillerUri = null
                             fillerName = "Aucun son sélectionné"
-                        }) {
-                            Text("🗑 Supprimer", fontSize = 12.sp, color = Color(0xFFFF8A80))
-                        }
+                        },
+                        enabled = isEnabled && fillerUri != null
+                    ) {
+                        Text("🗑 Supprimer", fontSize = 12.sp, color = Color(0xFFFF8A80))
                     }
                 }
             }
