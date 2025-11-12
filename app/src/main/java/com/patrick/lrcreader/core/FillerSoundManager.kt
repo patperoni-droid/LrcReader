@@ -5,11 +5,7 @@ import android.media.MediaPlayer
 import android.net.Uri
 import android.widget.Toast
 import androidx.documentfile.provider.DocumentFile
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.*
 import kotlin.random.Random
 
 /**
@@ -17,6 +13,7 @@ import kotlin.random.Random
  * - dossier ou fichier unique
  * - si dossier → démarre sur une piste aléatoire
  * - enchaîne avec crossfade
+ * - se désactive automatiquement si un titre principal joue
  */
 object FillerSoundManager {
 
@@ -32,12 +29,21 @@ object FillerSoundManager {
     private const val DEFAULT_VOLUME = 0.25f
     private const val CROSSFADE_MS = 1500L
 
+    /** Démarre le fond sonore s'il est configuré et permis */
     fun startIfConfigured(context: Context) {
+        // ⚠️ ne rien faire si le mode filler est désactivé
         if (!FillerSoundPrefs.isEnabled(context)) {
             fadeOutAndStop(0)
             return
         }
-        // on récupère le volume choisi par l’utilisateur
+
+        // ⚠️ sécurité anti-conflit : ne pas lancer si un titre principal joue
+        if (PlaybackCoordinator.isMainPlaying) {
+            fadeOutAndStop(0)
+            return
+        }
+
+        // récupère le volume choisi par l’utilisateur
         currentVolume = FillerSoundPrefs.getFillerVolume(context)
 
         // 1) dossier configuré ?
@@ -51,8 +57,6 @@ object FillerSoundManager {
             }
 
             folderPlaylist = list
-
-            // 👇 départ aléatoire
             folderIndex = if (list.size == 1) 0 else Random.nextInt(list.size)
 
             try {
@@ -78,43 +82,26 @@ object FillerSoundManager {
 
     /** bouton on/off */
     fun toggle(context: Context) {
-        if (isPlaying()) {
-            fadeOutAndStop(200)
-        } else {
-            startIfConfigured(context)
-        }
+        if (isPlaying()) fadeOutAndStop(200)
+        else startIfConfigured(context)
     }
 
-    /** bouton "suivant" dans l’UI */
+    /** bouton "suivant" */
     fun next(context: Context) {
-        if (folderPlaylist.isNotEmpty()) {
-            playNextInFolder(context)
-        } else {
-            // mode fichier → on relance
-            startIfConfigured(context)
-        }
+        if (folderPlaylist.isNotEmpty()) playNextInFolder(context)
+        else startIfConfigured(context)
     }
 
     fun previous(context: Context) {
-        if (folderPlaylist.isEmpty()) {
-            startIfConfigured(context)
-            return
-        }
-        if (folderPlaylist.size == 1) {
-            startIfConfigured(context)
-            return
-        }
+        if (folderPlaylist.isEmpty()) { startIfConfigured(context); return }
+        if (folderPlaylist.size == 1) { startIfConfigured(context); return }
         folderIndex = (folderIndex - 1 + folderPlaylist.size) % folderPlaylist.size
-        try {
-            startFromFolderIndex(context, folderIndex)
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+        try { startFromFolderIndex(context, folderIndex) } catch (_: Exception) {}
     }
 
-    fun isPlaying(): Boolean = player != null
+    fun isPlaying(): Boolean = player?.isPlaying == true
 
-    // ───────────────── fichier unique ─────────────────
+    // ───────────── fichier unique ─────────────
     private fun startFromSingleFile(context: Context, uri: Uri) {
         stopNow()
 
@@ -129,15 +116,14 @@ object FillerSoundManager {
         folderPlaylist = emptyList()
     }
 
-    // ───────────────── dossier ─────────────────
+    // ───────────── dossier ─────────────
     private fun buildPlaylistFromFolder(context: Context, folderUri: Uri): List<Uri> {
         val doc = DocumentFile.fromTreeUri(context, folderUri) ?: return emptyList()
         return doc.listFiles()
             .filter { it.isFile }
             .filter { f ->
                 val name = f.name ?: return@filter false
-                name.endsWith(".mp3", ignoreCase = true) ||
-                        name.endsWith(".wav", ignoreCase = true)
+                name.endsWith(".mp3", true) || name.endsWith(".wav", true)
             }
             .sortedBy { it.name ?: "" }
             .map { it.uri }
@@ -147,33 +133,25 @@ object FillerSoundManager {
         if (folderPlaylist.isEmpty()) return
         val uri = folderPlaylist[index]
 
-        stopNext()  // au cas où
+        stopNext()
 
         val mp = MediaPlayer()
         mp.setDataSource(context, uri)
         mp.isLooping = false
-        mp.setOnCompletionListener {
-            playNextInFolder(context)
-        }
+        mp.setOnCompletionListener { playNextInFolder(context) }
         mp.prepare()
         mp.setVolume(currentVolume, currentVolume)
         mp.start()
 
-        // on remplace l’actuel
         stopCurrentOnly()
         player = mp
     }
 
     private fun playNextInFolder(context: Context) {
-        if (folderPlaylist.isEmpty()) {
-            stopNow()
-            return
-        }
+        if (folderPlaylist.isEmpty()) { stopNow(); return }
 
-        // on avance dans la liste (boucle)
         folderIndex = (folderIndex + 1) % folderPlaylist.size
         val nextUri = folderPlaylist[folderIndex]
-
         val oldPlayer = player ?: return
 
         stopNext()
@@ -182,12 +160,10 @@ object FillerSoundManager {
             newPlayer.setDataSource(context, nextUri)
             newPlayer.isLooping = false
             newPlayer.prepare()
-            // on démarre à 0 de volume
             newPlayer.setVolume(0f, 0f)
             newPlayer.start()
             nextPlayer = newPlayer
 
-            // crossfade
             fadeJob?.cancel()
             fadeJob = CoroutineScope(Dispatchers.Main).launch {
                 val steps = 20
@@ -200,27 +176,18 @@ object FillerSoundManager {
                     newPlayer.setVolume(volIn, volIn)
                     delay(stepTime)
                 }
-                // fin du fondu → on libère l’ancien
-                try {
-                    oldPlayer.stop()
-                } catch (_: Exception) {}
+                try { oldPlayer.stop() } catch (_: Exception) {}
                 oldPlayer.release()
-
-                // le newPlayer devient notre player
                 player = newPlayer
                 nextPlayer = null
-
-                // quand celui-ci finit, on enchaîne de nouveau
-                newPlayer.setOnCompletionListener {
-                    playNextInFolder(context)
-                }
+                newPlayer.setOnCompletionListener { playNextInFolder(context) }
             }
         } catch (e: Exception) {
             e.printStackTrace()
         }
     }
 
-    // ───────────────── volume & stop ─────────────────
+    // ───────────── volume & stop ─────────────
     fun setVolume(volume: Float) {
         val v = volume.coerceIn(0f, 1f)
         currentVolume = v
@@ -229,7 +196,6 @@ object FillerSoundManager {
 
     fun fadeOutAndStop(durationMs: Long = 200) {
         val p = player ?: return
-
         fadeJob?.cancel()
         fadeJob = CoroutineScope(Dispatchers.Main).launch {
             val startVol = currentVolume
@@ -247,9 +213,7 @@ object FillerSoundManager {
 
     private fun stopCurrentOnly() {
         val p = player ?: return
-        try {
-            p.stop()
-        } catch (_: Exception) {}
+        try { p.stop() } catch (_: Exception) {}
         p.release()
         player = null
     }
@@ -257,27 +221,13 @@ object FillerSoundManager {
     private fun stopNow() {
         fadeJob?.cancel()
         fadeJob = null
-
-        // stop player courant
-        player?.let { mp ->
-            try {
-                mp.stop()
-            } catch (_: Exception) {}
-            mp.release()
-        }
+        player?.let { mp -> try { mp.stop() } catch (_: Exception) {}; mp.release() }
         player = null
-
-        // stop éventuel nextPlayer
         stopNext()
     }
 
     private fun stopNext() {
-        nextPlayer?.let { mp ->
-            try {
-                mp.stop()
-            } catch (_: Exception) {}
-            mp.release()
-        }
+        nextPlayer?.let { mp -> try { mp.stop() } catch (_: Exception) {}; mp.release() }
         nextPlayer = null
     }
 }
