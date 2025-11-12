@@ -136,9 +136,9 @@ private fun BackupScreen(
     // on garde le json en mémoire le temps que l’utilisateur choisisse la cible
     val saveLauncherJson = remember { mutableStateOf("") }
 
-    // IMPORT d’un fichier .json
+    // IMPORT via picker système (on garde quand même)
     val fileLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
+        contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
         if (uri != null) {
             try {
@@ -175,7 +175,7 @@ private fun BackupScreen(
         saveLauncherJson.value = ""
     }
 
-    // choix d’un dossier de sauvegarde (juste mémorisé)
+    // choix d’un dossier de sauvegarde
     val treeLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree()
     ) { treeUri ->
@@ -190,6 +190,23 @@ private fun BackupScreen(
                 Toast.makeText(context, "Dossier de sauvegarde choisi", Toast.LENGTH_SHORT).show()
             } catch (_: Exception) {}
         }
+    }
+
+    // ⬇️ NOUVEAU : on lit les .json du dossier (si on en a un)
+    val jsonFilesInFolder by remember(backupFolderUri) {
+        mutableStateOf(
+            backupFolderUri?.let { uri ->
+                try {
+                    val doc = DocumentFile.fromTreeUri(context, uri)
+                    doc?.listFiles()
+                        ?.filter { it.isFile && (it.name ?: "").endsWith(".json", true) }
+                        ?.sortedBy { it.name?.lowercase() }
+                        ?: emptyList()
+                } catch (_: Exception) {
+                    emptyList()
+                }
+            } ?: emptyList()
+        )
     }
 
     val accent = Color(0xFFE386FF)
@@ -261,7 +278,6 @@ private fun BackupScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                // il reste juste ce bouton-là
                 FilledTonalButton(
                     onClick = {
                         val json = BackupManager.exportState(context, null, emptyList())
@@ -299,8 +315,9 @@ private fun BackupScreen(
             Text("Importer une sauvegarde", color = onBg, fontSize = 16.sp)
             Spacer(Modifier.height(8.dp))
 
+            // bouton système (au cas où)
             FilledTonalButton(
-                onClick = { fileLauncher.launch("application/json") },
+                onClick = { fileLauncher.launch(arrayOf("application/json")) },
                 colors = ButtonDefaults.filledTonalButtonColors(
                     containerColor = Color(0xFF46405A),
                     contentColor = Color.White
@@ -308,6 +325,47 @@ private fun BackupScreen(
                 shape = RoundedCornerShape(999.dp)
             ) {
                 Text("Choisir un fichier…", fontSize = 12.sp)
+            }
+
+            Spacer(Modifier.height(10.dp))
+
+            // ⬇️ NOUVEAU : liste des .json du dossier
+            if (backupFolderUri != null) {
+                Text("Fichiers dans le dossier :", color = sub, fontSize = 11.sp)
+                if (jsonFilesInFolder.isEmpty()) {
+                    Text("• Aucun .json trouvé", color = onBg, fontSize = 12.sp)
+                } else {
+                    jsonFilesInFolder.forEach { doc ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(doc.name ?: "sauvegarde.json", color = onBg, fontSize = 12.sp)
+                            TextButton(onClick = {
+                                try {
+                                    val json = context.contentResolver.openInputStream(doc.uri)
+                                        ?.bufferedReader()
+                                        ?.use { it.readText() }
+                                    if (!json.isNullOrBlank()) {
+                                        BackupManager.importState(context, json) {
+                                            lastImportFile = doc.name
+                                            lastImportTime = nowString()
+                                            lastImportSummary = "Import réussi"
+                                            onAfterImport()
+                                        }
+                                    }
+                                } catch (e: Exception) {
+                                    lastImportSummary =
+                                        "Échec de l’import (${e.message ?: "erreur inconnue"})"
+                                }
+                            }) {
+                                Text("Importer", fontSize = 11.sp, color = accent)
+                            }
+                        }
+                    }
+                }
             }
 
             Spacer(Modifier.height(6.dp))

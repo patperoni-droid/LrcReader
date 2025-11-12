@@ -457,11 +457,27 @@ private fun listEntriesInFolder(context: Context, folderUri: Uri): List<LibraryE
     val docFile = DocumentFile.fromTreeUri(context, folderUri) ?: return emptyList()
     val all = docFile.listFiles()
 
+    // 1. dossiers en haut
     val folders = all
         .filter { it.isDirectory }
         .sortedBy { it.name?.lowercase() ?: "" }
         .map { LibraryEntry(it.uri, it.name ?: "Dossier", true) }
 
+    // 2. fichiers .json juste après les dossiers
+    val jsonFiles = all
+        .filter { file ->
+            file.isFile && file.name?.endsWith(".json", ignoreCase = true) == true
+        }
+        .sortedBy { it.name?.lowercase() ?: "" }
+        .map { file ->
+            LibraryEntry(
+                file.uri,
+                file.name ?: "sauvegarde.json",
+                false
+            )
+        }
+
+    // 3. fichiers audio ensuite
     val audioFiles = all
         .filter { file ->
             file.isFile && file.name?.let { name ->
@@ -477,7 +493,8 @@ private fun listEntriesInFolder(context: Context, folderUri: Uri): List<LibraryE
             LibraryEntry(it.uri, cleanName, false)
         }
 
-    return folders + audioFiles
+    // ordre final
+    return folders + jsonFiles + audioFiles
 }
 
 private fun clearPersistedUris(context: Context) {

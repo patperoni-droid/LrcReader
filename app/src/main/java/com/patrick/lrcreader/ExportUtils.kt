@@ -15,7 +15,6 @@ import java.util.Locale
 // ajoute ces imports en haut du fichier ExportUtils.kt
 import androidx.documentfile.provider.DocumentFile
 
-
 /* -------------------------------------------------------------------------- */
 /*  EXPORT / IMPORT JSON                                                      */
 /* -------------------------------------------------------------------------- */
@@ -116,6 +115,7 @@ fun nowString(): String {
     val sdf = SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.getDefault())
     return sdf.format(Date())
 }
+
 /**
  * Sauvegarde dans un dossier choisi avec OpenDocumentTree (persistant).
  * Si le fichier existe, on le réécrit.
@@ -140,4 +140,29 @@ fun saveJsonToTree(context: Context, treeUri: Uri, fileName: String, json: Strin
         e.printStackTrace()
         false
     }
+}
+
+/* -------------------------------------------------------------------------- */
+/*  NOUVEAU : LISTER LES FICHIERS TRIÉS                                       */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Retourne les fichiers d’un dossier SAF triés comme on veut :
+ * 1. dossiers
+ * 2. .json
+ * 3. le reste
+ * (puis ordre alphabétique dans chaque bloc)
+ */
+fun listFilesSorted(context: Context, treeUri: Uri): List<DocumentFile> {
+    val tree = DocumentFile.fromTreeUri(context, treeUri) ?: return emptyList()
+    return tree.listFiles()
+        .sortedWith(
+            compareBy<DocumentFile> {
+                when {
+                    it.isDirectory -> 0
+                    it.name?.lowercase()?.endsWith(".json") == true -> 1
+                    else -> 2
+                }
+            }.thenBy { it.name?.lowercase() ?: "" }
+        )
 }
