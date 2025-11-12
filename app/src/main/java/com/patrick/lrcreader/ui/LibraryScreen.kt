@@ -5,19 +5,28 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.BottomAppBar
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -42,22 +51,15 @@ import kotlinx.coroutines.withContext
 
 /* -----------------------------------------------------------
    Cache global pour la bibliothèque
-   (reste vivant tant que l'appli tourne)
    ----------------------------------------------------------- */
 private object LibraryFolderCache {
-    // clé = uri.toString()
     private val cache = mutableMapOf<String, List<LibraryEntry>>()
-
     fun get(uri: Uri): List<LibraryEntry>? = cache[uri.toString()]
-
-    fun put(uri: Uri, list: List<LibraryEntry>) {
-        cache[uri.toString()] = list
-    }
-
+    fun put(uri: Uri, list: List<LibraryEntry>) { cache[uri.toString()] = list }
     fun clear() = cache.clear()
 }
 
-/* ce qu’on affiche dans la liste */
+/* entrée affichée */
 private data class LibraryEntry(
     val uri: Uri,
     val name: String,
@@ -72,7 +74,6 @@ fun LibraryScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    // dossier racine enregistré
     val initialFolder = remember { BackupFolderPrefs.get(context) }
 
     var currentFolderUri by remember { mutableStateOf<Uri?>(initialFolder) }
@@ -82,9 +83,10 @@ fun LibraryScreen(
 
     var showAssignDialog by remember { mutableStateOf(false) }
     var actionsExpanded by remember { mutableStateOf(false) }
-
-    // roue
     var isLoading by remember { mutableStateOf(false) }
+
+    // hauteur de la barre flottante (utilisée aussi pour le padding liste)
+    val bottomBarHeight = 56.dp
 
     val pickFolderLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree(),
@@ -104,13 +106,11 @@ fun LibraryScreen(
                         currentFolderUri = uri
                         folderStack = emptyList()
 
-                        // GROS I/O EN BACKGROUND
                         val fresh = withContext(Dispatchers.IO) {
                             listEntriesInFolder(context, uri)
                         }
                         entries = fresh
                         LibraryFolderCache.put(uri, fresh)
-
                         selectedSongs = emptySet()
                     } finally {
                         delay(200)
@@ -128,17 +128,14 @@ fun LibraryScreen(
             val cached = LibraryFolderCache.get(initialFolder)
             if (cached != null) {
                 entries = cached
-                delay(200)
-                isLoading = false
+                delay(200); isLoading = false
             } else {
-                // on va lire le disque en background
                 val fresh = withContext(Dispatchers.IO) {
                     listEntriesInFolder(context, initialFolder)
                 }
                 entries = fresh
                 LibraryFolderCache.put(initialFolder, fresh)
-                delay(200)
-                isLoading = false
+                delay(200); isLoading = false
             }
         }
     }
@@ -161,22 +158,18 @@ fun LibraryScreen(
                         val newStack = folderStack.dropLast(1)
                         val parentUri = newStack.lastOrNull() ?: initialFolder
                         currentFolderUri = parentUri
-
                         entries = parentUri?.let { uri ->
                             LibraryFolderCache.get(uri)
-                                ?: withContext(Dispatchers.IO) {
-                                    listEntriesInFolder(context, uri)
-                                }.also { LibraryFolderCache.put(uri, it) }
+                                ?: withContext(Dispatchers.IO) { listEntriesInFolder(context, uri) }
+                                    .also { LibraryFolderCache.put(uri, it) }
                         } ?: emptyList()
-
                         folderStack = newStack
                         selectedSongs = emptySet()
-                        delay(200)
-                        isLoading = false
+                        delay(200); isLoading = false
                     }
                 }) {
                     Icon(
-                        imageVector = Icons.Default.ArrowBack,
+                        Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "Retour",
                         tint = Color.White
                     )
@@ -191,23 +184,13 @@ fun LibraryScreen(
             )
 
             IconButton(onClick = { actionsExpanded = true }) {
-                Icon(
-                    imageVector = Icons.Default.MoreVert,
-                    contentDescription = "Actions",
-                    tint = Color.White
-                )
+                Icon(Icons.Default.MoreVert, contentDescription = "Actions", tint = Color.White)
             }
 
-            DropdownMenu(
-                expanded = actionsExpanded,
-                onDismissRequest = { actionsExpanded = false }
-            ) {
+            DropdownMenu(expanded = actionsExpanded, onDismissRequest = { actionsExpanded = false }) {
                 DropdownMenuItem(
                     text = { Text("Ajouter un dossier") },
-                    onClick = {
-                        actionsExpanded = false
-                        pickFolderLauncher.launch(null)
-                    }
+                    onClick = { actionsExpanded = false; pickFolderLauncher.launch(null) }
                 )
                 DropdownMenuItem(
                     text = { Text("Oublier le dossier") },
@@ -247,53 +230,45 @@ fun LibraryScreen(
                     .weight(1f)
                     .fillMaxWidth()
             ) {
-                LazyColumn(modifier = Modifier.fillMaxSize()) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(
+                        bottom = if (selectedSongs.isNotEmpty()) bottomBarHeight else 0.dp
+                    )
+                ) {
                     items(entries, key = { it.uri.toString() }) { entry ->
                         if (entry.isDirectory) {
-                            // dossier
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable {
                                         scope.launch {
                                             isLoading = true
-                                            val old = currentFolderUri
-                                            if (old != null) folderStack = folderStack + old
+                                            currentFolderUri?.let { folderStack = folderStack + it }
                                             currentFolderUri = entry.uri
-
                                             val cached = LibraryFolderCache.get(entry.uri)
-                                            if (cached != null) {
-                                                entries = cached
-                                            } else {
-                                                val fresh = withContext(Dispatchers.IO) {
-                                                    listEntriesInFolder(context, entry.uri)
-                                                }
-                                                entries = fresh
-                                                LibraryFolderCache.put(entry.uri, fresh)
-                                            }
+                                            entries = if (cached != null) cached else withContext(
+                                                Dispatchers.IO
+                                            ) {
+                                                listEntriesInFolder(context, entry.uri)
+                                            }.also { LibraryFolderCache.put(entry.uri, it) }
                                             selectedSongs = emptySet()
-                                            delay(200)
-                                            isLoading = false
+                                            delay(200); isLoading = false
                                         }
                                     }
                                     .padding(vertical = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.Folder,
+                                    Icons.Default.Folder,
                                     contentDescription = null,
                                     tint = Color.White.copy(alpha = 0.9f),
                                     modifier = Modifier.size(22.dp)
                                 )
                                 Spacer(Modifier.width(10.dp))
-                                Text(
-                                    text = entry.name,
-                                    color = Color.White,
-                                    fontSize = 15.sp
-                                )
+                                Text(entry.name, color = Color.White, fontSize = 15.sp)
                             }
                         } else {
-                            // fichier audio
                             val uri = entry.uri
                             val isSelected = selectedSongs.contains(uri)
 
@@ -314,7 +289,6 @@ fun LibraryScreen(
                                     .padding(vertical = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                // carré + croix centrée
                                 Box(
                                     modifier = Modifier
                                         .size(20.dp)
@@ -322,15 +296,12 @@ fun LibraryScreen(
                                             if (isSelected) Color.White.copy(alpha = 0.22f)
                                             else Color.Transparent
                                         )
-                                        .border(
-                                            width = 1.dp,
-                                            color = Color.White.copy(alpha = 0.8f)
-                                        ),
+                                        .border(1.dp, Color.White.copy(alpha = 0.8f)),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     if (isSelected) {
                                         Text(
-                                            text = "✕",
+                                            "✕",
                                             color = Color.White,
                                             fontSize = 13.sp,
                                             modifier = Modifier.offset(y = (-6).dp)
@@ -338,17 +309,13 @@ fun LibraryScreen(
                                     }
                                 }
                                 Spacer(Modifier.width(10.dp))
-                                Text(
-                                    text = entry.name,
-                                    color = Color.White,
-                                    modifier = Modifier.weight(1f)
-                                )
+                                Text(entry.name, color = Color.White, modifier = Modifier.weight(1f))
                             }
                         }
                     }
                 }
 
-                // ─── roue centrée + texte ───
+                // spinner
                 if (isLoading) {
                     Box(
                         modifier = Modifier
@@ -360,7 +327,7 @@ fun LibraryScreen(
                             CircularProgressIndicator(color = Color.White)
                             Spacer(Modifier.height(12.dp))
                             Text(
-                                text = "Chargement des fichiers audio…",
+                                "Chargement des fichiers audio…",
                                 color = Color.White.copy(alpha = 0.8f),
                                 fontSize = 16.sp
                             )
@@ -368,37 +335,54 @@ fun LibraryScreen(
                     }
                 }
 
-                // barre de sélection
-                if (selectedSongs.isNotEmpty()) {
-                    Row(
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .fillMaxWidth()
-                            .height(48.dp)
-                            .background(Color(0xFF1E1E1E)),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                // ——— BARRE FLOTTANTE ———
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)   // on aligne le conteneur dans la Box
+                        .fillMaxWidth()
+                ) {
+                    androidx.compose.animation.AnimatedVisibility(
+                        visible = selectedSongs.isNotEmpty(),
+                        modifier = Modifier.fillMaxWidth(),            // <- paramètre nommé
+                        enter = slideInVertically { it } + fadeIn(),
+                        exit  = slideOutVertically { it } + fadeOut()
                     ) {
-                        Text(
-                            text = "${selectedSongs.size} sélectionné(s)",
-                            color = Color.White,
-                            modifier = Modifier.padding(start = 16.dp)
-                        )
-                        Row {
-                            Text(
-                                text = "Tout effacer",
-                                color = Color.White,
+                        BottomAppBar(
+                            containerColor = Color(0xFF1E1E1E),
+                            contentColor = Color.White,
+                            tonalElevation = 6.dp,
+                            modifier = Modifier
+                                .navigationBarsPadding()
+                                .height(bottomBarHeight)
+                        ) {
+                            // pastille compteur compacte
+                            Box(
                                 modifier = Modifier
-                                    .padding(end = 16.dp)
-                                    .clickable { selectedSongs = emptySet() }
-                            )
-                            Text(
-                                text = "Attribuer",
-                                color = Color.White,
-                                modifier = Modifier
-                                    .padding(end = 16.dp)
-                                    .clickable { showAssignDialog = true }
-                            )
+                                    .padding(start = 16.dp)
+                                    .size(28.dp)
+                                    .border(
+                                        width = 1.dp,
+                                        color = Color.White.copy(alpha = 0.85f),
+                                        shape = CircleShape
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = selectedSongs.size.toString(),
+                                    color = Color.White,
+                                    fontSize = 13.sp
+                                )
+                            }
+
+                            Spacer(Modifier.weight(1f))
+
+                            TextButton(onClick = { showAssignDialog = true }) {
+                                Text("Attribuer", color = Color.White)
+                            }
+                            Spacer(Modifier.width(8.dp))
+                            TextButton(onClick = { selectedSongs = emptySet() }) {
+                                Text("Désélect.", color = Color(0xFFB0B0B0))
+                            }
                         }
                     }
                 }
@@ -435,6 +419,7 @@ fun LibraryScreen(
                                             )
                                         }
                                         showAssignDialog = false
+                                        selectedSongs = emptySet()
                                     }
                             )
                         }
@@ -457,32 +442,23 @@ private fun listEntriesInFolder(context: Context, folderUri: Uri): List<LibraryE
     val docFile = DocumentFile.fromTreeUri(context, folderUri) ?: return emptyList()
     val all = docFile.listFiles()
 
-    // 1. dossiers en haut
+    // 1) dossiers
     val folders = all
         .filter { it.isDirectory }
         .sortedBy { it.name?.lowercase() ?: "" }
         .map { LibraryEntry(it.uri, it.name ?: "Dossier", true) }
 
-    // 2. fichiers .json juste après les dossiers
+    // 2) .json
     val jsonFiles = all
-        .filter { file ->
-            file.isFile && file.name?.endsWith(".json", ignoreCase = true) == true
-        }
+        .filter { it.isFile && it.name?.endsWith(".json", ignoreCase = true) == true }
         .sortedBy { it.name?.lowercase() ?: "" }
-        .map { file ->
-            LibraryEntry(
-                file.uri,
-                file.name ?: "sauvegarde.json",
-                false
-            )
-        }
+        .map { LibraryEntry(it.uri, it.name ?: "sauvegarde.json", false) }
 
-    // 3. fichiers audio ensuite
+    // 3) audio
     val audioFiles = all
         .filter { file ->
             file.isFile && file.name?.let { name ->
-                name.endsWith(".mp3", ignoreCase = true) ||
-                        name.endsWith(".wav", ignoreCase = true)
+                name.endsWith(".mp3", true) || name.endsWith(".wav", true)
             } == true
         }
         .sortedBy { it.name?.lowercase() ?: "" }
@@ -493,7 +469,6 @@ private fun listEntriesInFolder(context: Context, folderUri: Uri): List<LibraryE
             LibraryEntry(it.uri, cleanName, false)
         }
 
-    // ordre final
     return folders + jsonFiles + audioFiles
 }
 
