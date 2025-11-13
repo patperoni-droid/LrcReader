@@ -28,9 +28,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.core.LrcLine
 import com.patrick.lrcreader.core.pauseWithFade
-import com.patrick.lrcreader.core.PlaybackCoordinator
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.abs
@@ -71,19 +71,6 @@ fun PlayerScreen(
     var positionMs by remember { mutableStateOf(0) }
     var isDragging by remember { mutableStateOf(false) }
     var dragPosMs by remember { mutableStateOf(0) }
-
-    // 🔗 Sécurité : on relance le fond à la fin naturelle du titre
-    DisposableEffect(mediaPlayer) {
-        val listener = MediaPlayer.OnCompletionListener {
-            onIsPlayingChange(false)
-            // Le main s'est arrêté -> autoriser/reprendre le fond sonore
-            runCatching { PlaybackCoordinator.onMainStopped(context) }
-        }
-        mediaPlayer.setOnCompletionListener(listener)
-        onDispose {
-            // rien de spécial; si tu remplaces le listener ailleurs, Compose recréera ce block
-        }
-    }
 
     // suivi lecture + index
     LaunchedEffect(isPlaying, parsedLines) {
@@ -130,10 +117,9 @@ fun PlayerScreen(
         currentLrcIndex = targetIndex
         positionMs = targetMs
         if (!mediaPlayer.isPlaying) {
-            // 👉 Le main va (re)démarrer : coupe / bloque le fond
-            runCatching { PlaybackCoordinator.onMainWillStart(context) }
             mediaPlayer.start()
             onIsPlayingChange(true)
+            runCatching { FillerSoundManager.fadeOutAndStop(400) }
         }
         if (lyricsBoxHeightPx > 0) {
             val centerPx = lyricsBoxHeightPx / 2f
@@ -209,7 +195,7 @@ fun PlayerScreen(
                 } else {
                     parsedLines.forEachIndexed { index, line ->
                         val isCurrent = index == currentLrcIndex
-                        val dist = kotlin.math.abs(index - currentLrcIndex)
+                        val dist = abs(index - currentLrcIndex)
 
                         val lineAlpha: Float = if (!isConcertMode) {
                             if (isCurrent) 1f else 0.4f
@@ -276,7 +262,7 @@ fun PlayerScreen(
             highlightColor = highlightColor
         )
 
-        // bloc niveau titre
+        // ───── Bloc niveau titre (gain par morceau) ─────
         val minDb = -12
         val maxDb = 12
 
@@ -317,38 +303,34 @@ fun PlayerScreen(
             isPlaying = isPlaying,
             onPlayPause = {
                 if (mediaPlayer.isPlaying) {
-                    // Pause → autorise/reprend le fond
                     pauseWithFade(scope, mediaPlayer, 400L) {
                         onIsPlayingChange(false)
-                        runCatching { PlaybackCoordinator.onMainStopped(context) }
+                        runCatching { FillerSoundManager.startIfConfigured(context) }
                     }
                 } else {
                     if (durationMs > 0) {
-                        // Play → coupe/bloque le fond
-                        runCatching { PlaybackCoordinator.onMainWillStart(context) }
                         mediaPlayer.setVolume(1f, 1f)
                         mediaPlayer.start()
                         onIsPlayingChange(true)
                         centerCurrentLine()
+                        runCatching { FillerSoundManager.fadeOutAndStop(400) }
                     }
                 }
             },
             onPrev = {
                 mediaPlayer.seekTo(0)
                 if (!mediaPlayer.isPlaying) {
-                    // Redémarre → coupe/bloque le fond
-                    runCatching { PlaybackCoordinator.onMainWillStart(context) }
                     mediaPlayer.start()
                     onIsPlayingChange(true)
+                    runCatching { FillerSoundManager.fadeOutAndStop(400) }
                 }
                 centerCurrentLine()
             },
             onNext = {
-                // On simule la fin / stop → relance/autorise le fond
                 mediaPlayer.seekTo(max(durationMs - 1, 0))
                 mediaPlayer.pause()
                 onIsPlayingChange(false)
-                runCatching { PlaybackCoordinator.onMainStopped(context) }
+                runCatching { FillerSoundManager.startIfConfigured(context) }
             }
         )
     }

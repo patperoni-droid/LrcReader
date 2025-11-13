@@ -43,7 +43,7 @@ object FillerSoundManager {
             return
         }
 
-        // récupère le volume choisi par l’utilisateur
+        // volume utilisateur (0..1)
         currentVolume = FillerSoundPrefs.getFillerVolume(context)
 
         // 1) dossier configuré ?
@@ -188,10 +188,35 @@ object FillerSoundManager {
     }
 
     // ───────────── volume & stop ─────────────
+
+    /**
+     * Réglage du volume utilisateur 0..1.
+     * Annule tout fade/crossfade en cours pour appliquer immédiatement.
+     * (Aucun traitement du signal, pas d'enhancer ⇒ pas d’artefacts.)
+     */
     fun setVolume(volume: Float) {
         val v = volume.coerceIn(0f, 1f)
         currentVolume = v
+
+        // annule tout fondu en cours pour ne pas "écraser" la montée
+        fadeJob?.cancel()
+        fadeJob = null
+
         player?.setVolume(v, v)
+        nextPlayer?.setVolume(v, v)
+    }
+
+    /**
+     * Variante : en plus du volume interne, relève le volume système (STREAM_MUSIC)
+     * jusqu’à un plancher (ex. 60%) si l’utilisateur monte le curseur.
+     * Aucun enhancer, aucune EQ ← zéro coloration.
+     */
+    fun setVolumeWithSystem(context: Context, volume: Float, systemFloorPercent: Float = 0.6f) {
+        val old = currentVolume
+        setVolume(volume) // applique sur les players (et annule les fades)
+        if (volume > old) {
+            SystemVolumeHelper.setMusicVolumeFloor(context, systemFloorPercent)
+        }
     }
 
     fun fadeOutAndStop(durationMs: Long = 200) {
@@ -229,5 +254,24 @@ object FillerSoundManager {
     private fun stopNext() {
         nextPlayer?.let { mp -> try { mp.stop() } catch (_: Exception) {}; mp.release() }
         nextPlayer = null
+    }
+}
+
+/* -----------------------------------------------------------
+   Utilitaire volume système — aucune coloration du signal
+   ----------------------------------------------------------- */
+private object SystemVolumeHelper {
+    fun setMusicVolumeFloor(context: Context, floorPercent: Float) {
+        try {
+            val am = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+            val max = am.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC)
+            val cur = am.getStreamVolume(android.media.AudioManager.STREAM_MUSIC)
+            val floor = (max * floorPercent.coerceIn(0f, 1f)).toInt()
+            if (cur < floor) {
+                am.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, floor, 0)
+            }
+        } catch (_: Exception) {
+            // silencieux: on ne casse rien si l’OS refuse
+        }
     }
 }
