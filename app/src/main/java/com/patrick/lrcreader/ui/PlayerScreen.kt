@@ -49,7 +49,9 @@ fun PlayerScreen(
     // nouveaux paramètres pour le niveau par titre
     currentTrackUri: String?,
     currentTrackGainDb: Int,
-    onTrackGainChange: (Int) -> Unit
+    onTrackGainChange: (Int) -> Unit,
+    // 🔥 nouveau callback : demande d’afficher la playlist
+    onRequestShowPlaylist: () -> Unit
 ) {
     val scrollState = rememberScrollState()
     val scope = rememberCoroutineScope()
@@ -72,6 +74,11 @@ fun PlayerScreen(
     var isDragging by remember { mutableStateOf(false) }
     var dragPosMs by remember { mutableStateOf(0) }
 
+    // flag : bascule playlist déjà demandée pour ce titre ?
+    var hasRequestedPlaylist by remember(currentTrackUri) {
+        mutableStateOf(false)
+    }
+
     // suivi lecture + index
     LaunchedEffect(isPlaying, parsedLines) {
         while (true) {
@@ -93,6 +100,14 @@ fun PlayerScreen(
             if (!isPlaying && !mediaPlayer.isPlaying) {
                 delay(200)
             }
+        }
+    }
+
+    // 🔥 Auto-switch vers la playlist 10s avant la fin
+    LaunchedEffect(durationMs, positionMs, hasRequestedPlaylist) {
+        if (!hasRequestedPlaylist && durationMs > 0 && positionMs >= durationMs - 15_000) {
+            hasRequestedPlaylist = true
+            onRequestShowPlaylist()
         }
     }
 

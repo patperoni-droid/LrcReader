@@ -19,6 +19,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.documentfile.provider.DocumentFile
@@ -92,7 +93,12 @@ private fun MoreRootScreen(
             )
             .verticalScroll(rememberScrollState())
     ) {
-        Text("Paramètres", color = Color.White, fontSize = 20.sp, modifier = Modifier.padding(4.dp))
+        Text(
+            "Paramètres",
+            color = Color.White,
+            fontSize = 20.sp,
+            modifier = Modifier.padding(4.dp)
+        )
         Spacer(Modifier.height(10.dp))
 
         SettingsItem("🎧  Fond sonore", onClick = onOpenFiller)
@@ -103,6 +109,18 @@ private fun MoreRootScreen(
         SettingsItem("🎨  Interface", onClick = {})
         SettingsItem("🔊  Audio", onClick = {})
         SettingsItem("⚙️  Avancé", onClick = {})
+
+        // --- Nom de l’application pour différencier les builds ---
+        Spacer(modifier = Modifier.height(24.dp))
+        Text(
+            text = "LrcReader_EXO",
+            color = Color.Gray,
+            fontSize = 12.sp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 12.dp),
+            textAlign = TextAlign.Center
+        )
     }
 }
 
@@ -417,7 +435,9 @@ private fun FillerSoundScreen(
 
     var isEnabled by remember { mutableStateOf(FillerSoundPrefs.isEnabled(context)) }
     var fillerUri by remember { mutableStateOf(FillerSoundPrefs.getFillerFolder(context)) }
-    var fillerName by remember { mutableStateOf(fillerUri?.lastPathSegment ?: "Aucun son sélectionné") }
+    var fillerName by remember {
+        mutableStateOf(fillerUri?.lastPathSegment ?: "Aucun son sélectionné")
+    }
     var isPreviewing by remember { mutableStateOf(false) }
     var fillerVolume by remember { mutableStateOf(FillerSoundPrefs.getFillerVolume(context)) }
 
@@ -467,7 +487,8 @@ private fun FillerSoundScreen(
                         Text("Activer le fond sonore", color = onBg, fontSize = 14.sp)
                         Text(
                             "Lecture automatique après la fin d’un morceau.",
-                            color = sub, fontSize = 12.sp
+                            color = sub,
+                            fontSize = 12.sp
                         )
                     }
                     Switch(
@@ -489,7 +510,8 @@ private fun FillerSoundScreen(
                 Spacer(Modifier.height(8.dp))
                 Text(
                     "Ce dossier est joué automatiquement quand un morceau se termine.",
-                    color = sub, fontSize = 12.sp
+                    color = sub,
+                    fontSize = 12.sp
                 )
                 Spacer(Modifier.height(10.dp))
 
@@ -769,8 +791,11 @@ private fun EditSoundScreen(
                                     startMs = startMs,
                                     endMs = endMs
                                 )
-                                Toast.makeText(context, "Réglages enregistrés ✅", Toast.LENGTH_SHORT)
-                                    .show()
+                                Toast.makeText(
+                                    context,
+                                    "Réglages enregistrés ✅",
+                                    Toast.LENGTH_SHORT
+                                ).show()
                             } else {
                                 Toast.makeText(
                                     context,

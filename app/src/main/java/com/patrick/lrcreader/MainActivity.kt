@@ -1,4 +1,4 @@
-package com.patrick.lrcreader
+package com.patrick.lrcreader.exo
 
 import android.media.MediaPlayer
 import android.os.Bundle
@@ -146,6 +146,9 @@ class MainActivity : ComponentActivity() {
                                 }
                                 currentTrackGainDb = newDb
                                 applyGainToPlayer(newDb)
+                            },
+                            onRequestShowPlaylist = {
+                                selectedTab = BottomTab.QuickPlaylists
                             }
                         )
 

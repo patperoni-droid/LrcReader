@@ -1,3 +1,5 @@
+// build.gradle.kts du module LrcReader_EXO
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -5,39 +7,36 @@ plugins {
 }
 
 android {
-    namespace = "com.patrick.lrcreader"
+    namespace = "com.patrick.lrcreader.exo"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.patrick.lrcreader"
+        applicationId = "com.patrick.lrcreader.exo"
         minSdk = 23
         targetSdk = 35
 
-        // 💡 Numéros de version officiels
-        versionCode = 1            // utilisé par le Play Store (doit toujours augmenter)
-        versionName = "1.0.0"      // affiché à l'utilisateur : "LRC Reader v1.0.0"
+        versionCode = 1
+        versionName = "1.0.0"
     }
 
     buildTypes {
         // --- version de développement ---
         getByName("debug") {
-            applicationIdSuffix = ".dev"      // → "com.patrick.lrcreader.dev"
-            versionNameSuffix = "-dev"        // → "1.0.0-dev"
-            resValue("string", "app_name", "LRC Reader (dev)")  // nom affiché sur le téléphone
+            applicationIdSuffix = ".dev"      // → com.patrick.lrcreader.exo.dev
+            versionNameSuffix = "-dev"
+            resValue("string", "app_name", "LRC Reader EXO (dev)")
         }
 
-        // --- version stable (pour la scène / production) ---
+        // --- version "prod" ---
         getByName("release") {
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            // garde le nom normal défini dans res/values/strings.xml
         }
     }
 
-    // Active Compose
     buildFeatures {
         compose = true
     }
@@ -57,26 +56,21 @@ android {
 }
 
 dependencies {
-    // Compose BOM
     val composeBom = platform("androidx.compose:compose-bom:2024.10.00")
     implementation(composeBom)
     androidTestImplementation(composeBom)
-    implementation("androidx.media3:media3-exoplayer:1.4.1")
-    implementation("androidx.media3:media3-ui:1.4.1")
-
-    implementation("androidx.compose.material:material-icons-extended")
-    implementation("androidx.documentfile:documentfile:1.0.1")
 
     // Compose UI
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.ui:ui-tooling-preview")
     debugImplementation("androidx.compose.ui:ui-tooling")
+    implementation("androidx.compose.material:material-icons-extended")
 
-    // Activity Compose
     implementation("androidx.activity:activity-compose:1.9.3")
+    implementation("androidx.documentfile:documentfile:1.0.1")
 
-    // Media3 (lecture audio)
+    // Media3 (ExoPlayer)
     implementation("androidx.media3:media3-exoplayer:1.4.1")
     implementation("androidx.media3:media3-ui:1.4.1")
 }
