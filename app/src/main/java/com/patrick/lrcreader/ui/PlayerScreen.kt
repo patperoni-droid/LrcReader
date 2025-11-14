@@ -1,5 +1,6 @@
 package com.patrick.lrcreader.ui
 
+import com.patrick.lrcreader.core.DisplayPrefs
 import android.media.MediaPlayer
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -60,7 +61,9 @@ fun PlayerScreen(
 
     val lyricsDelayMs = 1000L
 
-    var isConcertMode by remember { mutableStateOf(true) }
+    var isConcertMode by remember {
+        mutableStateOf(DisplayPrefs.isConcertMode(context))
+    }
     var lyricsBoxHeightPx by remember { mutableStateOf(0) }
     var currentLrcIndex by remember { mutableStateOf(0) }
     var userScrolling by remember { mutableStateOf(false) }
@@ -172,7 +175,10 @@ fun PlayerScreen(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            IconButton(onClick = { isConcertMode = !isConcertMode }) {
+            IconButton(onClick = {
+                isConcertMode = !isConcertMode
+                DisplayPrefs.setConcertMode(context, isConcertMode)
+            }) {
                 Icon(
                     imageVector = Icons.Filled.Tune,
                     contentDescription = "Changer de style",
@@ -212,8 +218,9 @@ fun PlayerScreen(
                         val isCurrent = index == currentLrcIndex
                         val dist = abs(index - currentLrcIndex)
 
+                        // ✅ correction : mode "pas concert" = aucune opacité
                         val lineAlpha: Float = if (!isConcertMode) {
-                            if (isCurrent) 1f else 0.4f
+                            1f
                         } else {
                             when (dist) {
                                 0 -> 1f
