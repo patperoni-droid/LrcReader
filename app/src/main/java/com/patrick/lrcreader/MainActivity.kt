@@ -1,6 +1,7 @@
 package com.patrick.lrcreader.exo
 
 import android.media.MediaPlayer
+import android.media.audiofx.LoudnessEnhancer
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -31,6 +32,13 @@ class MainActivity : ComponentActivity() {
                 val ctx = this@MainActivity
                 val mediaPlayer = remember { MediaPlayer() }
 
+                // 👉 Effet pour booster le volume quand dB > 0
+                val loudnessEnhancer = remember {
+                    LoudnessEnhancer(mediaPlayer.audioSessionId).apply {
+                        enabled = true
+                    }
+                }
+
                 var selectedTab by remember {
                     mutableStateOf(initialTabKey?.let { tabFromKey(it) } ?: BottomTab.Player)
                 }
@@ -48,18 +56,23 @@ class MainActivity : ComponentActivity() {
                 var refreshKey by remember { mutableStateOf(0) }
                 val repoVersion by PlaylistRepository.version
 
-                // Applique le dB au player (sans enhancer)
-                fun applyGainToPlayer(gainDb: Int) {
+                // Applique le dB au player
+                fun applyGainToPlayer(db: Int) {
                     try {
-                        val clamped = gainDb.coerceIn(-12, 0)
-                        if (clamped < 0) {
-                            val factor = 10.0.pow(clamped / 20.0).toFloat()
-                            mediaPlayer.setVolume(factor, factor)
+                        val clamped = db.coerceIn(-12, 12)
+
+                        if (clamped <= 0) {
+                            // 💡 dB négatifs : on atténue proprement avec setVolume
+                            val linear = 10f.pow(clamped / 20f)
+                            mediaPlayer.setVolume(linear, linear)
+                            loudnessEnhancer.setTargetGain(0) // pas de boost
                         } else {
+                            // 💡 dB positifs : player à fond, boost via LoudnessEnhancer
                             mediaPlayer.setVolume(1f, 1f)
+                            loudnessEnhancer.setTargetGain(clamped * 100) // millibels
                         }
                     } catch (_: Exception) {
-                        runCatching { mediaPlayer.setVolume(1f, 1f) }
+                        // on évite de crasher si le player n'est pas prêt
                     }
                 }
 
@@ -114,7 +127,10 @@ class MainActivity : ComponentActivity() {
                 }
 
                 DisposableEffect(Unit) {
-                    onDispose { runCatching { mediaPlayer.release() } }
+                    onDispose {
+                        runCatching { loudnessEnhancer.release() }
+                        runCatching { mediaPlayer.release() }
+                    }
                 }
 
                 Scaffold(
