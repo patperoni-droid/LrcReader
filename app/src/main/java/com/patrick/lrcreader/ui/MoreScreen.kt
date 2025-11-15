@@ -32,6 +32,7 @@ import com.patrick.lrcreader.getDisplayName
 import com.patrick.lrcreader.nowString
 import com.patrick.lrcreader.saveJsonToUri
 import com.patrick.lrcreader.shareJson
+import kotlin.math.cbrt   // <<< ajouté
 
 /* ─────────────────────────────
    Écran "Plus" (Paramètres)
@@ -422,7 +423,7 @@ private fun BackupScreen(
 }
 
 /* ─────────────────────────────
-   Fond sonore (avec ON/OFF)
+   Fond sonore (avec ON/OFF) + fader avec “loupe”
    ───────────────────────────── */
 @Composable
 private fun FillerSoundScreen(
@@ -439,8 +440,25 @@ private fun FillerSoundScreen(
         mutableStateOf(fillerUri?.lastPathSegment ?: "Aucun son sélectionné")
     }
     var isPreviewing by remember { mutableStateOf(false) }
-    var fillerVolume by remember { mutableStateOf(FillerSoundPrefs.getFillerVolume(context)) }
 
+    // --- mapping pour la "loupe" ---
+    fun uiToRealVolume(u: Float): Float {
+        val clamped = u.coerceIn(0f, 1f)
+        return (clamped * clamped * clamped)   // u³
+    }
+
+    fun realToUiVolume(r: Float): Float {
+        val clamped = r.coerceIn(0f, 1f)
+        return cbrt(clamped.toDouble()).toFloat()  // racine cubique
+    }
+
+    // volume "réel" stocké dans les prefs
+    val initialReal = FillerSoundPrefs.getFillerVolume(context)
+    var uiFillerVolume by remember {
+        mutableStateOf(realToUiVolume(initialReal))
+    }
+
+    // launcher pour choisir le dossier audio
     val fillerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree()
     ) { uri ->
@@ -478,7 +496,7 @@ private fun FillerSoundScreen(
         Card(colors = CardDefaults.cardColors(containerColor = card)) {
             Column(Modifier.padding(12.dp)) {
 
-                // Ligne d’activation
+                // ON/OFF
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
@@ -532,18 +550,23 @@ private fun FillerSoundScreen(
 
                 Spacer(Modifier.height(14.dp))
                 Text("Volume", color = sub, fontSize = 11.sp)
+
+                // FADER avec “loupe”
                 Slider(
-                    value = fillerVolume,
+                    value = uiFillerVolume,
                     onValueChange = { v ->
-                        fillerVolume = v
-                        FillerSoundPrefs.saveFillerVolume(context, v)
-                        FillerSoundManager.setVolume(v)
+                        uiFillerVolume = v
+                        val real = uiToRealVolume(v)
+                        FillerSoundPrefs.saveFillerVolume(context, real)
+                        FillerSoundManager.setVolume(real)
                     },
                     valueRange = 0f..1f,
                     enabled = isEnabled,
                     modifier = Modifier.fillMaxWidth()
                 )
-                Text("${(fillerVolume * 100).toInt()} %", color = onBg, fontSize = 11.sp)
+
+                val realDisplay = uiToRealVolume(uiFillerVolume)
+                Text("${(realDisplay * 100).toInt()} %", color = onBg, fontSize = 11.sp)
 
                 Spacer(Modifier.height(10.dp))
 
@@ -552,7 +575,7 @@ private fun FillerSoundScreen(
                         onClick = {
                             if (!isPreviewing) {
                                 FillerSoundManager.startIfConfigured(context)
-                                FillerSoundManager.setVolume(fillerVolume)
+                                FillerSoundManager.setVolume(uiToRealVolume(uiFillerVolume))
                                 isPreviewing = true
                             } else {
                                 FillerSoundManager.fadeOutAndStop(200)
@@ -574,6 +597,7 @@ private fun FillerSoundScreen(
                             FillerSoundPrefs.clear(context)
                             fillerUri = null
                             fillerName = "Aucun son sélectionné"
+                            uiFillerVolume = 0f
                         },
                         enabled = isEnabled && fillerUri != null
                     ) {
