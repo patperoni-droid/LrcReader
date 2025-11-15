@@ -47,11 +47,14 @@ fun PlayerScreen(
     parsedLines: List<LrcLine>,
     onParsedLinesChange: (List<LrcLine>) -> Unit,
     highlightColor: Color = Color(0xFFE040FB),
-    // nouveaux paramètres pour le niveau par titre
+    // Niveau par titre
     currentTrackUri: String?,
     currentTrackGainDb: Int,
     onTrackGainChange: (Int) -> Unit,
-    // 🔥 nouveau callback : demande d’afficher la playlist
+    // Tempo par morceau (1f = normal), piloté par MainActivity
+    tempo: Float,
+    onTempoChange: (Float) -> Unit,
+    // Demande d’afficher la playlist
     onRequestShowPlaylist: () -> Unit
 ) {
     val scrollState = rememberScrollState()
@@ -106,7 +109,7 @@ fun PlayerScreen(
         }
     }
 
-    // 🔥 Auto-switch vers la playlist 10s avant la fin
+    // Auto-switch vers la playlist 15s avant la fin
     LaunchedEffect(durationMs, positionMs, hasRequestedPlaylist) {
         if (!hasRequestedPlaylist && durationMs > 0 && positionMs >= durationMs - 15_000) {
             hasRequestedPlaylist = true
@@ -218,7 +221,7 @@ fun PlayerScreen(
                         val isCurrent = index == currentLrcIndex
                         val dist = abs(index - currentLrcIndex)
 
-                        // ✅ correction : mode "pas concert" = aucune opacité
+                        // mode "pas concert" = aucune opacité
                         val lineAlpha: Float = if (!isConcertMode) {
                             1f
                         } else {
@@ -297,7 +300,7 @@ fun PlayerScreen(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 4.dp, bottom = 8.dp)
+                .padding(top = 4.dp, bottom = 4.dp)
         ) {
             Text(
                 text = "Niveau titre : ${if (currentTrackGainDb >= 0) "+${currentTrackGainDb}" else currentTrackGainDb} dB",
@@ -315,6 +318,44 @@ fun PlayerScreen(
                 colors = SliderDefaults.colors(
                     thumbColor = highlightColor,
                     activeTrackColor = highlightColor.copy(alpha = 0.4f),
+                    inactiveTrackColor = Color.DarkGray
+                )
+            )
+        }
+
+        // ───── Bloc TEMPO (0.8× à 1.2×, par morceau) ─────
+        val minTempo = 0.8f
+        val maxTempo = 1.2f
+
+        var tempoSlider by remember(currentTrackUri, tempo) {
+            mutableStateOf(
+                ((tempo - minTempo) / (maxTempo - minTempo))
+                    .coerceIn(0f, 1f)
+            )
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 0.dp, bottom = 8.dp)
+        ) {
+            Text(
+                text = "Tempo titre : ${String.format("%.2fx", tempo)}",
+                color = Color.White,
+                fontSize = 12.sp
+            )
+            Slider(
+                value = tempoSlider,
+                onValueChange = { v ->
+                    tempoSlider = v
+                    val newTempo = (minTempo + v * (maxTempo - minTempo))
+                        .coerceIn(minTempo, maxTempo)
+                    onTempoChange(newTempo)
+                },
+                modifier = Modifier.fillMaxWidth(),
+                colors = SliderDefaults.colors(
+                    thumbColor = Color(0xFF80CBC4),
+                    activeTrackColor = Color(0xFF80CBC4).copy(alpha = 0.4f),
                     inactiveTrackColor = Color.DarkGray
                 )
             )

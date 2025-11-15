@@ -43,8 +43,12 @@ class MainActivity : ComponentActivity() {
                     mutableStateOf(initialTabKey?.let { tabFromKey(it) } ?: BottomTab.Player)
                 }
 
-                var selectedQuickPlaylist by rememberSaveable { mutableStateOf<String?>(initialQuickPlaylist) }
-                var openedPlaylist by rememberSaveable { mutableStateOf<String?>(initialOpenedPlaylist) }
+                var selectedQuickPlaylist by rememberSaveable {
+                    mutableStateOf<String?>(initialQuickPlaylist)
+                }
+                var openedPlaylist by rememberSaveable {
+                    mutableStateOf<String?>(initialOpenedPlaylist)
+                }
 
                 var currentPlayingUri by remember { mutableStateOf<String?>(null) }
                 var isPlaying by remember { mutableStateOf(false) }
@@ -55,6 +59,9 @@ class MainActivity : ComponentActivity() {
                 var currentLyricsColor by remember { mutableStateOf(Color(0xFFE040FB)) }
                 var refreshKey by remember { mutableStateOf(0) }
                 val repoVersion by PlaylistRepository.version
+
+                // 🔥 Tempo PAR MORCEAU (1f = normal)
+                var currentTrackTempo by remember { mutableStateOf(1f) }
 
                 // Applique le dB au player
                 fun applyGainToPlayer(db: Int) {
@@ -76,6 +83,18 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
+                // 🔥 Applique le tempo au MediaPlayer (sans changer la tonalité)
+                fun applyTempoToPlayer(speed: Float) {
+                    try {
+                        val params = mediaPlayer.playbackParams
+                            .setSpeed(speed)
+                            .setPitch(1.0f) // tonalité fixe
+                        mediaPlayer.playbackParams = params
+                    } catch (_: Exception) {
+                        // si le player n'est pas encore prêt, on ignore
+                    }
+                }
+
                 // Lecture stable avec blindage
                 val playWithCrossfade: (String, String?) -> Unit = remember {
                     { uriString, playlistName ->
@@ -85,9 +104,17 @@ class MainActivity : ComponentActivity() {
                         val myToken = currentPlayToken + 1
                         currentPlayToken = myToken
 
-                        val savedDb = runCatching { TrackVolumePrefs.getDb(ctx, uriString) ?: 0 }
-                            .getOrElse { 0 }
+                        // dB par morceau
+                        val savedDb = runCatching {
+                            TrackVolumePrefs.getDb(ctx, uriString) ?: 0
+                        }.getOrElse { 0 }
                         currentTrackGainDb = savedDb
+
+                        // 🔥 Tempo par morceau (par défaut 1.0f)
+                        val savedTempo = runCatching {
+                            TrackTempoPrefs.getTempo(ctx, uriString) ?: 1f
+                        }.getOrElse { 1f }
+                        currentTrackTempo = savedTempo
 
                         val result = runCatching {
                             crossfadePlay(
@@ -104,6 +131,7 @@ class MainActivity : ComponentActivity() {
                                 onStart = {
                                     isPlaying = true
                                     applyGainToPlayer(currentTrackGainDb)
+                                    applyTempoToPlayer(currentTrackTempo)
                                 },
                                 onError = {
                                     isPlaying = false
@@ -163,6 +191,16 @@ class MainActivity : ComponentActivity() {
                                 currentTrackGainDb = newDb
                                 applyGainToPlayer(newDb)
                             },
+                            // 🔥 Tempo par morceau : valeur + callback
+                            tempo = currentTrackTempo,
+                            onTempoChange = { newTempo ->
+                                currentTrackTempo = newTempo
+                                applyTempoToPlayer(newTempo)
+                                // sauvegarde par morceau
+                                currentPlayingUri?.let { uri ->
+                                    runCatching { TrackTempoPrefs.saveTempo(ctx, uri, newTempo) }
+                                }
+                            },
                             onRequestShowPlaylist = {
                                 selectedTab = BottomTab.QuickPlaylists
                             }
@@ -186,7 +224,8 @@ class MainActivity : ComponentActivity() {
                             }
                         )
 
-                        is BottomTab.Library -> LibraryScreen(modifier = Modifier.padding(innerPadding))
+                        is BottomTab.Library ->
+                            LibraryScreen(modifier = Modifier.padding(innerPadding))
 
                         is BottomTab.AllPlaylists -> {
                             val m = Modifier.padding(innerPadding)
