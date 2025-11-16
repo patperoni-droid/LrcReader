@@ -531,7 +531,7 @@ private fun DjTrackRow(
         modifier = Modifier
             .fillMaxWidth()
             .height(42.dp)
-            .clickable { onPlay() }
+            .clickable { onPlay() }   // 👉 clic sur la ligne = prêt à jouer
             .padding(horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -543,26 +543,16 @@ private fun DjTrackRow(
         )
         IconButton(
             onClick = onEnqueue,
-            modifier = Modifier.size(22.dp)
+            modifier = Modifier.size(26.dp)   // un poil plus grand pour être facile à viser
         ) {
             Icon(
                 imageVector = Icons.Default.Add,
                 contentDescription = "Mettre en attente",
                 tint = Color.White.copy(alpha = 0.85f),
-                modifier = Modifier.size(16.dp)
+                modifier = Modifier.size(18.dp)
             )
         }
-        IconButton(
-            onClick = onPlay,
-            modifier = Modifier.size(22.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Default.PlayArrow,
-                contentDescription = "Jouer",
-                tint = if (isPlaying) Color(0xFFE040FB) else Color.White.copy(alpha = 0.85f),
-                modifier = Modifier.size(16.dp)
-            )
-        }
+        // 🔴 Le bouton Play a été supprimé, on ne garde que le clic sur la ligne
     }
 }
 

@@ -4,16 +4,10 @@ import android.content.Context
 import android.media.MediaPlayer
 import android.net.Uri
 import com.patrick.lrcreader.core.FillerSoundManager
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
+import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlin.math.max
 
 data class DjQueuedTrack(
@@ -36,8 +30,6 @@ data class DjUiState(
 
 /**
  * Moteur DJ global.
- * - Garde mpA/mpB et tout l'état en mémoire, au-dessus de l'UI.
- * - La musique continue si tu changes de page.
  */
 object DjEngine {
 
@@ -90,7 +82,7 @@ object DjEngine {
 
     private fun ensureContext() {
         if (!::appContext.isInitialized) {
-            error("DjEngine.init(context) doit être appelé au démarrage (MainActivity ou Application).")
+            error("DjEngine.init(context) doit être appelé au démarrage.")
         }
     }
 
@@ -259,8 +251,7 @@ object DjEngine {
                     try {
                         playerB.seekTo(0)
                         playerB.start()
-                    } catch (_: Exception) {
-                    }
+                    } catch (_: Exception) {}
                 }
 
                 val fadeSteps = 20
@@ -297,8 +288,7 @@ object DjEngine {
                     try {
                         playerA.seekTo(0)
                         playerA.start()
-                    } catch (_: Exception) {
-                    }
+                    } catch (_: Exception) {}
                 }
 
                 val fadeSteps = 20
@@ -329,19 +319,41 @@ object DjEngine {
 
     /* ------------------------------ STOP DJ ------------------------------ */
 
-    fun stopDj() {
-        try {
-            mpA?.stop()
-        } catch (_: Exception) {}
-        mpA?.release()
-        mpA = null
+    fun stopDj(fadeMs: Int = 600) {
+        scope.launch {
+            val localMpA = mpA
+            val localMpB = mpB
 
-        try {
-            mpB?.stop()
-        } catch (_: Exception) {}
-        mpB?.release()
-        mpB = null
+            // Rien ne joue → reset simple
+            if (localMpA == null && localMpB == null) {
+                resetState()
+                return@launch
+            }
 
+            // Petit fade-out
+            val steps = (fadeMs / 50).coerceAtLeast(1)
+            for (i in 0 until steps) {
+                val factor = 1f - (i + 1) / steps.toFloat()
+                try { localMpA?.setVolume(factor, factor) } catch (_: Exception) {}
+                try { localMpB?.setVolume(factor, factor) } catch (_: Exception) {}
+                delay(50)
+            }
+
+            // Stop réel
+            try { localMpA?.stop() } catch (_: Exception) {}
+            try { localMpB?.stop() } catch (_: Exception) {}
+
+            try { localMpA?.release() } catch (_: Exception) {}
+            try { localMpB?.release() } catch (_: Exception) {}
+
+            mpA = null
+            mpB = null
+
+            resetState()
+        }
+    }
+
+    private fun resetState() {
         activeSlot = 0
         playingUri = null
         progress = 0f
@@ -351,11 +363,10 @@ object DjEngine {
         deckAUri = null
         deckBUri = null
         queueInternal.clear()
-
         pushState()
     }
 
     fun release() {
-        stopDj()
+        stopDj(0)
     }
 }
