@@ -24,7 +24,6 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -111,6 +110,15 @@ fun DjScreen(
             repeatMode = RepeatMode.Restart
         ),
         label = "angleB"
+    )
+    val pulse by infinite.animateFloat(
+        initialValue = 0.95f,
+        targetValue = 1.05f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 800, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulse"
     )
 
     /* -------------------------- choisir dossier -------------------------- */
@@ -270,19 +278,39 @@ fun DjScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
+                // Halo externe
                 Box(
                     modifier = Modifier
-                        .size(70.dp)
-                        .graphicsLayer { rotationZ = if (djState.activeSlot == 1) angleA else 0f }
-                        .background(Color(0xFF1F1F1F), CircleShape)
-                        .border(2.dp, Color(0xFF4CAF50), CircleShape),
+                        .size(90.dp)
+                        .background(
+                            color = if (djState.activeSlot == 1)
+                                Color(0x804CAF50) // vert semi-transparent
+                            else
+                                Color.Transparent,
+                            shape = CircleShape
+                        ),
                     contentAlignment = Alignment.Center
                 ) {
+                    // Platine interne
                     Box(
                         modifier = Modifier
-                            .size(16.dp)
-                            .background(Color.Black, CircleShape)
-                    )
+                            .size(70.dp)
+                            .graphicsLayer {
+                                rotationZ = if (djState.activeSlot == 1) angleA else 0f
+                                val s = if (djState.activeSlot == 1) pulse else 1f
+                                scaleX = s
+                                scaleY = s
+                            }
+                            .background(Color(0xFF1F1F1F), CircleShape)
+                            .border(2.dp, Color(0xFF4CAF50), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(16.dp)
+                                .background(Color.Black, CircleShape)
+                        )
+                    }
                 }
                 Spacer(Modifier.height(6.dp))
                 Text(djState.deckATitle, color = Color.White, fontSize = 11.sp, maxLines = 1)
@@ -320,19 +348,39 @@ fun DjScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
+                // Halo externe
                 Box(
                     modifier = Modifier
-                        .size(70.dp)
-                        .graphicsLayer { rotationZ = if (djState.activeSlot == 2) angleB else 0f }
-                        .background(Color(0xFF1F1F1F), CircleShape)
-                        .border(2.dp, Color(0xFFE040FB), CircleShape),
+                        .size(90.dp)
+                        .background(
+                            color = if (djState.activeSlot == 2)
+                                Color(0x80E040FB) // violet semi-transparent
+                            else
+                                Color.Transparent,
+                            shape = CircleShape
+                        ),
                     contentAlignment = Alignment.Center
                 ) {
+                    // Platine interne
                     Box(
                         modifier = Modifier
-                            .size(16.dp)
-                            .background(Color.Black, CircleShape)
-                    )
+                            .size(70.dp)
+                            .graphicsLayer {
+                                rotationZ = if (djState.activeSlot == 2) angleB else 0f
+                                val s = if (djState.activeSlot == 2) pulse else 1f
+                                scaleX = s
+                                scaleY = s
+                            }
+                            .background(Color(0xFF1F1F1F), CircleShape)
+                            .border(2.dp, Color(0xFFE040FB), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(16.dp)
+                                .background(Color.Black, CircleShape)
+                        )
+                    }
                 }
                 Spacer(Modifier.height(6.dp))
                 Text(djState.deckBTitle, color = Color.White, fontSize = 11.sp, maxLines = 1)
@@ -486,7 +534,6 @@ fun DjScreen(
                             }
                         } else {
                             val uriStr = entry.uri.toString()
-                            // On met la couleur "playing" si c'est la piste en cours
                             val isSelected = uriStr == djState.playingUri
                             DjTrackRow(
                                 title = entry.name,
@@ -543,7 +590,7 @@ private fun DjTrackRow(
         )
         IconButton(
             onClick = onEnqueue,
-            modifier = Modifier.size(26.dp)   // un poil plus grand pour être facile à viser
+            modifier = Modifier.size(26.dp)
         ) {
             Icon(
                 imageVector = Icons.Default.Add,
@@ -552,7 +599,6 @@ private fun DjTrackRow(
                 modifier = Modifier.size(18.dp)
             )
         }
-        // 🔴 Le bouton Play a été supprimé, on ne garde que le clic sur la ligne
     }
 }
 
