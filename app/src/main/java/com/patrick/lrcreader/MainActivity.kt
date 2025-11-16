@@ -1,5 +1,5 @@
 package com.patrick.lrcreader.exo
-
+import com.patrick.lrcreader.core.dj.DjEngine
 import android.media.MediaPlayer
 import android.media.audiofx.LoudnessEnhancer
 import android.os.Bundle
@@ -26,6 +26,9 @@ class MainActivity : ComponentActivity() {
         val initialTabKey = SessionPrefs.getTab(this)
         val initialQuickPlaylist = SessionPrefs.getQuickPlaylist(this)
         val initialOpenedPlaylist = SessionPrefs.getOpenedPlaylist(this)
+
+        // 🔴 IMPORTANT : initialiser le moteur DJ global
+        DjEngine.init(this)
 
         setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {

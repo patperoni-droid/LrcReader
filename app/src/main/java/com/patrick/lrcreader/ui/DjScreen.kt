@@ -3,7 +3,6 @@ package com.patrick.lrcreader.ui
 import kotlinx.coroutines.CoroutineScope
 import android.content.Context
 import android.content.Intent
-import android.media.MediaPlayer
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -46,12 +45,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.documentfile.provider.DocumentFile
 import com.patrick.lrcreader.core.DjFolderPrefs
-import com.patrick.lrcreader.core.FillerSoundManager
+import com.patrick.lrcreader.core.dj.DjEngine
+import com.patrick.lrcreader.core.dj.DjQueuedTrack
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlin.math.max
 
 /* -------------------------------------------------------------------------- */
 /*  Modèles                                                                  */
@@ -60,11 +58,6 @@ private data class DjEntry(
     val uri: Uri,
     val name: String,
     val isDirectory: Boolean
-)
-
-private data class DjQueuedTrack(
-    val uri: String,
-    val title: String
 )
 
 /* -------------------------------------------------------------------------- */
@@ -82,6 +75,7 @@ fun DjScreen(
     modifier: Modifier = Modifier,
     context: Context = LocalContext.current
 ) {
+    DjEngine.init(context)
     /* --------------------- état navigation dossiers --------------------- */
     var rootFolderUri by remember { mutableStateOf<Uri?>(DjFolderPrefs.get(context)) }
     var currentFolderUri by remember { mutableStateOf<Uri?>(rootFolderUri) }
@@ -89,72 +83,14 @@ fun DjScreen(
     var entries by remember { mutableStateOf<List<DjEntry>>(emptyList()) }
     var isLoading by remember { mutableStateOf(false) }
 
-    /* ------------------------ état lecteur DJ ---------------------------- */
+    /* ---------------------- état purement UI local ---------------------- */
     val scope = rememberCoroutineScope()
 
-    var mpA by remember { mutableStateOf<MediaPlayer?>(null) }
-    var mpB by remember { mutableStateOf<MediaPlayer?>(null) }
-
-    // 0 = rien, 1 = A joue, 2 = B joue
-    var activeSlot by remember { mutableStateOf(0) }
-
-    // timeline
-    var playingUri by remember { mutableStateOf<String?>(null) }
-    var progress by remember { mutableStateOf(0f) }
-    var currentDurationMs by remember { mutableStateOf(0) }
-
-    // retour visuel liste
-    var uiSelectedUri by remember { mutableStateOf<String?>(null) }
-
-    // infos decks
-    var deckATitle by remember { mutableStateOf("A vide") }
-    var deckBTitle by remember { mutableStateOf("B vide") }
-    var deckAUri by remember { mutableStateOf<String?>(null) }
-    var deckBUri by remember { mutableStateOf<String?>(null) }
-
-    // crossfader (0 = A, 1 = B)
-    var crossfadePos by remember { mutableStateOf(0.5f) }
-
-    // menu
     var menuOpen by remember { mutableStateOf(false) }
-
-    /* ------------------------ file d’attente DJ -------------------------- */
-    val queue = remember { mutableStateListOf<DjQueuedTrack>() }
     var isQueuePanelOpen by remember { mutableStateOf(false) }
 
-    fun addToQueue(uriString: String, title: String) {
-        if (queue.none { it.uri == uriString }) {
-            queue.add(DjQueuedTrack(uriString, title))
-        }
-    }
-
-    fun removeFromQueue(item: DjQueuedTrack) {
-        queue.remove(item)
-    }
-
-    fun playFromQueue(item: DjQueuedTrack) {
-        // même comportement qu’un clic dans la liste
-        selectTrack(
-            itemUri = item.uri,
-            displayName = item.title,
-            context = context,
-            scope = scope,
-            activeSlotState = { activeSlot },
-            setActiveSlot = { activeSlot = it },
-            mpAState = { mpA },
-            setMpA = { mpA = it },
-            mpBState = { mpB },
-            setMpB = { mpB = it },
-            setDuration = { currentDurationMs = it },
-            setPlayingUri = { playingUri = it },
-            setUiSelected = { uiSelectedUri = it },
-            setDeckATitle = { deckATitle = it },
-            setDeckAUri = { deckAUri = it },
-            setDeckBTitle = { deckBTitle = it },
-            setDeckBUri = { deckBUri = it }
-        )
-        removeFromQueue(item)
-    }
+    // état DJ global (lecteur, decks, queue, timeline…)
+    val djState by DjEngine.state.collectAsState()
 
     /* --------------------- animation platines rondes --------------------- */
     val infinite = rememberInfiniteTransition(label = "dj-discs")
@@ -222,137 +158,6 @@ fun DjScreen(
         } else {
             entries = emptyList()
         }
-    }
-
-    /* --------------------- avancer la timeline --------------------------- */
-    LaunchedEffect(playingUri, activeSlot) {
-        while (playingUri != null && (activeSlot == 1 || activeSlot == 2)) {
-            delay(200)
-            val dur = currentDurationMs
-            if (dur > 0) {
-                val pos = try {
-                    if (activeSlot == 1) mpA?.currentPosition ?: 0 else mpB?.currentPosition ?: 0
-                } catch (_: Exception) { 0 }
-                progress = pos.toFloat() / dur.toFloat()
-            } else {
-                progress = 0f
-            }
-        }
-        if (playingUri == null) {
-            progress = 0f
-            currentDurationMs = 0
-        }
-    }
-
-    /* ----------------- applique la position du crossfader ---------------- */
-    fun applyCrossfader() {
-        val aVol = 1f - crossfadePos
-        val bVol = crossfadePos
-        mpA?.setVolume(aVol, aVol)
-        mpB?.setVolume(bVol, bVol)
-    }
-
-    /* ----------------- sélection dans la liste --------------------------- */
-    fun selectTrack(uriString: String, displayName: String) {
-        selectTrack(
-            itemUri = uriString,
-            displayName = displayName,
-            context = context,
-            scope = scope,
-            activeSlotState = { activeSlot },
-            setActiveSlot = { activeSlot = it },
-            mpAState = { mpA },
-            setMpA = { mpA = it },
-            mpBState = { mpB },
-            setMpB = { mpB = it },
-            setDuration = { currentDurationMs = it },
-            setPlayingUri = { playingUri = it },
-            setUiSelected = { uiSelectedUri = it },
-            setDeckATitle = { deckATitle = it },
-            setDeckAUri = { deckAUri = it },
-            setDeckBTitle = { deckBTitle = it },
-            setDeckBUri = { deckBUri = it }
-        )
-    }
-
-    /* --------------------- bouton Lancer (2 sens) ------------------------ */
-    fun launchCrossfade() {
-        scope.launch {
-            // cas 1 : A joue, B prêt → A -> B
-            if (activeSlot == 1 && mpA != null && mpB != null) {
-                val playerA = mpA!!
-                val playerB = mpB!!
-
-                if (!playerB.isPlaying) {
-                    try { playerB.seekTo(0); playerB.start() } catch (_: Exception) {}
-                }
-
-                val fadeSteps = 20
-                val targetA = 1f - crossfadePos
-                val targetB = crossfadePos
-
-                repeat(fadeSteps) { i ->
-                    val t = (i + 1) / fadeSteps.toFloat()
-                    val volA = targetA * (1f - t)
-                    val volB = targetB * t
-                    playerA.setVolume(max(0f, volA), max(0f, volA))
-                    playerB.setVolume(max(0f, volB), max(0f, volB))
-                    delay(50)
-                }
-
-                try { playerA.stop() } catch (_: Exception) {}
-                playerA.release()
-                mpA = null
-
-                activeSlot = 2
-                playingUri = deckBUri
-                currentDurationMs = try { playerB.duration } catch (_: Exception) { 0 }
-                return@launch
-            }
-
-            // cas 2 : B joue, A prêt → B -> A
-            if (activeSlot == 2 && mpA != null && mpB != null) {
-                val playerA = mpA!!
-                val playerB = mpB!!
-
-                if (!playerA.isPlaying) {
-                    try { playerA.seekTo(0); playerA.start() } catch (_: Exception) {}
-                }
-
-                val fadeSteps = 20
-                val targetA = 1f - crossfadePos
-                val targetB = crossfadePos
-
-                repeat(fadeSteps) { i ->
-                    val t = (i + 1) / fadeSteps.toFloat()
-                    val volB = targetB * (1f - t)
-                    val volA = targetA * t
-                    playerB.setVolume(max(0f, volB), max(0f, volB))
-                    playerA.setVolume(max(0f, volA), max(0f, volA))
-                    delay(50)
-                }
-
-                try { playerB.stop() } catch (_: Exception) {}
-                playerB.release()
-                mpB = null
-
-                activeSlot = 1
-                playingUri = deckAUri
-                currentDurationMs = try { playerA.duration } catch (_: Exception) { 0 }
-            }
-        }
-    }
-
-    /* ----------------------------- STOP DJ ----------------------------- */
-    fun stopDj() {
-        mpA?.stop(); mpA?.release(); mpA = null
-        mpB?.stop(); mpB?.release(); mpB = null
-        activeSlot = 0
-        playingUri = null
-        progress = 0f
-        currentDurationMs = 0
-        queue.clear()
-        isQueuePanelOpen = false
     }
 
     /* ============================== UI ============================== */
@@ -468,7 +273,7 @@ fun DjScreen(
                 Box(
                     modifier = Modifier
                         .size(70.dp)
-                        .graphicsLayer { rotationZ = if (activeSlot == 1) angleA else 0f }
+                        .graphicsLayer { rotationZ = if (djState.activeSlot == 1) angleA else 0f }
                         .background(Color(0xFF1F1F1F), CircleShape)
                         .border(2.dp, Color(0xFF4CAF50), CircleShape),
                     contentAlignment = Alignment.Center
@@ -480,7 +285,7 @@ fun DjScreen(
                     )
                 }
                 Spacer(Modifier.height(6.dp))
-                Text(deckATitle, color = Color.White, fontSize = 11.sp, maxLines = 1)
+                Text(djState.deckATitle, color = Color.White, fontSize = 11.sp, maxLines = 1)
             }
 
             // centre
@@ -493,17 +298,15 @@ fun DjScreen(
             ) {
                 Text("X-Fade", color = Color.Gray, fontSize = 10.sp)
                 Slider(
-                    value = crossfadePos,
-                    onValueChange = {
-                        crossfadePos = it
-                        applyCrossfader()
-                    },
+                    value = djState.crossfadePos,
+                    onValueChange = { DjEngine.setCrossfadePos(it) },
                     modifier = Modifier.height(60.dp),
                 )
                 Spacer(Modifier.height(6.dp))
                 Button(
-                    onClick = { launchCrossfade() },
-                    enabled = (activeSlot == 1 && mpB != null) || (activeSlot == 2 && mpA != null)
+                    onClick = { DjEngine.launchCrossfade() },
+                    enabled = (djState.activeSlot == 1 && djState.deckBUri != null) ||
+                            (djState.activeSlot == 2 && djState.deckAUri != null)
                 ) {
                     Text("Lancer", fontSize = 10.sp)
                 }
@@ -520,7 +323,7 @@ fun DjScreen(
                 Box(
                     modifier = Modifier
                         .size(70.dp)
-                        .graphicsLayer { rotationZ = if (activeSlot == 2) angleB else 0f }
+                        .graphicsLayer { rotationZ = if (djState.activeSlot == 2) angleB else 0f }
                         .background(Color(0xFF1F1F1F), CircleShape)
                         .border(2.dp, Color(0xFFE040FB), CircleShape),
                     contentAlignment = Alignment.Center
@@ -532,7 +335,7 @@ fun DjScreen(
                     )
                 }
                 Spacer(Modifier.height(6.dp))
-                Text(deckBTitle, color = Color.White, fontSize = 11.sp, maxLines = 1)
+                Text(djState.deckBTitle, color = Color.White, fontSize = 11.sp, maxLines = 1)
             }
         }
 
@@ -546,7 +349,7 @@ fun DjScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             LinearProgressIndicator(
-                progress = progress.coerceIn(0f, 1f),
+                progress = djState.progress.coerceIn(0f, 1f),
                 modifier = Modifier
                     .weight(1f)
                     .height(6.dp),
@@ -554,18 +357,18 @@ fun DjScreen(
                 trackColor = Color(0x33E040FB)
             )
             Spacer(Modifier.width(10.dp))
-            IconButton(onClick = { stopDj() }) {
+            IconButton(onClick = { DjEngine.stopDj() }) {
                 Icon(
                     imageVector = Icons.Default.Stop,
                     contentDescription = "Arrêter",
-                    tint = if (playingUri != null) Color(0xFFFF8A80)
+                    tint = if (djState.playingUri != null) Color(0xFFFF8A80)
                     else Color.White.copy(alpha = 0.4f)
                 )
             }
         }
 
         /* ---------------------- File d’attente (queue) ------------------- */
-        if (queue.isNotEmpty()) {
+        if (djState.queue.isNotEmpty()) {
             Spacer(Modifier.height(6.dp))
             Column(
                 modifier = Modifier
@@ -581,8 +384,8 @@ fun DjScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "Liste d’attente (${queue.size})",
-                        color = Color(0xFF81D4FA), // bleu clair
+                        text = "Liste d’attente (${djState.queue.size})",
+                        color = Color(0xFF81D4FA),
                         fontSize = 12.sp,
                         modifier = Modifier.weight(1f)
                     )
@@ -595,23 +398,23 @@ fun DjScreen(
 
                 if (isQueuePanelOpen) {
                     Spacer(Modifier.height(4.dp))
-                    queue.forEach { qItem ->
+                    djState.queue.forEach { qItem: DjQueuedTrack ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(32.dp)
-                                .clickable { playFromQueue(qItem) }
+                                .clickable { DjEngine.playFromQueue(qItem) }
                                 .padding(horizontal = 4.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
                                 text = qItem.title,
-                                color = Color(0xFF81D4FA), // même bleu pour bien distinguer
+                                color = Color(0xFF81D4FA),
                                 fontSize = 12.sp,
                                 modifier = Modifier.weight(1f)
                             )
                             IconButton(
-                                onClick = { removeFromQueue(qItem) },
+                                onClick = { DjEngine.removeFromQueue(qItem) },
                                 modifier = Modifier.size(22.dp)
                             ) {
                                 Icon(
@@ -683,12 +486,17 @@ fun DjScreen(
                             }
                         } else {
                             val uriStr = entry.uri.toString()
-                            val isSelected = uriStr == uiSelectedUri
+                            // On met la couleur "playing" si c'est la piste en cours
+                            val isSelected = uriStr == djState.playingUri
                             DjTrackRow(
                                 title = entry.name,
                                 isPlaying = isSelected,
-                                onPlay = { selectTrack(uriStr, entry.name) },
-                                onEnqueue = { addToQueue(uriStr, entry.name) }
+                                onPlay = {
+                                    DjEngine.selectTrackFromList(uriStr, entry.name)
+                                },
+                                onEnqueue = {
+                                    DjEngine.addToQueue(uriStr, entry.name)
+                                }
                             )
                         }
                     }
@@ -705,14 +513,6 @@ fun DjScreen(
                     CircularProgressIndicator(color = Color.White)
                 }
             }
-        }
-    }
-
-    // nettoyage
-    DisposableEffect(Unit) {
-        onDispose {
-            mpA?.release()
-            mpB?.release()
         }
     }
 }
@@ -762,102 +562,6 @@ private fun DjTrackRow(
                 tint = if (isPlaying) Color(0xFFE040FB) else Color.White.copy(alpha = 0.85f),
                 modifier = Modifier.size(16.dp)
             )
-        }
-    }
-}
-
-/* -------------------------------------------------------------------------- */
-/*  Sélection commune (utilisée par liste + file d’attente)                   */
-/* -------------------------------------------------------------------------- */
-private fun selectTrack(
-    itemUri: String,
-    displayName: String,
-    context: Context,
-    scope: CoroutineScope,
-    // états passés par DjScreen
-    activeSlotState: () -> Int,
-    setActiveSlot: (Int) -> Unit,
-    mpAState: () -> MediaPlayer?,
-    setMpA: (MediaPlayer?) -> Unit,
-    mpBState: () -> MediaPlayer?,
-    setMpB: (MediaPlayer?) -> Unit,
-    setDuration: (Int) -> Unit,
-    setPlayingUri: (String?) -> Unit,
-    setUiSelected: (String?) -> Unit,
-    setDeckATitle: (String) -> Unit,
-    setDeckAUri: (String?) -> Unit,
-    setDeckBTitle: (String) -> Unit,
-    setDeckBUri: (String?) -> Unit
-) {
-    val uriString = itemUri
-    setUiSelected(uriString)
-
-    scope.launch {
-        if (activeSlotState() == 0) {
-            // rien ne joue → on démarre sur A
-            FillerSoundManager.fadeOutAndStop(400)
-            mpAState()?.release()
-            val p = MediaPlayer()
-            setMpA(p)
-            try {
-                withContext(Dispatchers.IO) {
-                    p.setDataSource(context, Uri.parse(uriString))
-                    p.prepare()
-                }
-                setDuration(p.duration)
-                p.setVolume(1f, 1f)
-                p.start()
-
-                // titre et URI du deck A
-                setDeckATitle(displayName)
-                setDeckAUri(uriString)
-
-                setActiveSlot(1)
-                setPlayingUri(uriString)
-            } catch (e: Exception) {
-                e.printStackTrace()
-                setMpA(null)
-            }
-        } else {
-            // quelque chose joue déjà → on prépare l’autre deck à 0 de volume
-            val loadIntoA = (activeSlotState() == 2)
-            if (loadIntoA) {
-                mpAState()?.release()
-                val p = MediaPlayer()
-                setMpA(p)
-                try {
-                    withContext(Dispatchers.IO) {
-                        p.setDataSource(context, Uri.parse(uriString))
-                        p.prepare()
-                    }
-                    p.setVolume(0f, 0f)
-
-                    // pré-chargé sur deck A
-                    setDeckATitle(displayName)
-                    setDeckAUri(uriString)
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                    setMpA(null)
-                }
-            } else {
-                mpBState()?.release()
-                val p = MediaPlayer()
-                setMpB(p)
-                try {
-                    withContext(Dispatchers.IO) {
-                        p.setDataSource(context, Uri.parse(uriString))
-                        p.prepare()
-                    }
-                    p.setVolume(0f, 0f)
-
-                    // pré-chargé sur deck B
-                    setDeckBTitle(displayName)
-                    setDeckBUri(uriString)
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                    setMpB(null)
-                }
-            }
         }
     }
 }
