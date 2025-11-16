@@ -18,6 +18,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,14 +48,14 @@ fun PlayerScreen(
     parsedLines: List<LrcLine>,
     onParsedLinesChange: (List<LrcLine>) -> Unit,
     highlightColor: Color = Color(0xFFE040FB),
-    // Niveau par titre
+    // nouveaux paramètres pour le niveau par titre
     currentTrackUri: String?,
     currentTrackGainDb: Int,
     onTrackGainChange: (Int) -> Unit,
-    // Tempo par morceau (1f = normal), piloté par MainActivity
+    // 🔥 tempo global (1f = normal), piloté par MainActivity
     tempo: Float,
     onTempoChange: (Float) -> Unit,
-    // Demande d’afficher la playlist
+    // 🔥 nouveau callback : demande d’afficher la playlist
     onRequestShowPlaylist: () -> Unit
 ) {
     val scrollState = rememberScrollState()
@@ -109,7 +110,7 @@ fun PlayerScreen(
         }
     }
 
-    // Auto-switch vers la playlist 15s avant la fin
+    // 🔥 Auto-switch vers la playlist 15s avant la fin
     LaunchedEffect(durationMs, positionMs, hasRequestedPlaylist) {
         if (!hasRequestedPlaylist && durationMs > 0 && positionMs >= durationMs - 15_000) {
             hasRequestedPlaylist = true
@@ -323,11 +324,11 @@ fun PlayerScreen(
             )
         }
 
-        // ───── Bloc TEMPO (0.8× à 1.2×, par morceau) ─────
+        // ───── Bloc TEMPO (0.8× à 1.2×) ─────
         val minTempo = 0.8f
         val maxTempo = 1.2f
 
-        var tempoSlider by remember(currentTrackUri, tempo) {
+        var tempoSlider by remember(tempo) {
             mutableStateOf(
                 ((tempo - minTempo) / (maxTempo - minTempo))
                     .coerceIn(0f, 1f)
@@ -339,11 +340,29 @@ fun PlayerScreen(
                 .fillMaxWidth()
                 .padding(top = 0.dp, bottom = 8.dp)
         ) {
-            Text(
-                text = "Tempo titre : ${String.format("%.2fx", tempo)}",
-                color = Color.White,
-                fontSize = 12.sp
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Tempo : ${String.format("%.2fx", tempo)}",
+                    color = Color.White,
+                    fontSize = 12.sp
+                )
+                TextButton(
+                    onClick = {
+                        onTempoChange(1.0f)
+                    }
+                ) {
+                    Text(
+                        text = "Reset 1.00x",
+                        color = Color(0xFF80CBC4),
+                        fontSize = 11.sp
+                    )
+                }
+            }
+
             Slider(
                 value = tempoSlider,
                 onValueChange = { v ->

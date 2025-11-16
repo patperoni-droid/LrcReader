@@ -1,9 +1,10 @@
 package com.patrick.lrcreader.ui
 
+import kotlinx.coroutines.CoroutineScope
 import android.content.Context
+import android.content.Intent
 import android.media.MediaPlayer
 import android.net.Uri
-import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.LinearEasing
@@ -20,6 +21,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.MoreVert
@@ -52,12 +54,17 @@ import kotlinx.coroutines.withContext
 import kotlin.math.max
 
 /* -------------------------------------------------------------------------- */
-/*  Modèle de ligne (dossier ou fichier)                                      */
+/*  Modèles                                                                  */
 /* -------------------------------------------------------------------------- */
 private data class DjEntry(
     val uri: Uri,
     val name: String,
     val isDirectory: Boolean
+)
+
+private data class DjQueuedTrack(
+    val uri: String,
+    val title: String
 )
 
 /* -------------------------------------------------------------------------- */
@@ -111,22 +118,60 @@ fun DjScreen(
     // menu
     var menuOpen by remember { mutableStateOf(false) }
 
+    /* ------------------------ file d’attente DJ -------------------------- */
+    val queue = remember { mutableStateListOf<DjQueuedTrack>() }
+    var isQueuePanelOpen by remember { mutableStateOf(false) }
+
+    fun addToQueue(uriString: String, title: String) {
+        if (queue.none { it.uri == uriString }) {
+            queue.add(DjQueuedTrack(uriString, title))
+        }
+    }
+
+    fun removeFromQueue(item: DjQueuedTrack) {
+        queue.remove(item)
+    }
+
+    fun playFromQueue(item: DjQueuedTrack) {
+        // même comportement qu’un clic dans la liste
+        selectTrack(
+            itemUri = item.uri,
+            displayName = item.title,
+            context = context,
+            scope = scope,
+            activeSlotState = { activeSlot },
+            setActiveSlot = { activeSlot = it },
+            mpAState = { mpA },
+            setMpA = { mpA = it },
+            mpBState = { mpB },
+            setMpB = { mpB = it },
+            setDuration = { currentDurationMs = it },
+            setPlayingUri = { playingUri = it },
+            setUiSelected = { uiSelectedUri = it },
+            setDeckATitle = { deckATitle = it },
+            setDeckAUri = { deckAUri = it },
+            setDeckBTitle = { deckBTitle = it },
+            setDeckBUri = { deckBUri = it }
+        )
+        removeFromQueue(item)
+    }
+
     /* --------------------- animation platines rondes --------------------- */
     val infinite = rememberInfiniteTransition(label = "dj-discs")
     val angleA by infinite.animateFloat(
-        0f,
-        360f,
+        initialValue = 0f,
+        targetValue = 360f,
         animationSpec = infiniteRepeatable(
-            animation = tween(5_000, easing = LinearEasing),
+            animation = tween(durationMillis = 5_000, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
         label = "angleA"
     )
     val angleB by infinite.animateFloat(
-        0f,
-        360f,
+        initialValue = 0f,
+        targetValue = 360f,
         animationSpec = infiniteRepeatable(
-            animation = tween(5_000, easing = LinearEasing),
+            animation = tween(durationMillis = 5_000, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
         label = "angleB"
@@ -209,70 +254,25 @@ fun DjScreen(
 
     /* ----------------- sélection dans la liste --------------------------- */
     fun selectTrack(uriString: String, displayName: String) {
-        uiSelectedUri = uriString
-
-        scope.launch {
-            if (activeSlot == 0) {
-                // premier titre → on joue A
-                FillerSoundManager.fadeOutAndStop(400)
-                mpA?.release()
-                val p = MediaPlayer()
-                mpA = p
-                try {
-                    withContext(Dispatchers.IO) {
-                        p.setDataSource(context, Uri.parse(uriString))
-                        p.prepare()
-                    }
-                    currentDurationMs = p.duration
-                    p.setVolume(1f - crossfadePos, 1f - crossfadePos)
-                    p.start()
-
-                    deckATitle = displayName
-                    deckAUri = uriString
-                    activeSlot = 1
-                    playingUri = uriString
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                    mpA = null
-                }
-            } else {
-                // il y a déjà quelque chose qui joue
-                val loadIntoA = (activeSlot == 2) // si B joue, on prépare A
-                if (loadIntoA) {
-                    mpA?.release()
-                    val p = MediaPlayer()
-                    mpA = p
-                    try {
-                        withContext(Dispatchers.IO) {
-                            p.setDataSource(context, Uri.parse(uriString))
-                            p.prepare()
-                        }
-                        p.setVolume(0f, 0f)
-                        deckATitle = displayName
-                        deckAUri = uriString
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                        mpA = null
-                    }
-                } else {
-                    mpB?.release()
-                    val p = MediaPlayer()
-                    mpB = p
-                    try {
-                        withContext(Dispatchers.IO) {
-                            p.setDataSource(context, Uri.parse(uriString))
-                            p.prepare()
-                        }
-                        p.setVolume(0f, 0f)
-                        deckBTitle = displayName
-                        deckBUri = uriString
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                        mpB = null
-                    }
-                }
-            }
-        }
+        selectTrack(
+            itemUri = uriString,
+            displayName = displayName,
+            context = context,
+            scope = scope,
+            activeSlotState = { activeSlot },
+            setActiveSlot = { activeSlot = it },
+            mpAState = { mpA },
+            setMpA = { mpA = it },
+            mpBState = { mpB },
+            setMpB = { mpB = it },
+            setDuration = { currentDurationMs = it },
+            setPlayingUri = { playingUri = it },
+            setUiSelected = { uiSelectedUri = it },
+            setDeckATitle = { deckATitle = it },
+            setDeckAUri = { deckAUri = it },
+            setDeckBTitle = { deckBTitle = it },
+            setDeckBUri = { deckBUri = it }
+        )
     }
 
     /* --------------------- bouton Lancer (2 sens) ------------------------ */
@@ -351,6 +351,8 @@ fun DjScreen(
         playingUri = null
         progress = 0f
         currentDurationMs = 0
+        queue.clear()
+        isQueuePanelOpen = false
     }
 
     /* ============================== UI ============================== */
@@ -556,12 +558,76 @@ fun DjScreen(
                 Icon(
                     imageVector = Icons.Default.Stop,
                     contentDescription = "Arrêter",
-                    tint = if (playingUri != null) Color(0xFFFF8A80) else Color.White.copy(alpha = 0.4f)
+                    tint = if (playingUri != null) Color(0xFFFF8A80)
+                    else Color.White.copy(alpha = 0.4f)
                 )
             }
         }
 
-        Spacer(Modifier.height(10.dp))
+        /* ---------------------- File d’attente (queue) ------------------- */
+        if (queue.isNotEmpty()) {
+            Spacer(Modifier.height(6.dp))
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFF151515))
+                    .border(1.dp, Color(0xFF333333))
+                    .padding(6.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { isQueuePanelOpen = !isQueuePanelOpen },
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Liste d’attente (${queue.size})",
+                        color = Color(0xFF81D4FA), // bleu clair
+                        fontSize = 12.sp,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        text = if (isQueuePanelOpen) "▲" else "▼",
+                        color = Color.Gray,
+                        fontSize = 12.sp
+                    )
+                }
+
+                if (isQueuePanelOpen) {
+                    Spacer(Modifier.height(4.dp))
+                    queue.forEach { qItem ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(32.dp)
+                                .clickable { playFromQueue(qItem) }
+                                .padding(horizontal = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = qItem.title,
+                                color = Color(0xFF81D4FA), // même bleu pour bien distinguer
+                                fontSize = 12.sp,
+                                modifier = Modifier.weight(1f)
+                            )
+                            IconButton(
+                                onClick = { removeFromQueue(qItem) },
+                                modifier = Modifier.size(22.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Stop,
+                                    contentDescription = "Retirer",
+                                    tint = Color(0xFFFF8A80),
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(Modifier.height(8.dp))
 
         // contenu dossier
         Box(
@@ -621,7 +687,8 @@ fun DjScreen(
                             DjTrackRow(
                                 title = entry.name,
                                 isPlaying = isSelected,
-                                onClick = { selectTrack(uriStr, entry.name) }
+                                onPlay = { selectTrack(uriStr, entry.name) },
+                                onEnqueue = { addToQueue(uriStr, entry.name) }
                             )
                         }
                     }
@@ -650,17 +717,21 @@ fun DjScreen(
     }
 }
 
+/* -------------------------------------------------------------------------- */
+/*  Ligne de titre dans la liste                                              */
+/* -------------------------------------------------------------------------- */
 @Composable
 private fun DjTrackRow(
     title: String,
     isPlaying: Boolean,
-    onClick: () -> Unit
+    onPlay: () -> Unit,
+    onEnqueue: () -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .height(42.dp)
-            .clickable { onClick() }
+            .clickable { onPlay() }
             .padding(horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -671,15 +742,122 @@ private fun DjTrackRow(
             modifier = Modifier.weight(1f)
         )
         IconButton(
-            onClick = onClick,
+            onClick = onEnqueue,
+            modifier = Modifier.size(22.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Add,
+                contentDescription = "Mettre en attente",
+                tint = Color.White.copy(alpha = 0.85f),
+                modifier = Modifier.size(16.dp)
+            )
+        }
+        IconButton(
+            onClick = onPlay,
             modifier = Modifier.size(22.dp)
         ) {
             Icon(
                 imageVector = Icons.Default.PlayArrow,
-                contentDescription = null,
+                contentDescription = "Jouer",
                 tint = if (isPlaying) Color(0xFFE040FB) else Color.White.copy(alpha = 0.85f),
                 modifier = Modifier.size(16.dp)
             )
+        }
+    }
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Sélection commune (utilisée par liste + file d’attente)                   */
+/* -------------------------------------------------------------------------- */
+private fun selectTrack(
+    itemUri: String,
+    displayName: String,
+    context: Context,
+    scope: CoroutineScope,
+    // états passés par DjScreen
+    activeSlotState: () -> Int,
+    setActiveSlot: (Int) -> Unit,
+    mpAState: () -> MediaPlayer?,
+    setMpA: (MediaPlayer?) -> Unit,
+    mpBState: () -> MediaPlayer?,
+    setMpB: (MediaPlayer?) -> Unit,
+    setDuration: (Int) -> Unit,
+    setPlayingUri: (String?) -> Unit,
+    setUiSelected: (String?) -> Unit,
+    setDeckATitle: (String) -> Unit,
+    setDeckAUri: (String?) -> Unit,
+    setDeckBTitle: (String) -> Unit,
+    setDeckBUri: (String?) -> Unit
+) {
+    val uriString = itemUri
+    setUiSelected(uriString)
+
+    scope.launch {
+        if (activeSlotState() == 0) {
+            // rien ne joue → on démarre sur A
+            FillerSoundManager.fadeOutAndStop(400)
+            mpAState()?.release()
+            val p = MediaPlayer()
+            setMpA(p)
+            try {
+                withContext(Dispatchers.IO) {
+                    p.setDataSource(context, Uri.parse(uriString))
+                    p.prepare()
+                }
+                setDuration(p.duration)
+                p.setVolume(1f, 1f)
+                p.start()
+
+                // titre et URI du deck A
+                setDeckATitle(displayName)
+                setDeckAUri(uriString)
+
+                setActiveSlot(1)
+                setPlayingUri(uriString)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                setMpA(null)
+            }
+        } else {
+            // quelque chose joue déjà → on prépare l’autre deck à 0 de volume
+            val loadIntoA = (activeSlotState() == 2)
+            if (loadIntoA) {
+                mpAState()?.release()
+                val p = MediaPlayer()
+                setMpA(p)
+                try {
+                    withContext(Dispatchers.IO) {
+                        p.setDataSource(context, Uri.parse(uriString))
+                        p.prepare()
+                    }
+                    p.setVolume(0f, 0f)
+
+                    // pré-chargé sur deck A
+                    setDeckATitle(displayName)
+                    setDeckAUri(uriString)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    setMpA(null)
+                }
+            } else {
+                mpBState()?.release()
+                val p = MediaPlayer()
+                setMpB(p)
+                try {
+                    withContext(Dispatchers.IO) {
+                        p.setDataSource(context, Uri.parse(uriString))
+                        p.prepare()
+                    }
+                    p.setVolume(0f, 0f)
+
+                    // pré-chargé sur deck B
+                    setDeckBTitle(displayName)
+                    setDeckBUri(uriString)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    setMpB(null)
+                }
+            }
         }
     }
 }
