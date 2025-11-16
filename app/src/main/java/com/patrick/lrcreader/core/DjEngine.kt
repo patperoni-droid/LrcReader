@@ -72,6 +72,7 @@ object DjEngine {
     val state: StateFlow<DjUiState> = _state.asStateFlow()
 
     private var timelineJobStarted = false
+    private var xfadeAnimJob: Job? = null   // anim visuelle du slider
 
     fun init(context: Context) {
         if (!::appContext.isInitialized) {
@@ -147,6 +148,26 @@ object DjEngine {
         pushState()
     }
 
+    /* ----------------- petite anim du slider (sans audio) ---------------- */
+
+    private fun animateSliderTo(target: Float, durationMs: Int = 300) {
+        xfadeAnimJob?.cancel()
+        xfadeAnimJob = scope.launch {
+            val start = crossfadePos
+            val steps = (durationMs / 50).coerceAtLeast(1)
+            for (i in 0 until steps) {
+                val t = (i + 1) / steps.toFloat()
+                crossfadePos = (start + (target - start) * t).coerceIn(0f, 1f)
+                // pas d'applyCrossfader ici → on ne touche pas au son,
+                // c'est juste visuel quand une seule platine joue
+                pushState()
+                delay(50)
+            }
+            crossfadePos = target.coerceIn(0f, 1f)
+            pushState()
+        }
+    }
+
     /* ------------------------------- SELECT ------------------------------- */
 
     fun selectTrackFromList(uriString: String, displayName: String) {
@@ -175,6 +196,9 @@ object DjEngine {
 
                     activeSlot = 1
                     playingUri = uriString
+
+                    // 👉 visuellement, on ramène le slider côté A
+                    animateSliderTo(0f, durationMs = 300)
                 } catch (e: Exception) {
                     e.printStackTrace()
                     mpA = null
@@ -228,6 +252,8 @@ object DjEngine {
     /* ---------------------------- CROSSFADER ----------------------------- */
 
     fun setCrossfadePos(value: Float) {
+        // si l'utilisateur touche le slider, on annule une anim éventuelle
+        xfadeAnimJob?.cancel()
         crossfadePos = value.coerceIn(0f, 1f)
         applyCrossfader()
         pushState()
@@ -255,18 +281,18 @@ object DjEngine {
                 }
 
                 val fadeSteps = 20
-                val targetA = 1f - crossfadePos
-                val targetB = crossfadePos
+                val fromPos = crossfadePos
+                val toPos = 1f   // on va vers B
 
                 repeat(fadeSteps) { i ->
                     val t = (i + 1) / fadeSteps.toFloat()
-                    val volA = targetA * (1f - t)
-                    val volB = targetB * t
-                    playerA.setVolume(max(0f, volA), max(0f, volA))
-                    playerB.setVolume(max(0f, volB), max(0f, volB))
+                    crossfadePos = (fromPos + (toPos - fromPos) * t).coerceIn(0f, 1f)
+                    applyCrossfader()
+                    pushState()
                     delay(50)
                 }
 
+                // fin : B devient la platine active
                 try { playerA.stop() } catch (_: Exception) {}
                 playerA.release()
                 mpA = null
@@ -292,15 +318,14 @@ object DjEngine {
                 }
 
                 val fadeSteps = 20
-                val targetA = 1f - crossfadePos
-                val targetB = crossfadePos
+                val fromPos = crossfadePos
+                val toPos = 0f   // on va vers A
 
                 repeat(fadeSteps) { i ->
                     val t = (i + 1) / fadeSteps.toFloat()
-                    val volB = targetB * (1f - t)
-                    val volA = targetA * t
-                    playerB.setVolume(max(0f, volB), max(0f, volB))
-                    playerA.setVolume(max(0f, volA), max(0f, volA))
+                    crossfadePos = (fromPos + (toPos - fromPos) * t).coerceIn(0f, 1f)
+                    applyCrossfader()
+                    pushState()
                     delay(50)
                 }
 
