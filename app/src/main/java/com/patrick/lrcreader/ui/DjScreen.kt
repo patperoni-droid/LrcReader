@@ -1,5 +1,8 @@
 package com.patrick.lrcreader.ui
 
+
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ButtonDefaults
 import kotlinx.coroutines.CoroutineScope
 import android.content.Context
 import android.content.Intent
@@ -331,12 +334,28 @@ fun DjScreen(
                     modifier = Modifier.height(60.dp),
                 )
                 Spacer(Modifier.height(6.dp))
+
+                val goEnabled =
+                    (djState.activeSlot == 1 && djState.deckBUri != null) ||
+                            (djState.activeSlot == 2 && djState.deckAUri != null)
+
                 Button(
                     onClick = { DjEngine.launchCrossfade() },
-                    enabled = (djState.activeSlot == 1 && djState.deckBUri != null) ||
-                            (djState.activeSlot == 2 && djState.deckAUri != null)
+                    enabled = goEnabled,
+                    modifier = Modifier
+                        .height(40.dp)
+                        .width(80.dp)
+                        .graphicsLayer {
+                            if (goEnabled) {
+                                shadowElevation = 18f
+                            }
+                        }
                 ) {
-                    Text("Lancer", fontSize = 10.sp)
+                    Text(
+                        "GO",
+                        fontSize = 14.sp,
+                        color = Color.Black
+                    )
                 }
             }
 
