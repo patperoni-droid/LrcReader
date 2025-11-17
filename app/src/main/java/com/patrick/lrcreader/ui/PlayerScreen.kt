@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
@@ -15,6 +16,7 @@ import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
@@ -85,6 +87,10 @@ fun PlayerScreen(
     var hasRequestedPlaylist by remember(currentTrackUri) {
         mutableStateOf(false)
     }
+
+    // 🔥 état pour le mode édition de paroles
+    var isEditingLyrics by remember { mutableStateOf(false) }
+    var rawLyricsText by remember { mutableStateOf("") }
 
     // suivi lecture + index
     LaunchedEffect(isPlaying, parsedLines) {
@@ -171,6 +177,80 @@ fun PlayerScreen(
             .padding(horizontal = 16.dp, vertical = 6.dp),
         verticalArrangement = Arrangement.SpaceBetween
     ) {
+
+        if (isEditingLyrics) {
+            // ──────────────── ÉDITEUR DE PAROLES ────────────────
+            Column(
+                modifier = Modifier
+                    .fillMaxSize(),
+            ) {
+                // header éditeur
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "Éditeur de paroles",
+                        color = Color.White,
+                        fontSize = 18.sp,
+                        modifier = Modifier.weight(1f)
+                    )
+                    TextButton(onClick = { isEditingLyrics = false }) {
+                        Text("Fermer", color = Color(0xFFFF8A80))
+                    }
+                }
+
+                OutlinedTextField(
+                    value = rawLyricsText,
+                    onValueChange = { rawLyricsText = it },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    textStyle = androidx.compose.ui.text.TextStyle(
+                        color = Color.White,
+                        fontSize = 16.sp
+                    ),
+                    label = { Text("Paroles (une ligne par phrase)", color = Color.LightGray) }
+                )
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp, bottom = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    TextButton(onClick = { isEditingLyrics = false }) {
+                        Text("Annuler", color = Color.LightGray)
+                    }
+                    TextButton(onClick = {
+                        // On convertit chaque ligne en LrcLine sans timing (timeMs = 0)
+                        val newLines = rawLyricsText
+                            .lines()
+                            .map { it.trim() }
+                            .filter { it.isNotEmpty() }
+                            .map { line ->
+                                LrcLine(
+                                    timeMs = 0L,
+                                    text = line
+                                )
+                            }
+
+                        onParsedLinesChange(newLines)
+                        isEditingLyrics = false
+                    }) {
+                        Text("Enregistrer", color = Color(0xFF80CBC4))
+                    }
+                }
+            }
+            // fin de l’éditeur : on ne dessine rien d’autre dans ce mode
+            return@Column
+        }
+
+        // ──────────────── MODE LECTURE NORMAL ────────────────
+
         // header
         Row(
             modifier = Modifier
@@ -187,6 +267,25 @@ fun PlayerScreen(
                     imageVector = Icons.Filled.Tune,
                     contentDescription = "Changer de style",
                     tint = if (isConcertMode) highlightColor else Color.White
+                )
+            }
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            // ✏️ Crayon d’édition
+            IconButton(onClick = {
+                // On pré-remplit avec les paroles existantes
+                rawLyricsText = if (parsedLines.isNotEmpty()) {
+                    parsedLines.joinToString("\n") { it.text }
+                } else {
+                    ""
+                }
+                isEditingLyrics = true
+            }) {
+                Icon(
+                    imageVector = Icons.Filled.Edit,
+                    contentDescription = "Éditer les paroles",
+                    tint = Color.White
                 )
             }
         }

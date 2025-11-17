@@ -1,4 +1,5 @@
 package com.patrick.lrcreader.exo
+
 import com.patrick.lrcreader.core.dj.DjEngine
 import android.media.MediaPlayer
 import android.media.audiofx.LoudnessEnhancer
@@ -185,6 +186,7 @@ class MainActivity : ComponentActivity() {
                             parsedLines = parsedLines,
                             onParsedLinesChange = { parsedLines = it },
                             highlightColor = currentLyricsColor,
+                            // nouveaux paramètres pour le niveau par titre
                             currentTrackUri = currentPlayingUri,
                             currentTrackGainDb = currentTrackGainDb,
                             onTrackGainChange = { newDb ->
@@ -204,6 +206,7 @@ class MainActivity : ComponentActivity() {
                                     runCatching { TrackTempoPrefs.saveTempo(ctx, uri, newTempo) }
                                 }
                             },
+                            // 🔥 auto-switch vers les playlists en fin de titre
                             onRequestShowPlaylist = {
                                 selectedTab = BottomTab.QuickPlaylists
                             }
