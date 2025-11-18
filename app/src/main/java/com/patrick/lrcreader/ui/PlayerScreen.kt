@@ -1,12 +1,18 @@
 package com.patrick.lrcreader.ui
 
 import com.patrick.lrcreader.core.DisplayPrefs
+import com.patrick.lrcreader.core.FillerSoundManager
+import com.patrick.lrcreader.core.LrcLine
+import com.patrick.lrcreader.core.pauseWithFade
+import com.patrick.lrcreader.core.saveLrcForTrack   // 🔥 AJOUT
+
 import android.media.MediaPlayer
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.offset
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Pause
@@ -19,6 +25,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
@@ -32,9 +40,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.patrick.lrcreader.core.FillerSoundManager
-import com.patrick.lrcreader.core.LrcLine
-import com.patrick.lrcreader.core.pauseWithFade
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.abs
@@ -90,7 +95,29 @@ fun PlayerScreen(
 
     // 🔥 état pour le mode édition de paroles
     var isEditingLyrics by remember { mutableStateOf(false) }
-    var rawLyricsText by remember { mutableStateOf("") }
+
+    // Texte brut pour l’onglet “Simple”
+    var rawLyricsText by remember(currentTrackUri, parsedLines) {
+        mutableStateOf(
+            if (parsedLines.isNotEmpty()) parsedLines.joinToString("\n") { it.text }
+            else ""
+        )
+    }
+
+    // Liste de travail pour l’onglet “Synchro”
+    var editingLines by remember(currentTrackUri, parsedLines) {
+        mutableStateOf(
+            if (parsedLines.isNotEmpty()) parsedLines
+            else rawLyricsText
+                .lines()
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+                .map { LrcLine(timeMs = 0L, text = it) }
+        )
+    }
+
+    // Onglet courant : 0 = Simple, 1 = Synchro
+    var currentEditTab by remember { mutableStateOf(0) }
 
     // suivi lecture + index
     LaunchedEffect(isPlaying, parsedLines) {
@@ -179,12 +206,12 @@ fun PlayerScreen(
     ) {
 
         if (isEditingLyrics) {
-            // ──────────────── ÉDITEUR DE PAROLES ────────────────
+            // ──────────────── MODE ÉDITION : 2 onglets ────────────────
             Column(
                 modifier = Modifier
-                    .fillMaxSize(),
+                    .fillMaxSize()
             ) {
-                // header éditeur
+                // barre du haut : titre + bouton Fermer
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -203,48 +230,244 @@ fun PlayerScreen(
                     }
                 }
 
-                OutlinedTextField(
-                    value = rawLyricsText,
-                    onValueChange = { rawLyricsText = it },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    textStyle = androidx.compose.ui.text.TextStyle(
-                        color = Color.White,
-                        fontSize = 16.sp
-                    ),
-                    label = { Text("Paroles (une ligne par phrase)", color = Color.LightGray) }
-                )
+                // Onglets
+                TabRow(
+                    selectedTabIndex = currentEditTab,
+                    containerColor = Color.Transparent,
+                    contentColor = highlightColor
+                ) {
+                    Tab(
+                        selected = currentEditTab == 0,
+                        onClick = { currentEditTab = 0 },
+                        text = { Text("Simple") }
+                    )
+                    Tab(
+                        selected = currentEditTab == 1,
+                        onClick = {
+                            if (editingLines.isEmpty()) {
+                                editingLines = rawLyricsText
+                                    .lines()
+                                    .map { it.trim() }
+                                    .filter { it.isNotEmpty() }
+                                    .map { line ->
+                                        LrcLine(timeMs = 0L, text = line)
+                                    }
+                            }
+                            currentEditTab = 1
+                        },
+                        text = { Text("Synchro") }
+                    )
+                }
 
+                Spacer(Modifier.height(8.dp))
+
+                when (currentEditTab) {
+                    0 -> {
+                        // ───── Onglet SIMPLE : texte brut ─────
+                        OutlinedTextField(
+                            value = rawLyricsText,
+                            onValueChange = {
+                                rawLyricsText = it
+                                editingLines = rawLyricsText
+                                    .lines()
+                                    .map { l -> l.trim() }
+                                    .filter { l -> l.isNotEmpty() }
+                                    .map { line ->
+                                        val existing = editingLines.find { it.text == line }
+                                        existing ?: LrcLine(timeMs = 0L, text = line)
+                                    }
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f),
+                            textStyle = androidx.compose.ui.text.TextStyle(
+                                color = Color.White,
+                                fontSize = 16.sp
+                            ),
+                            label = {
+                                Text(
+                                    "Paroles (une ligne par phrase)",
+                                    color = Color.LightGray
+                                )
+                            }
+                        )
+                    }
+
+                    1 -> {
+                        // ───── Onglet SYNCHRO : mini player + TAG lignes ─────
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f)
+                        ) {
+                            // Mini contrôles de lecture pour la synchro
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Start
+                            ) {
+                                IconButton(onClick = {
+                                    if (mediaPlayer.isPlaying) {
+                                        pauseWithFade(scope, mediaPlayer, 200L) {
+                                            onIsPlayingChange(false)
+                                            runCatching {
+                                                FillerSoundManager.startIfConfigured(context)
+                                            }
+                                        }
+                                    } else {
+                                        if (durationMs > 0) {
+                                            mediaPlayer.start()
+                                            onIsPlayingChange(true)
+                                            runCatching {
+                                                FillerSoundManager.fadeOutAndStop(200)
+                                            }
+                                        }
+                                    }
+                                }) {
+                                    Icon(
+                                        imageVector = if (mediaPlayer.isPlaying)
+                                            Icons.Filled.Pause
+                                        else
+                                            Icons.Filled.PlayArrow,
+                                        contentDescription = "Play/Pause synchro",
+                                        tint = Color.White
+                                    )
+                                }
+
+                                IconButton(onClick = {
+                                    runCatching { mediaPlayer.seekTo(0) }
+                                }) {
+                                    Icon(
+                                        imageVector = Icons.Filled.SkipPrevious,
+                                        contentDescription = "Revenir début",
+                                        tint = Color.White
+                                    )
+                                }
+
+                                Text(
+                                    text = formatMs(positionMs),
+                                    color = Color.LightGray,
+                                    fontSize = 12.sp
+                                )
+                            }
+
+                            // Liste de lignes à taguer
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .weight(1f)
+                                    .verticalScroll(rememberScrollState())
+                            ) {
+                                if (editingLines.isEmpty()) {
+                                    Text(
+                                        "Ajoute d’abord des paroles dans l’onglet Simple.",
+                                        color = Color.Gray,
+                                        modifier = Modifier.padding(16.dp)
+                                    )
+                                } else {
+                                    editingLines.forEachIndexed { index, line ->
+                                        val timeLabel =
+                                            if (line.timeMs > 0)
+                                                formatLrcTime(line.timeMs)
+                                            else
+                                                "--:--.--"
+
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(vertical = 4.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            TextButton(
+                                                onClick = {
+                                                    val now = runCatching {
+                                                        mediaPlayer.currentPosition
+                                                    }.getOrElse { 0 }
+
+                                                    editingLines =
+                                                        editingLines.mapIndexed { i, old ->
+                                                            if (i == index)
+                                                                old.copy(timeMs = now.toLong())
+                                                            else old
+                                                        }
+                                                },
+                                                modifier = Modifier.padding(end = 8.dp)
+                                            ) {
+                                                Text(
+                                                    text = "TAG",
+                                                    color = Color(0xFF80CBC4),
+                                                    fontSize = 12.sp
+                                                )
+                                            }
+
+                                            Text(
+                                                text = "[$timeLabel]",
+                                                color = Color(0xFFB0BEC5),
+                                                fontSize = 12.sp,
+                                                modifier = Modifier.width(72.dp)
+                                            )
+
+                                            Text(
+                                                text = line.text,
+                                                color = Color.White,
+                                                fontSize = 16.sp,
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Barre d’actions en bas : Annuler / Enregistrer
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 8.dp, bottom = 4.dp),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    TextButton(onClick = { isEditingLyrics = false }) {
+                    TextButton(onClick = {
+                        isEditingLyrics = false
+                    }) {
                         Text("Annuler", color = Color.LightGray)
                     }
                     TextButton(onClick = {
-                        // On convertit chaque ligne en LrcLine sans timing (timeMs = 0)
-                        val newLines = rawLyricsText
-                            .lines()
-                            .map { it.trim() }
-                            .filter { it.isNotEmpty() }
-                            .map { line ->
-                                LrcLine(
-                                    timeMs = 0L,
-                                    text = line
-                                )
-                            }
+                        var lines = editingLines
+                        if (lines.isEmpty()) {
+                            lines = rawLyricsText
+                                .lines()
+                                .map { it.trim() }
+                                .filter { it.isNotEmpty() }
+                                .map { LrcLine(timeMs = 0L, text = it) }
+                        }
 
-                        onParsedLinesChange(newLines)
+                        val sorted = lines.sortedWith(
+                            compareBy<LrcLine> {
+                                if (it.timeMs <= 0L) Long.MAX_VALUE else it.timeMs
+                            }
+                        )
+
+                        // on alimente le player
+                        onParsedLinesChange(sorted)
+
+                        // 🔥 Sauvegarde physique du .lrc
+                        saveLrcForTrack(
+                            context = context,
+                            trackUriString = currentTrackUri,
+                            lines = sorted
+                        )
+
                         isEditingLyrics = false
                     }) {
                         Text("Enregistrer", color = Color(0xFF80CBC4))
                     }
                 }
             }
+
             // fin de l’éditeur : on ne dessine rien d’autre dans ce mode
             return@Column
         }
@@ -272,14 +495,22 @@ fun PlayerScreen(
 
             Spacer(modifier = Modifier.weight(1f))
 
-            // ✏️ Crayon d’édition
+            // ✏️ Crayon d’édition : ouvre les onglets Simple / Synchro
             IconButton(onClick = {
-                // On pré-remplit avec les paroles existantes
                 rawLyricsText = if (parsedLines.isNotEmpty()) {
                     parsedLines.joinToString("\n") { it.text }
                 } else {
                     ""
                 }
+                editingLines =
+                    if (parsedLines.isNotEmpty()) parsedLines
+                    else rawLyricsText
+                        .lines()
+                        .map { it.trim() }
+                        .filter { it.isNotEmpty() }
+                        .map { LrcLine(timeMs = 0L, text = it) }
+
+                currentEditTab = 0
                 isEditingLyrics = true
             }) {
                 Icon(
@@ -321,7 +552,6 @@ fun PlayerScreen(
                         val isCurrent = index == currentLrcIndex
                         val dist = abs(index - currentLrcIndex)
 
-                        // mode "pas concert" = aucune opacité
                         val lineAlpha: Float = if (!isConcertMode) {
                             1f
                         } else {
@@ -628,4 +858,14 @@ private fun formatMs(ms: Int): String {
     val m = (totalSeconds / 60) % 60
     val h = totalSeconds / 3600
     return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%02d:%02d".format(m, s)
+}
+
+/** Format LRC style : mm:ss.xx */
+private fun formatLrcTime(ms: Long): String {
+    if (ms <= 0L) return "00:00.00"
+    val totalSeconds = ms / 1000
+    val minutes = totalSeconds / 60
+    val seconds = totalSeconds % 60
+    val hundredths = (ms % 1000) / 10
+    return "%02d:%02d.%02d".format(minutes, seconds, hundredths)
 }

@@ -128,9 +128,16 @@ class MainActivity : ComponentActivity() {
                                 playlistName = playlistName,
                                 playToken = myToken,
                                 getCurrentToken = { currentPlayToken },
-                                onLyricsLoaded = { text ->
-                                    parsedLines =
-                                        if (!text.isNullOrBlank()) parseLrc(text) else emptyList()
+                                onLyricsLoaded = { originalText ->
+                                    // 👉 PRIORITÉ au .lrc que TU as créé
+                                    val overridden = loadLrcForTrack(ctx, uriString)
+                                    val finalText = overridden ?: originalText
+
+                                    parsedLines = if (!finalText.isNullOrBlank()) {
+                                        parseLrc(finalText)
+                                    } else {
+                                        emptyList()
+                                    }
                                 },
                                 onStart = {
                                     isPlaying = true
