@@ -1,6 +1,7 @@
 package com.patrick.lrcreader.exo
 
 import com.patrick.lrcreader.core.dj.DjEngine
+import com.patrick.lrcreader.core.LrcStorage
 import android.media.MediaPlayer
 import android.media.audiofx.LoudnessEnhancer
 import android.os.Bundle
@@ -129,8 +130,8 @@ class MainActivity : ComponentActivity() {
                                 playToken = myToken,
                                 getCurrentToken = { currentPlayToken },
                                 onLyricsLoaded = { originalText ->
-                                    // 👉 PRIORITÉ au .lrc que TU as créé
-                                    val overridden = loadLrcForTrack(ctx, uriString)
+                                    // 🔥 Priorité au .lrc que TU as créé dans l’éditeur :
+                                    val overridden = LrcStorage.loadForTrack(ctx, uriString)
                                     val finalText = overridden ?: originalText
 
                                     parsedLines = if (!finalText.isNullOrBlank()) {

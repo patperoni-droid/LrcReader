@@ -1,12 +1,16 @@
 package com.patrick.lrcreader.ui
 
+
 import com.patrick.lrcreader.core.DisplayPrefs
 import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.core.LrcLine
+import com.patrick.lrcreader.core.LrcStorage
 import com.patrick.lrcreader.core.pauseWithFade
-import com.patrick.lrcreader.core.saveLrcForTrack   // 🔥 AJOUT
-
+import com.patrick.lrcreader.core.parseLrc
+import android.content.Context
+import android.media.MediaMetadataRetriever
 import android.media.MediaPlayer
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -263,38 +267,73 @@ fun PlayerScreen(
 
                 when (currentEditTab) {
                     0 -> {
-                        // ───── Onglet SIMPLE : texte brut ─────
-                        OutlinedTextField(
-                            value = rawLyricsText,
-                            onValueChange = {
-                                rawLyricsText = it
-                                editingLines = rawLyricsText
-                                    .lines()
-                                    .map { l -> l.trim() }
-                                    .filter { l -> l.isNotEmpty() }
-                                    .map { line ->
-                                        val existing = editingLines.find { it.text == line }
-                                        existing ?: LrcLine(timeMs = 0L, text = line)
-                                    }
-                            },
+                        // ───── Onglet SIMPLE : texte brut + import Musicolet ─────
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .weight(1f),
-                            textStyle = androidx.compose.ui.text.TextStyle(
-                                color = Color.White,
-                                fontSize = 16.sp
-                            ),
-                            label = {
-                                Text(
-                                    "Paroles (une ligne par phrase)",
-                                    color = Color.LightGray
-                                )
+                                .weight(1f)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 4.dp),
+                                horizontalArrangement = Arrangement.End,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                TextButton(
+                                    onClick = {
+                                        val uri = currentTrackUri
+                                        if (uri != null) {
+                                            val imported = importLyricsFromAudio(context, uri)
+                                            if (imported != null && imported.isNotEmpty()) {
+                                                editingLines = imported
+                                                rawLyricsText = imported.joinToString("\n") { it.text }
+                                                // on bascule direct sur Synchro pour retaguer
+                                                currentEditTab = 1
+                                            }
+                                        }
+                                    }
+                                ) {
+                                    Text(
+                                        text = "Importer depuis MP3",
+                                        color = Color(0xFF80CBC4),
+                                        fontSize = 12.sp
+                                    )
+                                }
                             }
-                        )
+
+                            OutlinedTextField(
+                                value = rawLyricsText,
+                                onValueChange = {
+                                    rawLyricsText = it
+                                    editingLines = rawLyricsText
+                                        .lines()
+                                        .map { l -> l.trim() }
+                                        .filter { l -> l.isNotEmpty() }
+                                        .map { line ->
+                                            val existing = editingLines.find { it.text == line }
+                                            existing ?: LrcLine(timeMs = 0L, text = line)
+                                        }
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .weight(1f),
+                                textStyle = androidx.compose.ui.text.TextStyle(
+                                    color = Color.White,
+                                    fontSize = 16.sp
+                                ),
+                                label = {
+                                    Text(
+                                        "Paroles (une ligne par phrase)",
+                                        color = Color.LightGray
+                                    )
+                                }
+                            )
+                        }
                     }
 
                     1 -> {
-                        // ───── Onglet SYNCHRO : mini player + TAG lignes ─────
+                        // ───── Onglet SYNCHRO : mini player + TAG lignes + bouton Play ─────
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -380,41 +419,72 @@ fun PlayerScreen(
                                                 .padding(vertical = 4.dp),
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            TextButton(
-                                                onClick = {
-                                                    val now = runCatching {
-                                                        mediaPlayer.currentPosition
-                                                    }.getOrElse { 0 }
-
-                                                    editingLines =
-                                                        editingLines.mapIndexed { i, old ->
-                                                            if (i == index)
-                                                                old.copy(timeMs = now.toLong())
-                                                            else old
-                                                        }
-                                                },
+                                            // Colonne TAG + temps en dessous (comme Musicolet)
+                                            Column(
+                                                horizontalAlignment = Alignment.CenterHorizontally,
                                                 modifier = Modifier.padding(end = 8.dp)
                                             ) {
+                                                TextButton(
+                                                    onClick = {
+                                                        val now = runCatching {
+                                                            mediaPlayer.currentPosition
+                                                        }.getOrElse { 0 }
+
+                                                        editingLines =
+                                                            editingLines.mapIndexed { i, old ->
+                                                                if (i == index)
+                                                                    old.copy(timeMs = now.toLong())
+                                                                else old
+                                                            }
+                                                    }
+                                                ) {
+                                                    Text(
+                                                        text = "TAG",
+                                                        color = Color(0xFF80CBC4),
+                                                        fontSize = 12.sp
+                                                    )
+                                                }
                                                 Text(
-                                                    text = "TAG",
-                                                    color = Color(0xFF80CBC4),
-                                                    fontSize = 12.sp
+                                                    text = timeLabel,
+                                                    color = Color(0xFFB0BEC5),
+                                                    fontSize = 10.sp
                                                 )
                                             }
 
-                                            Text(
-                                                text = "[$timeLabel]",
-                                                color = Color(0xFFB0BEC5),
-                                                fontSize = 12.sp,
-                                                modifier = Modifier.width(72.dp)
-                                            )
-
+                                            // Texte de la phrase
                                             Text(
                                                 text = line.text,
                                                 color = Color.White,
                                                 fontSize = 16.sp,
                                                 modifier = Modifier.weight(1f)
                                             )
+
+                                            // Petit bouton Play pour reprendre à ce temps
+                                            IconButton(
+                                                onClick = {
+                                                    val t = line.timeMs
+                                                        .coerceAtLeast(0L)
+                                                        .toInt()
+                                                    runCatching { mediaPlayer.seekTo(t) }
+                                                    if (!mediaPlayer.isPlaying) {
+                                                        mediaPlayer.start()
+                                                        onIsPlayingChange(true)
+                                                        runCatching {
+                                                            FillerSoundManager.fadeOutAndStop(200)
+                                                        }
+                                                    }
+                                                },
+                                                enabled = line.timeMs > 0L
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.PlayArrow,
+                                                    contentDescription = "Lire depuis cette phrase",
+                                                    tint = if (line.timeMs > 0L)
+                                                        Color.White
+                                                    else
+                                                        Color.DarkGray
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -451,16 +521,15 @@ fun PlayerScreen(
                             }
                         )
 
-                        // on alimente le player
+                        // 🔥 Sauvegarde sur disque pour ce titre
+                        if (currentTrackUri != null) {
+                            runCatching {
+                                LrcStorage.saveForTrack(context, currentTrackUri, sorted)
+                            }
+                        }
+
+                        // On met aussi à jour l’état courant du player
                         onParsedLinesChange(sorted)
-
-                        // 🔥 Sauvegarde physique du .lrc
-                        saveLrcForTrack(
-                            context = context,
-                            trackUriString = currentTrackUri,
-                            lines = sorted
-                        )
-
                         isEditingLyrics = false
                     }) {
                         Text("Enregistrer", color = Color(0xFF80CBC4))
@@ -868,4 +937,48 @@ private fun formatLrcTime(ms: Long): String {
     val seconds = totalSeconds % 60
     val hundredths = (ms % 1000) / 10
     return "%02d:%02d.%02d".format(minutes, seconds, hundredths)
+}
+
+/**
+ * Essaie d'importer les paroles intégrées dans le MP3 (Musicolet ou autre).
+ * - Ne MODIFIE JAMAIS le MP3.
+ * - Si le texte est au format LRC, on garde le texte mais on remet tous les timeMs à 0.
+ * - Sinon, on prend chaque ligne comme une phrase.
+ */
+private fun importLyricsFromAudio(
+    context: Context,
+    uriString: String
+): List<LrcLine>? {
+    return try {
+        val retriever = MediaMetadataRetriever()
+        retriever.setDataSource(context, Uri.parse(uriString))
+
+        // On récupère la clé METADATA_KEY_LYRICS via réflexion pour éviter les soucis de version
+        val raw: String? = try {
+            val field = MediaMetadataRetriever::class.java.getField("METADATA_KEY_LYRICS")
+            val key = field.getInt(null)
+            retriever.extractMetadata(key)
+        } catch (e: Exception) {
+            null
+        }
+
+        retriever.release()
+
+        if (raw.isNullOrBlank()) return null
+
+        // On tente d'abord de parser comme LRC
+        val parsed = runCatching { parseLrc(raw) }.getOrElse { emptyList() }
+        if (parsed.isNotEmpty()) {
+            parsed.map { it.copy(timeMs = 0L) }
+        } else {
+            raw.lines()
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+                .map { line ->
+                    LrcLine(timeMs = 0L, text = line)
+                }
+        }
+    } catch (_: Exception) {
+        null
+    }
 }
