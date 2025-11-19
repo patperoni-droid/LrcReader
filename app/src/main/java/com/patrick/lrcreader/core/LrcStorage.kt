@@ -44,7 +44,12 @@ object LrcStorage {
 
         outFile.writeText(content)
     }
-
+    fun deleteForTrack(context: Context, trackUriString: String?) {
+        val f = lrcFileForUri(context, trackUriString) ?: return
+        if (f.exists()) {
+            f.delete()
+        }
+    }
     /** Recharge le .lrc sauvegardé pour ce morceau (si présent) */
     fun loadForTrack(
         context: Context,
