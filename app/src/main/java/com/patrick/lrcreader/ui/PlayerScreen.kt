@@ -385,19 +385,9 @@ fun PlayerScreen(
                     }
                 )
 
-                // Gain
-                GainControl(
-                    currentTrackUri = currentTrackUri,
-                    currentTrackGainDb = currentTrackGainDb,
-                    onTrackGainChange = onTrackGainChange,
-                    highlightColor = highlightColor
-                )
 
-                // Tempo
-                TempoControl(
-                    tempo = tempo,
-                    onTempoChange = onTempoChange
-                )
+
+
             }
 
             if (showMixScreen) {
@@ -947,106 +937,9 @@ private fun LyricsArea(
     }
 }
 
-@Composable
-private fun GainControl(
-    currentTrackUri: String?,
-    currentTrackGainDb: Int,
-    onTrackGainChange: (Int) -> Unit,
-    highlightColor: Color
-) {
-    val minDb = -12
-    val maxDb = 12
-    var gainSlider by remember(currentTrackUri, currentTrackGainDb) {
-        mutableStateOf(
-            (currentTrackGainDb - minDb).toFloat() / (maxDb - minDb).toFloat()
-        )
-    }
 
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = 4.dp, bottom = 4.dp)
-    ) {
-        Text(
-            text = "Niveau titre : ${if (currentTrackGainDb >= 0) "+${currentTrackGainDb}" else currentTrackGainDb} dB",
-            color = Color.White,
-            fontSize = 12.sp
-        )
-        Slider(
-            value = gainSlider,
-            onValueChange = { v ->
-                gainSlider = v
-                val newDb = (minDb + v * (maxDb - minDb)).toInt()
-                onTrackGainChange(newDb)
-            },
-            modifier = Modifier.fillMaxWidth(),
-            colors = SliderDefaults.colors(
-                thumbColor = highlightColor,
-                activeTrackColor = highlightColor.copy(alpha = 0.4f),
-                inactiveTrackColor = Color.DarkGray
-            )
-        )
-    }
-}
 
-@Composable
-private fun TempoControl(
-    tempo: Float,
-    onTempoChange: (Float) -> Unit
-) {
-    val minTempo = 0.8f
-    val maxTempo = 1.2f
 
-    var tempoSlider by remember(tempo) {
-        mutableStateOf(
-            ((tempo - minTempo) / (maxTempo - minTempo))
-                .coerceIn(0f, 1f)
-        )
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = 0.dp, bottom = 8.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "Tempo : ${String.format("%.2fx", tempo)}",
-                color = Color.White,
-                fontSize = 12.sp
-            )
-            TextButton(onClick = { onTempoChange(1.0f) }) {
-                Text(
-                    text = "Reset 1.00x",
-                    color = Color(0xFF80CBC4),
-                    fontSize = 11.sp
-                )
-            }
-        }
-
-        Slider(
-            value = tempoSlider,
-            onValueChange = { v ->
-                tempoSlider = v
-                val minTempoLocal = minTempo
-                val maxTempoLocal = maxTempo
-                val newTempo = (minTempoLocal + v * (maxTempoLocal - minTempoLocal))
-                    .coerceIn(minTempoLocal, maxTempoLocal)
-                onTempoChange(newTempo)
-            },
-            modifier = Modifier.fillMaxWidth(),
-            colors = SliderDefaults.colors(
-                thumbColor = Color(0xFF80CBC4),
-                activeTrackColor = Color(0xFF80CBC4).copy(alpha = 0.4f),
-                inactiveTrackColor = Color.DarkGray
-            )
-        )
-    }
-}
 
 @Composable
 private fun PlayerControls(
