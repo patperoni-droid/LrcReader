@@ -1,6 +1,5 @@
 package com.patrick.lrcreader.ui
 
-
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ButtonDefaults
 import kotlinx.coroutines.CoroutineScope
@@ -49,6 +48,7 @@ import androidx.documentfile.provider.DocumentFile
 import com.patrick.lrcreader.core.DjFolderPrefs
 import com.patrick.lrcreader.core.dj.DjEngine
 import com.patrick.lrcreader.core.dj.DjQueuedTrack
+import com.patrick.lrcreader.ui.theme.DarkBlueGradientBackground
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -172,411 +172,412 @@ fun DjScreen(
     }
 
     /* ============================== UI ============================== */
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .background(Color.Black)
-            .padding(14.dp)
-    ) {
-        // HEADER
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
+    DarkBlueGradientBackground {
+        Column(
+            modifier = modifier
+                .fillMaxSize()
+                .padding(14.dp)
         ) {
-            if (folderStack.isNotEmpty()) {
-                IconButton(onClick = {
-                    val newStack = folderStack.dropLast(1)
-                    val parentUri = newStack.lastOrNull() ?: rootFolderUri
-                    currentFolderUri = parentUri
-                    folderStack = newStack
+            // HEADER
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (folderStack.isNotEmpty()) {
+                    IconButton(onClick = {
+                        val newStack = folderStack.dropLast(1)
+                        val parentUri = newStack.lastOrNull() ?: rootFolderUri
+                        currentFolderUri = parentUri
+                        folderStack = newStack
 
-                    if (parentUri != null) {
-                        DjFolderCache.get(parentUri)?.let {
-                            entries = it
-                        } ?: run {
-                            scope.launch {
-                                isLoading = true
-                                val fresh = withContext(Dispatchers.IO) {
-                                    loadDjEntries(context, parentUri)
+                        if (parentUri != null) {
+                            DjFolderCache.get(parentUri)?.let {
+                                entries = it
+                            } ?: run {
+                                scope.launch {
+                                    isLoading = true
+                                    val fresh = withContext(Dispatchers.IO) {
+                                        loadDjEntries(context, parentUri)
+                                    }
+                                    entries = fresh
+                                    DjFolderCache.put(parentUri, fresh)
+                                    isLoading = false
                                 }
-                                entries = fresh
-                                DjFolderCache.put(parentUri, fresh)
-                                isLoading = false
                             }
+                        } else {
+                            entries = emptyList()
                         }
-                    } else {
-                        entries = emptyList()
+                    }) {
+                        Icon(
+                            imageVector = Icons.Default.ArrowBack,
+                            contentDescription = "Retour",
+                            tint = Color.White
+                        )
                     }
-                }) {
+                }
+
+                Column(Modifier.weight(1f)) {
+                    Text("DJ", color = Color.White, fontSize = 20.sp)
+                    Text(
+                        text = currentFolderUri?.let {
+                            DocumentFile.fromTreeUri(context, it)?.name ?: "…"
+                        } ?: "Aucun dossier DJ choisi",
+                        color = Color.Gray,
+                        fontSize = 11.sp
+                    )
+                }
+
+                IconButton(onClick = { menuOpen = true }) {
                     Icon(
-                        imageVector = Icons.Default.ArrowBack,
-                        contentDescription = "Retour",
+                        imageVector = Icons.Default.MoreVert,
+                        contentDescription = "Options",
                         tint = Color.White
                     )
                 }
-            }
 
-            Column(Modifier.weight(1f)) {
-                Text("DJ", color = Color.White, fontSize = 20.sp)
-                Text(
-                    text = currentFolderUri?.let {
-                        DocumentFile.fromTreeUri(context, it)?.name ?: "…"
-                    } ?: "Aucun dossier DJ choisi",
-                    color = Color.Gray,
-                    fontSize = 11.sp
-                )
-            }
-
-            IconButton(onClick = { menuOpen = true }) {
-                Icon(
-                    imageVector = Icons.Default.MoreVert,
-                    contentDescription = "Options",
-                    tint = Color.White
-                )
-            }
-
-            DropdownMenu(
-                expanded = menuOpen,
-                onDismissRequest = { menuOpen = false }
-            ) {
-                DropdownMenuItem(
-                    leadingIcon = { Icon(Icons.Default.Folder, contentDescription = null) },
-                    text = { Text("Choisir dossier DJ") },
-                    onClick = {
-                        menuOpen = false
-                        pickFolderLauncher.launch(null)
-                    }
-                )
-                if (rootFolderUri != null) {
+                DropdownMenu(
+                    expanded = menuOpen,
+                    onDismissRequest = { menuOpen = false }
+                ) {
                     DropdownMenuItem(
-                        text = { Text("Oublier le dossier") },
+                        leadingIcon = { Icon(Icons.Default.Folder, contentDescription = null) },
+                        text = { Text("Choisir dossier DJ") },
                         onClick = {
                             menuOpen = false
-                            DjFolderPrefs.clear(context)
-                            DjFolderCache.clear()
-                            rootFolderUri = null
-                            currentFolderUri = null
-                            folderStack = emptyList()
-                            entries = emptyList()
+                            pickFolderLauncher.launch(null)
                         }
                     )
-                }
-            }
-        }
-
-        Spacer(Modifier.height(10.dp))
-
-        // PLATINES + CROSSFADER + BOUTON
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(140.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Deck A
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                // Halo externe
-                Box(
-                    modifier = Modifier
-                        .size(90.dp)
-                        .background(
-                            color = if (djState.activeSlot == 1)
-                                Color(0x804CAF50) // vert semi-transparent
-                            else
-                                Color.Transparent,
-                            shape = CircleShape
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    // Platine interne
-                    Box(
-                        modifier = Modifier
-                            .size(70.dp)
-                            .graphicsLayer {
-                                rotationZ = if (djState.activeSlot == 1) angleA else 0f
-                                val s = if (djState.activeSlot == 1) pulse else 1f
-                                scaleX = s
-                                scaleY = s
+                    if (rootFolderUri != null) {
+                        DropdownMenuItem(
+                            text = { Text("Oublier le dossier") },
+                            onClick = {
+                                menuOpen = false
+                                DjFolderPrefs.clear(context)
+                                DjFolderCache.clear()
+                                rootFolderUri = null
+                                currentFolderUri = null
+                                folderStack = emptyList()
+                                entries = emptyList()
                             }
-                            .background(Color(0xFF1F1F1F), CircleShape)
-                            .border(2.dp, Color(0xFF4CAF50), CircleShape),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(16.dp)
-                                .background(Color.Black, CircleShape)
                         )
                     }
                 }
-                Spacer(Modifier.height(6.dp))
-                Text(djState.deckATitle, color = Color.White, fontSize = 11.sp, maxLines = 1)
             }
 
-            // centre
-            Column(
-                modifier = Modifier
-                    .width(90.dp)
-                    .fillMaxHeight(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                Text("X-Fade", color = Color.Gray, fontSize = 10.sp)
-                Slider(
-                    value = djState.crossfadePos,
-                    onValueChange = { DjEngine.setCrossfadePos(it) },
-                    modifier = Modifier.height(60.dp),
-                )
-                Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(10.dp))
 
-                val goEnabled =
-                    (djState.activeSlot == 1 && djState.deckBUri != null) ||
-                            (djState.activeSlot == 2 && djState.deckAUri != null)
-
-                Button(
-                    onClick = { DjEngine.launchCrossfade() },
-                    enabled = goEnabled,
-                    modifier = Modifier
-                        .height(40.dp)
-                        .width(80.dp)
-                        .graphicsLayer {
-                            if (goEnabled) {
-                                shadowElevation = 18f
-                            }
-                        }
-                ) {
-                    Text(
-                        "GO",
-                        fontSize = 14.sp,
-                        color = Color.Black
-                    )
-                }
-            }
-
-            // Deck B
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                // Halo externe
-                Box(
-                    modifier = Modifier
-                        .size(90.dp)
-                        .background(
-                            color = if (djState.activeSlot == 2)
-                                Color(0x80E040FB) // violet semi-transparent
-                            else
-                                Color.Transparent,
-                            shape = CircleShape
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    // Platine interne
-                    Box(
-                        modifier = Modifier
-                            .size(70.dp)
-                            .graphicsLayer {
-                                rotationZ = if (djState.activeSlot == 2) angleB else 0f
-                                val s = if (djState.activeSlot == 2) pulse else 1f
-                                scaleX = s
-                                scaleY = s
-                            }
-                            .background(Color(0xFF1F1F1F), CircleShape)
-                            .border(2.dp, Color(0xFFE040FB), CircleShape),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(16.dp)
-                                .background(Color.Black, CircleShape)
-                        )
-                    }
-                }
-                Spacer(Modifier.height(6.dp))
-                Text(djState.deckBTitle, color = Color.White, fontSize = 11.sp, maxLines = 1)
-            }
-        }
-
-        Spacer(Modifier.height(10.dp))
-
-        // timeline + stop
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(26.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            LinearProgressIndicator(
-                progress = djState.progress.coerceIn(0f, 1f),
-                modifier = Modifier
-                    .weight(1f)
-                    .height(6.dp),
-                color = Color(0xFFE040FB),
-                trackColor = Color(0x33E040FB)
-            )
-            Spacer(Modifier.width(10.dp))
-            IconButton(onClick = { DjEngine.stopDj() }) {
-                Icon(
-                    imageVector = Icons.Default.Stop,
-                    contentDescription = "Arrêter",
-                    tint = if (djState.playingUri != null) Color(0xFFFF8A80)
-                    else Color.White.copy(alpha = 0.4f)
-                )
-            }
-        }
-
-        /* ---------------------- File d’attente (queue) ------------------- */
-        if (djState.queue.isNotEmpty()) {
-            Spacer(Modifier.height(6.dp))
-            Column(
+            // PLATINES + CROSSFADER + BOUTON
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color(0xFF151515))
-                    .border(1.dp, Color(0xFF333333))
-                    .padding(6.dp)
+                    .height(140.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
+                // Deck A
+                Column(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { isQueuePanelOpen = !isQueuePanelOpen },
-                    verticalAlignment = Alignment.CenterVertically
+                        .weight(1f)
+                        .fillMaxHeight(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
                 ) {
-                    Text(
-                        text = "Liste d’attente (${djState.queue.size})",
-                        color = Color(0xFF81D4FA),
-                        fontSize = 12.sp,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Text(
-                        text = if (isQueuePanelOpen) "▲" else "▼",
-                        color = Color.Gray,
-                        fontSize = 12.sp
-                    )
-                }
-
-                if (isQueuePanelOpen) {
-                    Spacer(Modifier.height(4.dp))
-                    djState.queue.forEach { qItem: DjQueuedTrack ->
-                        Row(
+                    // Halo externe
+                    Box(
+                        modifier = Modifier
+                            .size(90.dp)
+                            .background(
+                                color = if (djState.activeSlot == 1)
+                                    Color(0x804CAF50) // vert semi-transparent
+                                else
+                                    Color.Transparent,
+                                shape = CircleShape
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        // Platine interne
+                        Box(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .height(32.dp)
-                                .clickable { DjEngine.playFromQueue(qItem) }
-                                .padding(horizontal = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                                .size(70.dp)
+                                .graphicsLayer {
+                                    rotationZ = if (djState.activeSlot == 1) angleA else 0f
+                                    val s = if (djState.activeSlot == 1) pulse else 1f
+                                    scaleX = s
+                                    scaleY = s
+                                }
+                                .background(Color(0xFF1F1F1F), CircleShape)
+                                .border(2.dp, Color(0xFF4CAF50), CircleShape),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Text(
-                                text = qItem.title,
-                                color = Color(0xFF81D4FA),
-                                fontSize = 12.sp,
-                                modifier = Modifier.weight(1f)
+                            Box(
+                                modifier = Modifier
+                                    .size(16.dp)
+                                    .background(Color.Black, CircleShape)
                             )
-                            IconButton(
-                                onClick = { DjEngine.removeFromQueue(qItem) },
-                                modifier = Modifier.size(22.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Stop,
-                                    contentDescription = "Retirer",
-                                    tint = Color(0xFFFF8A80),
-                                    modifier = Modifier.size(14.dp)
-                                )
-                            }
                         }
                     }
+                    Spacer(Modifier.height(6.dp))
+                    Text(djState.deckATitle, color = Color.White, fontSize = 11.sp, maxLines = 1)
+                }
+
+                // centre
+                Column(
+                    modifier = Modifier
+                        .width(90.dp)
+                        .fillMaxHeight(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Text("X-Fade", color = Color.Gray, fontSize = 10.sp)
+                    Slider(
+                        value = djState.crossfadePos,
+                        onValueChange = { DjEngine.setCrossfadePos(it) },
+                        modifier = Modifier.height(60.dp),
+                    )
+                    Spacer(Modifier.height(6.dp))
+
+                    val goEnabled =
+                        (djState.activeSlot == 1 && djState.deckBUri != null) ||
+                                (djState.activeSlot == 2 && djState.deckAUri != null)
+
+                    Button(
+                        onClick = { DjEngine.launchCrossfade() },
+                        enabled = goEnabled,
+                        modifier = Modifier
+                            .height(40.dp)
+                            .width(80.dp)
+                            .graphicsLayer {
+                                if (goEnabled) {
+                                    shadowElevation = 18f
+                                }
+                            }
+                    ) {
+                        Text(
+                            "GO",
+                            fontSize = 14.sp,
+                            color = Color.Black
+                        )
+                    }
+                }
+
+                // Deck B
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    // Halo externe
+                    Box(
+                        modifier = Modifier
+                            .size(90.dp)
+                            .background(
+                                color = if (djState.activeSlot == 2)
+                                    Color(0x80E040FB) // violet semi-transparent
+                                else
+                                    Color.Transparent,
+                                shape = CircleShape
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        // Platine interne
+                        Box(
+                            modifier = Modifier
+                                .size(70.dp)
+                                .graphicsLayer {
+                                    rotationZ = if (djState.activeSlot == 2) angleB else 0f
+                                    val s = if (djState.activeSlot == 2) pulse else 1f
+                                    scaleX = s
+                                    scaleY = s
+                                }
+                                .background(Color(0xFF1F1F1F), CircleShape)
+                                .border(2.dp, Color(0xFFE040FB), CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(16.dp)
+                                    .background(Color.Black, CircleShape)
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Text(djState.deckBTitle, color = Color.White, fontSize = 11.sp, maxLines = 1)
                 }
             }
-        }
 
-        Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(10.dp))
 
-        // contenu dossier
-        Box(
-            modifier = Modifier.fillMaxSize()
-        ) {
-            if (currentFolderUri == null) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("Choisis un dossier pour tes titres DJ.", color = Color.Gray)
+            // timeline + stop
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(26.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                LinearProgressIndicator(
+                    progress = djState.progress.coerceIn(0f, 1f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(6.dp),
+                    color = Color(0xFFE040FB),
+                    trackColor = Color(0x33E040FB)
+                )
+                Spacer(Modifier.width(10.dp))
+                IconButton(onClick = { DjEngine.stopDj() }) {
+                    Icon(
+                        imageVector = Icons.Default.Stop,
+                        contentDescription = "Arrêter",
+                        tint = if (djState.playingUri != null) Color(0xFFFF8A80)
+                        else Color.White.copy(alpha = 0.4f)
+                    )
                 }
-            } else {
-                LazyColumn(modifier = Modifier.fillMaxSize()) {
-                    items(entries, key = { it.uri.toString() }) { entry ->
-                        if (entry.isDirectory) {
+            }
+
+            /* ---------------------- File d’attente (queue) ------------------- */
+            if (djState.queue.isNotEmpty()) {
+                Spacer(Modifier.height(6.dp))
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFF151515))
+                        .border(1.dp, Color(0xFF333333))
+                        .padding(6.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { isQueuePanelOpen = !isQueuePanelOpen },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Liste d’attente (${djState.queue.size})",
+                            color = Color(0xFF81D4FA),
+                            fontSize = 12.sp,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Text(
+                            text = if (isQueuePanelOpen) "▲" else "▼",
+                            color = Color.Gray,
+                            fontSize = 12.sp
+                        )
+                    }
+
+                    if (isQueuePanelOpen) {
+                        Spacer(Modifier.height(4.dp))
+                        djState.queue.forEach { qItem: DjQueuedTrack ->
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable {
-                                        val old = currentFolderUri
-                                        if (old != null) {
-                                            folderStack = folderStack + old
-                                        }
-                                        currentFolderUri = entry.uri
-
-                                        val cached = DjFolderCache.get(entry.uri)
-                                        if (cached != null) {
-                                            entries = cached
-                                        } else {
-                                            scope.launch {
-                                                isLoading = true
-                                                val fresh = withContext(Dispatchers.IO) {
-                                                    loadDjEntries(context, entry.uri)
-                                                }
-                                                entries = fresh
-                                                DjFolderCache.put(entry.uri, fresh)
-                                                isLoading = false
-                                            }
-                                        }
-                                    }
-                                    .padding(vertical = 8.dp),
+                                    .height(32.dp)
+                                    .clickable { DjEngine.playFromQueue(qItem) }
+                                    .padding(horizontal = 4.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.Folder,
-                                    contentDescription = null,
-                                    tint = Color.White,
-                                    modifier = Modifier.size(20.dp)
+                                Text(
+                                    text = qItem.title,
+                                    color = Color(0xFF81D4FA),
+                                    fontSize = 12.sp,
+                                    modifier = Modifier.weight(1f)
                                 )
-                                Spacer(Modifier.width(8.dp))
-                                Text(entry.name, color = Color.White)
-                            }
-                        } else {
-                            val uriStr = entry.uri.toString()
-                            val isSelected = uriStr == djState.playingUri
-                            DjTrackRow(
-                                title = entry.name,
-                                isPlaying = isSelected,
-                                onPlay = {
-                                    DjEngine.selectTrackFromList(uriStr, entry.name)
-                                },
-                                onEnqueue = {
-                                    DjEngine.addToQueue(uriStr, entry.name)
+                                IconButton(
+                                    onClick = { DjEngine.removeFromQueue(qItem) },
+                                    modifier = Modifier.size(22.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Stop,
+                                        contentDescription = "Retirer",
+                                        tint = Color(0xFFFF8A80),
+                                        modifier = Modifier.size(14.dp)
+                                    )
                                 }
-                            )
+                            }
                         }
                     }
                 }
             }
 
-            if (isLoading) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.25f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(color = Color.White)
+            Spacer(Modifier.height(8.dp))
+
+            // contenu dossier
+            Box(
+                modifier = Modifier.fillMaxSize()
+            ) {
+                if (currentFolderUri == null) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("Choisis un dossier pour tes titres DJ.", color = Color.Gray)
+                    }
+                } else {
+                    LazyColumn(modifier = Modifier.fillMaxSize()) {
+                        items(entries, key = { it.uri.toString() }) { entry ->
+                            if (entry.isDirectory) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            val old = currentFolderUri
+                                            if (old != null) {
+                                                folderStack = folderStack + old
+                                            }
+                                            currentFolderUri = entry.uri
+
+                                            val cached = DjFolderCache.get(entry.uri)
+                                            if (cached != null) {
+                                                entries = cached
+                                            } else {
+                                                scope.launch {
+                                                    isLoading = true
+                                                    val fresh = withContext(Dispatchers.IO) {
+                                                        loadDjEntries(context, entry.uri)
+                                                    }
+                                                    entries = fresh
+                                                    DjFolderCache.put(entry.uri, fresh)
+                                                    isLoading = false
+                                                }
+                                            }
+                                        }
+                                        .padding(vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Folder,
+                                        contentDescription = null,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(entry.name, color = Color.White)
+                                }
+                            } else {
+                                val uriStr = entry.uri.toString()
+                                val isSelected = uriStr == djState.playingUri
+                                DjTrackRow(
+                                    title = entry.name,
+                                    isPlaying = isSelected,
+                                    onPlay = {
+                                        DjEngine.selectTrackFromList(uriStr, entry.name)
+                                    },
+                                    onEnqueue = {
+                                        DjEngine.addToQueue(uriStr, entry.name)
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if (isLoading) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.25f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(color = Color.White)
+                    }
                 }
             }
         }

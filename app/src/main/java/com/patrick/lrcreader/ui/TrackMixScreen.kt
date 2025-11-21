@@ -14,9 +14,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.tooling.preview.Preview
+import com.patrick.lrcreader.ui.theme.DarkBlueGradientBackground
 
 /**
  * Écran de mixage pour UN titre.
@@ -70,210 +71,210 @@ fun TrackMixScreen(
     var midGain by remember { mutableStateOf(0f) }
     var highGain by remember { mutableStateOf(0f) }
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .background(Color.Black)
-            .padding(horizontal = 16.dp, vertical = 10.dp)
-    ) {
-
-        // HEADER
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+    DarkBlueGradientBackground {
+        Column(
+            modifier = modifier
+                .fillMaxSize()
+                .padding(horizontal = 16.dp, vertical = 10.dp)
         ) {
-            Text(
-                text = "Mixage du titre",
-                color = Color.White,
-                fontSize = 18.sp
-            )
-            TextButton(onClick = onClose) {
+
+            // HEADER
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Text(
-                    text = "Fermer",
-                    color = Color(0xFFFF8A80),
-                    fontSize = 13.sp
+                    text = "Mixage du titre",
+                    color = Color.White,
+                    fontSize = 18.sp
                 )
+                TextButton(onClick = onClose) {
+                    Text(
+                        text = "Fermer",
+                        color = Color(0xFFFF8A80),
+                        fontSize = 13.sp
+                    )
+                }
             }
-        }
 
-        Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(8.dp))
 
-        // ─────────── NIVEAU TITRE ───────────
-        Text(
-            text = "Niveau du titre",
-            color = Color(0xFFB0BEC5),
-            fontSize = 13.sp
-        )
-        Text(
-            text = "${if (currentTrackGainDb >= 0) "+${currentTrackGainDb}" else currentTrackGainDb} dB",
-            color = Color.White,
-            fontSize = 12.sp,
-            modifier = Modifier.padding(bottom = 4.dp)
-        )
-
-        Slider(
-            value = gainSlider,
-            onValueChange = { v ->
-                gainSlider = v
-                val newDb = (minDb + v * (maxDb - minDb)).toInt()
-                onTrackGainChange(newDb)
-            },
-            modifier = Modifier.fillMaxWidth(),
-            colors = SliderDefaults.colors(
-                thumbColor = highlightColor,
-                activeTrackColor = highlightColor.copy(alpha = 0.4f),
-                inactiveTrackColor = Color.DarkGray
-            )
-        )
-
-        Spacer(Modifier.height(18.dp))
-
-        // ─────────── TEMPO ───────────
-        Text(
-            text = "Tempo",
-            color = Color(0xFFB0BEC5),
-            fontSize = 13.sp
-        )
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+            // ─────────── NIVEAU TITRE ───────────
             Text(
-                text = String.format("x%.2f", tempo),
+                text = "Niveau du titre",
+                color = Color(0xFFB0BEC5),
+                fontSize = 13.sp
+            )
+            Text(
+                text = "${if (currentTrackGainDb >= 0) "+${currentTrackGainDb}" else currentTrackGainDb} dB",
+                color = Color.White,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(bottom = 4.dp)
+            )
+
+            Slider(
+                value = gainSlider,
+                onValueChange = { v ->
+                    gainSlider = v
+                    val newDb = (minDb + v * (maxDb - minDb)).toInt()
+                    onTrackGainChange(newDb)
+                },
+                modifier = Modifier.fillMaxWidth(),
+                colors = SliderDefaults.colors(
+                    thumbColor = highlightColor,
+                    activeTrackColor = highlightColor.copy(alpha = 0.4f),
+                    inactiveTrackColor = Color.DarkGray
+                )
+            )
+
+            Spacer(Modifier.height(18.dp))
+
+            // ─────────── TEMPO ───────────
+            Text(
+                text = "Tempo",
+                color = Color(0xFFB0BEC5),
+                fontSize = 13.sp
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = String.format("x%.2f", tempo),
+                    color = Color.White,
+                    fontSize = 12.sp
+                )
+                TextButton(onClick = {
+                    val resetTempo = 1.0f
+                    onTempoChange(resetTempo)
+                    tempoSlider = ((resetTempo - minTempo) / (maxTempo - minTempo))
+                        .coerceIn(0f, 1f)
+                }) {
+                    Text(
+                        text = "Reset 1.00x",
+                        color = Color(0xFF80CBC4),
+                        fontSize = 11.sp
+                    )
+                }
+            }
+
+            Slider(
+                value = tempoSlider,
+                onValueChange = { v ->
+                    tempoSlider = v
+                    val newTempo = (minTempo + v * (maxTempo - minTempo))
+                        .coerceIn(minTempo, maxTempo)
+                    onTempoChange(newTempo)
+                },
+                modifier = Modifier.fillMaxWidth(),
+                colors = SliderDefaults.colors(
+                    thumbColor = Color(0xFF80CBC4),
+                    activeTrackColor = Color(0xFF80CBC4).copy(alpha = 0.4f),
+                    inactiveTrackColor = Color.DarkGray
+                )
+            )
+
+            Spacer(Modifier.height(22.dp))
+
+            // ─────────── EQ VISUEL (PLACEHOLDER) ───────────
+            Text(
+                text = "Égaliseur (visuel, pour version avancée)",
+                color = Color(0xFFB0BEC5),
+                fontSize = 13.sp
+            )
+
+            Spacer(Modifier.height(8.dp))
+
+            // Graves
+            Text(
+                text = "Graves",
                 color = Color.White,
                 fontSize = 12.sp
             )
-            TextButton(onClick = {
-                val resetTempo = 1.0f
-                onTempoChange(resetTempo)
-                tempoSlider = ((resetTempo - minTempo) / (maxTempo - minTempo))
-                    .coerceIn(0f, 1f)
-            }) {
-                Text(
-                    text = "Reset 1.00x",
-                    color = Color(0xFF80CBC4),
-                    fontSize = 11.sp
+            Slider(
+                value = (lowGain + 12f) / 24f,
+                onValueChange = { v ->
+                    lowGain = v * 24f - 12f
+                },
+                modifier = Modifier.fillMaxWidth(),
+                colors = SliderDefaults.colors(
+                    thumbColor = Color(0xFF4CAF50),
+                    activeTrackColor = Color(0xFF4CAF50).copy(alpha = 0.4f),
+                    inactiveTrackColor = Color.DarkGray
                 )
-            }
+            )
+            Text(
+                text = "${if (lowGain >= 0) "+${lowGain.toInt()}" else lowGain.toInt()} dB",
+                color = Color(0xFFCFD8DC),
+                fontSize = 11.sp
+            )
+
+            Spacer(Modifier.height(10.dp))
+
+            // Médiums
+            Text(
+                text = "Médiums",
+                color = Color.White,
+                fontSize = 12.sp
+            )
+            Slider(
+                value = (midGain + 12f) / 24f,
+                onValueChange = { v ->
+                    midGain = v * 24f - 12f
+                },
+                modifier = Modifier.fillMaxWidth(),
+                colors = SliderDefaults.colors(
+                    thumbColor = Color(0xFFFFC107),
+                    activeTrackColor = Color(0xFFFFC107).copy(alpha = 0.4f),
+                    inactiveTrackColor = Color.DarkGray
+                )
+            )
+            Text(
+                text = "${if (midGain >= 0) "+${midGain.toInt()}" else midGain.toInt()} dB",
+                color = Color(0xFFCFD8DC),
+                fontSize = 11.sp
+            )
+
+            Spacer(Modifier.height(10.dp))
+
+            // Aigus
+            Text(
+                text = "Aigus",
+                color = Color.White,
+                fontSize = 12.sp
+            )
+            Slider(
+                value = (highGain + 12f) / 24f,
+                onValueChange = { v ->
+                    highGain = v * 24f - 12f
+                },
+                modifier = Modifier.fillMaxWidth(),
+                colors = SliderDefaults.colors(
+                    thumbColor = Color(0xFF42A5F5),
+                    activeTrackColor = Color(0xFF42A5F5).copy(alpha = 0.4f),
+                    inactiveTrackColor = Color.DarkGray
+                )
+            )
+            Text(
+                text = "${if (highGain >= 0) "+${highGain.toInt()}" else highGain.toInt()} dB",
+                color = Color(0xFFCFD8DC),
+                fontSize = 11.sp
+            )
+
+            Spacer(Modifier.height(8.dp))
+
+            Text(
+                text = "L’EQ sera câblé plus tard (version avancée).",
+                color = Color(0xFF78909C),
+                fontSize = 11.sp
+            )
         }
-
-        Slider(
-            value = tempoSlider,
-            onValueChange = { v ->
-                tempoSlider = v
-                val newTempo = (minTempo + v * (maxTempo - minTempo))
-                    .coerceIn(minTempo, maxTempo)
-                onTempoChange(newTempo)
-            },
-            modifier = Modifier.fillMaxWidth(),
-            colors = SliderDefaults.colors(
-                thumbColor = Color(0xFF80CBC4),
-                activeTrackColor = Color(0xFF80CBC4).copy(alpha = 0.4f),
-                inactiveTrackColor = Color.DarkGray
-            )
-        )
-
-        Spacer(Modifier.height(22.dp))
-
-        // ─────────── EQ VISUEL (PLACEHOLDER) ───────────
-        Text(
-            text = "Égaliseur (visuel, pour version avancée)",
-            color = Color(0xFFB0BEC5),
-            fontSize = 13.sp
-        )
-
-        Spacer(Modifier.height(8.dp))
-
-        // Graves
-        Text(
-            text = "Graves",
-            color = Color.White,
-            fontSize = 12.sp
-        )
-        Slider(
-            value = (lowGain + 12f) / 24f,
-            onValueChange = { v ->
-                lowGain = v * 24f - 12f
-            },
-            modifier = Modifier.fillMaxWidth(),
-            colors = SliderDefaults.colors(
-                thumbColor = Color(0xFF4CAF50),
-                activeTrackColor = Color(0xFF4CAF50).copy(alpha = 0.4f),
-                inactiveTrackColor = Color.DarkGray
-            )
-        )
-        Text(
-            text = "${if (lowGain >= 0) "+${lowGain.toInt()}" else lowGain.toInt()} dB",
-            color = Color(0xFFCFD8DC),
-            fontSize = 11.sp
-        )
-
-        Spacer(Modifier.height(10.dp))
-
-        // Médiums
-        Text(
-            text = "Médiums",
-            color = Color.White,
-            fontSize = 12.sp
-        )
-        Slider(
-            value = (midGain + 12f) / 24f,
-            onValueChange = { v ->
-                midGain = v * 24f - 12f
-            },
-            modifier = Modifier.fillMaxWidth(),
-            colors = SliderDefaults.colors(
-                thumbColor = Color(0xFFFFC107),
-                activeTrackColor = Color(0xFFFFC107).copy(alpha = 0.4f),
-                inactiveTrackColor = Color.DarkGray
-            )
-        )
-        Text(
-            text = "${if (midGain >= 0) "+${midGain.toInt()}" else midGain.toInt()} dB",
-            color = Color(0xFFCFD8DC),
-            fontSize = 11.sp
-        )
-
-        Spacer(Modifier.height(10.dp))
-
-        // Aigus
-        Text(
-            text = "Aigus",
-            color = Color.White,
-            fontSize = 12.sp
-        )
-        Slider(
-            value = (highGain + 12f) / 24f,
-            onValueChange = { v ->
-                highGain = v * 24f - 12f
-            },
-            modifier = Modifier.fillMaxWidth(),
-            colors = SliderDefaults.colors(
-                thumbColor = Color(0xFF42A5F5),
-                activeTrackColor = Color(0xFF42A5F5).copy(alpha = 0.4f),
-                inactiveTrackColor = Color.DarkGray
-            )
-        )
-        Text(
-            text = "${if (highGain >= 0) "+${highGain.toInt()}" else highGain.toInt()} dB",
-            color = Color(0xFFCFD8DC),
-            fontSize = 11.sp
-        )
-
-        Spacer(Modifier.height(8.dp))
-
-        Text(
-            text = "L’EQ sera câblé plus tard (version avancée).",
-            color = Color(0xFF78909C),
-            fontSize = 11.sp
-        )
     }
-
 }
 
 @Preview(

@@ -15,9 +15,19 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -34,7 +44,13 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -44,6 +60,7 @@ import androidx.compose.ui.unit.sp
 import androidx.documentfile.provider.DocumentFile
 import com.patrick.lrcreader.core.BackupFolderPrefs
 import com.patrick.lrcreader.core.PlaylistRepository
+import com.patrick.lrcreader.ui.theme.DarkBlueGradientBackground
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -85,7 +102,7 @@ fun LibraryScreen(
     var actionsExpanded by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(false) }
 
-    // hauteur de la barre flottante (utilisée aussi pour le padding liste)
+    // hauteur de la barre flottante
     val bottomBarHeight = 56.dp
 
     val pickFolderLauncher = rememberLauncherForActivityResult(
@@ -140,248 +157,278 @@ fun LibraryScreen(
         }
     }
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .background(Color.Black)
-            .padding(16.dp)
-    ) {
-        // HEADER
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
+    DarkBlueGradientBackground {
+        Column(
+            modifier = modifier
+                .fillMaxSize()
+                .padding(16.dp)
         ) {
-            if (folderStack.isNotEmpty()) {
-                IconButton(onClick = {
-                    scope.launch {
-                        isLoading = true
-                        val newStack = folderStack.dropLast(1)
-                        val parentUri = newStack.lastOrNull() ?: initialFolder
-                        currentFolderUri = parentUri
-                        entries = parentUri?.let { uri ->
-                            LibraryFolderCache.get(uri)
-                                ?: withContext(Dispatchers.IO) { listEntriesInFolder(context, uri) }
-                                    .also { LibraryFolderCache.put(uri, it) }
-                        } ?: emptyList()
-                        folderStack = newStack
-                        selectedSongs = emptySet()
-                        delay(200); isLoading = false
+            // HEADER
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (folderStack.isNotEmpty()) {
+                    IconButton(onClick = {
+                        scope.launch {
+                            isLoading = true
+                            val newStack = folderStack.dropLast(1)
+                            val parentUri = newStack.lastOrNull() ?: initialFolder
+                            currentFolderUri = parentUri
+                            entries = parentUri?.let { uri ->
+                                LibraryFolderCache.get(uri)
+                                    ?: withContext(Dispatchers.IO) {
+                                        listEntriesInFolder(context, uri)
+                                    }.also { LibraryFolderCache.put(uri, it) }
+                            } ?: emptyList()
+                            folderStack = newStack
+                            selectedSongs = emptySet()
+                            delay(200); isLoading = false
+                        }
+                    }) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Retour",
+                            tint = Color.White
+                        )
                     }
-                }) {
+                }
+
+                Text(
+                    "Bibliothèque",
+                    color = Color.White,
+                    fontSize = 20.sp,
+                    modifier = Modifier.weight(1f)
+                )
+
+                IconButton(onClick = { actionsExpanded = true }) {
                     Icon(
-                        Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Retour",
+                        Icons.Default.MoreVert,
+                        contentDescription = "Actions",
                         tint = Color.White
                     )
                 }
+
+                DropdownMenu(
+                    expanded = actionsExpanded,
+                    onDismissRequest = { actionsExpanded = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Ajouter un dossier") },
+                        onClick = {
+                            actionsExpanded = false
+                            pickFolderLauncher.launch(null)
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Oublier le dossier") },
+                        onClick = {
+                            actionsExpanded = false
+                            clearPersistedUris(context)
+                            BackupFolderPrefs.clear(context)
+                            currentFolderUri = null
+                            entries = emptyList()
+                            selectedSongs = emptySet()
+                            folderStack = emptyList()
+                            LibraryFolderCache.clear()
+                        }
+                    )
+                }
             }
-
-            Text(
-                "Bibliothèque",
-                color = Color.White,
-                fontSize = 20.sp,
-                modifier = Modifier.weight(1f)
-            )
-
-            IconButton(onClick = { actionsExpanded = true }) {
-                Icon(Icons.Default.MoreVert, contentDescription = "Actions", tint = Color.White)
-            }
-
-            DropdownMenu(expanded = actionsExpanded, onDismissRequest = { actionsExpanded = false }) {
-                DropdownMenuItem(
-                    text = { Text("Ajouter un dossier") },
-                    onClick = { actionsExpanded = false; pickFolderLauncher.launch(null) }
-                )
-                DropdownMenuItem(
-                    text = { Text("Oublier le dossier") },
-                    onClick = {
-                        actionsExpanded = false
-                        clearPersistedUris(context)
-                        BackupFolderPrefs.clear(context)
-                        currentFolderUri = null
-                        entries = emptyList()
-                        selectedSongs = emptySet()
-                        folderStack = emptyList()
-                        LibraryFolderCache.clear()
-                    }
-                )
-            }
-        }
-
-        Spacer(Modifier.height(12.dp))
-
-        if (currentFolderUri == null) {
-            Text(
-                "Aucun dossier pour l’instant.\nAjoute ton dossier Music → puis tes MP3/WAV.",
-                color = Color.Gray
-            )
-        } else {
-            Text(
-                text = "Dossier actuel : " +
-                        (DocumentFile.fromTreeUri(context, currentFolderUri!!)?.name ?: "…"),
-                color = Color.Gray,
-                fontSize = 12.sp
-            )
 
             Spacer(Modifier.height(12.dp))
 
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-            ) {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(
-                        bottom = if (selectedSongs.isNotEmpty()) bottomBarHeight else 0.dp
-                    )
+            if (currentFolderUri == null) {
+                Text(
+                    "Aucun dossier pour l’instant.\nAjoute ton dossier Music → puis tes MP3/WAV.",
+                    color = Color(0xFFCFD8DC)
+                )
+            } else {
+                Text(
+                    text = "Dossier actuel : " +
+                            (DocumentFile.fromTreeUri(context, currentFolderUri!!)?.name ?: "…"),
+                    color = Color(0xFFB0BEC5),
+                    fontSize = 12.sp
+                )
+
+                Spacer(Modifier.height(12.dp))
+
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
                 ) {
-                    items(entries, key = { it.uri.toString() }) { entry ->
-                        if (entry.isDirectory) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        scope.launch {
-                                            isLoading = true
-                                            currentFolderUri?.let { folderStack = folderStack + it }
-                                            currentFolderUri = entry.uri
-                                            val cached = LibraryFolderCache.get(entry.uri)
-                                            entries = if (cached != null) cached else withContext(
-                                                Dispatchers.IO
-                                            ) {
-                                                listEntriesInFolder(context, entry.uri)
-                                            }.also { LibraryFolderCache.put(entry.uri, it) }
-                                            selectedSongs = emptySet()
-                                            delay(200); isLoading = false
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(
+                            bottom = if (selectedSongs.isNotEmpty()) bottomBarHeight else 0.dp
+                        )
+                    ) {
+                        items(entries, key = { it.uri.toString() }) { entry ->
+                            if (entry.isDirectory) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            scope.launch {
+                                                isLoading = true
+                                                currentFolderUri?.let {
+                                                    folderStack = folderStack + it
+                                                }
+                                                currentFolderUri = entry.uri
+                                                val cached = LibraryFolderCache.get(entry.uri)
+                                                entries =
+                                                    if (cached != null) cached
+                                                    else withContext(Dispatchers.IO) {
+                                                        listEntriesInFolder(
+                                                            context,
+                                                            entry.uri
+                                                        )
+                                                    }.also {
+                                                        LibraryFolderCache.put(entry.uri, it)
+                                                    }
+                                                selectedSongs = emptySet()
+                                                delay(200); isLoading = false
+                                            }
+                                        }
+                                        .padding(vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        Icons.Default.Folder,
+                                        contentDescription = null,
+                                        tint = Color.White.copy(alpha = 0.9f),
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                    Spacer(Modifier.width(10.dp))
+                                    Text(entry.name, color = Color.White, fontSize = 15.sp)
+                                }
+                            } else {
+                                val uri = entry.uri
+                                val isSelected = selectedSongs.contains(uri)
+
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .combinedClickable(
+                                            onClick = {
+                                                selectedSongs =
+                                                    if (isSelected) selectedSongs - uri
+                                                    else selectedSongs + uri
+                                            },
+                                            onLongClick = {
+                                                selectedSongs = setOf(uri)
+                                                showAssignDialog = true
+                                            }
+                                        )
+                                        .padding(vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(20.dp)
+                                            .background(
+                                                if (isSelected)
+                                                    Color.White.copy(alpha = 0.22f)
+                                                else
+                                                    Color.Transparent
+                                            )
+                                            .border(
+                                                1.dp,
+                                                Color.White.copy(alpha = 0.8f)
+                                            ),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        if (isSelected) {
+                                            Text(
+                                                "✕",
+                                                color = Color.White,
+                                                fontSize = 13.sp,
+                                                modifier = Modifier.offset(y = (-6).dp)
+                                            )
                                         }
                                     }
-                                    .padding(vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    Icons.Default.Folder,
-                                    contentDescription = null,
-                                    tint = Color.White.copy(alpha = 0.9f),
-                                    modifier = Modifier.size(22.dp)
-                                )
-                                Spacer(Modifier.width(10.dp))
-                                Text(entry.name, color = Color.White, fontSize = 15.sp)
-                            }
-                        } else {
-                            val uri = entry.uri
-                            val isSelected = selectedSongs.contains(uri)
-
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .combinedClickable(
-                                        onClick = {
-                                            selectedSongs =
-                                                if (isSelected) selectedSongs - uri
-                                                else selectedSongs + uri
-                                        },
-                                        onLongClick = {
-                                            selectedSongs = setOf(uri)
-                                            showAssignDialog = true
-                                        }
+                                    Spacer(Modifier.width(10.dp))
+                                    Text(
+                                        entry.name,
+                                        color = Color.White,
+                                        modifier = Modifier.weight(1f)
                                     )
-                                    .padding(vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                                }
+                            }
+                        }
+                    }
+
+                    // spinner
+                    if (isLoading) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color.Black.copy(alpha = 0.25f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                CircularProgressIndicator(color = Color.White)
+                                Spacer(Modifier.height(12.dp))
+                                Text(
+                                    "Chargement des fichiers audio…",
+                                    color = Color.White.copy(alpha = 0.8f),
+                                    fontSize = 16.sp
+                                )
+                            }
+                        }
+                    }
+
+                    // ——— BARRE FLOTTANTE ———
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                    ) {
+                        androidx.compose.animation.AnimatedVisibility(
+                            visible = selectedSongs.isNotEmpty(),
+                            modifier = Modifier.fillMaxWidth(),
+                            enter = slideInVertically { it } + fadeIn(),
+                            exit = slideOutVertically { it } + fadeOut()
+                        ) {
+                            BottomAppBar(
+                                containerColor = Color(0xFF1E1E1E),
+                                contentColor = Color.White,
+                                tonalElevation = 6.dp,
+                                modifier = Modifier
+                                    .navigationBarsPadding()
+                                    .height(bottomBarHeight)
                             ) {
                                 Box(
                                     modifier = Modifier
-                                        .size(20.dp)
-                                        .background(
-                                            if (isSelected) Color.White.copy(alpha = 0.22f)
-                                            else Color.Transparent
-                                        )
-                                        .border(1.dp, Color.White.copy(alpha = 0.8f)),
+                                        .padding(start = 16.dp)
+                                        .size(28.dp)
+                                        .border(
+                                            width = 1.dp,
+                                            color = Color.White.copy(alpha = 0.85f),
+                                            shape = CircleShape
+                                        ),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    if (isSelected) {
-                                        Text(
-                                            "✕",
-                                            color = Color.White,
-                                            fontSize = 13.sp,
-                                            modifier = Modifier.offset(y = (-6).dp)
-                                        )
-                                    }
+                                    Text(
+                                        text = selectedSongs.size.toString(),
+                                        color = Color.White,
+                                        fontSize = 13.sp
+                                    )
                                 }
-                                Spacer(Modifier.width(10.dp))
-                                Text(entry.name, color = Color.White, modifier = Modifier.weight(1f))
-                            }
-                        }
-                    }
-                }
 
-                // spinner
-                if (isLoading) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(Color.Black.copy(alpha = 0.25f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            CircularProgressIndicator(color = Color.White)
-                            Spacer(Modifier.height(12.dp))
-                            Text(
-                                "Chargement des fichiers audio…",
-                                color = Color.White.copy(alpha = 0.8f),
-                                fontSize = 16.sp
-                            )
-                        }
-                    }
-                }
+                                Spacer(Modifier.weight(1f))
 
-                // ——— BARRE FLOTTANTE ———
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)   // on aligne le conteneur dans la Box
-                        .fillMaxWidth()
-                ) {
-                    androidx.compose.animation.AnimatedVisibility(
-                        visible = selectedSongs.isNotEmpty(),
-                        modifier = Modifier.fillMaxWidth(),            // <- paramètre nommé
-                        enter = slideInVertically { it } + fadeIn(),
-                        exit  = slideOutVertically { it } + fadeOut()
-                    ) {
-                        BottomAppBar(
-                            containerColor = Color(0xFF1E1E1E),
-                            contentColor = Color.White,
-                            tonalElevation = 6.dp,
-                            modifier = Modifier
-                                .navigationBarsPadding()
-                                .height(bottomBarHeight)
-                        ) {
-                            // pastille compteur compacte
-                            Box(
-                                modifier = Modifier
-                                    .padding(start = 16.dp)
-                                    .size(28.dp)
-                                    .border(
-                                        width = 1.dp,
-                                        color = Color.White.copy(alpha = 0.85f),
-                                        shape = CircleShape
-                                    ),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = selectedSongs.size.toString(),
-                                    color = Color.White,
-                                    fontSize = 13.sp
-                                )
-                            }
-
-                            Spacer(Modifier.weight(1f))
-
-                            TextButton(onClick = { showAssignDialog = true }) {
-                                Text("Attribuer", color = Color.White)
-                            }
-                            Spacer(Modifier.width(8.dp))
-                            TextButton(onClick = { selectedSongs = emptySet() }) {
-                                Text("Désélect.", color = Color(0xFFB0B0B0))
+                                TextButton(onClick = { showAssignDialog = true }) {
+                                    Text("Attribuer", color = Color.White)
+                                }
+                                Spacer(Modifier.width(8.dp))
+                                TextButton(onClick = { selectedSongs = emptySet() }) {
+                                    Text(
+                                        "Désélect.",
+                                        color = Color(0xFFB0B0B0)
+                                    )
+                                }
                             }
                         }
                     }
@@ -442,19 +489,16 @@ private fun listEntriesInFolder(context: Context, folderUri: Uri): List<LibraryE
     val docFile = DocumentFile.fromTreeUri(context, folderUri) ?: return emptyList()
     val all = docFile.listFiles()
 
-    // 1) dossiers
     val folders = all
         .filter { it.isDirectory }
         .sortedBy { it.name?.lowercase() ?: "" }
         .map { LibraryEntry(it.uri, it.name ?: "Dossier", true) }
 
-    // 2) .json
     val jsonFiles = all
         .filter { it.isFile && it.name?.endsWith(".json", ignoreCase = true) == true }
         .sortedBy { it.name?.lowercase() ?: "" }
         .map { LibraryEntry(it.uri, it.name ?: "sauvegarde.json", false) }
 
-    // 3) audio
     val audioFiles = all
         .filter { file ->
             file.isFile && file.name?.let { name ->

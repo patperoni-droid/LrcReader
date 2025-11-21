@@ -44,6 +44,7 @@ import com.patrick.lrcreader.core.LrcCleaner
 import com.patrick.lrcreader.core.LrcLine
 import com.patrick.lrcreader.core.LrcStorage
 import com.patrick.lrcreader.core.pauseWithFade
+import com.patrick.lrcreader.ui.theme.DarkBlueGradientBackground
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.abs
@@ -241,165 +242,162 @@ fun PlayerScreen(
     // ─────────────────────────────
     //  LAYOUT GLOBAL
     // ─────────────────────────────
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .background(Color.Black)
-    ) {
-        if (isEditingLyrics) {
-            // ========= MODE ÉDITION =========
-            LyricsEditorSection(
-                highlightColor = highlightColor,
-                currentTrackUri = currentTrackUri,
-                isEditingLyrics = isEditingLyrics,
-                onCloseEditor = { isEditingLyrics = false },
-                rawLyricsText = rawLyricsText,
-                onRawLyricsTextChange = { rawLyricsText = it },
-                editingLines = editingLines,
-                onEditingLinesChange = { editingLines = it },
-                currentEditTab = currentEditTab,
-                onCurrentEditTabChange = { currentEditTab = it },
-                mediaPlayer = mediaPlayer,
-                positionMs = positionMs,
-                durationMs = durationMs,
-                onIsPlayingChange = onIsPlayingChange,
-                onSaveSortedLines = { sorted ->
-                    if (currentTrackUri != null) {
-                        runCatching {
-                            LrcStorage.saveForTrack(context, currentTrackUri, sorted)
-                        }
-                    }
-                    onParsedLinesChange(sorted)
-                    isEditingLyrics = false
-                }
-            )
-        } else {
-            // ========= MODE LECTURE NORMAL =========
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 16.dp, vertical = 6.dp)
-            ) {
-
-                ReaderHeader(
-                    isConcertMode = isConcertMode,
-                    onToggleConcertMode = {
-                        isConcertMode = !isConcertMode
-                        DisplayPrefs.setConcertMode(context, isConcertMode)
-                    },
-                    isContinuousScroll = isContinuousScroll,
-                    onToggleContinuousScroll = { isContinuousScroll = !isContinuousScroll },
+    DarkBlueGradientBackground {
+        Box(
+            modifier = modifier
+                .fillMaxSize()
+        ) {
+            if (isEditingLyrics) {
+                // ========= MODE ÉDITION =========
+                LyricsEditorSection(
                     highlightColor = highlightColor,
-                    onOpenMix = { showMixScreen = true },
-                    onOpenEditor = {
-                        if (parsedLines.isNotEmpty()) {
-                            rawLyricsText = parsedLines.joinToString("\n") { it.text }
-                            editingLines = parsedLines
-                        } else {
-                            if (rawLyricsText.isBlank() && editingLines.isEmpty()) {
-                                rawLyricsText = ""
-                                editingLines = emptyList()
-                            }
-                        }
-                        currentEditTab = 0
-                        isEditingLyrics = true
-                    }
-                )
-
-                LyricsArea(
-                    modifier = Modifier.weight(1f),
-                    scrollState = scrollState,
-                    parsedLines = parsedLines,
-                    isContinuousScroll = isContinuousScroll,
-                    isConcertMode = isConcertMode,
-                    currentLrcIndex = currentLrcIndex,
-                    baseTopSpacerPx = baseTopSpacerPx,
-                    lyricsBoxHeightPx = lyricsBoxHeightPx,
-                    onLyricsBoxHeightChange = { lyricsBoxHeightPx = it },
-                    highlightColor = highlightColor,
-                    onLineClick = { index, timeMs ->
-                        seekAndCenter(timeMs.toInt(), index)
-                    }
-                )
-                // Timeline
-                TimeBar(
-                    positionMs = if (isDragging) dragPosMs else positionMs,
+                    currentTrackUri = currentTrackUri,
+                    isEditingLyrics = isEditingLyrics,
+                    onCloseEditor = { isEditingLyrics = false },
+                    rawLyricsText = rawLyricsText,
+                    onRawLyricsTextChange = { rawLyricsText = it },
+                    editingLines = editingLines,
+                    onEditingLinesChange = { editingLines = it },
+                    currentEditTab = currentEditTab,
+                    onCurrentEditTabChange = { currentEditTab = it },
+                    mediaPlayer = mediaPlayer,
+                    positionMs = positionMs,
                     durationMs = durationMs,
-                    onSeekLivePreview = { newPos ->
-                        isDragging = true
-                        dragPosMs = newPos
-                    },
-                    onSeekCommit = { newPos ->
-                        isDragging = false
-                        val safe = when {
-                            durationMs <= 0 -> 0
-                            else -> min(max(newPos, 0), durationMs)
-                        }
-                        runCatching { mediaPlayer.seekTo(safe) }
-                        positionMs = safe
-                    },
-                    highlightColor = highlightColor
-                )
-
-                // ► Play / Pause + Next / Prev juste sous la timeline
-                PlayerControls(
-                    isPlaying = isPlaying,
-                    onPlayPause = {
-                        if (mediaPlayer.isPlaying) {
-                            pauseWithFade(scope, mediaPlayer, 400L) {
-                                onIsPlayingChange(false)
-                                runCatching { FillerSoundManager.startIfConfigured(context) }
+                    onIsPlayingChange = onIsPlayingChange,
+                    onSaveSortedLines = { sorted ->
+                        if (currentTrackUri != null) {
+                            runCatching {
+                                LrcStorage.saveForTrack(context, currentTrackUri, sorted)
                             }
-                        } else {
-                            if (durationMs > 0) {
-                                mediaPlayer.setVolume(1f, 1f)
+                        }
+                        onParsedLinesChange(sorted)
+                        isEditingLyrics = false
+                    }
+                )
+            } else {
+                // ========= MODE LECTURE NORMAL =========
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 16.dp, vertical = 6.dp)
+                ) {
+
+                    ReaderHeader(
+                        isConcertMode = isConcertMode,
+                        onToggleConcertMode = {
+                            isConcertMode = !isConcertMode
+                            DisplayPrefs.setConcertMode(context, isConcertMode)
+                        },
+                        isContinuousScroll = isContinuousScroll,
+                        onToggleContinuousScroll = { isContinuousScroll = !isContinuousScroll },
+                        highlightColor = highlightColor,
+                        onOpenMix = { showMixScreen = true },
+                        onOpenEditor = {
+                            if (parsedLines.isNotEmpty()) {
+                                rawLyricsText = parsedLines.joinToString("\n") { it.text }
+                                editingLines = parsedLines
+                            } else {
+                                if (rawLyricsText.isBlank() && editingLines.isEmpty()) {
+                                    rawLyricsText = ""
+                                    editingLines = emptyList()
+                                }
+                            }
+                            currentEditTab = 0
+                            isEditingLyrics = true
+                        }
+                    )
+
+                    LyricsArea(
+                        modifier = Modifier.weight(1f),
+                        scrollState = scrollState,
+                        parsedLines = parsedLines,
+                        isContinuousScroll = isContinuousScroll,
+                        isConcertMode = isConcertMode,
+                        currentLrcIndex = currentLrcIndex,
+                        baseTopSpacerPx = baseTopSpacerPx,
+                        lyricsBoxHeightPx = lyricsBoxHeightPx,
+                        onLyricsBoxHeightChange = { lyricsBoxHeightPx = it },
+                        highlightColor = highlightColor,
+                        onLineClick = { index, timeMs ->
+                            seekAndCenter(timeMs.toInt(), index)
+                        }
+                    )
+                    // Timeline
+                    TimeBar(
+                        positionMs = if (isDragging) dragPosMs else positionMs,
+                        durationMs = durationMs,
+                        onSeekLivePreview = { newPos ->
+                            isDragging = true
+                            dragPosMs = newPos
+                        },
+                        onSeekCommit = { newPos ->
+                            isDragging = false
+                            val safe = when {
+                                durationMs <= 0 -> 0
+                                else -> min(max(newPos, 0), durationMs)
+                            }
+                            runCatching { mediaPlayer.seekTo(safe) }
+                            positionMs = safe
+                        },
+                        highlightColor = highlightColor
+                    )
+
+                    // ► Play / Pause + Next / Prev juste sous la timeline
+                    PlayerControls(
+                        isPlaying = isPlaying,
+                        onPlayPause = {
+                            if (mediaPlayer.isPlaying) {
+                                pauseWithFade(scope, mediaPlayer, 400L) {
+                                    onIsPlayingChange(false)
+                                    runCatching { FillerSoundManager.startIfConfigured(context) }
+                                }
+                            } else {
+                                if (durationMs > 0) {
+                                    mediaPlayer.setVolume(1f, 1f)
+                                    mediaPlayer.start()
+                                    onIsPlayingChange(true)
+                                    if (isContinuousScroll) {
+                                        centerCurrentLineAnimated()
+                                    } else {
+                                        centerCurrentLineImmediate()
+                                    }
+                                    runCatching { FillerSoundManager.fadeOutAndStop(400) }
+                                }
+                            }
+                        },
+                        onPrev = {
+                            mediaPlayer.seekTo(0)
+                            if (!mediaPlayer.isPlaying) {
                                 mediaPlayer.start()
                                 onIsPlayingChange(true)
-                                if (isContinuousScroll) {
-                                    centerCurrentLineAnimated()
-                                } else {
-                                    centerCurrentLineImmediate()
-                                }
                                 runCatching { FillerSoundManager.fadeOutAndStop(400) }
                             }
+                            if (isContinuousScroll) {
+                                centerCurrentLineAnimated()
+                            } else {
+                                centerCurrentLineImmediate()
+                            }
+                        },
+                        onNext = {
+                            mediaPlayer.seekTo(max(durationMs - 1, 0))
+                            mediaPlayer.pause()
+                            onIsPlayingChange(false)
+                            runCatching { FillerSoundManager.startIfConfigured(context) }
                         }
-                    },
-                    onPrev = {
-                        mediaPlayer.seekTo(0)
-                        if (!mediaPlayer.isPlaying) {
-                            mediaPlayer.start()
-                            onIsPlayingChange(true)
-                            runCatching { FillerSoundManager.fadeOutAndStop(400) }
-                        }
-                        if (isContinuousScroll) {
-                            centerCurrentLineAnimated()
-                        } else {
-                            centerCurrentLineImmediate()
-                        }
-                    },
-                    onNext = {
-                        mediaPlayer.seekTo(max(durationMs - 1, 0))
-                        mediaPlayer.pause()
-                        onIsPlayingChange(false)
-                        runCatching { FillerSoundManager.startIfConfigured(context) }
-                    }
-                )
+                    )
+                }
 
-
-
-
-            }
-
-            if (showMixScreen) {
-                TrackMixScreen(
-                    modifier = Modifier.fillMaxSize(),
-                    highlightColor = highlightColor,
-                    currentTrackGainDb = currentTrackGainDb,
-                    onTrackGainChange = onTrackGainChange,
-                    tempo = tempo,
-                    onTempoChange = onTempoChange,
-                    onClose = { showMixScreen = false }
-                )
+                if (showMixScreen) {
+                    TrackMixScreen(
+                        modifier = Modifier.fillMaxSize(),
+                        highlightColor = highlightColor,
+                        currentTrackGainDb = currentTrackGainDb,
+                        onTrackGainChange = onTrackGainChange,
+                        tempo = tempo,
+                        onTempoChange = onTempoChange,
+                        onClose = { showMixScreen = false }
+                    )
+                }
             }
         }
     }
@@ -936,10 +934,6 @@ private fun LyricsArea(
         }
     }
 }
-
-
-
-
 
 @Composable
 private fun PlayerControls(

@@ -1,5 +1,6 @@
 package com.patrick.lrcreader.ui
 
+import com.patrick.lrcreader.ui.theme.DarkBlueGradientBackground
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -32,7 +33,7 @@ fun AllPlaylistsScreen(
     modifier: Modifier = Modifier,
     onPlaylistClick: (String) -> Unit
 ) {
-    // on écoute les changements du repo
+    // écoute les changements du repo
     val version by PlaylistRepository.version
     val playlists = remember(version) { PlaylistRepository.getPlaylists() }
 
@@ -44,135 +45,136 @@ fun AllPlaylistsScreen(
     var renameTarget by remember { mutableStateOf<String?>(null) }
     var renameText by remember { mutableStateOf("") }
 
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .background(Color.Black)
-            .padding(16.dp)
-    ) {
-        Column(
-            modifier = Modifier.fillMaxSize()
+    DarkBlueGradientBackground {
+        Box(
+            modifier = modifier
+                .fillMaxSize()
+                .padding(16.dp)
         ) {
-            Text(
-                text = "Vos listes de lecture",
-                color = Color(0xFF1DB954),
-                fontSize = 22.sp
-            )
-
-            Spacer(Modifier.height(16.dp))
-
-            // ---- bouton "nouvelle liste" ----
-            OutlinedButton(
-                onClick = { showCreateDialog = true },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(46.dp),
-                colors = ButtonDefaults.outlinedButtonColors(
-                    containerColor = Color.Transparent,
-                    contentColor = Color.White
-                )
+            Column(
+                modifier = Modifier.fillMaxSize()
             ) {
-                Icon(
-                    Icons.Filled.Add,
-                    contentDescription = null
-                )
-                Spacer(Modifier.width(8.dp))
-                Text("Nouvelle liste de lecture")
-            }
-
-            Spacer(Modifier.height(16.dp))
-
-            if (playlists.isEmpty()) {
                 Text(
-                    text = "Aucune liste pour l’instant.",
-                    color = Color.Gray
+                    text = "Vos listes de lecture",
+                    color = Color(0xFF1DB954),
+                    fontSize = 22.sp
                 )
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+
+                Spacer(Modifier.height(16.dp))
+
+                // ---- bouton "nouvelle liste" ----
+                OutlinedButton(
+                    onClick = { showCreateDialog = true },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(46.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = Color.Transparent,
+                        contentColor = Color.White
+                    )
                 ) {
-                    items(playlists) { name ->
-                        PlaylistRow(
-                            name = name,
-                            onClick = { onPlaylistClick(name) },
-                            onRename = {
-                                renameTarget = name
-                                renameText = name
-                            }
-                        )
+                    Icon(
+                        Icons.Filled.Add,
+                        contentDescription = null
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text("Nouvelle liste de lecture")
+                }
+
+                Spacer(Modifier.height(16.dp))
+
+                if (playlists.isEmpty()) {
+                    Text(
+                        text = "Aucune liste pour l’instant.",
+                        color = Color.Gray
+                    )
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(playlists) { name ->
+                            PlaylistRow(
+                                name = name,
+                                onClick = { onPlaylistClick(name) },
+                                onRename = {
+                                    renameTarget = name
+                                    renameText = name
+                                }
+                            )
+                        }
                     }
                 }
             }
-        }
 
-        // ---- dialog création ----
-        if (showCreateDialog) {
-            AlertDialog(
-                onDismissRequest = { showCreateDialog = false },
-                title = { Text("Nouvelle liste", color = Color.White) },
-                text = {
-                    OutlinedTextField(
-                        value = newName,
-                        onValueChange = { newName = it },
-                        label = { Text("Nom de la liste") },
-                        singleLine = true
-                    )
-                },
-                confirmButton = {
-                    TextButton(onClick = {
-                        val clean = newName.trim()
-                        if (clean.isNotEmpty()) {
-                            PlaylistRepository.addPlaylist(clean)
-                            newName = ""
+            // ---- dialog création ----
+            if (showCreateDialog) {
+                AlertDialog(
+                    onDismissRequest = { showCreateDialog = false },
+                    title = { Text("Nouvelle liste", color = Color.White) },
+                    text = {
+                        OutlinedTextField(
+                            value = newName,
+                            onValueChange = { newName = it },
+                            label = { Text("Nom de la liste") },
+                            singleLine = true
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            val clean = newName.trim()
+                            if (clean.isNotEmpty()) {
+                                PlaylistRepository.addPlaylist(clean)
+                                newName = ""
+                            }
+                            showCreateDialog = false
+                        }) {
+                            Text("OK", color = Color.White)
                         }
-                        showCreateDialog = false
-                    }) {
-                        Text("OK", color = Color.White)
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showCreateDialog = false }) {
-                        Text("Annuler", color = Color.Gray)
-                    }
-                },
-                containerColor = Color(0xFF222222)
-            )
-        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showCreateDialog = false }) {
+                            Text("Annuler", color = Color.Gray)
+                        }
+                    },
+                    containerColor = Color(0xFF222222)
+                )
+            }
 
-        // ---- dialog renommage ----
-        if (renameTarget != null) {
-            AlertDialog(
-                onDismissRequest = { renameTarget = null },
-                title = { Text("Renommer la liste", color = Color.White) },
-                text = {
-                    OutlinedTextField(
-                        value = renameText,
-                        onValueChange = { renameText = it },
-                        label = { Text("Nouveau nom") },
-                        singleLine = true
-                    )
-                },
-                confirmButton = {
-                    TextButton(onClick = {
-                        val oldName = renameTarget ?: return@TextButton
-                        val ok = PlaylistRepository.renamePlaylist(oldName, renameText)
-                        if (ok) {
-                            // on ferme seulement si le renommage a marché
-                            renameTarget = null
+            // ---- dialog renommage ----
+            if (renameTarget != null) {
+                AlertDialog(
+                    onDismissRequest = { renameTarget = null },
+                    title = { Text("Renommer la liste", color = Color.White) },
+                    text = {
+                        OutlinedTextField(
+                            value = renameText,
+                            onValueChange = { renameText = it },
+                            label = { Text("Nouveau nom") },
+                            singleLine = true
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            val oldName = renameTarget ?: return@TextButton
+                            val ok = PlaylistRepository.renamePlaylist(oldName, renameText)
+                            if (ok) {
+                                // on ferme seulement si le renommage a marché
+                                renameTarget = null
+                            }
+                            // si le nom existe déjà, on ne ferme pas → l’utilisateur corrige
+                        }) {
+                            Text("OK", color = Color.White)
                         }
-                        // si le nom existe déjà, on ne ferme pas → l’utilisateur corrige
-                    }) {
-                        Text("OK", color = Color.White)
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { renameTarget = null }) {
-                        Text("Annuler", color = Color.Gray)
-                    }
-                },
-                containerColor = Color(0xFF222222)
-            )
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { renameTarget = null }) {
+                            Text("Annuler", color = Color.Gray)
+                        }
+                    },
+                    containerColor = Color(0xFF222222)
+                )
+            }
         }
     }
 }
