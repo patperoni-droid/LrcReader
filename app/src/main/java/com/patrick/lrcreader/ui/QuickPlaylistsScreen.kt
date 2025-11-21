@@ -249,6 +249,7 @@ fun QuickPlaylistsScreen(
                             onClick = {
                                 val pl = internalSelected ?: return@IconButton
                                 PlaylistRepository.resetPlayedFor(pl)
+                                PlaylistRepository.clearReviewForPlaylist(pl)
                                 songs.clear()
                                 songs.addAll(PlaylistRepository.getSongsFor(pl))
                                 onSelectedPlaylistChange(pl)
@@ -332,6 +333,10 @@ fun QuickPlaylistsScreen(
                             PlaylistRepository.isSongPlayed(it, uriString)
                         } ?: false
 
+                        val isToReview = internalSelected?.let {
+                            PlaylistRepository.isSongToReview(it, uriString)
+                        } ?: false
+
                         val isCurrentPlaying = currentPlayingUri == uriString
                         val isDraggingThis = draggingUri == uriString
 
@@ -397,6 +402,7 @@ fun QuickPlaylistsScreen(
                             Text(
                                 text = displayName.uppercase(),
                                 color = when {
+                                    isToReview -> Color(0xFFFF6F6F)      // rouge = à revoir
                                     isCurrentPlaying -> Color.White
                                     isPlayed -> Color.Gray
                                     else -> currentListColor
@@ -465,6 +471,25 @@ fun QuickPlaylistsScreen(
                                             menuOpen = false
                                         }
                                     )
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                if (isToReview) "Retirer \"à revoir\""
+                                                else "Marquer \"à revoir\"",
+                                                color = Color.White
+                                            )
+                                        },
+                                        onClick = {
+                                            internalSelected?.let { pl ->
+                                                PlaylistRepository.setSongToReview(
+                                                    pl,
+                                                    uriString,
+                                                    !isToReview
+                                                )
+                                            }
+                                            menuOpen = false
+                                        }
+                                    )
                                 }
                             }
                         }
@@ -518,7 +543,7 @@ private fun <T> MutableList<T>.swap(i: Int, j: Int) {
     this[j] = tmp
 }
 
-// prefs couleur
+// prefs couleur (fallback local en plus des prefs système, si tu veux)
 private const val PLAYLIST_COLOR_PREF = "playlist_color_pref"
 
 private fun savePlaylistColor(context: Context, playlist: String, color: Color) {

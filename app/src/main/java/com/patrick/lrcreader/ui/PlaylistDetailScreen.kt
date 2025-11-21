@@ -11,8 +11,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.DragHandle
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material3.*
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -31,9 +37,14 @@ fun PlaylistDetailScreen(
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
 
-    // recharge les chansons à chaque changement de playlist
+    // chansons de la playlist
     val songs = remember(playlistName, refreshKey) {
         PlaylistRepository.getSongsFor(playlistName)
+    }
+
+    // map en mémoire pour marquer "à revoir" par chanson
+    val reviewMap = remember(playlistName, refreshKey) {
+        mutableStateMapOf<String, Boolean>()
     }
 
     Column(
@@ -42,7 +53,7 @@ fun PlaylistDetailScreen(
             .background(Color.Black)
             .padding(16.dp)
     ) {
-        // ─── BARRE DU HAUT (façon Musicolet) ───────────────────────
+        // ─── BARRE DU HAUT ───────────────────────
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
@@ -59,7 +70,7 @@ fun PlaylistDetailScreen(
 
             Spacer(Modifier.width(6.dp))
 
-            // le rectangle cliquable avec flèche
+            // bloc avec nom de la playlist + flèche
             Box(
                 modifier = Modifier
                     .weight(1f)
@@ -91,7 +102,7 @@ fun PlaylistDetailScreen(
             }
         }
 
-        // menu déroulant de la playlist
+        // menu playlist (renommer / supprimer)
         DropdownMenu(
             expanded = menuExpanded,
             onDismissRequest = { menuExpanded = false }
@@ -99,39 +110,40 @@ fun PlaylistDetailScreen(
             DropdownMenuItem(
                 text = { Text("Renommer") },
                 onClick = {
-                    // TODO : renommer playlist
+                    // TODO : renommer la playlist
                     menuExpanded = false
                 }
             )
             DropdownMenuItem(
                 text = { Text("Supprimer") },
                 onClick = {
-                    // TODO : supprimer playlist
+                    // TODO : supprimer la playlist
                     menuExpanded = false
                 }
             )
         }
 
+        HorizontalDivider(color = Color(0xFF1E1E1E))
+
         // ─── CONTENU ───────────────────────
         if (songs.isEmpty()) {
             Text(
                 "Aucun titre dans cette liste.",
-                color = Color.Gray
+                color = Color.Gray,
+                modifier = Modifier.padding(top = 12.dp)
             )
         } else {
             LazyColumn {
-                items(songs) { uriString ->
-                    // 1. décodage propre
+                items(songs, key = { it }) { uriString ->
+                    // décodage
                     val decoded = runCatching {
                         java.net.URLDecoder.decode(uriString, "UTF-8")
                     }.getOrElse { uriString }
 
-                    // 2. on récupère juste le nom du fichier
                     val filePart = decoded
                         .substringAfterLast('/')
                         .substringAfterLast(':')
 
-                    // 3. on nettoie l’extension
                     val displayName = when {
                         filePart.endsWith(".mp3", ignoreCase = true) ->
                             filePart.dropLast(4)
@@ -141,6 +153,19 @@ fun PlaylistDetailScreen(
                     }.trim()
 
                     val played = PlaylistRepository.isSongPlayed(playlistName, uriString)
+                    val isReview = reviewMap[uriString] == true
+
+                    // couleur texte:
+                    //  - jouée  -> gris
+                    //  - à revoir -> rouge
+                    //  - normal -> blanc
+                    val textColor = when {
+                        played -> Color(0xFF888888)
+                        isReview -> Color(0xFFFF8080)
+                        else -> Color.White
+                    }
+
+                    var songMenuExpanded by remember(uriString) { mutableStateOf(false) }
 
                     Row(
                         modifier = Modifier
@@ -148,6 +173,7 @@ fun PlaylistDetailScreen(
                             .padding(vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        // handle "drag"
                         Icon(
                             imageVector = Icons.Filled.DragHandle,
                             contentDescription = null,
@@ -157,19 +183,67 @@ fun PlaylistDetailScreen(
                                 .size(24.dp)
                         )
 
+                        // titre cliquable -> lecture
                         Text(
                             text = displayName,
-                            color = if (played) Color(0xFF888888) else Color.White,
+                            color = textColor,
+                            fontSize = 15.sp,
                             modifier = Modifier
                                 .weight(1f)
                                 .clickable { onPlaySong(uriString) }
                         )
 
+                        // bouton Play
                         IconButton(onClick = { onPlaySong(uriString) }) {
                             Icon(
                                 imageVector = Icons.Filled.PlayArrow,
                                 contentDescription = "Lire",
                                 tint = Color.White
+                            )
+                        }
+
+                        // bouton menu 3 points
+                        IconButton(onClick = { songMenuExpanded = true }) {
+                            Icon(
+                                imageVector = Icons.Filled.MoreVert,
+                                contentDescription = "Options du titre",
+                                tint = Color.White
+                            )
+                        }
+
+                        // menu par titre
+                        DropdownMenu(
+                            expanded = songMenuExpanded,
+                            onDismissRequest = { songMenuExpanded = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Retirer de la liste") },
+                                onClick = {
+                                    // TODO : retirer ce titre de la playlist si tu as une fonction repo
+                                    // PlaylistRepository.removeSongFromPlaylist(playlistName, uriString)
+                                    songMenuExpanded = false
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Renommer") },
+                                onClick = {
+                                    // TODO : ouvrir un dialog de renommage si besoin
+                                    songMenuExpanded = false
+                                }
+                            )
+
+                            val reviewLabel = if (isReview) {
+                                "Retirer \"À revoir\""
+                            } else {
+                                "Marquer \"À revoir\""
+                            }
+
+                            DropdownMenuItem(
+                                text = { Text(reviewLabel) },
+                                onClick = {
+                                    reviewMap[uriString] = !isReview
+                                    songMenuExpanded = false
+                                }
                             )
                         }
                     }

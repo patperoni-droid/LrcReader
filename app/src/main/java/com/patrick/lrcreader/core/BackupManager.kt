@@ -8,7 +8,8 @@ import org.json.JSONObject
 
 /**
  * Gère l’export / import de l’état de l’appli
- * (playlists + chansons jouées + dernier morceau + fond sonore + réglages d’édition)
+ * (playlists + chansons jouées + dernier morceau + fond sonore + réglages d’édition
+ *  + titres à revoir + couleurs de playlists)
  */
 object BackupManager {
 
@@ -25,7 +26,7 @@ object BackupManager {
     ): String {
         val root = JSONObject()
 
-        // 1) playlists
+        // 1) playlists : ordre complet des titres
         val playlistsJson = JSONObject()
         PlaylistRepository.getPlaylists().forEach { plName ->
             val songs = PlaylistRepository.getAllSongsRaw(plName)
@@ -41,7 +42,7 @@ object BackupManager {
         }
         root.put("played", playedJson)
 
-        // 3) dossiers (optionnel, tu l’avais déjà)
+        // 3) dossiers (ce que tu avais déjà)
         root.put("libraryFolders", JSONArray(libraryFolders))
 
         // 4) dernier morceau
@@ -67,7 +68,7 @@ object BackupManager {
             }
         }
 
-        // 6) réglages d’édition (nouveau)
+        // 6) réglages d’édition
         run {
             val allEdits = EditPrefs.getAllEdits(context)
             if (allEdits.isNotEmpty()) {
@@ -80,6 +81,35 @@ object BackupManager {
                     editsJson.put(uriString, one)
                 }
                 root.put("edits", editsJson)
+            }
+        }
+
+        // 7) morceaux "à revoir"
+        run {
+            val reviewJson = JSONObject()
+            PlaylistRepository.getPlaylists().forEach { plName ->
+                val allSongs = PlaylistRepository.getAllSongsRaw(plName)
+                val toReview = allSongs.filter { uri ->
+                    PlaylistRepository.isSongToReview(plName, uri)
+                }
+                if (toReview.isNotEmpty()) {
+                    reviewJson.put(plName, JSONArray(toReview))
+                }
+            }
+            if (reviewJson.length() > 0) {
+                root.put("review", reviewJson)
+            }
+        }
+
+        // 8) couleurs de playlists
+        run {
+            val colorsJson = JSONObject()
+            PlaylistRepository.getPlaylists().forEach { plName ->
+                val colorLong = PlaylistRepository.getPlaylistColor(plName)
+                colorsJson.put(plName, colorLong)
+            }
+            if (colorsJson.length() > 0) {
+                root.put("colors", colorsJson)
             }
         }
 
@@ -194,6 +224,35 @@ object BackupManager {
                         Intent.FLAG_GRANT_READ_URI_PERMISSION
                     )
                 } catch (_: Exception) { }
+            }
+        }
+
+        // 6) morceaux "à revoir"
+        val reviewJson = root.optJSONObject("review")
+        if (reviewJson != null) {
+            val names = reviewJson.keys()
+            while (names.hasNext()) {
+                val name = names.next()
+                val arr = reviewJson.getJSONArray(name)
+
+                // on nettoie d’abord les anciens flags de cette playlist
+                PlaylistRepository.clearReviewForPlaylist(name)
+
+                for (i in 0 until arr.length()) {
+                    val uri = arr.getString(i)
+                    PlaylistRepository.setSongToReview(name, uri, true)
+                }
+            }
+        }
+
+        // 7) couleurs de playlists
+        val colorsJson = root.optJSONObject("colors")
+        if (colorsJson != null) {
+            val names = colorsJson.keys()
+            while (names.hasNext()) {
+                val name = names.next()
+                val colorLong = colorsJson.optLong(name, 0xFFE86FFF)
+                PlaylistRepository.setPlaylistColor(name, colorLong)
             }
         }
     }
