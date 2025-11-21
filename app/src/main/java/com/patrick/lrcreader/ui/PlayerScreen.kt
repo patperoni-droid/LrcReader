@@ -903,7 +903,7 @@ private fun LyricsArea(
                         text = line.text,
                         color = color,
                         fontWeight = weight,
-                        fontSize = 22.sp,
+                        fontSize = 26.sp,
                         textAlign = TextAlign.Center,
                         modifier = Modifier
                             .fillMaxWidth()

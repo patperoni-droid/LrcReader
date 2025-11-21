@@ -1,7 +1,5 @@
 package com.patrick.lrcreader.exo
 
-import com.patrick.lrcreader.core.dj.DjEngine
-import com.patrick.lrcreader.core.LrcStorage
 import android.media.MediaPlayer
 import android.media.audiofx.LoudnessEnhancer
 import android.os.Bundle
@@ -16,6 +14,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import com.patrick.lrcreader.core.*
+import com.patrick.lrcreader.core.LrcStorage
+import com.patrick.lrcreader.core.dj.DjEngine
 import com.patrick.lrcreader.ui.*
 import kotlin.math.pow
 
@@ -29,7 +29,7 @@ class MainActivity : ComponentActivity() {
         val initialQuickPlaylist = SessionPrefs.getQuickPlaylist(this)
         val initialOpenedPlaylist = SessionPrefs.getOpenedPlaylist(this)
 
-        // 🔴 IMPORTANT : initialiser le moteur DJ global
+        // 🔴 initialisation DJ
         DjEngine.init(this)
 
         setContent {
@@ -37,15 +37,14 @@ class MainActivity : ComponentActivity() {
                 val ctx = this@MainActivity
                 val mediaPlayer = remember { MediaPlayer() }
 
-                // 👉 Effet pour booster le volume quand dB > 0
                 val loudnessEnhancer = remember {
-                    LoudnessEnhancer(mediaPlayer.audioSessionId).apply {
-                        enabled = true
-                    }
+                    LoudnessEnhancer(mediaPlayer.audioSessionId).apply { enabled = true }
                 }
 
                 var selectedTab by remember {
-                    mutableStateOf(initialTabKey?.let { tabFromKey(it) } ?: BottomTab.Player)
+                    mutableStateOf(
+                        initialTabKey?.let { tabFromKey(it) } ?: BottomTab.Home
+                    )
                 }
 
                 var selectedQuickPlaylist by rememberSaveable {
@@ -60,47 +59,38 @@ class MainActivity : ComponentActivity() {
                 var parsedLines by remember { mutableStateOf<List<LrcLine>>(emptyList()) }
                 var currentPlayToken by remember { mutableStateOf(0L) }
                 var currentTrackGainDb by remember { mutableStateOf(0) }
-
                 var currentLyricsColor by remember { mutableStateOf(Color(0xFFE040FB)) }
                 var refreshKey by remember { mutableStateOf(0) }
                 val repoVersion by PlaylistRepository.version
 
-                // 🔥 Tempo PAR MORCEAU (1f = normal)
+                // Tempo par morceau
                 var currentTrackTempo by remember { mutableStateOf(1f) }
 
-                // Applique le dB au player
                 fun applyGainToPlayer(db: Int) {
                     try {
                         val clamped = db.coerceIn(-12, 12)
-
                         if (clamped <= 0) {
-                            // 💡 dB négatifs : on atténue proprement avec setVolume
                             val linear = 10f.pow(clamped / 20f)
                             mediaPlayer.setVolume(linear, linear)
-                            loudnessEnhancer.setTargetGain(0) // pas de boost
+                            loudnessEnhancer.setTargetGain(0)
                         } else {
-                            // 💡 dB positifs : player à fond, boost via LoudnessEnhancer
                             mediaPlayer.setVolume(1f, 1f)
-                            loudnessEnhancer.setTargetGain(clamped * 100) // millibels
+                            loudnessEnhancer.setTargetGain(clamped * 100)
                         }
                     } catch (_: Exception) {
-                        // on évite de crasher si le player n'est pas prêt
                     }
                 }
 
-                // 🔥 Applique le tempo au MediaPlayer (sans changer la tonalité)
                 fun applyTempoToPlayer(speed: Float) {
                     try {
                         val params = mediaPlayer.playbackParams
                             .setSpeed(speed)
-                            .setPitch(1.0f) // tonalité fixe
+                            .setPitch(1f)
                         mediaPlayer.playbackParams = params
                     } catch (_: Exception) {
-                        // si le player n'est pas encore prêt, on ignore
                     }
                 }
 
-                // Lecture stable avec blindage
                 val playWithCrossfade: (String, String?) -> Unit = remember {
                     { uriString, playlistName ->
                         currentPlayingUri = uriString
@@ -109,16 +99,10 @@ class MainActivity : ComponentActivity() {
                         val myToken = currentPlayToken + 1
                         currentPlayToken = myToken
 
-                        // dB par morceau
-                        val savedDb = runCatching {
-                            TrackVolumePrefs.getDb(ctx, uriString) ?: 0
-                        }.getOrElse { 0 }
+                        val savedDb = TrackVolumePrefs.getDb(ctx, uriString) ?: 0
                         currentTrackGainDb = savedDb
 
-                        // 🔥 Tempo par morceau (par défaut 1.0f)
-                        val savedTempo = runCatching {
-                            TrackTempoPrefs.getTempo(ctx, uriString) ?: 1f
-                        }.getOrElse { 1f }
+                        val savedTempo = TrackTempoPrefs.getTempo(ctx, uriString) ?: 1f
                         currentTrackTempo = savedTempo
 
                         val result = runCatching {
@@ -129,16 +113,9 @@ class MainActivity : ComponentActivity() {
                                 playlistName = playlistName,
                                 playToken = myToken,
                                 getCurrentToken = { currentPlayToken },
-                                onLyricsLoaded = { originalText ->
-                                    // 🔥 Priorité au .lrc que TU as créé dans l’éditeur :
-                                    val overridden = LrcStorage.loadForTrack(ctx, uriString)
-                                    val finalText = overridden ?: originalText
-
-                                    parsedLines = if (!finalText.isNullOrBlank()) {
-                                        parseLrc(finalText)
-                                    } else {
-                                        emptyList()
-                                    }
+                                onLyricsLoaded = { original ->
+                                    val override = LrcStorage.loadForTrack(ctx, uriString)
+                                    parsedLines = parseLrc(override ?: original ?: "")
                                 },
                                 onStart = {
                                     isPlaying = true
@@ -147,7 +124,7 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onError = {
                                     isPlaying = false
-                                    runCatching { mediaPlayer.reset() }
+                                    mediaPlayer.reset()
                                 },
                                 onNaturalEnd = {
                                     isPlaying = false
@@ -157,19 +134,19 @@ class MainActivity : ComponentActivity() {
                         }
 
                         if (result.isFailure) {
-                            runCatching { mediaPlayer.reset() }
+                            mediaPlayer.reset()
                             isPlaying = false
                         }
 
                         selectedTab = BottomTab.Player
-                        SessionPrefs.saveTab(ctx, tabKeyOf(BottomTab.Player))
+                        SessionPrefs.saveTab(ctx, TAB_PLAYER)
                     }
                 }
 
                 DisposableEffect(Unit) {
                     onDispose {
-                        runCatching { loudnessEnhancer.release() }
-                        runCatching { mediaPlayer.release() }
+                        loudnessEnhancer.release()
+                        mediaPlayer.release()
                     }
                 }
 
@@ -178,14 +155,47 @@ class MainActivity : ComponentActivity() {
                     bottomBar = {
                         BottomTabsBar(
                             selected = selectedTab,
-                            onSelected = { tab ->
-                                selectedTab = tab
-                                SessionPrefs.saveTab(ctx, tabKeyOf(tab))
+                            onSelected = {
+                                selectedTab = it
+                                SessionPrefs.saveTab(ctx, tabKeyOf(it))
                             }
                         )
                     }
                 ) { innerPadding ->
                     when (selectedTab) {
+
+                        // 🏠 ACCUEIL
+                        is BottomTab.Home -> HomeScreen(
+                            modifier = Modifier.padding(innerPadding),
+                            onOpenPlayer = {
+                                selectedTab = BottomTab.Player
+                                SessionPrefs.saveTab(ctx, TAB_PLAYER)
+                            },
+                            onOpenConcertMode = {
+                                DisplayPrefs.setConcertMode(ctx, true)
+                                selectedTab = BottomTab.Player
+                                SessionPrefs.saveTab(ctx, TAB_PLAYER)
+                            },
+                            onOpenDjMode = {
+                                selectedTab = BottomTab.Dj
+                                SessionPrefs.saveTab(ctx, TAB_DJ)
+                            },
+                            onOpenTuner = {
+                                selectedTab = BottomTab.Tuner
+                                SessionPrefs.saveTab(ctx, TAB_TUNER)
+                            },
+                            onOpenProfile = {},
+                            onOpenTutorial = {
+                                selectedTab = BottomTab.More
+                                SessionPrefs.saveTab(ctx, TAB_MORE)
+                            },
+                            onOpenSettings = {
+                                selectedTab = BottomTab.More
+                                SessionPrefs.saveTab(ctx, TAB_MORE)
+                            }
+                        )
+
+                        // 🎵 LECTEUR
                         is BottomTab.Player -> PlayerScreen(
                             modifier = Modifier.padding(innerPadding),
                             mediaPlayer = mediaPlayer,
@@ -194,32 +204,29 @@ class MainActivity : ComponentActivity() {
                             parsedLines = parsedLines,
                             onParsedLinesChange = { parsedLines = it },
                             highlightColor = currentLyricsColor,
-                            // nouveaux paramètres pour le niveau par titre
                             currentTrackUri = currentPlayingUri,
                             currentTrackGainDb = currentTrackGainDb,
-                            onTrackGainChange = { newDb ->
-                                currentPlayingUri?.let {
-                                    runCatching { TrackVolumePrefs.saveDb(ctx, it, newDb) }
-                                }
-                                currentTrackGainDb = newDb
-                                applyGainToPlayer(newDb)
-                            },
-                            // 🔥 Tempo par morceau : valeur + callback
-                            tempo = currentTrackTempo,
-                            onTempoChange = { newTempo ->
-                                currentTrackTempo = newTempo
-                                applyTempoToPlayer(newTempo)
-                                // sauvegarde par morceau
+                            onTrackGainChange = {
                                 currentPlayingUri?.let { uri ->
-                                    runCatching { TrackTempoPrefs.saveTempo(ctx, uri, newTempo) }
+                                    TrackVolumePrefs.saveDb(ctx, uri, it)
+                                }
+                                currentTrackGainDb = it
+                                applyGainToPlayer(it)
+                            },
+                            tempo = currentTrackTempo,
+                            onTempoChange = {
+                                currentTrackTempo = it
+                                applyTempoToPlayer(it)
+                                currentPlayingUri?.let { uri ->
+                                    TrackTempoPrefs.saveTempo(ctx, uri, it)
                                 }
                             },
-                            // 🔥 auto-switch vers les playlists en fin de titre
                             onRequestShowPlaylist = {
                                 selectedTab = BottomTab.QuickPlaylists
                             }
                         )
 
+                        // ⭐ Playlists rapides
                         is BottomTab.QuickPlaylists -> QuickPlaylistsScreen(
                             modifier = Modifier.padding(innerPadding),
                             onPlaySong = { uri, playlistName, color ->
@@ -232,9 +239,9 @@ class MainActivity : ComponentActivity() {
                             refreshKey = refreshKey,
                             currentPlayingUri = currentPlayingUri,
                             selectedPlaylist = selectedQuickPlaylist,
-                            onSelectedPlaylistChange = { newPl ->
-                                selectedQuickPlaylist = newPl
-                                SessionPrefs.saveQuickPlaylist(ctx, newPl)
+                            onSelectedPlaylistChange = {
+                                selectedQuickPlaylist = it
+                                SessionPrefs.saveQuickPlaylist(ctx, it)
                             }
                         )
 
@@ -246,9 +253,9 @@ class MainActivity : ComponentActivity() {
                             if (openedPlaylist == null) {
                                 AllPlaylistsScreen(
                                     modifier = m,
-                                    onPlaylistClick = { name ->
-                                        openedPlaylist = name
-                                        SessionPrefs.saveOpenedPlaylist(ctx, name)
+                                    onPlaylistClick = {
+                                        openedPlaylist = it
+                                        SessionPrefs.saveOpenedPlaylist(ctx, it)
                                     }
                                 )
                             } else {
@@ -259,8 +266,8 @@ class MainActivity : ComponentActivity() {
                                         openedPlaylist = null
                                         SessionPrefs.saveOpenedPlaylist(ctx, null)
                                     },
-                                    onPlaySong = { uriString ->
-                                        playWithCrossfade(uriString, openedPlaylist)
+                                    onPlaySong = { uri ->
+                                        playWithCrossfade(uri, openedPlaylist)
                                     }
                                 )
                             }
@@ -276,6 +283,15 @@ class MainActivity : ComponentActivity() {
                             modifier = Modifier.padding(innerPadding),
                             context = ctx
                         )
+
+                        // 🎸 ÉCRAN ACCORDEUR
+                        is BottomTab.Tuner -> TunerScreen(
+                            modifier = Modifier.padding(innerPadding),
+                            onClose = {
+                                selectedTab = BottomTab.Home
+                                SessionPrefs.saveTab(ctx, TAB_HOME)
+                            }
+                        )
                     }
                 }
             }
@@ -283,32 +299,42 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-/* -------------------------------------------------------------------------- */
-/*  Conversion BottomTab <-> String                                           */
-/* -------------------------------------------------------------------------- */
+/* --------------------------------------------------------------- */
+/*  Conversion BottomTab <-> String                                */
+/* --------------------------------------------------------------- */
 
+private const val TAB_HOME = "home"
 private const val TAB_PLAYER = "player"
 private const val TAB_QUICK = "quick"
 private const val TAB_LIBRARY = "library"
 private const val TAB_ALL = "all"
 private const val TAB_MORE = "more"
 private const val TAB_DJ = "dj"
+private const val TAB_TUNER = "tuner"
 
 private fun tabKeyOf(tab: BottomTab): String = when (tab) {
+    is BottomTab.Home -> TAB_HOME
     is BottomTab.Player -> TAB_PLAYER
     is BottomTab.QuickPlaylists -> TAB_QUICK
     is BottomTab.Library -> TAB_LIBRARY
     is BottomTab.AllPlaylists -> TAB_ALL
     is BottomTab.More -> TAB_MORE
     is BottomTab.Dj -> TAB_DJ
+    is BottomTab.Tuner -> TAB_TUNER
 }
 
 private fun tabFromKey(key: String): BottomTab = when (key) {
+    TAB_HOME -> BottomTab.Home
     TAB_PLAYER -> BottomTab.Player
     TAB_QUICK -> BottomTab.QuickPlaylists
     TAB_LIBRARY -> BottomTab.Library
     TAB_ALL -> BottomTab.AllPlaylists
     TAB_MORE -> BottomTab.More
     TAB_DJ -> BottomTab.Dj
-    else -> BottomTab.Player
+
+    // ⚠️ IMPORTANT : si on retrouve "tuner" au démarrage,
+    // on renvoie Home pour éviter de relancer direct l'accordeur
+    TAB_TUNER -> BottomTab.Home
+
+    else -> BottomTab.Home
 }
