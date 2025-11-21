@@ -1,5 +1,6 @@
 package com.patrick.lrcreader.ui
 
+import androidx.compose.ui.graphics.graphicsLayer
 import android.content.Context
 import android.media.MediaMetadataRetriever
 import android.media.MediaPlayer
@@ -7,6 +8,7 @@ import android.net.Uri
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -43,6 +45,7 @@ import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.core.LrcCleaner
 import com.patrick.lrcreader.core.LrcLine
 import com.patrick.lrcreader.core.LrcStorage
+import com.patrick.lrcreader.core.PrompterPrefs
 import com.patrick.lrcreader.core.pauseWithFade
 import com.patrick.lrcreader.ui.theme.DarkBlueGradientBackground
 import kotlinx.coroutines.delay
@@ -77,8 +80,16 @@ fun PlayerScreen(
     var isConcertMode by remember {
         mutableStateOf(DisplayPrefs.isConcertMode(context))
     }
-    // Mode défilement continu (sans surlignage, style karaoké auto-scroll)
-    var isContinuousScroll by remember { mutableStateOf(false) }
+
+    // MANU / AUTO = false / true -> AUTO = mode prompteur
+    var isContinuousScroll by remember { mutableStateOf(false) } // utilisé comme "mode prompteur"
+
+    // état pour le prompteur
+    val prompterScrollState = rememberScrollState()
+    var isPrompterRunning by remember { mutableStateOf(false) }
+    var prompterSpeed by remember {
+        mutableStateOf(PrompterPrefs.getSpeed(context))
+    }
 
     var lyricsBoxHeightPx by remember { mutableStateOf(0) }
     var currentLrcIndex by remember { mutableStateOf(0) }
@@ -86,7 +97,7 @@ fun PlayerScreen(
 
     val lineHeightDp = 80.dp
     val lineHeightPx = with(density) { lineHeightDp.toPx() }
-    val baseTopSpacerPx = remember(lyricsBoxHeightPx) { lyricsBoxHeightPx }
+    val baseTopSpacerPx by remember(lyricsBoxHeightPx) { mutableStateOf(lyricsBoxHeightPx) }
 
     var durationMs by remember { mutableStateOf(0) }
     var positionMs by remember { mutableStateOf(0) }
@@ -109,6 +120,11 @@ fun PlayerScreen(
     }
 
     var currentEditTab by remember { mutableStateOf(0) }
+
+    // texte utilisé pour le prompteur
+    val prompterText = remember(currentTrackUri, parsedLines, rawLyricsText) {
+        buildPrompterText(parsedLines, rawLyricsText)
+    }
 
     // ---------- Suivi lecture + index ligne courante ----------
     LaunchedEffect(isPlaying, parsedLines) {
@@ -150,6 +166,17 @@ fun PlayerScreen(
         }
     }
 
+    // ---------- Auto-scroll du prompteur ----------
+    LaunchedEffect(isPrompterRunning, prompterSpeed, prompterText, currentTrackUri) {
+        if (!isPrompterRunning) return@LaunchedEffect
+        // on repart du haut à chaque lancement
+        prompterScrollState.scrollTo(0)
+        while (isPrompterRunning && prompterScrollState.canScrollForward) {
+            prompterScrollState.scrollBy(6f * prompterSpeed.coerceIn(0.2f, 2.0f))
+            delay(30L)
+        }
+    }
+
     fun centerCurrentLineImmediate() {
         if (lyricsBoxHeightPx == 0) return
         val centerPx = lyricsBoxHeightPx / 2f
@@ -180,60 +207,23 @@ fun PlayerScreen(
             val lineAbsY = baseTopSpacerPx + targetIndex * lineHeightPx
             val wanted = (lineAbsY - centerPx).toInt().coerceAtLeast(0)
             scope.launch {
-                if (isContinuousScroll) {
-                    scrollState.animateScrollTo(wanted)
-                } else {
+                // en mode prompteur, on ne touche pas au scroll des paroles
+                if (!isContinuousScroll) {
                     scrollState.scrollTo(wanted)
                 }
             }
         }
     }
 
-    // ---------- Auto-centering pendant lecture ----------
+    // ---------- Auto-centering pendant lecture (mode MANU uniquement) ----------
     LaunchedEffect(isPlaying, parsedLines, lyricsBoxHeightPx, isContinuousScroll) {
         if (parsedLines.isEmpty()) return@LaunchedEffect
         if (lyricsBoxHeightPx == 0) return@LaunchedEffect
 
         while (true) {
-            if (isPlaying && !userScrolling && !isDragging) {
-                if (isContinuousScroll) {
-                    // Défilement continu : calcul entre deux lignes
-                    val posMs = (positionMs.toLong() - lyricsDelayMs).coerceAtLeast(0L)
-                    val n = parsedLines.size
-
-                    if (n > 0) {
-                        var i = 0
-                        while (i < n - 1 && parsedLines[i + 1].timeMs <= posMs) {
-                            i++
-                        }
-
-                        val tCurrent = parsedLines[i].timeMs
-                        val yCurrent = baseTopSpacerPx + i * lineHeightPx
-
-                        val (tNext, yNext) =
-                            if (i < n - 1) {
-                                parsedLines[i + 1].timeMs to (baseTopSpacerPx + (i + 1) * lineHeightPx)
-                            } else {
-                                tCurrent to yCurrent
-                            }
-
-                        val frac = if (tNext > tCurrent) {
-                            ((posMs - tCurrent).toFloat() / (tNext - tCurrent).toFloat())
-                                .coerceIn(0f, 1f)
-                        } else {
-                            0f
-                        }
-
-                        val lineAbsY = yCurrent + (yNext - yCurrent) * frac
-                        val centerPx = lyricsBoxHeightPx / 2f
-                        val targetScroll = (lineAbsY - centerPx).toInt().coerceAtLeast(0)
-
-                        scrollState.scrollTo(targetScroll)
-                    }
-                } else {
-                    // Mode normal : sauts classiques
-                    centerCurrentLineImmediate()
-                }
+            if (isPlaying && !userScrolling && !isDragging && !isContinuousScroll) {
+                // seulement en MANU
+                centerCurrentLineImmediate()
             }
             delay(40)
         }
@@ -275,7 +265,7 @@ fun PlayerScreen(
                     }
                 )
             } else {
-                // ========= MODE LECTURE NORMAL =========
+                // ========= MODE LECTURE / PROMPTEUR =========
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -289,7 +279,15 @@ fun PlayerScreen(
                             DisplayPrefs.setConcertMode(context, isConcertMode)
                         },
                         isContinuousScroll = isContinuousScroll,
-                        onToggleContinuousScroll = { isContinuousScroll = !isContinuousScroll },
+                        onToggleContinuousScroll = {
+                            // bascule MANU / AUTO (AUTO = prompteur)
+                            isContinuousScroll = !isContinuousScroll
+                            isPrompterRunning = false
+                            // on remet le prompteur en haut quand on l’active
+                            if (isContinuousScroll) {
+                                scope.launch { prompterScrollState.scrollTo(0) }
+                            }
+                        },
                         highlightColor = highlightColor,
                         onOpenMix = { showMixScreen = true },
                         onOpenEditor = {
@@ -307,21 +305,40 @@ fun PlayerScreen(
                         }
                     )
 
-                    LyricsArea(
-                        modifier = Modifier.weight(1f),
-                        scrollState = scrollState,
-                        parsedLines = parsedLines,
-                        isContinuousScroll = isContinuousScroll,
-                        isConcertMode = isConcertMode,
-                        currentLrcIndex = currentLrcIndex,
-                        baseTopSpacerPx = baseTopSpacerPx,
-                        lyricsBoxHeightPx = lyricsBoxHeightPx,
-                        onLyricsBoxHeightChange = { lyricsBoxHeightPx = it },
-                        highlightColor = highlightColor,
-                        onLineClick = { index, timeMs ->
-                            seekAndCenter(timeMs.toInt(), index)
-                        }
-                    )
+                    // Zone centrale : soit paroles LRC, soit prompteur AUTO
+                    if (isContinuousScroll) {
+                        PrompterArea(
+                            modifier = Modifier.weight(1f),
+                            scrollState = prompterScrollState,
+                            text = prompterText,
+                            isRunning = isPrompterRunning,
+                            onToggleRunning = { isPrompterRunning = !isPrompterRunning },
+                            speed = prompterSpeed,
+                            onSpeedChange = { new ->
+                                val clamped = new.coerceIn(0.2f, 2.0f)
+                                prompterSpeed = clamped
+                                PrompterPrefs.saveSpeed(context, clamped)
+                            },
+                            highlightColor = highlightColor
+                        )
+                    } else {
+                        LyricsArea(
+                            modifier = Modifier.weight(1f),
+                            scrollState = scrollState,
+                            parsedLines = parsedLines,
+                            isContinuousScroll = false, // le mode AUTO est maintenant le prompteur
+                            isConcertMode = isConcertMode,
+                            currentLrcIndex = currentLrcIndex,
+                            baseTopSpacerPx = baseTopSpacerPx,
+                            lyricsBoxHeightPx = lyricsBoxHeightPx,
+                            onLyricsBoxHeightChange = { lyricsBoxHeightPx = it },
+                            highlightColor = highlightColor,
+                            onLineClick = { index, timeMs ->
+                                seekAndCenter(timeMs.toInt(), index)
+                            }
+                        )
+                    }
+
                     // Timeline
                     TimeBar(
                         positionMs = if (isDragging) dragPosMs else positionMs,
@@ -356,9 +373,7 @@ fun PlayerScreen(
                                     mediaPlayer.setVolume(1f, 1f)
                                     mediaPlayer.start()
                                     onIsPlayingChange(true)
-                                    if (isContinuousScroll) {
-                                        centerCurrentLineAnimated()
-                                    } else {
+                                    if (!isContinuousScroll) {
                                         centerCurrentLineImmediate()
                                     }
                                     runCatching { FillerSoundManager.fadeOutAndStop(400) }
@@ -372,9 +387,7 @@ fun PlayerScreen(
                                 onIsPlayingChange(true)
                                 runCatching { FillerSoundManager.fadeOutAndStop(400) }
                             }
-                            if (isContinuousScroll) {
-                                centerCurrentLineAnimated()
-                            } else {
+                            if (!isContinuousScroll) {
                                 centerCurrentLineImmediate()
                             }
                         },
@@ -773,7 +786,7 @@ private fun LyricsEditorSection(
 }
 
 /* ─────────────────────────────
-   AUTRES COMPOSABLES (HEADER, LYRICS, GAIN, TEMPO, CONTROLES)
+   HEADER LECTURE
    ───────────────────────────── */
 
 @Composable
@@ -801,7 +814,7 @@ private fun ReaderHeader(
             )
         }
 
-        // Bouton MANU / AUTO
+        // Bouton MANU / AUTO (AUTO = prompteur)
         TextButton(onClick = onToggleContinuousScroll) {
             Text(
                 text = if (isContinuousScroll) "AUTO" else "MANU",
@@ -829,6 +842,10 @@ private fun ReaderHeader(
         }
     }
 }
+
+/* ─────────────────────────────
+   LYRICS AREA (MODE MANU)
+   ───────────────────────────── */
 
 @Composable
 private fun LyricsArea(
@@ -934,6 +951,141 @@ private fun LyricsArea(
         }
     }
 }
+
+/* ─────────────────────────────
+   PROMPTEUR AUTO
+   ───────────────────────────── */
+
+@Composable
+private fun PrompterArea(
+    modifier: Modifier = Modifier,
+    scrollState: ScrollState,
+    text: String,
+    isRunning: Boolean,
+    onToggleRunning: () -> Unit,
+    speed: Float,
+    onSpeedChange: (Float) -> Unit,
+    highlightColor: Color
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+    ) {
+        // ───── COLONNE TEXTE (PROMPTEUR) ─────
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .verticalScroll(scrollState)
+        ) {
+            Spacer(Modifier.height(4.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Mode prompteur",
+                    color = Color(0xFFB0BEC5),
+                    fontSize = 13.sp
+                )
+
+                TextButton(onClick = onToggleRunning) {
+                    Text(
+                        text = if (isRunning) "Pause défilement" else "Démarrer défilement",
+                        color = highlightColor,
+                        fontSize = 12.sp
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(8.dp))
+
+            if (text.isBlank()) {
+                Text(
+                    text = "Aucune parole disponible pour ce morceau.\nAjoute du texte dans l’éditeur.",
+                    color = Color.Gray,
+                    fontSize = 16.sp,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(24.dp)
+                )
+            } else {
+                Text(
+                    text = text,
+                    color = Color.White,
+                    fontSize = 22.sp,
+                    lineHeight = 28.sp,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                )
+
+                Spacer(Modifier.height(200.dp))
+            }
+        }
+
+        // ───── COLONNE FADER VITESSE ─────
+        Column(
+            modifier = Modifier
+                .width(72.dp)
+                .padding(start = 8.dp)
+                .padding(vertical = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = "Vitesse",
+                color = Color(0xFFB0BEC5),
+                fontSize = 11.sp
+            )
+
+            Spacer(Modifier.height(4.dp))
+
+            // valeur texte (0.2 → 2.0)
+            Text(
+                text = String.format("%.1fx", speed),
+                color = Color.White,
+                fontSize = 13.sp
+            )
+
+            Spacer(Modifier.height(8.dp))
+
+            // Fader vertical (Slider tourné)
+            Box(
+                modifier = Modifier
+                    .height(180.dp)
+                    .fillMaxWidth(),
+                contentAlignment = Alignment.Center
+            ) {
+                Slider(
+                    value = speed,
+                    onValueChange = { newValue ->
+                        onSpeedChange(newValue)
+                    },
+                    valueRange = 0.3f..2.0f,
+                    modifier = Modifier
+                        .height(40.dp)
+                        .fillMaxWidth()
+                        .graphicsLayer {
+                            // rotation en vertical
+                            rotationZ = -90f
+                        },
+                    colors = SliderDefaults.colors(
+                        thumbColor = Color.White,
+                        activeTrackColor = Color(0xFFE040FB),
+                        inactiveTrackColor = Color(0x55E040FB)
+                    )
+                )
+            }
+        }
+    }
+}
+
+/* ─────────────────────────────
+   CONTROLES LECTURE
+   ───────────────────────────── */
 
 @Composable
 private fun PlayerControls(
@@ -1060,6 +1212,20 @@ private fun formatLrcTime(ms: Long): String {
     val seconds = totalSeconds % 60
     val hundredths = (ms % 1000) / 10
     return "%02d:%02d.%02d".format(minutes, seconds, hundredths)
+}
+
+/** Construit le texte brut pour le prompteur. */
+private fun buildPrompterText(
+    parsedLines: List<LrcLine>,
+    rawLyrics: String
+): String {
+    return when {
+        parsedLines.isNotEmpty() ->
+            parsedLines.joinToString("\n") { it.text }
+        rawLyrics.isNotBlank() ->
+            rawLyrics
+        else -> ""
+    }
 }
 
 /**
