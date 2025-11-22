@@ -156,6 +156,9 @@ private fun BackupScreen(
 
     var backupFolderUri by remember { mutableStateOf<Uri?>(BackupFolderPrefs.get(context)) }
 
+    // nom de fichier personnalisable
+    var backupFileName by remember { mutableStateOf("lrc_backup.json") }
+
     // on garde le json en mémoire le temps que l’utilisateur choisisse la cible
     val saveLauncherJson = remember { mutableStateOf("") }
 
@@ -296,7 +299,16 @@ private fun BackupScreen(
 
                 Spacer(Modifier.height(10.dp))
 
-                val finalName = "lrc_backup.json"
+                // Champ pour le nom de fichier
+                OutlinedTextField(
+                    value = backupFileName,
+                    onValueChange = { backupFileName = it },
+                    label = { Text("Nom du fichier de sauvegarde") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(Modifier.height(8.dp))
 
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -306,6 +318,12 @@ private fun BackupScreen(
                         onClick = {
                             val json = BackupManager.exportState(context, null, emptyList())
                             saveLauncherJson.value = json
+
+                            val trimmed = backupFileName.trim().ifEmpty { "lrc_backup" }
+                            val finalName =
+                                if (trimmed.endsWith(".json", ignoreCase = true)) trimmed
+                                else "$trimmed.json"
+
                             saveLauncher.launch(finalName)
                         },
                         modifier = Modifier.weight(1f),
@@ -320,6 +338,12 @@ private fun BackupScreen(
 
                     TextButton(onClick = {
                         val json = BackupManager.exportState(context, null, emptyList())
+
+                        val trimmed = backupFileName.trim().ifEmpty { "lrc_backup" }
+                        val finalName =
+                            if (trimmed.endsWith(".json", ignoreCase = true)) trimmed
+                            else "$trimmed.json"
+
                         shareJson(context, finalName, json)
                     }) {
                         Text("Partager", fontSize = 12.sp, color = accent)
