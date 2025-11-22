@@ -1,48 +1,27 @@
 package com.patrick.lrcreader.ui
 
-import androidx.compose.ui.graphics.graphicsLayer
-import android.content.Context
-import android.media.MediaMetadataRetriever
 import android.media.MediaPlayer
-import android.net.Uri
-import androidx.compose.foundation.ScrollState
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.GraphicEq
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.SkipNext
-import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.core.DisplayPrefs
 import com.patrick.lrcreader.core.FillerSoundManager
-import com.patrick.lrcreader.core.LrcCleaner
 import com.patrick.lrcreader.core.LrcLine
 import com.patrick.lrcreader.core.LrcStorage
 import com.patrick.lrcreader.core.PrompterPrefs
@@ -81,15 +60,13 @@ fun PlayerScreen(
         mutableStateOf(DisplayPrefs.isConcertMode(context))
     }
 
-    // MANU / AUTO = false / true -> AUTO = mode prompteur
-    var isContinuousScroll by remember { mutableStateOf(false) } // utilisé comme "mode prompteur"
+    // MANU / AUTO = false / true -> AUTO = prompteur
+    var isContinuousScroll by remember { mutableStateOf(false) }
 
     // état pour le prompteur
     val prompterScrollState = rememberScrollState()
     var isPrompterRunning by remember { mutableStateOf(false) }
-    var prompterSpeed by remember {
-        mutableStateOf(PrompterPrefs.getSpeed(context))
-    }
+    var prompterSpeed by remember { mutableStateOf(PrompterPrefs.getSpeed(context)) }
 
     var lyricsBoxHeightPx by remember { mutableStateOf(0) }
     var currentLrcIndex by remember { mutableStateOf(0) }
@@ -104,20 +81,13 @@ fun PlayerScreen(
     var isDragging by remember { mutableStateOf(false) }
     var dragPosMs by remember { mutableStateOf(0) }
 
-    var hasRequestedPlaylist by remember(currentTrackUri) {
-        mutableStateOf(false)
-    }
+    var hasRequestedPlaylist by remember(currentTrackUri) { mutableStateOf(false) }
 
     var isEditingLyrics by remember { mutableStateOf(false) }
     var showMixScreen by remember { mutableStateOf(false) }
 
-    // ► Etat texte brut et lignes d’édition : mémorisés seulement par morceau
-    var rawLyricsText by remember(currentTrackUri) {
-        mutableStateOf("")
-    }
-    var editingLines by remember(currentTrackUri) {
-        mutableStateOf<List<LrcLine>>(emptyList())
-    }
+    var rawLyricsText by remember(currentTrackUri) { mutableStateOf("") }
+    var editingLines by remember(currentTrackUri) { mutableStateOf<List<LrcLine>>(emptyList()) }
 
     var currentEditTab by remember { mutableStateOf(0) }
 
@@ -144,9 +114,7 @@ fun PlayerScreen(
             }
 
             delay(200)
-            if (!isPlaying && !mediaPlayer.isPlaying) {
-                delay(200)
-            }
+            if (!isPlaying && !mediaPlayer.isPlaying) delay(200)
         }
     }
 
@@ -169,7 +137,6 @@ fun PlayerScreen(
     // ---------- Auto-scroll du prompteur ----------
     LaunchedEffect(isPrompterRunning, prompterSpeed, prompterText, currentTrackUri) {
         if (!isPrompterRunning) return@LaunchedEffect
-        // on repart du haut à chaque lancement
         prompterScrollState.scrollTo(0)
         while (isPrompterRunning && prompterScrollState.canScrollForward) {
             prompterScrollState.scrollBy(6f * prompterSpeed.coerceIn(0.2f, 2.0f))
@@ -185,14 +152,6 @@ fun PlayerScreen(
         scope.launch { scrollState.scrollTo(wantedScroll) }
     }
 
-    fun centerCurrentLineAnimated() {
-        if (lyricsBoxHeightPx == 0) return
-        val centerPx = lyricsBoxHeightPx / 2f
-        val lineAbsY = baseTopSpacerPx + currentLrcIndex * lineHeightPx
-        val wantedScroll = (lineAbsY - centerPx).toInt().coerceAtLeast(0)
-        scope.launch { scrollState.animateScrollTo(wantedScroll) }
-    }
-
     fun seekAndCenter(targetMs: Int, targetIndex: Int) {
         runCatching { mediaPlayer.seekTo(targetMs) }
         currentLrcIndex = targetIndex
@@ -202,27 +161,21 @@ fun PlayerScreen(
             onIsPlayingChange(true)
             runCatching { FillerSoundManager.fadeOutAndStop(400) }
         }
-        if (lyricsBoxHeightPx > 0) {
+        if (!isContinuousScroll && lyricsBoxHeightPx > 0) {
             val centerPx = lyricsBoxHeightPx / 2f
             val lineAbsY = baseTopSpacerPx + targetIndex * lineHeightPx
             val wanted = (lineAbsY - centerPx).toInt().coerceAtLeast(0)
-            scope.launch {
-                // en mode prompteur, on ne touche pas au scroll des paroles
-                if (!isContinuousScroll) {
-                    scrollState.scrollTo(wanted)
-                }
-            }
+            scope.launch { scrollState.scrollTo(wanted) }
         }
     }
 
     // ---------- Auto-centering pendant lecture (mode MANU uniquement) ----------
     LaunchedEffect(isPlaying, parsedLines, lyricsBoxHeightPx, isContinuousScroll) {
-        if (parsedLines.isEmpty()) return@LaunchedEffect
-        if (lyricsBoxHeightPx == 0) return@LaunchedEffect
+        if (parsedLines.isEmpty() || lyricsBoxHeightPx == 0) return@LaunchedEffect
 
         while (true) {
             if (isPlaying && !userScrolling && !isDragging && !isContinuousScroll) {
-                // seulement en MANU
+                // seulement en MANU : on garde la ligne courante au centre
                 centerCurrentLineImmediate()
             }
             delay(40)
@@ -233,10 +186,8 @@ fun PlayerScreen(
     //  LAYOUT GLOBAL
     // ─────────────────────────────
     DarkBlueGradientBackground {
-        Box(
-            modifier = modifier
-                .fillMaxSize()
-        ) {
+        Box(modifier = modifier.fillMaxSize()) {
+
             if (isEditingLyrics) {
                 // ========= MODE ÉDITION =========
                 LyricsEditorSection(
@@ -256,15 +207,15 @@ fun PlayerScreen(
                     onIsPlayingChange = onIsPlayingChange,
                     onSaveSortedLines = { sorted ->
                         if (currentTrackUri != null) {
-                            runCatching {
-                                LrcStorage.saveForTrack(context, currentTrackUri, sorted)
-                            }
+                            runCatching { LrcStorage.saveForTrack(context, currentTrackUri, sorted) }
                         }
                         onParsedLinesChange(sorted)
                         isEditingLyrics = false
                     }
                 )
+
             } else {
+
                 // ========= MODE LECTURE / PROMPTEUR =========
                 Column(
                     modifier = Modifier
@@ -280,10 +231,8 @@ fun PlayerScreen(
                         },
                         isContinuousScroll = isContinuousScroll,
                         onToggleContinuousScroll = {
-                            // bascule MANU / AUTO (AUTO = prompteur)
                             isContinuousScroll = !isContinuousScroll
                             isPrompterRunning = false
-                            // on remet le prompteur en haut quand on l’active
                             if (isContinuousScroll) {
                                 scope.launch { prompterScrollState.scrollTo(0) }
                             }
@@ -295,17 +244,15 @@ fun PlayerScreen(
                                 rawLyricsText = parsedLines.joinToString("\n") { it.text }
                                 editingLines = parsedLines
                             } else {
-                                if (rawLyricsText.isBlank() && editingLines.isEmpty()) {
-                                    rawLyricsText = ""
-                                    editingLines = emptyList()
-                                }
+                                rawLyricsText = ""
+                                editingLines = emptyList()
                             }
                             currentEditTab = 0
                             isEditingLyrics = true
                         }
                     )
 
-                    // Zone centrale : soit paroles LRC, soit prompteur AUTO
+                    // Zone centrale
                     if (isContinuousScroll) {
                         PrompterArea(
                             modifier = Modifier.weight(1f),
@@ -326,7 +273,7 @@ fun PlayerScreen(
                             modifier = Modifier.weight(1f),
                             scrollState = scrollState,
                             parsedLines = parsedLines,
-                            isContinuousScroll = false, // le mode AUTO est maintenant le prompteur
+                            isContinuousScroll = false,
                             isConcertMode = isConcertMode,
                             currentLrcIndex = currentLrcIndex,
                             baseTopSpacerPx = baseTopSpacerPx,
@@ -339,7 +286,6 @@ fun PlayerScreen(
                         )
                     }
 
-                    // Timeline
                     TimeBar(
                         positionMs = if (isDragging) dragPosMs else positionMs,
                         durationMs = durationMs,
@@ -349,17 +295,13 @@ fun PlayerScreen(
                         },
                         onSeekCommit = { newPos ->
                             isDragging = false
-                            val safe = when {
-                                durationMs <= 0 -> 0
-                                else -> min(max(newPos, 0), durationMs)
-                            }
+                            val safe = min(max(newPos, 0), durationMs)
                             runCatching { mediaPlayer.seekTo(safe) }
                             positionMs = safe
                         },
                         highlightColor = highlightColor
                     )
 
-                    // ► Play / Pause + Next / Prev juste sous la timeline
                     PlayerControls(
                         isPlaying = isPlaying,
                         onPlayPause = {
@@ -373,9 +315,7 @@ fun PlayerScreen(
                                     mediaPlayer.setVolume(1f, 1f)
                                     mediaPlayer.start()
                                     onIsPlayingChange(true)
-                                    if (!isContinuousScroll) {
-                                        centerCurrentLineImmediate()
-                                    }
+                                    if (!isContinuousScroll) centerCurrentLineImmediate()
                                     runCatching { FillerSoundManager.fadeOutAndStop(400) }
                                 }
                             }
@@ -387,9 +327,7 @@ fun PlayerScreen(
                                 onIsPlayingChange(true)
                                 runCatching { FillerSoundManager.fadeOutAndStop(400) }
                             }
-                            if (!isContinuousScroll) {
-                                centerCurrentLineImmediate()
-                            }
+                            if (!isContinuousScroll) centerCurrentLineImmediate()
                         },
                         onNext = {
                             mediaPlayer.seekTo(max(durationMs - 1, 0))
@@ -416,9 +354,6 @@ fun PlayerScreen(
     }
 }
 
-
-
-
 /* ─────────────────────────────
    HEADER LECTURE
    ───────────────────────────── */
@@ -440,6 +375,7 @@ private fun ReaderHeader(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
+
         IconButton(onClick = onToggleConcertMode) {
             Icon(
                 imageVector = Icons.Filled.Tune,
@@ -448,7 +384,6 @@ private fun ReaderHeader(
             )
         }
 
-        // Bouton MANU / AUTO (AUTO = prompteur)
         TextButton(onClick = onToggleContinuousScroll) {
             Text(
                 text = if (isContinuousScroll) "AUTO" else "MANU",
@@ -474,328 +409,5 @@ private fun ReaderHeader(
                 tint = Color.White
             )
         }
-    }
-}
-
-/* ─────────────────────────────
-   LYRICS AREA (MODE MANU)
-   ───────────────────────────── */
-
-
-
-/* ─────────────────────────────
-   PROMPTEUR AUTO
-   ───────────────────────────── */
-
-@Composable
-private fun PrompterArea(
-    modifier: Modifier = Modifier,
-    scrollState: ScrollState,
-    text: String,
-    isRunning: Boolean,
-    onToggleRunning: () -> Unit,
-    speed: Float,
-    onSpeedChange: (Float) -> Unit,
-    highlightColor: Color
-) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-    ) {
-        // ───── COLONNE TEXTE (PROMPTEUR) ─────
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .verticalScroll(scrollState)
-        ) {
-            Spacer(Modifier.height(4.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Mode prompteur",
-                    color = Color(0xFFB0BEC5),
-                    fontSize = 13.sp
-                )
-
-                TextButton(onClick = onToggleRunning) {
-                    Text(
-                        text = if (isRunning) "Pause défilement" else "Démarrer défilement",
-                        color = highlightColor,
-                        fontSize = 12.sp
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(8.dp))
-
-            if (text.isBlank()) {
-                Text(
-                    text = "Aucune parole disponible pour ce morceau.\nAjoute du texte dans l’éditeur.",
-                    color = Color.Gray,
-                    fontSize = 16.sp,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(24.dp)
-                )
-            } else {
-                Text(
-                    text = text,
-                    color = Color.White,
-                    fontSize = 22.sp,
-                    lineHeight = 28.sp,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
-                )
-
-                Spacer(Modifier.height(200.dp))
-            }
-        }
-
-        // ───── COLONNE FADER VITESSE ─────
-        Column(
-            modifier = Modifier
-                .width(72.dp)
-                .padding(start = 8.dp)
-                .padding(vertical = 8.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text(
-                text = "Vitesse",
-                color = Color(0xFFB0BEC5),
-                fontSize = 11.sp
-            )
-
-            Spacer(Modifier.height(4.dp))
-
-            // valeur texte (0.2 → 2.0)
-            Text(
-                text = String.format("%.1fx", speed),
-                color = Color.White,
-                fontSize = 13.sp
-            )
-
-            Spacer(Modifier.height(8.dp))
-
-            // Fader vertical (Slider tourné)
-            Box(
-                modifier = Modifier
-                    .height(180.dp)
-                    .fillMaxWidth(),
-                contentAlignment = Alignment.Center
-            ) {
-                Slider(
-                    value = speed,
-                    onValueChange = { newValue ->
-                        onSpeedChange(newValue)
-                    },
-                    valueRange = 0.3f..2.0f,
-                    modifier = Modifier
-                        .height(40.dp)
-                        .fillMaxWidth()
-                        .graphicsLayer {
-                            // rotation en vertical
-                            rotationZ = -90f
-                        },
-                    colors = SliderDefaults.colors(
-                        thumbColor = Color.White,
-                        activeTrackColor = Color(0xFFE040FB),
-                        inactiveTrackColor = Color(0x55E040FB)
-                    )
-                )
-            }
-        }
-    }
-}
-
-/* ─────────────────────────────
-   CONTROLES LECTURE
-   ───────────────────────────── */
-
-@Composable
-private fun PlayerControls(
-    isPlaying: Boolean,
-    onPlayPause: () -> Unit,
-    onPrev: () -> Unit,
-    onNext: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 14.dp),
-        horizontalArrangement = Arrangement.SpaceEvenly,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        IconButton(onClick = onPrev) {
-            Icon(
-                imageVector = Icons.Filled.SkipPrevious,
-                contentDescription = "Précédent",
-                tint = Color.White,
-                modifier = Modifier.size(48.dp)
-            )
-        }
-
-        IconButton(onClick = onPlayPause) {
-            Icon(
-                imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                contentDescription = "Play/Pause",
-                tint = Color.White,
-                modifier = Modifier.size(64.dp)
-            )
-        }
-
-        IconButton(onClick = onNext) {
-            Icon(
-                imageVector = Icons.Filled.SkipNext,
-                contentDescription = "Suivant",
-                tint = Color.White,
-                modifier = Modifier.size(48.dp)
-            )
-        }
-    }
-}
-
-@Composable
-private fun TimeBar(
-    positionMs: Int,
-    durationMs: Int,
-    onSeekLivePreview: (Int) -> Unit,
-    onSeekCommit: (Int) -> Unit,
-    highlightColor: Color,
-) {
-    val posText = remember(positionMs) { formatMs(positionMs) }
-    val durText = remember(durationMs) { formatMs(durationMs.coerceAtLeast(0)) }
-    val trackColor = highlightColor.copy(alpha = 0.25f)
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(bottom = 4.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            posText,
-            color = Color.LightGray,
-            fontSize = 12.sp,
-            modifier = Modifier.padding(end = 6.dp)
-        )
-
-        val sliderValue = when {
-            durationMs <= 0 -> 0f
-            else -> positionMs.toFloat() / durationMs.toFloat()
-        }
-        var lastPreview by remember { mutableStateOf(positionMs) }
-
-        Slider(
-            value = sliderValue,
-            onValueChange = { frac ->
-                val preview = (frac * durationMs).toInt()
-                lastPreview = preview
-                onSeekLivePreview(preview)
-            },
-            onValueChangeFinished = {
-                onSeekCommit(lastPreview)
-            },
-            enabled = durationMs > 0,
-            modifier = Modifier
-                .weight(1f)
-                .height(20.dp),
-            colors = SliderDefaults.colors(
-                thumbColor = highlightColor,
-                activeTrackColor = trackColor,
-                inactiveTrackColor = trackColor.copy(alpha = 0.4f)
-            )
-        )
-
-        Text(
-            durText,
-            color = Color.LightGray,
-            fontSize = 12.sp,
-            modifier = Modifier.padding(start = 6.dp)
-        )
-    }
-}
-
-/* ─────────────────────────────
-   FONCTIONS UTILITAIRES
-   ───────────────────────────── */
-
-private fun formatMs(ms: Int): String {
-    if (ms <= 0) return "00:00"
-    val totalSeconds = ms / 1000
-    val s = totalSeconds % 60
-    val m = (totalSeconds / 60) % 60
-    val h = totalSeconds / 3600
-    return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%02d:%02d".format(m, s)
-}
-
-/** Format LRC style : mm:ss.xx */
-private fun formatLrcTime(ms: Long): String {
-    if (ms <= 0L) return "00:00.00"
-    val totalSeconds = ms / 1000
-    val minutes = totalSeconds / 60
-    val seconds = totalSeconds % 60
-    val hundredths = (ms % 1000) / 10
-    return "%02d:%02d.%02d".format(minutes, seconds, hundredths)
-}
-
-/** Construit le texte brut pour le prompteur. */
-private fun buildPrompterText(
-    parsedLines: List<LrcLine>,
-    rawLyrics: String
-): String {
-    return when {
-        parsedLines.isNotEmpty() ->
-            parsedLines.joinToString("\n") { it.text }
-        rawLyrics.isNotBlank() ->
-            rawLyrics
-        else -> ""
-    }
-}
-
-/**
- * Essaie d'importer les paroles intégrées dans le MP3 (Musicolet ou autre).
- * Ne modifie jamais le MP3.
- */
-private fun importLyricsFromAudio(
-    context: Context,
-    uriString: String
-): List<LrcLine>? {
-    return try {
-        val retriever = MediaMetadataRetriever()
-        retriever.setDataSource(context, Uri.parse(uriString))
-
-        val raw: String? = try {
-            val field = MediaMetadataRetriever::class.java.getField("METADATA_KEY_LYRICS")
-            val key = field.getInt(null)
-            retriever.extractMetadata(key)
-        } catch (e: Exception) {
-            null
-        }
-
-        retriever.release()
-
-        if (raw.isNullOrBlank()) return null
-
-        val cleaned = LrcCleaner.clean(raw)
-
-        if (cleaned.isNotEmpty()) {
-            cleaned.map { it.copy(timeMs = 0L, text = it.text) }
-        } else {
-            raw.lines()
-                .map { it.trim() }
-                .filter { it.isNotEmpty() }
-                .map { line ->
-                    LrcLine(timeMs = 0L, text = line)
-                }
-        }
-    } catch (_: Exception) {
-        null
     }
 }

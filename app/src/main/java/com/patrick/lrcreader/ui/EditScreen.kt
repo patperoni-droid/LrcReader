@@ -93,7 +93,7 @@ fun EditScreen(
             Text("Édition de titre", color = onBg, fontSize = 18.sp)
             Spacer(Modifier.height(10.dp))
 
-            // bloc FILE
+            // ──────────────── BLOC FICHIER ────────────────
             Card(colors = CardDefaults.cardColors(containerColor = card)) {
                 Column(Modifier.padding(12.dp)) {
                     Text("1. Choisir un fichier audio", color = onBg, fontSize = 14.sp)
@@ -104,14 +104,18 @@ fun EditScreen(
                     Spacer(Modifier.height(6.dp))
                     Text("Fichier : $pickedName", color = sub, fontSize = 12.sp)
                     if (durationMs > 0) {
-                        Text("Durée : ${formatMs(durationMs)}", color = sub, fontSize = 12.sp)
+                        Text(
+                            "Durée : ${formatMsEditScreen(durationMs)}",
+                            color = sub,
+                            fontSize = 12.sp
+                        )
                     }
                 }
             }
 
             Spacer(Modifier.height(12.dp))
 
-            // bloc POINTS A/B
+            // ──────────────── BLOC POINTS A/B ────────────────
             Card(colors = CardDefaults.cardColors(containerColor = card)) {
                 Column(Modifier.padding(12.dp)) {
                     Text("2. Points d’entrée / sortie", color = onBg, fontSize = 14.sp)
@@ -120,8 +124,13 @@ fun EditScreen(
                     if (durationMs == 0) {
                         Text("Choisis d’abord un fichier.", color = sub, fontSize = 12.sp)
                     } else {
+
                         // START
-                        Text("Point d’entrée : ${formatMs(startMs)}", color = onBg, fontSize = 12.sp)
+                        Text(
+                            "Point d’entrée : ${formatMsEditScreen(startMs)}",
+                            color = onBg,
+                            fontSize = 12.sp
+                        )
                         Slider(
                             value = startMs.toFloat(),
                             onValueChange = { v ->
@@ -129,10 +138,12 @@ fun EditScreen(
                             },
                             valueRange = 0f..durationMs.toFloat()
                         )
+
                         Row {
                             TextButton(onClick = {
                                 startMs = (startMs - 1000).coerceIn(0, endMs)
                             }) { Text("−1 s", color = onBg, fontSize = 11.sp) }
+
                             TextButton(onClick = {
                                 startMs = (startMs + 1000).coerceIn(0, endMs)
                             }) { Text("+1 s", color = onBg, fontSize = 11.sp) }
@@ -141,7 +152,11 @@ fun EditScreen(
                         Spacer(Modifier.height(8.dp))
 
                         // END
-                        Text("Point de sortie : ${formatMs(endMs)}", color = onBg, fontSize = 12.sp)
+                        Text(
+                            "Point de sortie : ${formatMsEditScreen(endMs)}",
+                            color = onBg,
+                            fontSize = 12.sp
+                        )
                         Slider(
                             value = endMs.toFloat(),
                             onValueChange = { v ->
@@ -149,10 +164,12 @@ fun EditScreen(
                             },
                             valueRange = 0f..durationMs.toFloat()
                         )
+
                         Row {
                             TextButton(onClick = {
                                 endMs = (endMs - 1000).coerceIn(startMs, durationMs)
                             }) { Text("−1 s", color = onBg, fontSize = 11.sp) }
+
                             TextButton(onClick = {
                                 endMs = (endMs + 1000).coerceIn(startMs, durationMs)
                             }) { Text("+1 s", color = onBg, fontSize = 11.sp) }
@@ -173,10 +190,11 @@ fun EditScreen(
 
                             FilledTonalButton(onClick = {
                                 val mp = mediaPlayer ?: return@FilledTonalButton
-                                val startPreview =
-                                    (endMs - 10_000).coerceAtLeast(startMs).coerceAtLeast(0)
+                                val preview = (endMs - 10_000)
+                                    .coerceAtLeast(startMs)
+                                    .coerceAtLeast(0)
                                 try {
-                                    mp.seekTo(startPreview)
+                                    mp.seekTo(preview)
                                     mp.start()
                                     isPlaying = true
                                 } catch (_: Exception) {}
@@ -229,7 +247,7 @@ fun EditScreen(
     }
 }
 
-private fun formatMs(ms: Int): String {
+private fun formatMsEditScreen(ms: Int): String {
     if (ms <= 0) return "00:00"
     val totalSeconds = ms / 1000
     val s = totalSeconds % 60

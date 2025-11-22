@@ -34,7 +34,7 @@ import com.patrick.lrcreader.nowString
 import com.patrick.lrcreader.saveJsonToUri
 import com.patrick.lrcreader.shareJson
 import com.patrick.lrcreader.ui.theme.DarkBlueGradientBackground
-import kotlin.math.cbrt   // <<< mapping volume courbe
+import kotlin.math.cbrt   // mapping volume courbe
 
 /* ─────────────────────────────
    Écran "Plus" (Paramètres)
@@ -211,7 +211,8 @@ private fun BackupScreen(
                 BackupFolderPrefs.save(context, treeUri)
                 backupFolderUri = treeUri
                 Toast.makeText(context, "Dossier de sauvegarde choisi", Toast.LENGTH_SHORT).show()
-            } catch (_: Exception) {}
+            } catch (_: Exception) {
+            }
         }
     }
 
@@ -474,7 +475,8 @@ private fun FillerSoundScreen(
                     uri,
                     Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
                 )
-            } catch (_: Exception) {}
+            } catch (_: Exception) {
+            }
             FillerSoundPrefs.saveFillerFolder(context, uri)
             fillerUri = uri
             fillerName = uri.lastPathSegment ?: "Dossier choisi"
@@ -705,7 +707,11 @@ private fun EditSoundScreen(
                     Spacer(Modifier.height(6.dp))
                     Text("Fichier : $pickedName", color = sub, fontSize = 12.sp)
                     if (durationMs > 0) {
-                        Text("Durée : ${formatMs(durationMs)}", color = sub, fontSize = 12.sp)
+                        Text(
+                            text = "Durée : ${formatMsEditSound(durationMs)}",
+                            color = sub,
+                            fontSize = 12.sp
+                        )
                     }
                 }
             }
@@ -726,7 +732,7 @@ private fun EditSoundScreen(
                         )
                     } else {
                         Text(
-                            "Point d’entrée : ${formatMs(startMs)}",
+                            "Point d’entrée : ${formatMsEditSound(startMs)}",
                             color = onBg,
                             fontSize = 12.sp
                         )
@@ -750,7 +756,7 @@ private fun EditSoundScreen(
                         Spacer(Modifier.height(8.dp))
 
                         Text(
-                            "Point de sortie : ${formatMs(endMs)}",
+                            "Point de sortie : ${formatMsEditSound(endMs)}",
                             color = onBg,
                             fontSize = 12.sp
                         )
@@ -861,8 +867,8 @@ private fun EditSoundScreen(
     }
 }
 
-/* utilitaire pour l’affichage mm:ss */
-private fun formatMs(ms: Int): String {
+/* utilitaire pour l’affichage mm:ss POUR CET ÉCRAN UNIQUEMENT */
+private fun formatMsEditSound(ms: Int): String {
     if (ms <= 0) return "00:00"
     val totalSeconds = ms / 1000
     val s = totalSeconds % 60

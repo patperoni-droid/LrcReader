@@ -20,7 +20,6 @@
  */
 package com.patrick.lrcreader.ui
 
-
 import android.content.Context
 import android.media.MediaMetadataRetriever
 import android.media.MediaPlayer
@@ -40,12 +39,7 @@ import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -105,7 +99,7 @@ fun LyricsEditorSection(
             }
         }
 
-        // Tabs
+        // Onglets
         TabRow(
             selectedTabIndex = currentEditTab,
             containerColor = Color.Transparent,
@@ -181,9 +175,7 @@ fun LyricsEditorSection(
 
                     OutlinedTextField(
                         value = rawLyricsText,
-                        onValueChange = { newText ->
-                            onRawLyricsTextChange(newText)
-                        },
+                        onValueChange = onRawLyricsTextChange,
                         modifier = Modifier
                             .fillMaxWidth()
                             .weight(1f),
@@ -255,7 +247,7 @@ fun LyricsEditorSection(
                         }
 
                         Text(
-                            text = formatMs(positionMs),
+                            text = formatMsLyricsEditor(positionMs),
                             color = Color.LightGray,
                             fontSize = 12.sp
                         )
@@ -326,9 +318,7 @@ fun LyricsEditorSection(
                                                 onEditingLinesChange(
                                                     editingLines.mapIndexed { i, old ->
                                                         if (i == index)
-                                                            old.copy(
-                                                                timeMs = now.toLong()
-                                                            )
+                                                            old.copy(timeMs = now.toLong())
                                                         else old
                                                     }
                                                 )
@@ -364,9 +354,7 @@ fun LyricsEditorSection(
                                                 mediaPlayer.start()
                                                 onIsPlayingChange(true)
                                                 runCatching {
-                                                    FillerSoundManager.fadeOutAndStop(
-                                                        200
-                                                    )
+                                                    FillerSoundManager.fadeOutAndStop(200)
                                                 }
                                             }
                                         },
@@ -427,7 +415,7 @@ fun LyricsEditorSection(
    FONCTIONS UTILITAIRES (LOCALES À L'ÉDITEUR)
    ───────────────────────────── */
 
-private fun formatMs(ms: Int): String {
+private fun formatMsLyricsEditor(ms: Int): String {
     if (ms <= 0) return "00:00"
     val totalSeconds = ms / 1000
     val s = totalSeconds % 60
