@@ -3,30 +3,13 @@ package com.patrick.lrcreader.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Headphones
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.LibraryMusic
-import androidx.compose.material.icons.filled.MoreHoriz
-import androidx.compose.material.icons.filled.MusicNote
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.PlayCircleFilled
-import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -39,9 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
- * Écran d’accueil “pro” inspiré Suno :
- * - Fond noir avec dégradé bleu/violet
- * - Cartes sombres avec fin contour néon
+ * Écran d'accueil “pro”
  */
 @Composable
 fun HomeScreen(
@@ -52,13 +33,14 @@ fun HomeScreen(
     onOpenTuner: () -> Unit,
     onOpenProfile: () -> Unit,
     onOpenTutorial: () -> Unit,
-    onOpenSettings: () -> Unit
+    onOpenSettings: () -> Unit,
+    onOpenNotes: () -> Unit   // <--- AJOUT + CORRECT
 ) {
     val bgGradient = Brush.verticalGradient(
         colors = listOf(
-            Color(0xFF050712), // très sombre en haut
+            Color(0xFF050712),
             Color(0xFF060B1C),
-            Color(0xFF09132A)  // bleu nuit vers le bas
+            Color(0xFF09132A)
         )
     )
 
@@ -68,12 +50,13 @@ fun HomeScreen(
             .background(bgGradient)
             .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
+
         Column(
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
 
-            // ---------- Titre ----------
+            // ---------- TITRE ----------
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalAlignment = Alignment.Start
@@ -94,7 +77,7 @@ fun HomeScreen(
 
             Spacer(Modifier.height(18.dp))
 
-            // ---------- GROS BOUTONS ----------
+            // ---------- BOUTONS ----------
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
@@ -105,10 +88,7 @@ fun HomeScreen(
                     subtitle = "Paroles synchronisées + playback",
                     icon = Icons.Filled.MusicNote,
                     accentGradient = Brush.horizontalGradient(
-                        listOf(
-                            Color(0xFF9C27FF),
-                            Color(0xFF42A5F5)
-                        )
+                        listOf(Color(0xFF9C27FF), Color(0xFF42A5F5))
                     ),
                     onClick = onOpenPlayer
                 )
@@ -118,10 +98,7 @@ fun HomeScreen(
                     subtitle = "Préparation scène, ne pas déranger",
                     icon = Icons.Filled.PlayCircleFilled,
                     accentGradient = Brush.horizontalGradient(
-                        listOf(
-                            Color(0xFFFFA726),
-                            Color(0xFFFF4081)
-                        )
+                        listOf(Color(0xFFFFA726), Color(0xFFFF4081))
                     ),
                     onClick = onOpenConcertMode
                 )
@@ -131,10 +108,7 @@ fun HomeScreen(
                     subtitle = "Crossfade, tempo, limiteur…",
                     icon = Icons.Filled.Headphones,
                     accentGradient = Brush.horizontalGradient(
-                        listOf(
-                            Color(0xFF26C6DA),
-                            Color(0xFF7E57C2)
-                        )
+                        listOf(Color(0xFF26C6DA), Color(0xFF7E57C2))
                     ),
                     onClick = onOpenDjMode
                 )
@@ -144,10 +118,7 @@ fun HomeScreen(
                     subtitle = "Guitare & instruments",
                     icon = Icons.Filled.Tune,
                     accentGradient = Brush.horizontalGradient(
-                        listOf(
-                            Color(0xFF7C4DFF),
-                            Color(0xFF40C4FF)
-                        )
+                        listOf(Color(0xFF7C4DFF), Color(0xFF40C4FF))
                     ),
                     onClick = onOpenTuner
                 )
@@ -155,7 +126,7 @@ fun HomeScreen(
 
             Spacer(Modifier.height(12.dp))
 
-            // ---------- Bas : petites actions ----------
+            // ---------- BAS ----------
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -163,21 +134,26 @@ fun HomeScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+
                 SmallBottomChip(
                     icon = Icons.Filled.Person,
                     label = "Profil",
                     onClick = onOpenProfile
                 )
+
                 SmallBottomChip(
                     icon = Icons.Filled.Info,
                     label = "Tutoriel",
                     onClick = onOpenTutorial
                 )
+
+                // -------- NOTES (REMPLACE BIBLIOTHÈQUE) --------
                 SmallBottomChip(
                     icon = Icons.Filled.LibraryMusic,
-                    label = "Bibliothèque",
-                    onClick = onOpenPlayer
+                    label = "Notes",
+                    onClick = onOpenNotes        // <--- nouveau bouton Notes
                 )
+
                 SmallBottomChip(
                     icon = Icons.Filled.MoreHoriz,
                     label = "Réglages",
@@ -201,7 +177,7 @@ private fun NeonCardButton(
     onClick: () -> Unit
 ) {
     val shape = RoundedCornerShape(22.dp)
-    val cardBg = Color(0xFF101426) // intérieur sombre
+    val cardBg = Color(0xFF101426)
 
     Card(
         modifier = Modifier
@@ -210,9 +186,7 @@ private fun NeonCardButton(
             .clickable(onClick = onClick),
         shape = shape,
         elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = Color.Transparent
-        )
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent)
     ) {
         Box(
             modifier = Modifier
@@ -230,15 +204,11 @@ private fun NeonCardButton(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
 
-                // petite barre verticale néon à gauche
                 Box(
                     modifier = Modifier
                         .height(44.dp)
                         .width(4.dp)
-                        .background(
-                            brush = accentGradient,
-                            shape = RoundedCornerShape(999.dp)
-                        )
+                        .background(accentGradient, RoundedCornerShape(999.dp))
                 )
 
                 Spacer(Modifier.width(12.dp))
@@ -264,9 +234,7 @@ private fun NeonCardButton(
                     imageVector = icon,
                     contentDescription = null,
                     tint = Color.White,
-                    modifier = Modifier
-                        .padding(start = 8.dp)
-                        .height(30.dp)
+                    modifier = Modifier.height(30.dp)
                 )
             }
         }

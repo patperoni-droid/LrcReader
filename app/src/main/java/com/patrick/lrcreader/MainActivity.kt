@@ -14,7 +14,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import com.patrick.lrcreader.core.*
-import com.patrick.lrcreader.core.LrcStorage
 import com.patrick.lrcreader.core.dj.DjEngine
 import com.patrick.lrcreader.ui.*
 import kotlin.math.pow
@@ -29,11 +28,11 @@ class MainActivity : ComponentActivity() {
         val initialQuickPlaylist = SessionPrefs.getQuickPlaylist(this)
         val initialOpenedPlaylist = SessionPrefs.getOpenedPlaylist(this)
 
-        // 🔴 initialisation DJ
         DjEngine.init(this)
 
         setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {
+
                 val ctx = this@MainActivity
                 val mediaPlayer = remember { MediaPlayer() }
 
@@ -42,17 +41,11 @@ class MainActivity : ComponentActivity() {
                 }
 
                 var selectedTab by remember {
-                    mutableStateOf(
-                        initialTabKey?.let { tabFromKey(it) } ?: BottomTab.Home
-                    )
+                    mutableStateOf(initialTabKey?.let { tabFromKey(it) } ?: BottomTab.Home)
                 }
 
-                var selectedQuickPlaylist by rememberSaveable {
-                    mutableStateOf<String?>(initialQuickPlaylist)
-                }
-                var openedPlaylist by rememberSaveable {
-                    mutableStateOf<String?>(initialOpenedPlaylist)
-                }
+                var selectedQuickPlaylist by rememberSaveable { mutableStateOf<String?>(initialQuickPlaylist) }
+                var openedPlaylist by rememberSaveable { mutableStateOf<String?>(initialOpenedPlaylist) }
 
                 var currentPlayingUri by remember { mutableStateOf<String?>(null) }
                 var isPlaying by remember { mutableStateOf(false) }
@@ -61,9 +54,10 @@ class MainActivity : ComponentActivity() {
                 var currentTrackGainDb by remember { mutableStateOf(0) }
                 var currentLyricsColor by remember { mutableStateOf(Color(0xFFE040FB)) }
                 var refreshKey by remember { mutableStateOf(0) }
-                val repoVersion by PlaylistRepository.version
 
-                // Tempo par morceau
+                // 🔥 Pour ouvrir le bloc-notes
+                var isNotesOpen by remember { mutableStateOf(false) }
+
                 var currentTrackTempo by remember { mutableStateOf(1f) }
 
                 fun applyGainToPlayer(db: Int) {
@@ -77,8 +71,7 @@ class MainActivity : ComponentActivity() {
                             mediaPlayer.setVolume(1f, 1f)
                             loudnessEnhancer.setTargetGain(clamped * 100)
                         }
-                    } catch (_: Exception) {
-                    }
+                    } catch (_: Exception) {}
                 }
 
                 fun applyTempoToPlayer(speed: Float) {
@@ -87,8 +80,7 @@ class MainActivity : ComponentActivity() {
                             .setSpeed(speed)
                             .setPitch(1f)
                         mediaPlayer.playbackParams = params
-                    } catch (_: Exception) {
-                    }
+                    } catch (_: Exception) {}
                 }
 
                 val playWithCrossfade: (String, String?) -> Unit = remember {
@@ -162,9 +154,19 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                 ) { innerPadding ->
+
+                    // 🟣 PRIORITÉ ABSOLUE : l'écran Notes recouvre tout
+                    if (isNotesOpen) {
+                        NotesScreen(
+                            modifier = Modifier.padding(innerPadding),
+                            context = ctx,
+                            onClose = { isNotesOpen = false }
+                        )
+                        return@Scaffold
+                    }
+
                     when (selectedTab) {
 
-                        // 🏠 ACCUEIL
                         is BottomTab.Home -> HomeScreen(
                             modifier = Modifier.padding(innerPadding),
                             onOpenPlayer = {
@@ -192,10 +194,12 @@ class MainActivity : ComponentActivity() {
                             onOpenSettings = {
                                 selectedTab = BottomTab.More
                                 SessionPrefs.saveTab(ctx, TAB_MORE)
+                            },
+                            onOpenNotes = {
+                                isNotesOpen = true
                             }
                         )
 
-                        // 🎵 LECTEUR
                         is BottomTab.Player -> PlayerScreen(
                             modifier = Modifier.padding(innerPadding),
                             mediaPlayer = mediaPlayer,
@@ -226,7 +230,6 @@ class MainActivity : ComponentActivity() {
                             }
                         )
 
-                        // ⭐ Playlists rapides
                         is BottomTab.QuickPlaylists -> QuickPlaylistsScreen(
                             modifier = Modifier.padding(innerPadding),
                             onPlaySong = { uri, playlistName, color ->
@@ -245,8 +248,9 @@ class MainActivity : ComponentActivity() {
                             }
                         )
 
-                        is BottomTab.Library ->
-                            LibraryScreen(modifier = Modifier.padding(innerPadding))
+                        is BottomTab.Library -> LibraryScreen(
+                            modifier = Modifier.padding(innerPadding)
+                        )
 
                         is BottomTab.AllPlaylists -> {
                             val m = Modifier.padding(innerPadding)
@@ -284,7 +288,6 @@ class MainActivity : ComponentActivity() {
                             context = ctx
                         )
 
-                        // 🎸 ÉCRAN ACCORDEUR
                         is BottomTab.Tuner -> TunerScreen(
                             modifier = Modifier.padding(innerPadding),
                             onClose = {
@@ -332,9 +335,7 @@ private fun tabFromKey(key: String): BottomTab = when (key) {
     TAB_MORE -> BottomTab.More
     TAB_DJ -> BottomTab.Dj
 
-    // ⚠️ IMPORTANT : si on retrouve "tuner" au démarrage,
-    // on renvoie Home pour éviter de relancer direct l'accordeur
-    TAB_TUNER -> BottomTab.Home
+    TAB_TUNER -> BottomTab.Home // évite lancement auto de l'accordeur
 
     else -> BottomTab.Home
 }
