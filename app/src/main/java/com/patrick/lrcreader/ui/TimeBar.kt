@@ -1,3 +1,15 @@
+/**
+ * Composant UI : TimeBar
+ *
+ * Rôle :
+ * - Affiche une barre de progression du morceau (temps courant / durée totale)
+ * - Permet de faire un seek avec prévisualisation (onSeekLivePreview) puis validation (onSeekCommit)
+ * - Affiche le temps écoulé à gauche et la durée totale à droite, au format mm:ss ou hh:mm:ss.
+ *
+ * Utilisation :
+ * - Appelé depuis l’écran lecteur (PlayerScreen) sous les paroles
+ * - Le curseur est désactivé si durationMs <= 0
+ */
 package com.patrick.lrcreader.ui
 
 import androidx.compose.foundation.layout.Row

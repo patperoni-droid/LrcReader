@@ -1,3 +1,16 @@
+/**
+ * Écran : Accordeur (Tuner)
+ * Rôle : analyse du son via le micro → affiche la note jouée, l’écart en cents,
+ *        mode guitare ou chromatique, et calibration A4.
+ *
+ * Appelé depuis : MoreScreen → bouton "Accordeur".
+ *
+ * Fonctionnement :
+ * - Demande la permission micro
+ * - Démarre TunerEngine au lancement
+ * - Stoppe TunerEngine à la fermeture
+ * - Affiche niveau d’entrée, note détectée et précision
+ */
 package com.patrick.lrcreader.ui
 
 import kotlin.math.log2

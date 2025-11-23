@@ -1,3 +1,48 @@
+/**
+ * Écran : QuickPlaylistsScreen
+ *
+ * Rôle principal :
+ * - Interface rapide pour gérer des playlists "live" pendant une prestation.
+ * - Permet de lire un titre immédiatement, changer de playlist, changer la couleur de la playlist,
+ *   réordonner les titres par drag & drop, renommer un titre, et marquer un titre comme "à revoir".
+ *
+ * Fonctionnalités détaillées :
+ * 1) Affichage de la playlist sélectionnée dans un header stylé (bloc cliquable + flèche).
+ * 2) Menu déroulant pour changer de playlist.
+ * 3) Choix de couleur pour chaque playlist (couleur enregistrée en prefs).
+ * 4) Bouton Reset → remet tous les titres en "non joué" + efface les drapeaux "à revoir".
+ * 5) Contrôle du fond sonore ("filler") :
+ *      - Play/Stop du filler
+ *      - Next filler
+ * 6) Liste des titres :
+ *      - Drag & drop pour réordonner les morceaux (mise à jour immédiate en BDD playlist).
+ *      - Affichage du titre avec coloration suivant l’état :
+ *          * Blanc → titre en cours de lecture
+ *          * Couleur de playlist → normal
+ *          * Gris → déjà joué
+ *          * Rouge → marqué "à revoir"
+ *      - Clic sur le titre → lecture du morceau (callback onPlaySong)
+ * 7) Menu par titre (icône MoreVert) :
+ *      - Retirer de la playlist
+ *      - Renommer le titre (dialog)
+ *      - Marquer / retirer "À revoir"
+ *
+ * Paramètres :
+ * - onPlaySong(uri, playlistName, color) : callback pour lancer la lecture.
+ * - refreshKey : force le rafraîchissement des listes.
+ * - currentPlayingUri : permet d’afficher le morceau en lecture en blanc.
+ * - selectedPlaylist : permet à un parent d’imposer la playlist en cours.
+ * - onSelectedPlaylistChange : pour notifier le parent du changement.
+ * - onPlaylistColorChange : pour synchroniser la couleur active avec l'écran parent.
+ *
+ * Notes :
+ * - Les couleurs de playlists sont sauvegardées dans SharedPreferences.
+ * - Le drag & drop est réalisé via detectDragGesturesAfterLongPress.
+ * - Le fond sonore utilise FillerSoundManager.
+ *
+ * Ce fichier est l’un des plus complets de l’application :
+ * gestion UI + logique playlist + état "live" pour la scène.
+ */
 package com.patrick.lrcreader.ui
 
 import android.content.Context

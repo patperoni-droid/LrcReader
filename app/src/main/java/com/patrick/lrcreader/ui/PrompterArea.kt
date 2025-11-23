@@ -1,3 +1,36 @@
+/**
+ * Composable : PrompterArea
+ *
+ * Rôle :
+ * - Affiche les paroles en mode prompteur automatique.
+ * - Permet de lancer/stopper le défilement automatique.
+ * - Permet d’ajuster la vitesse du défilement (0.3x → 2.0x) via un slider vertical.
+ *
+ * Fonctionnement :
+ * - La colonne de gauche contient le texte complet des paroles, affiché dans un ScrollState.
+ *   → Le parent (PlayerScreen) anime le scroll quand `isRunning = true`.
+ *
+ * - En haut du texte : un bouton "Démarrer / Pause défilement" pour activer ou stopper
+ *   le mode AUTO (appel du callback onToggleRunning).
+ *
+ * - À droite : un fader vertical (Slider tourné via rotationZ) pour ajuster la vitesse.
+ *   → Le callback onSpeedChange(newValue) est appelé à chaque changement.
+ *
+ * - Si le texte est vide : affichage d’un message indiquant que le morceau n’a pas de paroles.
+ *
+ * Paramètres :
+ * - scrollState : ScrollState contrôlé par l’écran parent (permet le défilement automatique).
+ * - text : contenu LRC converti en texte lisible.
+ * - isRunning : indique si le défilement AUTO est actif.
+ * - onToggleRunning : lance / arrête le défilement.
+ * - speed : vitesse actuelle du défilement.
+ * - onSpeedChange : callback appelé quand l’utilisateur ajuste la vitesse.
+ * - highlightColor : couleur accent utilisée pour les boutons.
+ *
+ * Utilisation :
+ * - Appelé depuis PlayerScreen, dans la zone "Mode AUTO".
+ * - Ne gère que l’affichage → toute la logique d’animation / timer est dans PlayerScreen.
+ */
 // Affichage du texte en mode prompteur AUTO
 
 package com.patrick.lrcreader.ui

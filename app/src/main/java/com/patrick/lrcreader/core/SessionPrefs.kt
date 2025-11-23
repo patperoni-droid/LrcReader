@@ -1,3 +1,15 @@
+/**
+ * SessionPrefs = la "mémoire courte" de l'appli.
+ *
+ * Ça sert à retenir :
+ * - le dernier onglet ouvert (last_tab)
+ * - la dernière playlist rapide utilisée
+ * - la dernière playlist ouverte en détail
+ * - le fichier audio choisi comme fond sonore (filler)
+ *
+ * Comme ça, quand tu relances l'appli, tu retrouves ton environnement
+ * de scène comme tu l’avais laissé.
+ */
 package com.patrick.lrcreader.core
 
 import android.content.Context

@@ -85,35 +85,29 @@ class MainActivity : ComponentActivity() {
                 // Bloc-notes plein écran
                 var isNotesOpen by remember { mutableStateOf(false) }
 
+                // 🔵 AJOUT — Écran du fond sonore
+                var isFillerSettingsOpen by remember { mutableStateOf(false) }
+
                 // Tempo par morceau (1f = normal)
                 var currentTrackTempo by remember { mutableStateOf(1f) }
 
                 // ----------------------------------------------------------
                 //  BRANCHAGE PlaybackCoordinator
-                //  (comment le lecteur, le DJ et le filler se coupent entre eux)
                 // ----------------------------------------------------------
 
-                // 👉 Comment on ARRÊTE le lecteur quand le DJ/filler le demande
                 PlaybackCoordinator.stopPlayer = {
                     try {
                         if (mediaPlayer.isPlaying) {
-                            // Pause simple et fiable
                             mediaPlayer.pause()
                         }
                         isPlaying = false
-                    } catch (_: Exception) {
-                    }
+                    } catch (_: Exception) {}
                 }
 
-                // 👉 Comment on ARRÊTE le DJ quand le lecteur/filler le demande
                 PlaybackCoordinator.stopDj = {
-                    try {
-                        DjEngine.stopDj()
-                    } catch (_: Exception) {
-                    }
+                    try { DjEngine.stopDj() } catch (_: Exception) {}
                 }
 
-                // 👉 Comment on ARRÊTE le fond sonore
                 PlaybackCoordinator.stopFiller = {
                     runCatching { FillerSoundManager.fadeOutAndStop(200) }
                 }
@@ -125,55 +119,44 @@ class MainActivity : ComponentActivity() {
                     try {
                         val clamped = db.coerceIn(-12, 12)
                         if (clamped <= 0) {
-                            // Gain négatif : on baisse le volume du player
                             val linear = 10f.pow(clamped / 20f)
                             mediaPlayer.setVolume(linear, linear)
                             loudnessEnhancer.setTargetGain(0)
                         } else {
-                            // Gain positif : volume 1.0 + LoudnessEnhancer
                             mediaPlayer.setVolume(1f, 1f)
                             loudnessEnhancer.setTargetGain(clamped * 100)
                         }
-                    } catch (_: Exception) {
-                    }
+                    } catch (_: Exception) {}
                 }
 
                 // ----------------------------------------------------------
-                //  TEMPO (SPEED) PAR MORCEAU
+                //  TEMPO PAR MORCEAU
                 // ----------------------------------------------------------
                 fun applyTempoToPlayer(speed: Float) {
                     try {
-                        // On évite les valeurs totalement absurdes
                         val safeSpeed = speed.coerceIn(0.5f, 2.0f)
                         val params = mediaPlayer.playbackParams
                             .setSpeed(safeSpeed)
-                            .setPitch(1f) // on garde le pitch constant
+                            .setPitch(1f)
                         mediaPlayer.playbackParams = params
-                    } catch (_: Exception) {
-                        // IllegalStateException possible si le player n'est pas prêt → on ignore
-                    }
+                    } catch (_: Exception) {}
                 }
 
                 // ----------------------------------------------------------
-                //  PLAY + CROSSFADE  (LECTEUR PRINCIPAL)
+                //  PLAY + CROSSFADE
                 // ----------------------------------------------------------
                 val playWithCrossfade: (String, String?) -> Unit = { uriString, playlistName ->
 
-                    // Le lecteur démarre → on coupe DJ + fond sonore
                     PlaybackCoordinator.onPlayerStart()
-
                     currentPlayingUri = uriString
                     runCatching { FillerSoundManager.fadeOutAndStop(400) }
 
-                    // Nouveau token pour invalider une lecture précédente
                     val myToken = currentPlayToken + 1
                     currentPlayToken = myToken
 
-                    // Restauration du gain stocké pour ce titre
                     val savedDb = TrackVolumePrefs.getDb(ctx, uriString) ?: 0
                     currentTrackGainDb = savedDb
 
-                    // Restauration du tempo stocké pour ce titre
                     val savedTempo = TrackTempoPrefs.getTempo(ctx, uriString) ?: 1f
                     currentTrackTempo = savedTempo
 
@@ -202,7 +185,6 @@ class MainActivity : ComponentActivity() {
                             onNaturalEnd = {
                                 isPlaying = false
                                 PlaybackCoordinator.onPlayerStop()
-                                // Si la lecture se termine normalement → on relance un fond sonore
                                 runCatching { FillerSoundManager.startIfConfigured(ctx) }
                             }
                         )
@@ -214,13 +196,12 @@ class MainActivity : ComponentActivity() {
                         PlaybackCoordinator.onPlayerStop()
                     }
 
-                    // On passe automatiquement sur l’onglet Lecteur
                     selectedTab = BottomTab.Player
                     SessionPrefs.saveTab(ctx, TAB_PLAYER)
                 }
 
                 // ----------------------------------------------------------
-                //  RELEASE RESSOURCES
+                //  RELEASE
                 // ----------------------------------------------------------
                 DisposableEffect(Unit) {
                     onDispose {
@@ -245,7 +226,7 @@ class MainActivity : ComponentActivity() {
                     }
                 ) { innerPadding ->
 
-                    // Bloc-notes plein écran (prioritaire sur le reste)
+                    // Notes
                     if (isNotesOpen) {
                         NotesScreen(
                             modifier = Modifier.padding(innerPadding),
@@ -255,20 +236,32 @@ class MainActivity : ComponentActivity() {
                         return@Scaffold
                     }
 
+                    // 🔵 AJOUT — Écran réglages du fond sonore
+                    if (isFillerSettingsOpen) {
+                        FillerSoundScreen(
+                            context = ctx,
+                            onBack = { isFillerSettingsOpen = false }
+                        )
+                        return@Scaffold
+                    }
+
+                    // ------------------------------------------------------
+                    //  NAVIGATION PAR ONGLET
+                    // ------------------------------------------------------
                     when (selectedTab) {
 
-                        // 🏠 ACCUEIL
                         is BottomTab.Home -> HomeScreen(
                             modifier = Modifier.padding(innerPadding),
                             onOpenPlayer = {
                                 selectedTab = BottomTab.Player
                                 SessionPrefs.saveTab(ctx, TAB_PLAYER)
                             },
+
+                            // 🟣 MODIF — ouvre maintenant l’écran fond sonore
                             onOpenFondSonore = {
-                                DisplayPrefs.setConcertMode(ctx, true)
-                                selectedTab = BottomTab.Player
-                                SessionPrefs.saveTab(ctx, TAB_PLAYER)
+                                isFillerSettingsOpen = true
                             },
+
                             onOpenDjMode = {
                                 selectedTab = BottomTab.Dj
                                 SessionPrefs.saveTab(ctx, TAB_DJ)
@@ -289,7 +282,6 @@ class MainActivity : ComponentActivity() {
                             onOpenNotes = { isNotesOpen = true }
                         )
 
-                        // 🎵 LECTEUR PRINCIPAL
                         is BottomTab.Player -> PlayerScreen(
                             modifier = Modifier.padding(innerPadding),
                             mediaPlayer = mediaPlayer,
@@ -320,7 +312,6 @@ class MainActivity : ComponentActivity() {
                             }
                         )
 
-                        // ⭐ PLAYLISTS RAPIDES
                         is BottomTab.QuickPlaylists -> QuickPlaylistsScreen(
                             modifier = Modifier.padding(innerPadding),
                             onPlaySong = { uri, playlistName, color ->
@@ -339,11 +330,9 @@ class MainActivity : ComponentActivity() {
                             }
                         )
 
-                        // 📚 BIBLIOTHÈQUE SIMPLE
                         is BottomTab.Library ->
                             LibraryScreen(modifier = Modifier.padding(innerPadding))
 
-                        // 📂 TOUTES LES PLAYLISTS
                         is BottomTab.AllPlaylists -> {
                             val m = Modifier.padding(innerPadding)
                             if (openedPlaylist == null) {
@@ -354,35 +343,20 @@ class MainActivity : ComponentActivity() {
                                         SessionPrefs.saveOpenedPlaylist(ctx, name)
                                     }
                                 )
-                            } else {
-                                PlaylistDetailScreen(
-                                    modifier = m,
-                                    playlistName = openedPlaylist!!,
-                                    onBack = {
-                                        openedPlaylist = null
-                                        SessionPrefs.saveOpenedPlaylist(ctx, null)
-                                    },
-                                    onPlaySong = { uri ->
-                                        playWithCrossfade(uri, openedPlaylist)
-                                    }
-                                )
                             }
                         }
 
-                        // ⚙️ ÉCRAN "PLUS"
                         is BottomTab.More -> MoreScreen(
                             modifier = Modifier.padding(innerPadding),
                             context = ctx,
                             onAfterImport = { refreshKey++ }
                         )
 
-                        // 🎚️ MODE DJ
                         is BottomTab.Dj -> DjScreen(
                             modifier = Modifier.padding(innerPadding),
                             context = ctx
                         )
 
-                        // 🎸 ACCORDEUR
                         is BottomTab.Tuner -> TunerScreen(
                             modifier = Modifier.padding(innerPadding),
                             onClose = {
@@ -429,6 +403,6 @@ private fun tabFromKey(key: String): BottomTab = when (key) {
     TAB_ALL -> BottomTab.AllPlaylists
     TAB_MORE -> BottomTab.More
     TAB_DJ -> BottomTab.Dj
-    TAB_TUNER -> BottomTab.Home   // on évite le lancement auto du Tuner
+    TAB_TUNER -> BottomTab.Home
     else -> BottomTab.Home
 }

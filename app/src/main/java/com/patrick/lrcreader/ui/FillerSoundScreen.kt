@@ -1,3 +1,26 @@
+/**
+ * Écran : FillerSoundScreen
+ *
+ * Rôle principal :
+ * - Permet de configurer le "fond sonore" automatiquement joué entre deux chansons.
+ *
+ * Fonctionnalités :
+ *  1) Activer / désactiver le fond sonore.
+ *  2) Choisir un dossier audio contenant les fichiers de fond sonore.
+ *  3) Afficher le nom du dossier sélectionné.
+ *  4) Régler le volume avec un slider (courbe douce pour les faibles volumes).
+ *  5) Écouter un aperçu : Play / Stop du fond sonore.
+ *  6) Supprimer le dossier et réinitialiser les réglages.
+ *
+ * Détails techniques :
+ * - Les réglages sont stockés dans FillerSoundPrefs.
+ * - La lecture réelle du fond sonore est gérée par FillerSoundManager.
+ * - La sélection du dossier utilise OpenDocumentTree() et garde la permission.
+ *
+ * En résumé :
+ * L’écran “Fond sonore” est l’endroit où l’utilisateur choisit le dossier
+ * d’ambiance et règle son comportement pendant une prestation live.
+ */
 package com.patrick.lrcreader.ui
 
 import android.content.Context
