@@ -1,8 +1,6 @@
 package com.patrick.lrcreader.ui
 
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.ButtonDefaults
-import kotlinx.coroutines.CoroutineScope
+import com.patrick.lrcreader.core.PlaybackCoordinator
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -78,6 +76,7 @@ fun DjScreen(
     context: Context = LocalContext.current
 ) {
     DjEngine.init(context)
+
     /* --------------------- état navigation dossiers --------------------- */
     var rootFolderUri by remember { mutableStateOf<Uri?>(DjFolderPrefs.get(context)) }
     var currentFolderUri by remember { mutableStateOf<Uri?>(rootFolderUri) }
@@ -340,7 +339,11 @@ fun DjScreen(
                                 (djState.activeSlot == 2 && djState.deckAUri != null)
 
                     Button(
-                        onClick = { DjEngine.launchCrossfade() },
+                        onClick = {
+                            // 🔥 Démarrage DJ => coupe lecteur + fond sonore via coordonnateur
+                            PlaybackCoordinator.onDjStart()
+                            DjEngine.launchCrossfade()
+                        },
                         enabled = goEnabled,
                         modifier = Modifier
                             .height(40.dp)
@@ -424,7 +427,14 @@ fun DjScreen(
                     trackColor = Color(0x33E040FB)
                 )
                 Spacer(Modifier.width(10.dp))
-                IconButton(onClick = { DjEngine.stopDj() }) {
+                IconButton(
+                    onClick = {
+                        // 🔴 Stop DJ manuel
+                        DjEngine.stopDj()
+                        // (si tu veux, tu pourrais éventuellement relancer le filler ici,
+                        // mais on peut laisser FillerSoundManager gérer ça à part)
+                    }
+                ) {
                     Icon(
                         imageVector = Icons.Default.Stop,
                         contentDescription = "Arrêter",
@@ -470,7 +480,11 @@ fun DjScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(32.dp)
-                                    .clickable { DjEngine.playFromQueue(qItem) }
+                                    .clickable {
+                                        // 🔥 lecture depuis la queue => DJ démarre vraiment
+                                        PlaybackCoordinator.onDjStart()
+                                        DjEngine.playFromQueue(qItem)
+                                    }
                                     .padding(horizontal = 4.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -558,6 +572,8 @@ fun DjScreen(
                                     title = entry.name,
                                     isPlaying = isSelected,
                                     onPlay = {
+                                        // Ici on prépare juste le titre sur une platine,
+                                        // le vrai démarrage se fait au "GO".
                                         DjEngine.selectTrackFromList(uriStr, entry.name)
                                     },
                                     onEnqueue = {

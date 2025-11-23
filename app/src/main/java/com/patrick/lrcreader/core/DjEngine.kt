@@ -394,4 +394,10 @@ object DjEngine {
     fun release() {
         stopDj(0)
     }
+    fun stopWithFade(durationMs: Long = 300) {
+        try {
+            // fade & stop DJ
+            stopDj()
+        } catch (_: Exception) {}
+    }
 }

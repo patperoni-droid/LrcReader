@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.core.DisplayPrefs
 import com.patrick.lrcreader.core.FillerSoundManager
+import com.patrick.lrcreader.core.PlaybackCoordinator
 import com.patrick.lrcreader.core.LrcLine
 import com.patrick.lrcreader.core.LrcStorage
 import com.patrick.lrcreader.core.PrompterPrefs
@@ -306,33 +307,45 @@ fun PlayerScreen(
                         isPlaying = isPlaying,
                         onPlayPause = {
                             if (mediaPlayer.isPlaying) {
+                                // STOP LECTEUR → on peut lancer le fond sonore
                                 pauseWithFade(scope, mediaPlayer, 400L) {
                                     onIsPlayingChange(false)
+                                    PlaybackCoordinator.onFillerStart()
                                     runCatching { FillerSoundManager.startIfConfigured(context) }
                                 }
                             } else {
                                 if (durationMs > 0) {
+                                    // PLAY LECTEUR → coupe DJ + fond sonore
+                                    PlaybackCoordinator.onPlayerStart()
+
                                     mediaPlayer.setVolume(1f, 1f)
                                     mediaPlayer.start()
                                     onIsPlayingChange(true)
                                     if (!isContinuousScroll) centerCurrentLineImmediate()
-                                    runCatching { FillerSoundManager.fadeOutAndStop(400) }
+                                    // plus besoin de FillerSoundManager.fadeOutAndStop ici,
+                                    // c’est déjà fait dans onPlayerStart()
                                 }
                             }
                         },
                         onPrev = {
                             mediaPlayer.seekTo(0)
                             if (!mediaPlayer.isPlaying) {
+                                // Re-lecture du titre → coupe DJ + fond sonore
+                                PlaybackCoordinator.onPlayerStart()
+
                                 mediaPlayer.start()
                                 onIsPlayingChange(true)
-                                runCatching { FillerSoundManager.fadeOutAndStop(400) }
                             }
                             if (!isContinuousScroll) centerCurrentLineImmediate()
                         },
                         onNext = {
+                            // On simule fin de morceau → on arrête le lecteur
                             mediaPlayer.seekTo(max(durationMs - 1, 0))
                             mediaPlayer.pause()
                             onIsPlayingChange(false)
+
+                            // On peut lancer le fond sonore
+                            PlaybackCoordinator.onFillerStart()
                             runCatching { FillerSoundManager.startIfConfigured(context) }
                         }
                     )

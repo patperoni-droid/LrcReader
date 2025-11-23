@@ -28,6 +28,7 @@ class MainActivity : ComponentActivity() {
         val initialQuickPlaylist = SessionPrefs.getQuickPlaylist(this)
         val initialOpenedPlaylist = SessionPrefs.getOpenedPlaylist(this)
 
+        // Init DJ
         DjEngine.init(this)
 
         setContent {
@@ -44,8 +45,12 @@ class MainActivity : ComponentActivity() {
                     mutableStateOf(initialTabKey?.let { tabFromKey(it) } ?: BottomTab.Home)
                 }
 
-                var selectedQuickPlaylist by rememberSaveable { mutableStateOf<String?>(initialQuickPlaylist) }
-                var openedPlaylist by rememberSaveable { mutableStateOf<String?>(initialOpenedPlaylist) }
+                var selectedQuickPlaylist by rememberSaveable {
+                    mutableStateOf<String?>(initialQuickPlaylist)
+                }
+                var openedPlaylist by rememberSaveable {
+                    mutableStateOf<String?>(initialOpenedPlaylist)
+                }
 
                 var currentPlayingUri by remember { mutableStateOf<String?>(null) }
                 var isPlaying by remember { mutableStateOf(false) }
@@ -55,10 +60,39 @@ class MainActivity : ComponentActivity() {
                 var currentLyricsColor by remember { mutableStateOf(Color(0xFFE040FB)) }
                 var refreshKey by remember { mutableStateOf(0) }
 
-                // 🔥 Pour ouvrir le bloc-notes
+                // Bloc-notes
                 var isNotesOpen by remember { mutableStateOf(false) }
 
+                // Tempo par morceau
                 var currentTrackTempo by remember { mutableStateOf(1f) }
+
+                // ----------------------------------------------------------
+                //  BRANCHAGE PlaybackCoordinator
+                // ----------------------------------------------------------
+
+                // 👉 Comment on ARRÊTE le lecteur quand le DJ/filler le demande
+                PlaybackCoordinator.stopPlayer = {
+                    try {
+                        if (mediaPlayer.isPlaying) {
+                            mediaPlayer.pause()      // stop net (simple et fiable)
+                        }
+                        isPlaying = false
+                    } catch (_: Exception) {
+                    }
+                }
+
+                // 👉 Comment on ARRÊTE le DJ quand le lecteur/filler le demande
+                PlaybackCoordinator.stopDj = {
+                    try {
+                        DjEngine.stopDj()          // stop DJ (sans fade compliqué)
+                    } catch (_: Exception) {
+                    }
+                }
+
+                // 👉 Comment on ARRÊTE le fond sonore
+                PlaybackCoordinator.stopFiller = {
+                    runCatching { FillerSoundManager.fadeOutAndStop(200) }
+                }
 
                 fun applyGainToPlayer(db: Int) {
                     try {
@@ -71,7 +105,8 @@ class MainActivity : ComponentActivity() {
                             mediaPlayer.setVolume(1f, 1f)
                             loudnessEnhancer.setTargetGain(clamped * 100)
                         }
-                    } catch (_: Exception) {}
+                    } catch (_: Exception) {
+                    }
                 }
 
                 fun applyTempoToPlayer(speed: Float) {
@@ -80,11 +115,19 @@ class MainActivity : ComponentActivity() {
                             .setSpeed(speed)
                             .setPitch(1f)
                         mediaPlayer.playbackParams = params
-                    } catch (_: Exception) {}
+                    } catch (_: Exception) {
+                    }
                 }
 
+                // ----------------------------------------------------------
+                //  PLAY + CROSSFADE  (LECTEUR)
+                // ----------------------------------------------------------
                 val playWithCrossfade: (String, String?) -> Unit = remember {
                     { uriString, playlistName ->
+
+                        // Le lecteur démarre → on coupe DJ + fond sonore
+                        PlaybackCoordinator.onPlayerStart()
+
                         currentPlayingUri = uriString
                         runCatching { FillerSoundManager.fadeOutAndStop(400) }
 
@@ -117,9 +160,11 @@ class MainActivity : ComponentActivity() {
                                 onError = {
                                     isPlaying = false
                                     mediaPlayer.reset()
+                                    PlaybackCoordinator.onPlayerStop()
                                 },
                                 onNaturalEnd = {
                                     isPlaying = false
+                                    PlaybackCoordinator.onPlayerStop()
                                     runCatching { FillerSoundManager.startIfConfigured(ctx) }
                                 }
                             )
@@ -128,6 +173,7 @@ class MainActivity : ComponentActivity() {
                         if (result.isFailure) {
                             mediaPlayer.reset()
                             isPlaying = false
+                            PlaybackCoordinator.onPlayerStop()
                         }
 
                         selectedTab = BottomTab.Player
@@ -135,6 +181,9 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
+                // ----------------------------------------------------------
+                // RELEASE
+                // ----------------------------------------------------------
                 DisposableEffect(Unit) {
                     onDispose {
                         loudnessEnhancer.release()
@@ -142,6 +191,9 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
+                // ----------------------------------------------------------
+                // UI
+                // ----------------------------------------------------------
                 Scaffold(
                     containerColor = Color.Black,
                     bottomBar = {
@@ -155,7 +207,7 @@ class MainActivity : ComponentActivity() {
                     }
                 ) { innerPadding ->
 
-                    // 🟣 PRIORITÉ ABSOLUE : l'écran Notes recouvre tout
+                    // Bloc-notes plein écran
                     if (isNotesOpen) {
                         NotesScreen(
                             modifier = Modifier.padding(innerPadding),
@@ -167,6 +219,7 @@ class MainActivity : ComponentActivity() {
 
                     when (selectedTab) {
 
+                        // 🏠 ACCUEIL
                         is BottomTab.Home -> HomeScreen(
                             modifier = Modifier.padding(innerPadding),
                             onOpenPlayer = {
@@ -195,11 +248,10 @@ class MainActivity : ComponentActivity() {
                                 selectedTab = BottomTab.More
                                 SessionPrefs.saveTab(ctx, TAB_MORE)
                             },
-                            onOpenNotes = {
-                                isNotesOpen = true
-                            }
+                            onOpenNotes = { isNotesOpen = true }
                         )
 
+                        // 🎵 LECTEUR
                         is BottomTab.Player -> PlayerScreen(
                             modifier = Modifier.padding(innerPadding),
                             mediaPlayer = mediaPlayer,
@@ -230,6 +282,7 @@ class MainActivity : ComponentActivity() {
                             }
                         )
 
+                        // ⭐ Playlists rapides
                         is BottomTab.QuickPlaylists -> QuickPlaylistsScreen(
                             modifier = Modifier.padding(innerPadding),
                             onPlaySong = { uri, playlistName, color ->
@@ -248,9 +301,8 @@ class MainActivity : ComponentActivity() {
                             }
                         )
 
-                        is BottomTab.Library -> LibraryScreen(
-                            modifier = Modifier.padding(innerPadding)
-                        )
+                        is BottomTab.Library ->
+                            LibraryScreen(modifier = Modifier.padding(innerPadding))
 
                         is BottomTab.AllPlaylists -> {
                             val m = Modifier.padding(innerPadding)
@@ -334,8 +386,6 @@ private fun tabFromKey(key: String): BottomTab = when (key) {
     TAB_ALL -> BottomTab.AllPlaylists
     TAB_MORE -> BottomTab.More
     TAB_DJ -> BottomTab.Dj
-
-    TAB_TUNER -> BottomTab.Home // évite lancement auto de l'accordeur
-
+    TAB_TUNER -> BottomTab.Home   // on évite le lancement auto du Tuner
     else -> BottomTab.Home
 }
