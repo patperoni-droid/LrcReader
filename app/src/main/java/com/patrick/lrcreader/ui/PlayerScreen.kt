@@ -55,6 +55,7 @@ fun PlayerScreen(
     val density = LocalDensity.current
     val context = LocalContext.current
 
+    // Décalage global des paroles (latence)
     val lyricsDelayMs = 1000L
 
     var isConcertMode by remember {
@@ -64,7 +65,7 @@ fun PlayerScreen(
     // MANU / AUTO = false / true -> AUTO = prompteur
     var isContinuousScroll by remember { mutableStateOf(false) }
 
-    // état pour le prompteur
+    // État pour le prompteur
     val prompterScrollState = rememberScrollState()
     var isPrompterRunning by remember { mutableStateOf(false) }
     var prompterSpeed by remember { mutableStateOf(PrompterPrefs.getSpeed(context)) }
@@ -92,7 +93,7 @@ fun PlayerScreen(
 
     var currentEditTab by remember { mutableStateOf(0) }
 
-    // texte utilisé pour le prompteur
+    // Texte utilisé pour le prompteur
     val prompterText = remember(currentTrackUri, parsedLines, rawLyricsText) {
         buildPrompterText(parsedLines, rawLyricsText)
     }
@@ -154,13 +155,18 @@ fun PlayerScreen(
     }
 
     fun seekAndCenter(targetMs: Int, targetIndex: Int) {
+        // Quand on clique sur une ligne, on considère qu’on (re)prend la main
+        // → on passe par le coordonnateur pour couper DJ + fond sonore proprement
+        PlaybackCoordinator.onPlayerStart()
+
         runCatching { mediaPlayer.seekTo(targetMs) }
         currentLrcIndex = targetIndex
         positionMs = targetMs
         if (!mediaPlayer.isPlaying) {
             mediaPlayer.start()
             onIsPlayingChange(true)
-            runCatching { FillerSoundManager.fadeOutAndStop(400) }
+            // plus besoin d’appeler FillerSoundManager.fadeOutAndStop ici,
+            // c’est géré dans PlaybackCoordinator.onPlayerStart()
         }
         if (!isContinuousScroll && lyricsBoxHeightPx > 0) {
             val centerPx = lyricsBoxHeightPx / 2f
@@ -255,6 +261,7 @@ fun PlayerScreen(
 
                     // Zone centrale
                     if (isContinuousScroll) {
+                        // Mode AUTO : texte déroulant façon prompteur
                         PrompterArea(
                             modifier = Modifier.weight(1f),
                             scrollState = prompterScrollState,
@@ -270,6 +277,7 @@ fun PlayerScreen(
                             highlightColor = highlightColor
                         )
                     } else {
+                        // Mode MANU : une ligne active, centrée, scroll automatique à l’index
                         LyricsArea(
                             modifier = Modifier.weight(1f),
                             scrollState = scrollState,
@@ -315,15 +323,13 @@ fun PlayerScreen(
                                 }
                             } else {
                                 if (durationMs > 0) {
-                                    // PLAY LECTEUR → coupe DJ + fond sonore
+                                    // PLAY LECTEUR → coupe DJ + fond sonore via PlaybackCoordinator
                                     PlaybackCoordinator.onPlayerStart()
 
                                     mediaPlayer.setVolume(1f, 1f)
                                     mediaPlayer.start()
                                     onIsPlayingChange(true)
                                     if (!isContinuousScroll) centerCurrentLineImmediate()
-                                    // plus besoin de FillerSoundManager.fadeOutAndStop ici,
-                                    // c’est déjà fait dans onPlayerStart()
                                 }
                             }
                         },
