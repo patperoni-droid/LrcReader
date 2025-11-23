@@ -264,7 +264,7 @@ class MainActivity : ComponentActivity() {
                                 selectedTab = BottomTab.Player
                                 SessionPrefs.saveTab(ctx, TAB_PLAYER)
                             },
-                            onOpenConcertMode = {
+                            onOpenFondSonore = {
                                 DisplayPrefs.setConcertMode(ctx, true)
                                 selectedTab = BottomTab.Player
                                 SessionPrefs.saveTab(ctx, TAB_PLAYER)

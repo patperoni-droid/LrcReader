@@ -28,13 +28,14 @@ import androidx.compose.ui.unit.sp
 fun HomeScreen(
     modifier: Modifier = Modifier,
     onOpenPlayer: () -> Unit,
-    onOpenConcertMode: () -> Unit,
+    // ⬇️ ancien onOpenConcertMode remplacé par onOpenFondSonore
+    onOpenFondSonore: () -> Unit,
     onOpenDjMode: () -> Unit,
     onOpenTuner: () -> Unit,
     onOpenProfile: () -> Unit,
     onOpenTutorial: () -> Unit,
     onOpenSettings: () -> Unit,
-    onOpenNotes: () -> Unit   // <--- AJOUT + CORRECT
+    onOpenNotes: () -> Unit
 ) {
     val bgGradient = Brush.verticalGradient(
         colors = listOf(
@@ -93,14 +94,15 @@ fun HomeScreen(
                     onClick = onOpenPlayer
                 )
 
+                // ⬇️ ICI : ancien “Mode Concert” → “Fond sonore”
                 NeonCardButton(
-                    title = "Mode Concert",
-                    subtitle = "Préparation scène, ne pas déranger",
+                    title = "Fond sonore",
+                    subtitle = "Gérer la nappe entre les morceaux",
                     icon = Icons.Filled.PlayCircleFilled,
                     accentGradient = Brush.horizontalGradient(
                         listOf(Color(0xFFFFA726), Color(0xFFFF4081))
                     ),
-                    onClick = onOpenConcertMode
+                    onClick = onOpenFondSonore
                 )
 
                 NeonCardButton(
@@ -147,11 +149,10 @@ fun HomeScreen(
                     onClick = onOpenTutorial
                 )
 
-                // -------- NOTES (REMPLACE BIBLIOTHÈQUE) --------
                 SmallBottomChip(
                     icon = Icons.Filled.LibraryMusic,
                     label = "Notes",
-                    onClick = onOpenNotes        // <--- nouveau bouton Notes
+                    onClick = onOpenNotes
                 )
 
                 SmallBottomChip(
