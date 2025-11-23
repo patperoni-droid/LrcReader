@@ -85,8 +85,8 @@ fun HomeScreen(
             ) {
 
                 NeonCardButton(
-                    title = "Mode Lecteur",
-                    subtitle = "Paroles synchronisées + playback",
+                    title = "Mode Playlist",
+                    subtitle = "Liste de chansons, prètes à jouer",
                     icon = Icons.Filled.MusicNote,
                     accentGradient = Brush.horizontalGradient(
                         listOf(Color(0xFF9C27FF), Color(0xFF42A5F5))

@@ -253,8 +253,8 @@ class MainActivity : ComponentActivity() {
                         is BottomTab.Home -> HomeScreen(
                             modifier = Modifier.padding(innerPadding),
                             onOpenPlayer = {
-                                selectedTab = BottomTab.Player
-                                SessionPrefs.saveTab(ctx, TAB_PLAYER)
+                                selectedTab = BottomTab.QuickPlaylists
+                                SessionPrefs.saveTab(ctx, TAB_QUICK)
                             },
 
                             // 🟣 MODIF — ouvre maintenant l’écran fond sonore
