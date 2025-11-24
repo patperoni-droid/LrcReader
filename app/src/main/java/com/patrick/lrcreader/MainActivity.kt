@@ -85,11 +85,17 @@ class MainActivity : ComponentActivity() {
                 // Bloc-notes plein écran
                 var isNotesOpen by remember { mutableStateOf(false) }
 
-                // 🔵 AJOUT — Écran du fond sonore
+                // Écran du fond sonore
                 var isFillerSettingsOpen by remember { mutableStateOf(false) }
 
                 // Tempo par morceau (1f = normal)
                 var currentTrackTempo by remember { mutableStateOf(1f) }
+
+                // 🔊 Mixage global : niveaux maîtres
+                var isGlobalMixOpen by remember { mutableStateOf(false) }
+                var playerMasterLevel by remember { mutableStateOf(1f) }   // 100%
+                var djMasterLevel by remember { mutableStateOf(1f) }        // 100% (prêt pour plus tard)
+                var fillerMasterLevel by remember { mutableStateOf(0.6f) }  // 60% par défaut
 
                 // ----------------------------------------------------------
                 //  BRANCHAGE PlaybackCoordinator
@@ -113,17 +119,23 @@ class MainActivity : ComponentActivity() {
                 }
 
                 // ----------------------------------------------------------
-                //  GAIN PAR MORCEAU
+                //  GAIN PAR MORCEAU (avec master Lecteur)
                 // ----------------------------------------------------------
                 fun applyGainToPlayer(db: Int) {
                     try {
                         val clamped = db.coerceIn(-12, 12)
+                        val master = playerMasterLevel.coerceIn(0f, 1f)
+
                         if (clamped <= 0) {
+                            // Gain négatif : on baisse le volume du player + master
                             val linear = 10f.pow(clamped / 20f)
-                            mediaPlayer.setVolume(linear, linear)
+                            val v = linear * master
+                            mediaPlayer.setVolume(v, v)
                             loudnessEnhancer.setTargetGain(0)
                         } else {
-                            mediaPlayer.setVolume(1f, 1f)
+                            // Gain positif : volume 1.0 * master + LoudnessEnhancer
+                            val v = 1f * master
+                            mediaPlayer.setVolume(v, v)
                             loudnessEnhancer.setTargetGain(clamped * 100)
                         }
                     } catch (_: Exception) {}
@@ -218,15 +230,24 @@ class MainActivity : ComponentActivity() {
                     bottomBar = {
                         BottomTabsBar(
                             selected = selectedTab,
-                            onSelected = {
-                                selectedTab = it
-                                SessionPrefs.saveTab(ctx, tabKeyOf(it))
+                            onSelected = { tab ->
+                                // on change l’onglet comme avant
+                                selectedTab = tab
+                                SessionPrefs.saveTab(ctx, tabKeyOf(tab))
+
+                                // 🟣 NOUVEAUTÉ : si on clique sur "Home", on ferme les écrans spéciaux
+                                if (tab is BottomTab.Home) {
+                                    isFillerSettingsOpen = false   // ferme la page Fond sonore
+                                    isGlobalMixOpen = false        // ferme la page Mixage général
+                                    // si un jour tu veux aussi fermer les notes :
+                                    // isNotesOpen = false
+                                }
                             }
                         )
                     }
                 ) { innerPadding ->
 
-                    // Notes
+                    // Bloc-notes plein écran
                     if (isNotesOpen) {
                         NotesScreen(
                             modifier = Modifier.padding(innerPadding),
@@ -236,11 +257,36 @@ class MainActivity : ComponentActivity() {
                         return@Scaffold
                     }
 
-                    // 🔵 AJOUT — Écran réglages du fond sonore
+                    // Écran réglages du fond sonore
                     if (isFillerSettingsOpen) {
                         FillerSoundScreen(
                             context = ctx,
                             onBack = { isFillerSettingsOpen = false }
+                        )
+                        return@Scaffold
+                    }
+
+                    // 🎚️ Mixage global plein écran
+                    if (isGlobalMixOpen) {
+                        GlobalMixScreen(
+                            modifier = Modifier.padding(innerPadding),
+                            playerLevel = playerMasterLevel,
+                            onPlayerLevelChange = { lvl ->
+                                playerMasterLevel = lvl
+                                // On ré-applique le gain actuel en tenant compte du master
+                                applyGainToPlayer(currentTrackGainDb)
+                            },
+                            djLevel = djMasterLevel,
+                            onDjLevelChange = { lvl ->
+                                djMasterLevel = lvl
+                                // TODO : plus tard, brancher DjEngine sur ce niveau
+                            },
+                            fillerLevel = fillerMasterLevel,
+                            onFillerLevelChange = { lvl ->
+                                fillerMasterLevel = lvl
+                                // TODO : plus tard, appliquer sur FillerSoundManager
+                            },
+                            onBack = { isGlobalMixOpen = false }
                         )
                         return@Scaffold
                     }
@@ -253,11 +299,12 @@ class MainActivity : ComponentActivity() {
                         is BottomTab.Home -> HomeScreen(
                             modifier = Modifier.padding(innerPadding),
                             onOpenPlayer = {
+                                // Le bouton "Mode Playlist" ouvre les playlists rapides
                                 selectedTab = BottomTab.QuickPlaylists
                                 SessionPrefs.saveTab(ctx, TAB_QUICK)
                             },
 
-                            // 🟣 MODIF — ouvre maintenant l’écran fond sonore
+                            // Fond sonore → ouvre l’écran de réglages
                             onOpenFondSonore = {
                                 isFillerSettingsOpen = true
                             },
@@ -266,6 +313,12 @@ class MainActivity : ComponentActivity() {
                                 selectedTab = BottomTab.Dj
                                 SessionPrefs.saveTab(ctx, TAB_DJ)
                             },
+
+                            // Nouveau bouton "Mixage général"
+                            onOpenGlobalMix = {
+                                isGlobalMixOpen = true
+                            },
+
                             onOpenTuner = {
                                 selectedTab = BottomTab.Tuner
                                 SessionPrefs.saveTab(ctx, TAB_TUNER)

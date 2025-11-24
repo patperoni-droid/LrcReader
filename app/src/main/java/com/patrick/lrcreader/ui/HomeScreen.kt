@@ -31,6 +31,7 @@ fun HomeScreen(
     // ⬇️ ancien onOpenConcertMode remplacé par onOpenFondSonore
     onOpenFondSonore: () -> Unit,
     onOpenDjMode: () -> Unit,
+    onOpenGlobalMix: () -> Unit,   // 👈 NOUVEAU pour l’écran de mixage global
     onOpenTuner: () -> Unit,
     onOpenProfile: () -> Unit,
     onOpenTutorial: () -> Unit,
@@ -86,7 +87,7 @@ fun HomeScreen(
 
                 NeonCardButton(
                     title = "Mode Playlist",
-                    subtitle = "Liste de chansons, prètes à jouer",
+                    subtitle = "Liste de chansons, prêtes à jouer",
                     icon = Icons.Filled.MusicNote,
                     accentGradient = Brush.horizontalGradient(
                         listOf(Color(0xFF9C27FF), Color(0xFF42A5F5))
@@ -113,6 +114,17 @@ fun HomeScreen(
                         listOf(Color(0xFF26C6DA), Color(0xFF7E57C2))
                     ),
                     onClick = onOpenDjMode
+                )
+
+                // 👇 NOUVEAU BOUTON MIXAGE
+                NeonCardButton(
+                    title = "Mixage général",
+                    subtitle = "Volumes Lecteur / DJ / Fond sonore",
+                    icon = Icons.Filled.GraphicEq,
+                    accentGradient = Brush.horizontalGradient(
+                        listOf(Color(0xFFAB47BC), Color(0xFF26C6DA))
+                    ),
+                    onClick = onOpenGlobalMix
                 )
 
                 NeonCardButton(
@@ -227,8 +239,7 @@ private fun NeonCardButton(
                     Text(
                         text = subtitle,
                         color = Color(0xFFCFD8E5),
-                        fontSize = 12.sp
-                    )
+                        fontSize = 12.sp)
                 }
 
                 Icon(
