@@ -18,6 +18,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
@@ -236,27 +237,7 @@ fun FillerSoundScreen(
 
                     Spacer(Modifier.height(12.dp))
 
-                    // Lien pour dossier global (optionnel)
-                    Text(
-                        text = "Choisir un dossier audio",
-                        color = if (isEnabled) accent else Color.Gray,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier
-                            .padding(vertical = 4.dp)
-                            .clickable(enabled = isEnabled) {
-                                fillerLauncher.launch(null)
-                            }
-                    )
 
-                    Text(
-                        text = "Actuel : $fillerName",
-                        color = onBg,
-                        fontSize = 11.sp,
-                        modifier = Modifier.padding(top = 2.dp)
-                    )
-
-                    Spacer(Modifier.height(12.dp))
 
                     // VOLUME GLOBAL
                     Text("Volume", color = sub, fontSize = 11.sp)
@@ -313,12 +294,14 @@ fun FillerSoundScreen(
                                 activeIndex = selectedIndex
                                 isPlaying = true
                             },
-                            enabled = canControlSelected
+                            enabled = canControlSelected,
+                            modifier = Modifier.size(72.dp)  // GROS bouton
                         ) {
                             Icon(
                                 imageVector = Icons.Filled.SkipPrevious,
                                 contentDescription = "Précédent",
-                                tint = if (canControlSelected) onBg else sub
+                                tint = if (canControlSelected) onBg else sub,
+                                modifier = Modifier.size(40.dp) // Grosse icône
                             )
                         }
 
@@ -350,7 +333,10 @@ fun FillerSoundScreen(
                                     isPlaying = false
                                 }
                             },
-                            enabled = canControlSelected
+                            enabled = canControlSelected,
+                            modifier = Modifier
+                                .padding(horizontal = 8.dp)
+                                .size(80.dp) // Play encore plus gros
                         ) {
                             Icon(
                                 imageVector = if (isPlaying && activeIndex == selectedIndex)
@@ -358,7 +344,8 @@ fun FillerSoundScreen(
                                 else
                                     Icons.Filled.PlayArrow,
                                 contentDescription = "Play / Pause",
-                                tint = if (canControlSelected) onBg else sub
+                                tint = if (canControlSelected) onBg else sub,
+                                modifier = Modifier.size(46.dp)
                             )
                         }
 
@@ -379,12 +366,14 @@ fun FillerSoundScreen(
                                 activeIndex = selectedIndex
                                 isPlaying = true
                             },
-                            enabled = canControlSelected
+                            enabled = canControlSelected,
+                            modifier = Modifier.size(72.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Filled.SkipNext,
                                 contentDescription = "Suivant",
-                                tint = if (canControlSelected) onBg else sub
+                                tint = if (canControlSelected) onBg else sub,
+                                modifier = Modifier.size(40.dp)
                             )
                         }
                     }
