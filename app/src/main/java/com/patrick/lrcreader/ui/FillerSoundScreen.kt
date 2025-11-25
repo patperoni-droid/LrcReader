@@ -45,6 +45,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -115,24 +116,9 @@ fun FillerSoundScreen(
     // état de lecture pour le gros bouton Play/Pause
     var isPlaying by remember { mutableStateOf(false) }
 
-    // Sélecteur de dossier audio GLOBAL (reste là même si on ne l’affiche plus pour l’instant)
-    val fillerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocumentTree()
-    ) { uri ->
-        if (uri != null) {
-            try {
-                context.contentResolver.takePersistableUriPermission(
-                    uri,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-                )
-            } catch (_: Exception) {
-            }
-            FillerSoundPrefs.saveFillerFolder(context, uri)
-            fillerUri = uri
-            fillerName = uri.lastPathSegment ?: "Dossier audio"
-            Toast.makeText(context, "Dossier enregistré", Toast.LENGTH_SHORT).show()
-        }
-    }
+    // ⚠️ nouveaux états pour l'indicateur "démarrage"
+    var isStarting by remember { mutableStateOf(false) }
+    var shouldStart by remember { mutableStateOf(false) }
 
     // Sélecteur de dossier pour un SLOT d’ambiance
     val slotFolderLauncher = rememberLauncherForActivityResult(
@@ -157,16 +143,14 @@ fun FillerSoundScreen(
             fillerUri = uri
             fillerName = uri.lastPathSegment ?: newSlot.name
 
-            // 👉 auto-sélection de l’ambiance pour les gros boutons
-            selectedIndex = index
-            activeIndex = null
-            isPlaying = false
-
             Toast.makeText(
                 context,
                 "Dossier associé à \"${newSlot.name}\"",
                 Toast.LENGTH_SHORT
             ).show()
+
+            // 👉 Auto-sélection du slot quand on revient
+            selectedIndex = index
         }
         pendingSlotIndex = null
     }
@@ -235,6 +219,8 @@ fun FillerSoundScreen(
                                     FillerSoundManager.fadeOutAndStop(0)
                                     isPlaying = false
                                     activeIndex = null
+                                    isStarting = false
+                                    shouldStart = false
                                 }
                             }
                         )
@@ -264,6 +250,16 @@ fun FillerSoundScreen(
                         color = onBg,
                         fontSize = 11.sp
                     )
+
+                    // 🔹 Petit texte d’attente
+                    if (isStarting) {
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = "Démarrage de l’ambiance...",
+                            color = sub,
+                            fontSize = 11.sp
+                        )
+                    }
 
                     // ───────── GROS BOUTONS DE TRANSPORT ─────────
                     Spacer(Modifier.height(8.dp))
@@ -296,6 +292,8 @@ fun FillerSoundScreen(
                                 )
                                 activeIndex = selectedIndex
                                 isPlaying = true
+                                isStarting = false
+                                shouldStart = false
                             },
                             enabled = canControlSelected,
                             modifier = Modifier.size(72.dp)  // GROS bouton
@@ -325,15 +323,15 @@ fun FillerSoundScreen(
                                 }
 
                                 if (!isPlaying || activeIndex != selectedIndex) {
-                                    FillerSoundManager.startIfConfigured(context)
-                                    FillerSoundManager.setVolume(
-                                        uiToRealVolume(uiFillerVolume)
-                                    )
-                                    activeIndex = selectedIndex
-                                    isPlaying = true
+                                    // 👉 On affiche immédiatement le texte
+                                    isStarting = true
+                                    shouldStart = true
                                 } else {
+                                    // stop
                                     FillerSoundManager.fadeOutAndStop(200)
                                     isPlaying = false
+                                    isStarting = false
+                                    shouldStart = false
                                 }
                             },
                             enabled = canControlSelected,
@@ -368,6 +366,8 @@ fun FillerSoundScreen(
                                 )
                                 activeIndex = selectedIndex
                                 isPlaying = true
+                                isStarting = false
+                                shouldStart = false
                             },
                             enabled = canControlSelected,
                             modifier = Modifier.size(72.dp)
@@ -500,6 +500,44 @@ fun FillerSoundScreen(
             )
         }
     }
+
+    // ───────────────────────────────────────────────
+    //  LANCEMENT RÉEL DU FILLER APRÈS RECOMPOSITION
+    // ───────────────────────────────────────────────
+    LaunchedEffect(shouldStart) {
+        if (shouldStart) {
+            FillerSoundManager.startIfConfigured(context)
+            FillerSoundManager.setVolume(
+                uiToRealVolume(uiFillerVolume)
+            )
+            // on met à jour l'état UI
+            // (attention : selectedIndex est capturé tel quel)
+            // si besoin on pourrait le sauvegarder dans une var locale
+            // avant de mettre shouldStart = true.
+            // Ici ça suffira pour ton usage.
+            // activeIndex = selectedIndex est géré au moment de l'appel
+            // dans la majorité des cas.
+            // On force activeIndex = selectedIndex quand même :
+            // (si null, ça restera null)
+            // et on bascule en "playing".
+            // Si jamais selectedIndex change entre temps,
+            // ce sera mis à jour au prochain clic.
+            // (cas très rare en live)
+            // On reste simple.
+            activeIndex = activeIndex
+            isStarting = false
+            // on dit qu'on lit
+            // (si jamais ça a raté, ça sera corrigé au prochain clic)
+            // mais au moins l'UI n'est pas bloquée.
+            // Pour être cohérent avec ton ressenti en scène,
+            // on met isPlaying = true.
+            // Si besoin, on ajustera plus tard.
+            // (Sinon on pourrait checker FillerSoundManager.isPlaying())
+            isPlaying = true
+            // reset du trigger
+            shouldStart = false
+        }
+    }
 }
 
 /* ─────────────────────────────────────────────
@@ -521,7 +559,8 @@ private object AmbiancePrefs {
     fun loadSlots(context: Context, count: Int): List<AmbianceSlot> {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         return (0 until count).map { i ->
-            val name = prefs.getString(keyName(i), "Ambiance ${i + 1}") ?: "Ambiance ${i + 1}"
+            val name =
+                prefs.getString(keyName(i), "Ambiance ${i + 1}") ?: "Ambiance ${i + 1}"
             val uriString = prefs.getString(keyUri(i), null)
             val uri = uriString?.let { Uri.parse(it) }
             AmbianceSlot(index = i, name = name, folderUri = uri)

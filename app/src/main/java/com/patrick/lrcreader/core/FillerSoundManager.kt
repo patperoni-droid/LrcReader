@@ -80,7 +80,7 @@ object FillerSoundManager {
             }
 
             try {
-                // démarre directement à l’index courant (sans crossfade)
+                // démarre directement à l’index courant
                 startFromFolderIndex(context, folderIndex)
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -161,9 +161,13 @@ object FillerSoundManager {
         val mp = MediaPlayer()
         mp.setDataSource(context, uri)
         mp.isLooping = true
-        mp.prepare()
-        mp.setVolume(currentVolume, currentVolume)
-        mp.start()
+
+        // ⚠️ asynchrone pour ne pas bloquer l’UI
+        mp.setOnPreparedListener { prepared ->
+            prepared.setVolume(currentVolume, currentVolume)
+            prepared.start()
+        }
+        mp.prepareAsync()
 
         player = mp
         folderPlaylist = emptyList()
@@ -197,9 +201,13 @@ object FillerSoundManager {
         mp.setDataSource(context, uri)
         mp.isLooping = false
         mp.setOnCompletionListener { playNextInFolder(context) } // auto suivant = crossfade
-        mp.prepare()
-        mp.setVolume(currentVolume, currentVolume)
-        mp.start()
+
+        // ⚠️ asynchrone pour ne pas bloquer l’UI au lancement manuel
+        mp.setOnPreparedListener { prepared ->
+            prepared.setVolume(currentVolume, currentVolume)
+            prepared.start()
+        }
+        mp.prepareAsync()
 
         stopCurrentOnly()
         player = mp
@@ -221,6 +229,7 @@ object FillerSoundManager {
             val newPlayer = MediaPlayer()
             newPlayer.setDataSource(context, nextUri)
             newPlayer.isLooping = false
+            // ici on peut rester en prepare() sync : ça se déclenche en fin de morceau
             newPlayer.prepare()
             newPlayer.setVolume(0f, 0f)
             newPlayer.start()
