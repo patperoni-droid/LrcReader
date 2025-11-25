@@ -115,7 +115,7 @@ fun FillerSoundScreen(
     // état de lecture pour le gros bouton Play/Pause
     var isPlaying by remember { mutableStateOf(false) }
 
-    // Sélecteur de dossier audio GLOBAL (optionnel)
+    // Sélecteur de dossier audio GLOBAL (reste là même si on ne l’affiche plus pour l’instant)
     val fillerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree()
     ) { uri ->
@@ -156,6 +156,11 @@ fun FillerSoundScreen(
             FillerSoundPrefs.saveFillerFolder(context, uri)
             fillerUri = uri
             fillerName = uri.lastPathSegment ?: newSlot.name
+
+            // 👉 auto-sélection de l’ambiance pour les gros boutons
+            selectedIndex = index
+            activeIndex = null
+            isPlaying = false
 
             Toast.makeText(
                 context,
@@ -236,8 +241,6 @@ fun FillerSoundScreen(
                     }
 
                     Spacer(Modifier.height(12.dp))
-
-
 
                     // VOLUME GLOBAL
                     Text("Volume", color = sub, fontSize = 11.sp)

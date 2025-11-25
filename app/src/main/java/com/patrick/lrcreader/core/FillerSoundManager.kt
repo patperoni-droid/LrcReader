@@ -26,18 +26,21 @@ object FillerSoundManager {
     private var folderPlaylist: List<Uri> = emptyList()
     private var folderIndex: Int = 0
 
+    // on mémorise le dossier pour lequel la playlist a été construite
+    private var currentFolderUri: Uri? = null
+
     private const val DEFAULT_VOLUME = 0.25f
     private const val CROSSFADE_MS = 1500L
 
     /** Démarre le fond sonore s'il est configuré et permis */
     fun startIfConfigured(context: Context) {
-        // ne rien faire si le mode filler est désactivé
+        // ⚠️ ne rien faire si le mode filler est désactivé
         if (!FillerSoundPrefs.isEnabled(context)) {
             fadeOutAndStop(0)
             return
         }
 
-        // sécurité anti-conflit : ne pas lancer si un titre principal joue
+        // ⚠️ sécurité anti-conflit : ne pas lancer si un titre principal joue
         if (PlaybackCoordinator.isMainPlaying) {
             fadeOutAndStop(0)
             return
@@ -49,30 +52,40 @@ object FillerSoundManager {
         // 1) dossier configuré ?
         val folderUri = FillerSoundPrefs.getFillerFolder(context)
         if (folderUri != null) {
-            val list = buildPlaylistFromFolder(context, folderUri)
-            if (list.isEmpty()) {
-                FillerSoundPrefs.clear(context)
-                Toast.makeText(
-                    context,
-                    "Dossier vide ou inaccessible",
-                    Toast.LENGTH_SHORT
-                ).show()
-                return
+
+            // 🔹 Si on joue déjà ce dossier → on réutilise la playlist existante
+            val list: List<Uri> = if (
+                folderPlaylist.isNotEmpty() &&
+                currentFolderUri != null &&
+                currentFolderUri == folderUri
+            ) {
+                folderPlaylist
+            } else {
+                // sinon on rebâtit la playlist une seule fois
+                val built = buildPlaylistFromFolder(context, folderUri)
+                if (built.isEmpty()) {
+                    FillerSoundPrefs.clear(context)
+                    Toast.makeText(
+                        context,
+                        "Dossier vide ou inaccessible",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    return
+                }
+                folderPlaylist = built
+                currentFolderUri = folderUri
+                // on choisit un index de départ
+                folderIndex = if (built.size == 1) 0 else Random.nextInt(built.size)
+                built
             }
 
-            folderPlaylist = list
-            folderIndex = if (list.size == 1) 0 else Random.nextInt(list.size)
-
             try {
+                // démarre directement à l’index courant (sans crossfade)
                 startFromFolderIndex(context, folderIndex)
             } catch (e: Exception) {
                 e.printStackTrace()
                 FillerSoundPrefs.clear(context)
-                Toast.makeText(
-                    context,
-                    "Impossible de lire le dossier",
-                    Toast.LENGTH_SHORT
-                ).show()
+                Toast.makeText(context, "Impossible de lire le dossier", Toast.LENGTH_SHORT).show()
             }
             return
         }
@@ -84,11 +97,7 @@ object FillerSoundManager {
         } catch (e: Exception) {
             e.printStackTrace()
             FillerSoundPrefs.clear(context)
-            Toast.makeText(
-                context,
-                "Impossible de lire le fond sonore.",
-                Toast.LENGTH_SHORT
-            ).show()
+            Toast.makeText(context, "Impossible de lire le fond sonore.", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -113,13 +122,15 @@ object FillerSoundManager {
 
         if (folderPlaylist.size == 1) {
             // un seul titre → on le relance simplement
-            try { startFromFolderIndex(context, folderIndex) } catch (_: Exception) {}
+            try {
+                startFromFolderIndex(context, folderIndex)
+            } catch (_: Exception) {}
             return
         }
 
         folderIndex = (folderIndex + 1) % folderPlaylist.size
         try {
-            startFromFolderIndex(context, folderIndex)   // remplacement direct
+            startFromFolderIndex(context, folderIndex)   // remplace directement le player
         } catch (_: Exception) {}
     }
 
@@ -130,7 +141,9 @@ object FillerSoundManager {
             return
         }
         if (folderPlaylist.size == 1) {
-            try { startFromFolderIndex(context, folderIndex) } catch (_: Exception) {}
+            try {
+                startFromFolderIndex(context, folderIndex)
+            } catch (_: Exception) {}
             return
         }
         folderIndex = (folderIndex - 1 + folderPlaylist.size) % folderPlaylist.size
@@ -154,6 +167,7 @@ object FillerSoundManager {
 
         player = mp
         folderPlaylist = emptyList()
+        currentFolderUri = null
     }
 
     // ───────────── dossier ─────────────
@@ -306,20 +320,15 @@ object FillerSoundManager {
 private object SystemVolumeHelper {
     fun setMusicVolumeFloor(context: Context, floorPercent: Float) {
         try {
-            val am = context.getSystemService(Context.AUDIO_SERVICE)
-                    as android.media.AudioManager
+            val am = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
             val max = am.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC)
             val cur = am.getStreamVolume(android.media.AudioManager.STREAM_MUSIC)
             val floor = (max * floorPercent.coerceIn(0f, 1f)).toInt()
             if (cur < floor) {
-                am.setStreamVolume(
-                    android.media.AudioManager.STREAM_MUSIC,
-                    floor,
-                    0
-                )
+                am.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, floor, 0)
             }
         } catch (_: Exception) {
-            // on ne casse rien si l’OS refuse
+            // silencieux
         }
     }
 }
