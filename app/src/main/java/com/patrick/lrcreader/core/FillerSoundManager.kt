@@ -32,7 +32,7 @@ object FillerSoundManager {
     private const val DEFAULT_VOLUME = 0.25f
     private const val CROSSFADE_MS = 1500L
 
-    /** Démarre le fond sonore s'il est configuré et permis */
+    /** Démarre le fond sonore automatiquement (fin de morceau, etc.) */
     fun startIfConfigured(context: Context) {
         // ⚠️ ne rien faire si le mode filler est désactivé
         if (!FillerSoundPrefs.isEnabled(context)) {
@@ -40,12 +40,30 @@ object FillerSoundManager {
             return
         }
 
-        // ⚠️ sécurité anti-conflit : ne pas lancer si un titre principal joue
+        // ⚠️ sécurité anti-conflit : ne pas lancer automatiquement
+        // si un titre principal (lecteur ou DJ) est en cours
         if (PlaybackCoordinator.isMainPlaying) {
             fadeOutAndStop(0)
             return
         }
 
+        internalStart(context)
+    }
+
+    /**
+     * Démarrage demandé explicitement depuis l’écran “Fond sonore”.
+     * Ici on NE bloque PAS sur isMainPlaying (l’utilisateur sait ce qu’il fait).
+     */
+    fun startFromUi(context: Context) {
+        if (!FillerSoundPrefs.isEnabled(context)) {
+            // au cas où, on rallume le filler dans les prefs
+            FillerSoundPrefs.setEnabled(context, true)
+        }
+        internalStart(context)
+    }
+
+    /** Implémentation commune du démarrage (dossier ou fichier) */
+    private fun internalStart(context: Context) {
         // volume utilisateur (0..1)
         currentVolume = FillerSoundPrefs.getFillerVolume(context)
 
@@ -100,6 +118,9 @@ object FillerSoundManager {
             Toast.makeText(context, "Impossible de lire le fond sonore.", Toast.LENGTH_SHORT).show()
         }
     }
+
+    // ... le reste de ton fichier (toggle, next, previous, etc.) NE CHANGE PAS ...
+
 
     /** bouton on/off */
     fun toggle(context: Context) {

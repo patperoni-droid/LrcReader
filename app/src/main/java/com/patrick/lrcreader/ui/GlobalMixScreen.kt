@@ -3,41 +3,64 @@ package com.patrick.lrcreader.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.ui.theme.DarkBlueGradientBackground
+import com.patrick.lrcreader.core.FillerSoundManager
+import com.patrick.lrcreader.core.FillerSoundPrefs
+import kotlin.math.cbrt
 
 /**
  * Écran de mixage global :
  * - 3 faders : Lecteur, DJ, Fond sonore.
- * - Permet d'équilibrer les niveaux entre eux.
- *
- * Ici, les valeurs vont de 0.0 à 1.0 (0% → muet, 100% → plein pot).
+ * - Les volumes sont liés aux écrans correspondants.
  */
 @Composable
 fun GlobalMixScreen(
     modifier: Modifier = Modifier,
     playerLevel: Float,
     onPlayerLevelChange: (Float) -> Unit,
-    djLevel: Float,
-    onDjLevelChange: (Float) -> Unit,
-    fillerLevel: Float,
+    djLevel: Float,                     // niveau DJ « réel » (0..1) venant du parent
+    onDjLevelChange: (Float) -> Unit,   // on renvoie un niveau « réel » (0..1)
+    fillerLevel: Float,                 // pas utilisé directement (on passe par les prefs)
     onFillerLevelChange: (Float) -> Unit,
     onBack: () -> Unit
 ) {
+    val context = LocalContext.current
+
+    //---------------------------------------------------------
+    // MAPPING doux (même logique que dans FillerSoundScreen)
+    //---------------------------------------------------------
+    fun uiToRealVolume(u: Float): Float {
+        val c = u.coerceIn(0f, 1f)
+        return c * c * c   // courbe douce : petit déplacement → petit changement
+    }
+
+    fun realToUiVolume(r: Float): Float {
+        val c = r.coerceIn(0f, 1f)
+        return cbrt(c.toDouble()).toFloat()
+    }
+
+    // ---------- FILLER : on lit la valeur réelle depuis les prefs ----------
+    var uiFillerVolume by remember {
+        mutableStateOf(realToUiVolume(FillerSoundPrefs.getFillerVolume(context)))
+    }
+
+    // ---------- DJ : on suppose que djLevel est le volume RéEL (0..1) ----------
+    var uiDjVolume by remember {
+        mutableStateOf(realToUiVolume(djLevel))
+    }
+
     val cardColor = Color(0xFF141414)
     val onBg = Color(0xFFEEEEEE)
     val sub = Color(0xFFB9B9B9)
-    val accent = Color(0xFFE386FF)
 
     DarkBlueGradientBackground {
         Column(
@@ -79,23 +102,42 @@ fun GlobalMixScreen(
                     title = "Lecteur (playback)",
                     subtitle = "Paroles + playback principal",
                     value = playerLevel,
-                    onValueChange = onPlayerLevelChange
+                    onValueChange = { v ->
+                        onPlayerLevelChange(v.coerceIn(0f, 1f))
+                    }
                 )
 
-                // --- FADER DJ ---
+                // --- FADER DJ (lié au niveau DJ global) ---
                 MixFader(
                     title = "Mode DJ",
                     subtitle = "Crossfade, playlists DJ",
-                    value = djLevel,
-                    onValueChange = onDjLevelChange
+                    value = uiDjVolume,
+                    onValueChange = { v ->
+                        val ui = v.coerceIn(0f, 1f)
+                        uiDjVolume = ui
+
+                        // niveau « réel » (0..1) pour le moteur DJ
+                        val real = uiToRealVolume(ui)
+                        onDjLevelChange(real)  // tu appliques ce volume dans ton écran DJ
+                    }
                 )
 
-                // --- FADER FOND SONORE ---
+                // --- FADER FOND SONORE (lié au FillerSoundManager) ---
                 MixFader(
                     title = "Fond sonore",
                     subtitle = "Nappe entre les morceaux",
-                    value = fillerLevel,
-                    onValueChange = onFillerLevelChange
+                    value = uiFillerVolume,
+                    onValueChange = { v ->
+                        val ui = v.coerceIn(0f, 1f)
+                        uiFillerVolume = ui
+                        onFillerLevelChange(ui) // si tu veux garder une copie dans ton ViewModel
+
+                        val real = uiToRealVolume(ui)
+                        // 1) on enregistre
+                        FillerSoundPrefs.saveFillerVolume(context, real)
+                        // 2) on applique immédiatement au lecteur de fond sonore
+                        FillerSoundManager.setVolume(real)
+                    }
                 )
             }
 
@@ -123,9 +165,7 @@ private fun MixFader(
     val onBg = Color(0xFFEEEEEE)
     val sub = Color(0xFFB9B9B9)
 
-    Column(
-        modifier = Modifier.fillMaxWidth()
-    ) {
+    Column(modifier = Modifier.fillMaxWidth()) {
         Text(title, color = onBg, fontSize = 14.sp)
         Text(subtitle, color = sub, fontSize = 11.sp)
 
@@ -138,7 +178,6 @@ private fun MixFader(
             modifier = Modifier.fillMaxWidth()
         )
 
-        // Affichage du pourcentage (ça "bouge" visuellement quand tu règles le fader)
         val percent = (value * 100).toInt()
         Text("$percent %", color = onBg, fontSize = 11.sp)
     }

@@ -8,7 +8,6 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlin.math.max
 
 data class DjQueuedTrack(
     val uri: String,
@@ -52,6 +51,9 @@ object DjEngine {
     private var deckBUri: String? = null
 
     private var crossfadePos: Float = 0.5f
+
+    // 🔊 volume MASTER DJ (0..1) appliqué à A et B
+    private var masterLevel: Float = 1f
 
     private val queueInternal = mutableListOf<DjQueuedTrack>()
 
@@ -158,8 +160,7 @@ object DjEngine {
             for (i in 0 until steps) {
                 val t = (i + 1) / steps.toFloat()
                 crossfadePos = (start + (target - start) * t).coerceIn(0f, 1f)
-                // pas d'applyCrossfader ici → on ne touche pas au son,
-                // c'est juste visuel quand une seule platine joue
+                // pas d'applyCrossfader ici → uniquement visuel si une seule platine joue
                 pushState()
                 delay(50)
             }
@@ -188,6 +189,7 @@ object DjEngine {
                         p.prepare()
                     }
                     currentDurationMs = p.duration
+                    // volume appliqué via master + crossfader
                     p.setVolume(1f, 1f)
                     p.start()
 
@@ -199,6 +201,7 @@ object DjEngine {
 
                     // 👉 visuellement, on ramène le slider côté A
                     animateSliderTo(0f, durationMs = 300)
+                    applyCrossfader()
                 } catch (e: Exception) {
                     e.printStackTrace()
                     mpA = null
@@ -259,11 +262,22 @@ object DjEngine {
         pushState()
     }
 
+    // 🔊 Volume MASTER DJ (0..1) appliqué à A et B
+    fun setMasterVolume(level: Float) {
+        masterLevel = level.coerceIn(0f, 1f)
+        applyCrossfader()   // réapplique tout de suite aux deux platines
+    }
+
     private fun applyCrossfader() {
-        val aVol = 1f - crossfadePos
-        val bVol = crossfadePos
-        mpA?.setVolume(aVol, aVol)
-        mpB?.setVolume(bVol, bVol)
+        val baseA = 1f - crossfadePos
+        val baseB = crossfadePos
+        val m = masterLevel.coerceIn(0f, 1f)
+
+        val aVol = baseA * m
+        val bVol = baseB * m
+
+        try { mpA?.setVolume(aVol, aVol) } catch (_: Exception) {}
+        try { mpB?.setVolume(bVol, bVol) } catch (_: Exception) {}
     }
 
     fun launchCrossfade() {
@@ -387,6 +401,7 @@ object DjEngine {
         deckBTitle = "B vide"
         deckAUri = null
         deckBUri = null
+        crossfadePos = 0.5f
         queueInternal.clear()
         pushState()
     }
@@ -394,10 +409,10 @@ object DjEngine {
     fun release() {
         stopDj(0)
     }
+
     fun stopWithFade(durationMs: Long = 300) {
         try {
-            // fade & stop DJ
-            stopDj()
+            stopDj(durationMs.toInt())
         } catch (_: Exception) {}
     }
 }

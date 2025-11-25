@@ -521,7 +521,7 @@ fun FillerSoundScreen(
         if (shouldStart) {
             val targetIndex = startTargetIndex
             if (targetIndex != null) {
-                FillerSoundManager.startIfConfigured(context)
+                FillerSoundManager.startFromUi(context)
                 FillerSoundManager.setVolume(
                     uiToRealVolume(uiFillerVolume)
                 )

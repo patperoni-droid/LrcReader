@@ -279,7 +279,7 @@ class MainActivity : ComponentActivity() {
                             djLevel = djMasterLevel,
                             onDjLevelChange = { lvl ->
                                 djMasterLevel = lvl
-                                // TODO : plus tard, brancher DjEngine sur ce niveau
+                                DjEngine.setMasterVolume(lvl)
                             },
                             fillerLevel = fillerMasterLevel,
                             onFillerLevelChange = { lvl ->
