@@ -235,13 +235,11 @@ class MainActivity : ComponentActivity() {
                                 selectedTab = tab
                                 SessionPrefs.saveTab(ctx, tabKeyOf(tab))
 
-                                // 🟣 NOUVEAUTÉ : si on clique sur "Home", on ferme les écrans spéciaux
-                                if (tab is BottomTab.Home) {
-                                    isFillerSettingsOpen = false   // ferme la page Fond sonore
-                                    isGlobalMixOpen = false        // ferme la page Mixage général
-                                    // si un jour tu veux aussi fermer les notes :
-                                    // isNotesOpen = false
-                                }
+                                // 👇 dès qu'on change de tab, on ferme les écrans plein écran
+                                isFillerSettingsOpen = false   // ferme la page Fond sonore
+                                isGlobalMixOpen = false        // ferme la page Mixage général
+                                // et si tu veux que les notes se ferment aussi :
+                                // isNotesOpen = false
                             }
                         )
                     }
