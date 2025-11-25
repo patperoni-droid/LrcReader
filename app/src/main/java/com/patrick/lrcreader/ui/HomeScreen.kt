@@ -64,7 +64,7 @@ fun HomeScreen(
                 horizontalAlignment = Alignment.Start
             ) {
                 Text(
-                    text = "Live Player",
+                    text = "LIVO",
                     fontSize = 30.sp,
                     fontWeight = FontWeight.ExtraBold,
                     color = Color.White

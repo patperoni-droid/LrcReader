@@ -1,51 +1,6 @@
-/**
- * Écran : QuickPlaylistsScreen
- *
- * Rôle principal :
- * - Interface rapide pour gérer des playlists "live" pendant une prestation.
- * - Permet de lire un titre immédiatement, changer de playlist, changer la couleur de la playlist,
- *   réordonner les titres par drag & drop, renommer un titre, et marquer un titre comme "à revoir".
- *
- * Fonctionnalités détaillées :
- * 1) Affichage de la playlist sélectionnée dans un header stylé (bloc cliquable + flèche).
- * 2) Menu déroulant pour changer de playlist.
- * 3) Choix de couleur pour chaque playlist (couleur enregistrée en prefs).
- * 4) Bouton Reset → remet tous les titres en "non joué" + efface les drapeaux "à revoir".
- * 5) Contrôle du fond sonore ("filler") :
- *      - Play/Stop du filler
- *      - Next filler
- * 6) Liste des titres :
- *      - Drag & drop pour réordonner les morceaux (mise à jour immédiate en BDD playlist).
- *      - Affichage du titre avec coloration suivant l’état :
- *          * Blanc → titre en cours de lecture
- *          * Couleur de playlist → normal
- *          * Gris → déjà joué
- *          * Rouge → marqué "à revoir"
- *      - Clic sur le titre → lecture du morceau (callback onPlaySong)
- * 7) Menu par titre (icône MoreVert) :
- *      - Retirer de la playlist
- *      - Renommer le titre (dialog)
- *      - Marquer / retirer "À revoir"
- *
- * Paramètres :
- * - onPlaySong(uri, playlistName, color) : callback pour lancer la lecture.
- * - refreshKey : force le rafraîchissement des listes.
- * - currentPlayingUri : permet d’afficher le morceau en lecture en blanc.
- * - selectedPlaylist : permet à un parent d’imposer la playlist en cours.
- * - onSelectedPlaylistChange : pour notifier le parent du changement.
- * - onPlaylistColorChange : pour synchroniser la couleur active avec l'écran parent.
- *
- * Notes :
- * - Les couleurs de playlists sont sauvegardées dans SharedPreferences.
- * - Le drag & drop est réalisé via detectDragGesturesAfterLongPress.
- * - Le fond sonore utilise FillerSoundManager.
- *
- * Ce fichier est l’un des plus complets de l’application :
- * gestion UI + logique playlist + état "live" pour la scène.
- */
 package com.patrick.lrcreader.ui
 
-import android.content.Context
+import com.patrick.lrcreader.ui.theme.DarkBlueGradientBackground
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -64,6 +19,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -85,9 +41,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.core.PlaylistRepository
-import com.patrick.lrcreader.ui.theme.DarkBlueGradientBackground
+import com.patrick.lrcreader.core.TextSongRepository
 import java.net.URLDecoder
+import android.content.Context
 
+/**
+ * QuickPlaylistsScreen + titres "texte seul" (prompteur).
+ */
 @Composable
 fun QuickPlaylistsScreen(
     modifier: Modifier = Modifier,
@@ -123,6 +83,11 @@ fun QuickPlaylistsScreen(
     var renameText by remember { mutableStateOf("") }
 
     var isFillerRunning by remember { mutableStateOf(FillerSoundManager.isPlaying()) }
+
+    // dialog création titre texte
+    var showCreateTextDialog by remember { mutableStateOf(false) }
+    var newTextTitle by remember { mutableStateOf("") }
+    var newTextContent by remember { mutableStateOf("") }
 
     // recharge quand playlist change
     LaunchedEffect(internalSelected, refreshKey) {
@@ -238,6 +203,24 @@ fun QuickPlaylistsScreen(
 
                 // icônes à droite
                 Row(verticalAlignment = Alignment.CenterVertically) {
+
+                    // ➕ NOUVEAU : création titre texte
+                    IconButton(
+                        onClick = {
+                            if (internalSelected != null) {
+                                newTextTitle = ""
+                                newTextContent = ""
+                                showCreateTextDialog = true
+                            }
+                        }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Add,
+                            contentDescription = "Titre texte",
+                            tint = Color(0xFF81C784)
+                        )
+                    }
+
                     // palette
                     Box {
                         IconButton(onClick = { colorMenuOpen = true }) {
@@ -288,13 +271,13 @@ fun QuickPlaylistsScreen(
                         }
                     }
 
-                    // reset
+                    // reset (NE TOUCHE PAS aux "à revoir", seulement "joué")
                     if (internalSelected != null) {
                         IconButton(
                             onClick = {
                                 val pl = internalSelected ?: return@IconButton
                                 PlaylistRepository.resetPlayedFor(pl)
-                                PlaylistRepository.clearReviewForPlaylist(pl)
+                                // ⚠️ on NE nettoie PAS les "à revoir"
                                 songs.clear()
                                 songs.addAll(PlaylistRepository.getSongsFor(pl))
                                 onSelectedPlaylistChange(pl)
@@ -572,6 +555,55 @@ fun QuickPlaylistsScreen(
             },
             dismissButton = {
                 TextButton(onClick = { renameTarget = null }) {
+                    Text("Annuler", color = Color.White)
+                }
+            },
+            containerColor = Color(0xFF222222)
+        )
+    }
+
+    // dialog création titre texte
+    if (showCreateTextDialog && internalSelected != null) {
+        AlertDialog(
+            onDismissRequest = { showCreateTextDialog = false },
+            title = { Text("Nouveau titre (prompteur)", color = Color.White) },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = newTextTitle,
+                        onValueChange = { newTextTitle = it },
+                        label = { Text("Titre") },
+                        singleLine = true
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = newTextContent,
+                        onValueChange = { newTextContent = it },
+                        label = { Text("Texte du prompteur") },
+                        minLines = 5
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val title = newTextTitle.trim()
+                    val content = newTextContent.trim()
+                    val pl = internalSelected ?: return@TextButton
+
+                    if (title.isNotEmpty() && content.isNotEmpty()) {
+                        val id = TextSongRepository.create(context, title, content)
+                        val uri = "prompter://$id"
+                        PlaylistRepository.assignSongToPlaylist(pl, uri)
+                        songs.add(uri)
+                    }
+
+                    showCreateTextDialog = false
+                }) {
+                    Text("OK", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCreateTextDialog = false }) {
                     Text("Annuler", color = Color.White)
                 }
             },

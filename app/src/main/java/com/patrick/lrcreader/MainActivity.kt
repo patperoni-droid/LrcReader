@@ -18,6 +18,9 @@ import com.patrick.lrcreader.core.dj.DjEngine
 import com.patrick.lrcreader.ui.*
 import kotlin.math.pow
 
+// 🔹 nouveau : prompteur texte
+import com.patrick.lrcreader.ui.TextPrompterScreen
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -96,6 +99,9 @@ class MainActivity : ComponentActivity() {
                 var playerMasterLevel by remember { mutableStateOf(1f) }   // 100%
                 var djMasterLevel by remember { mutableStateOf(1f) }        // 100% (prêt pour plus tard)
                 var fillerMasterLevel by remember { mutableStateOf(0.6f) }  // 60% par défaut
+
+                // 🔹 NOUVEAU : id du titre texte pour le prompteur
+                var textPrompterId by remember { mutableStateOf<String?>(null) }
 
                 // ----------------------------------------------------------
                 //  BRANCHAGE PlaybackCoordinator
@@ -238,7 +244,7 @@ class MainActivity : ComponentActivity() {
                                 // 👇 dès qu'on change de tab, on ferme les écrans plein écran
                                 isFillerSettingsOpen = false   // ferme la page Fond sonore
                                 isGlobalMixOpen = false        // ferme la page Mixage général
-                                // et si tu veux que les notes se ferment aussi :
+                                // si tu veux fermer aussi le bloc-notes, tu peux :
                                 // isNotesOpen = false
                             }
                         )
@@ -285,6 +291,16 @@ class MainActivity : ComponentActivity() {
                                 // TODO : plus tard, appliquer sur FillerSoundManager
                             },
                             onBack = { isGlobalMixOpen = false }
+                        )
+                        return@Scaffold
+                    }
+
+                    // 🔹 NOUVEAU : Prompteur texte plein écran
+                    textPrompterId?.let { tid ->
+                        TextPrompterScreen(
+                            modifier = Modifier.padding(innerPadding),
+                            songId = tid,
+                            onClose = { textPrompterId = null }
                         )
                         return@Scaffold
                     }
@@ -366,11 +382,21 @@ class MainActivity : ComponentActivity() {
                         is BottomTab.QuickPlaylists -> QuickPlaylistsScreen(
                             modifier = Modifier.padding(innerPadding),
                             onPlaySong = { uri, playlistName, color ->
-                                playWithCrossfade(uri, playlistName)
-                                currentPlayingUri = uri
-                                selectedQuickPlaylist = playlistName
-                                SessionPrefs.saveQuickPlaylist(ctx, playlistName)
-                                currentLyricsColor = color
+                                if (uri.startsWith("prompter://")) {
+                                    // 👉 titre texte : on ouvre le prompteur, pas le lecteur audio
+                                    val id = uri.removePrefix("prompter://")
+                                    textPrompterId = id
+                                    selectedQuickPlaylist = playlistName
+                                    SessionPrefs.saveQuickPlaylist(ctx, playlistName)
+                                    currentLyricsColor = color
+                                } else {
+                                    // 👉 comportement normal avec audio
+                                    playWithCrossfade(uri, playlistName)
+                                    currentPlayingUri = uri
+                                    selectedQuickPlaylist = playlistName
+                                    SessionPrefs.saveQuickPlaylist(ctx, playlistName)
+                                    currentLyricsColor = color
+                                }
                             },
                             refreshKey = refreshKey,
                             currentPlayingUri = currentPlayingUri,
