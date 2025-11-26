@@ -1,6 +1,6 @@
 package com.patrick.lrcreader.ui
 
-import android.content.Context
+import com.patrick.lrcreader.ui.theme.DarkBlueGradientBackground
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -11,7 +11,6 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.MoreVert
@@ -20,6 +19,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -40,11 +40,11 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.core.FillerSoundManager
-import com.patrick.lrcreader.core.NotesRepository
 import com.patrick.lrcreader.core.PlaylistRepository
 import com.patrick.lrcreader.core.TextSongRepository
-import com.patrick.lrcreader.ui.theme.DarkBlueGradientBackground
+import com.patrick.lrcreader.core.NotesRepository
 import java.net.URLDecoder
+import android.content.Context
 
 /**
  * QuickPlaylistsScreen + titres "texte seul" (prompteur).
@@ -85,13 +85,23 @@ fun QuickPlaylistsScreen(
 
     var isFillerRunning by remember { mutableStateOf(FillerSoundManager.isPlaying()) }
 
-    // dialog création titre texte (ancien système TextSongRepository)
+    // dialog création titre texte (ancienne méthode, on la garde pour l’instant)
     var showCreateTextDialog by remember { mutableStateOf(false) }
     var newTextTitle by remember { mutableStateOf("") }
     var newTextContent by remember { mutableStateOf("") }
 
-    // recharge quand playlist change
-    LaunchedEffect(internalSelected, refreshKey) {
+    // 🔹 version des notes : incrémentée quand une note change
+    var notesVersion by remember { mutableStateOf(0) }
+
+    // Abonnement aux changements de notes
+    LaunchedEffect(Unit) {
+        NotesEventBus.subscribe {
+            notesVersion++
+        }
+    }
+
+    // recharge quand playlist ou notes changent
+    LaunchedEffect(internalSelected, refreshKey, notesVersion) {
         songs.clear()
         val pl = internalSelected
         if (pl != null) {
@@ -205,7 +215,7 @@ fun QuickPlaylistsScreen(
                 // icônes à droite
                 Row(verticalAlignment = Alignment.CenterVertically) {
 
-                    // ➕ ancien bouton "nouveau titre texte"
+                    // ➕ création titre texte (ancienne méthode)
                     IconButton(
                         onClick = {
                             if (internalSelected != null) {
@@ -278,6 +288,7 @@ fun QuickPlaylistsScreen(
                             onClick = {
                                 val pl = internalSelected ?: return@IconButton
                                 PlaylistRepository.resetPlayedFor(pl)
+                                // ⚠️ on NE nettoie PAS les "à revoir"
                                 songs.clear()
                                 songs.addAll(PlaylistRepository.getSongsFor(pl))
                                 onSelectedPlaylistChange(pl)
@@ -337,8 +348,6 @@ fun QuickPlaylistsScreen(
                     state = listState
                 ) {
                     itemsIndexed(songs, key = { _, item -> item }) { _, uriString ->
-
-                        // Décodage "brut" (nom de fichier ou id brut)
                         val decoded = runCatching {
                             URLDecoder.decode(uriString, "UTF-8")
                         }.getOrElse { uriString }
@@ -355,28 +364,26 @@ fun QuickPlaylistsScreen(
                             }
                             .trim()
 
-                        // Titre personnalisé éventuel de la playlist
-                        val customTitle = internalSelected?.let {
-                            PlaylistRepository.getCustomTitle(it, uriString)
-                        }
+                        // 🔹 NOM D’AFFICHAGE
+                        val displayName = if (uriString.startsWith("prompter://")) {
+                            val idPart = uriString.removePrefix("prompter://")
+                            val numericId = idPart.toLongOrNull()
 
-                        // 🔹 Titre venant d'une NOTE (note://<id>)
-                        val noteTitle: String? = if (uriString.startsWith("note://")) {
-                            val idStr = uriString.removePrefix("note://")
-                            val id = idStr.toLongOrNull()
-                            id?.let { nid ->
-                                NotesRepository.get(context, nid)?.title
+                            if (numericId != null) {
+                                // 👉 NOTE : titre lu dans NotesRepository
+                                val note = NotesRepository.get(context, numericId)
+                                note?.title?.takeIf { it.isNotBlank() } ?: "(Texte)"
+                            } else {
+                                // 👉 ancien système TextSongRepository (id non numérique)
+                                val textSong = TextSongRepository.get(context, idPart)
+                                textSong?.title?.takeIf { it.isNotBlank() } ?: baseNameClean
                             }
-                        } else null
-
-                        // 🔹 Titre venant de l'ancien TextSongRepository (prompter://<id>)
-                        val textSongTitle: String? = if (uriString.startsWith("prompter://")) {
-                            val idStr = uriString.removePrefix("prompter://")
-                            TextSongRepository.get(context, idStr)?.title
-                        } else null
-
-                        val displayName = (customTitle ?: noteTitle ?: textSongTitle ?: baseNameClean)
-                            .ifBlank { baseNameClean }
+                        } else {
+                            // 👉 Audio normal
+                            internalSelected?.let {
+                                PlaylistRepository.getCustomTitle(it, uriString)
+                            } ?: baseNameClean
+                        }
 
                         val isPlayed = internalSelected?.let {
                             PlaylistRepository.isSongPlayed(it, uriString)
@@ -548,7 +555,7 @@ fun QuickPlaylistsScreen(
         }
     }
 
-    // dialog renommage
+    // ─── DIALOG RENOMMAGE ────────────────────────────────
     if (renameTarget != null && internalSelected != null) {
         AlertDialog(
             onDismissRequest = { renameTarget = null },
@@ -564,11 +571,46 @@ fun QuickPlaylistsScreen(
                 TextButton(onClick = {
                     val targetUri = renameTarget ?: return@TextButton
                     val pl = internalSelected ?: return@TextButton
-                    PlaylistRepository.renameSongInPlaylist(
-                        pl,
-                        targetUri,
-                        renameText.trim()
-                    )
+                    val newTitle = renameText.trim()
+
+                    if (targetUri.startsWith("prompter://")) {
+                        // 👉 Cas prompteur : on renomme LA SOURCE
+                        val idPart = targetUri.removePrefix("prompter://")
+                        val numericId = idPart.toLongOrNull()
+
+                        if (numericId != null) {
+                            // NOTE basée sur NotesRepository
+                            val note = NotesRepository.get(context, numericId)
+                            if (note != null) {
+                                NotesRepository.upsert(
+                                    context = context,
+                                    id = note.id,                 // même id
+                                    title = newTitle,             // nouveau titre
+                                    content = note.content        // on garde le texte
+                                )
+                                NotesEventBus.notifyNotesChanged()
+                            }
+                        } else {
+                            // Ancien système TextSongRepository
+                            val textSong = TextSongRepository.get(context, idPart)
+                            if (textSong != null) {
+                                TextSongRepository.update(
+                                    context = context,
+                                    id = idPart,
+                                    title = newTitle,
+                                    content = textSong.content
+                                )
+                            }
+                        }
+                    } else {
+                        // 👉 Cas audio normal : on renomme dans la playlist comme avant
+                        PlaylistRepository.renameSongInPlaylist(
+                            pl,
+                            targetUri,
+                            newTitle
+                        )
+                    }
+
                     renameTarget = null
                 }) {
                     Text("OK", color = Color.White)
@@ -583,7 +625,7 @@ fun QuickPlaylistsScreen(
         )
     }
 
-    // dialog création titre texte (ancien système)
+    // dialog création titre texte (ancienne méthode)
     if (showCreateTextDialog && internalSelected != null) {
         AlertDialog(
             onDismissRequest = { showCreateTextDialog = false },
@@ -658,4 +700,20 @@ private fun loadPlaylistColor(context: Context, playlist: String): Color? {
     return if (prefs.contains(playlist)) {
         Color(prefs.getInt(playlist, Color(0xFFE86FFF).toArgb()))
     } else null
+}
+
+/**
+ * Petit bus d'événements pour signaler que les notes ont changé.
+ * (utilisé pour forcer le refresh des playlists affichant des prompteurs)
+ */
+object NotesEventBus {
+    private val listeners = mutableListOf<() -> Unit>()
+
+    fun subscribe(listener: () -> Unit) {
+        listeners.add(listener)
+    }
+
+    fun notifyNotesChanged() {
+        listeners.forEach { it.invoke() }
+    }
 }

@@ -16,10 +16,7 @@ object NotesRepository {
         val id: Long,
         val title: String,
         val content: String,
-        val updatedAt: Long,
-        // id du titre texte (TextSongRepository) associé pour le prompteur
-        // null = pas encore lié à un prompteur
-        val prompterId: String? = null
+        val updatedAt: Long
     )
 
     private fun prefs(context: Context) =
@@ -32,26 +29,13 @@ object NotesRepository {
             val list = mutableListOf<Note>()
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
-
-                val id = o.getLong("id")
-                val title = o.optString("title", "")
-                val content = o.optString("content", "")
-                val updatedAt = o.optLong("updatedAt", 0L)
-
-                // champ optionnel pour compat rétro
-                val prompterId: String? = if (o.has("prompterId") && !o.isNull("prompterId")) {
-                    o.optString("prompterId", null)
-                } else {
-                    null
-                }
-
                 list.add(
                     Note(
-                        id = id,
-                        title = title,
-                        content = content,
-                        updatedAt = updatedAt,
-                        prompterId = prompterId
+                        // ⚠️ optLong pour supporter les anciennes notes sans id
+                        id = o.optLong("id", 0L),
+                        title = o.optString("title", ""),
+                        content = o.optString("content", ""),
+                        updatedAt = o.optLong("updatedAt", 0L)
                     )
                 )
             }
@@ -70,10 +54,6 @@ object NotesRepository {
                 put("title", n.title)
                 put("content", n.content)
                 put("updatedAt", n.updatedAt)
-                // on ne sérialise prompterId que s'il existe, pour garder un JSON propre
-                if (n.prompterId != null) {
-                    put("prompterId", n.prompterId)
-                }
             }
             arr.put(o)
         }
@@ -93,15 +73,11 @@ object NotesRepository {
         val noteId = id ?: now
         val idx = current.indexOfFirst { it.id == noteId }
 
-        // si la note existait déjà, on garde son éventuel prompterId
-        val existingPrompterId = current.firstOrNull { it.id == noteId }?.prompterId
-
         val note = Note(
             id = noteId,
             title = title.trim(),
             content = content.trim(),
-            updatedAt = now,
-            prompterId = existingPrompterId
+            updatedAt = now
         )
 
         if (idx >= 0) {
@@ -123,21 +99,49 @@ object NotesRepository {
         getAll(context).firstOrNull { it.id == id }
 
     /**
-     * Met à jour uniquement le prompterId d'une note (lien avec le titre prompteur).
-     * @return la note mise à jour, ou null si id introuvable.
+     * S'assure qu'une note a un id valide (>0).
+     * Si ce n'est pas le cas, on lui en recrée un, on persiste, et on renvoie la version fixée.
      */
-    fun setPrompterId(context: Context, id: Long, prompterId: String?): Note? {
-        val current = getAll(context).toMutableList()
-        val idx = current.indexOfFirst { it.id == id }
-        if (idx < 0) return null
+    fun ensureValidId(context: Context, note: Note): Note {
+        if (note.id > 0) return note  // ID déjà OK
 
-        val old = current[idx]
-        val updated = old.copy(
-            prompterId = prompterId,
+        val newId = System.currentTimeMillis()
+
+        val fixed = Note(
+            id = newId,
+            title = note.title,
+            content = note.content,
             updatedAt = System.currentTimeMillis()
         )
-        current[idx] = updated
-        persist(context, current)
-        return updated
+
+        val all = getAll(context).toMutableList()
+        // On essaie de retrouver la note via son contenu (fallback pour les vieux enregistrements)
+        val index = all.indexOfFirst {
+            it.id == 0L &&
+                    it.title == note.title &&
+                    it.content == note.content
+        }
+
+        if (index >= 0) {
+            all[index] = fixed
+        } else {
+            // au cas où, on l'ajoute
+            all.add(0, fixed)
+        }
+
+        // On ré-écrit tout proprement
+        val arr = JSONArray()
+        all.forEach { n ->
+            val o = JSONObject().apply {
+                put("id", n.id)
+                put("title", n.title)
+                put("content", n.content)
+                put("updatedAt", n.updatedAt)
+            }
+            arr.put(o)
+        }
+        prefs(context).edit().putString(KEY_NOTES, arr.toString()).apply()
+
+        return fixed
     }
 }

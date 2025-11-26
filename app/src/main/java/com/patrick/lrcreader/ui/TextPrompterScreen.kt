@@ -22,7 +22,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.core.TextSongRepository
+import com.patrick.lrcreader.core.NotesRepository
 import com.patrick.lrcreader.ui.theme.DarkBlueGradientBackground
+
+// Petit conteneur local pour ne pas dépendre du type exact de TextSongRepository
+private data class SongInfo(
+    val title: String?,
+    val content: String?
+)
 
 /**
  * Prompteur texte seul (pas d'audio).
@@ -36,8 +43,82 @@ fun TextPrompterScreen(
 ) {
     val context = LocalContext.current
 
-    val songData = remember(songId) {
-        TextSongRepository.get(context, songId)
+    // 🔥 Résout le problème "Texte introuvable" :
+    // on supporte :
+    //  - "note:123"  -> NotesRepository
+    //  - "text:xyz"  -> TextSongRepository
+    //  - "123"       -> NotesRepository (compat)
+    //  - "xyz"       -> TextSongRepository (compat)
+    val songInfo = remember(songId) {
+        // par défaut : rien trouvé
+        var result = SongInfo(title = null, content = null)
+
+        try {
+            when {
+                // NOTE moderne : note:<idLong>
+                songId.startsWith("note:") -> {
+                    val raw = songId.removePrefix("note:")
+                    val idLong = raw.toLongOrNull()
+                    if (idLong != null) {
+                        val note = NotesRepository.get(context, idLong)
+                        if (note != null) {
+                            result = SongInfo(
+                                title = note.title.ifBlank { "Texte" },
+                                content = note.content
+                            )
+                        }
+                    }
+                }
+
+                // Ancien texte prompteur : text:<idString>
+                songId.startsWith("text:") -> {
+                    val raw = songId.removePrefix("text:")
+                    val s = TextSongRepository.get(context, raw)
+                    if (s != null) {
+                        result = SongInfo(
+                            title = s.title,
+                            content = s.content
+                        )
+                    }
+                }
+
+                else -> {
+                    // Compatibilité : si c'est un nombre -> peut-être une Note
+                    val numeric = songId.toLongOrNull()
+                    if (numeric != null) {
+                        val note = NotesRepository.get(context, numeric)
+                        if (note != null) {
+                            result = SongInfo(
+                                title = note.title.ifBlank { "Texte" },
+                                content = note.content
+                            )
+                        } else {
+                            // sinon, on tente TextSongRepository avec l'id brut
+                            val s = TextSongRepository.get(context, songId)
+                            if (s != null) {
+                                result = SongInfo(
+                                    title = s.title,
+                                    content = s.content
+                                )
+                            }
+                        }
+                    } else {
+                        // id non numérique -> ancien TextSongRepository
+                        val s = TextSongRepository.get(context, songId)
+                        if (s != null) {
+                            result = SongInfo(
+                                title = s.title,
+                                content = s.content
+                            )
+                        }
+                    }
+                }
+            }
+        } catch (_: Exception) {
+            // en cas de bug, on laisse result vide -> "Texte introuvable"
+        }
+
+        result
     }
 
     val scrollState = rememberScrollState()
@@ -50,8 +131,7 @@ fun TextPrompterScreen(
     LaunchedEffect(songId, isPlaying, speedFactor) {
         if (!isPlaying) return@LaunchedEffect
 
-        // On attend un tout petit peu pour être sûr que le texte est mesuré
-        // (sinon maxValue risque d'être 0 au tout début)
+        // petit délai pour laisser le temps au layout de mesurer la hauteur
         kotlinx.coroutines.delay(50)
 
         val max = scrollState.maxValue
@@ -92,7 +172,7 @@ fun TextPrompterScreen(
                 }
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    text = songData?.title ?: "Titre texte",
+                    text = songInfo.title ?: "Titre texte",
                     color = Color.White,
                     fontSize = 20.sp
                 )
@@ -147,7 +227,8 @@ fun TextPrompterScreen(
                     .fillMaxSize()
                     .background(Color(0xFF050912))
             ) {
-                if (songData == null) {
+                val content = songInfo.content
+                if (content.isNullOrBlank()) {
                     Text(
                         text = "Texte introuvable.",
                         color = Color.Gray,
@@ -155,7 +236,7 @@ fun TextPrompterScreen(
                     )
                 } else {
                     Text(
-                        text = songData.content,
+                        text = content,
                         color = Color.White,
                         fontSize = 26.sp,
                         lineHeight = 32.sp,
