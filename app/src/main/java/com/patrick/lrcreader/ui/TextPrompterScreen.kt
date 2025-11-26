@@ -1,6 +1,7 @@
 package com.patrick.lrcreader.ui
 
-import android.content.Context
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -22,8 +23,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.core.TextSongRepository
 import com.patrick.lrcreader.ui.theme.DarkBlueGradientBackground
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 
 /**
  * Prompteur texte seul (pas d'audio).
@@ -44,27 +43,33 @@ fun TextPrompterScreen(
     val scrollState = rememberScrollState()
 
     var isPlaying by remember { mutableStateOf(true) }
-    // vitesse "relative" (1f = normal, 0.5f = lent, 2f = rapide)
+    // vitesse "relative" (1f = normal, 0.3f = très lent, 3f = très rapide)
     var speedFactor by remember { mutableStateOf(1f) }
 
-    // Auto-scroll
+    // 🔁 Auto-scroll basé sur une animation
     LaunchedEffect(songId, isPlaying, speedFactor) {
         if (!isPlaying) return@LaunchedEffect
-        val basePxPerSecond = 40f   // vitesse de base
-        val pxPerSecond = basePxPerSecond * speedFactor.coerceIn(0.3f, 3f)
-        val frameDelayMs = 16L
 
-        while (isActive && isPlaying) {
-            val max = scrollState.maxValue
-            if (max <= 0) break
+        // On attend un tout petit peu pour être sûr que le texte est mesuré
+        // (sinon maxValue risque d'être 0 au tout début)
+        kotlinx.coroutines.delay(50)
 
-            val step = (pxPerSecond * (frameDelayMs / 1000f)).toInt().coerceAtLeast(1)
-            val next = (scrollState.value + step).coerceAtMost(max)
-            scrollState.scrollTo(next)
+        val max = scrollState.maxValue
+        if (max <= 0) return@LaunchedEffect
 
-            if (next >= max) break
-            delay(frameDelayMs)
-        }
+        val clampedSpeed = speedFactor.coerceIn(0.3f, 3f)
+
+        // Durée de base = 60s pour traverser tout le texte à vitesse 1.0
+        val baseDurationMs = 60_000L
+        val duration = (baseDurationMs / clampedSpeed).toInt().coerceAtLeast(500)
+
+        scrollState.animateScrollTo(
+            value = max,
+            animationSpec = tween(
+                durationMillis = duration,
+                easing = LinearEasing
+            )
+        )
     }
 
     DarkBlueGradientBackground {
@@ -119,16 +124,16 @@ fun TextPrompterScreen(
                 }
 
                 Column(
-                    modifier = Modifier.width(180.dp)
+                    modifier = Modifier.width(200.dp)
                 ) {
                     Text(
-                        text = "Vitesse",
+                        text = "Vitesse (${String.format("%.1fx", speedFactor)})",
                         color = Color(0xFFB0BEC5),
                         fontSize = 11.sp
                     )
                     Slider(
                         value = speedFactor,
-                        onValueChange = { speedFactor = it.coerceIn(0.3f, 3f) },
+                        onValueChange = { speedFactor = it },
                         valueRange = 0.3f..3f
                     )
                 }
