@@ -23,7 +23,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.core.TextSongRepository
 import com.patrick.lrcreader.core.NotesRepository
+import com.patrick.lrcreader.core.TextPrompterPrefs
 import com.patrick.lrcreader.ui.theme.DarkBlueGradientBackground
+import kotlinx.coroutines.delay
 
 // Petit conteneur local pour ne pas dépendre du type exact de TextSongRepository
 private data class SongInfo(
@@ -124,15 +126,23 @@ fun TextPrompterScreen(
     val scrollState = rememberScrollState()
 
     var isPlaying by remember { mutableStateOf(true) }
-    // vitesse "relative" (1f = normal, 0.3f = très lent, 3f = très rapide)
-    var speedFactor by remember { mutableStateOf(1f) }
+
+    // 🔹 Vitesse mémorisée par texte (0.3x .. 3x)
+    var speedFactor by remember(songId) {
+        mutableStateOf(
+            TextPrompterPrefs
+                .getSpeed(context, songId)
+                ?.coerceIn(0.3f, 3f)
+                ?: 1f
+        )
+    }
 
     // 🔁 Auto-scroll basé sur une animation
     LaunchedEffect(songId, isPlaying, speedFactor) {
         if (!isPlaying) return@LaunchedEffect
 
         // petit délai pour laisser le temps au layout de mesurer la hauteur
-        kotlinx.coroutines.delay(50)
+        delay(50)
 
         val max = scrollState.maxValue
         if (max <= 0) return@LaunchedEffect
@@ -213,7 +223,11 @@ fun TextPrompterScreen(
                     )
                     Slider(
                         value = speedFactor,
-                        onValueChange = { speedFactor = it },
+                        onValueChange = {
+                            speedFactor = it
+                            // 💾 mémorisation immédiate pour ce texte
+                            TextPrompterPrefs.saveSpeed(context, songId, it)
+                        },
                         valueRange = 0.3f..3f
                     )
                 }
