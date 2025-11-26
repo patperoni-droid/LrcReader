@@ -1,6 +1,6 @@
 package com.patrick.lrcreader.ui
 
-import com.patrick.lrcreader.ui.theme.DarkBlueGradientBackground
+import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.MoreVert
@@ -19,7 +20,6 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.VolumeUp
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -40,10 +40,11 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.core.FillerSoundManager
+import com.patrick.lrcreader.core.NotesRepository
 import com.patrick.lrcreader.core.PlaylistRepository
 import com.patrick.lrcreader.core.TextSongRepository
+import com.patrick.lrcreader.ui.theme.DarkBlueGradientBackground
 import java.net.URLDecoder
-import android.content.Context
 
 /**
  * QuickPlaylistsScreen + titres "texte seul" (prompteur).
@@ -84,7 +85,7 @@ fun QuickPlaylistsScreen(
 
     var isFillerRunning by remember { mutableStateOf(FillerSoundManager.isPlaying()) }
 
-    // dialog création titre texte
+    // dialog création titre texte (ancien système TextSongRepository)
     var showCreateTextDialog by remember { mutableStateOf(false) }
     var newTextTitle by remember { mutableStateOf("") }
     var newTextContent by remember { mutableStateOf("") }
@@ -204,7 +205,7 @@ fun QuickPlaylistsScreen(
                 // icônes à droite
                 Row(verticalAlignment = Alignment.CenterVertically) {
 
-                    // ➕ NOUVEAU : création titre texte
+                    // ➕ ancien bouton "nouveau titre texte"
                     IconButton(
                         onClick = {
                             if (internalSelected != null) {
@@ -277,7 +278,6 @@ fun QuickPlaylistsScreen(
                             onClick = {
                                 val pl = internalSelected ?: return@IconButton
                                 PlaylistRepository.resetPlayedFor(pl)
-                                // ⚠️ on NE nettoie PAS les "à revoir"
                                 songs.clear()
                                 songs.addAll(PlaylistRepository.getSongsFor(pl))
                                 onSelectedPlaylistChange(pl)
@@ -337,6 +337,8 @@ fun QuickPlaylistsScreen(
                     state = listState
                 ) {
                     itemsIndexed(songs, key = { _, item -> item }) { _, uriString ->
+
+                        // Décodage "brut" (nom de fichier ou id brut)
                         val decoded = runCatching {
                             URLDecoder.decode(uriString, "UTF-8")
                         }.getOrElse { uriString }
@@ -353,9 +355,28 @@ fun QuickPlaylistsScreen(
                             }
                             .trim()
 
-                        val displayName = internalSelected?.let {
+                        // Titre personnalisé éventuel de la playlist
+                        val customTitle = internalSelected?.let {
                             PlaylistRepository.getCustomTitle(it, uriString)
-                        } ?: baseNameClean
+                        }
+
+                        // 🔹 Titre venant d'une NOTE (note://<id>)
+                        val noteTitle: String? = if (uriString.startsWith("note://")) {
+                            val idStr = uriString.removePrefix("note://")
+                            val id = idStr.toLongOrNull()
+                            id?.let { nid ->
+                                NotesRepository.get(context, nid)?.title
+                            }
+                        } else null
+
+                        // 🔹 Titre venant de l'ancien TextSongRepository (prompter://<id>)
+                        val textSongTitle: String? = if (uriString.startsWith("prompter://")) {
+                            val idStr = uriString.removePrefix("prompter://")
+                            TextSongRepository.get(context, idStr)?.title
+                        } else null
+
+                        val displayName = (customTitle ?: noteTitle ?: textSongTitle ?: baseNameClean)
+                            .ifBlank { baseNameClean }
 
                         val isPlayed = internalSelected?.let {
                             PlaylistRepository.isSongPlayed(it, uriString)
@@ -562,7 +583,7 @@ fun QuickPlaylistsScreen(
         )
     }
 
-    // dialog création titre texte
+    // dialog création titre texte (ancien système)
     if (showCreateTextDialog && internalSelected != null) {
         AlertDialog(
             onDismissRequest = { showCreateTextDialog = false },
@@ -620,7 +641,7 @@ private fun <T> MutableList<T>.swap(i: Int, j: Int) {
     this[j] = tmp
 }
 
-// prefs couleur (fallback local en plus des prefs système, si tu veux)
+// prefs couleur
 private const val PLAYLIST_COLOR_PREF = "playlist_color_pref"
 
 private fun savePlaylistColor(context: Context, playlist: String, color: Color) {
