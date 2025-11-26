@@ -27,15 +27,12 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Restauration auto de la sauvegarde globale JSON (si besoin)
         AutoRestore.restoreIfNeeded(this)
 
-        // Restauration de l’état de session (onglet, playlists)
         val initialTabKey = SessionPrefs.getTab(this)
         val initialQuickPlaylist = SessionPrefs.getQuickPlaylist(this)
         val initialOpenedPlaylist = SessionPrefs.getOpenedPlaylist(this)
 
-        // Init DJ
         DjEngine.init(this)
 
         setContent {
@@ -43,77 +40,51 @@ class MainActivity : ComponentActivity() {
 
                 val ctx = this@MainActivity
 
-                // MediaPlayer unique de l’appli
                 val mediaPlayer = remember { MediaPlayer() }
 
-                // LoudnessEnhancer pour le gain positif
                 val loudnessEnhancer = remember {
                     LoudnessEnhancer(mediaPlayer.audioSessionId).apply {
                         enabled = true
                     }
                 }
 
-                // Onglet sélectionné
                 var selectedTab by remember {
                     mutableStateOf(initialTabKey?.let { tabFromKey(it) } ?: BottomTab.Home)
                 }
 
-                // Playlist rapide sélectionnée
                 var selectedQuickPlaylist by rememberSaveable {
                     mutableStateOf<String?>(initialQuickPlaylist)
                 }
 
-                // Playlist "complète" actuellement ouverte
                 var openedPlaylist by rememberSaveable {
                     mutableStateOf<String?>(initialOpenedPlaylist)
                 }
 
-                // Lecture en cours
                 var currentPlayingUri by remember { mutableStateOf<String?>(null) }
                 var isPlaying by remember { mutableStateOf(false) }
-
-                // Paroles LRC déjà parsées pour le titre en cours
                 var parsedLines by remember { mutableStateOf<List<LrcLine>>(emptyList()) }
-
-                // Token pour invalider les lectures concurrentes (crossfadePlay)
                 var currentPlayToken by remember { mutableStateOf(0L) }
-
-                // Réglage de volume par titre (en dB)
                 var currentTrackGainDb by remember { mutableStateOf(0) }
-
-                // Couleur des paroles du titre actuel
                 var currentLyricsColor by remember { mutableStateOf(Color(0xFFE040FB)) }
-
-                // Pour forcer un rafraîchissement de certaines listes
                 var refreshKey by remember { mutableStateOf(0) }
 
-                // Bloc-notes plein écran (overlay)
                 var isNotesOpen by remember { mutableStateOf(false) }
-
-                // Écran du fond sonore
                 var isFillerSettingsOpen by remember { mutableStateOf(false) }
-
-                // Tempo par morceau (1f = normal)
                 var currentTrackTempo by remember { mutableStateOf(1f) }
 
-                // 🔊 Mixage global : niveaux maîtres
                 var isGlobalMixOpen by remember { mutableStateOf(false) }
-                var playerMasterLevel by remember { mutableStateOf(1f) }   // 100%
-                var djMasterLevel by remember { mutableStateOf(1f) }        // 100%
-                var fillerMasterLevel by remember { mutableStateOf(0.6f) }  // 60%
+                var playerMasterLevel by remember { mutableStateOf(1f) }
+                var djMasterLevel by remember { mutableStateOf(1f) }
+                var fillerMasterLevel by remember { mutableStateOf(0.6f) }
 
-                // Id du titre texte pour le prompteur (normalisé : "note:123" ou "text:abc")
+                // ID normalisé pour le prompteur ("note:123" ou "text:abc")
                 var textPrompterId by remember { mutableStateOf<String?>(null) }
 
-                // ----------------------------------------------------------
-                //  BRANCHAGE PlaybackCoordinator
-                // ----------------------------------------------------------
+                // ---------------- PlaybackCoordinator -------------------
 
                 PlaybackCoordinator.stopPlayer = {
                     try {
-                        if (mediaPlayer.isPlaying) {
-                            mediaPlayer.pause()
-                        }
+                        if (mediaPlayer.isPlaying) mediaPlayer.pause()
                         isPlaying = false
                     } catch (_: Exception) {}
                 }
@@ -126,22 +97,19 @@ class MainActivity : ComponentActivity() {
                     runCatching { FillerSoundManager.fadeOutAndStop(200) }
                 }
 
-                // ----------------------------------------------------------
-                //  GAIN PAR MORCEAU (avec master Lecteur)
-                // ----------------------------------------------------------
+                // ---------------- Gain par morceau ----------------------
+
                 fun applyGainToPlayer(db: Int) {
                     try {
                         val clamped = db.coerceIn(-12, 12)
                         val master = playerMasterLevel.coerceIn(0f, 1f)
 
                         if (clamped <= 0) {
-                            // Gain négatif : on baisse le volume du player + master
                             val linear = 10f.pow(clamped / 20f)
                             val v = linear * master
                             mediaPlayer.setVolume(v, v)
                             loudnessEnhancer.setTargetGain(0)
                         } else {
-                            // Gain positif : volume 1.0 * master + LoudnessEnhancer
                             val v = 1f * master
                             mediaPlayer.setVolume(v, v)
                             loudnessEnhancer.setTargetGain(clamped * 100)
@@ -149,9 +117,8 @@ class MainActivity : ComponentActivity() {
                     } catch (_: Exception) {}
                 }
 
-                // ----------------------------------------------------------
-                //  TEMPO PAR MORCEAU
-                // ----------------------------------------------------------
+                // ---------------- Tempo par morceau ---------------------
+
                 fun applyTempoToPlayer(speed: Float) {
                     try {
                         val safeSpeed = speed.coerceIn(0.5f, 2.0f)
@@ -162,9 +129,8 @@ class MainActivity : ComponentActivity() {
                     } catch (_: Exception) {}
                 }
 
-                // ----------------------------------------------------------
-                //  PLAY + CROSSFADE
-                // ----------------------------------------------------------
+                // ---------------- Play + crossfade ----------------------
+
                 val playWithCrossfade: (String, String?) -> Unit = { uriString, playlistName ->
 
                     PlaybackCoordinator.onPlayerStart()
@@ -174,11 +140,8 @@ class MainActivity : ComponentActivity() {
                     val myToken = currentPlayToken + 1
                     currentPlayToken = myToken
 
-                    val savedDb = TrackVolumePrefs.getDb(ctx, uriString) ?: 0
-                    currentTrackGainDb = savedDb
-
-                    val savedTempo = TrackTempoPrefs.getTempo(ctx, uriString) ?: 1f
-                    currentTrackTempo = savedTempo
+                    currentTrackGainDb = TrackVolumePrefs.getDb(ctx, uriString) ?: 0
+                    currentTrackTempo = TrackTempoPrefs.getTempo(ctx, uriString) ?: 1f
 
                     val result = runCatching {
                         crossfadePlay(
@@ -220,9 +183,8 @@ class MainActivity : ComponentActivity() {
                     SessionPrefs.saveTab(ctx, TAB_PLAYER)
                 }
 
-                // ----------------------------------------------------------
-                //  RELEASE
-                // ----------------------------------------------------------
+                // ---------------- Release -------------------------------
+
                 DisposableEffect(Unit) {
                     onDispose {
                         loudnessEnhancer.release()
@@ -230,29 +192,28 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                // ----------------------------------------------------------
-                // UI PRINCIPALE
-                // ----------------------------------------------------------
+                // ---------------- UI principale -------------------------
+
                 Scaffold(
                     containerColor = Color.Black,
                     bottomBar = {
                         BottomTabsBar(
                             selected = selectedTab,
                             onSelected = { tab ->
-                                // On change l’onglet
                                 selectedTab = tab
                                 SessionPrefs.saveTab(ctx, tabKeyOf(tab))
 
-                                // On ferme les écrans plein écran / overlays
+                                // on ferme tous les écrans plein écran / overlays
                                 isFillerSettingsOpen = false
                                 isGlobalMixOpen = false
-                                isNotesOpen = false        // 👈 important : ferme Mes notes
+                                isNotesOpen = false
+                                textPrompterId = null   // 👈 ferme aussi le prompteur
                             }
                         )
                     }
                 ) { innerPadding ->
 
-                    // Écran réglages du fond sonore
+                    // Fond sonore
                     if (isFillerSettingsOpen) {
                         FillerSoundScreen(
                             context = ctx,
@@ -261,7 +222,7 @@ class MainActivity : ComponentActivity() {
                         return@Scaffold
                     }
 
-                    // 🎚️ Mixage global plein écran
+                    // Mixage global
                     if (isGlobalMixOpen) {
                         GlobalMixScreen(
                             modifier = Modifier.padding(innerPadding),
@@ -284,7 +245,7 @@ class MainActivity : ComponentActivity() {
                         return@Scaffold
                     }
 
-                    // 🔹 Prompteur texte plein écran
+                    // Prompteur texte plein écran
                     textPrompterId?.let { tid ->
                         TextPrompterScreen(
                             modifier = Modifier.padding(innerPadding),
@@ -294,15 +255,13 @@ class MainActivity : ComponentActivity() {
                         return@Scaffold
                     }
 
-                    // ------------------------------------------------------
-                    //  NAVIGATION PAR ONGLET
-                    // ------------------------------------------------------
+                    // -------- navigation par onglet --------
+
                     when (selectedTab) {
 
                         is BottomTab.Home -> HomeScreen(
                             modifier = Modifier.padding(innerPadding),
                             onOpenPlayer = {
-                                // Le bouton "Mode Playlist" ouvre les playlists rapides
                                 selectedTab = BottomTab.QuickPlaylists
                                 SessionPrefs.saveTab(ctx, TAB_QUICK)
                             },
@@ -362,7 +321,6 @@ class MainActivity : ComponentActivity() {
                             modifier = Modifier.padding(innerPadding),
                             onPlaySong = { uri, playlistName, color ->
                                 if (uri.startsWith("prompter://")) {
-                                    // Titre texte : ouverture prompteur, pas lecteur audio
                                     val rawId = uri.removePrefix("prompter://")
                                     val numeric = rawId.toLongOrNull()
                                     textPrompterId =
@@ -373,7 +331,6 @@ class MainActivity : ComponentActivity() {
                                     SessionPrefs.saveQuickPlaylist(ctx, playlistName)
                                     currentLyricsColor = color
                                 } else {
-                                    // Audio normal
                                     playWithCrossfade(uri, playlistName)
                                     currentPlayingUri = uri
                                     selectedQuickPlaylist = playlistName
@@ -426,18 +383,19 @@ class MainActivity : ComponentActivity() {
                         )
                     }
 
-                    // 🔹 OVERLAY "Mes notes" par-dessus le contenu, barre du bas accessible
+                    // -------- overlay "Mes notes" --------
+
                     if (isNotesOpen) {
                         Box(
                             modifier = Modifier
                                 .padding(innerPadding)
                                 .fillMaxSize()
-                                .background(Color(0xAA000000)) // léger voile
+                                .background(Color(0xAA000000))
                         ) {
                             NotesScreen(
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .padding(bottom = 70.dp), // pour laisser voir la barre
+                                    .padding(bottom = 70.dp),
                                 context = ctx,
                                 onClose = { isNotesOpen = false }
                             )
