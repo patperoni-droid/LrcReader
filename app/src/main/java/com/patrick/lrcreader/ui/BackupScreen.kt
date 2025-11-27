@@ -18,8 +18,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -51,6 +51,7 @@ import com.patrick.lrcreader.nowString
 import com.patrick.lrcreader.saveJsonToUri
 import com.patrick.lrcreader.shareJson
 import com.patrick.lrcreader.ui.theme.DarkBlueGradientBackground
+import android.widget.Toast.LENGTH_SHORT
 
 @Composable
 fun BackupScreen(
@@ -58,6 +59,7 @@ fun BackupScreen(
     onAfterImport: () -> Unit = {},
     onBack: () -> Unit
 ) {
+    // État dernier import
     var lastImportFile by remember { mutableStateOf<String?>(null) }
     var lastImportTime by remember { mutableStateOf<String?>(null) }
     var lastImportSummary by remember { mutableStateOf<String?>(null) }
@@ -69,6 +71,13 @@ fun BackupScreen(
 
     // on garde le json en mémoire le temps que l’utilisateur choisisse la cible
     val saveLauncherJson = remember { mutableStateOf("") }
+
+    // Palette commune
+    val onBg = Color(0xFFFFF8E1)
+    val sub = Color(0xFFB0BEC5)
+    val card = Color(0xFF181818)
+    val cardBorder = Color(0x33FFFFFF)
+    val accent = Color(0xFFFFC107)
 
     // IMPORT via picker système (fallback)
     val fileLauncher = rememberLauncherForActivityResult(
@@ -103,7 +112,7 @@ fun BackupScreen(
             Toast.makeText(
                 context,
                 if (ok) "Sauvegarde enregistrée" else "Impossible d’enregistrer",
-                Toast.LENGTH_SHORT
+                LENGTH_SHORT
             ).show()
         }
         saveLauncherJson.value = ""
@@ -121,7 +130,7 @@ fun BackupScreen(
                 )
                 BackupFolderPrefs.save(context, treeUri)
                 backupFolderUri = treeUri
-                Toast.makeText(context, "Dossier de sauvegarde choisi", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Dossier de sauvegarde choisi", LENGTH_SHORT).show()
             } catch (_: Exception) {
             }
         }
@@ -146,37 +155,51 @@ fun BackupScreen(
     // affiche ou non le petit menu de sélection interne
     var showJsonPicker by remember { mutableStateOf(false) }
 
-    val accent = Color(0xFFE386FF)
-    val card = Color(0xFF141414)
-    val onBg = Color(0xFFEEEEEE)
-    val sub = Color(0xFFB9B9B9)
-
     DarkBlueGradientBackground {
         Column(
             Modifier
                 .fillMaxSize()
                 .padding(
                     top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 12.dp,
-                    start = 14.dp,
-                    end = 14.dp,
-                    bottom = 8.dp
+                    start = 16.dp,
+                    end = 16.dp,
+                    bottom = 12.dp
                 )
                 .verticalScroll(rememberScrollState())
         ) {
+            // HEADER
             TextButton(onClick = onBack) { Text("← Retour", color = onBg) }
             Spacer(Modifier.height(4.dp))
-            Text("Sauvegarde / Restauration", color = onBg, fontSize = 20.sp)
-            Spacer(Modifier.height(12.dp))
+            Text("Sauvegarde & restauration", color = onBg, fontSize = 20.sp)
+            Text(
+                "Gardez vos playlists & réglages au chaud.",
+                color = sub,
+                fontSize = 12.sp
+            )
 
-            // ─── EXPORT ───────────────────────────────────
+            Spacer(Modifier.height(14.dp))
+
+            // ─── CARTE EXPORT ───────────────────────────────
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(card, shape = RoundedCornerShape(18.dp))
                     .padding(14.dp)
             ) {
-                Text("Exporter l’état", color = onBg, fontSize = 16.sp)
-                Spacer(Modifier.height(8.dp))
+                // bandeau
+                Text(
+                    text = "EXPORT",
+                    color = accent,
+                    fontSize = 11.sp
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Sauvegarder l’état complet de l’application (playlists, réglages…).",
+                    color = onBg,
+                    fontSize = 13.sp
+                )
+
+                Spacer(Modifier.height(10.dp))
 
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -201,13 +224,15 @@ fun BackupScreen(
                 if (backupFolderUri != null) {
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        text = "Dossier actuel : ${backupFolderUri.toString().take(55)}…",
+                        text = "Dossier actuel : " +
+                                (DocumentFile.fromTreeUri(context, backupFolderUri!!)?.name
+                                    ?: backupFolderUri.toString().take(40)),
                         color = sub,
                         fontSize = 11.sp
                     )
                 }
 
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(12.dp))
 
                 // Champ pour le nom de fichier
                 OutlinedTextField(
@@ -218,7 +243,7 @@ fun BackupScreen(
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(10.dp))
 
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -238,7 +263,7 @@ fun BackupScreen(
                         },
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.filledTonalButtonColors(
-                            containerColor = Color(0xFF46405A),
+                            containerColor = Color(0xFF3E3A2C),
                             contentColor = Color.White
                         ),
                         shape = RoundedCornerShape(999.dp)
@@ -261,17 +286,28 @@ fun BackupScreen(
                 }
             }
 
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(16.dp))
 
-            // ─── IMPORT ───────────────────────────────────
+            // ─── CARTE IMPORT ───────────────────────────────
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(card, shape = RoundedCornerShape(18.dp))
                     .padding(14.dp)
             ) {
-                Text("Importer une sauvegarde", color = onBg, fontSize = 16.sp)
-                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = "IMPORT",
+                    color = accent,
+                    fontSize = 11.sp
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Recharger une sauvegarde existante.",
+                    color = onBg,
+                    fontSize = 13.sp
+                )
+
+                Spacer(Modifier.height(10.dp))
 
                 FilledTonalButton(
                     onClick = {
@@ -279,12 +315,12 @@ fun BackupScreen(
                             // on a déjà un dossier avec des .json → on montre la liste interne
                             showJsonPicker = true
                         } else {
-                            // rien en stock → on passe par le picker Android classique
+                            // rien en stock → picker Android classique
                             fileLauncher.launch(arrayOf("application/json"))
                         }
                     },
                     colors = ButtonDefaults.filledTonalButtonColors(
-                        containerColor = Color(0xFF46405A),
+                        containerColor = Color(0xFF3E3A2C),
                         contentColor = Color.White
                     ),
                     shape = RoundedCornerShape(999.dp)
@@ -292,7 +328,7 @@ fun BackupScreen(
                     Text("Choisir un fichier…", fontSize = 12.sp)
                 }
 
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(8.dp))
 
                 TextButton(onClick = { treeLauncher.launch(null) }) {
                     Text(
@@ -305,11 +341,15 @@ fun BackupScreen(
                 Spacer(Modifier.height(10.dp))
 
                 if (lastImportFile != null || lastImportTime != null || lastImportSummary != null) {
-                    HorizontalDivider(color = Color(0xFF2A2A2A))
+                    HorizontalDivider(color = cardBorder)
                     Spacer(Modifier.height(8.dp))
                     Text("Dernier import", color = sub, fontSize = 11.sp)
-                    lastImportFile?.let { Text("• Fichier : $it", color = onBg, fontSize = 12.sp) }
-                    lastImportTime?.let { Text("• Heure : $it", color = onBg, fontSize = 12.sp) }
+                    lastImportFile?.let {
+                        Text("• Fichier : $it", color = onBg, fontSize = 12.sp)
+                    }
+                    lastImportTime?.let {
+                        Text("• Heure : $it", color = onBg, fontSize = 12.sp)
+                    }
                     lastImportSummary?.let {
                         Text(
                             "• État : $it",
@@ -319,7 +359,11 @@ fun BackupScreen(
                         )
                     }
                 } else {
-                    Text("Aucun import réalisé pour l’instant.", color = sub, fontSize = 12.sp)
+                    Text(
+                        "Aucun import réalisé pour l’instant.",
+                        color = sub,
+                        fontSize = 12.sp
+                    )
                 }
             }
 
@@ -333,11 +377,11 @@ fun BackupScreen(
     if (showJsonPicker) {
         AlertDialog(
             onDismissRequest = { showJsonPicker = false },
-            title = { Text("Choisir une sauvegarde") },
+            title = { Text("Choisir une sauvegarde", color = onBg) },
             text = {
                 Column {
                     if (jsonFilesInFolder.isEmpty()) {
-                        Text("Aucun fichier .json trouvé.", fontSize = 12.sp)
+                        Text("Aucun fichier .json trouvé.", fontSize = 12.sp, color = sub)
                     } else {
                         jsonFilesInFolder.forEach { doc ->
                             Text(
@@ -347,7 +391,6 @@ fun BackupScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable {
-                                        // import direct du fichier choisi
                                         try {
                                             val json = context.contentResolver
                                                 .openInputStream(doc.uri)
@@ -381,14 +424,15 @@ fun BackupScreen(
                         fileLauncher.launch(arrayOf("application/json"))
                     }
                 ) {
-                    Text("Autre fichier…")
+                    Text("Autre fichier…", color = accent)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showJsonPicker = false }) {
-                    Text("Annuler")
+                    Text("Annuler", color = sub)
                 }
-            }
+            },
+            containerColor = Color(0xFF222222)
         )
     }
 }

@@ -5,32 +5,16 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Folder
@@ -44,13 +28,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -91,6 +69,13 @@ fun LibraryScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
+    // palette analogique commune
+    val titleColor = Color(0xFFFFF8E1)
+    val subtitleColor = Color(0xFFB0BEC5)
+    val cardBg = Color(0xFF181818)
+    val rowBorder = Color(0x33FFFFFF)
+    val accent = Color(0xFFFFC107)
+
     val initialFolder = remember { BackupFolderPrefs.get(context) }
 
     var currentFolderUri by remember { mutableStateOf<Uri?>(initialFolder) }
@@ -102,7 +87,6 @@ fun LibraryScreen(
     var actionsExpanded by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(false) }
 
-    // hauteur de la barre flottante
     val bottomBarHeight = 56.dp
 
     val pickFolderLauncher = rememberLauncherForActivityResult(
@@ -163,9 +147,11 @@ fun LibraryScreen(
                 .fillMaxSize()
                 .padding(16.dp)
         ) {
-            // HEADER
+            // ───── HEADER ─────
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 if (folderStack.isNotEmpty()) {
@@ -194,12 +180,22 @@ fun LibraryScreen(
                     }
                 }
 
-                Text(
-                    "Bibliothèque",
-                    color = Color.White,
-                    fontSize = 20.sp,
+                Column(
                     modifier = Modifier.weight(1f)
-                )
+                ) {
+                    Text(
+                        "Bibliothèque",
+                        color = titleColor,
+                        fontSize = 20.sp
+                    )
+                    Text(
+                        text = currentFolderUri?.let {
+                            DocumentFile.fromTreeUri(context, it)?.name ?: "Aucun dossier sélectionné"
+                        } ?: "Aucun dossier sélectionné",
+                        color = subtitleColor,
+                        fontSize = 11.sp
+                    )
+                }
 
                 IconButton(onClick = { actionsExpanded = true }) {
                     Icon(
@@ -236,22 +232,15 @@ fun LibraryScreen(
                 }
             }
 
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(10.dp))
 
             if (currentFolderUri == null) {
                 Text(
-                    "Aucun dossier pour l’instant.\nAjoute ton dossier Music → puis tes MP3/WAV.",
-                    color = Color(0xFFCFD8DC)
+                    "Aucun dossier pour l’instant.\nChoisis ton dossier Music avec tes MP3 / WAV.",
+                    color = subtitleColor
                 )
             } else {
-                Text(
-                    text = "Dossier actuel : " +
-                            (DocumentFile.fromTreeUri(context, currentFolderUri!!)?.name ?: "…"),
-                    color = Color(0xFFB0BEC5),
-                    fontSize = 12.sp
-                )
-
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(4.dp))
 
                 Box(
                     modifier = Modifier
@@ -266,9 +255,17 @@ fun LibraryScreen(
                     ) {
                         items(entries, key = { it.uri.toString() }) { entry ->
                             if (entry.isDirectory) {
+                                // ─── Ligne dossier ───
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
+                                        .padding(vertical = 3.dp)
+                                        .background(cardBg, RoundedCornerShape(10.dp))
+                                        .border(
+                                            1.dp,
+                                            rowBorder,
+                                            RoundedCornerShape(10.dp)
+                                        )
                                         .clickable {
                                             scope.launch {
                                                 isLoading = true
@@ -291,25 +288,37 @@ fun LibraryScreen(
                                                 delay(200); isLoading = false
                                             }
                                         }
-                                        .padding(vertical = 8.dp),
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(
                                         Icons.Default.Folder,
                                         contentDescription = null,
-                                        tint = Color.White.copy(alpha = 0.9f),
+                                        tint = accent,
                                         modifier = Modifier.size(22.dp)
                                     )
                                     Spacer(Modifier.width(10.dp))
-                                    Text(entry.name, color = Color.White, fontSize = 15.sp)
+                                    Text(
+                                        entry.name,
+                                        color = Color.White,
+                                        fontSize = 15.sp
+                                    )
                                 }
                             } else {
+                                // ─── Ligne fichier audio / json ───
                                 val uri = entry.uri
                                 val isSelected = selectedSongs.contains(uri)
 
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
+                                        .padding(vertical = 3.dp)
+                                        .background(cardBg, RoundedCornerShape(10.dp))
+                                        .border(
+                                            1.dp,
+                                            if (isSelected) accent else rowBorder,
+                                            RoundedCornerShape(10.dp)
+                                        )
                                         .combinedClickable(
                                             onClick = {
                                                 selectedSongs =
@@ -321,7 +330,7 @@ fun LibraryScreen(
                                                 showAssignDialog = true
                                             }
                                         )
-                                        .padding(vertical = 8.dp),
+                                        .padding(horizontal = 12.dp, vertical = 8.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Box(
@@ -329,22 +338,23 @@ fun LibraryScreen(
                                             .size(20.dp)
                                             .background(
                                                 if (isSelected)
-                                                    Color.White.copy(alpha = 0.22f)
+                                                    accent.copy(alpha = 0.18f)
                                                 else
-                                                    Color.Transparent
+                                                    Color.Transparent,
+                                                RoundedCornerShape(4.dp)
                                             )
                                             .border(
                                                 1.dp,
-                                                Color.White.copy(alpha = 0.8f)
+                                                if (isSelected) accent else Color.White.copy(alpha = 0.7f),
+                                                RoundedCornerShape(4.dp)
                                             ),
                                         contentAlignment = Alignment.Center
                                     ) {
                                         if (isSelected) {
                                             Text(
                                                 "✕",
-                                                color = Color.White,
-                                                fontSize = 13.sp,
-                                                modifier = Modifier.offset(y = (-6).dp)
+                                                color = accent,
+                                                fontSize = 13.sp
                                             )
                                         }
                                     }
@@ -359,7 +369,7 @@ fun LibraryScreen(
                         }
                     }
 
-                    // spinner
+                    // Spinner de chargement
                     if (isLoading) {
                         Box(
                             modifier = Modifier
@@ -379,17 +389,12 @@ fun LibraryScreen(
                         }
                     }
 
-                    // ——— BARRE FLOTTANTE ———
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .fillMaxWidth()
-                    ) {
-                        androidx.compose.animation.AnimatedVisibility(
-                            visible = selectedSongs.isNotEmpty(),
-                            modifier = Modifier.fillMaxWidth(),
-                            enter = slideInVertically { it } + fadeIn(),
-                            exit = slideOutVertically { it } + fadeOut()
+                    // ——— BARRE FLOTTANTE (sans AnimatedVisibility) ———
+                    if (selectedSongs.isNotEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .fillMaxWidth()
                         ) {
                             BottomAppBar(
                                 containerColor = Color(0xFF1E1E1E),
@@ -437,7 +442,7 @@ fun LibraryScreen(
         }
     }
 
-    // DIALOG ATTRIBUTION
+    // ───── DIALOG ATTRIBUTION ─────
     if (showAssignDialog) {
         val playlists = PlaylistRepository.getPlaylists()
         AlertDialog(
