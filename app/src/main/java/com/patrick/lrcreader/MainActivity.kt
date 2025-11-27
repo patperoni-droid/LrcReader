@@ -392,9 +392,12 @@ class MainActivity : ComponentActivity() {
                         is BottomTab.More -> MoreScreen(
                             modifier = Modifier.padding(innerPadding),
                             context = ctx,
-                            onAfterImport = { refreshKey++ }
+                            onAfterImport = { refreshKey++ },
+                            onOpenTuner = {
+                                selectedTab = BottomTab.Tuner
+                                SessionPrefs.saveTab(ctx, TAB_TUNER)
+                            }
                         )
-
                         is BottomTab.Dj -> DjScreen(
                             modifier = Modifier.padding(innerPadding),
                             context = ctx

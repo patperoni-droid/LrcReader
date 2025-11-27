@@ -31,7 +31,8 @@ import com.patrick.lrcreader.ui.theme.DarkBlueGradientBackground
 fun MoreScreen(
     modifier: Modifier = Modifier,
     context: Context,
-    onAfterImport: () -> Unit = {}
+    onAfterImport: () -> Unit = {},
+    onOpenTuner: () -> Unit = {}     // 👈 nouveau callback pour l'accordeur
 ) {
     var current by remember { mutableStateOf(MoreSection.Root) }
 
@@ -40,7 +41,8 @@ fun MoreScreen(
             modifier = modifier,
             onOpenBackup = { current = MoreSection.Backup },
             onOpenFiller = { current = MoreSection.Filler },
-            onOpenEdit = { current = MoreSection.Edit }
+            onOpenEdit = { current = MoreSection.Edit },
+            onOpenTuner = onOpenTuner       // 👈 on propage
         )
 
         MoreSection.Backup -> BackupScreen(
@@ -72,7 +74,8 @@ private fun MoreRootScreen(
     modifier: Modifier = Modifier,
     onOpenBackup: () -> Unit,
     onOpenFiller: () -> Unit,
-    onOpenEdit: () -> Unit
+    onOpenEdit: () -> Unit,
+    onOpenTuner: () -> Unit          // 👈 on ajoute l'accordeur ici aussi
 ) {
     DarkBlueGradientBackground {
         Column(
@@ -94,13 +97,20 @@ private fun MoreRootScreen(
             )
             Spacer(Modifier.height(10.dp))
 
+            // Bloc "fonctionnel"
             SettingsItem("🎧  Fond sonore", onClick = onOpenFiller)
             SettingsItem("💾  Sauvegarde / Restauration", onClick = onOpenBackup)
             SettingsItem("🛠  Édition de titre", onClick = onOpenEdit)
 
             HorizontalDivider(color = Color(0xFF1E1E1E))
+
+            // Bloc "Interface / Audio / Avancé"
             SettingsItem("🎨  Interface", onClick = {})
             SettingsItem("🔊  Audio", onClick = {})
+
+            // 👇 LIGNE ACCORDEUR sous "Audio"
+            SettingsItem("🎸  Accordeur", onClick = onOpenTuner)
+
             SettingsItem("⚙️  Avancé", onClick = {})
 
             Spacer(modifier = Modifier.height(24.dp))

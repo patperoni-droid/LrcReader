@@ -157,7 +157,7 @@ fun MixerHomePreviewScreen(
 
                     Spacer(Modifier.height(18.dp))
 
-                    // ---- 3 TRANCHES ----
+                    // ---- LES 3 TRANCHES ----
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -165,25 +165,27 @@ fun MixerHomePreviewScreen(
                         horizontalArrangement = Arrangement.SpaceEvenly,
                         verticalAlignment = Alignment.Bottom
                     ) {
-
+                        // LECTEUR = récupère TOUT ce qui appartenait avant à FOND
                         MixerChannelColumn(
                             label = "LECTEUR",
                             subtitle = "Playlists",
-                            icon = Icons.Filled.LibraryMusic,
-                            faderColor = Color(0xFFFFC107),
-                            meterColor = Color(0xFFFFA000),
+                            icon = Icons.Filled.MusicNote,          // 🔁 icône de FOND
+                            faderColor = Color(0xFF81C784),         // 🔁 couleur FOND
+                            meterColor = Color(0xFF66BB6A),         // 🔁 couleur FOND
                             onClick = onOpenPlayer
                         )
 
+                        // FOND = récupère TOUT ce qui appartenait avant à LECTEUR
                         MixerChannelColumn(
                             label = "FOND",
                             subtitle = "Ambiance",
-                            icon = Icons.Filled.MusicNote,
-                            faderColor = Color(0xFF81C784),
-                            meterColor = Color(0xFF66BB6A),
+                            icon = Icons.Filled.LibraryMusic,       // 🔁 icône de LECTEUR
+                            faderColor = Color(0xFFFFC107),         // 🔁 couleur LECTEUR
+                            meterColor = Color(0xFFFFA000),         // 🔁 couleur LECTEUR
                             onClick = onOpenFondSonore
                         )
 
+                        // DJ ne change pas
                         MixerChannelColumn(
                             label = "DJ",
                             subtitle = "Crossfade",
