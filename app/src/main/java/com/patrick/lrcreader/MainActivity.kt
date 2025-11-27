@@ -290,32 +290,27 @@ class MainActivity : ComponentActivity() {
 
                     when (selectedTab) {
 
-                        is BottomTab.Home -> HomeScreen(
+                        is BottomTab.Home -> MixerHomePreviewScreen(
                             modifier = Modifier.padding(innerPadding),
+                            onBack = {
+                                // Comme c'est l'écran Home, on ne fait rien de spécial.
+                                // Si tu veux, on pourrait plus tard revenir vers un autre onglet ici.
+                            },
                             onOpenPlayer = {
                                 selectedTab = BottomTab.QuickPlaylists
                                 SessionPrefs.saveTab(ctx, TAB_QUICK)
                             },
-                            onOpenFondSonore = { isFillerSettingsOpen = true },
-                            onOpenDjMode = {
+                            onOpenFondSonore = {
+                                isFillerSettingsOpen = true
+                            },
+                            onOpenDj = {
                                 selectedTab = BottomTab.Dj
                                 SessionPrefs.saveTab(ctx, TAB_DJ)
                             },
-                            onOpenGlobalMix = { isGlobalMixOpen = true },
                             onOpenTuner = {
                                 selectedTab = BottomTab.Tuner
                                 SessionPrefs.saveTab(ctx, TAB_TUNER)
-                            },
-                            onOpenProfile = {},
-                            onOpenTutorial = {
-                                selectedTab = BottomTab.More
-                                SessionPrefs.saveTab(ctx, TAB_MORE)
-                            },
-                            // 👇 ICI : au lieu d'aller sur "More", on ouvre la console Mixer
-                            onOpenSettings = {
-                                isMixerPreviewOpen = true
-                            },
-                            onOpenNotes = { isNotesOpen = true }
+                            }
                         )
 
                         is BottomTab.Player -> PlayerScreen(

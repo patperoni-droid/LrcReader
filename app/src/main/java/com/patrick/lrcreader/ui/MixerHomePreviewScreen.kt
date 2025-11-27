@@ -4,6 +4,7 @@ import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -14,14 +15,13 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.LibraryMusic
-import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MusicNote
-import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -34,18 +34,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 
 /**
- * Maquette d’écran "console studio analogique" pour la Home.
- * Pour l’instant, tout est visuel (pas branché au vrai son).
- *
- * On pourra plus tard :
- *  - l’utiliser à la place de HomeScreen
- *  - ou l’inclure dans la Home actuelle.
+ * Maquette "console analogique"
+ * - Faders réalistes
+ * - Bouton accordeur SUPPRIMÉ
+ * - Textes réduits (pas de retour à la ligne)
  */
 @Composable
 fun MixerHomePreviewScreen(
@@ -54,9 +53,9 @@ fun MixerHomePreviewScreen(
     onOpenPlayer: () -> Unit = {},
     onOpenFondSonore: () -> Unit = {},
     onOpenDj: () -> Unit = {},
-    onOpenTuner: () -> Unit = {}
+    onOpenTuner: () -> Unit = {} // conservé mais non utilisé
 ) {
-    // Fond type "rack analogique" : dégradé sombre légèrement chaud
+
     val backgroundBrush = Brush.verticalGradient(
         listOf(
             Color(0xFF171717),
@@ -71,10 +70,10 @@ fun MixerHomePreviewScreen(
             .background(backgroundBrush)
             .padding(12.dp)
     ) {
-        Column(
-            modifier = Modifier.fillMaxSize()
-        ) {
-            // ----- BARRE DU HAUT -----
+
+        Column(modifier = Modifier.fillMaxSize()) {
+
+            // ---- BARRE DU HAUT ----
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
@@ -87,6 +86,7 @@ fun MixerHomePreviewScreen(
                     )
                 }
                 Spacer(Modifier.width(8.dp))
+
                 Column {
                     Text(
                         text = "Live in Pocket",
@@ -113,23 +113,23 @@ fun MixerHomePreviewScreen(
 
             Spacer(Modifier.height(12.dp))
 
-            // ----- PANNEL PRINCIPAL -----
+            // ---- PANNEAU PRINCIPAL ----
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
-                colors = CardDefaults.cardColors(
-                    containerColor = Color(0xFF1B1B1B)
-                ),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1B1B1B)),
                 shape = RoundedCornerShape(16.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+                elevation = CardDefaults.cardElevation(8.dp)
             ) {
+
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(16.dp)
                 ) {
-                    // Bandeau du haut façon étiquette de console
+
+                    // Bandeau BUS PRINCIPAL
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -144,11 +144,7 @@ fun MixerHomePreviewScreen(
                                 ),
                                 shape = RoundedCornerShape(10.dp)
                             )
-                            .border(
-                                1.dp,
-                                Color(0x55FFFFFF),
-                                RoundedCornerShape(10.dp)
-                            ),
+                            .border(1.dp, Color(0x55FFFFFF), RoundedCornerShape(10.dp)),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
@@ -161,7 +157,7 @@ fun MixerHomePreviewScreen(
 
                     Spacer(Modifier.height(18.dp))
 
-                    // ----- LES 3 FADERS PRINCIPAUX -----
+                    // ---- 3 TRANCHES ----
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -169,6 +165,7 @@ fun MixerHomePreviewScreen(
                         horizontalArrangement = Arrangement.SpaceEvenly,
                         verticalAlignment = Alignment.Bottom
                     ) {
+
                         MixerChannelColumn(
                             label = "LECTEUR",
                             subtitle = "Playlists",
@@ -196,22 +193,12 @@ fun MixerHomePreviewScreen(
                             onClick = onOpenDj
                         )
                     }
-
-                    Spacer(Modifier.height(12.dp))
-
-                    // ----- PETITE TRANCHE ACCORDEUR -----
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        SmallTunerStrip(onClick = onOpenTuner)
-                    }
                 }
             }
 
-            // Bandeau bas style "barre de rack"
             Spacer(Modifier.height(8.dp))
+
+            // Bandeau bas style rack
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -232,32 +219,28 @@ fun MixerHomePreviewScreen(
 }
 
 /**
- * Une tranche de console : VU + fader + bouton.
+ * Une tranche : vu-mètre + long fader + bouton.
  */
 @Composable
 private fun MixerChannelColumn(
     label: String,
     subtitle: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     faderColor: Color,
     meterColor: Color,
     onClick: () -> Unit
 ) {
-    val scope = rememberCoroutineScope()
 
-    // Valeur du fader (0 à 1)
+    val scope = rememberCoroutineScope()
     var level by remember { mutableFloatStateOf(0.75f) }
 
-    // Animation simple de VU-mètre (maquette)
-    val infinite = androidx.compose.animation.core.rememberInfiniteTransition(label)
+    // Animation VU
+    val infinite = rememberInfiniteTransition(label)
     val vuAnim by infinite.animateFloat(
         initialValue = 0.1f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(
-                durationMillis = 1400 + (0..600).random(),
-                easing = LinearEasing
-            ),
+            tween(durationMillis = 1400 + (0..600).random(), easing = LinearEasing),
             repeatMode = RepeatMode.Reverse
         )
     )
@@ -268,17 +251,18 @@ private fun MixerChannelColumn(
             .fillMaxHeight(),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // Etiquettes en haut
+
+        // Titres — police réduite
         Text(
             text = label,
             color = Color(0xFFFFF3E0),
-            fontSize = 13.sp,
+            fontSize = 10.sp,
             fontWeight = FontWeight.Bold
         )
         Text(
             text = subtitle,
             color = Color(0xFFB0BEC5),
-            fontSize = 11.sp
+            fontSize = 9.sp
         )
 
         Spacer(Modifier.height(10.dp))
@@ -286,14 +270,14 @@ private fun MixerChannelColumn(
         // VU-mètre
         Box(
             modifier = Modifier
-                .height(80.dp)
-                .width(26.dp)
+                .height(90.dp)
+                .width(28.dp)
                 .background(Color(0xFF050505), RoundedCornerShape(12.dp))
                 .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(12.dp))
                 .padding(3.dp),
             contentAlignment = Alignment.BottomCenter
         ) {
-            // Fond gradué
+
             Column(
                 modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.SpaceBetween
@@ -312,7 +296,6 @@ private fun MixerChannelColumn(
                 }
             }
 
-            // Barre "LED"
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -332,142 +315,102 @@ private fun MixerChannelColumn(
 
         Spacer(Modifier.height(16.dp))
 
-        // Fader vertical (slider tourné)
+        // FADER ANALOGIQUE — VERSION LONGUE
         Box(
             modifier = Modifier
-                .height(190.dp)
-                .width(34.dp),
+                .height(310.dp)   // <-- PLUS LONG
+                .width(40.dp),
             contentAlignment = Alignment.Center
         ) {
-            Slider(
+
+            // Gorge
+            Box(
                 modifier = Modifier
-                    .height(190.dp)
-                    .width(34.dp)
-                    .rotate(-90f),
+                    .width(18.dp)
+                    .fillMaxHeight()
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Color(0xFF050608), Color(0xFF15171B))
+                        ),
+                        RoundedCornerShape(999.dp)
+                    )
+            )
+
+            // Curseur
+            Column(
+                modifier = Modifier.fillMaxHeight(),
+                verticalArrangement = Arrangement.Top,
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                val clamped = level.coerceIn(0f, 1f)
+                Spacer(Modifier.weight(1f - clamped))
+
+                Box(
+                    modifier = Modifier
+                        .width(32.dp)
+                        .height(30.dp)
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(
+                                    Color(0xFFE0E0E0),
+                                    Color(0xFFBDBDBD)
+                                )
+                            ),
+                            RoundedCornerShape(6.dp)
+                        )
+                        .padding(horizontal = 4.dp, vertical = 4.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(2.dp)
+                            .background(faderColor, RoundedCornerShape(999.dp))
+                            .align(Alignment.Center)
+                    )
+                }
+
+                Spacer(Modifier.weight(clamped))
+            }
+
+            // Slider transparent
+            Slider(
                 value = level,
-                onValueChange = {
-                    level = it
-                },
-                valueRange = 0f..1f
+                onValueChange = { level = it },
+                valueRange = 0f..1f,
+                modifier = Modifier
+                    .matchParentSize()
+                    .rotate(-90f),
+                colors = SliderDefaults.colors(
+                    thumbColor = Color.Transparent,
+                    activeTrackColor = Color.Transparent,
+                    inactiveTrackColor = Color.Transparent
+                )
             )
         }
 
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(12.dp))
 
-        // Bouton qui ouvre l’écran correspondant
+        // BOUTON (ICÔNE SEULE)
         Card(
-            onClick = {
-                scope.launch { onClick() }
-            },
+            onClick = { scope.launch { onClick() } },
             shape = RoundedCornerShape(12.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = Color(0xFF2A2725)
-            ),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF2A2725)),
             elevation = CardDefaults.cardElevation(4.dp),
             modifier = Modifier
                 .fillMaxWidth()
                 .height(54.dp)
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(26.dp)
-                        .background(
-                            Brush.radialGradient(
-                                listOf(
-                                    faderColor.copy(alpha = 0.2f),
-                                    Color.Transparent
-                                )
-                            ),
-                            RoundedCornerShape(999.dp)
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = icon,
-                        contentDescription = null,
-                        tint = faderColor,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-
-                Column {
-                    Text(
-                        text = label,
-                        color = Color(0xFFFFF8E1),
-                        fontSize = 12.sp
-                    )
-                    Text(
-                        text = "Ouvrir",
-                        color = Color(0xFFB0BEC5),
-                        fontSize = 10.sp
-                    )
-                }
-            }
-        }
-    }
-}
-
-/**
- * Petite tranche "Accordeur" stylée.
- */
-@Composable
-private fun SmallTunerStrip(
-    onClick: () -> Unit
-) {
-    Card(
-        onClick = onClick,
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = Color(0xFF212121)
-        ),
-        elevation = CardDefaults.cardElevation(6.dp),
-        modifier = Modifier
-            .width(220.dp)
-            .height(64.dp)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Filled.Tune,
-                contentDescription = null,
-                tint = Color(0xFFFFC107),
-                modifier = Modifier.size(24.dp)
-            )
-
-            Column(
-                modifier = Modifier.weight(1f)
-            ) {
-                Text(
-                    text = "Accordeur",
-                    color = Color(0xFFFFF8E1),
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = "Tap pour ouvrir",
-                    color = Color(0xFFB0BEC5),
-                    fontSize = 11.sp
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = faderColor,
+                    modifier = Modifier.size(28.dp)
                 )
             }
-
-            Icon(
-                imageVector = Icons.Filled.Mic,
-                contentDescription = null,
-                tint = Color(0xFFEF5350),
-                modifier = Modifier.size(20.dp)
-            )
         }
     }
 }
