@@ -140,7 +140,7 @@ fun QuickPlaylistsScreen(
         }
     }
 
-    val menuBg = Color(0xFF222222)
+    val menuBg = Color(0xFF1B1B1B)
 
     DarkBlueGradientBackground {
         Column(
@@ -150,7 +150,15 @@ fun QuickPlaylistsScreen(
         ) {
             // ─── HEADER encadré + flèche + icônes ───────────────────────────────
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFF151515), RoundedCornerShape(18.dp))
+                    .border(
+                        width = 1.dp,
+                        color = Color(0x33FFFFFF),
+                        shape = RoundedCornerShape(18.dp)
+                    )
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
@@ -158,6 +166,7 @@ fun QuickPlaylistsScreen(
                 Box(
                     modifier = Modifier
                         .weight(1f)
+                        .background(Color(0xFF101010), RoundedCornerShape(14.dp))
                         .border(
                             width = 1.dp,
                             color = Color.White.copy(alpha = 0.25f),
@@ -173,15 +182,15 @@ fun QuickPlaylistsScreen(
                     ) {
                         Text(
                             text = internalSelected ?: "Sélectionne une playlist",
-                            color = Color.White,
-                            fontSize = 20.sp,
+                            color = Color(0xFFFFF3E0),
+                            fontSize = 18.sp,
                             maxLines = 1,
                             modifier = Modifier.weight(1f)
                         )
                         Icon(
                             imageVector = Icons.Filled.ArrowDropDown,
                             contentDescription = "Choisir une playlist",
-                            tint = Color.White
+                            tint = Color(0xFFFFC107)
                         )
                     }
 
@@ -213,7 +222,10 @@ fun QuickPlaylistsScreen(
                 }
 
                 // icônes à droite
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(start = 6.dp)
+                ) {
 
                     // ➕ création titre texte (ancienne méthode)
                     IconButton(
@@ -339,213 +351,245 @@ fun QuickPlaylistsScreen(
 
             Spacer(Modifier.height(12.dp))
 
-            // ─── LISTE DES TITRES ─────────────────────
-            if (internalSelected == null) {
-                Text("Aucune playlist.\nVa dans “Toutes” pour en créer.", color = Color.Gray)
-            } else {
-                LazyColumn(
-                    modifier = Modifier.weight(1f),
-                    state = listState
-                ) {
-                    itemsIndexed(songs, key = { _, item -> item }) { _, uriString ->
-                        val decoded = runCatching {
-                            URLDecoder.decode(uriString, "UTF-8")
-                        }.getOrElse { uriString }
+            // ─── CADRE "RACK" POUR LA LISTE ─────────────────────
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .background(Color(0xFF101010), RoundedCornerShape(18.dp))
+                    .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(18.dp))
+                    .padding(6.dp)
+            ) {
+                if (internalSelected == null) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            "Aucune playlist.\nVa dans “Toutes” pour en créer.",
+                            color = Color(0xFFB0BEC5),
+                            fontSize = 13.sp
+                        )
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        state = listState
+                    ) {
+                        itemsIndexed(songs, key = { _, item -> item }) { _, uriString ->
+                            val decoded = runCatching {
+                                URLDecoder.decode(uriString, "UTF-8")
+                            }.getOrElse { uriString }
 
-                        val baseNameClean = decoded
-                            .substringAfterLast('/')
-                            .substringAfterLast(':')
-                            .let { name ->
-                                when {
-                                    name.endsWith(".mp3", true) -> name.dropLast(4)
-                                    name.endsWith(".wav", true) -> name.dropLast(4)
-                                    else -> name
+                            val baseNameClean = decoded
+                                .substringAfterLast('/')
+                                .substringAfterLast(':')
+                                .let { name ->
+                                    when {
+                                        name.endsWith(".mp3", true) -> name.dropLast(4)
+                                        name.endsWith(".wav", true) -> name.dropLast(4)
+                                        else -> name
+                                    }
                                 }
-                            }
-                            .trim()
+                                .trim()
 
-                        // 🔹 NOM D’AFFICHAGE
-                        val displayName = if (uriString.startsWith("prompter://")) {
-                            val idPart = uriString.removePrefix("prompter://")
-                            val numericId = idPart.toLongOrNull()
+                            // 🔹 NOM D’AFFICHAGE
+                            val displayName = if (uriString.startsWith("prompter://")) {
+                                val idPart = uriString.removePrefix("prompter://")
+                                val numericId = idPart.toLongOrNull()
 
-                            if (numericId != null) {
-                                // 👉 NOTE : titre lu dans NotesRepository
-                                val note = NotesRepository.get(context, numericId)
-                                note?.title?.takeIf { it.isNotBlank() } ?: "(Texte)"
+                                if (numericId != null) {
+                                    // 👉 NOTE : titre lu dans NotesRepository
+                                    val note = NotesRepository.get(context, numericId)
+                                    note?.title?.takeIf { it.isNotBlank() } ?: "(Texte)"
+                                } else {
+                                    // 👉 ancien système TextSongRepository (id non numérique)
+                                    val textSong = TextSongRepository.get(context, idPart)
+                                    textSong?.title?.takeIf { it.isNotBlank() } ?: baseNameClean
+                                }
                             } else {
-                                // 👉 ancien système TextSongRepository (id non numérique)
-                                val textSong = TextSongRepository.get(context, idPart)
-                                textSong?.title?.takeIf { it.isNotBlank() } ?: baseNameClean
+                                // 👉 Audio normal
+                                internalSelected?.let {
+                                    PlaylistRepository.getCustomTitle(it, uriString)
+                                } ?: baseNameClean
                             }
-                        } else {
-                            // 👉 Audio normal
-                            internalSelected?.let {
-                                PlaylistRepository.getCustomTitle(it, uriString)
-                            } ?: baseNameClean
-                        }
 
-                        val isPlayed = internalSelected?.let {
-                            PlaylistRepository.isSongPlayed(it, uriString)
-                        } ?: false
+                            val isPlayed = internalSelected?.let {
+                                PlaylistRepository.isSongPlayed(it, uriString)
+                            } ?: false
 
-                        val isToReview = internalSelected?.let {
-                            PlaylistRepository.isSongToReview(it, uriString)
-                        } ?: false
+                            val isToReview = internalSelected?.let {
+                                PlaylistRepository.isSongToReview(it, uriString)
+                            } ?: false
 
-                        val isCurrentPlaying = currentPlayingUri == uriString
-                        val isDraggingThis = draggingUri == uriString
+                            val isCurrentPlaying = currentPlayingUri == uriString
+                            val isDraggingThis = draggingUri == uriString
 
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(rowHeight)
-                                .background(
-                                    if (isDraggingThis) Color(0x22FFFFFF) else Color.Transparent
-                                )
-                                .padding(vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.DragHandle,
-                                contentDescription = "Déplacer",
-                                tint = currentListColor,
+                            Row(
                                 modifier = Modifier
-                                    .size(34.dp)
-                                    .padding(end = 8.dp)
-                                    .pointerInput(songs.size) {
-                                        detectDragGesturesAfterLongPress(
-                                            onDragStart = {
-                                                draggingUri = uriString
-                                                dragOffsetPx = 0f
+                                    .fillMaxWidth()
+                                    .height(rowHeight)
+                                    .padding(vertical = 4.dp, horizontal = 2.dp)
+                                    .background(
+                                        color = if (isDraggingThis)
+                                            Color(0x33FFFFFF)
+                                        else
+                                            Color(0xFF181818),
+                                        shape = RoundedCornerShape(12.dp)
+                                    )
+                                    .border(
+                                        width = 1.dp,
+                                        color = if (isCurrentPlaying)
+                                            currentListColor.copy(alpha = 0.8f)
+                                        else
+                                            Color(0x33FFFFFF),
+                                        shape = RoundedCornerShape(12.dp)
+                                    )
+                                    .padding(horizontal = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.DragHandle,
+                                    contentDescription = "Déplacer",
+                                    tint = currentListColor,
+                                    modifier = Modifier
+                                        .size(34.dp)
+                                        .padding(end = 6.dp)
+                                        .pointerInput(songs.size) {
+                                            detectDragGesturesAfterLongPress(
+                                                onDragStart = {
+                                                    draggingUri = uriString
+                                                    dragOffsetPx = 0f
+                                                },
+                                                onDragEnd = {
+                                                    draggingUri = null
+                                                    dragOffsetPx = 0f
+                                                    internalSelected?.let { pl ->
+                                                        PlaylistRepository.updatePlayListOrder(
+                                                            pl,
+                                                            songs.toList()
+                                                        )
+                                                    }
+                                                },
+                                                onDragCancel = {
+                                                    draggingUri = null
+                                                    dragOffsetPx = 0f
+                                                }
+                                            ) { _, dragAmount ->
+                                                val current = draggingUri
+                                                    ?: return@detectDragGesturesAfterLongPress
+                                                val currentIndex = songs.indexOf(current)
+                                                if (currentIndex == -1) return@detectDragGesturesAfterLongPress
+
+                                                dragOffsetPx += dragAmount.y
+
+                                                if (dragOffsetPx >= rowHeightPx / 2f) {
+                                                    val next = currentIndex + 1
+                                                    if (next < songs.size) songs.swap(currentIndex, next)
+                                                    dragOffsetPx = 0f
+                                                }
+                                                if (dragOffsetPx <= -rowHeightPx / 2f) {
+                                                    val prev = currentIndex - 1
+                                                    if (prev >= 0) songs.swap(currentIndex, prev)
+                                                    dragOffsetPx = 0f
+                                                }
+                                            }
+                                        }
+                                )
+
+                                Text(
+                                    text = displayName.uppercase(),
+                                    color = when {
+                                        isToReview -> Color(0xFFFF6F6F)      // rouge = à revoir
+                                        isCurrentPlaying -> Color(0xFFFFFDE7)
+                                        isPlayed -> Color(0xFF8D8D8D)
+                                        else -> currentListColor
+                                    },
+                                    fontSize = 14.sp,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clickable {
+                                            internalSelected?.let { pl ->
+                                                onPlaySong(uriString, pl, currentListColor)
+                                                onSelectedPlaylistChange(pl)
+                                            }
+                                        }
+                                )
+
+                                // menu 3 points
+                                Box {
+                                    var menuOpen by remember { mutableStateOf(false) }
+
+                                    Box(
+                                        modifier = Modifier
+                                            .size(32.dp)
+                                            .border(
+                                                width = 1.dp,
+                                                color = if (isPlayed) Color.Gray else currentListColor,
+                                                shape = RoundedCornerShape(8.dp)
+                                            )
+                                            .clickable { menuOpen = true },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.MoreVert,
+                                            contentDescription = "Options",
+                                            tint = if (isPlayed) Color.Gray else currentListColor,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+
+                                    DropdownMenu(
+                                        expanded = menuOpen,
+                                        onDismissRequest = { menuOpen = false },
+                                        modifier = Modifier.background(Color(0xFF1E1E1E))
+                                    ) {
+                                        DropdownMenuItem(
+                                            text = {
+                                                Text(
+                                                    "Retirer de la liste",
+                                                    color = Color.White
+                                                )
                                             },
-                                            onDragEnd = {
-                                                draggingUri = null
-                                                dragOffsetPx = 0f
+                                            onClick = {
                                                 internalSelected?.let { pl ->
-                                                    PlaylistRepository.updatePlayListOrder(
+                                                    PlaylistRepository.removeSongFromPlaylist(
                                                         pl,
-                                                        songs.toList()
+                                                        uriString
                                                     )
                                                 }
-                                            },
-                                            onDragCancel = {
-                                                draggingUri = null
-                                                dragOffsetPx = 0f
+                                                songs.remove(uriString)
+                                                menuOpen = false
                                             }
-                                        ) { _, dragAmount ->
-                                            val current = draggingUri
-                                                ?: return@detectDragGesturesAfterLongPress
-                                            val currentIndex = songs.indexOf(current)
-                                            if (currentIndex == -1) return@detectDragGesturesAfterLongPress
-
-                                            dragOffsetPx += dragAmount.y
-
-                                            if (dragOffsetPx >= rowHeightPx / 2f) {
-                                                val next = currentIndex + 1
-                                                if (next < songs.size) songs.swap(currentIndex, next)
-                                                dragOffsetPx = 0f
-                                            }
-                                            if (dragOffsetPx <= -rowHeightPx / 2f) {
-                                                val prev = currentIndex - 1
-                                                if (prev >= 0) songs.swap(currentIndex, prev)
-                                                dragOffsetPx = 0f
-                                            }
-                                        }
-                                    }
-                            )
-
-                            Text(
-                                text = displayName.uppercase(),
-                                color = when {
-                                    isToReview -> Color(0xFFFF6F6F)      // rouge = à revoir
-                                    isCurrentPlaying -> Color.White
-                                    isPlayed -> Color.Gray
-                                    else -> currentListColor
-                                },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clickable {
-                                        internalSelected?.let { pl ->
-                                            onPlaySong(uriString, pl, currentListColor)
-                                            onSelectedPlaylistChange(pl)
-                                        }
-                                    }
-                            )
-
-                            // menu 3 points
-                            Box {
-                                var menuOpen by remember { mutableStateOf(false) }
-
-                                Box(
-                                    modifier = Modifier
-                                        .size(28.dp)
-                                        .border(
-                                            width = 1.dp,
-                                            color = if (isPlayed) Color.Gray else currentListColor,
-                                            shape = RoundedCornerShape(6.dp)
                                         )
-                                        .clickable { menuOpen = true },
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.MoreVert,
-                                        contentDescription = "Options",
-                                        tint = if (isPlayed) Color.Gray else currentListColor,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-
-                                DropdownMenu(
-                                    expanded = menuOpen,
-                                    onDismissRequest = { menuOpen = false },
-                                    modifier = Modifier.background(Color(0xFF1E1E1E))
-                                ) {
-                                    DropdownMenuItem(
-                                        text = {
-                                            Text(
-                                                "Retirer de la liste",
-                                                color = Color.White
-                                            )
-                                        },
-                                        onClick = {
-                                            internalSelected?.let { pl ->
-                                                PlaylistRepository.removeSongFromPlaylist(
-                                                    pl,
-                                                    uriString
-                                                )
+                                        DropdownMenuItem(
+                                            text = { Text("Renommer", color = Color.White) },
+                                            onClick = {
+                                                renameTarget = uriString
+                                                renameText = displayName
+                                                menuOpen = false
                                             }
-                                            songs.remove(uriString)
-                                            menuOpen = false
-                                        }
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text("Renommer", color = Color.White) },
-                                        onClick = {
-                                            renameTarget = uriString
-                                            renameText = displayName
-                                            menuOpen = false
-                                        }
-                                    )
-                                    DropdownMenuItem(
-                                        text = {
-                                            Text(
-                                                if (isToReview) "Retirer \"à revoir\""
-                                                else "Marquer \"à revoir\"",
-                                                color = Color.White
-                                            )
-                                        },
-                                        onClick = {
-                                            internalSelected?.let { pl ->
-                                                PlaylistRepository.setSongToReview(
-                                                    pl,
-                                                    uriString,
-                                                    !isToReview
+                                        )
+                                        DropdownMenuItem(
+                                            text = {
+                                                Text(
+                                                    if (isToReview) "Retirer \"à revoir\""
+                                                    else "Marquer \"à revoir\"",
+                                                    color = Color.White
                                                 )
+                                            },
+                                            onClick = {
+                                                internalSelected?.let { pl ->
+                                                    PlaylistRepository.setSongToReview(
+                                                        pl,
+                                                        uriString,
+                                                        !isToReview
+                                                    )
+                                                }
+                                                menuOpen = false
                                             }
-                                            menuOpen = false
-                                        }
-                                    )
+                                        )
+                                    }
                                 }
                             }
                         }

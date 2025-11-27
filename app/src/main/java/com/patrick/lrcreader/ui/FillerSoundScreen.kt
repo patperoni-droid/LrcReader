@@ -1,19 +1,12 @@
-/**
- * Écran : FillerSoundScreen
- *
- * Rôle :
- *  - Configurer le fond sonore (dossier + volume)
- *  - Gérer 5 “ambiances rapides” (nom + dossier)
- *  - Piloter l’ambiance sélectionnée avec 3 gros boutons ⏮ ▶⏸ ⏭
- */
 package com.patrick.lrcreader.ui
 
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
-import android.content.Intent
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -28,6 +21,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
@@ -41,6 +35,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -53,12 +48,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.core.FillerSoundPrefs
-import com.patrick.lrcreader.ui.theme.DarkBlueGradientBackground
 import kotlin.math.cbrt
 
 @Composable
@@ -66,10 +61,19 @@ fun FillerSoundScreen(
     context: Context,
     onBack: () -> Unit
 ) {
-    val onBg = Color(0xFFEEEEEE)
-    val sub = Color(0xFFB9B9B9)
-    val card = Color(0xFF141414)
-    val accent = Color(0xFFE040FB)
+    // Palette cohérente avec la console & l’accordeur
+    val backgroundBrush = Brush.verticalGradient(
+        listOf(
+            Color(0xFF171717),
+            Color(0xFF101010),
+            Color(0xFF181410)
+        )
+    )
+
+    val onBg = Color(0xFFFFF8E1)
+    val sub = Color(0xFFB0BEC5)
+    val card = Color(0xFF1B1B1B)
+    val accent = Color(0xFFFFC107)
 
     var isEnabled by remember { mutableStateOf(FillerSoundPrefs.isEnabled(context)) }
     var fillerUri by remember { mutableStateOf(FillerSoundPrefs.getFillerFolder(context)) }
@@ -103,7 +107,7 @@ fun FillerSoundScreen(
         }
     }
 
-    // ambiance en cours de lecture (pour colorer en violet)
+    // ambiance en cours de lecture (pour colorer en accent)
     var activeIndex by remember { mutableStateOf<Int?>(null) }
 
     // ambiance sélectionnée (pilotée par les gros boutons)
@@ -159,359 +163,420 @@ fun FillerSoundScreen(
     var slotToRenameIndex by remember { mutableStateOf<Int?>(null) }
     var renameText by remember { mutableStateOf("") }
 
-    DarkBlueGradientBackground {
-        Column(
-            Modifier
-                .fillMaxSize()
-                .padding(
-                    top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 12.dp,
-                    start = 14.dp,
-                    end = 14.dp,
-                    bottom = 8.dp
-                )
-                .verticalScroll(rememberScrollState())
+    // ─────────────────────────────────────────────────────────────
+    //  FOND + LAYOUT
+    // ─────────────────────────────────────────────────────────────
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(backgroundBrush)
+            .padding(
+                top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 12.dp,
+                start = 14.dp,
+                end = 14.dp,
+                bottom = 8.dp
+            )
+            .verticalScroll(rememberScrollState())
+    ) {
+        // HEADER
+        TextButton(onClick = onBack) {
+            Text("← Retour", color = onBg)
+        }
+
+        Spacer(Modifier.height(4.dp))
+
+        Text(
+            text = "Fond sonore",
+            color = onBg,
+            fontSize = 18.sp
+        )
+
+        Spacer(Modifier.height(10.dp))
+
+        // ───────── CARTE PRINCIPALE (réglages + gros boutons) ─────────
+        Card(
+            colors = CardDefaults.cardColors(containerColor = card),
+            shape = RoundedCornerShape(16.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
         ) {
-            // HEADER
-            TextButton(onClick = onBack) {
-                Text("← Retour", color = onBg)
-            }
+            Column(Modifier.padding(12.dp)) {
 
-            Spacer(Modifier.height(4.dp))
-
-            Text(
-                text = "Fond sonore",
-                color = onBg,
-                fontSize = 18.sp
-            )
-
-            Spacer(Modifier.height(10.dp))
-
-            // ───────── CARTE PRINCIPALE (réglages + gros boutons) ─────────
-            Card(
-                colors = CardDefaults.cardColors(containerColor = card)
-            ) {
-                Column(Modifier.padding(12.dp)) {
-
-                    // ON / OFF
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                text = "Activer le fond sonore",
-                                color = onBg,
-                                fontSize = 14.sp
-                            )
-                            Text(
-                                text = "Lecture automatique après la fin d’un morceau.",
-                                color = sub,
-                                fontSize = 12.sp
-                            )
-                        }
-                        Switch(
-                            checked = isEnabled,
-                            onCheckedChange = { checked ->
-                                isEnabled = checked
-                                FillerSoundPrefs.setEnabled(context, checked)
-                                if (!checked) {
-                                    FillerSoundManager.fadeOutAndStop(0)
-                                    isPlaying = false
-                                    activeIndex = null
-                                    isStarting = false
-                                    shouldStart = false
-                                    startTargetIndex = null
-                                }
-                            }
-                        )
-                    }
-
-                    Spacer(Modifier.height(12.dp))
-
-                    // VOLUME GLOBAL
-                    Text("Volume", color = sub, fontSize = 11.sp)
-
-                    Slider(
-                        value = uiFillerVolume,
-                        onValueChange = { v ->
-                            uiFillerVolume = v
-                            val real = uiToRealVolume(v)
-                            FillerSoundPrefs.saveFillerVolume(context, real)
-                            FillerSoundManager.setVolume(real)
-                        },
-                        valueRange = 0f..1f,
-                        enabled = isEnabled,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    val realDisplay = uiToRealVolume(uiFillerVolume)
-                    Text(
-                        text = "${(realDisplay * 100).toInt()} %",
-                        color = onBg,
-                        fontSize = 11.sp
-                    )
-
-                    // petit texte d’attente
-                    if (isStarting) {
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            text = "Démarrage de l’ambiance...",
-                            color = sub,
-                            fontSize = 11.sp
-                        )
-                    }
-
-                    // ───────── GROS BOUTONS DE TRANSPORT ─────────
-                    Spacer(Modifier.height(8.dp))
-
-                    val currentSelectedSlot =
-                        selectedIndex?.let { idx -> slots.getOrNull(idx) }
-                    val canControlSelected =
-                        isEnabled && currentSelectedSlot?.folderUri != null
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 4.dp),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        // PREVIOUS
-                        IconButton(
-                            onClick = {
-                                if (!canControlSelected) return@IconButton
-                                val slot = currentSelectedSlot!!
-                                FillerSoundPrefs.saveFillerFolder(context, slot.folderUri!!)
-                                fillerUri = slot.folderUri
-                                fillerName =
-                                    slot.folderUri.lastPathSegment ?: slot.name
-
-                                FillerSoundManager.previous(context)
-                                FillerSoundManager.setVolume(
-                                    uiToRealVolume(uiFillerVolume)
-                                )
-                                activeIndex = selectedIndex
-                                isPlaying = true
-                                isStarting = false
-                                shouldStart = false
-                                startTargetIndex = null
-                            },
-                            enabled = canControlSelected,
-                            modifier = Modifier.size(72.dp)  // GROS bouton
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.SkipPrevious,
-                                contentDescription = "Précédent",
-                                tint = if (canControlSelected) onBg else sub,
-                                modifier = Modifier.size(40.dp) // Grosse icône
-                            )
-                        }
-
-                        // PLAY / PAUSE
-                        // PLAY / PAUSE
-                        IconButton(
-                            onClick = {
-                                if (!canControlSelected) return@IconButton
-
-                                val slot = currentSelectedSlot ?: return@IconButton
-                                val targetIndex = selectedIndex ?: return@IconButton
-
-                                // on mémorise le dossier choisi dans les prefs
-                                FillerSoundPrefs.saveFillerFolder(context, slot.folderUri!!)
-                                fillerUri = slot.folderUri
-                                fillerName = slot.folderUri.lastPathSegment ?: slot.name
-
-                                if (!isEnabled) {
-                                    isEnabled = true
-                                    FillerSoundPrefs.setEnabled(context, true)
-                                }
-
-                                // Est-ce que C’EST cette ambiance-là qui joue actuellement ?
-                                val isPlayingThis =
-                                    FillerSoundManager.isPlaying() && activeIndex == targetIndex
-
-                                if (!isPlayingThis) {
-                                    // ➜ DÉMARRER
-                                    isStarting = true
-                                    startTargetIndex = targetIndex
-                                    shouldStart = true
-                                } else {
-                                    // ➜ STOPPER
-                                    FillerSoundManager.fadeOutAndStop(200)
-                                    isPlaying = false
-                                    isStarting = false
-                                    shouldStart = false
-                                    startTargetIndex = null
-                                    activeIndex = null
-                                }
-                            },
-                            enabled = canControlSelected,
-                            modifier = Modifier
-                                .padding(horizontal = 8.dp)
-                                .size(80.dp) // Play encore plus gros
-                        ) {
-                            Icon(
-                                imageVector = if (FillerSoundManager.isPlaying() && activeIndex == selectedIndex)
-                                    Icons.Filled.Pause
-                                else
-                                    Icons.Filled.PlayArrow,
-                                contentDescription = "Play / Pause",
-                                tint = if (canControlSelected) onBg else sub,
-                                modifier = Modifier.size(46.dp)
-                            )
-                        }
-
-                        // NEXT
-                        IconButton(
-                            onClick = {
-                                if (!canControlSelected) return@IconButton
-                                val slot = currentSelectedSlot!!
-                                FillerSoundPrefs.saveFillerFolder(context, slot.folderUri!!)
-                                fillerUri = slot.folderUri
-                                fillerName =
-                                    slot.folderUri.lastPathSegment ?: slot.name
-
-                                FillerSoundManager.next(context)
-                                FillerSoundManager.setVolume(
-                                    uiToRealVolume(uiFillerVolume)
-                                )
-                                activeIndex = selectedIndex
-                                isPlaying = true
-                                isStarting = false
-                                shouldStart = false
-                                startTargetIndex = null
-                            },
-                            enabled = canControlSelected,
-                            modifier = Modifier.size(72.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.SkipNext,
-                                contentDescription = "Suivant",
-                                tint = if (canControlSelected) onBg else sub,
-                                modifier = Modifier.size(40.dp)
-                            )
-                        }
-                    }
-                }
-            }
-
-            // ───────────────────────────────────────────────
-            //  AMBIANCES RAPIDES (liste compacte)
-            // ───────────────────────────────────────────────
-            Spacer(Modifier.height(6.dp))
-
-            Text(
-                text = "Ambiances rapides",
-                color = onBg,
-                fontSize = 13.sp
-            )
-            Spacer(Modifier.height(2.dp))
-            Text(
-                text = "5 ambiances personnalisables.",
-                color = sub,
-                fontSize = 10.sp
-            )
-
-            Spacer(Modifier.height(4.dp))
-
-            slots.forEachIndexed { index, slot ->
-                Row(
+                // Bandeau façon console
+                Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 1.dp),
+                        .padding(bottom = 10.dp),
+                    shape = RoundedCornerShape(10.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color.Transparent
+                    ),
+                    elevation = CardDefaults.cardElevation(0.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .background(
+                                Brush.horizontalGradient(
+                                    listOf(
+                                        Color(0xFF3A2C24),
+                                        Color(0xFF4B372A),
+                                        Color(0xFF3A2C24)
+                                    )
+                                ),
+                                shape = RoundedCornerShape(10.dp)
+                            )
+                            .padding(vertical = 6.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "BUS FOND SONORE",
+                            color = Color(0xFFFFECB3),
+                            fontSize = 13.sp,
+                            letterSpacing = 2.sp
+                        )
+                        Text(
+                            text = fillerName,
+                            color = sub,
+                            fontSize = 10.sp
+                        )
+                    }
+                }
+
+                // ON / OFF
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Bloc gauche : icône dossier + nom
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        // 📁 icône cliquable pour choisir le dossier
+                    Column(Modifier.weight(1f)) {
                         Text(
-                            text = "📁",
-                            fontSize = 12.sp,
-                            color = if (slot.folderUri != null) accent else sub,
-                            modifier = Modifier
-                                .padding(end = 4.dp)
-                                .clickable {
-                                    pendingSlotIndex = index
-                                    slotFolderLauncher.launch(null)
-                                }
+                            text = "Activer le fond sonore",
+                            color = onBg,
+                            fontSize = 14.sp
                         )
-
-                        // Nom ambiance : clic = sélection pour les gros boutons
                         Text(
-                            text = slot.name,
-                            fontSize = 11.sp,
-                            color = when {
-                                activeIndex == index -> accent
-                                selectedIndex == index -> Color(0xFFB388FF)
-                                else -> onBg
-                            },
-                            modifier = Modifier.clickable {
-                                selectedIndex = index
+                            text = "Lecture automatique après la fin d’un morceau.",
+                            color = sub,
+                            fontSize = 12.sp
+                        )
+                    }
+                    Switch(
+                        checked = isEnabled,
+                        onCheckedChange = { checked ->
+                            isEnabled = checked
+                            FillerSoundPrefs.setEnabled(context, checked)
+                            if (!checked) {
+                                FillerSoundManager.fadeOutAndStop(0)
+                                isPlaying = false
+                                activeIndex = null
+                                isStarting = false
+                                shouldStart = false
+                                startTargetIndex = null
                             }
+                        }
+                    )
+                }
+
+                Spacer(Modifier.height(12.dp))
+
+                // VOLUME GLOBAL
+                Text("Volume", color = sub, fontSize = 11.sp)
+
+                Slider(
+                    value = uiFillerVolume,
+                    onValueChange = { v ->
+                        uiFillerVolume = v
+                        val real = uiToRealVolume(v)
+                        FillerSoundPrefs.saveFillerVolume(context, real)
+                        FillerSoundManager.setVolume(real)
+                    },
+                    valueRange = 0f..1f,
+                    enabled = isEnabled,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = SliderDefaults.colors(
+                        activeTrackColor = accent,
+                        inactiveTrackColor = Color(0xFF424242),
+                        thumbColor = accent
+                    )
+                )
+
+                val realDisplay = uiToRealVolume(uiFillerVolume)
+                Text(
+                    text = "${(realDisplay * 100).toInt()} %",
+                    color = onBg,
+                    fontSize = 11.sp
+                )
+
+                // petit texte d’attente
+                if (isStarting) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = "Démarrage de l’ambiance...",
+                        color = sub,
+                        fontSize = 11.sp
+                    )
+                }
+
+                // ───────── GROS BOUTONS DE TRANSPORT ─────────
+                Spacer(Modifier.height(8.dp))
+
+                val currentSelectedSlot =
+                    selectedIndex?.let { idx -> slots.getOrNull(idx) }
+                val canControlSelected =
+                    isEnabled && currentSelectedSlot?.folderUri != null
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // PREVIOUS
+                    IconButton(
+                        onClick = {
+                            if (!canControlSelected) return@IconButton
+                            val slot = currentSelectedSlot!!
+                            FillerSoundPrefs.saveFillerFolder(context, slot.folderUri!!)
+                            fillerUri = slot.folderUri
+                            fillerName =
+                                slot.folderUri.lastPathSegment ?: slot.name
+
+                            FillerSoundManager.previous(context)
+                            FillerSoundManager.setVolume(
+                                uiToRealVolume(uiFillerVolume)
+                            )
+                            activeIndex = selectedIndex
+                            isPlaying = true
+                            isStarting = false
+                            shouldStart = false
+                            startTargetIndex = null
+                        },
+                        enabled = canControlSelected,
+                        modifier = Modifier.size(72.dp)  // GROS bouton
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.SkipPrevious,
+                            contentDescription = "Précédent",
+                            tint = if (canControlSelected) onBg else sub,
+                            modifier = Modifier.size(40.dp) // Grosse icône
                         )
                     }
 
-                    // Bloc droit : ✎ rename
-                    Text(
-                        text = "✎",
-                        fontSize = 11.sp,
-                        color = accent,
-                        modifier = Modifier
-                            .clickable {
-                                slotToRenameIndex = index
-                                renameText = slot.name
+                    // PLAY / PAUSE
+                    IconButton(
+                        onClick = {
+                            if (!canControlSelected) return@IconButton
+
+                            val slot = currentSelectedSlot ?: return@IconButton
+                            val targetIndex = selectedIndex ?: return@IconButton
+
+                            // on mémorise le dossier choisi dans les prefs
+                            FillerSoundPrefs.saveFillerFolder(context, slot.folderUri!!)
+                            fillerUri = slot.folderUri
+                            fillerName = slot.folderUri.lastPathSegment ?: slot.name
+
+                            if (!isEnabled) {
+                                isEnabled = true
+                                FillerSoundPrefs.setEnabled(context, true)
                             }
-                    )
+
+                            // Est-ce que C’EST cette ambiance-là qui joue actuellement ?
+                            val isPlayingThis =
+                                FillerSoundManager.isPlaying() && activeIndex == targetIndex
+
+                            if (!isPlayingThis) {
+                                // ➜ DÉMARRER
+                                isStarting = true
+                                startTargetIndex = targetIndex
+                                shouldStart = true
+                            } else {
+                                // ➜ STOPPER
+                                FillerSoundManager.fadeOutAndStop(200)
+                                isPlaying = false
+                                isStarting = false
+                                shouldStart = false
+                                startTargetIndex = null
+                                activeIndex = null
+                            }
+                        },
+                        enabled = canControlSelected,
+                        modifier = Modifier
+                            .padding(horizontal = 8.dp)
+                            .size(80.dp) // Play encore plus gros
+                    ) {
+                        Icon(
+                            imageVector = if (FillerSoundManager.isPlaying() && activeIndex == selectedIndex)
+                                Icons.Filled.Pause
+                            else
+                                Icons.Filled.PlayArrow,
+                            contentDescription = "Play / Pause",
+                            tint = if (canControlSelected) accent else sub,
+                            modifier = Modifier.size(46.dp)
+                        )
+                    }
+
+                    // NEXT
+                    IconButton(
+                        onClick = {
+                            if (!canControlSelected) return@IconButton
+                            val slot = currentSelectedSlot!!
+                            FillerSoundPrefs.saveFillerFolder(context, slot.folderUri!!)
+                            fillerUri = slot.folderUri
+                            fillerName =
+                                slot.folderUri.lastPathSegment ?: slot.name
+
+                            FillerSoundManager.next(context)
+                            FillerSoundManager.setVolume(
+                                uiToRealVolume(uiFillerVolume)
+                            )
+                            activeIndex = selectedIndex
+                            isPlaying = true
+                            isStarting = false
+                            shouldStart = false
+                            startTargetIndex = null
+                        },
+                        enabled = canControlSelected,
+                        modifier = Modifier.size(72.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.SkipNext,
+                            contentDescription = "Suivant",
+                            tint = if (canControlSelected) onBg else sub,
+                            modifier = Modifier.size(40.dp)
+                        )
+                    }
                 }
             }
-
-            Spacer(Modifier.height(8.dp))
         }
 
         // ───────────────────────────────────────────────
-        //  DIALOG DE RENOMMAGE
+        //  AMBIANCES RAPIDES (liste compacte)
         // ───────────────────────────────────────────────
-        if (slotToRenameIndex != null) {
-            AlertDialog(
-                onDismissRequest = { slotToRenameIndex = null },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
-                            val idx = slotToRenameIndex
-                            if (idx != null && idx in slots.indices) {
-                                val updated = slots[idx].copy(
-                                    name = renameText.ifBlank { slots[idx].name }
-                                )
-                                slots[idx] = updated
-                                AmbiancePrefs.saveSlot(context, updated)
+        Spacer(Modifier.height(10.dp))
+
+        Text(
+            text = "Ambiances rapides",
+            color = onBg,
+            fontSize = 13.sp
+        )
+        Spacer(Modifier.height(2.dp))
+        Text(
+            text = "5 ambiances personnalisables.",
+            color = sub,
+            fontSize = 10.sp
+        )
+
+        Spacer(Modifier.height(4.dp))
+
+        slots.forEachIndexed { index, slot ->
+            val isActive = activeIndex == index
+            val isSelected = selectedIndex == index
+
+            val rowBg =
+                when {
+                    isActive -> Color(0x33FFC107)
+                    isSelected -> Color(0x221E88E5)
+                    else -> Color.Transparent
+                }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 2.dp)
+                    .background(rowBg, RoundedCornerShape(10.dp))
+                    .padding(horizontal = 6.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Bloc gauche : icône dossier + nom
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    // 📁 icône cliquable pour choisir le dossier
+                    Text(
+                        text = "📁",
+                        fontSize = 12.sp,
+                        color = if (slot.folderUri != null) accent else sub,
+                        modifier = Modifier
+                            .padding(end = 4.dp)
+                            .clickable {
+                                pendingSlotIndex = index
+                                slotFolderLauncher.launch(null)
                             }
-                            slotToRenameIndex = null
+                    )
+
+                    // Nom ambiance : clic = sélection pour les gros boutons
+                    Text(
+                        text = slot.name,
+                        fontSize = 11.sp,
+                        color = when {
+                            isActive -> accent
+                            isSelected -> Color(0xFFB388FF)
+                            else -> onBg
+                        },
+                        modifier = Modifier.clickable {
+                            selectedIndex = index
                         }
-                    ) {
-                        Text("OK")
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { slotToRenameIndex = null }) {
-                        Text("Annuler")
-                    }
-                },
-                title = { Text("Renommer l’ambiance") },
-                text = {
-                    OutlinedTextField(
-                        value = renameText,
-                        onValueChange = { renameText = it },
-                        singleLine = true,
-                        label = { Text("Nom de l’ambiance") }
                     )
                 }
-            )
+
+                // Bloc droit : ✎ rename
+                Text(
+                    text = "✎",
+                    fontSize = 11.sp,
+                    color = accent,
+                    modifier = Modifier
+                        .clickable {
+                            slotToRenameIndex = index
+                            renameText = slot.name
+                        }
+                )
+            }
         }
+
+        Spacer(Modifier.height(8.dp))
+    }
+
+    // ───────────────────────────────────────────────
+    //  DIALOG DE RENOMMAGE
+    // ───────────────────────────────────────────────
+    if (slotToRenameIndex != null) {
+        AlertDialog(
+            onDismissRequest = { slotToRenameIndex = null },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val idx = slotToRenameIndex
+                        if (idx != null && idx in slots.indices) {
+                            val updated = slots[idx].copy(
+                                name = renameText.ifBlank { slots[idx].name }
+                            )
+                            slots[idx] = updated
+                            AmbiancePrefs.saveSlot(context, updated)
+                        }
+                        slotToRenameIndex = null
+                    }
+                ) {
+                    Text("OK", color = onBg)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { slotToRenameIndex = null }) {
+                    Text("Annuler", color = sub)
+                }
+            },
+            title = { Text("Renommer l’ambiance", color = onBg) },
+            text = {
+                OutlinedTextField(
+                    value = renameText,
+                    onValueChange = { renameText = it },
+                    singleLine = true,
+                    label = { Text("Nom de l’ambiance") }
+                )
+            },
+            containerColor = Color(0xFF222222)
+        )
     }
 
     // ───────────────────────────────────────────────

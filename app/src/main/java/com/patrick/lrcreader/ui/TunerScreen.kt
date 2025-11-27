@@ -1,406 +1,403 @@
-/**
- * Écran : Accordeur (Tuner)
- * Rôle : analyse du son via le micro → affiche la note jouée, l’écart en cents,
- *        mode guitare ou chromatique, et calibration A4.
- *
- * Appelé depuis : MoreScreen → bouton "Accordeur".
- *
- * Fonctionnement :
- * - Demande la permission micro
- * - Démarre TunerEngine au lancement
- * - Stoppe TunerEngine à la fermeture
- * - Affiche niveau d’entrée, note détectée et précision
- */
 package com.patrick.lrcreader.ui
 
-import kotlin.math.log2
-import kotlin.math.abs
-import android.Manifest
-import android.content.pm.PackageManager
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.ContextCompat
-import com.patrick.lrcreader.core.TunerEngine
-import com.patrick.lrcreader.core.TunerState
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
 
+/**
+ * Accordeur style "module analogique", même charte couleur que la console.
+ *
+ * Pour l’instant : maquette visuelle.
+ * Tu pourras plus tard remplacer le slider de test par ton moteur d’analyse audio.
+ */
 @Composable
 fun TunerScreen(
     modifier: Modifier = Modifier,
     onClose: () -> Unit
 ) {
-    val context = LocalContext.current
-
-    val tunerState by TunerEngine.state.collectAsState()
-
-    // permission micro
-    var hasPermission by remember {
-        mutableStateOf(
-            ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.RECORD_AUDIO
-            ) == PackageManager.PERMISSION_GRANTED
+    // Même fond que la console "Live in Pocket"
+    val backgroundBrush = Brush.verticalGradient(
+        listOf(
+            Color(0xFF171717),
+            Color(0xFF101010),
+            Color(0xFF181410)
         )
-    }
+    )
 
-    val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        hasPermission = granted
-        if (granted) {
-            TunerEngine.start()
-        }
-    }
-
-    // mode : chromatique ou guitare
-    var guitarMode by remember { mutableStateOf(true) }
-
-    // calibration A4 (slider UI, sync avec engine)
-    var a4Ui by remember {
-        mutableFloatStateOf(TunerEngine.getReferenceA4())
-    }
-
-    // à la fermeture de l’écran, on coupe tout
-    DisposableEffect(Unit) {
-        onDispose {
-            TunerEngine.stop()
-        }
-    }
-
-    Column(
+    Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFF101010))
-            .padding(
-                top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 8.dp,
-                start = 16.dp,
-                end = 16.dp,
-                bottom = 12.dp
-            )
+            .background(backgroundBrush)
+            .padding(12.dp)
     ) {
-        // HEADER
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
+        Column(
+            modifier = Modifier.fillMaxSize()
         ) {
-            Text(
-                text = "Accordeur",
-                color = Color.White,
-                fontSize = 22.sp,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.weight(1f)
-            )
-            IconButton(onClick = {
-                TunerEngine.stop()
-                onClose()
-            }) {
+
+            // ───── BARRE DU HAUT ─────
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onClose) {
+                    Icon(
+                        imageVector = Icons.Filled.ArrowBack,
+                        contentDescription = "Retour",
+                        tint = Color(0xFFEEEEEE)
+                    )
+                }
+
+                Spacer(Modifier.width(8.dp))
+
+                Column {
+                    Text(
+                        text = "Accordeur",
+                        color = Color(0xFFFFE082),
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "Module analogique",
+                        color = Color(0xFFB0BEC5),
+                        fontSize = 12.sp
+                    )
+                }
+
+                Spacer(Modifier.weight(1f))
+
                 Icon(
-                    imageVector = Icons.Default.Close,
-                    contentDescription = "Fermer",
-                    tint = Color.White
+                    imageVector = Icons.Filled.GraphicEq,
+                    contentDescription = null,
+                    tint = Color(0xFFFFC107),
+                    modifier = Modifier.size(24.dp)
                 )
             }
-        }
 
-        Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(12.dp))
 
-        if (!hasPermission) {
-            // écran d’explication permission
+            // ───── MODULE PRINCIPAL ─────
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                colors = CardDefaults.cardColors(
+                    containerColor = Color(0xFF1B1B1B)
+                ),
+                shape = RoundedCornerShape(16.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+            ) {
+
+                // Simu de l’offset en cents : -50 .. +50
+                // (tu remplaceras ça par ta vraie valeur plus tard)
+                var centsOffset by remember { mutableFloatStateOf(0f) }
+                var currentNote by remember { mutableStateOf("A") }
+                var currentFreq by remember { mutableStateOf("440 Hz") }
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(16.dp)
+                ) {
+
+                    // Bandeau en haut du module
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(32.dp)
+                            .background(
+                                Brush.horizontalGradient(
+                                    listOf(
+                                        Color(0xFF3A2C24),
+                                        Color(0xFF4B372A),
+                                        Color(0xFF3A2C24)
+                                    )
+                                ),
+                                shape = RoundedCornerShape(10.dp)
+                            )
+                            .border(
+                                1.dp,
+                                Color(0x55FFFFFF),
+                                RoundedCornerShape(10.dp)
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "TUNE BUS",
+                            color = Color(0xFFFFECB3),
+                            fontSize = 13.sp,
+                            letterSpacing = 2.sp
+                        )
+                    }
+
+                    Spacer(Modifier.height(18.dp))
+
+                    // ───── ZONE AFFICHAGE NOTE + VU CENTS ─────
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Colonne gauche : indicateur "FLAT"
+                        TunerSideMeter(
+                            label = "FLAT",
+                            isActive = centsOffset < -5f,
+                            activeColor = Color(0xFF64B5F6)  // bleu
+                        )
+
+                        // Affichage central : note + fréquence
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(horizontal = 12.dp)
+                                .height(180.dp)
+                                .background(
+                                    Brush.verticalGradient(
+                                        listOf(
+                                            Color(0xFF101010),
+                                            Color(0xFF1E1E1E)
+                                        )
+                                    ),
+                                    RoundedCornerShape(18.dp)
+                                )
+                                .border(
+                                    1.dp,
+                                    Color(0x44FFFFFF),
+                                    RoundedCornerShape(18.dp)
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(
+                                modifier = Modifier.fillMaxSize(),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                // Lettre de la note
+                                Text(
+                                    text = currentNote,
+                                    color = Color(0xFFFFF8E1),
+                                    fontSize = 64.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                Text(
+                                    text = currentFreq,
+                                    color = Color(0xFFB0BEC5),
+                                    fontSize = 16.sp
+                                )
+                                Spacer(Modifier.height(16.dp))
+
+                                // Bande LED centrale (vert / orange / rouge)
+                                val absOffset = kotlin.math.abs(centsOffset)
+                                val barColor =
+                                    when {
+                                        absOffset < 5f -> Color(0xFF81C784) // vert bien accordé
+                                        absOffset < 15f -> Color(0xFFFFC107) // jaune
+                                        else -> Color(0xFFFF5252) // rouge
+                                    }
+
+                                Box(
+                                    modifier = Modifier
+                                        .width(140.dp)
+                                        .height(10.dp)
+                                        .background(
+                                            Color(0xFF050505),
+                                            RoundedCornerShape(999.dp)
+                                        )
+                                ) {
+                                    // partie "active"
+                                    val factor = (1f - (absOffset / 50f)).coerceIn(0f, 1f)
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxHeight()
+                                            .fillMaxWidth(factor)
+                                            .background(
+                                                Brush.horizontalGradient(
+                                                    listOf(
+                                                        barColor.copy(alpha = 0.2f),
+                                                        barColor,
+                                                    )
+                                                ),
+                                                RoundedCornerShape(999.dp)
+                                            )
+                                    )
+                                }
+
+                                Spacer(Modifier.height(8.dp))
+
+                                Text(
+                                    text = "${centsOffset.toInt()} cents",
+                                    color = Color(0xFFCFD8DC),
+                                    fontSize = 13.sp
+                                )
+                            }
+                        }
+
+                        // Colonne droite : indicateur "SHARP"
+                        TunerSideMeter(
+                            label = "SHARP",
+                            isActive = centsOffset > 5f,
+                            activeColor = Color(0xFFFF5252)  // rouge
+                        )
+                    }
+
+                    Spacer(Modifier.height(12.dp))
+
+                    // ───── BARRE DE CONTROLE / TEST ─────
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Mic,
+                                contentDescription = null,
+                                tint = Color(0xFFFFC107),
+                                modifier = Modifier.size(22.dp)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                text = "Entrée micro – maquette visuelle",
+                                color = Color(0xFFB0BEC5),
+                                fontSize = 12.sp
+                            )
+                        }
+
+                        Spacer(Modifier.height(10.dp))
+
+                        // Slider de test : -50 à +50 cents
+                        Text(
+                            text = "Test offset (maquette) : ${centsOffset.toInt()} cents",
+                            color = Color(0xFFCFD8DC),
+                            fontSize = 11.sp
+                        )
+                        Slider(
+                            value = centsOffset,
+                            onValueChange = { centsOffset = it },
+                            valueRange = -50f..50f,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 8.dp),
+                            colors = androidx.compose.material3.SliderDefaults.colors(
+                                thumbColor = Color(0xFFFFC107),
+                                activeTrackColor = Color(0xFFFFC107),
+                                inactiveTrackColor = Color(0x33FFFFFF)
+                            )
+                        )
+
+                        Spacer(Modifier.height(4.dp))
+
+                        Text(
+                            text = "Plus tard : relié à ton vrai accordeur (détection de pitch).",
+                            color = Color(0xFF757575),
+                            fontSize = 10.sp,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(8.dp))
+
+            // Bandeau bas type rack, comme sur la console
             Box(
                 modifier = Modifier
-                    .fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.padding(16.dp)
-                ) {
-                    Text(
-                        text = "Autorise le micro pour utiliser l’accordeur.",
-                        color = Color.White,
-                        fontSize = 16.sp
+                    .fillMaxWidth()
+                    .height(6.dp)
+                    .background(
+                        Brush.horizontalGradient(
+                            listOf(
+                                Color(0xFF3E2723),
+                                Color(0xFF212121),
+                                Color(0xFF3E2723)
+                            )
+                        ),
+                        shape = RoundedCornerShape(100.dp)
                     )
-                    Spacer(Modifier.height(12.dp))
-                    Button(onClick = {
-                        permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                    }) {
-                        Text("Autoriser le micro")
-                    }
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        text = "Le micro sert uniquement à analyser le son de ta guitare.",
-                        color = Color(0xFFBBBBBB),
-                        fontSize = 13.sp
-                    )
-                }
-            }
-            return
-        }
-
-        // si on a la permission, on démarre au premier affichage
-        LaunchedEffect(Unit) {
-            TunerEngine.start()
-        }
-
-        // --- Barre mode + calibration ---
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.weight(1f)
-            ) {
-                TextButton(onClick = { guitarMode = false }) {
-                    Text(
-                        "Chromatique",
-                        color = if (!guitarMode) Color(0xFFE040FB) else Color(0xFFBBBBBB),
-                        fontSize = 13.sp
-                    )
-                }
-                TextButton(onClick = { guitarMode = true }) {
-                    Text(
-                        "Guitare",
-                        color = if (guitarMode) Color(0xFFE040FB) else Color(0xFFBBBBBB),
-                        fontSize = 13.sp
-                    )
-                }
-            }
-
-            Text(
-                text = "A4 = ${a4Ui.toInt()} Hz",
-                color = Color(0xFFB0BEC5),
-                fontSize = 12.sp
             )
-        }
-
-        Slider(
-            value = a4Ui,
-            onValueChange = { v ->
-                val clamped = v.coerceIn(430f, 450f)
-                a4Ui = clamped
-                TunerEngine.setReferenceA4(clamped)
-            },
-            valueRange = 430f..450f,
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        Spacer(Modifier.height(8.dp))
-
-        // --- Niveau d’entrée ---
-        Text(
-            text = "Niveau d’entrée",
-            color = Color(0xFFB0BEC5),
-            fontSize = 12.sp
-        )
-        LinearProgressIndicator(
-            progress = { tunerState.inputLevel },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(6.dp),
-            color = Color(0xFFE040FB),
-            trackColor = Color(0x33E040FB)
-        )
-
-        Spacer(Modifier.height(16.dp))
-
-        // --- Affichage principal (note / corde + fréquence) ---
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f),
-            contentAlignment = Alignment.Center
-        ) {
-            MainTunerView(
-                state = tunerState,
-                guitarMode = guitarMode
-            )
-        }
-
-        Spacer(Modifier.height(16.dp))
-
-        // --- Boutons Start / Stop au cas où ---
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly
-        ) {
-            Button(
-                onClick = { TunerEngine.start() },
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF4CAF50)
-                )
-            ) {
-                Text("Start")
-            }
-            Button(
-                onClick = { TunerEngine.stop() },
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFFFF8A80)
-                )
-            ) {
-                Text("Stop")
-            }
         }
     }
 }
 
+/**
+ * Petit vumètre vertical pour indiquer si on est trop bas / trop haut.
+ */
 @Composable
-private fun MainTunerView(
-    state: TunerState,
-    guitarMode: Boolean
+private fun TunerSideMeter(
+    label: String,
+    isActive: Boolean,
+    activeColor: Color
 ) {
-    val freq = state.frequency
-    val cents = state.cents
-
-    // mapping des cordes de guitare (standard)
-    // E2 82.41 Hz, A2 110, D3 146.83, G3 196, B3 246.94, E4 329.63
-    val guitarStrings = listOf(
-        82.41f to "E2",
-        110.00f to "A2",
-        146.83f to "D3",
-        196.00f to "G3",
-        246.94f to "B3",
-        329.63f to "E4"
-    )
-
-    var displayNote = state.noteName
-    var displayCents = cents
-    var infoLine = ""
-
-    if (freq != null) {
-        if (guitarMode) {
-            // on cherche la corde la plus proche
-            val nearest = guitarStrings.minByOrNull { (f, _) ->
-                abs(log2(freq / f))
-            }
-            if (nearest != null) {
-                val (targetFreq, label) = nearest
-                // écart en cents par rapport à la corde cible
-                val centsToString =
-                    (1200 * log2(freq / targetFreq)).toInt().coerceIn(-100, 100)
-                displayNote = label
-                displayCents = centsToString
-                infoLine = "${"%.1f".format(freq)} Hz (cible ${"%.1f".format(targetFreq)} Hz)"
-            } else {
-                infoLine = "${"%.1f".format(freq)} Hz"
-            }
-        } else {
-            // mode chromatique
-            infoLine = "${"%.1f".format(freq)} Hz"
-        }
-    }
-
     Column(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
-            text = displayNote,
-            color = Color.White,
-            fontSize = 64.sp,
-            fontWeight = FontWeight.Bold
+            text = label,
+            color = Color(0xFFB0BEC5),
+            fontSize = 11.sp
         )
 
         Spacer(Modifier.height(8.dp))
 
-        Text(
-            text = if (freq != null) infoLine else "Joue une corde…",
-            color = Color(0xFFB0BEC5),
-            fontSize = 14.sp
-        )
-
-        Spacer(Modifier.height(24.dp))
-
-        CentsGauge(displayCents)
-    }
-}
-
-@Composable
-private fun CentsGauge(
-    cents: Int?
-) {
-    val c = cents ?: 0
-    val normalized = (c / 50f).coerceIn(-1f, 1f) // -1..1
-
-    Text(
-        text = if (cents == null) "—" else "$cents cents",
-        color = Color.White,
-        fontSize = 14.sp
-    )
-
-    Spacer(Modifier.height(8.dp))
-
-    // jauge horizontale simple
-    Box(
-        modifier = Modifier
-            .width(260.dp)
-            .height(24.dp)
-            .background(Color(0xFF202020))
-    ) {
-        // zone centrale "juste"
         Box(
             modifier = Modifier
-                .align(Alignment.Center)
-                .width(60.dp)
-                .height(24.dp)
-                .background(Color(0xFF1B5E20).copy(alpha = 0.4f))
-        )
-
-        // trait central
-        Box(
-            modifier = Modifier
-                .align(Alignment.Center)
-                .width(2.dp)
-                .height(24.dp)
-                .background(Color(0xFF4CAF50))
-        )
-
-        // indicateur
-        val offsetPx = normalized * (260 - 20) / 2f // 20dp = largeur indicateur
-        Box(
-            modifier = Modifier
-                .align(Alignment.Center)
-                .offset(x = offsetPx.dp)
-                .width(20.dp)
-                .height(24.dp)
-                .background(Color(0xFFE040FB))
-        )
-    }
-
-    Spacer(Modifier.height(8.dp))
-
-    val txt = when {
-        cents == null -> ""
-        cents < -5 -> "Trop grave"
-        cents > 5 -> "Trop aigu"
-        else -> "Parfait 👍"
-    }
-
-    if (txt.isNotEmpty()) {
-        Text(
-            text = txt,
-            color = Color(0xFFB0BEC5),
-            fontSize = 14.sp
-        )
+                .width(22.dp)
+                .height(120.dp)
+                .background(Color(0xFF050505), RoundedCornerShape(12.dp))
+                .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(12.dp))
+                .padding(3.dp),
+            contentAlignment = Alignment.BottomCenter
+        ) {
+            Column(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.SpaceBetween
+            ) {
+                repeat(8) { index ->
+                    val segmentActive = isActive && index >= 3
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(6.dp)
+                            .background(
+                                if (segmentActive) activeColor.copy(alpha = 0.8f)
+                                else Color(0x33555555),
+                                RoundedCornerShape(3.dp)
+                            )
+                    )
+                }
+            }
+        }
     }
 }
