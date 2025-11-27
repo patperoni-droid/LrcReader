@@ -77,6 +77,9 @@ class MainActivity : ComponentActivity() {
                 var djMasterLevel by remember { mutableStateOf(1f) }
                 var fillerMasterLevel by remember { mutableStateOf(0.6f) }
 
+                // 👇 nouveau : écran plein écran "console" Mixer (maquette visuelle)
+                var isMixerPreviewOpen by remember { mutableStateOf(false) }
+
                 // ID normalisé pour le prompteur ("note:123" ou "text:abc")
                 var textPrompterId by remember { mutableStateOf<String?>(null) }
 
@@ -207,11 +210,39 @@ class MainActivity : ComponentActivity() {
                                 isFillerSettingsOpen = false
                                 isGlobalMixOpen = false
                                 isNotesOpen = false
-                                textPrompterId = null   // 👈 ferme aussi le prompteur
+                                textPrompterId = null
+                                isMixerPreviewOpen = false   // 👈 on ferme aussi la console mixer
                             }
                         )
                     }
                 ) { innerPadding ->
+
+                    // 🔹 CONSOLE MIXER VISUELLE (maquette)
+                    if (isMixerPreviewOpen) {
+                        MixerHomePreviewScreen(
+                            modifier = Modifier.padding(innerPadding),
+                            onOpenPlayer = {
+                                isMixerPreviewOpen = false
+                                selectedTab = BottomTab.QuickPlaylists
+                                SessionPrefs.saveTab(ctx, TAB_QUICK)
+                            },
+                            onOpenFondSonore = {
+                                isMixerPreviewOpen = false
+                                isFillerSettingsOpen = true
+                            },
+                            onOpenDj = {
+                                isMixerPreviewOpen = false
+                                selectedTab = BottomTab.Dj
+                                SessionPrefs.saveTab(ctx, TAB_DJ)
+                            },
+                            onOpenTuner = {
+                                isMixerPreviewOpen = false
+                                selectedTab = BottomTab.Tuner
+                                SessionPrefs.saveTab(ctx, TAB_TUNER)
+                            }
+                        )
+                        return@Scaffold
+                    }
 
                     // Fond sonore
                     if (isFillerSettingsOpen) {
@@ -280,9 +311,9 @@ class MainActivity : ComponentActivity() {
                                 selectedTab = BottomTab.More
                                 SessionPrefs.saveTab(ctx, TAB_MORE)
                             },
+                            // 👇 ICI : au lieu d'aller sur "More", on ouvre la console Mixer
                             onOpenSettings = {
-                                selectedTab = BottomTab.More
-                                SessionPrefs.saveTab(ctx, TAB_MORE)
+                                isMixerPreviewOpen = true
                             },
                             onOpenNotes = { isNotesOpen = true }
                         )
