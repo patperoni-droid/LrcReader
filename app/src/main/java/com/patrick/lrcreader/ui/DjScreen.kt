@@ -41,7 +41,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -103,11 +102,6 @@ fun DjScreen(
 
     // état DJ global (lecteur, decks, queue, timeline…)
     val djState by DjEngine.state.collectAsState()
-
-    // **Niveau du bus principal DJ (0f..1f)**
-    var djBusLevel by remember {
-        mutableStateOf(DjBusController.getUiLevel())
-    }
 
     /* --------------------- animation platines rondes --------------------- */
     val infinite = rememberInfiniteTransition(label = "dj-discs")
@@ -356,6 +350,9 @@ fun DjScreen(
 
                     // === FADER VOLUME DJ (BUS PRINCIPAL DJ) ===
                     Spacer(Modifier.height(4.dp))
+
+                    val djLevel = djState.masterLevel.coerceIn(0f, 1f)
+
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
@@ -367,16 +364,17 @@ fun DjScreen(
                             modifier = Modifier.weight(1f)
                         )
                         Text(
-                            text = "${(djBusLevel * 100).toInt()}%",
+                            text = "${(djLevel * 100).toInt()}%",
                             color = onBg,
                             fontSize = 11.sp
                         )
                     }
                     Slider(
-                        value = djBusLevel,
+                        value = djLevel,
                         onValueChange = { v ->
                             val clamped = v.coerceIn(0f, 1f)
-                            djBusLevel = clamped
+                            // On met à jour à la fois le moteur DJ et le contrôleur de bus
+                            DjEngine.setMasterVolume(clamped)
                             DjBusController.setUiLevel(clamped)
                         },
                         modifier = Modifier

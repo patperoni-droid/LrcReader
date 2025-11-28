@@ -1,33 +1,46 @@
 package com.patrick.lrcreader.core
 
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import com.patrick.lrcreader.core.dj.DjEngine
+
 /**
- * Bus de volume global pour le DJ.
- *
- * - 0f = coupé
- * - 1f = plein pot
- *
- * Pour l’instant on ne fait que stocker la valeur en mémoire.
- * (On pourra plus tard la persister en prefs si tu veux.)
+ * Contrôleur centralisé pour le BUS DJ.
+ * On garde un seul niveau global (0..1) partagé entre :
+ * - l'écran DJ
+ * - le bus principal (Mixer)
+ * - DjEngine (master volume)
  */
+
 object DjBusController {
 
-    // Niveau UI (0f..1f), 1f par défaut
-    private var uiLevel: Float = 1f
+    // Niveau UI global du bus DJ (0..1)
+    private val _uiLevel = MutableStateFlow(1f)
+    val uiLevel: StateFlow<Float> = _uiLevel.asStateFlow()
 
-    /** Valeur brute 0f..1f utilisée par l’UI (faders, sliders) */
-    fun getUiLevel(): Float = uiLevel
+    // Pour éviter la boucle infinie UI -> moteur -> UI
+    private var internalUpdate = false
 
-    /** Mise à jour depuis un fader UI */
-    fun setUiLevel(value: Float) {
-        uiLevel = value.coerceIn(0f, 1f)
+    /** Récupère le niveau actuel */
+    fun getUiLevel(): Float = _uiLevel.value
+
+    /** Définit le niveau global UI + moteur DJ */
+    fun setUiLevel(u: Float) {
+        val level = u.coerceIn(0f, 1f)
+
+        if (!internalUpdate) {
+            _uiLevel.value = level
+            // on envoie au moteur DJ
+            DjEngine.setMasterVolume(level)
+        }
     }
 
-    /**
-     * Applique le bus DJ sur un volume de base.
-     * Exemple : base = 0.8f, bus = 0.5f → 0.4f
-     */
-    fun applyOn(baseVolume: Float): Float {
-        val bus = uiLevel.coerceIn(0f, 1f)
-        return (baseVolume.coerceIn(0f, 1f) * bus).coerceIn(0f, 1f)
+    /** Appelé uniquement par DjEngine pour notifier l’UI (rarement utile) */
+    fun syncFromEngine(level: Float) {
+        val l = level.coerceIn(0f, 1f)
+        internalUpdate = true
+        _uiLevel.value = l
+        internalUpdate = false
     }
 }

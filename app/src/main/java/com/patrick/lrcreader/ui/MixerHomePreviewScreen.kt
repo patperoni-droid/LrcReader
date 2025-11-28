@@ -43,6 +43,7 @@ import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.core.FillerSoundPrefs
 import com.patrick.lrcreader.core.PlayerVolumePrefs
 import com.patrick.lrcreader.core.dj.DjEngine
+import com.patrick.lrcreader.core.DjBusController
 import kotlinx.coroutines.launch
 
 /**
@@ -84,8 +85,8 @@ fun MixerHomePreviewScreen(
     // Volume LECTEUR vient aussi des prefs (0..1 UI)
     val lecteurInitialUi = PlayerVolumePrefs.load(context).coerceIn(0f, 1f)
 
-    // DJ bus : pour l’instant on part de 1f (plein pot)
-    val djInitialUi = 1f
+    // DJ bus : on lit le niveau centralisé (même source que l'écran DJ)
+    val djInitialUi = DjBusController.getUiLevel().coerceIn(0f, 1f)
 
     val backgroundBrush = Brush.verticalGradient(
         listOf(
@@ -229,7 +230,7 @@ fun MixerHomePreviewScreen(
                             }
                         }
 
-                        // DJ → FADER RELIÉ AU MASTER DJ
+                        // DJ → FADER RELIÉ AU MASTER DJ via DjBusController
                         MixerChannelColumn(
                             label = "DJ",
                             subtitle = "Bus DJ",
@@ -239,8 +240,9 @@ fun MixerHomePreviewScreen(
                             onClick = onOpenDj,
                             initialLevel = djInitialUi
                         ) { uiLevel ->
-                            // 👉 on envoie 0..1 directement comme volume master DJ
-                            DjEngine.setMasterVolume(uiLevel)
+                            // 👉 on passe par le contrôleur centralisé
+                            DjBusController.setUiLevel(uiLevel)
+                            // (DjBusController se charge de propager à DjEngine.setMasterVolume)
                         }
                     }
                 }
@@ -287,8 +289,8 @@ private fun MixerChannelColumn(
 
     val scope = rememberCoroutineScope()
 
-    // IMPORTANT : on part d'un niveau initial
-    var level by remember { mutableFloatStateOf(initialLevel.coerceIn(0f, 1f)) }
+    // IMPORTANT : lié à initialLevel pour pouvoir se resynchroniser
+    var level by remember(initialLevel) { mutableFloatStateOf(initialLevel.coerceIn(0f, 1f)) }
 
     // Animation VU
     val infinite = rememberInfiniteTransition(label)

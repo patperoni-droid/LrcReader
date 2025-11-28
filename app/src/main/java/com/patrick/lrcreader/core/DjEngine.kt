@@ -24,6 +24,7 @@ data class DjUiState(
     val deckAUri: String? = null,
     val deckBUri: String? = null,
     val crossfadePos: Float = 0.5f,
+    val masterLevel: Float = 1f,        // 🔊 niveau DJ global (0..1)
     val queue: List<DjQueuedTrack> = emptyList()
 )
 
@@ -52,7 +53,7 @@ object DjEngine {
 
     private var crossfadePos: Float = 0.5f
 
-    // 🔊 volume MASTER DJ (0..1) appliqué à A et B
+    // 🔊 volume MASTER DJ (0..1) appliqué à A et B (contrôlé par le fader DJ du bus)
     private var masterLevel: Float = 1f
 
     private val queueInternal = mutableListOf<DjQueuedTrack>()
@@ -68,6 +69,7 @@ object DjEngine {
             deckAUri = deckAUri,
             deckBUri = deckBUri,
             crossfadePos = crossfadePos,
+            masterLevel = masterLevel,
             queue = queueInternal.toList()
         )
     )
@@ -100,6 +102,7 @@ object DjEngine {
             deckAUri = deckAUri,
             deckBUri = deckBUri,
             crossfadePos = crossfadePos,
+            masterLevel = masterLevel,
             queue = queueInternal.toList()
         )
     }
@@ -201,7 +204,7 @@ object DjEngine {
 
                     // 👉 visuellement, on ramène le slider côté A
                     animateSliderTo(0f, durationMs = 300)
-                    applyCrossfader()
+                    applyCrossfader()   // applique crossfader + masterLevel
                 } catch (e: Exception) {
                     e.printStackTrace()
                     mpA = null
@@ -266,18 +269,25 @@ object DjEngine {
     fun setMasterVolume(level: Float) {
         masterLevel = level.coerceIn(0f, 1f)
         applyCrossfader()   // réapplique tout de suite aux deux platines
+        pushState()         // notifie UI (fader DJ bus + écran DJ)
     }
 
-    private fun applyCrossfader() {
+    // applique les volumes A/B pour un niveau donné (0..1)
+    private fun applyCrossfaderInternal(level: Float) {
         val baseA = 1f - crossfadePos
         val baseB = crossfadePos
-        val m = masterLevel.coerceIn(0f, 1f)
+        val m = level.coerceIn(0f, 1f)
 
         val aVol = baseA * m
         val bVol = baseB * m
 
         try { mpA?.setVolume(aVol, aVol) } catch (_: Exception) {}
         try { mpB?.setVolume(bVol, bVol) } catch (_: Exception) {}
+    }
+
+    // version normale : utilise masterLevel (lié au fader DJ du bus principal)
+    private fun applyCrossfader() {
+        applyCrossfaderInternal(masterLevel)
     }
 
     fun launchCrossfade() {
@@ -369,12 +379,15 @@ object DjEngine {
                 return@launch
             }
 
-            // Petit fade-out
+            // On part du niveau master actuel (lié au fader DJ du bus principal)
+            val startMaster = masterLevel.coerceIn(0f, 1f)
+
+            // Petit fade-out en respectant ce masterLevel
             val steps = (fadeMs / 50).coerceAtLeast(1)
             for (i in 0 until steps) {
-                val factor = 1f - (i + 1) / steps.toFloat()
-                try { localMpA?.setVolume(factor, factor) } catch (_: Exception) {}
-                try { localMpB?.setVolume(factor, factor) } catch (_: Exception) {}
+                val factor = 1f - (i + 1) / steps.toFloat()   // 1 → 0
+                val level = startMaster * factor              // on descend depuis le niveau réel
+                applyCrossfaderInternal(level)
                 delay(50)
             }
 
@@ -402,6 +415,7 @@ object DjEngine {
         deckAUri = null
         deckBUri = null
         crossfadePos = 0.5f
+        // on garde masterLevel tel quel → le fader DJ ne saute pas visuellement
         queueInternal.clear()
         pushState()
     }
