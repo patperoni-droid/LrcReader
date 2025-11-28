@@ -1,5 +1,5 @@
 package com.patrick.lrcreader.ui
-import com.patrick.lrcreader.core.PlayerBusController
+
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.core.FillerSoundPrefs
 import com.patrick.lrcreader.core.PlayerVolumePrefs
+import com.patrick.lrcreader.core.dj.DjEngine
 import kotlinx.coroutines.launch
 
 /**
@@ -82,6 +83,9 @@ fun MixerHomePreviewScreen(
 
     // Volume LECTEUR vient aussi des prefs (0..1 UI)
     val lecteurInitialUi = PlayerVolumePrefs.load(context).coerceIn(0f, 1f)
+
+    // DJ bus : pour l’instant on part de 1f (plein pot)
+    val djInitialUi = 1f
 
     val backgroundBrush = Brush.verticalGradient(
         listOf(
@@ -192,7 +196,7 @@ fun MixerHomePreviewScreen(
                         horizontalArrangement = Arrangement.SpaceEvenly,
                         verticalAlignment = Alignment.Bottom
                     ) {
-                        // LECTEUR = branché sur le bus lecteur global
+                        // LECTEUR = branché sur PlayerVolumePrefs
                         MixerChannelColumn(
                             label = "LECTEUR",
                             subtitle = "Playlists",
@@ -200,10 +204,10 @@ fun MixerHomePreviewScreen(
                             faderColor = Color(0xFF81C784),
                             meterColor = Color(0xFF66BB6A),
                             onClick = onOpenPlayer,
-                            initialLevel = PlayerBusController.loadUiVolume(context)
+                            initialLevel = lecteurInitialUi
                         ) { uiLevel ->
-                            // 🔊 on envoie directement au contrôleur global
-                            PlayerBusController.setUiVolumeFromMixer(context, uiLevel)
+                            // 🔊 on enregistre le niveau UI dans les prefs LECTEUR
+                            PlayerVolumePrefs.save(context, uiLevel)
                         }
 
                         // FOND = 🔥 branché sur FillerSound (sécurisé)
@@ -225,16 +229,19 @@ fun MixerHomePreviewScreen(
                             }
                         }
 
-                        // DJ (visuel seulement pour l’instant)
+                        // DJ → FADER RELIÉ AU MASTER DJ
                         MixerChannelColumn(
                             label = "DJ",
-                            subtitle = "Crossfade",
+                            subtitle = "Bus DJ",
                             icon = Icons.Filled.Headphones,
                             faderColor = Color(0xFF64B5F6),
                             meterColor = Color(0xFF42A5F5),
                             onClick = onOpenDj,
-                            initialLevel = 0.75f
-                        )
+                            initialLevel = djInitialUi
+                        ) { uiLevel ->
+                            // 👉 on envoie 0..1 directement comme volume master DJ
+                            DjEngine.setMasterVolume(uiLevel)
+                        }
                     }
                 }
             }
@@ -264,7 +271,7 @@ fun MixerHomePreviewScreen(
 /**
  * Une tranche : vu-mètre + long fader + bouton.
  * onLevelChange est appelé pour tous les canaux (LECTEUR, FOND, DJ…),
- * mais pour l’instant on ne l’exploite que pour LECTEUR et FOND.
+ * mais pour l’instant on ne l’exploite que pour LECTEUR, FOND, DJ.
  */
 @Composable
 private fun MixerChannelColumn(

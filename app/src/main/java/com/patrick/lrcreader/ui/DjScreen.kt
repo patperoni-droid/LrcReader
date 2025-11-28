@@ -57,6 +57,7 @@ import androidx.documentfile.provider.DocumentFile
 import com.patrick.lrcreader.core.DjFolderPrefs
 import com.patrick.lrcreader.core.dj.DjEngine
 import com.patrick.lrcreader.core.dj.DjQueuedTrack
+import com.patrick.lrcreader.core.DjBusController
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -102,6 +103,11 @@ fun DjScreen(
 
     // état DJ global (lecteur, decks, queue, timeline…)
     val djState by DjEngine.state.collectAsState()
+
+    // **Niveau du bus principal DJ (0f..1f)**
+    var djBusLevel by remember {
+        mutableStateOf(DjBusController.getUiLevel())
+    }
 
     /* --------------------- animation platines rondes --------------------- */
     val infinite = rememberInfiniteTransition(label = "dj-discs")
@@ -306,7 +312,7 @@ fun DjScreen(
 
             Spacer(Modifier.height(10.dp))
 
-            // ───────── CARTE PRINCIPALE : platines + crossfader + timeline ─────────
+            // ───────── CARTE PRINCIPALE : platines + BUS DJ + crossfader + timeline ─────────
             androidx.compose.material3.Card(
                 colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = card),
                 shape = RoundedCornerShape(16.dp),
@@ -348,7 +354,37 @@ fun DjScreen(
                         )
                     }
 
-                    // PLATINES + CROSSFADER + BOUTON
+                    // === FADER VOLUME DJ (BUS PRINCIPAL DJ) ===
+                    Spacer(Modifier.height(4.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Volume DJ",
+                            color = sub,
+                            fontSize = 11.sp,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Text(
+                            text = "${(djBusLevel * 100).toInt()}%",
+                            color = onBg,
+                            fontSize = 11.sp
+                        )
+                    }
+                    Slider(
+                        value = djBusLevel,
+                        onValueChange = { v ->
+                            val clamped = v.coerceIn(0f, 1f)
+                            djBusLevel = clamped
+                            DjBusController.setUiLevel(clamped)
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 4.dp)
+                    )
+
+                    // PLATINES + CROSSFADER + BOUTON GO
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
