@@ -28,12 +28,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.core.DisplayPrefs
 import com.patrick.lrcreader.core.FillerSoundManager
-import com.patrick.lrcreader.core.PlaybackCoordinator
 import com.patrick.lrcreader.core.LrcLine
 import com.patrick.lrcreader.core.LrcStorage
+import com.patrick.lrcreader.core.PlaybackCoordinator
+import com.patrick.lrcreader.core.PlayerBusController
 import com.patrick.lrcreader.core.PrompterPrefs
 import com.patrick.lrcreader.core.pauseWithFade
-// DarkBlueGradientBackground supprimé ici
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.abs
@@ -60,6 +60,12 @@ fun PlayerScreen(
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
     val context = LocalContext.current
+
+    // On branche ce MediaPlayer sur le bus LECTEUR
+    LaunchedEffect(Unit) {
+        PlayerBusController.attachPlayer(context, mediaPlayer)
+        PlayerBusController.applyCurrentVolume(context)
+    }
 
     // Décalage global des paroles (latence)
     val lyricsDelayMs = 1000L
@@ -167,6 +173,9 @@ fun PlayerScreen(
         currentLrcIndex = targetIndex
         positionMs = targetMs
         if (!mediaPlayer.isPlaying) {
+            // Volume appliqué par le bus
+            PlayerBusController.applyCurrentVolume(context)
+
             mediaPlayer.start()
             onIsPlayingChange(true)
         }
@@ -209,7 +218,6 @@ fun PlayerScreen(
     ) {
         if (isEditingLyrics) {
             // ========= MODE ÉDITION =========
-            // (on garde ton écran d’édition tel quel pour l’instant)
             LyricsEditorSection(
                 highlightColor = highlightColor,
                 currentTrackUri = currentTrackUri,
@@ -344,6 +352,7 @@ fun PlayerScreen(
                             isPlaying = isPlaying,
                             onPlayPause = {
                                 if (mediaPlayer.isPlaying) {
+                                    // Pause + bascule éventuelle vers le fond sonore
                                     pauseWithFade(scope, mediaPlayer, 400L) {
                                         onIsPlayingChange(false)
                                         PlaybackCoordinator.onFillerStart()
@@ -352,7 +361,10 @@ fun PlayerScreen(
                                 } else {
                                     if (durationMs > 0) {
                                         PlaybackCoordinator.onPlayerStart()
-                                        mediaPlayer.setVolume(1f, 1f)
+
+                                        // 🔊 Le bus applique le volume courant (fader LECTEUR)
+                                        PlayerBusController.applyCurrentVolume(context)
+
                                         mediaPlayer.start()
                                         onIsPlayingChange(true)
                                         if (!isContinuousScroll) centerCurrentLineImmediate()
@@ -363,6 +375,10 @@ fun PlayerScreen(
                                 mediaPlayer.seekTo(0)
                                 if (!mediaPlayer.isPlaying) {
                                     PlaybackCoordinator.onPlayerStart()
+
+                                    // 🔊 Même chose quand on relance depuis le début
+                                    PlayerBusController.applyCurrentVolume(context)
+
                                     mediaPlayer.start()
                                     onIsPlayingChange(true)
                                 }

@@ -1,5 +1,5 @@
 package com.patrick.lrcreader.ui
-
+import com.patrick.lrcreader.core.PlayerBusController
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.core.FillerSoundPrefs
+import com.patrick.lrcreader.core.PlayerVolumePrefs
 import kotlinx.coroutines.launch
 
 /**
@@ -75,9 +76,12 @@ fun MixerHomePreviewScreen(
     }
 
     // Volume réel stocké dans les prefs (0..1)
-    val initialReal = FillerSoundPrefs.getFillerVolume(context)
+    val initialRealFond = FillerSoundPrefs.getFillerVolume(context)
     // Volume "UI" (0..1) pour le fader FOND
-    val fondInitialUi = realToUiVolume(initialReal)
+    val fondInitialUi = realToUiVolume(initialRealFond)
+
+    // Volume LECTEUR vient aussi des prefs (0..1 UI)
+    val lecteurInitialUi = PlayerVolumePrefs.load(context).coerceIn(0f, 1f)
 
     val backgroundBrush = Brush.verticalGradient(
         listOf(
@@ -188,7 +192,7 @@ fun MixerHomePreviewScreen(
                         horizontalArrangement = Arrangement.SpaceEvenly,
                         verticalAlignment = Alignment.Bottom
                     ) {
-                        // LECTEUR (pas encore branché)
+                        // LECTEUR = branché sur le bus lecteur global
                         MixerChannelColumn(
                             label = "LECTEUR",
                             subtitle = "Playlists",
@@ -196,8 +200,11 @@ fun MixerHomePreviewScreen(
                             faderColor = Color(0xFF81C784),
                             meterColor = Color(0xFF66BB6A),
                             onClick = onOpenPlayer,
-                            initialLevel = 0.75f
-                        )
+                            initialLevel = PlayerBusController.loadUiVolume(context)
+                        ) { uiLevel ->
+                            // 🔊 on envoie directement au contrôleur global
+                            PlayerBusController.setUiVolumeFromMixer(context, uiLevel)
+                        }
 
                         // FOND = 🔥 branché sur FillerSound (sécurisé)
                         MixerChannelColumn(
@@ -256,7 +263,8 @@ fun MixerHomePreviewScreen(
 
 /**
  * Une tranche : vu-mètre + long fader + bouton.
- * Pour "FOND", on remonte la valeur via onFondLevelChange.
+ * onLevelChange est appelé pour tous les canaux (LECTEUR, FOND, DJ…),
+ * mais pour l’instant on ne l’exploite que pour LECTEUR et FOND.
  */
 @Composable
 private fun MixerChannelColumn(
@@ -267,12 +275,12 @@ private fun MixerChannelColumn(
     meterColor: Color,
     onClick: () -> Unit,
     initialLevel: Float = 0.75f,
-    onFondLevelChange: (Float) -> Unit = {}
+    onLevelChange: (Float) -> Unit = {}
 ) {
 
     val scope = rememberCoroutineScope()
 
-    // IMPORTANT : on part d'un niveau initial (pour FOND : valeur des prefs)
+    // IMPORTANT : on part d'un niveau initial
     var level by remember { mutableFloatStateOf(initialLevel.coerceIn(0f, 1f)) }
 
     // Animation VU
@@ -356,9 +364,8 @@ private fun MixerChannelColumn(
 
         Spacer(Modifier.height(16.dp))
 
-        // FADER ANALOGIQUE — VERSION LONGUE
-// 👉 on augmente la "course" pour le rendre plus doux
-        val dragRangePx = 720f   // au lieu de 260f : 2x moins sensible
+        // FADER ANALOGIQUE — VERSION LONGUE (doux au toucher)
+        val dragRangePx = 720f   // grande course => plus progressif
 
         Box(
             modifier = Modifier
@@ -371,9 +378,9 @@ private fun MixerChannelColumn(
                         val fraction = -delta / dragRangePx
                         val newLevel = (level + fraction).coerceIn(0f, 1f)
                         level = newLevel
-                        if (label == "FOND") {
-                            onFondLevelChange(newLevel)
-                        }
+
+                        // On remonte la valeur pour que le parent fasse ce qu’il veut
+                        onLevelChange(newLevel)
                     }
                 ),
             contentAlignment = Alignment.Center
