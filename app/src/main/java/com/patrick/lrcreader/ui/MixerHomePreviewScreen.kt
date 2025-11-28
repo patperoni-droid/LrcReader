@@ -8,6 +8,9 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -20,8 +23,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -31,13 +32,15 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.patrick.lrcreader.core.FillerSoundManager
+import com.patrick.lrcreader.core.FillerSoundPrefs
 import kotlinx.coroutines.launch
 
 /**
@@ -55,6 +58,26 @@ fun MixerHomePreviewScreen(
     onOpenDj: () -> Unit = {},
     onOpenTuner: () -> Unit = {} // conservé mais non utilisé
 ) {
+
+    val context = LocalContext.current
+
+    // === mêmes courbes que dans FillerSoundScreen =========================
+
+    fun uiToRealVolume(u: Float): Float {
+        val clamped = u.coerceIn(0f, 1f)
+        return clamped * clamped * clamped // u³
+    }
+
+    fun realToUiVolume(r: Float): Float {
+        val clamped = r.coerceIn(0f, 1f)
+        // racine cubique
+        return kotlin.math.cbrt(clamped.toDouble()).toFloat()
+    }
+
+    // Volume réel stocké dans les prefs (0..1)
+    val initialReal = FillerSoundPrefs.getFillerVolume(context)
+    // Volume "UI" (0..1) pour le fader FOND
+    val fondInitialUi = realToUiVolume(initialReal)
 
     val backgroundBrush = Brush.verticalGradient(
         listOf(
@@ -165,34 +188,45 @@ fun MixerHomePreviewScreen(
                         horizontalArrangement = Arrangement.SpaceEvenly,
                         verticalAlignment = Alignment.Bottom
                     ) {
-                        // LECTEUR = récupère TOUT ce qui appartenait avant à FOND
+                        // LECTEUR (pas encore branché)
                         MixerChannelColumn(
                             label = "LECTEUR",
                             subtitle = "Playlists",
-                            icon = Icons.Filled.MusicNote,          // 🔁 icône de FOND
-                            faderColor = Color(0xFF81C784),         // 🔁 couleur FOND
-                            meterColor = Color(0xFF66BB6A),         // 🔁 couleur FOND
-                            onClick = onOpenPlayer
+                            icon = Icons.Filled.MusicNote,
+                            faderColor = Color(0xFF81C784),
+                            meterColor = Color(0xFF66BB6A),
+                            onClick = onOpenPlayer,
+                            initialLevel = 0.75f
                         )
 
-                        // FOND = récupère TOUT ce qui appartenait avant à LECTEUR
+                        // FOND = 🔥 branché sur FillerSound (sécurisé)
                         MixerChannelColumn(
                             label = "FOND",
                             subtitle = "Ambiance",
-                            icon = Icons.Filled.LibraryMusic,       // 🔁 icône de LECTEUR
-                            faderColor = Color(0xFFFFC107),         // 🔁 couleur LECTEUR
-                            meterColor = Color(0xFFFFA000),         // 🔁 couleur LECTEUR
-                            onClick = onOpenFondSonore
-                        )
+                            icon = Icons.Filled.LibraryMusic,
+                            faderColor = Color(0xFFFFC107),
+                            meterColor = Color(0xFFFFA000),
+                            onClick = onOpenFondSonore,
+                            initialLevel = fondInitialUi
+                        ) { uiLevel ->
+                            try {
+                                val real = uiToRealVolume(uiLevel)
+                                FillerSoundPrefs.saveFillerVolume(context, real)
+                                FillerSoundManager.setVolume(real)
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
+                        }
 
-                        // DJ ne change pas
+                        // DJ (visuel seulement pour l’instant)
                         MixerChannelColumn(
                             label = "DJ",
                             subtitle = "Crossfade",
                             icon = Icons.Filled.Headphones,
                             faderColor = Color(0xFF64B5F6),
                             meterColor = Color(0xFF42A5F5),
-                            onClick = onOpenDj
+                            onClick = onOpenDj,
+                            initialLevel = 0.75f
                         )
                     }
                 }
@@ -222,6 +256,7 @@ fun MixerHomePreviewScreen(
 
 /**
  * Une tranche : vu-mètre + long fader + bouton.
+ * Pour "FOND", on remonte la valeur via onFondLevelChange.
  */
 @Composable
 private fun MixerChannelColumn(
@@ -230,11 +265,15 @@ private fun MixerChannelColumn(
     icon: ImageVector,
     faderColor: Color,
     meterColor: Color,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    initialLevel: Float = 0.75f,
+    onFondLevelChange: (Float) -> Unit = {}
 ) {
 
     val scope = rememberCoroutineScope()
-    var level by remember { mutableFloatStateOf(0.75f) }
+
+    // IMPORTANT : on part d'un niveau initial (pour FOND : valeur des prefs)
+    var level by remember { mutableFloatStateOf(initialLevel.coerceIn(0f, 1f)) }
 
     // Animation VU
     val infinite = rememberInfiniteTransition(label)
@@ -318,10 +357,25 @@ private fun MixerChannelColumn(
         Spacer(Modifier.height(16.dp))
 
         // FADER ANALOGIQUE — VERSION LONGUE
+// 👉 on augmente la "course" pour le rendre plus doux
+        val dragRangePx = 720f   // au lieu de 260f : 2x moins sensible
+
         Box(
             modifier = Modifier
-                .height(310.dp)   // <-- PLUS LONG
-                .width(40.dp),
+                .height(310.dp)
+                .width(40.dp)
+                .draggable(
+                    orientation = Orientation.Vertical,
+                    state = rememberDraggableState { delta ->
+                        // delta > 0 = doigt vers le bas => on baisse le niveau
+                        val fraction = -delta / dragRangePx
+                        val newLevel = (level + fraction).coerceIn(0f, 1f)
+                        level = newLevel
+                        if (label == "FOND") {
+                            onFondLevelChange(newLevel)
+                        }
+                    }
+                ),
             contentAlignment = Alignment.Center
         ) {
 
@@ -338,14 +392,18 @@ private fun MixerChannelColumn(
                     )
             )
 
-            // Curseur
+            // Curseur (avec fix pour éviter weight(0f))
             Column(
                 modifier = Modifier.fillMaxHeight(),
                 verticalArrangement = Arrangement.Top,
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 val clamped = level.coerceIn(0f, 1f)
-                Spacer(Modifier.weight(1f - clamped))
+
+                val topWeight = (1f - clamped).coerceAtLeast(0.0001f)
+                val bottomWeight = clamped.coerceAtLeast(0.0001f)
+
+                Spacer(Modifier.weight(topWeight))
 
                 Box(
                     modifier = Modifier
@@ -371,23 +429,8 @@ private fun MixerChannelColumn(
                     )
                 }
 
-                Spacer(Modifier.weight(clamped))
+                Spacer(Modifier.weight(bottomWeight))
             }
-
-            // Slider transparent
-            Slider(
-                value = level,
-                onValueChange = { level = it },
-                valueRange = 0f..1f,
-                modifier = Modifier
-                    .matchParentSize()
-                    .rotate(-90f),
-                colors = SliderDefaults.colors(
-                    thumbColor = Color.Transparent,
-                    activeTrackColor = Color.Transparent,
-                    inactiveTrackColor = Color.Transparent
-                )
-            )
         }
 
         Spacer(Modifier.height(12.dp))
