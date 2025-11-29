@@ -15,10 +15,12 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -27,6 +29,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -41,16 +44,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.core.FillerSoundPrefs
-import com.patrick.lrcreader.core.PlayerVolumePrefs
 import com.patrick.lrcreader.core.PlayerBusController
+import com.patrick.lrcreader.core.PlayerVolumePrefs
 import com.patrick.lrcreader.core.DjBusController
 import kotlinx.coroutines.launch
 
 /**
  * Maquette "console analogique"
  * - Faders réalistes
- * - Bouton accordeur SUPPRIMÉ
- * - Textes réduits (pas de retour à la ligne)
+ * - Bouton accordeur via onOpenTuner
+ * - Bloc-notes via showNotes
  */
 @Composable
 fun MixerHomePreviewScreen(
@@ -59,10 +62,13 @@ fun MixerHomePreviewScreen(
     onOpenPlayer: () -> Unit = {},
     onOpenFondSonore: () -> Unit = {},
     onOpenDj: () -> Unit = {},
-    onOpenTuner: () -> Unit = {} // conservé mais non utilisé
+    onOpenTuner: () -> Unit = {} // appelé par l’icône Accordeur
 ) {
 
     val context = LocalContext.current
+
+    // Affichage du bloc-notes par-dessus le BUS PRINCIPAL
+    var showNotes by remember { mutableStateOf(false) }
 
     // === mêmes courbes que dans FillerSoundScreen =========================
 
@@ -135,12 +141,35 @@ fun MixerHomePreviewScreen(
 
                 Spacer(Modifier.weight(1f))
 
+                // Icône existante (EQ) – décorative
                 Icon(
                     imageVector = Icons.Filled.GraphicEq,
                     contentDescription = null,
                     tint = Color(0xFFFFC107),
                     modifier = Modifier.size(24.dp)
                 )
+
+                Spacer(Modifier.width(4.dp))
+
+                // Icône : bloc-notes
+                IconButton(onClick = { showNotes = true }) {
+                    Icon(
+                        imageVector = Icons.Filled.Edit,
+                        contentDescription = "Bloc-notes",
+                        tint = Color(0xFFFFF59D)
+                    )
+                }
+
+                Spacer(Modifier.width(4.dp))
+
+                // Nouvelle icône : ACCORDEUR
+                IconButton(onClick = onOpenTuner) {
+                    Icon(
+                        imageVector = Icons.Filled.Tune,
+                        contentDescription = "Accordeur",
+                        tint = Color(0xFF80DEEA)
+                    )
+                }
             }
 
             Spacer(Modifier.height(12.dp))
@@ -263,6 +292,17 @@ fun MixerHomePreviewScreen(
                         ),
                         shape = RoundedCornerShape(100.dp)
                     )
+            )
+        }
+
+        // ─────────────────────────────
+        //  OVERLAY : BLOC-NOTES
+        // ─────────────────────────────
+        if (showNotes) {
+            NotesScreen(
+                modifier = Modifier.fillMaxSize(),
+                context = context,
+                onClose = { showNotes = false }
             )
         }
     }
