@@ -77,7 +77,7 @@ class MainActivity : ComponentActivity() {
                 var djMasterLevel by remember { mutableStateOf(1f) }
                 var fillerMasterLevel by remember { mutableStateOf(0.6f) }
 
-                // 👇 nouveau : écran plein écran "console" Mixer (maquette visuelle)
+                // 👇 écran plein écran "console" Mixer (maquette visuelle)
                 var isMixerPreviewOpen by remember { mutableStateOf(false) }
 
                 // ID normalisé pour le prompteur ("note:123" ou "text:abc")
@@ -223,8 +223,8 @@ class MainActivity : ComponentActivity() {
                             modifier = Modifier.padding(innerPadding),
                             onOpenPlayer = {
                                 isMixerPreviewOpen = false
-                                selectedTab = BottomTab.QuickPlaylists
-                                SessionPrefs.saveTab(ctx, TAB_QUICK)
+                                selectedTab = BottomTab.Player
+                                SessionPrefs.saveTab(ctx, TAB_PLAYER)
                             },
                             onOpenFondSonore = {
                                 isMixerPreviewOpen = false
@@ -294,11 +294,10 @@ class MainActivity : ComponentActivity() {
                             modifier = Modifier.padding(innerPadding),
                             onBack = {
                                 // Comme c'est l'écran Home, on ne fait rien de spécial.
-                                // Si tu veux, on pourrait plus tard revenir vers un autre onglet ici.
                             },
                             onOpenPlayer = {
-                                selectedTab = BottomTab.QuickPlaylists
-                                SessionPrefs.saveTab(ctx, TAB_QUICK)
+                                selectedTab = BottomTab.Player
+                                SessionPrefs.saveTab(ctx, TAB_PLAYER)
                             },
                             onOpenFondSonore = {
                                 isFillerSettingsOpen = true
@@ -398,6 +397,7 @@ class MainActivity : ComponentActivity() {
                                 SessionPrefs.saveTab(ctx, TAB_TUNER)
                             }
                         )
+
                         is BottomTab.Dj -> DjScreen(
                             modifier = Modifier.padding(innerPadding),
                             context = ctx
