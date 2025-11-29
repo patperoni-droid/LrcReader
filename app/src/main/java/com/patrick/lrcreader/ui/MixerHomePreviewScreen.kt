@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -51,8 +52,8 @@ import kotlinx.coroutines.launch
 /**
  * Maquette "console analogique"
  * - Faders réalistes
- * - Bouton accordeur SUPPRIMÉ
- * - Textes réduits (pas de retour à la ligne)
+ * - Bouton accordeur via onOpenTuner
+ * - Bloc-notes via showNotes
  */
 @Composable
 fun MixerHomePreviewScreen(
@@ -61,7 +62,7 @@ fun MixerHomePreviewScreen(
     onOpenPlayer: () -> Unit = {},
     onOpenFondSonore: () -> Unit = {},
     onOpenDj: () -> Unit = {},
-    onOpenTuner: () -> Unit = {} // conservé mais non utilisé
+    onOpenTuner: () -> Unit = {} // appelé par l’icône Accordeur
 ) {
 
     val context = LocalContext.current
@@ -150,12 +151,23 @@ fun MixerHomePreviewScreen(
 
                 Spacer(Modifier.width(4.dp))
 
-                // Nouvelle icône : bloc-notes
+                // Icône : bloc-notes
                 IconButton(onClick = { showNotes = true }) {
                     Icon(
                         imageVector = Icons.Filled.Edit,
                         contentDescription = "Bloc-notes",
                         tint = Color(0xFFFFF59D)
+                    )
+                }
+
+                Spacer(Modifier.width(4.dp))
+
+                // Nouvelle icône : ACCORDEUR
+                IconButton(onClick = onOpenTuner) {
+                    Icon(
+                        imageVector = Icons.Filled.Tune,
+                        contentDescription = "Accordeur",
+                        tint = Color(0xFF80DEEA)
                     )
                 }
             }
