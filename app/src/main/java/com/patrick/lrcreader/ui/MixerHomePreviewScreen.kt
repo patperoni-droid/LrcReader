@@ -42,7 +42,7 @@ import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.core.FillerSoundPrefs
 import com.patrick.lrcreader.core.PlayerVolumePrefs
-import com.patrick.lrcreader.core.dj.DjEngine
+import com.patrick.lrcreader.core.PlayerBusController
 import com.patrick.lrcreader.core.DjBusController
 import kotlinx.coroutines.launch
 
@@ -197,7 +197,7 @@ fun MixerHomePreviewScreen(
                         horizontalArrangement = Arrangement.SpaceEvenly,
                         verticalAlignment = Alignment.Bottom
                     ) {
-                        // LECTEUR = branché sur PlayerVolumePrefs
+                        // LECTEUR = branché sur PlayerBusController
                         MixerChannelColumn(
                             label = "LECTEUR",
                             subtitle = "Playlists",
@@ -207,8 +207,8 @@ fun MixerHomePreviewScreen(
                             onClick = onOpenPlayer,
                             initialLevel = lecteurInitialUi
                         ) { uiLevel ->
-                            // 🔊 on enregistre le niveau UI dans les prefs LECTEUR
-                            PlayerVolumePrefs.save(context, uiLevel)
+                            // 🔊 Bus principal -> bus lecteur (prefs + MediaPlayer attaché)
+                            PlayerBusController.setUiLevelFromBusUi(context, uiLevel)
                         }
 
                         // FOND = 🔥 branché sur FillerSound (sécurisé)
@@ -240,9 +240,7 @@ fun MixerHomePreviewScreen(
                             onClick = onOpenDj,
                             initialLevel = djInitialUi
                         ) { uiLevel ->
-                            // 👉 on passe par le contrôleur centralisé
                             DjBusController.setUiLevel(uiLevel)
-                            // (DjBusController se charge de propager à DjEngine.setMasterVolume)
                         }
                     }
                 }

@@ -61,7 +61,7 @@ fun PlayerScreen(
     val density = LocalDensity.current
     val context = LocalContext.current
 
-    // On branche ce MediaPlayer sur le bus LECTEUR
+    // 🔊 On branche ce MediaPlayer sur le bus LECTEUR
     LaunchedEffect(Unit) {
         PlayerBusController.attachPlayer(context, mediaPlayer)
         PlayerBusController.applyCurrentVolume(context)
@@ -173,7 +173,7 @@ fun PlayerScreen(
         currentLrcIndex = targetIndex
         positionMs = targetMs
         if (!mediaPlayer.isPlaying) {
-            // Volume appliqué par le bus
+            // 🔊 Volume appliqué via le bus lecteur
             PlayerBusController.applyCurrentVolume(context)
 
             mediaPlayer.start()
