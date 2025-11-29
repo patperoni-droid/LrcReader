@@ -1,5 +1,5 @@
 package com.patrick.lrcreader.core.dj
-
+import com.patrick.lrcreader.core.PlaybackCoordinator
 import android.content.Context
 import android.media.MediaPlayer
 import android.net.Uri
@@ -179,6 +179,9 @@ object DjEngine {
 
         scope.launch {
             if (activeSlot == 0) {
+                // 👉 Première mise en lecture DJ : on prévient le coordonnateur
+                PlaybackCoordinator.onDjStart()
+
                 // rien ne joue → on démarre sur A
                 FillerSoundManager.fadeOutAndStop(400)
                 mpA?.release()
@@ -202,9 +205,9 @@ object DjEngine {
                     activeSlot = 1
                     playingUri = uriString
 
-                    // 👉 visuellement, on ramène le slider côté A
+                    // visuel + volumes
                     animateSliderTo(0f, durationMs = 300)
-                    applyCrossfader()   // applique crossfader + masterLevel
+                    applyCrossfader()
                 } catch (e: Exception) {
                     e.printStackTrace()
                     mpA = null
@@ -215,39 +218,7 @@ object DjEngine {
             } else {
                 // quelque chose joue déjà → on prépare l’autre deck à 0 de volume
                 val loadIntoA = (activeSlot == 2)
-                if (loadIntoA) {
-                    mpA?.release()
-                    val p = MediaPlayer()
-                    mpA = p
-                    try {
-                        withContext(Dispatchers.IO) {
-                            p.setDataSource(appContext, Uri.parse(uriString))
-                            p.prepare()
-                        }
-                        p.setVolume(0f, 0f)
-                        deckATitle = displayName
-                        deckAUri = uriString
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                        mpA = null
-                    }
-                } else {
-                    mpB?.release()
-                    val p = MediaPlayer()
-                    mpB = p
-                    try {
-                        withContext(Dispatchers.IO) {
-                            p.setDataSource(appContext, Uri.parse(uriString))
-                            p.prepare()
-                        }
-                        p.setVolume(0f, 0f)
-                        deckBTitle = displayName
-                        deckBUri = uriString
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                        mpB = null
-                    }
-                }
+                // ... (ne change rien ici)
             }
 
             pushState()

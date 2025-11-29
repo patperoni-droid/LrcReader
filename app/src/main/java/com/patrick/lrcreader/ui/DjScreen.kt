@@ -709,6 +709,8 @@ fun DjScreen(
                                     title = entry.name,
                                     isPlaying = isSelected,
                                     onPlay = {
+                                        // 🔥 Démarrage DJ => coupe lecteur + fond sonore via coordonnateur
+                                        PlaybackCoordinator.onDjStart()
                                         DjEngine.selectTrackFromList(uriStr, entry.name)
                                     },
                                     onEnqueue = {
