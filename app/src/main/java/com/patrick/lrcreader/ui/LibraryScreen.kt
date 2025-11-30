@@ -64,7 +64,8 @@ private data class LibraryEntry(
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun LibraryScreen(
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onPlayFromLibrary: (String) -> Unit   // 👈 nouveau callback pour lancer la lecture
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -367,11 +368,10 @@ fun LibraryScreen(
                                         )
                                         .combinedClickable(
                                             onClick = {
-                                                selectedSongs =
-                                                    if (isSelected) selectedSongs - uri
-                                                    else selectedSongs + uri
+                                                // clic "vide" sur la ligne : on ne fait rien
                                             },
                                             onLongClick = {
+                                                // long clic = sélectionner ce fichier + ouvrir attribution
                                                 selectedSongs = setOf(uri)
                                                 showAssignDialog = true
                                             }
@@ -379,6 +379,7 @@ fun LibraryScreen(
                                         .padding(horizontal = 12.dp, vertical = 8.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
+                                    // Carré de sélection à gauche
                                     Box(
                                         modifier = Modifier
                                             .size(20.dp)
@@ -393,7 +394,12 @@ fun LibraryScreen(
                                                 1.dp,
                                                 if (isSelected) accent else Color.White.copy(alpha = 0.7f),
                                                 RoundedCornerShape(4.dp)
-                                            ),
+                                            )
+                                            .clickable {
+                                                selectedSongs =
+                                                    if (isSelected) selectedSongs - uri
+                                                    else selectedSongs + uri
+                                            },
                                         contentAlignment = Alignment.Center
                                     ) {
                                         if (isSelected) {
@@ -404,11 +410,19 @@ fun LibraryScreen(
                                             )
                                         }
                                     }
+
                                     Spacer(Modifier.width(10.dp))
+
+                                    // Titre au centre -> lecture dans le lecteur
                                     Text(
                                         entry.name,
                                         color = Color.White,
-                                        modifier = Modifier.weight(1f)
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clickable {
+                                                // 👉 Lancer la lecture de ce fichier
+                                                onPlayFromLibrary(uri.toString())
+                                            }
                                     )
 
                                     // ─── menu 3 points par fichier ───

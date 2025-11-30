@@ -373,7 +373,21 @@ class MainActivity : ComponentActivity() {
                         )
 
                         is BottomTab.Library ->
-                            LibraryScreen(modifier = Modifier.padding(innerPadding))
+                            LibraryScreen(
+                                modifier = Modifier.padding(paddingValues = innerPadding),
+                                onPlayFromLibrary = { uriString ->
+                                    // on lance la lecture depuis la bibliothèque
+                                    playWithCrossfade(uriString, null)
+
+                                    currentPlayingUri = uriString
+                                    // couleur par défaut des paroles quand ça vient de la bibliothèque
+                                    currentLyricsColor = Color(0xFFE040FB)
+
+                                    // on bascule sur l’onglet Player
+                                    selectedTab = BottomTab.Player
+                                    SessionPrefs.saveTab(ctx, TAB_PLAYER)
+                                }
+                            )
 
                         is BottomTab.AllPlaylists -> {
                             val m = Modifier.padding(innerPadding)
