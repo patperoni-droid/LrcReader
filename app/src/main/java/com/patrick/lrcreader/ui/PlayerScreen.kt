@@ -133,8 +133,15 @@ fun PlayerScreen(
     }
 
     // ---------- Autoswitch playlist ----------
-    LaunchedEffect(durationMs, positionMs, hasRequestedPlaylist) {
-        if (!hasRequestedPlaylist && durationMs > 0 && positionMs >= durationMs - 15_000) {
+    LaunchedEffect(durationMs, positionMs, hasRequestedPlaylist, isEditingLyrics) {
+        // 👉 On NE fait le retour auto vers la playlist
+        //    QUE si on n'est pas en train d'éditer les paroles.
+        if (
+            !isEditingLyrics &&
+            !hasRequestedPlaylist &&
+            durationMs > 0 &&
+            positionMs >= durationMs - 15_000
+        ) {
             hasRequestedPlaylist = true
             onRequestShowPlaylist()
         }
