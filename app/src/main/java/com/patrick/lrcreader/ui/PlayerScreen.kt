@@ -1,5 +1,6 @@
 package com.patrick.lrcreader.ui
 
+import com.patrick.lrcreader.core.AutoReturnPrefs
 import android.media.MediaPlayer
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -133,14 +134,17 @@ fun PlayerScreen(
     }
 
     // ---------- Autoswitch playlist ----------
-    LaunchedEffect(durationMs, positionMs, hasRequestedPlaylist, isEditingLyrics) {
-        // 👉 On NE fait le retour auto vers la playlist
-        //    QUE si on n'est pas en train d'éditer les paroles.
+    // ---------- Autoswitch playlist (optionnel) ----------
+    LaunchedEffect(durationMs, positionMs, hasRequestedPlaylist, currentTrackUri) {
+        // On relit la préférence à chaque changement de position/durée
+        val enabled = AutoReturnPrefs.isEnabled(context)
+
+        // 10 secondes avant la fin si activé
         if (
-            !isEditingLyrics &&
+            enabled &&
             !hasRequestedPlaylist &&
             durationMs > 0 &&
-            positionMs >= durationMs - 15_000
+            positionMs >= durationMs - 10_000
         ) {
             hasRequestedPlaylist = true
             onRequestShowPlaylist()

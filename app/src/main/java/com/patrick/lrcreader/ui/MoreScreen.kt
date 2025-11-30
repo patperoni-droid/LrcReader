@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -16,18 +17,22 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
+import com.patrick.lrcreader.core.AutoReturnPrefs
 
 /* ─────────────────────────────
    Écran "Plus" (Paramètres)
@@ -82,6 +87,13 @@ private fun MoreRootScreen(
     onOpenEdit: () -> Unit,
     onOpenTuner: () -> Unit
 ) {
+    val context = LocalContext.current
+
+    // État du switch "retour auto"
+    var autoReturnEnabled by remember {
+        mutableStateOf(AutoReturnPrefs.isEnabled(context))
+    }
+
     // Même type de fond que la console / accordeur
     val backgroundBrush = Brush.verticalGradient(
         listOf(
@@ -144,7 +156,7 @@ private fun MoreRootScreen(
                             fontSize = 15.sp,
                             letterSpacing = 2.sp,
                             modifier = Modifier
-                                .align(androidx.compose.ui.Alignment.Center)
+                                .align(Alignment.Center)
                         )
                     }
 
@@ -165,6 +177,16 @@ private fun MoreRootScreen(
 
                     // Accordeur, dans le bloc Audio
                     SettingsItem("🎸  Accordeur", onClick = onOpenTuner)
+
+                    // 🔁 Retour auto vers la playlist (ON/OFF)
+                    SwitchSettingItem(
+                        label = "Retour auto vers la playlist (10 s avant la fin)",
+                        checked = autoReturnEnabled,
+                        onCheckedChange = { enabled ->
+                            autoReturnEnabled = enabled
+                            AutoReturnPrefs.setEnabled(context, enabled)
+                        }
+                    )
 
                     HorizontalDivider(color = Color(0xFF262626))
 
@@ -214,6 +236,36 @@ private fun SettingsItem(label: String, onClick: () -> Unit) {
             color = Color(0xFFF5F5F5),
             fontSize = 14.sp
         )
+    }
+    HorizontalDivider(color = Color(0xFF1E1E1E))
+}
+
+@Composable
+private fun SwitchSettingItem(
+    label: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 14.dp, vertical = 8.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = label,
+                color = Color(0xFFF5F5F5),
+                fontSize = 14.sp,
+                modifier = Modifier.weight(1f)
+            )
+            Switch(
+                checked = checked,
+                onCheckedChange = onCheckedChange
+            )
+        }
     }
     HorizontalDivider(color = Color(0xFF1E1E1E))
 }
