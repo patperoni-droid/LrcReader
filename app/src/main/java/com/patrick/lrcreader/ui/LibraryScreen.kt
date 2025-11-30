@@ -87,6 +87,9 @@ fun LibraryScreen(
     var actionsExpanded by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(false) }
 
+    // pour "Déplacer vers un dossier"
+    var pendingMoveUri by remember { mutableStateOf<Uri?>(null) }
+
     val bottomBarHeight = 56.dp
 
     val pickFolderLauncher = rememberLauncherForActivityResult(
@@ -118,6 +121,48 @@ fun LibraryScreen(
                         isLoading = false
                     }
                 }
+            }
+        }
+    )
+
+    // launcher pour choisir le dossier de destination (déplacement)
+    val moveFolderLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree(),
+        onResult = { destUri ->
+            val src = pendingMoveUri
+            if (destUri != null && src != null) {
+                scope.launch {
+                    isLoading = true
+                    try {
+                        try {
+                            context.contentResolver.takePersistableUriPermission(
+                                destUri,
+                                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                            )
+                        } catch (_: Exception) {}
+
+                        withContext(Dispatchers.IO) {
+                            moveDocumentFile(context, src, destUri)
+                        }
+
+                        // on rafraîchit le dossier courant
+                        currentFolderUri?.let { folderUri ->
+                            val fresh = withContext(Dispatchers.IO) {
+                                listEntriesInFolder(context, folderUri)
+                            }
+                            entries = fresh
+                            LibraryFolderCache.put(folderUri, fresh)
+                            selectedSongs = selectedSongs - src
+                        }
+                    } finally {
+                        pendingMoveUri = null
+                        delay(200)
+                        isLoading = false
+                    }
+                }
+            } else {
+                // annulé
+                pendingMoveUri = null
             }
         }
     )
@@ -308,6 +353,7 @@ fun LibraryScreen(
                                 // ─── Ligne fichier audio / json ───
                                 val uri = entry.uri
                                 val isSelected = selectedSongs.contains(uri)
+                                var rowMenuOpen by remember(uri) { mutableStateOf(false) }
 
                                 Row(
                                     modifier = Modifier
@@ -364,6 +410,38 @@ fun LibraryScreen(
                                         color = Color.White,
                                         modifier = Modifier.weight(1f)
                                     )
+
+                                    // ─── menu 3 points par fichier ───
+                                    Box {
+                                        IconButton(onClick = { rowMenuOpen = true }) {
+                                            Icon(
+                                                imageVector = Icons.Default.MoreVert,
+                                                contentDescription = "Options du fichier",
+                                                tint = Color.White
+                                            )
+                                        }
+                                        DropdownMenu(
+                                            expanded = rowMenuOpen,
+                                            onDismissRequest = { rowMenuOpen = false }
+                                        ) {
+                                            DropdownMenuItem(
+                                                text = { Text("Attribuer à une liste de lecture") },
+                                                onClick = {
+                                                    rowMenuOpen = false
+                                                    selectedSongs = setOf(uri)
+                                                    showAssignDialog = true
+                                                }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text("Déplacer vers un dossier") },
+                                                onClick = {
+                                                    rowMenuOpen = false
+                                                    pendingMoveUri = uri
+                                                    moveFolderLauncher.launch(null)
+                                                }
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -389,7 +467,7 @@ fun LibraryScreen(
                         }
                     }
 
-                    // ——— BARRE FLOTTANTE (sans AnimatedVisibility) ———
+                    // ——— BARRE FLOTTANTE ———
                     if (selectedSongs.isNotEmpty()) {
                         Box(
                             modifier = Modifier
@@ -531,4 +609,33 @@ private fun clearPersistedUris(context: Context) {
             )
         } catch (_: Exception) {}
     }
+}
+
+/**
+ * Déplace un fichier (audio / json) vers un autre dossier DocumentTree :
+ * - crée une copie dans le dossier cible
+ * - supprime le fichier source
+ */
+private fun moveDocumentFile(
+    context: Context,
+    sourceUri: Uri,
+    destTreeUri: Uri
+) {
+    val cr = context.contentResolver
+    val srcDoc = DocumentFile.fromSingleUri(context, sourceUri) ?: return
+    val destTree = DocumentFile.fromTreeUri(context, destTreeUri) ?: return
+
+    val mime = srcDoc.type ?: "application/octet-stream"
+    val name = srcDoc.name ?: "fichier"
+
+    val destFile = destTree.createFile(mime, name) ?: return
+
+    cr.openInputStream(srcDoc.uri)?.use { input ->
+        cr.openOutputStream(destFile.uri)?.use { output ->
+            input.copyTo(output)
+        }
+    }
+
+    // on supprime l’original seulement après copie réussie
+    srcDoc.delete()
 }
