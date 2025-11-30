@@ -5,12 +5,21 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -24,11 +33,19 @@ import androidx.compose.material3.BottomAppBar
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -61,11 +78,10 @@ private data class LibraryEntry(
     val isDirectory: Boolean
 )
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun LibraryScreen(
     modifier: Modifier = Modifier,
-    onPlayFromLibrary: (String) -> Unit   // 👈 nouveau callback pour lancer la lecture
+    onPlayFromLibrary: (String) -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -88,12 +104,19 @@ fun LibraryScreen(
     var actionsExpanded by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(false) }
 
-    // pour "Déplacer vers un dossier"
+    var showDeleteConfirmDialog by remember { mutableStateOf(false) }
+    var pendingDeleteUri by remember { mutableStateOf<Uri?>(null) }
+
     var pendingMoveUri by remember { mutableStateOf<Uri?>(null) }
+
+    // renommage
+    var renameTarget by remember { mutableStateOf<LibraryEntry?>(null) }
+    var renameText by remember { mutableStateOf("") }
 
     val bottomBarHeight = 56.dp
 
-    val pickFolderLauncher = rememberLauncherForActivityResult(
+    // --- Choix du dossier racine de la bibliothèque ---
+    val pickRootFolderLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree(),
         onResult = { uri ->
             if (uri != null) {
@@ -103,9 +126,11 @@ fun LibraryScreen(
                         try {
                             context.contentResolver.takePersistableUriPermission(
                                 uri,
-                                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                                Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                                        Intent.FLAG_GRANT_WRITE_URI_PERMISSION
                             )
                         } catch (_: Exception) {}
+
                         BackupFolderPrefs.save(context, uri)
 
                         currentFolderUri = uri
@@ -126,34 +151,31 @@ fun LibraryScreen(
         }
     )
 
-    // launcher pour choisir le dossier de destination (déplacement)
-    val moveFolderLauncher = rememberLauncherForActivityResult(
+    // --- Choix du dossier de destination pour "Déplacer vers un dossier" ---
+    val moveToFolderLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree(),
         onResult = { destUri ->
-            val src = pendingMoveUri
-            if (destUri != null && src != null) {
+            val srcUri = pendingMoveUri
+            if (destUri != null && srcUri != null) {
                 scope.launch {
                     isLoading = true
                     try {
                         try {
                             context.contentResolver.takePersistableUriPermission(
                                 destUri,
-                                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                                Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                                        Intent.FLAG_GRANT_WRITE_URI_PERMISSION
                             )
                         } catch (_: Exception) {}
 
-                        withContext(Dispatchers.IO) {
-                            moveDocumentFile(context, src, destUri)
+                        val ok = withContext(Dispatchers.IO) {
+                            moveLibraryFile(context, srcUri, destUri)
                         }
-
-                        // on rafraîchit le dossier courant
-                        currentFolderUri?.let { folderUri ->
-                            val fresh = withContext(Dispatchers.IO) {
-                                listEntriesInFolder(context, folderUri)
-                            }
-                            entries = fresh
-                            LibraryFolderCache.put(folderUri, fresh)
-                            selectedSongs = selectedSongs - src
+                        if (ok) {
+                            // on vire le fichier de la liste courante
+                            entries = entries.filterNot { it.uri == srcUri }
+                            selectedSongs = selectedSongs - srcUri
+                            LibraryFolderCache.clear()
                         }
                     } finally {
                         pendingMoveUri = null
@@ -162,7 +184,6 @@ fun LibraryScreen(
                     }
                 }
             } else {
-                // annulé
                 pendingMoveUri = null
             }
         }
@@ -236,7 +257,8 @@ fun LibraryScreen(
                     )
                     Text(
                         text = currentFolderUri?.let {
-                            DocumentFile.fromTreeUri(context, it)?.name ?: "Aucun dossier sélectionné"
+                            DocumentFile.fromTreeUri(context, it)?.name
+                                ?: "Aucun dossier sélectionné"
                         } ?: "Aucun dossier sélectionné",
                         color = subtitleColor,
                         fontSize = 11.sp
@@ -259,7 +281,7 @@ fun LibraryScreen(
                         text = { Text("Ajouter un dossier") },
                         onClick = {
                             actionsExpanded = false
-                            pickFolderLauncher.launch(null)
+                            pickRootFolderLauncher.launch(null)
                         }
                     )
                     DropdownMenuItem(
@@ -354,7 +376,7 @@ fun LibraryScreen(
                                 // ─── Ligne fichier audio / json ───
                                 val uri = entry.uri
                                 val isSelected = selectedSongs.contains(uri)
-                                var rowMenuOpen by remember(uri) { mutableStateOf(false) }
+                                var menuOpen by remember { mutableStateOf(false) }
 
                                 Row(
                                     modifier = Modifier
@@ -366,20 +388,10 @@ fun LibraryScreen(
                                             if (isSelected) accent else rowBorder,
                                             RoundedCornerShape(10.dp)
                                         )
-                                        .combinedClickable(
-                                            onClick = {
-                                                // clic "vide" sur la ligne : on ne fait rien
-                                            },
-                                            onLongClick = {
-                                                // long clic = sélectionner ce fichier + ouvrir attribution
-                                                selectedSongs = setOf(uri)
-                                                showAssignDialog = true
-                                            }
-                                        )
                                         .padding(horizontal = 12.dp, vertical = 8.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    // Carré de sélection à gauche
+                                    // Carré de sélection
                                     Box(
                                         modifier = Modifier
                                             .size(20.dp)
@@ -392,7 +404,8 @@ fun LibraryScreen(
                                             )
                                             .border(
                                                 1.dp,
-                                                if (isSelected) accent else Color.White.copy(alpha = 0.7f),
+                                                if (isSelected) accent
+                                                else Color.White.copy(alpha = 0.7f),
                                                 RoundedCornerShape(4.dp)
                                             )
                                             .clickable {
@@ -413,45 +426,87 @@ fun LibraryScreen(
 
                                     Spacer(Modifier.width(10.dp))
 
-                                    // Titre au centre -> lecture dans le lecteur
+                                    // Titre -> lecture dans le lecteur
                                     Text(
                                         entry.name,
                                         color = Color.White,
                                         modifier = Modifier
                                             .weight(1f)
                                             .clickable {
-                                                // 👉 Lancer la lecture de ce fichier
                                                 onPlayFromLibrary(uri.toString())
                                             }
                                     )
 
-                                    // ─── menu 3 points par fichier ───
+                                    // Menu ⋮
                                     Box {
-                                        IconButton(onClick = { rowMenuOpen = true }) {
+                                        IconButton(onClick = { menuOpen = true }) {
                                             Icon(
-                                                imageVector = Icons.Default.MoreVert,
-                                                contentDescription = "Options du fichier",
+                                                Icons.Default.MoreVert,
+                                                contentDescription = "Options",
                                                 tint = Color.White
                                             )
                                         }
                                         DropdownMenu(
-                                            expanded = rowMenuOpen,
-                                            onDismissRequest = { rowMenuOpen = false }
+                                            expanded = menuOpen,
+                                            onDismissRequest = { menuOpen = false }
                                         ) {
+                                            // 1) ATTRIBUER À UNE PLAYLIST
                                             DropdownMenuItem(
-                                                text = { Text("Attribuer à une liste de lecture") },
+                                                text = {
+                                                    Text(
+                                                        "Attribuer à une playlist",
+                                                        color = Color.White
+                                                    )
+                                                },
                                                 onClick = {
-                                                    rowMenuOpen = false
+                                                    menuOpen = false
                                                     selectedSongs = setOf(uri)
                                                     showAssignDialog = true
                                                 }
                                             )
+
+                                            // 2) DÉPLACER VERS UN DOSSIER
                                             DropdownMenuItem(
-                                                text = { Text("Déplacer vers un dossier") },
+                                                text = {
+                                                    Text(
+                                                        "Déplacer vers un dossier",
+                                                        color = Color.White
+                                                    )
+                                                },
                                                 onClick = {
-                                                    rowMenuOpen = false
+                                                    menuOpen = false
                                                     pendingMoveUri = uri
-                                                    moveFolderLauncher.launch(null)
+                                                    moveToFolderLauncher.launch(null)
+                                                }
+                                            )
+
+                                            // 3) RENOMMER
+                                            DropdownMenuItem(
+                                                text = {
+                                                    Text(
+                                                        "Renommer",
+                                                        color = Color.White
+                                                    )
+                                                },
+                                                onClick = {
+                                                    menuOpen = false
+                                                    renameTarget = entry
+                                                    renameText = entry.name
+                                                }
+                                            )
+
+                                            // 4) SUPPRIMER DÉFINITIVEMENT
+                                            DropdownMenuItem(
+                                                text = {
+                                                    Text(
+                                                        "Supprimer définitivement",
+                                                        color = Color(0xFFFF6464)
+                                                    )
+                                                },
+                                                onClick = {
+                                                    menuOpen = false
+                                                    pendingDeleteUri = uri
+                                                    showDeleteConfirmDialog = true
                                                 }
                                             )
                                         }
@@ -481,7 +536,7 @@ fun LibraryScreen(
                         }
                     }
 
-                    // ——— BARRE FLOTTANTE ———
+                    // ——— BARRE FLOTTANTE pour sélection multiple ———
                     if (selectedSongs.isNotEmpty()) {
                         Box(
                             modifier = Modifier
@@ -578,6 +633,115 @@ fun LibraryScreen(
             containerColor = Color(0xFF222222)
         )
     }
+
+    // ───── DIALOG SUPPRESSION ─────
+    if (showDeleteConfirmDialog && pendingDeleteUri != null) {
+        AlertDialog(
+            onDismissRequest = {
+                showDeleteConfirmDialog = false
+                pendingDeleteUri = null
+            },
+            title = { Text("Supprimer le fichier", color = Color.White) },
+            text = {
+                Text(
+                    "Supprimer définitivement ce fichier de la bibliothèque ?",
+                    color = Color.White
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val target = pendingDeleteUri ?: return@TextButton
+
+                        scope.launch {
+                            isLoading = true
+                            val ok = withContext(Dispatchers.IO) {
+                                deleteLibraryFile(context, target)
+                            }
+                            if (ok) {
+                                entries = entries.filterNot { it.uri == target }
+                                selectedSongs = selectedSongs - target
+                                LibraryFolderCache.clear()
+                            }
+                            isLoading = false
+                            showDeleteConfirmDialog = false
+                            pendingDeleteUri = null
+                        }
+                    }
+                ) {
+                    Text("Supprimer", color = Color(0xFFFF6464))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteConfirmDialog = false
+                        pendingDeleteUri = null
+                    }
+                ) {
+                    Text("Annuler", color = Color(0xFFB0BEC5))
+                }
+            },
+            containerColor = Color(0xFF222222)
+        )
+    }
+
+    // ───── DIALOG RENOMMAGE ─────
+    if (renameTarget != null) {
+        AlertDialog(
+            onDismissRequest = { renameTarget = null },
+            title = { Text("Renommer le fichier", color = Color.White) },
+            text = {
+                OutlinedTextField(
+                    value = renameText,
+                    onValueChange = { renameText = it },
+                    label = { Text("Nouveau nom", color = Color.LightGray) },
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val target = renameTarget ?: return@TextButton
+                        val newBase = renameText.trim()
+                        if (newBase.isEmpty() || currentFolderUri == null) {
+                            renameTarget = null
+                            return@TextButton
+                        }
+
+                        scope.launch {
+                            isLoading = true
+                            val ok = withContext(Dispatchers.IO) {
+                                renameLibraryFile(
+                                    context = context,
+                                    folderUri = currentFolderUri!!,
+                                    fileUri = target.uri,
+                                    newBaseName = newBase
+                                )
+                            }
+                            if (ok && currentFolderUri != null) {
+                                val refreshed = withContext(Dispatchers.IO) {
+                                    listEntriesInFolder(context, currentFolderUri!!)
+                                }
+                                entries = refreshed
+                                LibraryFolderCache.put(currentFolderUri!!, refreshed)
+                            }
+                            isLoading = false
+                            renameTarget = null
+                        }
+                    }
+                ) {
+                    Text("OK", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { renameTarget = null }) {
+                    Text("Annuler", color = Color(0xFFB0BEC5))
+                }
+            },
+            containerColor = Color(0xFF222222)
+        )
+    }
 }
 
 /* ------------------ utils ------------------ */
@@ -619,37 +783,102 @@ private fun clearPersistedUris(context: Context) {
         try {
             cr.releasePersistableUriPermission(
                 perm.uri,
-                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                        Intent.FLAG_GRANT_WRITE_URI_PERMISSION
             )
         } catch (_: Exception) {}
     }
 }
 
-/**
- * Déplace un fichier (audio / json) vers un autre dossier DocumentTree :
- * - crée une copie dans le dossier cible
- * - supprime le fichier source
- */
-private fun moveDocumentFile(
+/** Supprime réellement un fichier de la bibliothèque (SAF). */
+private fun deleteLibraryFile(context: Context, uri: Uri): Boolean {
+    return try {
+        val doc =
+            DocumentFile.fromSingleUri(context, uri)
+                ?: DocumentFile.fromTreeUri(context, uri)
+                ?: return false
+        doc.delete()
+    } catch (_: Exception) {
+        false
+    }
+}
+
+/** Copie le fichier vers un autre dossier puis supprime l’original. */
+private fun moveLibraryFile(
     context: Context,
     sourceUri: Uri,
-    destTreeUri: Uri
-) {
-    val cr = context.contentResolver
-    val srcDoc = DocumentFile.fromSingleUri(context, sourceUri) ?: return
-    val destTree = DocumentFile.fromTreeUri(context, destTreeUri) ?: return
+    destFolderTreeUri: Uri
+): Boolean {
+    return try {
+        val srcDoc = DocumentFile.fromSingleUri(context, sourceUri) ?: return false
+        val destDir = DocumentFile.fromTreeUri(context, destFolderTreeUri) ?: return false
 
-    val mime = srcDoc.type ?: "application/octet-stream"
-    val name = srcDoc.name ?: "fichier"
+        val mime = srcDoc.type ?: "application/octet-stream"
+        val name = srcDoc.name ?: "audio"
 
-    val destFile = destTree.createFile(mime, name) ?: return
+        val destDoc = destDir.createFile(mime, name) ?: return false
 
-    cr.openInputStream(srcDoc.uri)?.use { input ->
-        cr.openOutputStream(destFile.uri)?.use { output ->
-            input.copyTo(output)
+        val cr = context.contentResolver
+        cr.openInputStream(srcDoc.uri).use { input ->
+            cr.openOutputStream(destDoc.uri).use { output ->
+                if (input == null || output == null) return false
+                val buffer = ByteArray(8 * 1024)
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read <= 0) break
+                    output.write(buffer, 0, read)
+                }
+            }
         }
-    }
 
-    // on supprime l’original seulement après copie réussie
-    srcDoc.delete()
+        // on supprime l’original
+        srcDoc.delete()
+    } catch (_: Exception) {
+        false
+    }
+}
+
+/**
+ * Renomme le fichier en créant un nouveau fichier dans le même dossier
+ * puis en supprimant l’original (copie + delete).
+ */
+private fun renameLibraryFile(
+    context: Context,
+    folderUri: Uri,
+    fileUri: Uri,
+    newBaseName: String
+): Boolean {
+    return try {
+        val folderDoc = DocumentFile.fromTreeUri(context, folderUri) ?: return false
+
+        // On retrouve le DocumentFile correspondant au fileUri dans ce dossier
+        val srcDoc = folderDoc.listFiles().firstOrNull { it.uri == fileUri } ?: return false
+
+        val currentName = srcDoc.name ?: return false
+        val ext = currentName.substringAfterLast('.', missingDelimiterValue = "")
+        val finalName = if (ext.isNotEmpty()) "$newBaseName.$ext" else newBaseName
+        val mime = srcDoc.type ?: "application/octet-stream"
+
+        // On crée le nouveau fichier
+        val destDoc = folderDoc.createFile(mime, finalName) ?: return false
+
+        // Copie du contenu
+        val cr = context.contentResolver
+        cr.openInputStream(srcDoc.uri).use { input ->
+            cr.openOutputStream(destDoc.uri).use { output ->
+                if (input == null || output == null) return false
+                val buffer = ByteArray(8 * 1024)
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read <= 0) break
+                    output.write(buffer, 0, read)
+                }
+            }
+        }
+
+        // Suppression de l’original
+        srcDoc.delete()
+    } catch (_: Exception) {
+        false
+    }
 }
