@@ -258,7 +258,26 @@ object PlaylistRepository {
         bump()
         return true
     }
+    // -------------------------------------------------
+    // SUPPRESSION DE PLAYLIST
+    // -------------------------------------------------
 
+    fun deletePlaylist(name: String) {
+        // Si la playlist n'existe pas, on ne fait rien
+        if (!playlists.containsKey(name)) return
+
+        // 1. on enlève la liste de chansons
+        playlists.remove(name)
+
+        // 2. on enlève tous les états associés
+        playedSongs.remove(name)
+        reviewSongs.remove(name)
+        customTitles.remove(name)
+        playlistColors.remove(name)
+
+        // 3. on force la recomposition
+        bump()
+    }
     // -------------------------------------------------
     // INTERNE
     // -------------------------------------------------

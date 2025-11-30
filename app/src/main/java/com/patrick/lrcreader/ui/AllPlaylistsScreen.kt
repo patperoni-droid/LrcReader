@@ -53,6 +53,9 @@ fun AllPlaylistsScreen(
     var renameTarget by remember { mutableStateOf<String?>(null) }
     var renameText by remember { mutableStateOf("") }
 
+    // dialog suppression
+    var deleteTarget by remember { mutableStateOf<String?>(null) }
+
     // Palette console
     val backgroundBrush = Brush.verticalGradient(
         listOf(
@@ -143,6 +146,9 @@ fun AllPlaylistsScreen(
                             onRename = {
                                 renameTarget = name
                                 renameText = name
+                            },
+                            onDelete = {
+                                deleteTarget = name
                             }
                         )
                     }
@@ -217,6 +223,36 @@ fun AllPlaylistsScreen(
                 containerColor = Color(0xFF222222)
             )
         }
+
+        // ---- dialog suppression ----
+        if (deleteTarget != null) {
+            AlertDialog(
+                onDismissRequest = { deleteTarget = null },
+                title = { Text("Supprimer la liste", color = onBg) },
+                text = {
+                    Text(
+                        text = "Supprimer définitivement « ${deleteTarget} » ?",
+                        color = onBg,
+                        fontSize = 14.sp
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        val target = deleteTarget ?: return@TextButton
+                        PlaylistRepository.deletePlaylist(target)
+                        deleteTarget = null
+                    }) {
+                        Text("Effacer", color = Color(0xFFFF8A80))
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { deleteTarget = null }) {
+                        Text("Annuler", color = sub)
+                    }
+                },
+                containerColor = Color(0xFF222222)
+            )
+        }
     }
 }
 
@@ -224,7 +260,8 @@ fun AllPlaylistsScreen(
 private fun PlaylistRow(
     name: String,
     onClick: () -> Unit,
-    onRename: () -> Unit
+    onRename: () -> Unit,
+    onDelete: () -> Unit
 ) {
     var menuOpen by remember { mutableStateOf(false) }
 
@@ -285,6 +322,13 @@ private fun PlaylistRow(
                         onClick = {
                             menuOpen = false
                             onRename()
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Effacer", color = Color(0xFFFF8A80)) },
+                        onClick = {
+                            menuOpen = false
+                            onDelete()
                         }
                     )
                 }
