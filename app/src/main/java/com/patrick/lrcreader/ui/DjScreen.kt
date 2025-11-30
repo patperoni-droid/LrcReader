@@ -556,16 +556,33 @@ fun DjScreen(
                             trackColor = Color(0x33E040FB)
                         )
                         Spacer(Modifier.width(10.dp))
-                        IconButton(
-                            onClick = {
-                                DjEngine.stopDj()
-                            }
+
+                        // Gros bouton STOP bien visible
+                        Box(
+                            modifier = Modifier
+                                .size(48.dp)
+                                .background(
+                                    color = if (djState.playingUri != null)
+                                        Color(0xFFFF5252)
+                                    else
+                                        Color(0xFF444444),
+                                    shape = RoundedCornerShape(12.dp)
+                                )
+                                .border(
+                                    width = 1.dp,
+                                    color = Color(0x55FFFFFF),
+                                    shape = RoundedCornerShape(12.dp)
+                                )
+                                .clickable {
+                                    DjEngine.stopDj()
+                                },
+                            contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Stop,
-                                contentDescription = "Arrêter",
-                                tint = if (djState.playingUri != null) Color(0xFFFF8A80)
-                                else sub.copy(alpha = 0.5f)
+                                contentDescription = "Arrêter DJ",
+                                tint = Color.White,
+                                modifier = Modifier.size(28.dp)
                             )
                         }
                     }

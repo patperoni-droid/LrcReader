@@ -1,4 +1,5 @@
 package com.patrick.lrcreader.core.dj
+
 import com.patrick.lrcreader.core.PlaybackCoordinator
 import android.content.Context
 import android.media.MediaPlayer
@@ -179,7 +180,7 @@ object DjEngine {
 
         scope.launch {
             if (activeSlot == 0) {
-                // 👉 Première mise en lecture DJ : on prévient le coordonnateur
+                // 👉 Première mise en lecture DJ
                 PlaybackCoordinator.onDjStart()
 
                 // rien ne joue → on démarre sur A
@@ -216,9 +217,52 @@ object DjEngine {
                     currentDurationMs = 0
                 }
             } else {
-                // quelque chose joue déjà → on prépare l’autre deck à 0 de volume
+                // 👉 Il y a déjà une platine qui joue :
+                // on prépare L’AUTRE deck à 0 de volume, sans changer activeSlot.
                 val loadIntoA = (activeSlot == 2)
-                // ... (ne change rien ici)
+
+                if (loadIntoA) {
+                    // B joue → on charge le nouveau titre sur A (en muet)
+                    mpA?.release()
+                    val p = MediaPlayer()
+                    mpA = p
+                    try {
+                        withContext(Dispatchers.IO) {
+                            p.setDataSource(appContext, Uri.parse(uriString))
+                            p.prepare()
+                        }
+                        // prêt mais muet – on le fera sortir au crossfade
+                        p.setVolume(0f, 0f)
+                        deckATitle = displayName
+                        deckAUri = uriString
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                        mpA = null
+                        deckATitle = "A vide"
+                        deckAUri = null
+                    }
+                } else {
+                    // A joue → on charge le nouveau titre sur B (en muet)
+                    mpB?.release()
+                    val p = MediaPlayer()
+                    mpB = p
+                    try {
+                        withContext(Dispatchers.IO) {
+                            p.setDataSource(appContext, Uri.parse(uriString))
+                            p.prepare()
+                        }
+                        // prêt mais muet – on le fera sortir au crossfade
+                        p.setVolume(0f, 0f)
+                        deckBTitle = displayName
+                        deckBUri = uriString
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                        mpB = null
+                        deckBTitle = "B vide"
+                        deckBUri = null
+                    }
+                }
+                // activeSlot, playingUri et currentDurationMs restent ceux de la platine qui joue.
             }
 
             pushState()
