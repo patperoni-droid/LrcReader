@@ -1,5 +1,6 @@
 package com.patrick.lrcreader.exo
 
+import androidx.compose.foundation.layout.ime
 import android.media.MediaPlayer
 import android.media.audiofx.LoudnessEnhancer
 import android.os.Bundle
@@ -7,8 +8,10 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.darkColorScheme
@@ -17,6 +20,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.core.view.WindowCompat
 import com.patrick.lrcreader.core.*
 import com.patrick.lrcreader.core.dj.DjEngine
 import com.patrick.lrcreader.ui.*
@@ -26,6 +30,9 @@ import kotlin.math.pow
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // 🔥 Pour que le clavier puisse "pousser" le contenu vers le haut
+        WindowCompat.setDecorFitsSystemWindows(window, false)
 
         AutoRestore.restoreIfNeeded(this)
 
@@ -217,10 +224,15 @@ class MainActivity : ComponentActivity() {
                     }
                 ) { innerPadding ->
 
+                    // 👉 Modificateur commun : padding système + clavier
+                    val contentModifier = Modifier
+                        .padding(innerPadding)
+                        .windowInsetsPadding(WindowInsets.ime)
+
                     // 🔹 CONSOLE MIXER VISUELLE (maquette)
                     if (isMixerPreviewOpen) {
                         MixerHomePreviewScreen(
-                            modifier = Modifier.padding(innerPadding),
+                            modifier = contentModifier,
                             onOpenPlayer = {
                                 isMixerPreviewOpen = false
                                 selectedTab = BottomTab.Player
@@ -256,7 +268,7 @@ class MainActivity : ComponentActivity() {
                     // Mixage global
                     if (isGlobalMixOpen) {
                         GlobalMixScreen(
-                            modifier = Modifier.padding(innerPadding),
+                            modifier = contentModifier,
                             playerLevel = playerMasterLevel,
                             onPlayerLevelChange = { lvl ->
                                 playerMasterLevel = lvl
@@ -279,7 +291,7 @@ class MainActivity : ComponentActivity() {
                     // Prompteur texte plein écran
                     textPrompterId?.let { tid ->
                         TextPrompterScreen(
-                            modifier = Modifier.padding(innerPadding),
+                            modifier = contentModifier,
                             songId = tid,
                             onClose = { textPrompterId = null }
                         )
@@ -291,7 +303,7 @@ class MainActivity : ComponentActivity() {
                     when (selectedTab) {
 
                         is BottomTab.Home -> MixerHomePreviewScreen(
-                            modifier = Modifier.padding(innerPadding),
+                            modifier = contentModifier,
                             onBack = {
                                 // Comme c'est l'écran Home, on ne fait rien de spécial.
                             },
@@ -313,7 +325,7 @@ class MainActivity : ComponentActivity() {
                         )
 
                         is BottomTab.Player -> PlayerScreen(
-                            modifier = Modifier.padding(innerPadding),
+                            modifier = contentModifier,
                             mediaPlayer = mediaPlayer,
                             isPlaying = isPlaying,
                             onIsPlayingChange = { isPlaying = it },
@@ -343,7 +355,7 @@ class MainActivity : ComponentActivity() {
                         )
 
                         is BottomTab.QuickPlaylists -> QuickPlaylistsScreen(
-                            modifier = Modifier.padding(innerPadding),
+                            modifier = contentModifier,
                             onPlaySong = { uri, playlistName, color ->
                                 if (uri.startsWith("prompter://")) {
                                     val rawId = uri.removePrefix("prompter://")
@@ -374,7 +386,7 @@ class MainActivity : ComponentActivity() {
 
                         is BottomTab.Library ->
                             LibraryScreen(
-                                modifier = Modifier.padding(paddingValues = innerPadding),
+                                modifier = contentModifier,
                                 onPlayFromLibrary = { uriString ->
                                     // on lance la lecture depuis la bibliothèque
                                     playWithCrossfade(uriString, null)
@@ -390,10 +402,9 @@ class MainActivity : ComponentActivity() {
                             )
 
                         is BottomTab.AllPlaylists -> {
-                            val m = Modifier.padding(innerPadding)
                             if (openedPlaylist == null) {
                                 AllPlaylistsScreen(
-                                    modifier = m,
+                                    modifier = contentModifier,
                                     onPlaylistClick = { name ->
                                         openedPlaylist = name
                                         SessionPrefs.saveOpenedPlaylist(ctx, name)
@@ -403,7 +414,7 @@ class MainActivity : ComponentActivity() {
                         }
 
                         is BottomTab.More -> MoreScreen(
-                            modifier = Modifier.padding(innerPadding),
+                            modifier = contentModifier,
                             context = ctx,
                             onAfterImport = { refreshKey++ },
                             onOpenTuner = {
@@ -413,12 +424,12 @@ class MainActivity : ComponentActivity() {
                         )
 
                         is BottomTab.Dj -> DjScreen(
-                            modifier = Modifier.padding(innerPadding),
+                            modifier = contentModifier,
                             context = ctx
                         )
 
                         is BottomTab.Tuner -> TunerScreen(
-                            modifier = Modifier.padding(innerPadding),
+                            modifier = contentModifier,
                             onClose = {
                                 selectedTab = BottomTab.Home
                                 SessionPrefs.saveTab(ctx, TAB_HOME)
@@ -430,8 +441,7 @@ class MainActivity : ComponentActivity() {
 
                     if (isNotesOpen) {
                         Box(
-                            modifier = Modifier
-                                .padding(innerPadding)
+                            modifier = contentModifier
                                 .fillMaxSize()
                                 .background(Color(0xAA000000))
                         ) {
