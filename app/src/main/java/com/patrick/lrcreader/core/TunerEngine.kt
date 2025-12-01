@@ -13,7 +13,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlin.math.abs
 import kotlin.math.log2
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
@@ -21,26 +20,23 @@ import kotlin.math.sqrt
 data class TunerState(
     val isListening: Boolean = false,
     val inputLevel: Float = 0f,      // 0..1
-    val frequency: Float? = null,    // Hz
-    val noteName: String = "—",
+    val frequency: Float? = null,    // Hz affichée
+    val noteName: String = "—",      // ex: A4
     val cents: Int? = null           // -50..+50 en gros
 )
 
 object TunerEngine {
 
-    // Calibration du LA 440 (A4)
-// Valeur sauvegardée ici (tu pourras la remplacer par SharedPrefs plus tard si tu veux)
-    private var referenceA4 = 440f
-
-    fun getReferenceA4(): Float = referenceA4
-
-    fun setReferenceA4(value: Float) {
-        referenceA4 = value
-    }
-
+    // Paramètres basiques
     private const val SAMPLE_RATE = 44100
     private const val MIN_FREQ = 60f     // Hz
     private const val MAX_FREQ = 1000f   // Hz
+
+    // Combien de fois la même note doit être détectée avant de l'afficher
+    private const val REQUIRED_STABLE_COUNT = 4
+
+    // Décalage global en demi-tons (ici -2 pour corriger A qui sort en B)
+    private const val SEMITONE_OFFSET = -2
 
     private val _state = MutableStateFlow(TunerState())
     val state: StateFlow<TunerState> = _state.asStateFlow()
@@ -49,22 +45,23 @@ object TunerEngine {
     private var job: Job? = null
     private var audioRecord: AudioRecord? = null
 
-    // --- variables pour lisser et stabiliser l’affichage ---
-    private var lastDisplayFreq: Float? = null
-    private var lastDisplayNote: String = "—"
-    private var lastDisplayCents: Int? = null
-    private var lastUpdateTimeMs: Long = 0L
-    private var lastValidFreqTimeMs: Long = 0L
+    // --- variables pour stabiliser l'affichage ---
+    private var lastDisplayedFreq: Float? = null
+    private var lastDisplayedNote: String = "—"
+    private var lastDisplayedCents: Int? = null
+
+    private var lastMidiCandidate: Int? = null
+    private var stableCount: Int = 0
 
     fun start() {
         if (job != null) return  // déjà en route
 
-        // reset affichage
-        lastDisplayFreq = null
-        lastDisplayNote = "—"
-        lastDisplayCents = null
-        lastUpdateTimeMs = 0L
-        lastValidFreqTimeMs = 0L
+        // reset de l'affichage stabilisé
+        lastDisplayedFreq = null
+        lastDisplayedNote = "—"
+        lastDisplayedCents = null
+        lastMidiCandidate = null
+        stableCount = 0
 
         scope = CoroutineScope(Dispatchers.Default)
         job = scope!!.launch {
@@ -84,17 +81,16 @@ object TunerEngine {
         }
         audioRecord = null
 
-        lastDisplayFreq = null
-        lastDisplayNote = "—"
-        lastDisplayCents = null
-        lastUpdateTimeMs = 0L
-        lastValidFreqTimeMs = 0L
+        lastDisplayedFreq = null
+        lastDisplayedNote = "—"
+        lastDisplayedCents = null
+        lastMidiCandidate = null
+        stableCount = 0
 
-        _state.update {
-            TunerState() // revient à l’état neutre
-        }
+        _state.value = TunerState()
     }
 
+    // Création / réutilisation d’un AudioRecord correct
     private fun ensureRecorder(): AudioRecord? {
         if (audioRecord != null) return audioRecord
 
@@ -146,74 +142,53 @@ object TunerEngine {
             }
 
             if (read > 0) {
-                // niveau d'entrée RMS
+                // Niveau RMS pour l’affichage
                 var sum = 0.0
                 for (i in 0 until read) {
                     val s = buffer[i].toDouble()
                     sum += s * s
                 }
                 val rms = sqrt(sum / read)
-                val level = (rms / Short.MAX_VALUE.toDouble()).toFloat()
+                val level = (rms / Short.MAX_VALUE.toDouble())
+                    .toFloat()
                     .coerceIn(0f, 1f)
 
-                // détection fréquence brute
-                val detectedFreq = detectFrequency(buffer, read, SAMPLE_RATE)
-                val now = System.currentTimeMillis()
+                // Détection de fréquence brute
+                val freq = detectFrequency(buffer, read, SAMPLE_RATE)
 
-                var displayFreq = lastDisplayFreq
-                var displayNote = lastDisplayNote
-                var displayCents = lastDisplayCents
+                if (freq != null) {
+                    // On convertit en note "candidate"
+                    val (candidateName, candidateCents, candidateMidi) = mapFreqToNote(freq)
 
-                if (detectedFreq != null) {
-                    lastValidFreqTimeMs = now
-
-                    val (note, rawCents) = mapFreqToNote(detectedFreq)
-
-                    // --- lissage fréquence (low-pass) ---
-                    val smoothedFreq = lastDisplayFreq?.let { prev ->
-                        // mix 70% ancien / 30% nouvelle valeur
-                        prev + 0.3f * (detectedFreq - prev)
-                    } ?: detectedFreq
-
-                    // --- lissage cents + petite zone morte ±2 cents ---
-                    val smoothedCents = lastDisplayCents?.let { prev ->
-                        val diff = rawCents - prev
-                        if (abs(diff) <= 2) {
-                            prev // ne bouge pas si très proche
+                    if (candidateMidi != null) {
+                        // Si c'est la même note MIDI que la frame précédente → on augmente le compteur
+                        if (candidateMidi == lastMidiCandidate) {
+                            stableCount++
                         } else {
-                            // on se rapproche en 2 étapes
-                            (prev + diff * 0.5f).toInt()
+                            // Nouvelle note candidate → on reset le compteur
+                            lastMidiCandidate = candidateMidi
+                            stableCount = 1
                         }
-                    } ?: rawCents
 
-                    displayFreq = smoothedFreq
-                    displayNote = note
-                    displayCents = smoothedCents
-                } else {
-                    // pas de détection : on garde l’affichage un petit moment
-                    if (now - lastValidFreqTimeMs > 300L) {
-                        displayFreq = null
-                        displayNote = "—"
-                        displayCents = null
+                        // Si la note est stable assez longtemps, on met à jour l'affichage
+                        if (stableCount >= REQUIRED_STABLE_COUNT) {
+                            lastDisplayedFreq = freq
+                            lastDisplayedNote = candidateName
+                            lastDisplayedCents = candidateCents
+                        }
                     }
                 }
+                // Si freq == null, on NE RÉINITIALISE PAS tout de suite l'affichage
+                // → on garde la dernière note stable pour éviter les clignotements
 
-                // --- limite à ~20 FPS pour l’UI ---
-                if (now - lastUpdateTimeMs >= 50L) {
-                    lastUpdateTimeMs = now
-                    lastDisplayFreq = displayFreq
-                    lastDisplayNote = displayNote
-                    lastDisplayCents = displayCents
-
-                    _state.update {
-                        it.copy(
-                            isListening = true,
-                            inputLevel = level,
-                            frequency = displayFreq,
-                            noteName = displayNote,
-                            cents = displayCents
-                        )
-                    }
+                _state.update {
+                    it.copy(
+                        isListening = true,
+                        inputLevel = level,
+                        frequency = lastDisplayedFreq,
+                        noteName = lastDisplayedNote,
+                        cents = lastDisplayedCents
+                    )
                 }
             }
         }
@@ -235,12 +210,10 @@ object TunerEngine {
     ): Float? {
         if (size <= 0) return null
 
-        // passe en float centré
         val samples = FloatArray(size) { i ->
             buffer[i] / 32768f
         }
 
-        // fenêtre de recherche des lags (périodes)
         val maxLag = (sampleRate / MIN_FREQ).toInt()
         val minLag = (sampleRate / MAX_FREQ).toInt()
 
@@ -250,12 +223,12 @@ object TunerEngine {
         var bestCorr = 0f
 
         for (lag in minLag until maxLag) {
-            var sum = 0f
+            var s = 0f
             for (i in 0 until size - lag) {
-                sum += samples[i] * samples[i + lag]
+                s += samples[i] * samples[i + lag]
             }
-            if (sum > bestCorr) {
-                bestCorr = sum
+            if (s > bestCorr) {
+                bestCorr = s
                 bestLag = lag
             }
         }
@@ -269,27 +242,32 @@ object TunerEngine {
     }
 
     /**
-     * Map fréquence -> note + décalage en cents
+     * Conversion fréquence -> (note, cents, midi)
+     * Basé sur A4 = 440 Hz (MIDI 69) + décalage global SEMITONE_OFFSET.
      */
-    private fun mapFreqToNote(freq: Float): Pair<String, Int> {
+    private fun mapFreqToNote(freq: Float): Triple<String, Int?, Int?> {
+        if (freq <= 0f) return Triple("—", null, null)
 
-        val A4 = referenceA4   // << calibration dynamique
+        // Position MIDI théorique (sans décalage)
+        val midiFloatRaw = 69f + 12f * log2(freq / 440f)
+        val midiRaw = midiFloatRaw.roundToInt()
 
-        // calcule le nombre de demi-tons depuis A4
-        val n = (12 * log2(freq / A4)).roundToInt()
+        // On applique le décalage global en demi-tons
+        val midiCorrected = midiRaw + SEMITONE_OFFSET
 
         val noteNames = arrayOf(
-            "A", "A#", "B", "C", "C#", "D",
-            "D#", "E", "F", "F#", "G", "G#"
+            "C", "C#", "D", "D#", "E", "F",
+            "F#", "G", "G#", "A", "A#", "B"
         )
 
-        val noteIndex = (n + 9).mod(12)
-        val octave = 4 + ((n + 9) / 12)
+        val noteIndex = ((midiCorrected % 12) + 12) % 12
+        val octave = midiCorrected / 12 - 1    // MIDI 60 = C4
 
-        val exactN = 12 * log2(freq / A4)
-        val cents = ((exactN - n) * 100).roundToInt()
+        // Cents par rapport à la note corrigée
+        val midiFloatCorrected = midiFloatRaw + SEMITONE_OFFSET
+        val cents = ((midiFloatCorrected - midiCorrected) * 100f).roundToInt()
 
         val name = noteNames[noteIndex] + octave.toString()
-        return name to cents
+        return Triple(name, cents, midiCorrected)
     }
 }

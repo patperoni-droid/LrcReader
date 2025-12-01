@@ -1,0 +1,507 @@
+package com.patrick.lrcreader.ui
+
+import android.net.Uri
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.Slider
+import androidx.compose.material3.Text
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.patrick.lrcreader.core.dj.DjQueuedTrack
+
+/* -------------------------------------------------------------------------- */
+/*  Carte principale : volume, platines, crossfader, GO, STOP                 */
+/* -------------------------------------------------------------------------- */
+
+@Composable
+fun DjMainCard(
+    cardColor: Color,
+    subColor: Color,
+    onBg: Color,
+    accentGo: Color,
+    deckAGlow: Color,
+    deckBGlow: Color,
+    masterLevel: Float,
+    crossfadePos: Float,
+    activeSlot: Int,
+    deckATitle: String,
+    deckBTitle: String,
+    isPlaying: Boolean,
+    angleA: Float,
+    angleB: Float,
+    pulse: Float,
+    goEnabled: Boolean,
+    onMasterLevelChange: (Float) -> Unit,
+    onCrossfadeChange: (Float) -> Unit,
+    onGo: () -> Unit,
+    onStop: () -> Unit
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = cardColor),
+        shape = RoundedCornerShape(16.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(10.dp)
+        ) {
+            // Bandeau BUS DJ
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp)
+                    .background(
+                        Brush.horizontalGradient(
+                            listOf(
+                                Color(0xFF3A2C24),
+                                Color(0xFF4B372A),
+                                Color(0xFF3A2C24)
+                            )
+                        ),
+                        shape = RoundedCornerShape(10.dp)
+                    )
+                    .border(
+                        1.dp,
+                        Color(0x55FFFFFF),
+                        RoundedCornerShape(10.dp)
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "BUS DJ / MIX AUTO",
+                    color = Color(0xFFFFECB3),
+                    fontSize = 13.sp,
+                    letterSpacing = 2.sp
+                )
+            }
+
+            // Volume DJ
+            Spacer(Modifier.height(4.dp))
+            val djLevel = masterLevel.coerceIn(0f, 1f)
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Volume DJ",
+                    color = subColor,
+                    fontSize = 11.sp,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    text = "${(djLevel * 100).toInt()}%",
+                    color = onBg,
+                    fontSize = 11.sp
+                )
+            }
+            Slider(
+                value = djLevel,
+                onValueChange = onMasterLevelChange,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 4.dp)
+            )
+
+            // Platines + crossfader + GO
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(140.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Deck A
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(90.dp)
+                            .background(
+                                color = if (activeSlot == 1)
+                                    deckAGlow.copy(alpha = 0.4f)
+                                else
+                                    Color.Transparent,
+                                shape = CircleShape
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(70.dp)
+                                .graphicsLayer {
+                                    rotationZ = if (activeSlot == 1) angleA else 0f
+                                    val s = if (activeSlot == 1) pulse else 1f
+                                    scaleX = s
+                                    scaleY = s
+                                }
+                                .background(Color(0xFF1F1F1F), CircleShape)
+                                .border(2.dp, deckAGlow, CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(16.dp)
+                                    .background(Color.Black, CircleShape)
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        deckATitle,
+                        color = onBg,
+                        fontSize = 11.sp,
+                        maxLines = 1
+                    )
+                }
+
+                // Centre : crossfader + GO
+                Column(
+                    modifier = Modifier
+                        .width(100.dp)
+                        .fillMaxHeight(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Text("X-Fade", color = subColor, fontSize = 10.sp)
+                    Slider(
+                        value = crossfadePos,
+                        onValueChange = onCrossfadeChange,
+                        modifier = Modifier.height(60.dp)
+                    )
+                    Spacer(Modifier.height(6.dp))
+
+                    Button(
+                        onClick = onGo,
+                        enabled = goEnabled,
+                        modifier = Modifier
+                            .height(40.dp)
+                            .width(80.dp)
+                            .graphicsLayer {
+                                if (goEnabled) shadowElevation = 18f
+                            },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = accentGo,
+                            contentColor = Color.Black,
+                            disabledContainerColor = Color(0xFF555555),
+                            disabledContentColor = Color(0xFF222222)
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("GO", fontSize = 12.sp)
+                    }
+                }
+
+                // Deck B
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(90.dp)
+                            .background(
+                                color = if (activeSlot == 2)
+                                    deckBGlow.copy(alpha = 0.4f)
+                                else
+                                    Color.Transparent,
+                                shape = CircleShape
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(70.dp)
+                                .graphicsLayer {
+                                    rotationZ = if (activeSlot == 2) angleB else 0f
+                                    val s = if (activeSlot == 2) pulse else 1f
+                                    scaleX = s
+                                    scaleY = s
+                                }
+                                .background(Color(0xFF1F1F1F), CircleShape)
+                                .border(2.dp, deckBGlow, CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(16.dp)
+                                    .background(Color.Black, CircleShape)
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        deckBTitle,
+                        color = onBg,
+                        fontSize = 11.sp,
+                        maxLines = 1
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(10.dp))
+
+            // timeline + stop
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(26.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                LinearProgressIndicator(
+                    progress = 0f, // géré ailleurs via overlay ou à enrichir plus tard si besoin
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(6.dp),
+                    color = deckBGlow,
+                    trackColor = Color(0x33E040FB)
+                )
+                Spacer(Modifier.width(10.dp))
+
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .background(
+                            color = if (isPlaying)
+                                Color(0xFFFF5252)
+                            else
+                                Color(0xFF444444),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                        .border(
+                            width = 1.dp,
+                            color = Color(0x55FFFFFF),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                        .clickable { onStop() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Stop,
+                        contentDescription = "Arrêter DJ",
+                        tint = Color.White,
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+/* -------------------------------------------------------------------------- */
+/*  File d’attente                                                            */
+/* -------------------------------------------------------------------------- */
+
+@Composable
+fun DjQueuePanel(
+    cardColor: Color,
+    subColor: Color,
+    queue: List<DjQueuedTrack>,
+    isOpen: Boolean,
+    onToggleOpen: () -> Unit,
+    onPlayItem: (DjQueuedTrack) -> Unit,
+    onRemoveItem: (DjQueuedTrack) -> Unit
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = cardColor),
+        shape = RoundedCornerShape(14.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(6.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onToggleOpen() },
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Liste d’attente (${queue.size})",
+                    color = Color(0xFF81D4FA),
+                    fontSize = 12.sp,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    text = if (isOpen) "▲" else "▼",
+                    color = subColor,
+                    fontSize = 12.sp
+                )
+            }
+
+            if (isOpen) {
+                Spacer(Modifier.height(4.dp))
+                queue.forEach { qItem ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(32.dp)
+                            .clickable { onPlayItem(qItem) }
+                            .padding(horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = qItem.title,
+                            color = Color(0xFF81D4FA),
+                            fontSize = 12.sp,
+                            modifier = Modifier.weight(1f)
+                        )
+                        IconButton(
+                            onClick = { onRemoveItem(qItem) },
+                            modifier = Modifier.size(22.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Stop,
+                                contentDescription = "Retirer",
+                                tint = Color(0xFFFF8A80),
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Résultats de recherche globale                                            */
+/* -------------------------------------------------------------------------- */
+
+@Composable
+fun DjSearchResultsList(
+    isVisible: Boolean,
+    searchResults: List<DjEntry>,
+    playingUri: String?,
+    onPlay: (DjEntry) -> Unit,
+    onEnqueue: (DjEntry) -> Unit
+) {
+    if (!isVisible) return
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(max = 200.dp)
+    ) {
+        items(searchResults, key = { it.uri.toString() }) { entry ->
+            val uriStr = entry.uri.toString()
+            val isSelected = uriStr == playingUri
+            DjTrackRow(
+                title = entry.name,
+                isPlaying = isSelected,
+                onPlay = { onPlay(entry) },
+                onEnqueue = { onEnqueue(entry) }
+            )
+        }
+    }
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Navigateur de dossiers / titres                                           */
+/* -------------------------------------------------------------------------- */
+
+@Composable
+fun DjFolderBrowser(
+    currentFolderUri: Uri?,
+    visibleEntries: List<DjEntry>,
+    onBg: Color,
+    subColor: Color,
+    isLoading: Boolean,
+    onDirectoryClick: (DjEntry) -> Unit,
+    onFilePlay: (DjEntry) -> Unit,
+    onFileEnqueue: (DjEntry) -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(top = 6.dp)
+    ) {
+        if (currentFolderUri == null) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    "Choisis un dossier pour tes titres DJ.",
+                    color = subColor
+                )
+            }
+        } else {
+            LazyColumn(modifier = Modifier.fillMaxSize()) {
+                items(visibleEntries, key = { it.uri.toString() }) { entry ->
+                    if (entry.isDirectory) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onDirectoryClick(entry) }
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Folder,
+                                contentDescription = null,
+                                tint = onBg,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(entry.name, color = onBg, fontSize = 13.sp)
+                        }
+                    } else {
+                        DjTrackRow(
+                            title = entry.name,
+                            isPlaying = false, // l’état sélectionné est géré plus haut
+                            onPlay = { onFilePlay(entry) },
+                            onEnqueue = { onFileEnqueue(entry) }
+                        )
+                    }
+                }
+            }
+        }
+
+        if (isLoading) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.25f)),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(color = onBg)
+            }
+        }
+    }
+}
