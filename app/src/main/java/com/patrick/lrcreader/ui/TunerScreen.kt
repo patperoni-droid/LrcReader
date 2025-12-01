@@ -1,5 +1,9 @@
 package com.patrick.lrcreader.ui
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -14,33 +18,70 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
+import com.patrick.lrcreader.core.TunerEngine
+import kotlin.math.abs
 
 /**
- * Accordeur style "module analogique", même charte couleur que la console.
- *
- * Pour l’instant : maquette visuelle.
- * Tu pourras plus tard remplacer le slider de test par ton moteur d’analyse audio.
+ * Accordeur style "module analogique", branché sur TunerEngine.
  */
 @Composable
 fun TunerScreen(
     modifier: Modifier = Modifier,
     onClose: () -> Unit
 ) {
+    val context = LocalContext.current
+
+    // --- Permission micro ---
+    var hasMicPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.RECORD_AUDIO
+            ) == PackageManager.PERMISSION_GRANTED
+        )
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+        onResult = { granted ->
+            hasMicPermission = granted
+        }
+    )
+
+    // --- État de l'accordeur (TunerEngine) ---
+    val tunerState by TunerEngine.state.collectAsState()
+
+    // Démarrage / arrêt du moteur quand l’écran est visible
+    DisposableEffect(hasMicPermission) {
+        if (hasMicPermission) {
+            TunerEngine.start()
+        }
+
+        onDispose {
+            TunerEngine.stop()
+        }
+    }
+
     // Même fond que la console "Live in Pocket"
     val backgroundBrush = Brush.verticalGradient(
         listOf(
@@ -113,11 +154,11 @@ fun TunerScreen(
                 elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
             ) {
 
-                // Simu de l’offset en cents : -50 .. +50
-                // (tu remplaceras ça par ta vraie valeur plus tard)
-                var centsOffset by remember { mutableFloatStateOf(0f) }
-                var currentNote by remember { mutableStateOf("A") }
-                var currentFreq by remember { mutableStateOf("440 Hz") }
+                val centsOffset: Float? = tunerState.cents?.toFloat()
+                val currentNote = tunerState.noteName
+                val currentFreqText = tunerState.frequency?.let {
+                    "${it.toInt()} Hz"
+                } ?: "—"
 
                 Column(
                     modifier = Modifier
@@ -168,7 +209,7 @@ fun TunerScreen(
                         // Colonne gauche : indicateur "FLAT"
                         TunerSideMeter(
                             label = "FLAT",
-                            isActive = centsOffset < -5f,
+                            isActive = (centsOffset ?: 0f) < -5f,
                             activeColor = Color(0xFF64B5F6)  // bleu
                         )
 
@@ -177,7 +218,7 @@ fun TunerScreen(
                             modifier = Modifier
                                 .weight(1f)
                                 .padding(horizontal = 12.dp)
-                                .height(180.dp)
+                                .height(220.dp)
                                 .background(
                                     Brush.verticalGradient(
                                         listOf(
@@ -208,16 +249,17 @@ fun TunerScreen(
                                 )
                                 Spacer(Modifier.height(8.dp))
                                 Text(
-                                    text = currentFreq,
+                                    text = currentFreqText,
                                     color = Color(0xFFB0BEC5),
                                     fontSize = 16.sp
                                 )
                                 Spacer(Modifier.height(16.dp))
 
                                 // Bande LED centrale (vert / orange / rouge)
-                                val absOffset = kotlin.math.abs(centsOffset)
+                                val absOffset = centsOffset?.let { abs(it) } ?: 999f
                                 val barColor =
                                     when {
+                                        centsOffset == null -> Color(0xFF616161)
                                         absOffset < 5f -> Color(0xFF81C784) // vert bien accordé
                                         absOffset < 15f -> Color(0xFFFFC107) // jaune
                                         else -> Color(0xFFFF5252) // rouge
@@ -232,8 +274,10 @@ fun TunerScreen(
                                             RoundedCornerShape(999.dp)
                                         )
                                 ) {
-                                    // partie "active"
-                                    val factor = (1f - (absOffset / 50f)).coerceIn(0f, 1f)
+                                    val factor =
+                                        if (centsOffset == null) 0f
+                                        else (1f - (absOffset / 50f)).coerceIn(0f, 1f)
+
                                     Box(
                                         modifier = Modifier
                                             .fillMaxHeight()
@@ -253,7 +297,7 @@ fun TunerScreen(
                                 Spacer(Modifier.height(8.dp))
 
                                 Text(
-                                    text = "${centsOffset.toInt()} cents",
+                                    text = centsOffset?.let { "${it.toInt()} cents" } ?: "— cents",
                                     color = Color(0xFFCFD8DC),
                                     fontSize = 13.sp
                                 )
@@ -263,14 +307,14 @@ fun TunerScreen(
                         // Colonne droite : indicateur "SHARP"
                         TunerSideMeter(
                             label = "SHARP",
-                            isActive = centsOffset > 5f,
+                            isActive = (centsOffset ?: 0f) > 5f,
                             activeColor = Color(0xFFFF5252)  // rouge
                         )
                     }
 
                     Spacer(Modifier.height(12.dp))
 
-                    // ───── BARRE DE CONTROLE / TEST ─────
+                    // ───── BARRE DE CONTROLE / MIC / PERMISSION ─────
                     Column(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalAlignment = Alignment.CenterHorizontally
@@ -283,12 +327,18 @@ fun TunerScreen(
                             Icon(
                                 imageVector = Icons.Filled.Mic,
                                 contentDescription = null,
-                                tint = Color(0xFFFFC107),
+                                tint = if (hasMicPermission && tunerState.isListening)
+                                    Color(0xFFFFC107) else Color(0xFF757575),
                                 modifier = Modifier.size(22.dp)
                             )
                             Spacer(Modifier.width(8.dp))
                             Text(
-                                text = "Entrée micro – maquette visuelle",
+                                text = if (!hasMicPermission)
+                                    "Micro non autorisé"
+                                else if (!tunerState.isListening)
+                                    "En attente du signal…"
+                                else
+                                    "Entrée micro active",
                                 color = Color(0xFFB0BEC5),
                                 fontSize = 12.sp
                             )
@@ -296,35 +346,45 @@ fun TunerScreen(
 
                         Spacer(Modifier.height(10.dp))
 
-                        // Slider de test : -50 à +50 cents
+                        // Niveau d'entrée (vu simple)
+                        val level = tunerState.inputLevel.coerceIn(0f, 1f)
                         Text(
-                            text = "Test offset (maquette) : ${centsOffset.toInt()} cents",
+                            text = "Niveau d’entrée : ${(level * 100).toInt()} %",
                             color = Color(0xFFCFD8DC),
                             fontSize = 11.sp
                         )
                         Slider(
-                            value = centsOffset,
-                            onValueChange = { centsOffset = it },
-                            valueRange = -50f..50f,
+                            value = level,
+                            onValueChange = { /* read only */ },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 8.dp),
-                            colors = androidx.compose.material3.SliderDefaults.colors(
-                                thumbColor = Color(0xFFFFC107),
-                                activeTrackColor = Color(0xFFFFC107),
-                                inactiveTrackColor = Color(0x33FFFFFF)
-                            )
+                            enabled = false
                         )
 
                         Spacer(Modifier.height(4.dp))
 
-                        Text(
-                            text = "Plus tard : relié à ton vrai accordeur (détection de pitch).",
-                            color = Color(0xFF757575),
-                            fontSize = 10.sp,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.fillMaxWidth()
-                        )
+                        if (!hasMicPermission) {
+                            TextButton(
+                                onClick = {
+                                    permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                }
+                            ) {
+                                Text(
+                                    text = "Autoriser le micro",
+                                    color = Color(0xFFFFC107),
+                                    fontSize = 13.sp
+                                )
+                            }
+                        } else {
+                            Text(
+                                text = "Parle ou joue une note près du micro.",
+                                color = Color(0xFF757575),
+                                fontSize = 10.sp,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
                     }
                 }
             }
