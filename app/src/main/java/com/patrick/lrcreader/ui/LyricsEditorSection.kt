@@ -1,23 +1,3 @@
-/**
- * ---------------------------------------------------------------
- *  LYRICS EDITOR SECTION
- *  Ce fichier contient TOUT l’écran d’édition des paroles.
- *
- *  Cet écran apparaît quand on clique sur le bouton "crayon"
- *  dans le lecteur (PlayerScreen).
- *
- *  Fonctions incluses :
- *   - Onglet SIMPLE : édition des paroles ligne par ligne
- *   - Onglet SYNCHRO : TAG + synchronisation des phrases
- *   - Import paroles depuis le MP3
- *   - Lecture/Pause pendant la synchro
- *   - Boutons TAG / Reset TAG
- *   - Sauvegarde / Annuler
- *
- *  En résumé : C’est le module complet d’édition des paroles
- *  utilisé avant la lecture ou le prompteur.
- * ---------------------------------------------------------------
- */
 package com.patrick.lrcreader.ui
 
 import android.content.Context
@@ -25,8 +5,9 @@ import android.media.MediaMetadataRetriever
 import android.media.MediaPlayer
 import android.net.Uri
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -74,13 +55,15 @@ fun LyricsEditorSection(
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val lazyListState = rememberLazyListState()
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(horizontal = 16.dp, vertical = 6.dp)
     ) {
-        // Header
+        // MODIFIÉ : Header retiré
+        /*
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -98,6 +81,7 @@ fun LyricsEditorSection(
                 Text("Fermer", color = Color(0xFFFF8A80))
             }
         }
+        */
 
         // Onglets
         TabRow(
@@ -142,6 +126,8 @@ fun LyricsEditorSection(
                         .fillMaxWidth()
                         .weight(1f)
                 ) {
+                    // MODIFIÉ : Bouton "Importer depuis MP3" retiré
+                    /*
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -172,6 +158,7 @@ fun LyricsEditorSection(
                             )
                         }
                     }
+                    */
 
                     OutlinedTextField(
                         value = rawLyricsText,
@@ -194,13 +181,13 @@ fun LyricsEditorSection(
             }
 
             1 -> {
-                // ---------- Onglet SYNCHRO ----------
+                // ---------- Onglet SYNCHRO (MODIFIÉ) ----------
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
                 ) {
-                    // Mini player synchro
+                    // Mini player synchro (INCHANGÉ)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -253,7 +240,7 @@ fun LyricsEditorSection(
                         )
                     }
 
-                    // Reset TAGs
+                    // Reset TAGs (INCHANGÉ)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -278,21 +265,23 @@ fun LyricsEditorSection(
                         }
                     }
 
-                    // Liste des lignes taguables
-                    Column(
+                    // MODIFIÉ : Liste des lignes taguables avec LazyColumn et auto-scroll
+                    LazyColumn(
+                        state = lazyListState, // On associe notre contrôleur
                         modifier = Modifier
                             .fillMaxWidth()
                             .weight(1f)
-                            .verticalScroll(rememberScrollState())
                     ) {
                         if (editingLines.isEmpty()) {
-                            Text(
-                                "Ajoute d’abord des paroles dans l’onglet Simple.",
-                                color = Color.Gray,
-                                modifier = Modifier.padding(16.dp)
-                            )
+                            item {
+                                Text(
+                                    "Ajoute d’abord des paroles dans l’onglet Simple.",
+                                    color = Color.Gray,
+                                    modifier = Modifier.padding(16.dp)
+                                )
+                            }
                         } else {
-                            editingLines.forEachIndexed { index, line ->
+                            itemsIndexed(editingLines, key = { _, line -> line.hashCode() }) { index, line ->
                                 val timeLabel =
                                     if (line.timeMs > 0)
                                         formatLrcTime(line.timeMs)
@@ -315,6 +304,7 @@ fun LyricsEditorSection(
                                                     mediaPlayer.currentPosition
                                                 }.getOrElse { 0 }
 
+                                                // Applique le nouveau timestamp
                                                 onEditingLinesChange(
                                                     editingLines.mapIndexed { i, old ->
                                                         if (i == index)
@@ -322,6 +312,20 @@ fun LyricsEditorSection(
                                                         else old
                                                     }
                                                 )
+
+                                                // LOGIQUE D'AUTO-SCROLL
+                                                scope.launch {
+                                                    val layoutInfo = lazyListState.layoutInfo
+                                                    val visibleItem = layoutInfo.visibleItemsInfo.find { it.index == index }
+                                                    if (visibleItem != null) {
+                                                        val itemCenter = visibleItem.offset + visibleItem.size / 2
+                                                        val viewportCenter = layoutInfo.viewportEndOffset / 2
+                                                        if (itemCenter > viewportCenter) {
+                                                            val nextIndex = (index + 1).coerceAtMost(editingLines.lastIndex)
+                                                            lazyListState.animateScrollToItem(nextIndex, scrollOffset = -layoutInfo.viewportEndOffset / 3)
+                                                        }
+                                                    }
+                                                }
                                             }
                                         ) {
                                             Text(
@@ -377,7 +381,7 @@ fun LyricsEditorSection(
             }
         }
 
-        // Barre d’actions
+        // Barre d’actions (INCHANGÉ)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -424,7 +428,6 @@ private fun formatMsLyricsEditor(ms: Int): String {
     return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%02d:%02d".format(m, s)
 }
 
-/** Format LRC style : mm:ss.xx */
 private fun formatLrcTime(ms: Long): String {
     if (ms <= 0L) return "00:00.00"
     val totalSeconds = ms / 1000
@@ -434,10 +437,6 @@ private fun formatLrcTime(ms: Long): String {
     return "%02d:%02d.%02d".format(minutes, seconds, hundredths)
 }
 
-/**
- * Essaie d'importer les paroles intégrées dans le MP3 (Musicolet ou autre).
- * Ne modifie jamais le MP3.
- */
 private fun importLyricsFromAudio(
     context: Context,
     uriString: String
