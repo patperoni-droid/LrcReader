@@ -1,5 +1,6 @@
 package com.patrick.lrcreader.ui
 
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
@@ -32,8 +33,9 @@ import kotlin.math.roundToInt
 /**
  * Écran de mixage pour UN titre.
  *
- * - Niveau titre (dB) -> currentTrackGainDb / onTrackGainChange
- * - Tempo (0.8x à 1.2x) -> tempo / onTempoChange
+ * - Niveau titre (dB)
+ * - Tempo (0.8x à 1.2x)
+ * - Tonalité en demi-tons (-6..+6)
  * - EQ 3 bandes vertical, câblé audio + mémorisé par titre
  */
 @Composable
@@ -48,6 +50,10 @@ fun TrackMixScreen(
     // Tempo par morceau
     tempo: Float,
     onTempoChange: (Float) -> Unit,
+
+    // Tonalité par morceau (demi-tons)
+    pitchSemi: Int,
+    onPitchSemiChange: (Int) -> Unit,
 
     // Pour mémoriser l’EQ par titre
     currentTrackUri: String?,
@@ -78,9 +84,19 @@ fun TrackMixScreen(
         )
     }
 
-    // --------- EQ (3 bandes) + MÉMO PAR TITRE ----------
+    // --------- TONALITÉ (DEMI-TONS) ----------
+    val minSemi = -6
+    val maxSemi = 6
 
-    // Valeurs initiales depuis les préférences du titre
+    var pitchSlider by remember(pitchSemi) {
+        mutableStateOf(
+            ((pitchSemi - minSemi).toFloat() / (maxSemi - minSemi).toFloat())
+                .coerceIn(0f, 1f)
+        )
+    }
+
+    // --------- EQ VISUEL (3 bandes) + MÉMO PAR TITRE ----------
+
     val initialEq = remember(currentTrackUri) {
         if (currentTrackUri != null) {
             TrackEqPrefs.load(context, currentTrackUri)
@@ -95,13 +111,11 @@ fun TrackMixScreen(
     var highGain by remember(currentTrackUri) { mutableStateOf(initialEq.high) }
 
     fun applyAndSaveEq() {
-        // 🔊 applique au moteur d’EQ
         TrackEqEngine.setBands(
             lowDb = lowGain,
             midDb = midGain,
             highDb = highGain
         )
-        // 💾 mémorise pour ce titre
         currentTrackUri?.let { uri ->
             TrackEqPrefs.save(
                 context,
@@ -111,17 +125,27 @@ fun TrackMixScreen(
         }
     }
 
-    // On applique une première fois les valeurs au moment où l’écran s’ouvre
-    // (pour être sûr que le son colle aux faders)
+    // Applique l’EQ à l’ouverture
     remember(currentTrackUri) {
         applyAndSaveEq()
-        0 // valeur jetable pour satisfy remember
+        0
     }
 
     DarkBlueGradientBackground {
         Column(
             modifier = modifier
                 .fillMaxSize()
+                .pointerInput(Unit) {
+                    // On consomme les drags pour ne pas toucher au PlayerScreen dessous
+                    detectVerticalDragGestures { change, _ ->
+                        change.consume()
+                    }
+                }
+                .pointerInput(Unit) {
+                    detectTapGestures {
+                        // On consomme aussi les taps (pas d'action)
+                    }
+                }
                 .padding(horizontal = 16.dp, vertical = 10.dp)
         ) {
 
@@ -226,6 +250,54 @@ fun TrackMixScreen(
                 )
             )
 
+            Spacer(Modifier.height(18.dp))
+
+            // ─────────── TONALITÉ (DEMI-TONS) ───────────
+            Text(
+                text = "Tonalité (demi-tons)",
+                color = Color(0xFFB0BEC5),
+                fontSize = 13.sp
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                val display = if (pitchSemi >= 0) "+$pitchSemi" else "$pitchSemi"
+                Text(
+                    text = "$display demi-tons",
+                    color = Color.White,
+                    fontSize = 12.sp
+                )
+                TextButton(onClick = {
+                    onPitchSemiChange(0)
+                    pitchSlider = ((0 - minSemi).toFloat() / (maxSemi - minSemi)).coerceIn(0f, 1f)
+                }) {
+                    Text(
+                        text = "Reset 0",
+                        color = Color(0xFFCE93D8),
+                        fontSize = 11.sp
+                    )
+                }
+            }
+
+            Slider(
+                value = pitchSlider,
+                onValueChange = { v ->
+                    pitchSlider = v
+                    val semiFloat = minSemi + v * (maxSemi - minSemi)
+                    val semiInt = semiFloat.toInt().coerceIn(minSemi, maxSemi)
+                    onPitchSemiChange(semiInt)
+                },
+                modifier = Modifier.fillMaxWidth(),
+                colors = SliderDefaults.colors(
+                    thumbColor = Color(0xFFCE93D8),
+                    activeTrackColor = Color(0xFFCE93D8).copy(alpha = 0.4f),
+                    inactiveTrackColor = Color.DarkGray
+                )
+            )
+
             Spacer(Modifier.height(22.dp))
 
             // ─────────── EQ 3 BANDES (VERTICAL, PERSISTANT) ───────────
@@ -244,7 +316,6 @@ fun TrackMixScreen(
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // ------- Graves -------
                 EqVerticalFader(
                     label = "Graves",
                     gain = lowGain,
@@ -255,7 +326,6 @@ fun TrackMixScreen(
                     color = Color(0xFF4CAF50)
                 )
 
-                // ------- Médiums -------
                 EqVerticalFader(
                     label = "Médiums",
                     gain = midGain,
@@ -266,7 +336,6 @@ fun TrackMixScreen(
                     color = Color(0xFFFFC107)
                 )
 
-                // ------- Aigus -------
                 EqVerticalFader(
                     label = "Aigus",
                     gain = highGain,
@@ -291,7 +360,6 @@ private fun EqVerticalFader(
     onGainChange: (Float) -> Unit,
     color: Color
 ) {
-    // Convertit -12..+12 -> 0..1
     var sliderValue by remember(gain) {
         mutableStateOf(((gain + 12f) / 24f).coerceIn(0f, 1f))
     }
@@ -319,12 +387,11 @@ private fun EqVerticalFader(
 
         Canvas(
             modifier = Modifier
-                .height(190.dp)   // hauteur du fader
-                .width(40.dp)     // largeur confortable pour le doigt
+                .height(190.dp)
+                .width(40.dp)
                 .pointerInput(Unit) {
                     detectVerticalDragGestures { change, dragAmount ->
                         change.consume()
-                        // Vers le haut = augmente
                         val newSliderValue = (sliderValue - dragAmount / size.height)
                             .coerceIn(0f, 1f)
                         sliderValue = newSliderValue
@@ -337,7 +404,6 @@ private fun EqVerticalFader(
             val trackX = (size.width - trackWidth) / 2f
             val trackHeight = size.height
 
-            // Piste grise
             drawRoundRect(
                 color = Color.DarkGray,
                 topLeft = Offset(trackX, 0f),
@@ -345,7 +411,6 @@ private fun EqVerticalFader(
                 cornerRadius = CornerRadius(trackWidth / 2f)
             )
 
-            // Piste colorée (du bas vers le haut)
             val activeHeight = trackHeight * sliderValue
             drawRoundRect(
                 color = color,
@@ -354,7 +419,6 @@ private fun EqVerticalFader(
                 cornerRadius = CornerRadius(trackWidth / 2f)
             )
 
-            // "Tête" du fader
             val thumbRadius = trackWidth * 0.9f
             val thumbCenter = Offset(
                 x = size.width / 2f,
@@ -378,9 +442,11 @@ fun TrackMixScreenPreview() {
     TrackMixScreen(
         highlightColor = Color(0xFFE040FB),
         currentTrackGainDb = 0,
-        onTrackGainChange = { },
+        onTrackGainChange = {},
         tempo = 1.0f,
-        onTempoChange = { },
+        onTempoChange = {},
+        pitchSemi = 0,
+        onPitchSemiChange = {},
         currentTrackUri = "demo://track",
         onClose = {}
     )

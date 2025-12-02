@@ -1,9 +1,4 @@
 package com.patrick.lrcreader.exo
-
-import com.patrick.lrcreader.core.TrackEqEngine
-import com.patrick.lrcreader.core.TrackEqPrefs
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.foundation.layout.ime
 import android.media.MediaPlayer
 import android.media.audiofx.LoudnessEnhancer
@@ -27,6 +22,9 @@ import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import com.patrick.lrcreader.core.*
 import com.patrick.lrcreader.core.dj.DjEngine
+import com.patrick.lrcreader.core.TrackEqEngine
+import com.patrick.lrcreader.core.TrackEqPrefs
+import com.patrick.lrcreader.core.TrackPitchPrefs
 import com.patrick.lrcreader.ui.*
 import com.patrick.lrcreader.ui.TextPrompterScreen
 import kotlin.math.pow
@@ -52,6 +50,8 @@ class MainActivity : ComponentActivity() {
                 val ctx = this@MainActivity
 
                 val mediaPlayer = remember { MediaPlayer() }
+
+                // EQ attaché à la session du MediaPlayer
                 LaunchedEffect(mediaPlayer.audioSessionId) {
                     TrackEqEngine.attachToSession(mediaPlayer.audioSessionId)
                 }
@@ -60,10 +60,6 @@ class MainActivity : ComponentActivity() {
                     LoudnessEnhancer(mediaPlayer.audioSessionId).apply {
                         enabled = true
                     }
-                }
-                // On attache l'Equalizer Android à la même session audio que le MediaPlayer
-                LaunchedEffect(mediaPlayer.audioSessionId) {
-                    TrackEqEngine.attachToSession(mediaPlayer.audioSessionId)
                 }
 
                 var selectedTab by remember {
@@ -88,7 +84,9 @@ class MainActivity : ComponentActivity() {
 
                 var isNotesOpen by remember { mutableStateOf(false) }
                 var isFillerSettingsOpen by remember { mutableStateOf(false) }
-                var currentTrackTempo by remember { mutableStateOf(1f) }
+
+                var currentTrackTempo by remember { mutableStateOf(1f) }     // 0.5x..2x
+                var currentTrackPitchSemi by remember { mutableStateOf(0) }  // -6..+6
 
                 var isGlobalMixOpen by remember { mutableStateOf(false) }
                 var playerMasterLevel by remember { mutableStateOf(1f) }
@@ -138,14 +136,20 @@ class MainActivity : ComponentActivity() {
                     } catch (_: Exception) {}
                 }
 
-                // ---------------- Tempo par morceau ---------------------
+                // ---------------- Tempo + Pitch par morceau ---------------------
 
-                fun applyTempoToPlayer(speed: Float) {
+                fun applyTempoAndPitchToPlayer(speed: Float, pitchSemi: Int) {
                     try {
                         val safeSpeed = speed.coerceIn(0.5f, 2.0f)
+                        val semiClamped = pitchSemi.coerceIn(-6, 6)
+
+                        // facteur de pitch en fonction des demi-tons
+                        val pitchFactor = 2f.pow(semiClamped / 12f)
+
                         val params = mediaPlayer.playbackParams
-                            .setSpeed(safeSpeed)
-                            .setPitch(1f)
+                            .setSpeed(safeSpeed)   // vitesse
+                            .setPitch(pitchFactor) // hauteur
+
                         mediaPlayer.playbackParams = params
                     } catch (_: Exception) {}
                 }
@@ -161,8 +165,12 @@ class MainActivity : ComponentActivity() {
                     val myToken = currentPlayToken + 1
                     currentPlayToken = myToken
 
+                    // Volume par morceau
                     currentTrackGainDb = TrackVolumePrefs.getDb(ctx, uriString) ?: 0
+                    // Tempo par morceau
                     currentTrackTempo = TrackTempoPrefs.getTempo(ctx, uriString) ?: 1f
+                    // Tonalité par morceau (demi-tons)
+                    currentTrackPitchSemi = TrackPitchPrefs.getSemi(ctx, uriString) ?: 0
 
                     val result = runCatching {
                         crossfadePlay(
@@ -178,30 +186,30 @@ class MainActivity : ComponentActivity() {
                             },
                             onStart = {
                                 isPlaying = true
-                                applyGainToPlayer(currentTrackGainDb)
-                                applyTempoToPlayer(currentTrackTempo)
 
+                                // Gain
+                                applyGainToPlayer(currentTrackGainDb)
+
+                                // Tempo + pitch
+                                applyTempoAndPitchToPlayer(
+                                    currentTrackTempo,
+                                    currentTrackPitchSemi
+                                )
+
+                                // EQ par morceau
                                 currentPlayingUri?.let { uri ->
                                     val settings = TrackEqPrefs.load(ctx, uri)
-
                                     if (settings != null) {
-                                        // On applique les valeurs mémorisées à l’EQ
                                         TrackEqEngine.setBands(
-                                            lowDb  = settings.low,
-                                            midDb  = settings.mid,
+                                            lowDb = settings.low,
+                                            midDb = settings.mid,
                                             highDb = settings.high
                                         )
                                     } else {
-                                        // Si pas de preset : EQ à plat
-                                        TrackEqEngine.setBands(
-                                            lowDb  = 0f,
-                                            midDb  = 0f,
-                                            highDb = 0f
-                                        )
+                                        TrackEqEngine.setBands(0f, 0f, 0f)
                                     }
                                 }
                             },
-
                             onError = {
                                 isPlaying = false
                                 mediaPlayer.reset()
@@ -234,6 +242,7 @@ class MainActivity : ComponentActivity() {
                         try { mediaPlayer.release() } catch (_: Exception) {}
                     }
                 }
+
                 // ---------------- UI principale -------------------------
 
                 Scaffold(
@@ -250,13 +259,12 @@ class MainActivity : ComponentActivity() {
                                 isGlobalMixOpen = false
                                 isNotesOpen = false
                                 textPrompterId = null
-                                isMixerPreviewOpen = false   // 👈 on ferme aussi la console mixer
+                                isMixerPreviewOpen = false
                             }
                         )
                     }
                 ) { innerPadding ->
 
-                    // 👉 Modificateur commun : padding système + clavier
                     val contentModifier = Modifier
                         .padding(innerPadding)
                         .windowInsetsPadding(WindowInsets.ime)
@@ -336,16 +344,12 @@ class MainActivity : ComponentActivity() {
 
                         is BottomTab.Home -> MixerHomePreviewScreen(
                             modifier = contentModifier,
-                            onBack = {
-                                // Comme c'est l'écran Home, on ne fait rien de spécial.
-                            },
+                            onBack = {},
                             onOpenPlayer = {
                                 selectedTab = BottomTab.Player
                                 SessionPrefs.saveTab(ctx, TAB_PLAYER)
                             },
-                            onOpenFondSonore = {
-                                isFillerSettingsOpen = true
-                            },
+                            onOpenFondSonore = { isFillerSettingsOpen = true },
                             onOpenDj = {
                                 selectedTab = BottomTab.Dj
                                 SessionPrefs.saveTab(ctx, TAB_DJ)
@@ -376,9 +380,24 @@ class MainActivity : ComponentActivity() {
                             tempo = currentTrackTempo,
                             onTempoChange = { newTempo ->
                                 currentTrackTempo = newTempo
-                                applyTempoToPlayer(newTempo)
+                                applyTempoAndPitchToPlayer(
+                                    currentTrackTempo,
+                                    currentTrackPitchSemi
+                                )
                                 currentPlayingUri?.let { uri ->
                                     TrackTempoPrefs.saveTempo(ctx, uri, newTempo)
+                                }
+                            },
+                            pitchSemi = currentTrackPitchSemi,
+                            onPitchSemiChange = { newSemi ->
+                                val clamped = newSemi.coerceIn(-6, 6)
+                                currentTrackPitchSemi = clamped
+                                applyTempoAndPitchToPlayer(
+                                    currentTrackTempo,
+                                    currentTrackPitchSemi
+                                )
+                                currentPlayingUri?.let { uri ->
+                                    TrackPitchPrefs.saveSemi(ctx, uri, clamped)
                                 }
                             },
                             onRequestShowPlaylist = {
@@ -420,29 +439,24 @@ class MainActivity : ComponentActivity() {
                             LibraryScreen(
                                 modifier = contentModifier,
                                 onPlayFromLibrary = { uriString ->
-                                    // on lance la lecture depuis la bibliothèque
                                     playWithCrossfade(uriString, null)
-
                                     currentPlayingUri = uriString
-                                    // couleur par défaut des paroles quand ça vient de la bibliothèque
                                     currentLyricsColor = Color(0xFFE040FB)
-
-                                    // on bascule sur l’onglet Player
                                     selectedTab = BottomTab.Player
                                     SessionPrefs.saveTab(ctx, TAB_PLAYER)
                                 }
                             )
 
                         is BottomTab.AllPlaylists -> {
-                            if (openedPlaylist == null) {
-                                AllPlaylistsScreen(
-                                    modifier = contentModifier,
-                                    onPlaylistClick = { name ->
-                                        openedPlaylist = name
-                                        SessionPrefs.saveOpenedPlaylist(ctx, name)
-                                    }
-                                )
-                            }
+                            AllPlaylistsScreen(
+                                modifier = contentModifier,
+                                onPlaylistClick = { name ->
+                                    // Si un jour tu veux ouvrir un écran "détail playlist",
+                                    // tu auras déjà la valeur ici.
+                                    openedPlaylist = name
+                                    SessionPrefs.saveOpenedPlaylist(ctx, name)
+                                }
+                            )
                         }
 
                         is BottomTab.More -> MoreScreen(

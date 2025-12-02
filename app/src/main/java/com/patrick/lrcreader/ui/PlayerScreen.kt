@@ -55,6 +55,9 @@ fun PlayerScreen(
     onTrackGainChange: (Int) -> Unit,
     tempo: Float,
     onTempoChange: (Float) -> Unit,
+    // 👇 AJOUT : tonalité en demi-tons
+    pitchSemi: Int,
+    onPitchSemiChange: (Int) -> Unit,
     onRequestShowPlaylist: () -> Unit
 ) {
     val scrollState = rememberScrollState()
@@ -133,13 +136,9 @@ fun PlayerScreen(
         }
     }
 
-    // ---------- Autoswitch playlist ----------
     // ---------- Autoswitch playlist (optionnel) ----------
     LaunchedEffect(durationMs, positionMs, hasRequestedPlaylist, currentTrackUri) {
-        // On relit la préférence à chaque changement de position/durée
         val enabled = AutoReturnPrefs.isEnabled(context)
-
-        // 10 secondes avant la fin si activé
         if (
             enabled &&
             !hasRequestedPlaylist &&
@@ -415,6 +414,8 @@ fun PlayerScreen(
                     onTrackGainChange = onTrackGainChange,
                     tempo = tempo,
                     onTempoChange = onTempoChange,
+                    pitchSemi = pitchSemi,                     // 👈 on passe la tonalité
+                    onPitchSemiChange = onPitchSemiChange,     // 👈 callback vers MainActivity
                     currentTrackUri = currentTrackUri,
                     onClose = { showMixScreen = false }
                 )
