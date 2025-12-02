@@ -178,18 +178,15 @@ fun FillerSoundScreen(
             )
             .verticalScroll(rememberScrollState())
     ) {
-        // HEADER
-        TextButton(onClick = onBack) {
-            Text("← Retour", color = onBg)
-        }
-
-        Spacer(Modifier.height(4.dp))
-
+        // HEADER (sans bouton Retour)
         Text(
             text = "Fond sonore",
             color = onBg,
             fontSize = 18.sp
         )
+
+        Spacer(Modifier.height(10.dp))
+
 
         Spacer(Modifier.height(10.dp))
 
@@ -233,11 +230,7 @@ fun FillerSoundScreen(
                             fontSize = 13.sp,
                             letterSpacing = 2.sp
                         )
-                        Text(
-                            text = fillerName,
-                            color = sub,
-                            fontSize = 10.sp
-                        )
+
                     }
                 }
 
@@ -253,11 +246,7 @@ fun FillerSoundScreen(
                             color = onBg,
                             fontSize = 14.sp
                         )
-                        Text(
-                            text = "Lecture automatique après la fin d’un morceau.",
-                            color = sub,
-                            fontSize = 12.sp
-                        )
+
                     }
                     Switch(
                         checked = isEnabled,
@@ -460,11 +449,7 @@ fun FillerSoundScreen(
             fontSize = 13.sp
         )
         Spacer(Modifier.height(2.dp))
-        Text(
-            text = "5 ambiances personnalisables.",
-            color = sub,
-            fontSize = 10.sp
-        )
+
 
         Spacer(Modifier.height(4.dp))
 
