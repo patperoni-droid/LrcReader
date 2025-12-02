@@ -29,8 +29,21 @@ object FillerSoundManager {
     // on mémorise le dossier pour lequel la playlist a été construite
     private var currentFolderUri: Uri? = null
 
+    // 👇 NOUVEAU : indique que le prochain démarrage auto doit avancer d'un morceau
+    private var advanceOnNextStart: Boolean = false
+
     private const val DEFAULT_VOLUME = 0.25f
     private const val CROSSFADE_MS = 1500L
+
+    /**
+     * Appelé depuis le PlayerScreen quand on appuie sur PAUSE
+     * sur le titre principal : on veut que le fond sonore démarre
+     * sur le *morceau suivant* (pas toujours le même).
+     */
+    fun startFromPlayerPause(context: Context) {
+        advanceOnNextStart = true
+        startIfConfigured(context)
+    }
 
     /** Démarre le fond sonore automatiquement (fin de morceau, etc.) */
     fun startIfConfigured(context: Context) {
@@ -83,6 +96,7 @@ object FillerSoundManager {
                 val built = buildPlaylistFromFolder(context, folderUri)
                 if (built.isEmpty()) {
                     FillerSoundPrefs.clear(context)
+                    advanceOnNextStart = false
                     Toast.makeText(
                         context,
                         "Dossier vide ou inaccessible",
@@ -95,6 +109,14 @@ object FillerSoundManager {
                 // on choisit un index de départ
                 folderIndex = if (built.size == 1) 0 else Random.nextInt(built.size)
                 built
+            }
+
+            // 👇 si le démarrage vient du Player (pause), on avance d’un morceau
+            if (folderPlaylist.isNotEmpty() && advanceOnNextStart) {
+                if (folderPlaylist.size > 1) {
+                    folderIndex = (folderIndex + 1) % folderPlaylist.size
+                }
+                advanceOnNextStart = false
             }
 
             try {
@@ -116,11 +138,11 @@ object FillerSoundManager {
             e.printStackTrace()
             FillerSoundPrefs.clear(context)
             Toast.makeText(context, "Impossible de lire le fond sonore.", Toast.LENGTH_SHORT).show()
+        } finally {
+            // quoi qu’il arrive on réinitialise le flag
+            advanceOnNextStart = false
         }
     }
-
-    // ... le reste de ton fichier (toggle, next, previous, etc.) NE CHANGE PAS ...
-
 
     /** bouton on/off */
     fun toggle(context: Context) {

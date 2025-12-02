@@ -313,7 +313,7 @@ fun PlayerScreen(
                                     pauseWithFade(scope, mediaPlayer, 400L) {
                                         onIsPlayingChange(false)
                                         PlaybackCoordinator.onFillerStart()
-                                        runCatching { FillerSoundManager.startIfConfigured(context) }
+                                        runCatching { FillerSoundManager.startFromPlayerPause(context) }
                                     }
                                 } else {
                                     if (durationMs > 0) {
