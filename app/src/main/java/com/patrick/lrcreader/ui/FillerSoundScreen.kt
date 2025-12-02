@@ -179,11 +179,7 @@ fun FillerSoundScreen(
             .verticalScroll(rememberScrollState())
     ) {
         // HEADER (sans bouton Retour)
-        Text(
-            text = "Fond sonore",
-            color = onBg,
-            fontSize = 18.sp
-        )
+
 
         Spacer(Modifier.height(10.dp))
 
