@@ -415,6 +415,7 @@ fun PlayerScreen(
                     onTrackGainChange = onTrackGainChange,
                     tempo = tempo,
                     onTempoChange = onTempoChange,
+                    currentTrackUri = currentTrackUri,
                     onClose = { showMixScreen = false }
                 )
             }

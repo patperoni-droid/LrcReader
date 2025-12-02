@@ -1,5 +1,9 @@
 package com.patrick.lrcreader.exo
 
+import com.patrick.lrcreader.core.TrackEqEngine
+import com.patrick.lrcreader.core.TrackEqPrefs
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.foundation.layout.ime
 import android.media.MediaPlayer
 import android.media.audiofx.LoudnessEnhancer
@@ -48,11 +52,18 @@ class MainActivity : ComponentActivity() {
                 val ctx = this@MainActivity
 
                 val mediaPlayer = remember { MediaPlayer() }
+                LaunchedEffect(mediaPlayer.audioSessionId) {
+                    TrackEqEngine.attachToSession(mediaPlayer.audioSessionId)
+                }
 
                 val loudnessEnhancer = remember {
                     LoudnessEnhancer(mediaPlayer.audioSessionId).apply {
                         enabled = true
                     }
+                }
+                // On attache l'Equalizer Android à la même session audio que le MediaPlayer
+                LaunchedEffect(mediaPlayer.audioSessionId) {
+                    TrackEqEngine.attachToSession(mediaPlayer.audioSessionId)
                 }
 
                 var selectedTab by remember {
@@ -169,7 +180,28 @@ class MainActivity : ComponentActivity() {
                                 isPlaying = true
                                 applyGainToPlayer(currentTrackGainDb)
                                 applyTempoToPlayer(currentTrackTempo)
+
+                                currentPlayingUri?.let { uri ->
+                                    val settings = TrackEqPrefs.load(ctx, uri)
+
+                                    if (settings != null) {
+                                        // On applique les valeurs mémorisées à l’EQ
+                                        TrackEqEngine.setBands(
+                                            lowDb  = settings.low,
+                                            midDb  = settings.mid,
+                                            highDb = settings.high
+                                        )
+                                    } else {
+                                        // Si pas de preset : EQ à plat
+                                        TrackEqEngine.setBands(
+                                            lowDb  = 0f,
+                                            midDb  = 0f,
+                                            highDb = 0f
+                                        )
+                                    }
+                                }
                             },
+
                             onError = {
                                 isPlaying = false
                                 mediaPlayer.reset()
@@ -197,11 +229,11 @@ class MainActivity : ComponentActivity() {
 
                 DisposableEffect(Unit) {
                     onDispose {
-                        loudnessEnhancer.release()
-                        mediaPlayer.release()
+                        try { loudnessEnhancer.release() } catch (_: Exception) {}
+                        try { TrackEqEngine.release() } catch (_: Exception) {}
+                        try { mediaPlayer.release() } catch (_: Exception) {}
                     }
                 }
-
                 // ---------------- UI principale -------------------------
 
                 Scaffold(

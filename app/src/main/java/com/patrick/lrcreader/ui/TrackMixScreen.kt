@@ -8,9 +8,9 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -19,17 +19,22 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.patrick.lrcreader.core.TrackEqEngine
+import com.patrick.lrcreader.core.TrackEqPrefs
+import com.patrick.lrcreader.core.TrackEqSettings
 import com.patrick.lrcreader.ui.theme.DarkBlueGradientBackground
+import kotlin.math.roundToInt
 
 /**
  * Écran de mixage pour UN titre.
  *
- * - Niveau titre (dB)
- * - Tempo (0.8x à 1.2x)
- * - EQ 3 bandes VISUEL (Grave / Med / Aigu)
+ * - Niveau titre (dB) -> currentTrackGainDb / onTrackGainChange
+ * - Tempo (0.8x à 1.2x) -> tempo / onTempoChange
+ * - EQ 3 bandes vertical, câblé audio + mémorisé par titre
  */
 @Composable
 fun TrackMixScreen(
@@ -44,15 +49,20 @@ fun TrackMixScreen(
     tempo: Float,
     onTempoChange: (Float) -> Unit,
 
+    // Pour mémoriser l’EQ par titre
+    currentTrackUri: String?,
+
     // Quand on ferme la page mixage
     onClose: () -> Unit
 ) {
+    val context = LocalContext.current
+
     // --------- GAIN (dB) ----------
     val minDb = -12
     val maxDb = 12
 
     var gainSlider by remember(currentTrackGainDb) {
-        mutableFloatStateOf(
+        mutableStateOf(
             (currentTrackGainDb - minDb).toFloat() / (maxDb - minDb).toFloat()
         )
     }
@@ -62,16 +72,51 @@ fun TrackMixScreen(
     val maxTempo = 1.2f
 
     var tempoSlider by remember(tempo) {
-        mutableFloatStateOf(
+        mutableStateOf(
             ((tempo - minTempo) / (maxTempo - minTempo))
                 .coerceIn(0f, 1f)
         )
     }
 
-    // --------- EQ VISUEL 3 BANDES (-12..+12 dB) ----------
-    var lowGainDb by remember { mutableFloatStateOf(0f) }
-    var midGainDb by remember { mutableFloatStateOf(0f) }
-    var highGainDb by remember { mutableFloatStateOf(0f) }
+    // --------- EQ (3 bandes) + MÉMO PAR TITRE ----------
+
+    // Valeurs initiales depuis les préférences du titre
+    val initialEq = remember(currentTrackUri) {
+        if (currentTrackUri != null) {
+            TrackEqPrefs.load(context, currentTrackUri)
+                ?: TrackEqSettings(0f, 0f, 0f)
+        } else {
+            TrackEqSettings(0f, 0f, 0f)
+        }
+    }
+
+    var lowGain by remember(currentTrackUri) { mutableStateOf(initialEq.low) }   // -12..+12
+    var midGain by remember(currentTrackUri) { mutableStateOf(initialEq.mid) }
+    var highGain by remember(currentTrackUri) { mutableStateOf(initialEq.high) }
+
+    fun applyAndSaveEq() {
+        // 🔊 applique au moteur d’EQ
+        TrackEqEngine.setBands(
+            lowDb = lowGain,
+            midDb = midGain,
+            highDb = highGain
+        )
+        // 💾 mémorise pour ce titre
+        currentTrackUri?.let { uri ->
+            TrackEqPrefs.save(
+                context,
+                uri,
+                TrackEqSettings(lowGain, midGain, highGain)
+            )
+        }
+    }
+
+    // On applique une première fois les valeurs au moment où l’écran s’ouvre
+    // (pour être sûr que le son colle aux faders)
+    remember(currentTrackUri) {
+        applyAndSaveEq()
+        0 // valeur jetable pour satisfy remember
+    }
 
     DarkBlueGradientBackground {
         Column(
@@ -111,7 +156,7 @@ fun TrackMixScreen(
                 fontSize = 13.sp
             )
             Text(
-                text = String.format("%+d dB", currentTrackGainDb),
+                text = "${if (currentTrackGainDb >= 0) "+${currentTrackGainDb}" else currentTrackGainDb} dB",
                 color = Color.White,
                 fontSize = 12.sp,
                 modifier = Modifier.padding(bottom = 4.dp)
@@ -183,144 +228,144 @@ fun TrackMixScreen(
 
             Spacer(Modifier.height(22.dp))
 
-            // ─────────── EQ VISUEL 3 BANDES ───────────
+            // ─────────── EQ 3 BANDES (VERTICAL, PERSISTANT) ───────────
             Text(
-                text = "Égaliseur 3 bandes (visuel)",
+                text = "Égaliseur 3 bandes",
                 color = Color(0xFFB0BEC5),
                 fontSize = 13.sp
             )
 
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(8.dp))
 
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(260.dp),          // << hauteur maxi du bloc EQ
+                    .height(230.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.Bottom
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                EqBandSlider(
-                    label = "Grave",
-                    color = Color(0xFF4CAF50),
-                    valueDb = lowGainDb,
-                    onValueDbChange = { lowGainDb = it }
+                // ------- Graves -------
+                EqVerticalFader(
+                    label = "Graves",
+                    gain = lowGain,
+                    onGainChange = { g ->
+                        lowGain = g
+                        applyAndSaveEq()
+                    },
+                    color = Color(0xFF4CAF50)
                 )
-                EqBandSlider(
-                    label = "Med",
-                    color = Color(0xFFFFC107),
-                    valueDb = midGainDb,
-                    onValueDbChange = { midGainDb = it }
+
+                // ------- Médiums -------
+                EqVerticalFader(
+                    label = "Médiums",
+                    gain = midGain,
+                    onGainChange = { g ->
+                        midGain = g
+                        applyAndSaveEq()
+                    },
+                    color = Color(0xFFFFC107)
                 )
-                EqBandSlider(
-                    label = "Aigu",
-                    color = Color(0xFF42A5F5),
-                    valueDb = highGainDb,
-                    onValueDbChange = { highGainDb = it }
+
+                // ------- Aigus -------
+                EqVerticalFader(
+                    label = "Aigus",
+                    gain = highGain,
+                    onGainChange = { g ->
+                        highGain = g
+                        applyAndSaveEq()
+                    },
+                    color = Color(0xFF42A5F5)
                 )
             }
-
-            Spacer(Modifier.height(8.dp))
-
-            Text(
-                text = "L’EQ est pour l’instant seulement visuel (pas encore branché audio).",
-                color = Color(0xFF78909C),
-                fontSize = 11.sp
-            )
         }
     }
 }
 
 /**
- * Un fader vertical "gros" pour une bande d'EQ.
- * valueDb est entre -12 et +12.
- */
-/**
- * Un fader vertical "gros" pour une bande d'EQ.
- * Gère son état en interne et renvoie la valeur au parent.
+ * Une bande d'EQ : label, gros fader vertical en Canvas et valeur en dB.
  */
 @Composable
-private fun EqBandSlider(
+private fun EqVerticalFader(
     label: String,
-    color: Color,
-    valueDb: Float,
-    onValueDbChange: (Float) -> Unit
+    gain: Float,                           // -12..+12
+    onGainChange: (Float) -> Unit,
+    color: Color
 ) {
-    // On garde un état local qui bouge immédiatement à l'écran
-    var localDb by remember { mutableFloatStateOf(valueDb.coerceIn(-12f, 12f)) }
-    val sliderPos = (localDb + 12f) / 24f    // 0..1
+    // Convertit -12..+12 -> 0..1
+    var sliderValue by remember(gain) {
+        mutableStateOf(((gain + 12f) / 24f).coerceIn(0f, 1f))
+    }
 
     Column(
-        modifier = Modifier.width(70.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.width(80.dp)
     ) {
-        // Valeur en dB
         Text(
-            text = String.format("%+d dB", localDb.toInt()),
+            text = label,
             color = Color.White,
-            fontSize = 13.sp
+            fontSize = 12.sp,
+            maxLines = 1
         )
+
+        Spacer(Modifier.height(4.dp))
+
+        Text(
+            text = String.format("%+d dB", gain.roundToInt()),
+            color = Color(0xFFCFD8DC),
+            fontSize = 11.sp
+        )
+
         Spacer(Modifier.height(6.dp))
 
-        // Corps du fader
         Canvas(
             modifier = Modifier
-                .width(26.dp)          // plus large
-                .height(200.dp)        // bien haut
+                .height(190.dp)   // hauteur du fader
+                .width(40.dp)     // largeur confortable pour le doigt
                 .pointerInput(Unit) {
-                    detectVerticalDragGestures { _, dragAmount ->
-                        // dragAmount > 0 = vers le bas → on baisse le gain
-                        val deltaDb = -dragAmount / 8f   // règle la "vitesse" du fader
-                        val newDb = (localDb + deltaDb).coerceIn(-12f, 12f)
-                        localDb = newDb          // 👉 bouge visuellement tout de suite
-                        onValueDbChange(newDb)   // 👉 remonte la valeur au parent
+                    detectVerticalDragGestures { change, dragAmount ->
+                        change.consume()
+                        // Vers le haut = augmente
+                        val newSliderValue = (sliderValue - dragAmount / size.height)
+                            .coerceIn(0f, 1f)
+                        sliderValue = newSliderValue
+                        val newGain = newSliderValue * 24f - 12f
+                        onGainChange(newGain)
                     }
                 }
         ) {
-            val trackWidth = size.width
+            val trackWidth = size.width * 0.35f
+            val trackX = (size.width - trackWidth) / 2f
             val trackHeight = size.height
 
-            // Piste de fond
+            // Piste grise
             drawRoundRect(
-                color = Color(0xFF303030),
-                topLeft = Offset(
-                    x = (size.width - trackWidth) / 2f,
-                    y = 0f
-                ),
+                color = Color.DarkGray,
+                topLeft = Offset(trackX, 0f),
                 size = Size(trackWidth, trackHeight),
                 cornerRadius = CornerRadius(trackWidth / 2f)
             )
 
-            // Partie active colorée
-            val activeHeight = trackHeight * sliderPos
+            // Piste colorée (du bas vers le haut)
+            val activeHeight = trackHeight * sliderValue
             drawRoundRect(
                 color = color,
-                topLeft = Offset(
-                    x = (size.width - trackWidth) / 2f,
-                    y = trackHeight - activeHeight
-                ),
+                topLeft = Offset(trackX, trackHeight - activeHeight),
                 size = Size(trackWidth, activeHeight),
                 cornerRadius = CornerRadius(trackWidth / 2f)
             )
 
-            // Le "bouton" du fader
-            val knobY = trackHeight * (1f - sliderPos)
-            drawRoundRect(
+            // "Tête" du fader
+            val thumbRadius = trackWidth * 0.9f
+            val thumbCenter = Offset(
+                x = size.width / 2f,
+                y = trackHeight - activeHeight
+            )
+            drawCircle(
                 color = Color.White,
-                topLeft = Offset(
-                    x = (size.width - trackWidth * 1.6f) / 2f,
-                    y = knobY - 6.dp.toPx()
-                ),
-                size = Size(trackWidth * 1.6f, 12.dp.toPx()),
-                cornerRadius = CornerRadius(6.dp.toPx())
+                radius = thumbRadius,
+                center = thumbCenter
             )
         }
-
-        Spacer(Modifier.height(6.dp))
-        Text(
-            text = label,
-            color = Color(0xFFCFD8DC),
-            fontSize = 14.sp
-        )
     }
 }
 
@@ -336,6 +381,7 @@ fun TrackMixScreenPreview() {
         onTrackGainChange = { },
         tempo = 1.0f,
         onTempoChange = { },
+        currentTrackUri = "demo://track",
         onClose = {}
     )
 }
