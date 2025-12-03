@@ -268,6 +268,11 @@ object TunerEngine {
         val cents = ((midiFloatCorrected - midiCorrected) * 100f).roundToInt()
 
         val name = noteNames[noteIndex] + octave.toString()
+
+        android.util.Log.d(
+            "TUNER_DEBUG",
+            "freq=${freq}Hz midiRaw=$midiRaw midiCorrected=$midiCorrected cents=$cents name=$name"
+        )
         return Triple(name, cents, midiCorrected)
     }
 }
