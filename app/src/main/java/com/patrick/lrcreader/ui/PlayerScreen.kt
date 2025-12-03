@@ -32,6 +32,7 @@ import com.patrick.lrcreader.core.LrcStorage
 import com.patrick.lrcreader.core.PlaybackCoordinator
 import com.patrick.lrcreader.core.PlayerBusController
 import com.patrick.lrcreader.core.pauseWithFade
+import com.patrick.lrcreader.core.MidiCueDispatcher   // ⬅️ IMPORT MIDI
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.abs
@@ -77,6 +78,10 @@ fun PlayerScreen(
 
     var lyricsBoxHeightPx by remember { mutableStateOf(0) }
     var currentLrcIndex by remember { mutableStateOf(0) }
+
+    // Dernière ligne pour laquelle on a envoyé un CUE MIDI
+    var lastMidiIndex by remember(currentTrackUri) { mutableStateOf(-1) }
+
     var userScrolling by remember { mutableStateOf(false) }
 
     val lineHeightDp = 80.dp
@@ -98,7 +103,7 @@ fun PlayerScreen(
 
     var currentEditTab by remember { mutableStateOf(0) }
 
-    // ---------- Suivi lecture + index ligne courante ----------
+    // ---------- Suivi lecture + index ligne courante + MIDI ----------
     LaunchedEffect(isPlaying, parsedLines) {
         while (true) {
             val d = runCatching { mediaPlayer.duration }.getOrNull() ?: -1
@@ -109,10 +114,24 @@ fun PlayerScreen(
 
             if (parsedLines.isNotEmpty()) {
                 val posMs = (p.toLong() - lyricsDelayMs).coerceAtLeast(0L)
+
+                // On prend la ligne dont le timeMs est le plus proche de posMs
                 val bestIndex = parsedLines.indices.minByOrNull {
                     abs(parsedLines[it].timeMs - posMs)
                 } ?: 0
-                currentLrcIndex = bestIndex
+
+                if (bestIndex != currentLrcIndex) {
+                    currentLrcIndex = bestIndex
+                }
+
+                // 🔥 Déclenche le CUE MIDI quand la ligne change
+                if (currentTrackUri != null && bestIndex != lastMidiIndex) {
+                    lastMidiIndex = bestIndex
+                    MidiCueDispatcher.onActiveLineChanged(
+                        trackUri = currentTrackUri,
+                        lineIndex = bestIndex
+                    )
+                }
             }
 
             delay(200)
@@ -285,7 +304,17 @@ fun PlayerScreen(
                             onLyricsBoxHeightChange = { lyricsBoxHeightPx = it },
                             highlightColor = highlightColor,
                             onLineClick = { index, timeMs ->
+                                // Seek + centrage
                                 seekAndCenter(timeMs.toInt(), index)
+
+                                // 🔥 Et on déclenche le CUE MIDI immédiatement au clic
+                                if (currentTrackUri != null) {
+                                    lastMidiIndex = index
+                                    MidiCueDispatcher.onActiveLineChanged(
+                                        trackUri = currentTrackUri,
+                                        lineIndex = index
+                                    )
+                                }
                             }
                         )
 

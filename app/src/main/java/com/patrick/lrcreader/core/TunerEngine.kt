@@ -36,7 +36,7 @@ object TunerEngine {
     private const val REQUIRED_STABLE_COUNT = 4
 
     // Décalage global en demi-tons (ici -2 pour corriger A qui sort en B)
-    private const val SEMITONE_OFFSET = -2
+    private const val SEMITONE_OFFSET = 0
 
     private val _state = MutableStateFlow(TunerState())
     val state: StateFlow<TunerState> = _state.asStateFlow()
