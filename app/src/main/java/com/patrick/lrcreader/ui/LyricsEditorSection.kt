@@ -1,5 +1,9 @@
 package com.patrick.lrcreader.ui
-
+import com.patrick.lrcreader.core.CueMidi
+import androidx.compose.material3.AlertDialog
+import androidx.compose.runtime.*
+import androidx.compose.foundation.clickable
+import com.patrick.lrcreader.core.CueMidiStore
 import android.content.Context
 import android.media.MediaMetadataRetriever
 import android.media.MediaPlayer
@@ -19,8 +23,6 @@ import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -56,33 +58,13 @@ fun LyricsEditorSection(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val lazyListState = rememberLazyListState()
+    var editingCueLineIndex by remember { mutableStateOf<Int?>(null) }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(horizontal = 16.dp, vertical = 6.dp)
     ) {
-        // MODIFIÉ : Header retiré
-        /*
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(
-                text = "Éditeur de paroles",
-                color = Color.White,
-                fontSize = 18.sp,
-                modifier = Modifier.weight(1f)
-            )
-            TextButton(onClick = onCloseEditor) {
-                Text("Fermer", color = Color(0xFFFF8A80))
-            }
-        }
-        */
-
         // Onglets
         TabRow(
             selectedTabIndex = currentEditTab,
@@ -126,40 +108,6 @@ fun LyricsEditorSection(
                         .fillMaxWidth()
                         .weight(1f)
                 ) {
-                    // MODIFIÉ : Bouton "Importer depuis MP3" retiré
-                    /*
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 4.dp),
-                        horizontalArrangement = Arrangement.End,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        TextButton(
-                            onClick = {
-                                val uri = currentTrackUri
-                                if (uri != null) {
-                                    val imported =
-                                        importLyricsFromAudio(context, uri)
-                                    if (imported != null && imported.isNotEmpty()) {
-                                        onEditingLinesChange(imported)
-                                        onRawLyricsTextChange(
-                                            imported.joinToString("\n") { it.text }
-                                        )
-                                        onCurrentEditTabChange(1)
-                                    }
-                                }
-                            }
-                        ) {
-                            Text(
-                                text = "Importer depuis MP3",
-                                color = Color(0xFF80CBC4),
-                                fontSize = 12.sp
-                            )
-                        }
-                    }
-                    */
-
                     OutlinedTextField(
                         value = rawLyricsText,
                         onValueChange = onRawLyricsTextChange,
@@ -181,13 +129,13 @@ fun LyricsEditorSection(
             }
 
             1 -> {
-                // ---------- Onglet SYNCHRO (MODIFIÉ) ----------
+                // ---------- Onglet SYNCHRO ----------
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
                 ) {
-                    // Mini player synchro (INCHANGÉ)
+                    // Mini player synchro
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -240,7 +188,7 @@ fun LyricsEditorSection(
                         )
                     }
 
-                    // Reset TAGs (INCHANGÉ)
+                    // Reset TAGs
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -265,9 +213,12 @@ fun LyricsEditorSection(
                         }
                     }
 
-                    // MODIFIÉ : Liste des lignes taguables avec LazyColumn et auto-scroll
+                    // Cues MIDI pour ce morceau (pour affichage 🎛)
+                    val cuesForTrack = CueMidiStore.getCuesForTrack(currentTrackUri)
+
+                    // Liste des lignes taguables
                     LazyColumn(
-                        state = lazyListState, // On associe notre contrôleur
+                        state = lazyListState,
                         modifier = Modifier
                             .fillMaxWidth()
                             .weight(1f)
@@ -281,12 +232,18 @@ fun LyricsEditorSection(
                                 )
                             }
                         } else {
-                            itemsIndexed(editingLines, key = { _, line -> line.hashCode() }) { index, line ->
+                            itemsIndexed(
+                                editingLines,
+                                key = { _, line -> line.hashCode() }
+                            ) { index, line ->
                                 val timeLabel =
                                     if (line.timeMs > 0)
                                         formatLrcTime(line.timeMs)
                                     else
                                         "--:--.--"
+
+                                val hasCueForThisLine =
+                                    cuesForTrack.any { it.lineIndex == index }
 
                                 Row(
                                     modifier = Modifier
@@ -294,6 +251,7 @@ fun LyricsEditorSection(
                                         .padding(vertical = 4.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
+                                    // Colonne gauche : TAG + time
                                     Column(
                                         horizontalAlignment = Alignment.CenterHorizontally,
                                         modifier = Modifier.padding(end = 8.dp)
@@ -304,7 +262,6 @@ fun LyricsEditorSection(
                                                     mediaPlayer.currentPosition
                                                 }.getOrElse { 0 }
 
-                                                // Applique le nouveau timestamp
                                                 onEditingLinesChange(
                                                     editingLines.mapIndexed { i, old ->
                                                         if (i == index)
@@ -313,16 +270,26 @@ fun LyricsEditorSection(
                                                     }
                                                 )
 
-                                                // LOGIQUE D'AUTO-SCROLL
+                                                // auto-scroll
                                                 scope.launch {
                                                     val layoutInfo = lazyListState.layoutInfo
-                                                    val visibleItem = layoutInfo.visibleItemsInfo.find { it.index == index }
+                                                    val visibleItem =
+                                                        layoutInfo.visibleItemsInfo
+                                                            .find { it.index == index }
                                                     if (visibleItem != null) {
-                                                        val itemCenter = visibleItem.offset + visibleItem.size / 2
-                                                        val viewportCenter = layoutInfo.viewportEndOffset / 2
+                                                        val itemCenter =
+                                                            visibleItem.offset + visibleItem.size / 2
+                                                        val viewportCenter =
+                                                            layoutInfo.viewportEndOffset / 2
                                                         if (itemCenter > viewportCenter) {
-                                                            val nextIndex = (index + 1).coerceAtMost(editingLines.lastIndex)
-                                                            lazyListState.animateScrollToItem(nextIndex, scrollOffset = -layoutInfo.viewportEndOffset / 3)
+                                                            val nextIndex =
+                                                                (index + 1).coerceAtMost(
+                                                                    editingLines.lastIndex
+                                                                )
+                                                            lazyListState.animateScrollToItem(
+                                                                nextIndex,
+                                                                scrollOffset = -layoutInfo.viewportEndOffset / 3
+                                                            )
                                                         }
                                                     }
                                                 }
@@ -341,13 +308,32 @@ fun LyricsEditorSection(
                                         )
                                     }
 
-                                    Text(
-                                        text = line.text,
-                                        color = Color.White,
-                                        fontSize = 16.sp,
-                                        modifier = Modifier.weight(1f)
-                                    )
+                                    // Zone centrale : indicateur CUE + texte cliquable
+                                    Row(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .padding(horizontal = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        if (hasCueForThisLine) {
+                                            Text(
+                                                text = "🎛",
+                                                fontSize = 14.sp,
+                                                modifier = Modifier.padding(end = 4.dp)
+                                            )
+                                        }
 
+                                        Text(
+                                            text = line.text,
+                                            color = Color.White,
+                                            fontSize = 16.sp,
+                                            modifier = Modifier.clickable {
+                                                editingCueLineIndex = index
+                                            }
+                                        )
+                                    }
+
+                                    // Bouton Play
                                     IconButton(
                                         onClick = {
                                             val t = line.timeMs
@@ -377,11 +363,21 @@ fun LyricsEditorSection(
                             }
                         }
                     }
+
+                    // Popup d'édition de Cue MIDI
+                    // Popup d'édition de Cue MIDI
+                    val lineIndexEditing = editingCueLineIndex
+                    if (lineIndexEditing != null && currentTrackUri != null) {
+                        CueMidiEditorPopup(
+                            lineIndex = lineIndexEditing,
+                            currentTrackUri = currentTrackUri,
+                            onClose = { editingCueLineIndex = null }
+                        )
+                    }
                 }
             }
         }
-
-        // Barre d’actions (INCHANGÉ)
+        // Barre d’actions
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -413,6 +409,159 @@ fun LyricsEditorSection(
             }
         }
     }
+
+}
+
+@Composable
+fun CueMidiEditorPopup(
+    lineIndex: Int,
+    currentTrackUri: String?,
+    onClose: () -> Unit
+) {
+    val context = LocalContext.current
+
+    // CUE existant éventuel pour cette ligne
+    val existingCue = remember(currentTrackUri, lineIndex) {
+        CueMidiStore
+            .getCuesForTrack(currentTrackUri)
+            .firstOrNull { it.lineIndex == lineIndex }
+    }
+
+    // États des champs
+    var channelText by remember {
+        mutableStateOf(
+            (existingCue?.channel ?: 1).toString()
+        )
+    }
+    var programText by remember {
+        mutableStateOf(
+            (existingCue?.program ?: 1).toString()
+        )
+    }
+
+    // Petite aide sur la validité des valeurs
+    val channelError = channelText.toIntOrNull()?.let { it !in 1..16 } ?: false
+    val programError = programText.toIntOrNull()?.let { it !in 1..128 } ?: false
+
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = {
+            Text(
+                text = "CUE MIDI – Ligne ${lineIndex + 1}",
+                color = Color.White
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = "Ce CUE enverra un Program Change à ton pédalier quand cette phrase sera jouée.",
+                    color = Color(0xFFB0BEC5),
+                    fontSize = 13.sp
+                )
+
+                Spacer(Modifier.height(12.dp))
+
+                // CANAL MIDI
+                OutlinedTextField(
+                    value = channelText,
+                    onValueChange = { channelText = it },
+                    label = { Text("Canal MIDI (1–16)") },
+                    isError = channelError,
+                    singleLine = true,
+                    textStyle = androidx.compose.ui.text.TextStyle(
+                        color = Color.White,
+                        fontSize = 14.sp
+                    )
+                )
+                if (channelError) {
+                    Text(
+                        text = "Canal entre 1 et 16",
+                        color = Color(0xFFFF8A80),
+                        fontSize = 11.sp
+                    )
+                }
+
+                Spacer(Modifier.height(8.dp))
+
+                // PROGRAM CHANGE
+                OutlinedTextField(
+                    value = programText,
+                    onValueChange = { programText = it },
+                    label = { Text("Programme (1–128)") },
+                    isError = programError,
+                    singleLine = true,
+                    textStyle = androidx.compose.ui.text.TextStyle(
+                        color = Color.White,
+                        fontSize = 14.sp
+                    )
+                )
+                if (programError) {
+                    Text(
+                        text = "Programme entre 1 et 128",
+                        color = Color(0xFFFF8A80),
+                        fontSize = 11.sp
+                    )
+                }
+
+                if (existingCue != null) {
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        text = "Un CUE existe déjà pour cette ligne. Tu peux le modifier ou le supprimer.",
+                        color = Color(0xFFFFF59D),
+                        fontSize = 11.sp
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    val trackKey = currentTrackUri
+                    if (trackKey == null) {
+                        onClose()
+                        return@TextButton
+                    }
+
+                    val chan = channelText.toIntOrNull()?.coerceIn(1, 16) ?: 1
+                    val prog = programText.toIntOrNull()?.coerceIn(1, 128) ?: 1
+
+                    val cue = CueMidi(
+                        lineIndex = lineIndex,
+                        channel = chan,
+                        program = prog
+                    )
+
+                    CueMidiStore.upsertCue(trackKey, cue)
+                    onClose()
+                }
+            ) {
+                Text("Enregistrer", color = Color(0xFF80CBC4))
+            }
+        },
+        dismissButton = {
+            Row {
+                if (existingCue != null && currentTrackUri != null) {
+                    TextButton(
+                        onClick = {
+                            CueMidiStore.deleteCue(
+                                trackUri = currentTrackUri,
+                                lineIndex = lineIndex
+                            )
+                            onClose()
+                        }
+                    ) {
+                        Text("Supprimer", color = Color(0xFFFF8A80))
+                    }
+                }
+
+                TextButton(onClick = onClose) {
+                    Text("Annuler", color = Color.LightGray)
+                }
+            }
+        }
+    )
 }
 
 /* ─────────────────────────────
