@@ -232,10 +232,7 @@ fun LyricsEditorSection(
                                 )
                             }
                         } else {
-                            itemsIndexed(
-                                editingLines,
-                                key = { _, line -> line.hashCode() }
-                            ) { index, line ->
+                            itemsIndexed(editingLines) { index, line ->
                                 val timeLabel =
                                     if (line.timeMs > 0)
                                         formatLrcTime(line.timeMs)
