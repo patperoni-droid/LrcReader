@@ -376,6 +376,7 @@ fun LyricsEditorSection(
             }
         }
         // Barre d’actions
+        // Barre d’actions
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -386,37 +387,33 @@ fun LyricsEditorSection(
                 Text("Annuler", color = Color.LightGray)
             }
             TextButton(onClick = {
-                // 1) Si texte vide → on efface les paroles pour ce titre
+                // 1) On relit le texte brut du tab "Simple"
                 val simpleLines = rawLyricsText
                     .lines()
                     .map { it.trim() }
                     .filter { it.isNotEmpty() }
 
+                // 2) Si texte vide → on efface tout pour ce titre
                 if (simpleLines.isEmpty()) {
                     onSaveSortedLines(emptyList())
                     return@TextButton
                 }
 
-                // 2) On fusionne : nouveau texte + anciens timings (si présents)
-                val merged = simpleLines.mapIndexed { index, text ->
+                // 3) On reconstruit une liste **propre** :
+                //    - même ordre que dans l'onglet Simple
+                //    - on garde les TAGs (timeMs) déjà posés dans editingLines
+                //    - plus AUCUNE vieille ligne en rab
+                val finalLines = simpleLines.mapIndexed { index, text ->
                     val old = editingLines.getOrNull(index)
                     if (old != null) {
-                        // On garde timeMs, on remplace juste le texte
-                        old.copy(text = text)
+                        old.copy(text = text)   // on garde timeMs, on remplace juste le texte
                     } else {
-                        // Nouvelle ligne : pas encore de TAG
-                        LrcLine(timeMs = 0L, text = text)
+                        LrcLine(timeMs = 0L, text = text) // nouvelle ligne, pas encore taguée
                     }
                 }
 
-                // 3) On trie comme avant : lignes non taguées à la fin
-                val sorted = merged.sortedWith(
-                    compareBy<LrcLine> {
-                        if (it.timeMs <= 0L) Long.MAX_VALUE else it.timeMs
-                    }
-                )
-
-                onSaveSortedLines(sorted)
+                // 4) On sauvegarde tel quel, SANS tri supplémentaire
+                onSaveSortedLines(finalLines)
             }) {
                 Text("Enregistrer", color = Color(0xFF80CBC4))
             }

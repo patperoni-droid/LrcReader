@@ -70,7 +70,7 @@ fun PlayerScreen(
     }
 
     // Décalage global des paroles (latence)
-    val lyricsDelayMs = 1000L
+    val lyricsDelayMs = 0L
 
     var isConcertMode by remember {
         mutableStateOf(DisplayPrefs.isConcertMode(context))
