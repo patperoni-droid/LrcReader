@@ -386,16 +386,31 @@ fun LyricsEditorSection(
                 Text("Annuler", color = Color.LightGray)
             }
             TextButton(onClick = {
-                var lines = editingLines
-                if (lines.isEmpty()) {
-                    lines = rawLyricsText
-                        .lines()
-                        .map { it.trim() }
-                        .filter { it.isNotEmpty() }
-                        .map { LrcLine(timeMs = 0L, text = it) }
+                // 1) Si texte vide → on efface les paroles pour ce titre
+                val simpleLines = rawLyricsText
+                    .lines()
+                    .map { it.trim() }
+                    .filter { it.isNotEmpty() }
+
+                if (simpleLines.isEmpty()) {
+                    onSaveSortedLines(emptyList())
+                    return@TextButton
                 }
 
-                val sorted = lines.sortedWith(
+                // 2) On fusionne : nouveau texte + anciens timings (si présents)
+                val merged = simpleLines.mapIndexed { index, text ->
+                    val old = editingLines.getOrNull(index)
+                    if (old != null) {
+                        // On garde timeMs, on remplace juste le texte
+                        old.copy(text = text)
+                    } else {
+                        // Nouvelle ligne : pas encore de TAG
+                        LrcLine(timeMs = 0L, text = text)
+                    }
+                }
+
+                // 3) On trie comme avant : lignes non taguées à la fin
+                val sorted = merged.sortedWith(
                     compareBy<LrcLine> {
                         if (it.timeMs <= 0L) Long.MAX_VALUE else it.timeMs
                     }
