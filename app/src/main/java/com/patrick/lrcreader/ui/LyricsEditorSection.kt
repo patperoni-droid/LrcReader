@@ -1,5 +1,7 @@
 package com.patrick.lrcreader.ui
 
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import android.util.Log
 import com.patrick.lrcreader.core.CueMidi
 import androidx.compose.material3.AlertDialog
@@ -42,7 +44,7 @@ import com.patrick.lrcreader.core.LrcStorage   // 🟢 AJOUT IMPORTANT
 // ─────────────────────────────
 //  ÉDITEUR DE PAROLES
 // ─────────────────────────────
-
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun LyricsEditorSection(
     highlightColor: Color,
@@ -67,7 +69,8 @@ fun LyricsEditorSection(
     val scope = rememberCoroutineScope()
     val lazyListState = rememberLazyListState()
     var editingCueLineIndex by remember { mutableStateOf<Int?>(null) }
-
+    var lineMenuIndex by remember { mutableStateOf<Int?>(null) }
+    var lineMenuText by remember { mutableStateOf("") }
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -321,9 +324,18 @@ fun LyricsEditorSection(
                                             text = line.text,
                                             color = Color.White,
                                             fontSize = 16.sp,
-                                            modifier = Modifier.clickable {
-                                                editingCueLineIndex = index
-                                            }
+                                            modifier = Modifier
+                                                .combinedClickable(
+                                                    onClick = {
+                                                        // Clic normal → ouvre le CUE MIDI
+                                                        editingCueLineIndex = index
+                                                    },
+                                                    onLongClick = {
+                                                        // Appui long → ouvre le mini-menu (éditer / supprimer)
+                                                        lineMenuIndex = index
+                                                        lineMenuText = line.text
+                                                    }
+                                                )
                                         )
                                     }
 
@@ -357,6 +369,93 @@ fun LyricsEditorSection(
                             }
                         }
                     }
+                    // ─────────────────────────────
+                    //  Menu ÉDITER / SUPPRIMER la ligne (appui long)
+                    // ─────────────────────────────
+                    if (lineMenuIndex != null) {
+                        val idx = lineMenuIndex!!
+
+                        AlertDialog(
+                            onDismissRequest = { lineMenuIndex = null },
+                            title = {
+                                Text(
+                                    text = "Ligne ${idx + 1}",
+                                    color = Color.White
+                                )
+                            },
+                            text = {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(
+                                        text = "Modifier le texte ou supprimer la phrase.",
+                                        color = Color(0xFFB0BEC5),
+                                        fontSize = 13.sp
+                                    )
+
+                                    Spacer(Modifier.height(12.dp))
+
+                                    OutlinedTextField(
+                                        value = lineMenuText,
+                                        onValueChange = { lineMenuText = it },
+                                        label = { Text("Texte de la phrase") },
+                                        singleLine = false,
+                                        textStyle = androidx.compose.ui.text.TextStyle(
+                                            color = Color.White,
+                                            fontSize = 16.sp
+                                        )
+                                    )
+                                }
+                            },
+                            confirmButton = {
+                                // Bouton "Modifier"
+                                TextButton(
+                                    onClick = {
+                                        val list = editingLines.toMutableList()
+                                        if (idx in list.indices) {
+                                            list[idx] = list[idx].copy(
+                                                text = lineMenuText.trim()
+                                            )
+                                            onEditingLinesChange(list)
+                                        }
+                                        lineMenuIndex = null
+                                    }
+                                ) {
+                                    Text("Modifier", color = Color(0xFF80CBC4))
+                                }
+                            },
+                            dismissButton = {
+                                Row {
+                                    // Bouton "Supprimer"
+                                    TextButton(
+                                        onClick = {
+                                            val list = editingLines.toMutableList()
+                                            if (idx in list.indices) {
+                                                list.removeAt(idx)
+                                                onEditingLinesChange(list)
+                                            }
+
+                                            // On supprime aussi le CUE éventuel de cette ligne
+                                            if (currentTrackUri != null) {
+                                                CueMidiStore.deleteCue(
+                                                    trackUri = currentTrackUri,
+                                                    lineIndex = idx
+                                                )
+                                            }
+
+                                            lineMenuIndex = null
+                                        }
+                                    ) {
+                                        Text("Supprimer", color = Color(0xFFFF8A80))
+                                    }
+
+                                    TextButton(onClick = { lineMenuIndex = null }) {
+                                        Text("Annuler", color = Color.LightGray)
+                                    }
+                                }
+                            }
+                        )
+                    }
 
                     val lineIndexEditing = editingCueLineIndex
                     if (lineIndexEditing != null && currentTrackUri != null) {
@@ -366,6 +465,7 @@ fun LyricsEditorSection(
                             onClose = { editingCueLineIndex = null }
                         )
                     }
+
                 }
             }
         }
@@ -400,11 +500,22 @@ fun LyricsEditorSection(
                 // 2) Quelle est la source de vérité ?
                 val finalLines: List<LrcLine> = when (currentEditTab) {
                     0 -> {
-                        // Onglet SIMPLE : pas de timings, on repart de zéro
-                        simpleLines.map { txt ->
-                            LrcLine(timeMs = 0L, text = txt)
+                        // Onglet SIMPLE :
+                        // ➜ On ESSAIE de garder les timings existants (editingLines)
+                        if (editingLines.isEmpty()) {
+                            // Rien d'ancien → on crée tout à 0 ms
+                            simpleLines.map { txt ->
+                                LrcLine(timeMs = 0L, text = txt)
+                            }
+                        } else {
+                            // On fusionne le nouveau texte avec les anciens timings
+                            mergeLyricsWithOldTimings(
+                                newLines = simpleLines,
+                                oldLines = editingLines
+                            )
                         }
                     }
+
                     else -> {
                         // Onglet SYNCHRO : on fait CONFIANCE à editingLines
                         // (c'est là que tu as tagué les phrases)
@@ -646,4 +757,59 @@ private fun importLyricsFromAudio(
         return null
     }
 }
+/**
+ * Fusionne un nouveau texte avec les anciens timings.
+ *
+ * - Si une ligne existait déjà (même texte après trim) → on garde son timeMs.
+ * - Si le texte est nouveau ou n'existait pas avant → timeMs = 0.
+ *
+ * Ça permet :
+ *  - de corriger une faute sur UNE ligne (elle perd son TAG, normal)
+ *  - tout en gardant les TAGs pour les autres lignes inchangées.
+ */
+private fun mergeLyricsWithOldTimings(
+    newLines: List<String>,
+    oldLines: List<LrcLine>
+): List<LrcLine> {
+    if (oldLines.isEmpty()) {
+        return newLines.map { lineText ->
+            LrcLine(timeMs = 0L, text = lineText)
+        }
+    }
 
+    val result = mutableListOf<LrcLine>()
+    val used = BooleanArray(oldLines.size)
+
+    for (newTextRaw in newLines) {
+        val newText = newTextRaw.trim()
+        if (newText.isEmpty()) continue
+
+        var matchedIndex = -1
+
+        // On cherche une ancienne ligne avec exactement le même texte (après trim),
+        // qui n'a pas déjà été utilisée.
+        for (i in oldLines.indices) {
+            if (used[i]) continue
+            if (oldLines[i].text.trim() == newText) {
+                matchedIndex = i
+                break
+            }
+        }
+
+        if (matchedIndex >= 0) {
+            used[matchedIndex] = true
+            val old = oldLines[matchedIndex]
+            // On garde le timeMs, on prend le texte nouveau (au cas où tu as changé un espace, etc.)
+            result.add(
+                old.copy(text = newText)
+            )
+        } else {
+            // Nouvelle ligne → pas de timing
+            result.add(
+                LrcLine(timeMs = 0L, text = newText)
+            )
+        }
+    }
+
+    return result
+}
