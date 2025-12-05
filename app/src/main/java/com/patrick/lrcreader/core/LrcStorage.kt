@@ -1,5 +1,6 @@
 package com.patrick.lrcreader.core
 
+import android.util.Log
 import android.content.Context
 import java.io.File
 import java.security.MessageDigest
@@ -20,10 +21,11 @@ object LrcStorage {
     }
 
     /** Sauvegarde des paroles synchronisées pour un morceau donné */
+    /** Sauvegarde des paroles synchronisées pour un morceau donné */
     fun saveForTrack(
         context: Context,
         trackUriString: String?,
-        lines: List<LrcLine>   // 👉 ta data class LrcLine
+        lines: List<LrcLine>
     ) {
         val outFile = lrcFileForUri(context, trackUriString) ?: return
 
@@ -42,12 +44,24 @@ object LrcStorage {
             }
         }
 
+        Log.d(
+            "LrcDebug",
+            "SAVE track=$trackUriString file=${outFile.name} len=${content.length} lines=${lines.size}"
+        )
+
         outFile.writeText(content)
     }
-    fun deleteForTrack(context: Context, trackUriString: String?) {
+    fun deleteForTrack(
+        context: Context,
+        trackUriString: String?
+    ) {
         val f = lrcFileForUri(context, trackUriString) ?: return
         if (f.exists()) {
             f.delete()
+            Log.d(
+                "LrcDebug",
+                "DELETE track=$trackUriString file=${f.name}"
+            )
         }
     }
     /** Recharge le .lrc sauvegardé pour ce morceau (si présent) */
@@ -56,7 +70,14 @@ object LrcStorage {
         trackUriString: String?
     ): String? {
         val f = lrcFileForUri(context, trackUriString) ?: return null
-        return if (f.exists() && f.isFile) f.readText() else null
+        val exists = f.exists() && f.isFile
+
+        Log.d(
+            "LrcDebug",
+            "LOAD track=$trackUriString file=${f.name} exists=$exists"
+        )
+
+        return if (exists) f.readText() else null
     }
 
     /** Format LRC style : mm:ss.xx */

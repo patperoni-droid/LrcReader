@@ -76,7 +76,12 @@ class MainActivity : ComponentActivity() {
 
                 var currentPlayingUri by remember { mutableStateOf<String?>(null) }
                 var isPlaying by remember { mutableStateOf(false) }
-                var parsedLines by remember { mutableStateOf<List<LrcLine>>(emptyList()) }
+
+// 👉 Les paroles sont maintenant reset à chaque changement de morceau
+                var parsedLines by remember(currentPlayingUri) {
+                    mutableStateOf<List<LrcLine>>(emptyList())
+                }
+
                 var currentPlayToken by remember { mutableStateOf(0L) }
                 var currentTrackGainDb by remember { mutableStateOf(0) }
                 var currentLyricsColor by remember { mutableStateOf(Color(0xFFE040FB)) }
@@ -93,10 +98,10 @@ class MainActivity : ComponentActivity() {
                 var djMasterLevel by remember { mutableStateOf(1f) }
                 var fillerMasterLevel by remember { mutableStateOf(0.6f) }
 
-                // 👇 écran plein écran "console" Mixer (maquette visuelle)
+// 👇 écran plein écran "console" Mixer (maquette visuelle)
                 var isMixerPreviewOpen by remember { mutableStateOf(false) }
 
-                // ID normalisé pour le prompteur ("note:123" ou "text:abc")
+// ID normalisé pour le prompteur ("note:123" ou "text:abc")
                 var textPrompterId by remember { mutableStateOf<String?>(null) }
 
                 // ---------------- PlaybackCoordinator -------------------
@@ -180,9 +185,14 @@ class MainActivity : ComponentActivity() {
                             playlistName = playlistName,
                             playToken = myToken,
                             getCurrentToken = { currentPlayToken },
-                            onLyricsLoaded = { original ->
+                            onLyricsLoaded = { _ /* original ignoré */ ->
                                 val override = LrcStorage.loadForTrack(ctx, uriString)
-                                parsedLines = parseLrc(override ?: original ?: "")
+
+                                parsedLines = if (override != null) {
+                                    parseLrc(override)
+                                } else {
+                                    emptyList()   // pas de .lrc sauvegardé → pas de paroles
+                                }
                             },
                             onStart = {
                                 isPlaying = true

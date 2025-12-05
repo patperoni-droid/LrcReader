@@ -1,5 +1,6 @@
 package com.patrick.lrcreader.ui
 
+import com.patrick.lrcreader.core.parseLrc
 import com.patrick.lrcreader.core.AutoReturnPrefs
 import android.media.MediaPlayer
 import androidx.compose.foundation.background
@@ -39,6 +40,11 @@ import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 
+
+
+
+
+
 @Composable
 fun PlayerScreen(
     modifier: Modifier = Modifier,
@@ -70,7 +76,7 @@ fun PlayerScreen(
     }
 
     // Décalage global des paroles (latence)
-    val lyricsDelayMs = 0L
+    val lyricsDelayMs = 500L
 
     var isConcertMode by remember {
         mutableStateOf(DisplayPrefs.isConcertMode(context))
@@ -81,7 +87,7 @@ fun PlayerScreen(
 
     // Dernière ligne pour laquelle on a envoyé un CUE MIDI
     var lastMidiIndex by remember(currentTrackUri) { mutableStateOf(-1) }
-
+    var showLyrics by remember { mutableStateOf(true) }
     var userScrolling by remember { mutableStateOf(false) }
 
     val lineHeightDp = 80.dp
@@ -103,7 +109,37 @@ fun PlayerScreen(
 
     var currentEditTab by remember { mutableStateOf(0) }
 
+    // 🔁 À CHAQUE CHANGEMENT DE MORCEAU :
+    // PlayerScreen recharge les paroles depuis LrcStorage
+    LaunchedEffect(currentTrackUri) {
+        if (currentTrackUri == null) {
+            // Pas de titre actif → on vide tout
+            onParsedLinesChange(emptyList())
+            rawLyricsText = ""
+            editingLines = emptyList()
+            return@LaunchedEffect
+        }
+
+        // On lit le .lrc SAUVEGARDÉ pour ce morceau
+        val stored = LrcStorage.loadForTrack(context, currentTrackUri)
+
+        if (!stored.isNullOrBlank()) {
+            val parsed = parseLrc(stored)
+
+            // ✅ Ces lignes deviennent LA vérité pour ce track
+            onParsedLinesChange(parsed)
+            rawLyricsText = parsed.joinToString("\n") { it.text }
+            editingLines = parsed
+        } else {
+            // Aucun fichier LRC → pas de paroles
+            onParsedLinesChange(emptyList())
+            rawLyricsText = ""
+            editingLines = emptyList()
+        }
+    }
     // ---------- Suivi lecture + index ligne courante + MIDI ----------
+    // ---------- Suivi lecture + index ligne courante + MIDI ----------
+    // ---------- Suivi lecture + index ligne courante + MIDI + affichage ----------
     LaunchedEffect(isPlaying, parsedLines) {
         while (true) {
             val d = runCatching { mediaPlayer.duration }.getOrNull() ?: -1
@@ -115,9 +151,25 @@ fun PlayerScreen(
             if (parsedLines.isNotEmpty()) {
                 val posMs = (p.toLong() - lyricsDelayMs).coerceAtLeast(0L)
 
+                // On repère toutes les lignes taguées
+                val taggedIndices = parsedLines.withIndex()
+                    .filter { it.value.timeMs > 0L }
+                    .map { it.index }
+
+                if (taggedIndices.isEmpty()) {
+                    // Aucune ligne taguée → on laisse les paroles visibles dès le début
+                    showLyrics = true
+                } else {
+                    // Il y a des tags → rien à l'écran avant la première ligne taguée
+                    val firstTaggedIndex = taggedIndices.first()
+                    val firstTaggedTime = parsedLines[firstTaggedIndex].timeMs
+                    // posMs tient déjà compte du décalage global lyricsDelayMs
+                    showLyrics = posMs >= firstTaggedTime
+                }
+
                 // On prend la ligne dont le timeMs est le plus proche de posMs
                 val bestIndex = parsedLines.indices.minByOrNull {
-                    abs(parsedLines[it].timeMs - posMs)
+                    kotlin.math.abs(parsedLines[it].timeMs - posMs)
                 } ?: 0
 
                 if (bestIndex != currentLrcIndex) {
@@ -237,10 +289,14 @@ fun PlayerScreen(
                 durationMs = durationMs,
                 onIsPlayingChange = onIsPlayingChange,
                 onSaveSortedLines = { sorted ->
-                    if (currentTrackUri != null) {
-                        runCatching { LrcStorage.saveForTrack(context, currentTrackUri, sorted) }
-                    }
+                    // Met à jour les états locaux pour CE morceau
+                    rawLyricsText = sorted.joinToString("\n") { it.text }
+                    editingLines = sorted
+
+                    // Informe le parent : c'est cette liste qui sera utilisée en lecture
                     onParsedLinesChange(sorted)
+
+                    // On ferme l’éditeur
                     isEditingLyrics = false
                 }
             )
@@ -292,31 +348,46 @@ fun PlayerScreen(
                         Spacer(Modifier.height(8.dp))
 
                         // Zone centrale : toujours mode MANU avec ligne centrée
-                        LyricsArea(
-                            modifier = Modifier.weight(1f),
-                            scrollState = scrollState,
-                            parsedLines = parsedLines,
-                            isContinuousScroll = false,
-                            isConcertMode = isConcertMode,
-                            currentLrcIndex = currentLrcIndex,
-                            baseTopSpacerPx = baseTopSpacerPx,
-                            lyricsBoxHeightPx = lyricsBoxHeightPx,
-                            onLyricsBoxHeightChange = { lyricsBoxHeightPx = it },
-                            highlightColor = highlightColor,
-                            onLineClick = { index, timeMs ->
-                                // Seek + centrage
-                                seekAndCenter(timeMs.toInt(), index)
+                        // Zone centrale : toujours mode MANU avec ligne centrée
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                        ) {
+                            LyricsArea(
+                                modifier = Modifier.fillMaxSize(),
+                                scrollState = scrollState,
+                                parsedLines = parsedLines,              // ⬅️ on repasse les vraies lignes
+                                isContinuousScroll = false,
+                                isConcertMode = isConcertMode,
+                                currentLrcIndex = currentLrcIndex,
+                                baseTopSpacerPx = baseTopSpacerPx,
+                                lyricsBoxHeightPx = lyricsBoxHeightPx,
+                                onLyricsBoxHeightChange = { lyricsBoxHeightPx = it },
+                                highlightColor = highlightColor,
+                                onLineClick = { index, timeMs ->
+                                    // Seek + centrage
+                                    seekAndCenter(timeMs.toInt(), index)
 
-                                // 🔥 Et on déclenche le CUE MIDI immédiatement au clic
-                                if (currentTrackUri != null) {
-                                    lastMidiIndex = index
-                                    MidiCueDispatcher.onActiveLineChanged(
-                                        trackUri = currentTrackUri,
-                                        lineIndex = index
-                                    )
+                                    // 🔥 Et on déclenche le CUE MIDI immédiatement au clic
+                                    if (currentTrackUri != null) {
+                                        lastMidiIndex = index
+                                        MidiCueDispatcher.onActiveLineChanged(
+                                            trackUri = currentTrackUri,
+                                            lineIndex = index
+                                        )
+                                    }
                                 }
+                            )
+
+                            // Masque opaque par-dessus tant qu'on n'a pas atteint la 1ère ligne taguée
+                            if (!showLyrics) {
+                                Box(
+                                    modifier = Modifier
+                                        .matchParentSize()
+                                        .background(Color(0xFF1B1B1B))  // même couleur que la carte
+                                )
                             }
-                        )
+                        }
 
                         TimeBar(
                             positionMs = if (isDragging) dragPosMs else positionMs,

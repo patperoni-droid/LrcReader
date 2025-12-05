@@ -1,5 +1,6 @@
 package com.patrick.lrcreader.ui
 
+import android.util.Log
 import com.patrick.lrcreader.core.CueMidi
 import androidx.compose.material3.AlertDialog
 import androidx.compose.runtime.*
@@ -35,6 +36,12 @@ import com.patrick.lrcreader.core.LrcCleaner
 import com.patrick.lrcreader.core.LrcLine
 import com.patrick.lrcreader.core.pauseWithFade
 import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
+import com.patrick.lrcreader.core.LrcStorage   // 🟢 AJOUT IMPORTANT
+
+// ─────────────────────────────
+//  ÉDITEUR DE PAROLES
+// ─────────────────────────────
 
 @Composable
 fun LyricsEditorSection(
@@ -80,19 +87,8 @@ fun LyricsEditorSection(
             Tab(
                 selected = currentEditTab == 1,
                 onClick = {
-                    val lines = rawLyricsText
-                        .lines()
-                        .map { it.trim() }
-                        .filter { it.isNotEmpty() }
-
-                    onEditingLinesChange(
-                        lines.mapIndexed { index, lineText ->
-                            val old = editingLines.getOrNull(index)
-                            if (old != null) old.copy(text = lineText)
-                            else LrcLine(timeMs = 0L, text = lineText)
-                        }
-                    )
-
+                    // On ne touche plus aux timings ici,
+                    // on fait juste changer d’onglet.
                     onCurrentEditTabChange(1)
                 },
                 text = { Text("Synchro") }
@@ -136,7 +132,7 @@ fun LyricsEditorSection(
                         .fillMaxWidth()
                         .weight(1f)
                 ) {
-                    // Mini player synchro
+                    // Mini player synchro (Play/Pause + retour début + timecode)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -214,7 +210,7 @@ fun LyricsEditorSection(
                         }
                     }
 
-                    // Cues MIDI pour ce morceau (pour affichage 🎛)
+                    // Cues MIDI pour ce morceau
                     val cuesForTrack = CueMidiStore.getCuesForTrack(currentTrackUri)
 
                     // Liste des lignes taguables
@@ -331,7 +327,7 @@ fun LyricsEditorSection(
                                         )
                                     }
 
-                                    // Bouton Play
+                                    // Bouton Play par ligne
                                     IconButton(
                                         onClick = {
                                             val t = line.timeMs
@@ -362,8 +358,6 @@ fun LyricsEditorSection(
                         }
                     }
 
-                    // Popup d'édition de Cue MIDI
-                    // Popup d'édition de Cue MIDI
                     val lineIndexEditing = editingCueLineIndex
                     if (lineIndexEditing != null && currentTrackUri != null) {
                         CueMidiEditorPopup(
@@ -375,7 +369,7 @@ fun LyricsEditorSection(
                 }
             }
         }
-        // Barre d’actions
+
         // Barre d’actions
         Row(
             modifier = Modifier
@@ -383,44 +377,69 @@ fun LyricsEditorSection(
                 .padding(top = 8.dp, bottom = 4.dp),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            TextButton(onClick = onCloseEditor) {
-                Text("Annuler", color = Color.LightGray)
-            }
             TextButton(onClick = {
-                // 1) On relit le texte brut du tab "Simple"
+                // 1) On récupère les lignes du texte brut
                 val simpleLines = rawLyricsText
                     .lines()
                     .map { it.trim() }
                     .filter { it.isNotEmpty() }
 
-                // 2) Si texte vide → on efface tout pour ce titre
+                // Cas "j'efface tout" → on vide vraiment tout
                 if (simpleLines.isEmpty()) {
+                    onEditingLinesChange(emptyList())
+                    onRawLyricsTextChange("")
+
+                    if (currentTrackUri != null) {
+                        LrcStorage.deleteForTrack(context, currentTrackUri)
+                    }
+
                     onSaveSortedLines(emptyList())
                     return@TextButton
                 }
 
-                // 3) On reconstruit une liste **propre** :
-                //    - même ordre que dans l'onglet Simple
-                //    - on garde les TAGs (timeMs) déjà posés dans editingLines
-                //    - plus AUCUNE vieille ligne en rab
-                val finalLines = simpleLines.mapIndexed { index, text ->
-                    val old = editingLines.getOrNull(index)
-                    if (old != null) {
-                        old.copy(text = text)   // on garde timeMs, on remplace juste le texte
-                    } else {
-                        LrcLine(timeMs = 0L, text = text) // nouvelle ligne, pas encore taguée
+                // 2) Quelle est la source de vérité ?
+                val finalLines: List<LrcLine> = when (currentEditTab) {
+                    0 -> {
+                        // Onglet SIMPLE : pas de timings, on repart de zéro
+                        simpleLines.map { txt ->
+                            LrcLine(timeMs = 0L, text = txt)
+                        }
+                    }
+                    else -> {
+                        // Onglet SYNCHRO : on fait CONFIANCE à editingLines
+                        // (c'est là que tu as tagué les phrases)
+                        editingLines
+                            .filter { it.text.isNotBlank() }
                     }
                 }
 
-                // 4) On sauvegarde tel quel, SANS tri supplémentaire
+                // 🟢 LOG côté éditeur
+                Log.d(
+                    "LrcDebug",
+                    "EDITOR_SAVE currentTrackUri=$currentTrackUri lines=${finalLines.size}"
+                )
+
+                // 3) Sauvegarde sur disque
+                if (currentTrackUri != null) {
+                    LrcStorage.saveForTrack(
+                        context = context,
+                        trackUriString = currentTrackUri,
+                        lines = finalLines
+                    )
+                }
+
+                // 4) Mise à jour de l’état côté parent / lecteur
                 onSaveSortedLines(finalLines)
             }) {
                 Text("Enregistrer", color = Color(0xFF80CBC4))
             }
         }
     }
-
 }
+
+// ─────────────────────────────
+//  POPUP CUE MIDI
+// ─────────────────────────────
 
 @Composable
 fun CueMidiEditorPopup(
@@ -430,14 +449,12 @@ fun CueMidiEditorPopup(
 ) {
     val context = LocalContext.current
 
-    // CUE existant éventuel pour cette ligne
     val existingCue = remember(currentTrackUri, lineIndex) {
         CueMidiStore
             .getCuesForTrack(currentTrackUri)
             .firstOrNull { it.lineIndex == lineIndex }
     }
 
-    // États des champs
     var channelText by remember {
         mutableStateOf(
             (existingCue?.channel ?: 1).toString()
@@ -449,7 +466,6 @@ fun CueMidiEditorPopup(
         )
     }
 
-    // Petite aide sur la validité des valeurs
     val channelError = channelText.toIntOrNull()?.let { it !in 1..16 } ?: false
     val programError = programText.toIntOrNull()?.let { it !in 1..128 } ?: false
 
@@ -473,7 +489,6 @@ fun CueMidiEditorPopup(
 
                 Spacer(Modifier.height(12.dp))
 
-                // CANAL MIDI
                 OutlinedTextField(
                     value = channelText,
                     onValueChange = { channelText = it },
@@ -495,7 +510,6 @@ fun CueMidiEditorPopup(
 
                 Spacer(Modifier.height(8.dp))
 
-                // PROGRAM CHANGE
                 OutlinedTextField(
                     value = programText,
                     onValueChange = { programText = it },
@@ -574,9 +588,9 @@ fun CueMidiEditorPopup(
     )
 }
 
-/* ─────────────────────────────
-   FONCTIONS UTILITAIRES (LOCALES À L'ÉDITEUR)
-   ───────────────────────────── */
+// ─────────────────────────────
+//  FONCTIONS UTILITAIRES
+// ─────────────────────────────
 
 private fun formatMsLyricsEditor(ms: Int): String {
     if (ms <= 0) return "00:00"
@@ -629,6 +643,7 @@ private fun importLyricsFromAudio(
                 }
         }
     } catch (_: Exception) {
-        null
+        return null
     }
 }
+
