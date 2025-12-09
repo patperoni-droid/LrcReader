@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
@@ -71,31 +72,120 @@ fun LyricsEditorSection(
     var editingCueLineIndex by remember { mutableStateOf<Int?>(null) }
     var lineMenuIndex by remember { mutableStateOf<Int?>(null) }
     var lineMenuText by remember { mutableStateOf("") }
+
+    // 🔹 Toute la logique "Enregistrer" (copiée de ta barre du bas)
+    fun handleSave() {
+        // 1) On récupère les lignes du texte brut
+        val simpleLines = rawLyricsText
+            .lines()
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+
+        // Cas "j'efface tout" → on vide vraiment tout
+        if (simpleLines.isEmpty()) {
+            onEditingLinesChange(emptyList())
+            onRawLyricsTextChange("")
+
+            if (currentTrackUri != null) {
+                LrcStorage.deleteForTrack(context, currentTrackUri)
+            }
+
+            onSaveSortedLines(emptyList())
+            return
+        }
+
+        // 2) Quelle est la source de vérité ?
+        val finalLines: List<LrcLine> = when (currentEditTab) {
+            0 -> {
+                // Onglet SIMPLE :
+                // ➜ On ESSAIE de garder les timings existants (editingLines)
+                if (editingLines.isEmpty()) {
+                    // Rien d'ancien → on crée tout à 0 ms
+                    simpleLines.map { txt ->
+                        LrcLine(timeMs = 0L, text = txt)
+                    }
+                } else {
+                    // On fusionne le nouveau texte avec les anciens timings
+                    mergeLyricsWithOldTimings(
+                        newLines = simpleLines,
+                        oldLines = editingLines
+                    )
+                }
+            }
+
+            else -> {
+                // Onglet SYNCHRO : on fait CONFIANCE à editingLines
+                // (c'est là que tu as tagué les phrases)
+                editingLines
+                    .filter { it.text.isNotBlank() }
+            }
+        }
+
+        // 🟢 LOG côté éditeur
+        Log.d(
+            "LrcDebug",
+            "EDITOR_SAVE currentTrackUri=$currentTrackUri lines=${finalLines.size}"
+        )
+
+        // 3) Sauvegarde sur disque
+        if (currentTrackUri != null) {
+            LrcStorage.saveForTrack(
+                context = context,
+                trackUriString = currentTrackUri,
+                lines = finalLines
+            )
+        }
+
+        // 4) Mise à jour de l’état côté parent / lecteur
+        onSaveSortedLines(finalLines)
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(horizontal = 16.dp, vertical = 6.dp)
     ) {
-        // Onglets
-        TabRow(
-            selectedTabIndex = currentEditTab,
-            containerColor = Color.Transparent,
-            contentColor = highlightColor
+        // 🔹 Ligne du haut : onglets + petit bouton Enregistrer
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Tab(
-                selected = currentEditTab == 0,
-                onClick = { onCurrentEditTabChange(0) },
-                text = { Text("Simple") }
-            )
-            Tab(
-                selected = currentEditTab == 1,
-                onClick = {
-                    // On ne touche plus aux timings ici,
-                    // on fait juste changer d’onglet.
-                    onCurrentEditTabChange(1)
-                },
-                text = { Text("Synchro") }
-            )
+            Box(
+                modifier = Modifier.weight(1f)
+            ) {
+                // Onglets
+                TabRow(
+                    selectedTabIndex = currentEditTab,
+                    containerColor = Color.Transparent,
+                    contentColor = highlightColor
+                ) {
+                    Tab(
+                        selected = currentEditTab == 0,
+                        onClick = { onCurrentEditTabChange(0) },
+                        text = { Text("Simple") }
+                    )
+                    Tab(
+                        selected = currentEditTab == 1,
+                        onClick = {
+                            // On ne touche plus aux timings ici,
+                            // on fait juste changer d’onglet.
+                            onCurrentEditTabChange(1)
+                        },
+                        text = { Text("Synchro") }
+                    )
+                }
+            }
+
+            IconButton(
+                onClick = { handleSave() },
+                modifier = Modifier.padding(start = 4.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Check,
+                    contentDescription = "Enregistrer les paroles",
+                    tint = Color(0xFF80CBC4)
+                )
+            }
         }
 
         Spacer(Modifier.height(8.dp))
@@ -369,6 +459,7 @@ fun LyricsEditorSection(
                             }
                         }
                     }
+
                     // ─────────────────────────────
                     //  Menu ÉDITER / SUPPRIMER la ligne (appui long)
                     // ─────────────────────────────
@@ -467,82 +558,6 @@ fun LyricsEditorSection(
                     }
 
                 }
-            }
-        }
-
-        // Barre d’actions
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 8.dp, bottom = 4.dp),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            TextButton(onClick = {
-                // 1) On récupère les lignes du texte brut
-                val simpleLines = rawLyricsText
-                    .lines()
-                    .map { it.trim() }
-                    .filter { it.isNotEmpty() }
-
-                // Cas "j'efface tout" → on vide vraiment tout
-                if (simpleLines.isEmpty()) {
-                    onEditingLinesChange(emptyList())
-                    onRawLyricsTextChange("")
-
-                    if (currentTrackUri != null) {
-                        LrcStorage.deleteForTrack(context, currentTrackUri)
-                    }
-
-                    onSaveSortedLines(emptyList())
-                    return@TextButton
-                }
-
-                // 2) Quelle est la source de vérité ?
-                val finalLines: List<LrcLine> = when (currentEditTab) {
-                    0 -> {
-                        // Onglet SIMPLE :
-                        // ➜ On ESSAIE de garder les timings existants (editingLines)
-                        if (editingLines.isEmpty()) {
-                            // Rien d'ancien → on crée tout à 0 ms
-                            simpleLines.map { txt ->
-                                LrcLine(timeMs = 0L, text = txt)
-                            }
-                        } else {
-                            // On fusionne le nouveau texte avec les anciens timings
-                            mergeLyricsWithOldTimings(
-                                newLines = simpleLines,
-                                oldLines = editingLines
-                            )
-                        }
-                    }
-
-                    else -> {
-                        // Onglet SYNCHRO : on fait CONFIANCE à editingLines
-                        // (c'est là que tu as tagué les phrases)
-                        editingLines
-                            .filter { it.text.isNotBlank() }
-                    }
-                }
-
-                // 🟢 LOG côté éditeur
-                Log.d(
-                    "LrcDebug",
-                    "EDITOR_SAVE currentTrackUri=$currentTrackUri lines=${finalLines.size}"
-                )
-
-                // 3) Sauvegarde sur disque
-                if (currentTrackUri != null) {
-                    LrcStorage.saveForTrack(
-                        context = context,
-                        trackUriString = currentTrackUri,
-                        lines = finalLines
-                    )
-                }
-
-                // 4) Mise à jour de l’état côté parent / lecteur
-                onSaveSortedLines(finalLines)
-            }) {
-                Text("Enregistrer", color = Color(0xFF80CBC4))
             }
         }
     }
@@ -757,6 +772,7 @@ private fun importLyricsFromAudio(
         return null
     }
 }
+
 /**
  * Fusionne un nouveau texte avec les anciens timings.
  *

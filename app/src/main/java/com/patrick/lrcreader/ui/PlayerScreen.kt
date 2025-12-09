@@ -16,6 +16,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -39,11 +40,6 @@ import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
-
-
-
-
-
 
 @Composable
 fun PlayerScreen(
@@ -75,8 +71,14 @@ fun PlayerScreen(
         PlayerBusController.applyCurrentVolume(context)
     }
 
-    // Décalage global des paroles (latence)
+    // Décalage global des paroles (latence de base)
     val lyricsDelayMs = 500L
+
+    // 🔧 Offset ajustable par l'utilisateur, par morceau
+    //    0 = comportement actuel
+    //    +1000 = les paroles sortent plus tard d'environ 1 s
+    //    -1000 = les paroles sortent plus tôt d'environ 1 s
+    var userOffsetMs by remember(currentTrackUri) { mutableStateOf(0L) }
 
     var isConcertMode by remember {
         mutableStateOf(DisplayPrefs.isConcertMode(context))
@@ -137,10 +139,9 @@ fun PlayerScreen(
             editingLines = emptyList()
         }
     }
-    // ---------- Suivi lecture + index ligne courante + MIDI ----------
-    // ---------- Suivi lecture + index ligne courante + MIDI ----------
+
     // ---------- Suivi lecture + index ligne courante + MIDI + affichage ----------
-    LaunchedEffect(isPlaying, parsedLines) {
+    LaunchedEffect(isPlaying, parsedLines, userOffsetMs) {
         while (true) {
             val d = runCatching { mediaPlayer.duration }.getOrNull() ?: -1
             if (d > 0) durationMs = d
@@ -149,7 +150,11 @@ fun PlayerScreen(
             if (!isDragging) positionMs = p
 
             if (parsedLines.isNotEmpty()) {
-                val posMs = (p.toLong() - lyricsDelayMs).coerceAtLeast(0L)
+                // Décalage effectif = latence de base + offset utilisateur
+                val totalOffsetMs = lyricsDelayMs + userOffsetMs
+
+                // position "paroles" = position audio - décalage total
+                val posMs = (p.toLong() - totalOffsetMs).coerceAtLeast(0L)
 
                 // On repère toutes les lignes taguées
                 val taggedIndices = parsedLines.withIndex()
@@ -163,7 +168,7 @@ fun PlayerScreen(
                     // Il y a des tags → rien à l'écran avant la première ligne taguée
                     val firstTaggedIndex = taggedIndices.first()
                     val firstTaggedTime = parsedLines[firstTaggedIndex].timeMs
-                    // posMs tient déjà compte du décalage global lyricsDelayMs
+                    // posMs tient déjà compte du décalage global totalOffsetMs
                     showLyrics = posMs >= firstTaggedTime
                 }
 
@@ -224,9 +229,18 @@ fun PlayerScreen(
     fun seekAndCenter(targetMs: Int, targetIndex: Int) {
         PlaybackCoordinator.onPlayerStart()
 
-        runCatching { mediaPlayer.seekTo(targetMs) }
+        // On applique le même décalage que pour la lecture :
+        // si on retarde les paroles, on seek un peu plus loin dans l'audio.
+        val totalOffsetMs = lyricsDelayMs + userOffsetMs
+        val seekPos = (targetMs.toLong() + totalOffsetMs)
+            .coerceAtLeast(0L)
+            .coerceAtMost(durationMs.toLong())
+            .toInt()
+
+        runCatching { mediaPlayer.seekTo(seekPos) }
         currentLrcIndex = targetIndex
-        positionMs = targetMs
+        positionMs = seekPos
+
         if (!mediaPlayer.isPlaying) {
             // 🔊 Volume appliqué via le bus lecteur
             PlayerBusController.applyCurrentVolume(context)
@@ -348,7 +362,6 @@ fun PlayerScreen(
                         Spacer(Modifier.height(8.dp))
 
                         // Zone centrale : toujours mode MANU avec ligne centrée
-                        // Zone centrale : toujours mode MANU avec ligne centrée
                         Box(
                             modifier = Modifier
                                 .weight(1f)
@@ -403,6 +416,12 @@ fun PlayerScreen(
                                 positionMs = safe
                             },
                             highlightColor = highlightColor
+                        )
+
+                        // 🔧 Contrôle de décalage paroles
+                        OffsetControlRow(
+                            userOffsetMs = userOffsetMs,
+                            onUserOffsetChange = { userOffsetMs = it }
                         )
 
                         PlayerControls(
@@ -537,5 +556,33 @@ private fun ReaderHeader(
                 )
             }
         }
+    }
+}
+
+/* ─────────────────────────────
+   CONTRÔLE DÉCALAGE PAROLES
+   ───────────────────────────── */
+
+@Composable
+private fun OffsetControlRow(
+    userOffsetMs: Long,
+    onUserOffsetChange: (Long) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp, vertical = 4.dp)
+    ) {
+        Text(
+            text = "Décalage paroles : ${userOffsetMs} ms",
+            color = Color(0xFFCFD8DC),
+            fontSize = 14.sp
+        )
+        Slider(
+            value = userOffsetMs.toFloat(),
+            onValueChange = { onUserOffsetChange(it.toLong()) },
+            valueRange = -2500f..2500f, // ~ -1,5s à +1,5s
+            modifier = Modifier.fillMaxWidth()
+        )
     }
 }
