@@ -1,78 +1,76 @@
 package com.patrick.lrcreader.core
 
-import android.util.Log   // ⬅️ ICI
-// même regex qu'avant : [mm:ss.xx] ou [m:s]
+// On suppose que tu as déjà data class LrcLine(val timeMs: Long, val text: String)
+// dans ce même package. On le réutilise tel quel.
 
+private val TIME_TAG_REGEX =
+    Regex("""\[(\d{1,2}):(\d{1,2})(?:\.(\d{1,3}))?]""")
 
-/**
- * Parse un texte LRC en listant TOUTES les lignes.
- *
- * - lignes AVEC timestamp -> OK
- * - lignes SANS timestamp -> on les accroche au dernier timestamp rencontré
- *   (ou 0 ms s'il n'y en a pas encore)
- *
- * On ne redéclare PAS LrcLine ici, on utilise celui de LrcLine.kt
- */
-
+private val OFFSET_REGEX =
+    Regex("""^\[offset:([+-]?\d+)]""", RegexOption.IGNORE_CASE)
 
 /**
- * Parser LRC simple, compatible avec ce que LrcStorage.saveForTrack écrit :
- * [mm:ss.xx]Texte de la ligne
+ * Nouveau parseur LRC pour Live in Pocket :
+ *
+ * - respecte STRICTEMENT l'ordre des lignes dans le fichier
+ * - 1 ligne de fichier = 1 LrcLine
+ * - si plusieurs time tags sur la même ligne → on prend le PREMIER (simple, stable)
+ * - si pas de tag → timeMs = 0L
+ * - [offset:x] est appliqué à tous les temps
  */
 fun parseLrc(raw: String): List<LrcLine> {
     val result = mutableListOf<LrcLine>()
+    var offsetMs = 0L
 
-    // Chaque ligne du fichier .lrc
-    val lines = raw.lines()
+    raw.lines().forEach { lineRaw ->
+        val line = lineRaw.trim()
+        if (line.isBlank()) return@forEach
 
-    // Regex pour trouver les timestamps du style [01:23.45]
-    val tagRegex = Regex("""\[(\d{1,2}):(\d{2})(?:\.(\d{1,2}))?]""")
+        // Ligne offset ?
+        val offsetMatch = OFFSET_REGEX.find(line)
+        if (offsetMatch != null) {
+            offsetMs = offsetMatch.groupValues[1].toLongOrNull() ?: 0L
+            return@forEach
+        }
 
-    for (line in lines) {
-        val trimmed = line.trim()
-        if (trimmed.isEmpty()) continue
+        val matches = TIME_TAG_REGEX.findAll(line).toList()
 
-        val matches = tagRegex.findAll(trimmed).toList()
-
-        // Texte = la ligne sans les [mm:ss.xx]
-        val textPart = trimmed.replace(tagRegex, "").trim()
+        // Texte = le contenu après avoir retiré les tags
+        val text = line.replace(TIME_TAG_REGEX, "").trim()
 
         if (matches.isEmpty()) {
-            // AUCUN TAG : on garde la ligne mais avec timeMs = 0
-            if (textPart.isNotEmpty()) {
-                result.add(
-                    LrcLine(
-                        timeMs = 0L,
-                        text = textPart
-                    )
+            // Pas de tag → ligne non synchronisée
+            result.add(
+                LrcLine(
+                    timeMs = 0L,
+                    text = text
                 )
-            }
-            Log.d("LrcDebug", "PARSE no-tag: text='$textPart'")
+            )
         } else {
-            // UNE OU PLUSIEURS BALISES [mm:ss.xx]
-            for (m in matches) {
-                val min = m.groupValues[1].toLongOrNull() ?: 0L
-                val sec = m.groupValues[2].toLongOrNull() ?: 0L
-                val hundredthsRaw = m.groupValues.getOrNull(3) ?: "0"
-                val hundredths = hundredthsRaw.padEnd(2, '0').take(2).toLongOrNull() ?: 0L
+            // On prend le PREMIER time tag pour cette ligne
+            val m = matches.first()
+            val minutes = m.groupValues[1].toIntOrNull() ?: 0
+            val seconds = m.groupValues[2].toIntOrNull() ?: 0
+            val fractionStr = m.groupValues.getOrNull(3).orEmpty()
 
-                val ms = (min * 60_000L) + (sec * 1_000L) + (hundredths * 10L)
-
-                result.add(
-                    LrcLine(
-                        timeMs = ms,
-                        text = textPart
-                    )
-                )
-
-                Log.d(
-                    "LrcDebug",
-                    "PARSE tag: [$min:$sec.$hundredthsRaw] → $ms ms, text='$textPart'"
-                )
+            val fractionMs = when (fractionStr.length) {
+                0 -> 0
+                1 -> (fractionStr + "00").toInt()
+                2 -> (fractionStr + "0").toInt()
+                else -> fractionStr.take(3).toInt()
             }
+
+            val baseMs = minutes * 60_000L + seconds * 1_000L + fractionMs
+            val totalMs = baseMs + offsetMs
+
+            result.add(
+                LrcLine(
+                    timeMs = totalMs,
+                    text = text
+                )
+            )
         }
     }
 
-    // On trie par temps pour être sûr que l'affichage soit propre
     return result
 }

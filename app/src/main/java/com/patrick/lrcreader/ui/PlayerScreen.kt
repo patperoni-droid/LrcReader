@@ -72,7 +72,7 @@ fun PlayerScreen(
     }
 
     // Décalage global des paroles (latence de base)
-    val lyricsDelayMs = 500L
+    val lyricsDelayMs = 0L
 
     // 🔧 Offset ajustable par l'utilisateur, par morceau
     //    0 = comportement actuel
@@ -172,21 +172,21 @@ fun PlayerScreen(
                     showLyrics = posMs >= firstTaggedTime
                 }
 
-                // On prend la ligne dont le timeMs est le plus proche de posMs
-                val bestIndex = parsedLines.indices.minByOrNull {
-                    kotlin.math.abs(parsedLines[it].timeMs - posMs)
-                } ?: 0
+                // On cherche la DERNIÈRE ligne taguée dont le temps est <= posMs
+                val newIndex = taggedIndices.lastOrNull { idx ->
+                    parsedLines[idx].timeMs <= posMs
+                } ?: -1
 
-                if (bestIndex != currentLrcIndex) {
-                    currentLrcIndex = bestIndex
+                if (newIndex != -1 && newIndex != currentLrcIndex) {
+                    currentLrcIndex = newIndex
                 }
 
                 // 🔥 Déclenche le CUE MIDI quand la ligne change
-                if (currentTrackUri != null && bestIndex != lastMidiIndex) {
-                    lastMidiIndex = bestIndex
+                if (currentTrackUri != null && newIndex != -1 && newIndex != lastMidiIndex) {
+                    lastMidiIndex = newIndex
                     MidiCueDispatcher.onActiveLineChanged(
                         trackUri = currentTrackUri,
-                        lineIndex = bestIndex
+                        lineIndex = newIndex
                     )
                 }
             }
@@ -418,11 +418,6 @@ fun PlayerScreen(
                             highlightColor = highlightColor
                         )
 
-                        // 🔧 Contrôle de décalage paroles
-                        OffsetControlRow(
-                            userOffsetMs = userOffsetMs,
-                            onUserOffsetChange = { userOffsetMs = it }
-                        )
 
                         PlayerControls(
                             isPlaying = isPlaying,
