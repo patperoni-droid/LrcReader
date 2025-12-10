@@ -78,7 +78,7 @@ fun PlayerScreen(
     //    0 = comportement actuel
     //    +1000 = les paroles sortent plus tard d'environ 1 s
     //    -1000 = les paroles sortent plus tôt d'environ 1 s
-    var userOffsetMs by remember(currentTrackUri) { mutableStateOf(0L) }
+    var userOffsetMs by remember(currentTrackUri) { mutableStateOf(-100L) }
 
     var isConcertMode by remember {
         mutableStateOf(DisplayPrefs.isConcertMode(context))
@@ -554,30 +554,4 @@ private fun ReaderHeader(
     }
 }
 
-/* ─────────────────────────────
-   CONTRÔLE DÉCALAGE PAROLES
-   ───────────────────────────── */
 
-@Composable
-private fun OffsetControlRow(
-    userOffsetMs: Long,
-    onUserOffsetChange: (Long) -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 4.dp, vertical = 4.dp)
-    ) {
-        Text(
-            text = "Décalage paroles : ${userOffsetMs} ms",
-            color = Color(0xFFCFD8DC),
-            fontSize = 14.sp
-        )
-        Slider(
-            value = userOffsetMs.toFloat(),
-            onValueChange = { onUserOffsetChange(it.toLong()) },
-            valueRange = -2500f..2500f, // ~ -1,5s à +1,5s
-            modifier = Modifier.fillMaxWidth()
-        )
-    }
-}

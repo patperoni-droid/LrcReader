@@ -1,4 +1,5 @@
 package com.patrick.lrcreader.exo
+
 import androidx.compose.foundation.layout.ime
 import android.media.MediaPlayer
 import android.media.audiofx.LoudnessEnhancer
@@ -35,7 +36,6 @@ class MainActivity : ComponentActivity() {
 
         // 🔥 Pour que le clavier puisse "pousser" le contenu vers le haut
         WindowCompat.setDecorFitsSystemWindows(window, false)
-
         AutoRestore.restoreIfNeeded(this)
 
         val initialTabKey = SessionPrefs.getTab(this)
@@ -77,8 +77,9 @@ class MainActivity : ComponentActivity() {
                 var currentPlayingUri by remember { mutableStateOf<String?>(null) }
                 var isPlaying by remember { mutableStateOf(false) }
 
-// 👉 Les paroles sont maintenant reset à chaque changement de morceau
-                var parsedLines by remember(currentPlayingUri) {
+                // 👉 Les paroles sont maintenant reset à chaque changement de morceau
+                // 👉 Les paroles sont gérées manuellement (lecture + restore session)
+                var parsedLines by remember {
                     mutableStateOf<List<LrcLine>>(emptyList())
                 }
 
@@ -98,10 +99,10 @@ class MainActivity : ComponentActivity() {
                 var djMasterLevel by remember { mutableStateOf(1f) }
                 var fillerMasterLevel by remember { mutableStateOf(0.6f) }
 
-// 👇 écran plein écran "console" Mixer (maquette visuelle)
+                // 👇 écran plein écran "console" Mixer (maquette visuelle)
                 var isMixerPreviewOpen by remember { mutableStateOf(false) }
 
-// ID normalisé pour le prompteur ("note:123" ou "text:abc")
+                // ID normalisé pour le prompteur ("note:123" ou "text:abc")
                 var textPrompterId by remember { mutableStateOf<String?>(null) }
 
                 // ---------------- PlaybackCoordinator -------------------
@@ -165,6 +166,14 @@ class MainActivity : ComponentActivity() {
 
                     PlaybackCoordinator.onPlayerStart()
                     currentPlayingUri = uriString
+
+                    // ✅ On mémorise la dernière session (playlist + titre)
+                    SessionPrefs.saveLastSession(
+                        context = ctx,
+                        trackUri = uriString,
+                        playlistName = playlistName
+                    )
+
                     runCatching { FillerSoundManager.fadeOutAndStop(400) }
 
                     val myToken = currentPlayToken + 1
@@ -242,6 +251,39 @@ class MainActivity : ComponentActivity() {
                     selectedTab = BottomTab.Player
                     SessionPrefs.saveTab(ctx, TAB_PLAYER)
                 }
+                LaunchedEffect(Unit) {
+                    val (lastUri, lastPlaylistName) = SessionPrefs.getLastSession(ctx)
+
+                    if (!lastUri.isNullOrBlank()) {
+                        // On remet juste l'état du dernier titre,
+                        // SANS lancer la lecture.
+
+                        currentPlayingUri = lastUri
+
+                        // Paroles .lrc si dispo
+                        val override = LrcStorage.loadForTrack(ctx, lastUri)
+                        parsedLines = if (override != null) {
+                            parseLrc(override)
+                        } else {
+                            emptyList()
+                        }
+
+                        // Gain / tempo / pitch du morceau
+                        currentTrackGainDb = TrackVolumePrefs.getDb(ctx, lastUri) ?: 0
+                        currentTrackTempo = TrackTempoPrefs.getTempo(ctx, lastUri) ?: 1f
+                        currentTrackPitchSemi = TrackPitchPrefs.getSemi(ctx, lastUri) ?: 0
+
+                        // ⚠️ IMPORTANT : on NE TOUCHE PAS à :
+                        // - selectedTab
+                        // - isPlaying
+                        // Résultat : l'appli s'ouvre sur le même onglet qu'avant,
+                        // avec les mêmes playlists, etc. (grâce à initialTabKey, initialQuickPlaylist, etc.)
+                        // Et le morceau est prêt, mais en pause.
+                    }
+                }
+                // ✅ RESTORE DERNIÈRE SESSION ICI (après la déclaration de playWithCrossfade)
+
+                // ... puis tout le reste (DisposableEffect, Scaffold, etc.)
 
                 // ---------------- Release -------------------------------
 
@@ -514,7 +556,12 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+    override fun onStop() {
+        super.onStop()
+        BackupManager.autoSaveToDefaultBackupFile(this)
+    }
 }
+
 
 /* --------------------------------------------------------------- */
 /*  Conversion BottomTab <-> String                                */
@@ -539,6 +586,7 @@ private fun tabKeyOf(tab: BottomTab): String = when (tab) {
     is BottomTab.Dj -> TAB_DJ
     is BottomTab.Tuner -> TAB_TUNER
 }
+
 
 private fun tabFromKey(key: String): BottomTab = when (key) {
     TAB_HOME -> BottomTab.Home

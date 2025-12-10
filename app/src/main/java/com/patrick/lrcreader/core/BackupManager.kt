@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import org.json.JSONArray
 import org.json.JSONObject
+import androidx.documentfile.provider.DocumentFile
 
 /**
  * Gère l’export / import de l’état de l’appli
@@ -254,6 +255,41 @@ object BackupManager {
                 val colorLong = colorsJson.optLong(name, 0xFFE86FFF)
                 PlaylistRepository.setPlaylistColor(name, colorLong)
             }
+        }
+    }
+    /**
+     * Sauvegarde automatique de l’état complet de l’appli
+     * dans un fichier fixe "lrc_backup.json" dans le dossier de backup.
+     *
+     * Ce fichier est précisément celui qu’AutoRestore essaie de charger au démarrage.
+     */
+    fun autoSaveToDefaultBackupFile(context: Context) {
+        // 1) On récupère le dossier de sauvegarde configuré (même logique que AutoRestore)
+        val folderUri = BackupFolderPrefs.get(context) ?: return
+        val docTree = DocumentFile.fromTreeUri(context, folderUri) ?: return
+
+        // 2) On fabrique le JSON d’état complet
+        //    - lastPlayer : pour l’instant on laisse null (ce n’est pas bloquant)
+        //    - libraryFolders : pas encore exploité à l’import, on peut mettre une liste vide
+        val json = exportState(
+            context = context,
+            lastPlayer = null,
+            libraryFolders = emptyList()
+        )
+
+        // 3) On cible un fichier unique "lrc_backup.json"
+        val backupName = "lrc_backup.json"
+        val existing = docTree.findFile(backupName)
+
+        val target = when {
+            existing != null && existing.isFile -> existing
+            else -> docTree.createFile("application/json", backupName)
+        } ?: return
+
+        // 4) On écrit le JSON dedans (en UTF-8)
+        context.contentResolver.openOutputStream(target.uri, "w")?.use { out ->
+            out.write(json.toByteArray(Charsets.UTF_8))
+            out.flush()
         }
     }
 }
