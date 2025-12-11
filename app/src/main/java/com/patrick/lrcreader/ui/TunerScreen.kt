@@ -1,5 +1,11 @@
 package com.patrick.lrcreader.ui
 
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.geometry.Offset
+import kotlin.math.cos
+import kotlin.math.sin
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import android.Manifest
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -7,6 +13,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
@@ -21,7 +28,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -40,6 +46,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.patrick.lrcreader.core.TunerEngine
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 /**
  * Accordeur style "module analogique", branché sur TunerEngine.
@@ -198,7 +205,7 @@ fun TunerScreen(
 
                     Spacer(Modifier.height(18.dp))
 
-                    // ───── ZONE AFFICHAGE NOTE + VU CENTS ─────
+                    // ───── ZONE AFFICHAGE NOTE + AIGUILLE + METERS LATERAUX ─────
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -213,12 +220,12 @@ fun TunerScreen(
                             activeColor = Color(0xFF64B5F6)  // bleu
                         )
 
-                        // Affichage central : note + fréquence
+                        // Affichage central : note + cadran à aiguille
                         Box(
                             modifier = Modifier
                                 .weight(1f)
                                 .padding(horizontal = 12.dp)
-                                .height(220.dp)
+                                .height(240.dp)
                                 .background(
                                     Brush.verticalGradient(
                                         listOf(
@@ -238,67 +245,40 @@ fun TunerScreen(
                             Column(
                                 modifier = Modifier.fillMaxSize(),
                                 horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.Center
+                                verticalArrangement = Arrangement.SpaceEvenly
                             ) {
                                 // Lettre de la note
                                 Text(
                                     text = currentNote,
                                     color = Color(0xFFFFF8E1),
-                                    fontSize = 64.sp,
+                                    fontSize = 52.sp,
                                     fontWeight = FontWeight.Bold
                                 )
-                                Spacer(Modifier.height(8.dp))
+
+                                // Cadran + aiguille
+                                NeedleGauge(
+                                    centsOffset = centsOffset
+                                )
+
+                                // Fréquence + cents
+                                val absOffset = centsOffset?.let { abs(it) } ?: 999f
+                                val textColor =
+                                    when {
+                                        centsOffset == null -> Color(0xFFCFD8DC)
+                                        absOffset < 5f -> Color(0xFF81C784) // bien accordé
+                                        absOffset < 15f -> Color(0xFFFFC107)
+                                        else -> Color(0xFFFF5252)
+                                    }
+
                                 Text(
                                     text = currentFreqText,
                                     color = Color(0xFFB0BEC5),
-                                    fontSize = 16.sp
+                                    fontSize = 14.sp
                                 )
-                                Spacer(Modifier.height(16.dp))
-
-                                // Bande LED centrale (vert / orange / rouge)
-                                val absOffset = centsOffset?.let { abs(it) } ?: 999f
-                                val barColor =
-                                    when {
-                                        centsOffset == null -> Color(0xFF616161)
-                                        absOffset < 5f -> Color(0xFF81C784) // vert bien accordé
-                                        absOffset < 15f -> Color(0xFFFFC107) // jaune
-                                        else -> Color(0xFFFF5252) // rouge
-                                    }
-
-                                Box(
-                                    modifier = Modifier
-                                        .width(140.dp)
-                                        .height(10.dp)
-                                        .background(
-                                            Color(0xFF050505),
-                                            RoundedCornerShape(999.dp)
-                                        )
-                                ) {
-                                    val factor =
-                                        if (centsOffset == null) 0f
-                                        else (1f - (absOffset / 50f)).coerceIn(0f, 1f)
-
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxHeight()
-                                            .fillMaxWidth(factor)
-                                            .background(
-                                                Brush.horizontalGradient(
-                                                    listOf(
-                                                        barColor.copy(alpha = 0.2f),
-                                                        barColor,
-                                                    )
-                                                ),
-                                                RoundedCornerShape(999.dp)
-                                            )
-                                    )
-                                }
-
-                                Spacer(Modifier.height(8.dp))
-
                                 Text(
-                                    text = centsOffset?.let { "${it.toInt()} cents" } ?: "— cents",
-                                    color = Color(0xFFCFD8DC),
+                                    text = centsOffset?.let { "${it.roundToInt()} cents" }
+                                        ?: "— cents",
+                                    color = textColor,
                                     fontSize = 13.sp
                                 )
                             }
@@ -378,7 +358,7 @@ fun TunerScreen(
                             }
                         } else {
                             Text(
-                                text = "Parle ou joue une note près du micro.",
+                                text = "Joue une note près du micro.",
                                 color = Color(0xFF757575),
                                 fontSize = 10.sp,
                                 textAlign = TextAlign.Center,
@@ -458,6 +438,131 @@ private fun TunerSideMeter(
                     )
                 }
             }
+        }
+    }
+}
+
+/**
+ * Cadran circulaire à aiguille, look vintage.
+ * - plage : environ -50 à +50 cents
+ * - 0 cent = aiguille au centre
+ */
+
+/**
+ * Cadran circulaire à aiguille, look vintage.
+ * - plage : environ -50 à +50 cents
+ * - 0 cent = aiguille au centre
+ */
+@Composable
+private fun NeedleGauge(
+    centsOffset: Float?
+) {
+    // On limite à -50 / +50 cents
+    val clamped = (centsOffset ?: 0f).coerceIn(-50f, 50f)
+    // -50 → -60°, +50 → +60°
+    val targetAngle = (clamped / 50f) * 60f
+
+    // Animation fluide de l’aiguille
+    val angle by animateFloatAsState(
+        targetValue = targetAngle,
+        animationSpec = tween(durationMillis = 120),
+        label = "needleAngle"
+    )
+
+    Box(
+        modifier = Modifier
+            .size(220.dp)   // cadran
+            .background(Color(0xFF111111), CircleShape)
+            .border(3.dp, Color(0x55FFFFFF), CircleShape)
+            .padding(16.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        // -------- CADRAN + GRADUATIONS EN ARC --------
+        Canvas(
+            modifier = Modifier.fillMaxSize()
+        ) {
+            val center = Offset(size.width / 2f, size.height / 2f)
+            val radius = size.minDimension / 2f - 8.dp.toPx()
+
+            // fond du cadran
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        Color(0xFF222222),
+                        Color(0xFF050505)
+                    )
+                ),
+                radius = radius,
+                center = center
+            )
+
+            // graduations en arc de cercle sur 120°
+            val startDeg = -60f
+            val endDeg = 60f
+            val steps = 24
+
+            for (i in 0..steps) {
+                val t = i / steps.toFloat()
+                val deg = startDeg + (endDeg - startDeg) * t
+
+                val rad = (deg - 90f) * (Math.PI / 180f).toFloat()
+                val cosA = cos(rad)
+                val sinA = sin(rad)
+
+                val isMajor = i % 4 == 0
+                val tickOuter = radius
+                val tickInner = radius - if (isMajor) 22.dp.toPx() else 12.dp.toPx()
+
+                val outer = Offset(
+                    x = center.x + cosA * tickOuter,
+                    y = center.y + sinA * tickOuter
+                )
+                val inner = Offset(
+                    x = center.x + cosA * tickInner,
+                    y = center.y + sinA * tickInner
+                )
+
+                val norm = deg / 60f
+                val absNorm = kotlin.math.abs(norm)
+
+                val color =
+                    when {
+                        absNorm < 0.25f -> Color(0xFF81C784)   // proche du centre → vert
+                        absNorm < 0.6f  -> Color(0xFFFFC107)   // milieu → jaune
+                        else            -> Color(0xFFFF5252)   // extrémités → rouge
+                    }
+
+                drawLine(
+                    color = color,
+                    start = inner,
+                    end = outer,
+                    strokeWidth = if (isMajor) 4f else 2f
+                )
+            }
+        }
+
+        // -------- AIGUILLE (par-dessus le cadran) --------
+        Box(
+            modifier = Modifier
+                .size(180.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            // tige
+            Box(
+                modifier = Modifier
+                    .width(4.dp)
+                    .height(110.dp)
+                    .rotate(angle)
+                    .background(Color(0xFFFFC107))
+            )
+
+            // centre
+            Box(
+                modifier = Modifier
+                    .size(18.dp)
+                    .background(Color(0xFF000000), CircleShape)
+                    .border(2.dp, Color(0xFFFFC107), CircleShape)
+            )
         }
     }
 }
