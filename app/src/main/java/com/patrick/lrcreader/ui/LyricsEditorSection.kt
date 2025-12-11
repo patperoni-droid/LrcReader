@@ -167,8 +167,34 @@ fun LyricsEditorSection(
                     Tab(
                         selected = currentEditTab == 1,
                         onClick = {
-                            // On ne touche plus aux timings ici,
-                            // on fait juste changer d’onglet.
+                            // 🔁 Quand on passe à l’onglet "Synchro",
+                            // on pousse automatiquement le texte vers editingLines
+
+                            val simpleLines = rawLyricsText
+                                .lines()
+                                .map { it.trim() }
+                                .filter { it.isNotEmpty() }
+
+                            val newEditing: List<LrcLine> =
+                                if (simpleLines.isEmpty()) {
+                                    // Pas de texte → pas de lignes synchro
+                                    emptyList()
+                                } else if (editingLines.isEmpty()) {
+                                    // Pas d’anciennes lignes : on crée tout avec timeMs = 0
+                                    simpleLines.map { txt ->
+                                        LrcLine(timeMs = 0L, text = txt)
+                                    }
+                                } else {
+                                    // On a déjà des timings → on réutilise ta logique de fusion
+                                    mergeLyricsWithOldTimings(
+                                        newLines = simpleLines,
+                                        oldLines = editingLines
+                                    )
+                                }
+
+                            onEditingLinesChange(newEditing)
+
+                            // Puis seulement on bascule sur l’onglet Synchro
                             onCurrentEditTabChange(1)
                         },
                         text = { Text("Synchro") }
