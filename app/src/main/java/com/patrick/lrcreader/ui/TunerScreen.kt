@@ -449,7 +449,7 @@ private fun TunerSideMeter(
  */
 
 /**
- * Cadran circulaire à aiguille, look vintage.
+ * Cadran circulaire à aiguille, look vintage MASSIF.
  * - plage : environ -50 à +50 cents
  * - 0 cent = aiguille au centre
  */
@@ -471,97 +471,91 @@ private fun NeedleGauge(
 
     Box(
         modifier = Modifier
-            .size(220.dp)   // cadran
-            .background(Color(0xFF111111), CircleShape)
-            .border(3.dp, Color(0x55FFFFFF), CircleShape)
-            .padding(16.dp),
+            .size(230.dp)   // cadran plus GRAND, plus massif
+            .background(Color(0xFF080808), CircleShape)
+            .border(4.dp, Color(0xFF444444), CircleShape)
+            .padding(18.dp),
         contentAlignment = Alignment.Center
     ) {
-        // -------- CADRAN + GRADUATIONS EN ARC --------
-        Canvas(
-            modifier = Modifier.fillMaxSize()
+        // Fond interne
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            Color(0xFF262626),
+                            Color(0xFF050505)
+                        )
+                    ),
+                    CircleShape
+                )
+                .border(2.dp, Color(0x66000000), CircleShape)
+        )
+
+        // ─── GRADUATIONS MASSIVES ───
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(18.dp),
+            contentAlignment = Alignment.Center
         ) {
-            val center = Offset(size.width / 2f, size.height / 2f)
-            val radius = size.minDimension / 2f - 8.dp.toPx()
+            val totalTicks = 21 // de -50 à +50 par pas de 5 cents
 
-            // fond du cadran
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(
-                        Color(0xFF222222),
-                        Color(0xFF050505)
+            repeat(totalTicks) { index ->
+                val fraction = index / (totalTicks - 1f)     // 0..1
+                val angleDeg = -60f + fraction * 120f        // -60 -> +60
+
+                val isCenter = index == totalTicks / 2
+                val isMajor = isCenter || index % 5 == 0
+
+                val color = when {
+                    isCenter -> Color(0xFFFFF8E1)           // repère central clair
+                    fraction in 0.4f..0.6f -> Color(0xFF9CCC65) // zone verte centrale
+                    index < totalTicks / 2 -> Color(0xFFFF7043) // côté FLAT orangé/rouge
+                    else -> Color(0xFFFF7043)                  // côté SHARP orangé/rouge
+                }
+
+                val length = if (isMajor) 26.dp else 16.dp
+                val strokeWidth = if (isMajor) 4.dp else 3.dp
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .rotate(angleDeg)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .width(strokeWidth)
+                            .height(length)
+                            .background(color, RoundedCornerShape(999.dp))
                     )
-                ),
-                radius = radius,
-                center = center
-            )
-
-            // graduations en arc de cercle sur 120°
-            val startDeg = -60f
-            val endDeg = 60f
-            val steps = 24
-
-            for (i in 0..steps) {
-                val t = i / steps.toFloat()
-                val deg = startDeg + (endDeg - startDeg) * t
-
-                val rad = (deg - 90f) * (Math.PI / 180f).toFloat()
-                val cosA = cos(rad)
-                val sinA = sin(rad)
-
-                val isMajor = i % 4 == 0
-                val tickOuter = radius
-                val tickInner = radius - if (isMajor) 22.dp.toPx() else 12.dp.toPx()
-
-                val outer = Offset(
-                    x = center.x + cosA * tickOuter,
-                    y = center.y + sinA * tickOuter
-                )
-                val inner = Offset(
-                    x = center.x + cosA * tickInner,
-                    y = center.y + sinA * tickInner
-                )
-
-                val norm = deg / 60f
-                val absNorm = kotlin.math.abs(norm)
-
-                val color =
-                    when {
-                        absNorm < 0.25f -> Color(0xFF81C784)   // proche du centre → vert
-                        absNorm < 0.6f  -> Color(0xFFFFC107)   // milieu → jaune
-                        else            -> Color(0xFFFF5252)   // extrémités → rouge
-                    }
-
-                drawLine(
-                    color = color,
-                    start = inner,
-                    end = outer,
-                    strokeWidth = if (isMajor) 4f else 2f
-                )
+                }
             }
         }
 
-        // -------- AIGUILLE (par-dessus le cadran) --------
+        // ─── AIGUILLE ───
         Box(
             modifier = Modifier
-                .size(180.dp),
+                .size(190.dp),
             contentAlignment = Alignment.Center
         ) {
-            // tige
+            // Tige de l’aiguille (plus longue & épaisse)
             Box(
                 modifier = Modifier
-                    .width(4.dp)
-                    .height(110.dp)
+                    .width(5.dp)
+                    .height(120.dp)
                     .rotate(angle)
                     .background(Color(0xFFFFC107))
             )
 
-            // centre
+            // Centre rond
             Box(
                 modifier = Modifier
-                    .size(18.dp)
+                    .size(22.dp)
                     .background(Color(0xFF000000), CircleShape)
-                    .border(2.dp, Color(0xFFFFC107), CircleShape)
+                    .border(3.dp, Color(0xFFFFC107), CircleShape)
             )
         }
     }

@@ -162,7 +162,7 @@ fun LyricsEditorSection(
                     Tab(
                         selected = currentEditTab == 0,
                         onClick = { onCurrentEditTabChange(0) },
-                        text = { Text("Simple") }
+                        text = { Text("Paroles") }
                     )
                     Tab(
                         selected = currentEditTab == 1,

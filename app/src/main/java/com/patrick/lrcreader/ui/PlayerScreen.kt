@@ -202,10 +202,20 @@ fun PlayerScreen(
     }
 
     // ---------- Autoswitch playlist (optionnel) ----------
-    LaunchedEffect(durationMs, positionMs, hasRequestedPlaylist, currentTrackUri, isAutoReturnEnabled) {
-        val enabled = isAutoReturnEnabled
+    // ⚠ Désactivé automatiquement quand on est en mode ÉDITION (synchro paroles),
+    // pour éviter de se faire éjecter vers la playlist en plein calage.
+    LaunchedEffect(
+        durationMs,
+        positionMs,
+        hasRequestedPlaylist,
+        currentTrackUri,
+        isEditingLyrics
+    ) {
+        val enabled = AutoReturnPrefs.isEnabled(context)
+
         if (
             enabled &&
+            !isEditingLyrics &&          // ✅ si on édite, on NE fait PAS de retour auto
             !hasRequestedPlaylist &&
             durationMs > 0 &&
             positionMs >= durationMs - 10_000
