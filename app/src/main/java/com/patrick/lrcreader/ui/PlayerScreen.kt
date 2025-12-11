@@ -103,6 +103,11 @@ fun PlayerScreen(
 
     var hasRequestedPlaylist by remember(currentTrackUri) { mutableStateOf(false) }
 
+    // 🔘 retour auto vers la playlist (-10 s)
+    var isAutoReturnEnabled by remember {
+        mutableStateOf(AutoReturnPrefs.isEnabled(context))
+    }
+
     var isEditingLyrics by remember { mutableStateOf(false) }
     var showMixScreen by remember { mutableStateOf(false) }
 
@@ -197,8 +202,8 @@ fun PlayerScreen(
     }
 
     // ---------- Autoswitch playlist (optionnel) ----------
-    LaunchedEffect(durationMs, positionMs, hasRequestedPlaylist, currentTrackUri) {
-        val enabled = AutoReturnPrefs.isEnabled(context)
+    LaunchedEffect(durationMs, positionMs, hasRequestedPlaylist, currentTrackUri, isAutoReturnEnabled) {
+        val enabled = isAutoReturnEnabled
         if (
             enabled &&
             !hasRequestedPlaylist &&
@@ -343,6 +348,14 @@ fun PlayerScreen(
                             onToggleConcertMode = {
                                 isConcertMode = !isConcertMode
                                 DisplayPrefs.setConcertMode(context, isConcertMode)
+                            },
+                            autoReturnEnabled = isAutoReturnEnabled,
+                            onToggleAutoReturn = {
+                                val newValue = !isAutoReturnEnabled
+                                isAutoReturnEnabled = newValue
+                                AutoReturnPrefs.setEnabled(context, newValue)
+                                // pour pouvoir redéclencher sur ce morceau
+                                hasRequestedPlaylist = false
                             },
                             highlightColor = highlightColor,
                             onOpenMix = { showMixScreen = true },
@@ -493,6 +506,8 @@ fun PlayerScreen(
 private fun ReaderHeader(
     isConcertMode: Boolean,
     onToggleConcertMode: () -> Unit,
+    autoReturnEnabled: Boolean,
+    onToggleAutoReturn: () -> Unit,
     highlightColor: Color,
     onOpenMix: () -> Unit,
     onOpenEditor: () -> Unit
@@ -535,6 +550,15 @@ private fun ReaderHeader(
 
             Spacer(modifier = Modifier.weight(1f))
 
+            // Bouton -10 (retour auto playlist)
+            // Bouton -10 (retour auto playlist)
+            IconButton(onClick = onToggleAutoReturn) {
+                Text(
+                    text = "-10",
+                    color = if (autoReturnEnabled) Color.White else Color(0xFF888888),
+                    fontSize = 12.sp
+                )
+            }
             IconButton(onClick = onOpenMix) {
                 Icon(
                     imageVector = Icons.Filled.GraphicEq,
@@ -553,5 +577,3 @@ private fun ReaderHeader(
         }
     }
 }
-
-
