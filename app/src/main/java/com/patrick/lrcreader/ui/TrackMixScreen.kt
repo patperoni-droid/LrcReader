@@ -1,18 +1,15 @@
 package com.patrick.lrcreader.ui
 
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
@@ -30,170 +27,97 @@ import com.patrick.lrcreader.core.TrackEqSettings
 import com.patrick.lrcreader.ui.theme.DarkBlueGradientBackground
 import kotlin.math.roundToInt
 
-/**
- * Écran de mixage pour UN titre.
- *
- * - Niveau titre (dB)
- * - Tempo (0.8x à 1.2x)
- * - Tonalité en demi-tons (-6..+6)
- * - EQ 3 bandes vertical, câblé audio + mémorisé par titre
- */
 @Composable
 fun TrackMixScreen(
     modifier: Modifier = Modifier,
     highlightColor: Color = Color(0xFFE040FB),
 
-    // Niveau par morceau
     currentTrackGainDb: Int,
     onTrackGainChange: (Int) -> Unit,
 
-    // Tempo par morceau
     tempo: Float,
     onTempoChange: (Float) -> Unit,
 
-    // Tonalité par morceau (demi-tons)
     pitchSemi: Int,
     onPitchSemiChange: (Int) -> Unit,
 
-    // Pour mémoriser l’EQ par titre
     currentTrackUri: String?,
-
-    // Quand on ferme la page mixage
     onClose: () -> Unit
 ) {
     val context = LocalContext.current
 
-    // --------- GAIN (dB) ----------
     val minDb = -12
     val maxDb = 12
-
-    var gainSlider by remember(currentTrackGainDb) {
-        mutableStateOf(
-            (currentTrackGainDb - minDb).toFloat() / (maxDb - minDb).toFloat()
-        )
-    }
-
-    // --------- TEMPO ----------
     val minTempo = 0.8f
     val maxTempo = 1.2f
-
-    var tempoSlider by remember(tempo) {
-        mutableStateOf(
-            ((tempo - minTempo) / (maxTempo - minTempo))
-                .coerceIn(0f, 1f)
-        )
-    }
-
-    // --------- TONALITÉ (DEMI-TONS) ----------
     val minSemi = -6
     val maxSemi = 6
 
-    var pitchSlider by remember(pitchSemi) {
-        mutableStateOf(
-            ((pitchSemi - minSemi).toFloat() / (maxSemi - minSemi).toFloat())
-                .coerceIn(0f, 1f)
-        )
+    var gainSlider by remember(currentTrackGainDb) {
+        mutableStateOf((currentTrackGainDb - minDb).toFloat() / (maxDb - minDb))
     }
 
-    // --------- EQ VISUEL (3 bandes) + MÉMO PAR TITRE ----------
+    var tempoSlider by remember(tempo) {
+        mutableStateOf(((tempo - minTempo) / (maxTempo - minTempo)).coerceIn(0f, 1f))
+    }
+
+    var pitchSlider by remember(pitchSemi) {
+        mutableStateOf(((pitchSemi - minSemi).toFloat() / (maxSemi - minSemi)).coerceIn(0f, 1f))
+    }
 
     val initialEq = remember(currentTrackUri) {
-        if (currentTrackUri != null) {
-            TrackEqPrefs.load(context, currentTrackUri)
-                ?: TrackEqSettings(0f, 0f, 0f)
-        } else {
-            TrackEqSettings(0f, 0f, 0f)
-        }
+        currentTrackUri?.let { TrackEqPrefs.load(context, it) }
+            ?: TrackEqSettings(0f, 0f, 0f)
     }
 
-    var lowGain by remember(currentTrackUri) { mutableStateOf(initialEq.low) }   // -12..+12
-    var midGain by remember(currentTrackUri) { mutableStateOf(initialEq.mid) }
-    var highGain by remember(currentTrackUri) { mutableStateOf(initialEq.high) }
+    var lowGain by remember { mutableStateOf(initialEq.low) }
+    var midGain by remember { mutableStateOf(initialEq.mid) }
+    var highGain by remember { mutableStateOf(initialEq.high) }
 
     fun applyAndSaveEq() {
-        TrackEqEngine.setBands(
-            lowDb = lowGain,
-            midDb = midGain,
-            highDb = highGain
-        )
-        currentTrackUri?.let { uri ->
-            TrackEqPrefs.save(
-                context,
-                uri,
-                TrackEqSettings(lowGain, midGain, highGain)
-            )
+        TrackEqEngine.setBands(lowGain, midGain, highGain)
+        currentTrackUri?.let {
+            TrackEqPrefs.save(context, it, TrackEqSettings(lowGain, midGain, highGain))
         }
     }
 
-    // Applique l’EQ à l’ouverture
-    remember(currentTrackUri) {
-        applyAndSaveEq()
-        0
-    }
+    LaunchedEffect(Unit) { applyAndSaveEq() }
 
     DarkBlueGradientBackground {
         Column(
             modifier = modifier
                 .fillMaxSize()
                 .pointerInput(Unit) {
-                    // On consomme les drags pour ne pas toucher au PlayerScreen dessous
-                    detectVerticalDragGestures { change, _ ->
-                        change.consume()
-                    }
+                    detectVerticalDragGestures { change, _ -> change.consume() }
                 }
                 .pointerInput(Unit) {
-                    detectTapGestures {
-                        // On consomme aussi les taps (pas d'action)
-                    }
+                    detectTapGestures { /* on consomme */ }
                 }
                 .padding(horizontal = 16.dp, vertical = 10.dp)
         ) {
 
-            // HEADER
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Mixage du titre",
-                    color = Color.White,
-                    fontSize = 18.sp
-                )
-                TextButton(onClick = onClose) {
-                    Text(
-                        text = "Fermer",
-                        color = Color(0xFFFF8A80),
-                        fontSize = 13.sp
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(8.dp))
-
-            // ─────────── NIVEAU TITRE ───────────
+            // HEADER (sans bouton Fermer)
             Text(
-                text = "Niveau du titre",
-                color = Color(0xFFB0BEC5),
-                fontSize = 13.sp
-            )
-            Text(
-                text = "${if (currentTrackGainDb >= 0) "+${currentTrackGainDb}" else currentTrackGainDb} dB",
+                text = "Mixage du titre",
                 color = Color.White,
-                fontSize = 12.sp,
-                modifier = Modifier.padding(bottom = 4.dp)
+                fontSize = 18.sp,
+                modifier = Modifier.padding(bottom = 12.dp)
+            )
+
+            // ───── NIVEAU TITRE ─────
+            Text("Niveau du titre", color = Color(0xFFB0BEC5), fontSize = 13.sp)
+            Text(
+                text = "${if (currentTrackGainDb >= 0) "+$currentTrackGainDb" else currentTrackGainDb} dB",
+                color = Color.White,
+                fontSize = 12.sp
             )
 
             Slider(
                 value = gainSlider,
-                onValueChange = { v ->
-                    gainSlider = v
-                    val newDb = (minDb + v * (maxDb - minDb)).toInt()
-                    onTrackGainChange(newDb)
+                onValueChange = {
+                    gainSlider = it
+                    onTrackGainChange((minDb + it * (maxDb - minDb)).toInt())
                 },
-                modifier = Modifier.fillMaxWidth(),
                 colors = SliderDefaults.colors(
                     thumbColor = highlightColor,
                     activeTrackColor = highlightColor.copy(alpha = 0.4f),
@@ -201,48 +125,29 @@ fun TrackMixScreen(
                 )
             )
 
-            Spacer(Modifier.height(18.dp))
+            Spacer(Modifier.height(16.dp))
 
-            // ─────────── TEMPO ───────────
-            Text(
-                text = "Tempo",
-                color = Color(0xFFB0BEC5),
-                fontSize = 13.sp
-            )
-
+            // ───── TEMPO ─────
+            Text("Tempo", color = Color(0xFFB0BEC5), fontSize = 13.sp)
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text(
-                    text = String.format("x%.2f", tempo),
-                    color = Color.White,
-                    fontSize = 12.sp
-                )
+                Text(String.format("x%.2f", tempo), color = Color.White, fontSize = 12.sp)
                 TextButton(onClick = {
-                    val resetTempo = 1.0f
-                    onTempoChange(resetTempo)
-                    tempoSlider = ((resetTempo - minTempo) / (maxTempo - minTempo))
-                        .coerceIn(0f, 1f)
+                    onTempoChange(1f)
+                    tempoSlider = ((1f - minTempo) / (maxTempo - minTempo))
                 }) {
-                    Text(
-                        text = "Reset 1.00x",
-                        color = Color(0xFF80CBC4),
-                        fontSize = 11.sp
-                    )
+                    Text("Reset 1.00x", color = Color(0xFF80CBC4), fontSize = 11.sp)
                 }
             }
 
             Slider(
                 value = tempoSlider,
-                onValueChange = { v ->
-                    tempoSlider = v
-                    val newTempo = (minTempo + v * (maxTempo - minTempo))
-                        .coerceIn(minTempo, maxTempo)
-                    onTempoChange(newTempo)
+                onValueChange = {
+                    tempoSlider = it
+                    onTempoChange(minTempo + it * (maxTempo - minTempo))
                 },
-                modifier = Modifier.fillMaxWidth(),
                 colors = SliderDefaults.colors(
                     thumbColor = Color(0xFF80CBC4),
                     activeTrackColor = Color(0xFF80CBC4).copy(alpha = 0.4f),
@@ -250,47 +155,33 @@ fun TrackMixScreen(
                 )
             )
 
-            Spacer(Modifier.height(18.dp))
+            Spacer(Modifier.height(16.dp))
 
-            // ─────────── TONALITÉ (DEMI-TONS) ───────────
-            Text(
-                text = "Tonalité (demi-tons)",
-                color = Color(0xFFB0BEC5),
-                fontSize = 13.sp
-            )
-
+            // ───── TONALITÉ ─────
+            Text("Tonalité (demi-tons)", color = Color(0xFFB0BEC5), fontSize = 13.sp)
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                val display = if (pitchSemi >= 0) "+$pitchSemi" else "$pitchSemi"
                 Text(
-                    text = "$display demi-tons",
+                    text = "${if (pitchSemi >= 0) "+$pitchSemi" else pitchSemi} demi-tons",
                     color = Color.White,
                     fontSize = 12.sp
                 )
                 TextButton(onClick = {
                     onPitchSemiChange(0)
-                    pitchSlider = ((0 - minSemi).toFloat() / (maxSemi - minSemi)).coerceIn(0f, 1f)
+                    pitchSlider = ((0 - minSemi).toFloat() / (maxSemi - minSemi))
                 }) {
-                    Text(
-                        text = "Reset 0",
-                        color = Color(0xFFCE93D8),
-                        fontSize = 11.sp
-                    )
+                    Text("Reset 0", color = Color(0xFFCE93D8), fontSize = 11.sp)
                 }
             }
 
             Slider(
                 value = pitchSlider,
-                onValueChange = { v ->
-                    pitchSlider = v
-                    val semiFloat = minSemi + v * (maxSemi - minSemi)
-                    val semiInt = semiFloat.toInt().coerceIn(minSemi, maxSemi)
-                    onPitchSemiChange(semiInt)
+                onValueChange = {
+                    pitchSlider = it
+                    onPitchSemiChange((minSemi + it * (maxSemi - minSemi)).toInt())
                 },
-                modifier = Modifier.fillMaxWidth(),
                 colors = SliderDefaults.colors(
                     thumbColor = Color(0xFFCE93D8),
                     activeTrackColor = Color(0xFFCE93D8).copy(alpha = 0.4f),
@@ -298,65 +189,49 @@ fun TrackMixScreen(
                 )
             )
 
-            Spacer(Modifier.height(22.dp))
+            Spacer(Modifier.height(20.dp))
 
-            // ─────────── EQ 3 BANDES (VERTICAL, PERSISTANT) ───────────
-            Text(
-                text = "Égaliseur 3 bandes",
-                color = Color(0xFFB0BEC5),
-                fontSize = 13.sp
-            )
-
+            // ───── EQ ─────
+            Text("Égaliseur 3 bandes", color = Color(0xFFB0BEC5), fontSize = 13.sp)
             Spacer(Modifier.height(8.dp))
 
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(230.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically
+                horizontalArrangement = Arrangement.SpaceEvenly
             ) {
-                EqVerticalFader(
-                    label = "Graves",
-                    gain = lowGain,
-                    onGainChange = { g ->
-                        lowGain = g
-                        applyAndSaveEq()
-                    },
-                    color = Color(0xFF4CAF50)
-                )
+                EqVerticalFader("Graves", lowGain, { lowGain = it; applyAndSaveEq() }, Color(0xFF4CAF50))
+                EqVerticalFader("Médiums", midGain, { midGain = it; applyAndSaveEq() }, Color(0xFFFFC107))
+                EqVerticalFader("Aigus", highGain, { highGain = it; applyAndSaveEq() }, Color(0xFF42A5F5))
+            }
 
-                EqVerticalFader(
-                    label = "Médiums",
-                    gain = midGain,
-                    onGainChange = { g ->
-                        midGain = g
-                        applyAndSaveEq()
-                    },
-                    color = Color(0xFFFFC107)
-                )
+            // ───── ZONE DE SORTIE (LA CLEF DU CONFORT SCÈNE) ─────
+            Spacer(Modifier.weight(1f))
 
-                EqVerticalFader(
-                    label = "Aigus",
-                    gain = highGain,
-                    onGainChange = { g ->
-                        highGain = g
-                        applyAndSaveEq()
-                    },
-                    color = Color(0xFF42A5F5)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(70.dp)
+                    .clickable { onClose() },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "TOUCHER ICI POUR REVENIR",
+                    color = Color(0x55FFFFFF),
+                    fontSize = 11.sp
                 )
             }
         }
     }
 }
 
-/**
- * Une bande d'EQ : label, gros fader vertical en Canvas et valeur en dB.
- */
+/* ---------- EQ FADER ---------- */
+
 @Composable
 private fun EqVerticalFader(
     label: String,
-    gain: Float,                           // -12..+12
+    gain: Float,
     onGainChange: (Float) -> Unit,
     color: Color
 ) {
@@ -364,90 +239,42 @@ private fun EqVerticalFader(
         mutableStateOf(((gain + 12f) / 24f).coerceIn(0f, 1f))
     }
 
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.width(80.dp)
-    ) {
-        Text(
-            text = label,
-            color = Color.White,
-            fontSize = 12.sp,
-            maxLines = 1
-        )
-
-        Spacer(Modifier.height(4.dp))
-
-        Text(
-            text = String.format("%+d dB", gain.roundToInt()),
-            color = Color(0xFFCFD8DC),
-            fontSize = 11.sp
-        )
-
-        Spacer(Modifier.height(6.dp))
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(80.dp)) {
+        Text(label, color = Color.White, fontSize = 12.sp)
+        Text(String.format("%+d dB", gain.roundToInt()), color = Color(0xFFCFD8DC), fontSize = 11.sp)
 
         Canvas(
             modifier = Modifier
                 .height(190.dp)
                 .width(40.dp)
                 .pointerInput(Unit) {
-                    detectVerticalDragGestures { change, dragAmount ->
+                    detectVerticalDragGestures { change, drag ->
                         change.consume()
-                        val newSliderValue = (sliderValue - dragAmount / size.height)
-                            .coerceIn(0f, 1f)
-                        sliderValue = newSliderValue
-                        val newGain = newSliderValue * 24f - 12f
-                        onGainChange(newGain)
+                        sliderValue = (sliderValue - drag / size.height).coerceIn(0f, 1f)
+                        onGainChange(sliderValue * 24f - 12f)
                     }
                 }
         ) {
-            val trackWidth = size.width * 0.35f
-            val trackX = (size.width - trackWidth) / 2f
-            val trackHeight = size.height
-
-            drawRoundRect(
-                color = Color.DarkGray,
-                topLeft = Offset(trackX, 0f),
-                size = Size(trackWidth, trackHeight),
-                cornerRadius = CornerRadius(trackWidth / 2f)
-            )
-
-            val activeHeight = trackHeight * sliderValue
-            drawRoundRect(
-                color = color,
-                topLeft = Offset(trackX, trackHeight - activeHeight),
-                size = Size(trackWidth, activeHeight),
-                cornerRadius = CornerRadius(trackWidth / 2f)
-            )
-
-            val thumbRadius = trackWidth * 0.9f
-            val thumbCenter = Offset(
-                x = size.width / 2f,
-                y = trackHeight - activeHeight
-            )
-            drawCircle(
-                color = Color.White,
-                radius = thumbRadius,
-                center = thumbCenter
-            )
+            val w = size.width * 0.35f
+            val x = (size.width - w) / 2f
+            drawRoundRect(Color.DarkGray, Offset(x, 0f), Size(w, size.height), CornerRadius(w))
+            drawRoundRect(color, Offset(x, size.height * (1 - sliderValue)), Size(w, size.height * sliderValue), CornerRadius(w))
+            drawCircle(Color.White, w * 0.9f, Offset(size.width / 2f, size.height * (1 - sliderValue)))
         }
     }
 }
 
-@Preview(
-    showBackground = true,
-    backgroundColor = 0xFF000000
-)
+@Preview(showBackground = true, backgroundColor = 0xFF000000)
 @Composable
 fun TrackMixScreenPreview() {
     TrackMixScreen(
-        highlightColor = Color(0xFFE040FB),
         currentTrackGainDb = 0,
         onTrackGainChange = {},
-        tempo = 1.0f,
+        tempo = 1f,
         onTempoChange = {},
         pitchSemi = 0,
         onPitchSemiChange = {},
-        currentTrackUri = "demo://track",
+        currentTrackUri = "demo",
         onClose = {}
     )
 }
