@@ -201,6 +201,16 @@ object PlaylistRepository {
         playlistColors.clear()
         bump()
     }
+    fun moveSongToEnd(playlistName: String, uri: String) {
+        val list = playlists[playlistName] ?: return
+        val idx = list.indexOf(uri)
+        if (idx == -1) return
+
+        // on enlève et on remet à la fin
+        list.removeAt(idx)
+        list.add(uri)
+        bump()
+    }
 
     /** Pour être sûr qu’une playlist existe (pratique à l’import). */
     fun createIfNotExists(name: String) {

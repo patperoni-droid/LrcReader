@@ -205,6 +205,11 @@ class MainActivity : ComponentActivity() {
                             },
                             onStart = {
                                 isPlaying = true
+                                playlistName?.let { pl ->
+                                    PlaylistRepository
+                                    PlaylistRepository.moveSongToEnd(pl, uriString)
+                                    refreshKey++
+                                }
 
                                 // Gain
                                 applyGainToPlayer(currentTrackGainDb)
