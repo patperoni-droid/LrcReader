@@ -152,6 +152,11 @@ class MainActivity : ComponentActivity() {
                         // facteur de pitch en fonction des demi-tons
                         val pitchFactor = 2f.pow(semiClamped / 12f)
 
+                        // ✅ IMPORTANT :
+                        // Sur certains devices, toucher playbackParams quand le player est en pause
+                        // peut relancer la lecture. Donc on n'applique que si ça joue.
+                        if (!mediaPlayer.isPlaying) return
+
                         val params = mediaPlayer.playbackParams
                             .setSpeed(safeSpeed)   // vitesse
                             .setPitch(pitchFactor) // hauteur
