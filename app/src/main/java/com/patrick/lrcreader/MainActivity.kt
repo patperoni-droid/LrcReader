@@ -65,7 +65,7 @@ class MainActivity : ComponentActivity() {
                 var selectedTab by remember {
                     mutableStateOf(initialTabKey?.let { tabFromKey(it) } ?: BottomTab.Home)
                 }
-
+                var closeMixSignal by remember { mutableIntStateOf(0) }
                 var selectedQuickPlaylist by rememberSaveable {
                     mutableStateOf<String?>(initialQuickPlaylist)
                 }
@@ -313,6 +313,12 @@ class MainActivity : ComponentActivity() {
                         BottomTabsBar(
                             selected = selectedTab,
                             onSelected = { tab ->
+
+                                // ✅ Si on clique sur "Lecteur", on envoie un signal pour fermer "Mixage du titre"
+                                if (tab is BottomTab.Player) {
+                                    closeMixSignal++
+                                }
+
                                 selectedTab = tab
                                 SessionPrefs.saveTab(ctx, tabKeyOf(tab))
 
@@ -425,6 +431,7 @@ class MainActivity : ComponentActivity() {
                         is BottomTab.Player -> PlayerScreen(
                             modifier = contentModifier,
                             mediaPlayer = mediaPlayer,
+                            closeMixSignal = closeMixSignal,
                             isPlaying = isPlaying,
                             onIsPlayingChange = { isPlaying = it },
                             parsedLines = parsedLines,

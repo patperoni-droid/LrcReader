@@ -45,6 +45,7 @@ import kotlin.math.min
 fun PlayerScreen(
     modifier: Modifier = Modifier,
     mediaPlayer: MediaPlayer,
+    closeMixSignal: Int = 0,
     isPlaying: Boolean,
     onIsPlayingChange: (Boolean) -> Unit,
     parsedLines: List<LrcLine>,
@@ -110,11 +111,15 @@ fun PlayerScreen(
 
     var isEditingLyrics by remember { mutableStateOf(false) }
     var showMixScreen by remember { mutableStateOf(false) }
+    LaunchedEffect(closeMixSignal) {
+        showMixScreen = false
+    }
 
     var rawLyricsText by remember(currentTrackUri) { mutableStateOf("") }
     var editingLines by remember(currentTrackUri) { mutableStateOf<List<LrcLine>>(emptyList()) }
 
     var currentEditTab by remember { mutableStateOf(0) }
+
 
     // 🔁 À CHAQUE CHANGEMENT DE MORCEAU :
     // PlayerScreen recharge les paroles depuis LrcStorage
