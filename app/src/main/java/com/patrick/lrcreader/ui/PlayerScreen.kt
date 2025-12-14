@@ -1,12 +1,13 @@
+// PlayerScreen.kt
 package com.patrick.lrcreader.ui
 
-import com.patrick.lrcreader.core.parseLrc
-import com.patrick.lrcreader.core.AutoReturnPrefs
 import android.media.MediaPlayer
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
@@ -16,7 +17,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -27,14 +27,16 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.patrick.lrcreader.core.AutoReturnPrefs
 import com.patrick.lrcreader.core.DisplayPrefs
 import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.core.LrcLine
 import com.patrick.lrcreader.core.LrcStorage
+import com.patrick.lrcreader.core.MidiCueDispatcher
 import com.patrick.lrcreader.core.PlaybackCoordinator
 import com.patrick.lrcreader.core.PlayerBusController
+import com.patrick.lrcreader.core.parseLrc
 import com.patrick.lrcreader.core.pauseWithFade
-import com.patrick.lrcreader.core.MidiCueDispatcher   // ⬅️ IMPORT MIDI
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.abs
@@ -56,19 +58,16 @@ fun PlayerScreen(
     onTrackGainChange: (Int) -> Unit,
     tempo: Float,
     onTempoChange: (Float) -> Unit,
-    // Tonalité en demi-tons (mémorisée par titre)
     pitchSemi: Int,
     onPitchSemiChange: (Int) -> Unit,
     onRequestShowPlaylist: () -> Unit
 ) {
-    val scrollState = rememberScrollState()
+    val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
-    val density = LocalDensity.current
     val context = LocalContext.current
-    val rowHeightDp = 100.dp
-    val rowHeightPx = with(density) { rowHeightDp.toPx() }
+    val density = LocalDensity.current
 
-    // 🔊 On branche ce MediaPlayer sur le bus LECTEUR
+    // 🔊 bus LECTEUR
     LaunchedEffect(Unit) {
         PlayerBusController.attachPlayer(context, mediaPlayer)
         PlayerBusController.applyCurrentVolume(context)
@@ -77,26 +76,22 @@ fun PlayerScreen(
     // Décalage global des paroles (latence de base)
     val lyricsDelayMs = 0L
 
-    // 🔧 Offset ajustable par l'utilisateur, par morceau
-    //    0 = comportement actuel
-    //    +1000 = les paroles sortent plus tard d'environ 1 s
-    //    -1000 = les paroles sortent plus tôt d'environ 1 s
+    // 🔧 Offset ajustable par titre
     var userOffsetMs by remember(currentTrackUri) { mutableStateOf(-100L) }
 
-    var isConcertMode by remember {
-        mutableStateOf(DisplayPrefs.isConcertMode(context))
-    }
+    var isConcertMode by remember { mutableStateOf(DisplayPrefs.isConcertMode(context)) }
 
     var lyricsBoxHeightPx by remember { mutableStateOf(0) }
     var currentLrcIndex by remember { mutableStateOf(0) }
 
-    // Dernière ligne pour laquelle on a envoyé un CUE MIDI
+    // MIDI
     var lastMidiIndex by remember(currentTrackUri) { mutableStateOf(-1) }
+
+    // Masque avant 1er tag
     var showLyrics by remember { mutableStateOf(true) }
+
+    // Scroll manuel
     var userScrolling by remember { mutableStateOf(false) }
-
-
-    val baseTopSpacerPx by remember(lyricsBoxHeightPx) { mutableStateOf(lyricsBoxHeightPx) }
 
     var durationMs by remember { mutableStateOf(0) }
     var positionMs by remember { mutableStateOf(0) }
@@ -105,54 +100,94 @@ fun PlayerScreen(
 
     var hasRequestedPlaylist by remember(currentTrackUri) { mutableStateOf(false) }
 
-    // 🔘 retour auto vers la playlist (-10 s)
     var isAutoReturnEnabled by remember {
         mutableStateOf(AutoReturnPrefs.isEnabled(context))
     }
 
     var isEditingLyrics by remember { mutableStateOf(false) }
     var showMixScreen by remember { mutableStateOf(false) }
-    LaunchedEffect(closeMixSignal) {
-        showMixScreen = false
-    }
+    LaunchedEffect(closeMixSignal) { showMixScreen = false }
 
     var rawLyricsText by remember(currentTrackUri) { mutableStateOf("") }
     var editingLines by remember(currentTrackUri) { mutableStateOf<List<LrcLine>>(emptyList()) }
-
     var currentEditTab by remember { mutableStateOf(0) }
 
-
-    // 🔁 À CHAQUE CHANGEMENT DE MORCEAU :
-    // PlayerScreen recharge les paroles depuis LrcStorage
+    // 🔁 reload LRC depuis storage
     LaunchedEffect(currentTrackUri) {
         if (currentTrackUri == null) {
-            // Pas de titre actif → on vide tout
             onParsedLinesChange(emptyList())
             rawLyricsText = ""
             editingLines = emptyList()
             return@LaunchedEffect
         }
 
-        // On lit le .lrc SAUVEGARDÉ pour ce morceau
         val stored = LrcStorage.loadForTrack(context, currentTrackUri)
-
         if (!stored.isNullOrBlank()) {
             val parsed = parseLrc(stored)
-
-            // ✅ Ces lignes deviennent LA vérité pour ce track
             onParsedLinesChange(parsed)
             rawLyricsText = parsed.joinToString("\n") { it.text }
             editingLines = parsed
         } else {
-            // Aucun fichier LRC → pas de paroles
             onParsedLinesChange(emptyList())
             rawLyricsText = ""
             editingLines = emptyList()
         }
     }
 
-    // ---------- Suivi lecture + index ligne courante + MIDI + affichage ----------
-    LaunchedEffect(isPlaying, parsedLines, userOffsetMs) {
+    // ---------- centrage indérivable (LazyListState) ----------
+    fun centerCurrentLineLazy(state: LazyListState) {
+        if (parsedLines.isEmpty()) return
+
+        scope.launch {
+            // si pas visible, on le rapproche
+            val visible = state.layoutInfo.visibleItemsInfo.firstOrNull { it.index == currentLrcIndex }
+            if (visible == null) {
+                state.scrollToItem(currentLrcIndex)
+            }
+
+            val info = state.layoutInfo.visibleItemsInfo.firstOrNull { it.index == currentLrcIndex }
+            if (info != null) {
+                // ✅ centre du viewport réel (tient compte des paddings, barres, etc.)
+                val start = state.layoutInfo.viewportStartOffset
+                val end = state.layoutInfo.viewportEndOffset
+                val bias = ((end - start) * 0.08f).toInt()   // ajuste la valeur si besoin
+                val viewportCenter = (start + end) / 2 - bias
+
+                val itemCenter = info.offset + info.size / 2
+                val delta = itemCenter - viewportCenter
+
+                if (abs(delta) > 1) {
+                    state.scrollBy(delta.toFloat())
+                }
+            }
+        }
+    }
+
+
+    fun seekAndCenter(targetMs: Int, targetIndex: Int) {
+        PlaybackCoordinator.onPlayerStart()
+
+        val totalOffsetMs = lyricsDelayMs + userOffsetMs
+        val seekPos = (targetMs.toLong() + totalOffsetMs)
+            .coerceAtLeast(0L)
+            .coerceAtMost(durationMs.toLong())
+            .toInt()
+
+        runCatching { mediaPlayer.seekTo(seekPos) }
+        currentLrcIndex = targetIndex.coerceIn(0, max(parsedLines.size - 1, 0))
+        positionMs = seekPos
+
+        if (!mediaPlayer.isPlaying) {
+            PlayerBusController.applyCurrentVolume(context)
+            mediaPlayer.start()
+            onIsPlayingChange(true)
+        }
+
+        centerCurrentLineLazy(listState)
+    }
+
+    // ---------- Suivi lecture + index ligne courante + MIDI + masque ----------
+    LaunchedEffect(isPlaying, parsedLines, userOffsetMs, currentTrackUri) {
         while (true) {
             val d = runCatching { mediaPlayer.duration }.getOrNull() ?: -1
             if (d > 0) durationMs = d
@@ -161,29 +196,21 @@ fun PlayerScreen(
             if (!isDragging) positionMs = p
 
             if (parsedLines.isNotEmpty()) {
-                // Décalage effectif = latence de base + offset utilisateur
                 val totalOffsetMs = lyricsDelayMs + userOffsetMs
-
-                // position "paroles" = position audio - décalage total
                 val posMs = (p.toLong() - totalOffsetMs).coerceAtLeast(0L)
 
-                // On repère toutes les lignes taguées
                 val taggedIndices = parsedLines.withIndex()
                     .filter { it.value.timeMs > 0L }
                     .map { it.index }
 
-                if (taggedIndices.isEmpty()) {
-                    // Aucune ligne taguée → on laisse les paroles visibles dès le début
-                    showLyrics = true
+                showLyrics = if (taggedIndices.isEmpty()) {
+                    true
                 } else {
-                    // Il y a des tags → rien à l'écran avant la première ligne taguée
                     val firstTaggedIndex = taggedIndices.first()
                     val firstTaggedTime = parsedLines[firstTaggedIndex].timeMs
-                    // posMs tient déjà compte du décalage global totalOffsetMs
-                    showLyrics = posMs >= firstTaggedTime
+                    posMs >= firstTaggedTime
                 }
 
-                // On cherche la DERNIÈRE ligne taguée dont le temps est <= posMs
                 val newIndex = taggedIndices.lastOrNull { idx ->
                     parsedLines[idx].timeMs <= posMs
                 } ?: -1
@@ -192,7 +219,6 @@ fun PlayerScreen(
                     currentLrcIndex = newIndex
                 }
 
-                // 🔥 Déclenche le CUE MIDI quand la ligne change
                 if (currentTrackUri != null && newIndex != -1 && newIndex != lastMidiIndex) {
                     lastMidiIndex = newIndex
                     MidiCueDispatcher.onActiveLineChanged(
@@ -207,21 +233,13 @@ fun PlayerScreen(
         }
     }
 
-    // ---------- Autoswitch playlist (optionnel) ----------
-    // ⚠ Désactivé automatiquement quand on est en mode ÉDITION (synchro paroles),
-    // pour éviter de se faire éjecter vers la playlist en plein calage.
-    LaunchedEffect(
-        durationMs,
-        positionMs,
-        hasRequestedPlaylist,
-        currentTrackUri,
-        isEditingLyrics
-    ) {
+    // ---------- Autoswitch playlist (-10s) ----------
+    LaunchedEffect(durationMs, positionMs, hasRequestedPlaylist, currentTrackUri, isEditingLyrics) {
         val enabled = AutoReturnPrefs.isEnabled(context)
 
         if (
             enabled &&
-            !isEditingLyrics &&          // ✅ si on édite, on NE fait PAS de retour auto
+            !isEditingLyrics &&
             !hasRequestedPlaylist &&
             durationMs > 0 &&
             positionMs >= durationMs - 10_000
@@ -231,69 +249,28 @@ fun PlayerScreen(
         }
     }
 
-    // ---------- Suivi scroll manuel ----------
-    LaunchedEffect(scrollState) {
+    // ---------- Suivi scroll user (Lazy) ----------
+    LaunchedEffect(listState) {
         while (true) {
-            userScrolling = scrollState.isScrollInProgress
+            userScrolling = listState.isScrollInProgress
             delay(80)
         }
     }
 
-    fun centerCurrentLineImmediate() {
-        if (lyricsBoxHeightPx == 0) return
-        val centerPx = lyricsBoxHeightPx / 2f
-        val lineAbsY = baseTopSpacerPx + currentLrcIndex * rowHeightPx
-
-        val wantedScroll = (lineAbsY - centerPx).toInt().coerceAtLeast(0)
-        scope.launch { scrollState.scrollTo(wantedScroll) }
-    }
-
-    fun seekAndCenter(targetMs: Int, targetIndex: Int) {
-        PlaybackCoordinator.onPlayerStart()
-
-        // On applique le même décalage que pour la lecture :
-        // si on retarde les paroles, on seek un peu plus loin dans l'audio.
-        val totalOffsetMs = lyricsDelayMs + userOffsetMs
-        val seekPos = (targetMs.toLong() + totalOffsetMs)
-            .coerceAtLeast(0L)
-            .coerceAtMost(durationMs.toLong())
-            .toInt()
-
-        runCatching { mediaPlayer.seekTo(seekPos) }
-        currentLrcIndex = targetIndex
-        positionMs = seekPos
-
-        if (!mediaPlayer.isPlaying) {
-            // 🔊 Volume appliqué via le bus lecteur
-            PlayerBusController.applyCurrentVolume(context)
-
-            mediaPlayer.start()
-            onIsPlayingChange(true)
-        }
-        if (lyricsBoxHeightPx > 0) {
-            val centerPx = lyricsBoxHeightPx / 2f
-            val lineAbsY = baseTopSpacerPx + currentLrcIndex * rowHeightPx
-            val wanted = (lineAbsY - centerPx).toInt().coerceAtLeast(0)
-            scope.launch { scrollState.scrollTo(wanted) }
-        }
-    }
-
-    // ---------- Auto-centering pendant lecture ----------
-    LaunchedEffect(isPlaying, parsedLines, lyricsBoxHeightPx) {
+    // ---------- Auto-centering ----------
+    LaunchedEffect(isPlaying, parsedLines, lyricsBoxHeightPx, currentLrcIndex) {
         if (parsedLines.isEmpty() || lyricsBoxHeightPx == 0) return@LaunchedEffect
-
         while (true) {
             if (isPlaying && !userScrolling && !isDragging) {
-                centerCurrentLineImmediate()
+                centerCurrentLineLazy(listState)
             }
-            delay(40)
+            delay(120) // ✅ pas besoin de mitrailler
         }
     }
 
     // ─────────────────────────────
     //  LAYOUT GLOBAL ANALOGIQUE
     // ─────────────────────────────
-
     val backgroundBrush = Brush.verticalGradient(
         listOf(
             Color(0xFF171717),
@@ -308,7 +285,6 @@ fun PlayerScreen(
             .background(backgroundBrush)
     ) {
         if (isEditingLyrics) {
-            // ========= MODE ÉDITION =========
             LyricsEditorSection(
                 highlightColor = highlightColor,
                 currentTrackUri = currentTrackUri,
@@ -325,32 +301,21 @@ fun PlayerScreen(
                 durationMs = durationMs,
                 onIsPlayingChange = onIsPlayingChange,
                 onSaveSortedLines = { sorted ->
-                    // Met à jour les états locaux pour CE morceau
                     rawLyricsText = sorted.joinToString("\n") { it.text }
                     editingLines = sorted
-
-                    // Informe le parent : c'est cette liste qui sera utilisée en lecture
                     onParsedLinesChange(sorted)
-
-                    // On ferme l’éditeur
                     isEditingLyrics = false
                 }
             )
-
         } else {
-
-            // ========= MODE LECTURE =========
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(12.dp)
             ) {
                 Card(
-                    modifier = Modifier
-                        .fillMaxSize(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = Color(0xFF1B1B1B)
-                    ),
+                    modifier = Modifier.fillMaxSize(),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1B1B1B)),
                     shape = RoundedCornerShape(16.dp),
                     elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
                 ) {
@@ -371,7 +336,6 @@ fun PlayerScreen(
                                 val newValue = !isAutoReturnEnabled
                                 isAutoReturnEnabled = newValue
                                 AutoReturnPrefs.setEnabled(context, newValue)
-                                // pour pouvoir redéclencher sur ce morceau
                                 hasRequestedPlaylist = false
                             },
                             highlightColor = highlightColor,
@@ -391,28 +355,19 @@ fun PlayerScreen(
 
                         Spacer(Modifier.height(8.dp))
 
-                        // Zone centrale : toujours mode MANU avec ligne centrée
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                        ) {
-                            LyricsArea(
+                        Box(modifier = Modifier.weight(1f)) {
+                            LyricsAreaLazy(
                                 modifier = Modifier.fillMaxSize(),
-                                scrollState = scrollState,
-                                parsedLines = parsedLines,              // ⬅️ on repasse les vraies lignes
-                                isContinuousScroll = false,
+                                listState = listState,
+                                parsedLines = parsedLines,
                                 isConcertMode = isConcertMode,
                                 currentLrcIndex = currentLrcIndex,
-                                baseTopSpacerPx = baseTopSpacerPx,
-                                lyricsBoxHeightPx = lyricsBoxHeightPx,
                                 onLyricsBoxHeightChange = { lyricsBoxHeightPx = it },
                                 highlightColor = highlightColor,
-                                rowHeightDp = rowHeightDp,
                                 onLineClick = { index, timeMs ->
-                                    // Seek + centrage
                                     seekAndCenter(timeMs.toInt(), index)
 
-                                    // 🔥 Et on déclenche le CUE MIDI immédiatement au clic
+                                    // 🔥 CUE MIDI immédiat au clic
                                     if (currentTrackUri != null) {
                                         lastMidiIndex = index
                                         MidiCueDispatcher.onActiveLineChanged(
@@ -423,12 +378,12 @@ fun PlayerScreen(
                                 }
                             )
 
-                            // Masque opaque par-dessus tant qu'on n'a pas atteint la 1ère ligne taguée
+                            // Masque opaque tant qu'on n'a pas atteint la 1ère ligne taguée
                             if (!showLyrics) {
                                 Box(
                                     modifier = Modifier
                                         .matchParentSize()
-                                        .background(Color(0xFF1B1B1B))  // même couleur que la carte
+                                        .background(Color(0xFF1B1B1B))
                                 )
                             }
                         }
@@ -449,12 +404,10 @@ fun PlayerScreen(
                             highlightColor = highlightColor
                         )
 
-
                         PlayerControls(
                             isPlaying = isPlaying,
                             onPlayPause = {
                                 if (mediaPlayer.isPlaying) {
-                                    // Pause + bascule éventuelle vers le fond sonore
                                     pauseWithFade(scope, mediaPlayer, 400L) {
                                         onIsPlayingChange(false)
                                         PlaybackCoordinator.onFillerStart()
@@ -463,13 +416,10 @@ fun PlayerScreen(
                                 } else {
                                     if (durationMs > 0) {
                                         PlaybackCoordinator.onPlayerStart()
-
-                                        // 🔊 Le bus applique le volume courant (fader LECTEUR)
                                         PlayerBusController.applyCurrentVolume(context)
-
                                         mediaPlayer.start()
                                         onIsPlayingChange(true)
-                                        centerCurrentLineImmediate()
+                                        centerCurrentLineLazy(listState)
                                     }
                                 }
                             },
@@ -477,14 +427,11 @@ fun PlayerScreen(
                                 mediaPlayer.seekTo(0)
                                 if (!mediaPlayer.isPlaying) {
                                     PlaybackCoordinator.onPlayerStart()
-
-                                    // 🔊 Même chose quand on relance depuis le début
                                     PlayerBusController.applyCurrentVolume(context)
-
                                     mediaPlayer.start()
                                     onIsPlayingChange(true)
                                 }
-                                centerCurrentLineImmediate()
+                                centerCurrentLineLazy(listState)
                             },
                             onNext = {
                                 mediaPlayer.seekTo(max(durationMs - 1, 0))
@@ -544,16 +491,11 @@ private fun ReaderHeader(
                 ),
                 shape = RoundedCornerShape(10.dp)
             )
-            .border(
-                1.dp,
-                Color(0x55FFFFFF),
-                RoundedCornerShape(10.dp)
-            )
+            .border(1.dp, Color(0x55FFFFFF), RoundedCornerShape(10.dp))
             .padding(horizontal = 6.dp)
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxSize(),
+            modifier = Modifier.fillMaxSize(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
@@ -568,8 +510,6 @@ private fun ReaderHeader(
 
             Spacer(modifier = Modifier.weight(1f))
 
-            // Bouton -10 (retour auto playlist)
-            // Bouton -10 (retour auto playlist)
             IconButton(onClick = onToggleAutoReturn) {
                 Text(
                     text = "-10",
@@ -577,6 +517,7 @@ private fun ReaderHeader(
                     fontSize = 12.sp
                 )
             }
+
             IconButton(onClick = onOpenMix) {
                 Icon(
                     imageVector = Icons.Filled.GraphicEq,
