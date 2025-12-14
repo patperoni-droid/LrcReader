@@ -65,6 +65,8 @@ fun PlayerScreen(
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
     val context = LocalContext.current
+    val rowHeightDp = 100.dp
+    val rowHeightPx = with(density) { rowHeightDp.toPx() }
 
     // 🔊 On branche ce MediaPlayer sur le bus LECTEUR
     LaunchedEffect(Unit) {
@@ -93,8 +95,7 @@ fun PlayerScreen(
     var showLyrics by remember { mutableStateOf(true) }
     var userScrolling by remember { mutableStateOf(false) }
 
-    val lineHeightDp = 80.dp
-    val lineHeightPx = with(density) { lineHeightDp.toPx() }
+
     val baseTopSpacerPx by remember(lyricsBoxHeightPx) { mutableStateOf(lyricsBoxHeightPx) }
 
     var durationMs by remember { mutableStateOf(0) }
@@ -241,7 +242,8 @@ fun PlayerScreen(
     fun centerCurrentLineImmediate() {
         if (lyricsBoxHeightPx == 0) return
         val centerPx = lyricsBoxHeightPx / 2f
-        val lineAbsY = baseTopSpacerPx + currentLrcIndex * lineHeightPx
+        val lineAbsY = baseTopSpacerPx + currentLrcIndex * rowHeightPx
+
         val wantedScroll = (lineAbsY - centerPx).toInt().coerceAtLeast(0)
         scope.launch { scrollState.scrollTo(wantedScroll) }
     }
@@ -270,7 +272,7 @@ fun PlayerScreen(
         }
         if (lyricsBoxHeightPx > 0) {
             val centerPx = lyricsBoxHeightPx / 2f
-            val lineAbsY = baseTopSpacerPx + targetIndex * lineHeightPx
+            val lineAbsY = baseTopSpacerPx + currentLrcIndex * rowHeightPx
             val wanted = (lineAbsY - centerPx).toInt().coerceAtLeast(0)
             scope.launch { scrollState.scrollTo(wanted) }
         }
@@ -405,6 +407,7 @@ fun PlayerScreen(
                                 lyricsBoxHeightPx = lyricsBoxHeightPx,
                                 onLyricsBoxHeightChange = { lyricsBoxHeightPx = it },
                                 highlightColor = highlightColor,
+                                rowHeightDp = rowHeightDp,
                                 onLineClick = { index, timeMs ->
                                     // Seek + centrage
                                     seekAndCenter(timeMs.toInt(), index)
