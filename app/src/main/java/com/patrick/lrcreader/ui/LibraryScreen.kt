@@ -172,7 +172,7 @@ fun LibraryScreen(
     )
 
     // premier chargement
-    LaunchedEffect(initialFolder) {
+    /*LaunchedEffect(initialFolder) {
         if (initialFolder != null) {
             isLoading = true
             val cached = LibraryFolderCache.get(initialFolder)
@@ -188,7 +188,7 @@ fun LibraryScreen(
                 delay(200); isLoading = false
             }
         }
-    }
+    }*/
 
     DarkBlueGradientBackground {
         Column(
@@ -499,7 +499,7 @@ fun LibraryScreen(
                     }
 
                     // Spinner de chargement
-                    if (isLoading) {
+                    /*if (isLoading) {
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
@@ -516,7 +516,7 @@ fun LibraryScreen(
                                 )
                             }
                         }
-                    }
+                    }*/
 
                     // ——— BARRE FLOTTANTE pour sélection multiple ———
                     if (selectedSongs.isNotEmpty()) {
