@@ -32,7 +32,6 @@ import androidx.compose.material3.BottomAppBar
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
@@ -53,6 +52,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.documentfile.provider.DocumentFile
 import com.patrick.lrcreader.core.BackupFolderPrefs
+import com.patrick.lrcreader.core.LibraryIndexCache
 import com.patrick.lrcreader.core.PlaylistRepository
 import com.patrick.lrcreader.ui.theme.DarkBlueGradientBackground
 import kotlinx.coroutines.Dispatchers
@@ -105,6 +105,7 @@ fun LibraryScreen(
                 scope.launch {
                     isLoading = true
                     try {
+                        // 1) Permission persistante
                         try {
                             context.contentResolver.takePersistableUriPermission(
                                 uri,
@@ -113,19 +114,35 @@ fun LibraryScreen(
                             )
                         } catch (_: Exception) {}
 
+                        // 2) On mémorise le dossier racine
                         BackupFolderPrefs.save(context, uri)
 
+                        // 3) On scanne ce dossier (une fois)
                         currentFolderUri = uri
                         folderStack = emptyList()
 
                         val fresh = withContext(Dispatchers.IO) {
                             listEntriesInFolder(context, uri)
                         }
+
+                        // 4) Affichage immédiat
                         entries = fresh
-                        LibraryFolderCache.put(uri, fresh)
                         selectedSongs = emptySet()
+                        LibraryFolderCache.put(uri, fresh)
+
+                        // 5) Cache disque (pour relance sans rescanner)
+                        LibraryIndexCache.save(
+                            context,
+                            fresh.map {
+                                LibraryIndexCache.CachedEntry(
+                                    uriString = it.uri.toString(),
+                                    name = it.name,
+                                    isDirectory = it.isDirectory
+                                )
+                            }
+                        )
                     } finally {
-                        delay(200)
+                        delay(150)
                         isLoading = false
                     }
                 }
@@ -154,14 +171,13 @@ fun LibraryScreen(
                             moveLibraryFile(context, srcUri, destUri)
                         }
                         if (ok) {
-                            // on vire le fichier de la liste courante
                             entries = entries.filterNot { it.uri == srcUri }
                             selectedSongs = selectedSongs - srcUri
                             LibraryFolderCache.clear()
                         }
                     } finally {
                         pendingMoveUri = null
-                        delay(200)
+                        delay(150)
                         isLoading = false
                     }
                 }
@@ -171,24 +187,21 @@ fun LibraryScreen(
         }
     )
 
-    // premier chargement
-    /*LaunchedEffect(initialFolder) {
-        if (initialFolder != null) {
-            isLoading = true
-            val cached = LibraryFolderCache.get(initialFolder)
-            if (cached != null) {
-                entries = cached
-                delay(200); isLoading = false
-            } else {
-                val fresh = withContext(Dispatchers.IO) {
-                    listEntriesInFolder(context, initialFolder)
-                }
-                entries = fresh
-                LibraryFolderCache.put(initialFolder, fresh)
-                delay(200); isLoading = false
+    // ✅ Premier chargement : on recharge depuis le cache disque si présent
+    LaunchedEffect(Unit) {
+        val cached = LibraryIndexCache.load(context) // List<CachedEntry>?
+
+        if (!cached.isNullOrEmpty()) {
+            entries = cached.map { e ->
+                LibraryEntry(
+                    uri = Uri.parse(e.uriString),
+                    name = e.name,
+                    isDirectory = e.isDirectory
+                )
             }
         }
-    }*/
+        currentFolderUri = BackupFolderPrefs.get(context)
+    }
 
     DarkBlueGradientBackground {
         Column(
@@ -207,18 +220,23 @@ fun LibraryScreen(
                     IconButton(onClick = {
                         scope.launch {
                             isLoading = true
-                            val newStack = folderStack.dropLast(1)
-                            val parentUri = newStack.lastOrNull() ?: initialFolder
-                            currentFolderUri = parentUri
-                            entries = parentUri?.let { uri ->
-                                LibraryFolderCache.get(uri)
-                                    ?: withContext(Dispatchers.IO) {
-                                        listEntriesInFolder(context, uri)
-                                    }.also { LibraryFolderCache.put(uri, it) }
-                            } ?: emptyList()
-                            folderStack = newStack
-                            selectedSongs = emptySet()
-                            delay(200); isLoading = false
+                            try {
+                                val newStack = folderStack.dropLast(1)
+                                val parentUri = newStack.lastOrNull() ?: BackupFolderPrefs.get(context)
+                                currentFolderUri = parentUri
+
+                                entries = parentUri?.let { uri ->
+                                    LibraryFolderCache.get(uri)
+                                        ?: withContext(Dispatchers.IO) { listEntriesInFolder(context, uri) }
+                                            .also { LibraryFolderCache.put(uri, it) }
+                                } ?: emptyList()
+
+                                folderStack = newStack
+                                selectedSongs = emptySet()
+                            } finally {
+                                delay(150)
+                                isLoading = false
+                            }
                         }
                     }) {
                         Icon(
@@ -229,18 +247,11 @@ fun LibraryScreen(
                     }
                 }
 
-                Column(
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text(
-                        "Bibliothèque",
-                        color = titleColor,
-                        fontSize = 20.sp
-                    )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Bibliothèque", color = titleColor, fontSize = 20.sp)
                     Text(
                         text = currentFolderUri?.let {
-                            DocumentFile.fromTreeUri(context, it)?.name
-                                ?: "Aucun dossier sélectionné"
+                            DocumentFile.fromTreeUri(context, it)?.name ?: "Aucun dossier sélectionné"
                         } ?: "Aucun dossier sélectionné",
                         color = subtitleColor,
                         fontSize = 11.sp
@@ -248,11 +259,7 @@ fun LibraryScreen(
                 }
 
                 IconButton(onClick = { actionsExpanded = true }) {
-                    Icon(
-                        Icons.Default.MoreVert,
-                        contentDescription = "Actions",
-                        tint = Color.White
-                    )
+                    Icon(Icons.Default.MoreVert, contentDescription = "Actions", tint = Color.White)
                 }
 
                 DropdownMenu(
@@ -260,7 +267,7 @@ fun LibraryScreen(
                     onDismissRequest = { actionsExpanded = false }
                 ) {
                     DropdownMenuItem(
-                        text = { Text("Ajouter un dossier") },
+                        text = { Text("Choisir dossier Music") },
                         onClick = {
                             actionsExpanded = false
                             pickRootFolderLauncher.launch(null)
@@ -272,6 +279,8 @@ fun LibraryScreen(
                             actionsExpanded = false
                             clearPersistedUris(context)
                             BackupFolderPrefs.clear(context)
+                            LibraryIndexCache.clear(context)
+
                             currentFolderUri = null
                             entries = emptyList()
                             selectedSongs = emptySet()
@@ -290,8 +299,6 @@ fun LibraryScreen(
                     color = subtitleColor
                 )
             } else {
-                Spacer(Modifier.height(4.dp))
-
                 Box(
                     modifier = Modifier
                         .weight(1f)
@@ -305,37 +312,34 @@ fun LibraryScreen(
                     ) {
                         items(entries, key = { it.uri.toString() }) { entry ->
                             if (entry.isDirectory) {
-                                // ─── Ligne dossier ───
+                                // ─── Dossier ───
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .padding(vertical = 3.dp)
                                         .background(cardBg, RoundedCornerShape(10.dp))
-                                        .border(
-                                            1.dp,
-                                            rowBorder,
-                                            RoundedCornerShape(10.dp)
-                                        )
+                                        .border(1.dp, rowBorder, RoundedCornerShape(10.dp))
                                         .clickable {
                                             scope.launch {
                                                 isLoading = true
-                                                currentFolderUri?.let {
-                                                    folderStack = folderStack + it
+                                                try {
+                                                    currentFolderUri?.let { folderStack = folderStack + it }
+                                                    currentFolderUri = entry.uri
+
+                                                    val cached = LibraryFolderCache.get(entry.uri)
+                                                    entries =
+                                                        if (cached != null) cached
+                                                        else withContext(Dispatchers.IO) {
+                                                            listEntriesInFolder(context, entry.uri)
+                                                        }.also {
+                                                            LibraryFolderCache.put(entry.uri, it)
+                                                        }
+
+                                                    selectedSongs = emptySet()
+                                                } finally {
+                                                    delay(150)
+                                                    isLoading = false
                                                 }
-                                                currentFolderUri = entry.uri
-                                                val cached = LibraryFolderCache.get(entry.uri)
-                                                entries =
-                                                    if (cached != null) cached
-                                                    else withContext(Dispatchers.IO) {
-                                                        listEntriesInFolder(
-                                                            context,
-                                                            entry.uri
-                                                        )
-                                                    }.also {
-                                                        LibraryFolderCache.put(entry.uri, it)
-                                                    }
-                                                selectedSongs = emptySet()
-                                                delay(200); isLoading = false
                                             }
                                         }
                                         .padding(horizontal = 12.dp, vertical = 10.dp),
@@ -348,14 +352,10 @@ fun LibraryScreen(
                                         modifier = Modifier.size(22.dp)
                                     )
                                     Spacer(Modifier.width(10.dp))
-                                    Text(
-                                        entry.name,
-                                        color = Color.White,
-                                        fontSize = 15.sp
-                                    )
+                                    Text(entry.name, color = Color.White, fontSize = 15.sp)
                                 }
                             } else {
-                                // ─── Ligne fichier audio / json ───
+                                // ─── Fichier ───
                                 val uri = entry.uri
                                 val isSelected = selectedSongs.contains(uri)
                                 var menuOpen by remember { mutableStateOf(false) }
@@ -373,21 +373,17 @@ fun LibraryScreen(
                                         .padding(horizontal = 12.dp, vertical = 8.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    // Carré de sélection
+                                    // Carré sélection
                                     Box(
                                         modifier = Modifier
                                             .size(20.dp)
                                             .background(
-                                                if (isSelected)
-                                                    accent.copy(alpha = 0.18f)
-                                                else
-                                                    Color.Transparent,
+                                                if (isSelected) accent.copy(alpha = 0.18f) else Color.Transparent,
                                                 RoundedCornerShape(4.dp)
                                             )
                                             .border(
                                                 1.dp,
-                                                if (isSelected) accent
-                                                else Color.White.copy(alpha = 0.7f),
+                                                if (isSelected) accent else Color.White.copy(alpha = 0.7f),
                                                 RoundedCornerShape(4.dp)
                                             )
                                             .clickable {
@@ -398,48 +394,31 @@ fun LibraryScreen(
                                         contentAlignment = Alignment.Center
                                     ) {
                                         if (isSelected) {
-                                            Text(
-                                                "✕",
-                                                color = accent,
-                                                fontSize = 13.sp
-                                            )
+                                            Text("✕", color = accent, fontSize = 13.sp)
                                         }
                                     }
 
                                     Spacer(Modifier.width(10.dp))
 
-                                    // Titre -> lecture dans le lecteur
                                     Text(
                                         entry.name,
                                         color = Color.White,
                                         modifier = Modifier
                                             .weight(1f)
-                                            .clickable {
-                                                onPlayFromLibrary(uri.toString())
-                                            }
+                                            .clickable { onPlayFromLibrary(uri.toString()) }
                                     )
 
                                     // Menu ⋮
                                     Box {
                                         IconButton(onClick = { menuOpen = true }) {
-                                            Icon(
-                                                Icons.Default.MoreVert,
-                                                contentDescription = "Options",
-                                                tint = Color.White
-                                            )
+                                            Icon(Icons.Default.MoreVert, contentDescription = "Options", tint = Color.White)
                                         }
                                         DropdownMenu(
                                             expanded = menuOpen,
                                             onDismissRequest = { menuOpen = false }
                                         ) {
-                                            // 1) ATTRIBUER À UNE PLAYLIST
                                             DropdownMenuItem(
-                                                text = {
-                                                    Text(
-                                                        "Attribuer à une playlist",
-                                                        color = Color.White
-                                                    )
-                                                },
+                                                text = { Text("Attribuer à une playlist", color = Color.White) },
                                                 onClick = {
                                                     menuOpen = false
                                                     selectedSongs = setOf(uri)
@@ -447,14 +426,8 @@ fun LibraryScreen(
                                                 }
                                             )
 
-                                            // 2) DÉPLACER VERS UN DOSSIER
                                             DropdownMenuItem(
-                                                text = {
-                                                    Text(
-                                                        "Déplacer vers un dossier",
-                                                        color = Color.White
-                                                    )
-                                                },
+                                                text = { Text("Déplacer vers un dossier", color = Color.White) },
                                                 onClick = {
                                                     menuOpen = false
                                                     pendingMoveUri = uri
@@ -462,14 +435,8 @@ fun LibraryScreen(
                                                 }
                                             )
 
-                                            // 3) RENOMMER
                                             DropdownMenuItem(
-                                                text = {
-                                                    Text(
-                                                        "Renommer",
-                                                        color = Color.White
-                                                    )
-                                                },
+                                                text = { Text("Renommer", color = Color.White) },
                                                 onClick = {
                                                     menuOpen = false
                                                     renameTarget = entry
@@ -477,14 +444,8 @@ fun LibraryScreen(
                                                 }
                                             )
 
-                                            // 4) SUPPRIMER DÉFINITIVEMENT
                                             DropdownMenuItem(
-                                                text = {
-                                                    Text(
-                                                        "Supprimer définitivement",
-                                                        color = Color(0xFFFF6464)
-                                                    )
-                                                },
+                                                text = { Text("Supprimer définitivement", color = Color(0xFFFF6464)) },
                                                 onClick = {
                                                     menuOpen = false
                                                     pendingDeleteUri = uri
@@ -498,8 +459,8 @@ fun LibraryScreen(
                         }
                     }
 
-                    // Spinner de chargement
-                    /*if (isLoading) {
+                    // ✅ Spinner
+                    if (isLoading) {
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
@@ -510,15 +471,15 @@ fun LibraryScreen(
                                 CircularProgressIndicator(color = Color.White)
                                 Spacer(Modifier.height(12.dp))
                                 Text(
-                                    "Chargement des fichiers audio…",
+                                    "Chargement…",
                                     color = Color.White.copy(alpha = 0.8f),
                                     fontSize = 16.sp
                                 )
                             }
                         }
-                    }*/
+                    }
 
-                    // ——— BARRE FLOTTANTE pour sélection multiple ———
+                    // Barre sélection multiple
                     if (selectedSongs.isNotEmpty()) {
                         Box(
                             modifier = Modifier
@@ -558,10 +519,7 @@ fun LibraryScreen(
                                 }
                                 Spacer(Modifier.width(8.dp))
                                 TextButton(onClick = { selectedSongs = emptySet() }) {
-                                    Text(
-                                        "Désélect.",
-                                        color = Color(0xFFB0B0B0)
-                                    )
+                                    Text("Désélect.", color = Color(0xFFB0B0B0))
                                 }
                             }
                         }
@@ -593,11 +551,8 @@ fun LibraryScreen(
                                     .fillMaxWidth()
                                     .padding(vertical = 6.dp)
                                     .clickable {
-                                        selectedSongs.forEach { uri ->
-                                            PlaylistRepository.assignSongToPlaylist(
-                                                plName,
-                                                uri.toString()
-                                            )
+                                        selectedSongs.forEach { u ->
+                                            PlaylistRepository.assignSongToPlaylist(plName, u.toString())
                                         }
                                         showAssignDialog = false
                                         selectedSongs = emptySet()
@@ -624,22 +579,14 @@ fun LibraryScreen(
                 pendingDeleteUri = null
             },
             title = { Text("Supprimer le fichier", color = Color.White) },
-            text = {
-                Text(
-                    "Supprimer définitivement ce fichier de la bibliothèque ?",
-                    color = Color.White
-                )
-            },
+            text = { Text("Supprimer définitivement ce fichier ?", color = Color.White) },
             confirmButton = {
                 TextButton(
                     onClick = {
                         val target = pendingDeleteUri ?: return@TextButton
-
                         scope.launch {
                             isLoading = true
-                            val ok = withContext(Dispatchers.IO) {
-                                deleteLibraryFile(context, target)
-                            }
+                            val ok = withContext(Dispatchers.IO) { deleteLibraryFile(context, target) }
                             if (ok) {
                                 entries = entries.filterNot { it.uri == target }
                                 selectedSongs = selectedSongs - target
@@ -650,9 +597,7 @@ fun LibraryScreen(
                             pendingDeleteUri = null
                         }
                     }
-                ) {
-                    Text("Supprimer", color = Color(0xFFFF6464))
-                }
+                ) { Text("Supprimer", color = Color(0xFFFF6464)) }
             },
             dismissButton = {
                 TextButton(
@@ -660,9 +605,7 @@ fun LibraryScreen(
                         showDeleteConfirmDialog = false
                         pendingDeleteUri = null
                     }
-                ) {
-                    Text("Annuler", color = Color(0xFFB0BEC5))
-                }
+                ) { Text("Annuler", color = Color(0xFFB0BEC5)) }
             },
             containerColor = Color(0xFF222222)
         )
@@ -672,7 +615,7 @@ fun LibraryScreen(
     if (renameTarget != null) {
         AlertDialog(
             onDismissRequest = { renameTarget = null },
-            title = { Text("Renommer le fichier", color = Color.White) },
+            title = { Text("Renommer", color = Color.White) },
             text = {
                 OutlinedTextField(
                     value = renameText,
@@ -686,7 +629,8 @@ fun LibraryScreen(
                     onClick = {
                         val target = renameTarget ?: return@TextButton
                         val newBase = renameText.trim()
-                        if (newBase.isEmpty() || currentFolderUri == null) {
+                        val folderUri = currentFolderUri
+                        if (newBase.isEmpty() || folderUri == null) {
                             renameTarget = null
                             return@TextButton
                         }
@@ -696,25 +640,26 @@ fun LibraryScreen(
                             val ok = withContext(Dispatchers.IO) {
                                 renameLibraryFile(
                                     context = context,
-                                    folderUri = currentFolderUri!!,
+                                    folderUri = folderUri,
                                     fileUri = target.uri,
                                     newBaseName = newBase
                                 )
                             }
-                            if (ok && currentFolderUri != null) {
+                            if (ok) {
                                 val refreshed = withContext(Dispatchers.IO) {
-                                    listEntriesInFolder(context, currentFolderUri!!)
+                                    listEntriesInFolder(context, folderUri)
                                 }
                                 entries = refreshed
-                                LibraryFolderCache.put(currentFolderUri!!, refreshed)
+                                LibraryFolderCache.put(folderUri, refreshed)
+
+                                // (Optionnel) On peut aussi rafraîchir le cache disque si tu veux.
+                                // Pour rester simple : on ne le fait pas ici.
                             }
                             isLoading = false
                             renameTarget = null
                         }
                     }
-                ) {
-                    Text("OK", color = Color.White)
-                }
+                ) { Text("OK", color = Color.White) }
             },
             dismissButton = {
                 TextButton(onClick = { renameTarget = null }) {

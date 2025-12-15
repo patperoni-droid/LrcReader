@@ -1,5 +1,8 @@
 package com.patrick.lrcreader.exo
 
+import com.patrick.lrcreader.core.LibraryIndexCache
+import com.patrick.lrcreader.core.LibrarySnapshot
+import com.patrick.lrcreader.core.BackupFolderPrefs
 import androidx.compose.foundation.layout.ime
 import android.media.MediaPlayer
 import android.media.audiofx.LoudnessEnhancer
@@ -43,6 +46,25 @@ class MainActivity : ComponentActivity() {
         val initialOpenedPlaylist = SessionPrefs.getOpenedPlaylist(this)
 
         DjEngine.init(this)
+        val savedRoot = BackupFolderPrefs.get(this)
+        if (savedRoot != null) {
+            // Vérifie qu'on a encore la permission persistante
+            val hasPerm = contentResolver.persistedUriPermissions.any { p ->
+                p.uri == savedRoot && p.isReadPermission
+            }
+
+            if (hasPerm) {
+                LibrarySnapshot.rootFolderUri = savedRoot
+
+                // Recharge la liste depuis le cache disque (instantané)
+                val cached = LibraryIndexCache.load(this)
+                if (!cached.isNullOrEmpty()) {
+                    LibrarySnapshot.entries = cached.map { it.uriString }
+                    LibrarySnapshot.isReady = true
+                }
+
+            }
+        }
 
         setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {
