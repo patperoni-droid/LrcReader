@@ -88,6 +88,7 @@ fun LibraryScreen(
 
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var pendingDeleteUri by remember { mutableStateOf<Uri?>(null) }
+    var indexAll by remember { mutableStateOf<List<LibraryIndexCache.CachedEntry>>(emptyList()) }
 
     var pendingMoveUri by remember { mutableStateOf<Uri?>(null) }
 
@@ -96,6 +97,23 @@ fun LibraryScreen(
     var renameText by remember { mutableStateOf("") }
 
     val bottomBarHeight = 56.dp
+
+    suspend fun refreshIndexAndShowCurrent() {
+        val root = BackupFolderPrefs.get(context) ?: return
+        val newFull = withContext(Dispatchers.IO) { buildFullIndex(context, root) }
+
+        LibraryIndexCache.save(context, newFull)
+        indexAll = newFull
+
+        val folderToShow = currentFolderUri ?: root
+        entries = LibraryIndexCache.childrenOf(newFull, folderToShow).map { e ->
+            LibraryEntry(
+                uri = Uri.parse(e.uriString),
+                name = e.name,
+                isDirectory = e.isDirectory
+            )
+        }
+    }
 
     // --- Choix du dossier racine de la bibliothèque ---
     val pickRootFolderLauncher = rememberLauncherForActivityResult(
@@ -121,26 +139,22 @@ fun LibraryScreen(
                         currentFolderUri = uri
                         folderStack = emptyList()
 
-                        val fresh = withContext(Dispatchers.IO) {
-                            listEntriesInFolder(context, uri)
+                        val full = withContext(Dispatchers.IO) {
+                            buildFullIndex(context, uri) // scan récursif COMPLET
+                        }
+                        LibraryIndexCache.save(context, full)
+                        indexAll = full
+
+// afficher les enfants de Music immédiatement (sans re-scan)
+                        entries = LibraryIndexCache.childrenOf(full, uri).map { e ->
+                            LibraryEntry(
+                                uri = Uri.parse(e.uriString),
+                                name = e.name,
+                                isDirectory = e.isDirectory
+                            )
                         }
 
-                        // 4) Affichage immédiat
-                        entries = fresh
-                        selectedSongs = emptySet()
-                        LibraryFolderCache.put(uri, fresh)
 
-                        // 5) Cache disque (pour relance sans rescanner)
-                        LibraryIndexCache.save(
-                            context,
-                            fresh.map {
-                                LibraryIndexCache.CachedEntry(
-                                    uriString = it.uri.toString(),
-                                    name = it.name,
-                                    isDirectory = it.isDirectory
-                                )
-                            }
-                        )
                     } finally {
                         delay(150)
                         isLoading = false
@@ -171,10 +185,12 @@ fun LibraryScreen(
                             moveLibraryFile(context, srcUri, destUri)
                         }
                         if (ok) {
-                            entries = entries.filterNot { it.uri == srcUri }
                             selectedSongs = selectedSongs - srcUri
-                            LibraryFolderCache.clear()
+                            refreshIndexAndShowCurrent()
+
+
                         }
+
                     } finally {
                         pendingMoveUri = null
                         delay(150)
@@ -189,19 +205,26 @@ fun LibraryScreen(
 
     // ✅ Premier chargement : on recharge depuis le cache disque si présent
     LaunchedEffect(Unit) {
-        val cached = LibraryIndexCache.load(context) // List<CachedEntry>?
+        val root = BackupFolderPrefs.get(context)
+        currentFolderUri = root
 
-        if (!cached.isNullOrEmpty()) {
-            entries = cached.map { e ->
+        val cachedAll = LibraryIndexCache.load(context)
+        if (root != null && !cachedAll.isNullOrEmpty()) {
+            indexAll = cachedAll
+            entries = LibraryIndexCache.childrenOf(cachedAll, root).map { e ->
                 LibraryEntry(
                     uri = Uri.parse(e.uriString),
                     name = e.name,
                     isDirectory = e.isDirectory
                 )
             }
+        } else {
+            // pas d'index => écran vide + l'utilisateur devra choisir Music
+            entries = emptyList()
         }
-        currentFolderUri = BackupFolderPrefs.get(context)
     }
+
+
 
     DarkBlueGradientBackground {
         Column(
@@ -226,10 +249,15 @@ fun LibraryScreen(
                                 currentFolderUri = parentUri
 
                                 entries = parentUri?.let { uri ->
-                                    LibraryFolderCache.get(uri)
-                                        ?: withContext(Dispatchers.IO) { listEntriesInFolder(context, uri) }
-                                            .also { LibraryFolderCache.put(uri, it) }
+                                    LibraryIndexCache.childrenOf(indexAll, uri).map { e ->
+                                        LibraryEntry(
+                                            uri = Uri.parse(e.uriString),
+                                            name = e.name,
+                                            isDirectory = e.isDirectory
+                                        )
+                                    }
                                 } ?: emptyList()
+
 
                                 folderStack = newStack
                                 selectedSongs = emptySet()
@@ -251,7 +279,8 @@ fun LibraryScreen(
                     Text("Bibliothèque", color = titleColor, fontSize = 20.sp)
                     Text(
                         text = currentFolderUri?.let {
-                            DocumentFile.fromTreeUri(context, it)?.name ?: "Aucun dossier sélectionné"
+                            (DocumentFile.fromTreeUri(context, it) ?: DocumentFile.fromSingleUri(context, it))?.name
+
                         } ?: "Aucun dossier sélectionné",
                         color = subtitleColor,
                         fontSize = 11.sp
@@ -312,7 +341,6 @@ fun LibraryScreen(
                     ) {
                         items(entries, key = { it.uri.toString() }) { entry ->
                             if (entry.isDirectory) {
-                                // ─── Dossier ───
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -326,14 +354,14 @@ fun LibraryScreen(
                                                     currentFolderUri?.let { folderStack = folderStack + it }
                                                     currentFolderUri = entry.uri
 
-                                                    val cached = LibraryFolderCache.get(entry.uri)
-                                                    entries =
-                                                        if (cached != null) cached
-                                                        else withContext(Dispatchers.IO) {
-                                                            listEntriesInFolder(context, entry.uri)
-                                                        }.also {
-                                                            LibraryFolderCache.put(entry.uri, it)
-                                                        }
+                                                    entries = LibraryIndexCache.childrenOf(indexAll, entry.uri).map { e ->
+                                                        LibraryEntry(
+                                                            uri = Uri.parse(e.uriString),
+                                                            name = e.name,
+                                                            isDirectory = e.isDirectory
+                                                        )
+                                                    }
+
 
                                                     selectedSongs = emptySet()
                                                 } finally {
@@ -352,7 +380,11 @@ fun LibraryScreen(
                                         modifier = Modifier.size(22.dp)
                                     )
                                     Spacer(Modifier.width(10.dp))
-                                    Text(entry.name, color = Color.White, fontSize = 15.sp)
+                                    Text(
+                                        entry.name,
+                                        color = Color.White,
+                                        fontSize = 15.sp
+                                    )
                                 }
                             } else {
                                 // ─── Fichier ───
@@ -588,10 +620,10 @@ fun LibraryScreen(
                             isLoading = true
                             val ok = withContext(Dispatchers.IO) { deleteLibraryFile(context, target) }
                             if (ok) {
-                                entries = entries.filterNot { it.uri == target }
                                 selectedSongs = selectedSongs - target
-                                LibraryFolderCache.clear()
+                                refreshIndexAndShowCurrent()
                             }
+
                             isLoading = false
                             showDeleteConfirmDialog = false
                             pendingDeleteUri = null
@@ -645,16 +677,9 @@ fun LibraryScreen(
                                     newBaseName = newBase
                                 )
                             }
-                            if (ok) {
-                                val refreshed = withContext(Dispatchers.IO) {
-                                    listEntriesInFolder(context, folderUri)
-                                }
-                                entries = refreshed
-                                LibraryFolderCache.put(folderUri, refreshed)
+                            if (ok) refreshIndexAndShowCurrent()
 
-                                // (Optionnel) On peut aussi rafraîchir le cache disque si tu veux.
-                                // Pour rester simple : on ne le fait pas ici.
-                            }
+
                             isLoading = false
                             renameTarget = null
                         }

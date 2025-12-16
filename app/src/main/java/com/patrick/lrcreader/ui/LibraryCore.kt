@@ -4,7 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.documentfile.provider.DocumentFile
-
+import com.patrick.lrcreader.core.LibraryIndexCache
 /* -----------------------------------------------------------
    MOTEUR BIBLIOTHÈQUE : cache + utilitaires fichiers
    ----------------------------------------------------------- */
@@ -33,7 +33,11 @@ data class LibraryEntry(
 
 /** Liste les dossiers + fichiers audio + JSON dans un dossier racine. */
 fun listEntriesInFolder(context: Context, folderUri: Uri): List<LibraryEntry> {
-    val docFile = DocumentFile.fromTreeUri(context, folderUri) ?: return emptyList()
+    val docFile =
+        DocumentFile.fromTreeUri(context, folderUri)
+            ?: DocumentFile.fromSingleUri(context, folderUri)
+            ?: return emptyList()
+
     val all = docFile.listFiles()
 
     val folders = all
@@ -62,6 +66,7 @@ fun listEntriesInFolder(context: Context, folderUri: Uri): List<LibraryEntry> {
 
     return folders + jsonFiles + audioFiles
 }
+
 
 /** Supprime toutes les permissions persistantes (quand on “oublie” le dossier). */
 fun clearPersistedUris(context: Context) {
@@ -125,6 +130,55 @@ fun moveLibraryFile(
     }
 }
 
+fun scanAllFoldersOnce(context: Context, rootUri: Uri) {
+    // scan d'un dossier + récursion dans ses sous-dossiers
+    fun scanFolder(folderUri: Uri) {
+        val list = listEntriesInFolder(context, folderUri)
+
+        // on met en cache la liste pour CE dossier
+        LibraryFolderCache.put(folderUri, list)
+
+        // on descend dans les sous-dossiers
+        list.filter { it.isDirectory }.forEach { dir ->
+            scanFolder(dir.uri)
+        }
+    }
+
+    scanFolder(rootUri)
+}
+
+/** Scan récursif COMPLET du dossier Music. 1 seule fois. */
+fun buildFullIndex(context: Context, rootUri: Uri): List<LibraryIndexCache.CachedEntry> {
+    val out = ArrayList<LibraryIndexCache.CachedEntry>()
+
+    val rootDoc = DocumentFile.fromTreeUri(context, rootUri) ?: return emptyList()
+
+    fun recurse(folderDoc: DocumentFile) {
+        val children = folderDoc.listFiles()
+
+        children.forEach { child ->
+            val name = child.name ?: (if (child.isDirectory) "Dossier" else "Fichier")
+
+            out.add(
+                LibraryIndexCache.CachedEntry(
+                    uriString = child.uri.toString(),
+                    name = name,
+                    isDirectory = child.isDirectory,
+                    parentUriString = folderDoc.uri.toString()
+                )
+            )
+
+            if (child.isDirectory) {
+                recurse(child)
+            }
+        }
+    }
+
+    recurse(rootDoc)
+    return out
+}
+
+
 /**
  * Renomme le fichier en créant un nouveau fichier dans le même dossier
  * puis en supprimant l’original (copie + delete).
@@ -168,4 +222,5 @@ fun renameLibraryFile(
     } catch (_: Exception) {
         false
     }
+
 }
