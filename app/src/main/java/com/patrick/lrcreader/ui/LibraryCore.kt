@@ -150,13 +150,10 @@ fun scanAllFoldersOnce(context: Context, rootUri: Uri) {
 /** Scan récursif COMPLET du dossier Music. 1 seule fois. */
 fun buildFullIndex(context: Context, rootUri: Uri): List<LibraryIndexCache.CachedEntry> {
     val out = ArrayList<LibraryIndexCache.CachedEntry>()
-
     val rootDoc = DocumentFile.fromTreeUri(context, rootUri) ?: return emptyList()
 
-    fun recurse(folderDoc: DocumentFile) {
-        val children = folderDoc.listFiles()
-
-        children.forEach { child ->
+    fun recurse(folderDoc: DocumentFile, parentKey: String) {
+        folderDoc.listFiles().forEach { child ->
             val name = child.name ?: (if (child.isDirectory) "Dossier" else "Fichier")
 
             out.add(
@@ -164,19 +161,21 @@ fun buildFullIndex(context: Context, rootUri: Uri): List<LibraryIndexCache.Cache
                     uriString = child.uri.toString(),
                     name = name,
                     isDirectory = child.isDirectory,
-                    parentUriString = folderDoc.uri.toString()
+                    parentUriString = parentKey
                 )
             )
 
             if (child.isDirectory) {
-                recurse(child)
+                recurse(child, child.uri.toString())
             }
         }
     }
 
-    recurse(rootDoc)
+    // IMPORTANT : la racine doit matcher EXACTEMENT le treeUri sélectionné
+    recurse(rootDoc, rootUri.toString())
     return out
 }
+
 
 
 /**
