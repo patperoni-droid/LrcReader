@@ -60,7 +60,11 @@ fun PlayerScreen(
     onTempoChange: (Float) -> Unit,
     pitchSemi: Int,
     onPitchSemiChange: (Int) -> Unit,
-    onRequestShowPlaylist: () -> Unit
+    onRequestShowPlaylist: () -> Unit,
+    getPositionMs: () -> Long,
+    getDurationMs: () -> Long,
+    seekToMs: (Long) -> Unit
+
 ) {
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
@@ -128,10 +132,12 @@ fun PlayerScreen(
             rawLyricsText = parsed.joinToString("\n") { it.text }
             editingLines = parsed
         } else {
-            onParsedLinesChange(emptyList())
+            // NE PAS effacer parsedLines ici,
+            // sinon tu tues les paroles embedded (USLT/SYLT) reçues via Exo.
             rawLyricsText = ""
             editingLines = emptyList()
         }
+
     }
 
     // ---------- centrage indérivable (LazyListState) ----------
@@ -173,15 +179,16 @@ fun PlayerScreen(
             .coerceAtMost(durationMs.toLong())
             .toInt()
 
-        runCatching { mediaPlayer.seekTo(seekPos) }
+        runCatching { seekToMs(seekPos.toLong()) }
+
         currentLrcIndex = targetIndex.coerceIn(0, max(parsedLines.size - 1, 0))
         positionMs = seekPos
 
-        if (!mediaPlayer.isPlaying) {
-            PlayerBusController.applyCurrentVolume(context)
-            mediaPlayer.start()
-            onIsPlayingChange(true)
+        if (!isPlaying) {
+            PlaybackCoordinator.onPlayerStart()
+            onIsPlayingChange(true) // => MainActivity doit piloter exoPlayer.play()
         }
+
 
         centerCurrentLineLazy(listState)
     }
@@ -189,11 +196,12 @@ fun PlayerScreen(
     // ---------- Suivi lecture + index ligne courante + MIDI + masque ----------
     LaunchedEffect(isPlaying, parsedLines, userOffsetMs, currentTrackUri) {
         while (true) {
-            val d = runCatching { mediaPlayer.duration }.getOrNull() ?: -1
+            val d = getDurationMs().toInt()
             if (d > 0) durationMs = d
 
-            val p = runCatching { mediaPlayer.currentPosition }.getOrNull() ?: 0
+            val p = getPositionMs().toInt()
             if (!isDragging) positionMs = p
+
 
             if (parsedLines.isNotEmpty()) {
                 val totalOffsetMs = lyricsDelayMs + userOffsetMs
@@ -229,7 +237,8 @@ fun PlayerScreen(
             }
 
             delay(200)
-            if (!isPlaying && !mediaPlayer.isPlaying) delay(200)
+            if (!isPlaying) delay(200)
+
         }
     }
 
@@ -378,14 +387,7 @@ fun PlayerScreen(
                                 }
                             )
 
-                            // Masque opaque tant qu'on n'a pas atteint la 1ère ligne taguée
-                            if (!showLyrics) {
-                                Box(
-                                    modifier = Modifier
-                                        .matchParentSize()
-                                        .background(Color(0xFF1B1B1B))
-                                )
-                            }
+
                         }
 
                         TimeBar(
@@ -398,7 +400,8 @@ fun PlayerScreen(
                             onSeekCommit = { newPos ->
                                 isDragging = false
                                 val safe = min(max(newPos, 0), durationMs)
-                                runCatching { mediaPlayer.seekTo(safe) }
+                                runCatching { seekToMs(safe.toLong()) }
+
                                 positionMs = safe
                             },
                             highlightColor = highlightColor
@@ -407,40 +410,35 @@ fun PlayerScreen(
                         PlayerControls(
                             isPlaying = isPlaying,
                             onPlayPause = {
-                                if (mediaPlayer.isPlaying) {
-                                    pauseWithFade(scope, mediaPlayer, 400L) {
-                                        onIsPlayingChange(false)
-                                        PlaybackCoordinator.onFillerStart()
-                                        runCatching { FillerSoundManager.startFromPlayerPause(context) }
-                                    }
+                                if (isPlaying) {
+                                    onIsPlayingChange(false) // => exoPlayer.pause()
+                                    PlaybackCoordinator.onFillerStart()
+                                    runCatching { FillerSoundManager.startFromPlayerPause(context) }
                                 } else {
                                     if (durationMs > 0) {
                                         PlaybackCoordinator.onPlayerStart()
-                                        PlayerBusController.applyCurrentVolume(context)
-                                        mediaPlayer.start()
-                                        onIsPlayingChange(true)
+                                        onIsPlayingChange(true) // => exoPlayer.play()
                                         centerCurrentLineLazy(listState)
                                     }
                                 }
                             },
                             onPrev = {
-                                mediaPlayer.seekTo(0)
-                                if (!mediaPlayer.isPlaying) {
+                                seekToMs(0L)
+                                if (!isPlaying) {
                                     PlaybackCoordinator.onPlayerStart()
-                                    PlayerBusController.applyCurrentVolume(context)
-                                    mediaPlayer.start()
                                     onIsPlayingChange(true)
                                 }
                                 centerCurrentLineLazy(listState)
                             },
                             onNext = {
-                                mediaPlayer.seekTo(max(durationMs - 1, 0))
-                                mediaPlayer.pause()
+                                val end = max(durationMs - 1, 0)
+                                seekToMs(end.toLong())
                                 onIsPlayingChange(false)
                                 PlaybackCoordinator.onFillerStart()
                                 runCatching { FillerSoundManager.startIfConfigured(context) }
                             }
                         )
+
                     }
                 }
             }

@@ -1,9 +1,7 @@
 package com.patrick.lrcreader.exo
 
-import com.patrick.lrcreader.core.LibraryIndexCache
-import com.patrick.lrcreader.core.LibrarySnapshot
-import com.patrick.lrcreader.core.BackupFolderPrefs
-import androidx.compose.foundation.layout.ime
+import android.util.Log
+import com.patrick.lrcreader.core.lyrics.LyricsResolver
 import android.media.MediaPlayer
 import android.media.audiofx.LoudnessEnhancer
 import android.os.Bundle
@@ -13,6 +11,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.MaterialTheme
@@ -24,21 +23,22 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
+import androidx.media3.common.Player
 import com.patrick.lrcreader.core.*
+import com.patrick.lrcreader.core.audio.AudioEngine
+import com.patrick.lrcreader.core.audio.exoCrossfadePlay
 import com.patrick.lrcreader.core.dj.DjEngine
-import com.patrick.lrcreader.core.TrackEqEngine
-import com.patrick.lrcreader.core.TrackEqPrefs
-import com.patrick.lrcreader.core.TrackPitchPrefs
 import com.patrick.lrcreader.ui.*
-import com.patrick.lrcreader.ui.TextPrompterScreen
 import kotlin.math.pow
 
+@androidx.media3.common.util.UnstableApi
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         // 🔥 Pour que le clavier puisse "pousser" le contenu vers le haut
         WindowCompat.setDecorFitsSystemWindows(window, false)
+
         AutoRestore.restoreIfNeeded(this)
 
         val initialTabKey = SessionPrefs.getTab(this)
@@ -46,23 +46,20 @@ class MainActivity : ComponentActivity() {
         val initialOpenedPlaylist = SessionPrefs.getOpenedPlaylist(this)
 
         DjEngine.init(this)
+
         val savedRoot = BackupFolderPrefs.get(this)
         if (savedRoot != null) {
-            // Vérifie qu'on a encore la permission persistante
             val hasPerm = contentResolver.persistedUriPermissions.any { p ->
                 p.uri == savedRoot && p.isReadPermission
             }
-
             if (hasPerm) {
                 LibrarySnapshot.rootFolderUri = savedRoot
 
-                // Recharge la liste depuis le cache disque (instantané)
                 val cached = LibraryIndexCache.load(this)
                 if (!cached.isNullOrEmpty()) {
                     LibrarySnapshot.entries = cached.map { it.uriString }
                     LibrarySnapshot.isReady = true
                 }
-
             }
         }
 
@@ -71,6 +68,25 @@ class MainActivity : ComponentActivity() {
 
                 val ctx = this@MainActivity
 
+                // ✅ ExoPlayer unique + listener lyrics embedded (USLT/SYLT)
+                val exoPlayer = remember {
+                    AudioEngine.getPlayer(ctx) {
+                        // fallback si jamais quelque chose déclenche une fin hors flux normal
+                    }
+                }
+
+                val embeddedLyricsListener = remember { AudioEngine.getLyricsListener() }
+                DisposableEffect(exoPlayer, embeddedLyricsListener) {
+                    exoPlayer.addListener(embeddedLyricsListener)
+                    android.util.Log.d("LYRICS", "Listener attached to exoPlayer ✅")
+
+                    onDispose {
+                        exoPlayer.removeListener(embeddedLyricsListener)
+                        android.util.Log.d("LYRICS", "Listener removed from exoPlayer 🧹")
+                    }
+                }
+
+                // ⚠️ On garde MediaPlayer tant que PlayerScreen utilise encore MediaPlayer.
                 val mediaPlayer = remember { MediaPlayer() }
 
                 // EQ attaché à la session du MediaPlayer
@@ -79,19 +95,17 @@ class MainActivity : ComponentActivity() {
                 }
 
                 val loudnessEnhancer = remember {
-                    LoudnessEnhancer(mediaPlayer.audioSessionId).apply {
-                        enabled = true
-                    }
+                    LoudnessEnhancer(mediaPlayer.audioSessionId).apply { enabled = true }
                 }
 
                 var selectedTab by remember {
                     mutableStateOf(initialTabKey?.let { tabFromKey(it) } ?: BottomTab.Home)
                 }
                 var closeMixSignal by remember { mutableIntStateOf(0) }
+
                 var selectedQuickPlaylist by rememberSaveable {
                     mutableStateOf<String?>(initialQuickPlaylist)
                 }
-
                 var openedPlaylist by rememberSaveable {
                     mutableStateOf<String?>(initialOpenedPlaylist)
                 }
@@ -99,11 +113,8 @@ class MainActivity : ComponentActivity() {
                 var currentPlayingUri by remember { mutableStateOf<String?>(null) }
                 var isPlaying by remember { mutableStateOf(false) }
 
-                // 👉 Les paroles sont maintenant reset à chaque changement de morceau
-                // 👉 Les paroles sont gérées manuellement (lecture + restore session)
-                var parsedLines by remember {
-                    mutableStateOf<List<LrcLine>>(emptyList())
-                }
+                // 👉 paroles gérées manuellement
+                var parsedLines by remember { mutableStateOf<List<LrcLine>>(emptyList()) }
 
                 var currentPlayToken by remember { mutableStateOf(0L) }
                 var currentTrackGainDb by remember { mutableStateOf(0) }
@@ -113,27 +124,40 @@ class MainActivity : ComponentActivity() {
                 var isNotesOpen by remember { mutableStateOf(false) }
                 var isFillerSettingsOpen by remember { mutableStateOf(false) }
 
-                var currentTrackTempo by remember { mutableStateOf(1f) }     // 0.5x..2x
-                var currentTrackPitchSemi by remember { mutableStateOf(0) }  // -6..+6
+                var currentTrackTempo by remember { mutableStateOf(1f) }
+                var currentTrackPitchSemi by remember { mutableStateOf(0) }
 
                 var isGlobalMixOpen by remember { mutableStateOf(false) }
                 var playerMasterLevel by remember { mutableStateOf(1f) }
                 var djMasterLevel by remember { mutableStateOf(1f) }
                 var fillerMasterLevel by remember { mutableStateOf(0.6f) }
 
-                // 👇 écran plein écran "console" Mixer (maquette visuelle)
                 var isMixerPreviewOpen by remember { mutableStateOf(false) }
-
-                // ID normalisé pour le prompteur ("note:123" ou "text:abc")
                 var textPrompterId by remember { mutableStateOf<String?>(null) }
+
+                // ---------------- Fin naturelle ExoPlayer (SANS onNaturalEnd) -------------------
+                val onEnded = rememberUpdatedState {
+                    isPlaying = false
+                    PlaybackCoordinator.onPlayerStop()
+                }
+
+                DisposableEffect(exoPlayer) {
+                    val listener = object : Player.Listener {
+                        override fun onPlaybackStateChanged(playbackState: Int) {
+                            if (playbackState == Player.STATE_ENDED) {
+                                onEnded.value.invoke()
+                            }
+                        }
+                    }
+                    exoPlayer.addListener(listener)
+                    onDispose { exoPlayer.removeListener(listener) }
+                }
 
                 // ---------------- PlaybackCoordinator -------------------
 
                 PlaybackCoordinator.stopPlayer = {
-                    try {
-                        if (mediaPlayer.isPlaying) mediaPlayer.pause()
-                        isPlaying = false
-                    } catch (_: Exception) {}
+                    runCatching { exoPlayer.pause() }
+                    isPlaying = false
                 }
 
                 PlaybackCoordinator.stopDj = {
@@ -164,24 +188,21 @@ class MainActivity : ComponentActivity() {
                     } catch (_: Exception) {}
                 }
 
-                // ---------------- Tempo + Pitch par morceau ---------------------
+                // ---------------- Tempo + Pitch par morceau ----------------------
 
                 fun applyTempoAndPitchToPlayer(speed: Float, pitchSemi: Int) {
                     try {
                         val safeSpeed = speed.coerceIn(0.5f, 2.0f)
                         val semiClamped = pitchSemi.coerceIn(-6, 6)
 
-                        // facteur de pitch en fonction des demi-tons
                         val pitchFactor = 2f.pow(semiClamped / 12f)
 
-                        // ✅ IMPORTANT :
-                        // Sur certains devices, toucher playbackParams quand le player est en pause
-                        // peut relancer la lecture. Donc on n'applique que si ça joue.
+                        // ⚠️ Sur certains devices, changer playbackParams en pause peut relancer
                         if (!mediaPlayer.isPlaying) return
 
                         val params = mediaPlayer.playbackParams
-                            .setSpeed(safeSpeed)   // vitesse
-                            .setPitch(pitchFactor) // hauteur
+                            .setSpeed(safeSpeed)
+                            .setPitch(pitchFactor)
 
                         mediaPlayer.playbackParams = params
                     } catch (_: Exception) {}
@@ -193,8 +214,10 @@ class MainActivity : ComponentActivity() {
 
                     PlaybackCoordinator.onPlayerStart()
                     currentPlayingUri = uriString
+                  // ok : on vide au démarrage, puis on recharge via onLyricsLoaded
+                    embeddedLyricsListener.reset()
+                    Log.d("LYRICS", "reset lyrics for new track ✅")
 
-                    // ✅ On mémorise la dernière session (playlist + titre)
                     SessionPrefs.saveLastSession(
                         context = ctx,
                         trackUri = uriString,
@@ -206,48 +229,45 @@ class MainActivity : ComponentActivity() {
                     val myToken = currentPlayToken + 1
                     currentPlayToken = myToken
 
-                    // Volume par morceau
+                    // Volume / tempo / pitch par morceau
                     currentTrackGainDb = TrackVolumePrefs.getDb(ctx, uriString) ?: 0
-                    // Tempo par morceau
                     currentTrackTempo = TrackTempoPrefs.getTempo(ctx, uriString) ?: 1f
-                    // Tonalité par morceau (demi-tons)
                     currentTrackPitchSemi = TrackPitchPrefs.getSemi(ctx, uriString) ?: 0
 
                     val result = runCatching {
-                        crossfadePlay(
+                        exoCrossfadePlay(
                             context = ctx,
-                            mediaPlayer = mediaPlayer,
+                            exoPlayer = exoPlayer,
+                            embeddedLyricsListener = embeddedLyricsListener,
                             uriString = uriString,
                             playlistName = playlistName,
                             playToken = myToken,
                             getCurrentToken = { currentPlayToken },
-                            onLyricsLoaded = { _ /* original ignoré */ ->
-                                val override = LrcStorage.loadForTrack(ctx, uriString)
 
-                                parsedLines = if (override != null) {
-                                    parseLrc(override)
-                                } else {
-                                    emptyList()   // pas de .lrc sauvegardé → pas de paroles
-                                }
+                            onLyricsLoaded = { embeddedOrNull ->
+                                parsedLines = LyricsResolver.resolveLyrics(
+                                    context = ctx,
+                                    trackUriString = uriString,
+                                    embeddedLyrics = embeddedOrNull
+                                )
                             },
-                            onStart = {
+
+
+
+
+                                    onStart = {
                                 isPlaying = true
+
                                 playlistName?.let { pl ->
-                                    PlaylistRepository
                                     PlaylistRepository.moveSongToEnd(pl, uriString)
                                     refreshKey++
                                 }
 
-                                // Gain
+                                // ⚠️ Ces fonctions pilotent encore MediaPlayer (pas Exo) pour l’instant
                                 applyGainToPlayer(currentTrackGainDb)
+                                applyTempoAndPitchToPlayer(currentTrackTempo, currentTrackPitchSemi)
 
-                                // Tempo + pitch
-                                applyTempoAndPitchToPlayer(
-                                    currentTrackTempo,
-                                    currentTrackPitchSemi
-                                )
-
-                                // EQ par morceau
+                                // EQ par morceau (encore sur MediaPlayer)
                                 currentPlayingUri?.let { uri ->
                                     val settings = TrackEqPrefs.load(ctx, uri)
                                     if (settings != null) {
@@ -261,21 +281,17 @@ class MainActivity : ComponentActivity() {
                                     }
                                 }
                             },
+
                             onError = {
                                 isPlaying = false
-                                mediaPlayer.reset()
                                 PlaybackCoordinator.onPlayerStop()
-                            },
-                            onNaturalEnd = {
-                                isPlaying = false
-                                PlaybackCoordinator.onPlayerStop()
-                                runCatching { FillerSoundManager.startIfConfigured(ctx) }
                             }
+                            // ✅ PAS de onNaturalEnd ici (géré par listener STATE_ENDED)
                         )
                     }
 
                     if (result.isFailure) {
-                        mediaPlayer.reset()
+                        runCatching { mediaPlayer.reset() }
                         isPlaying = false
                         PlaybackCoordinator.onPlayerStop()
                     }
@@ -283,51 +299,40 @@ class MainActivity : ComponentActivity() {
                     selectedTab = BottomTab.Player
                     SessionPrefs.saveTab(ctx, TAB_PLAYER)
                 }
+
+                // ---------------- Restore dernière session (état seulement) ----------------------
+
                 LaunchedEffect(Unit) {
-                    val (lastUri, lastPlaylistName) = SessionPrefs.getLastSession(ctx)
+                    val (lastUri, _) = SessionPrefs.getLastSession(ctx)
 
                     if (!lastUri.isNullOrBlank()) {
-                        // On remet juste l'état du dernier titre,
-                        // SANS lancer la lecture.
-
                         currentPlayingUri = lastUri
 
-                        // Paroles .lrc si dispo
-                        val override = LrcStorage.loadForTrack(ctx, lastUri)
-                        parsedLines = if (override != null) {
-                            parseLrc(override)
-                        } else {
-                            emptyList()
-                        }
+                        // Paroles .lrc si dispo (RESTORE: on ne lit pas les embedded ici)
+                        val overrideOk = LrcStorage
+                            .loadForTrack(ctx, lastUri)
+                            ?.takeIf { it.isNotBlank() }
 
-                        // Gain / tempo / pitch du morceau
+                        parsedLines = if (overrideOk != null) parseLrc(overrideOk) else emptyList()
+
                         currentTrackGainDb = TrackVolumePrefs.getDb(ctx, lastUri) ?: 0
                         currentTrackTempo = TrackTempoPrefs.getTempo(ctx, lastUri) ?: 1f
                         currentTrackPitchSemi = TrackPitchPrefs.getSemi(ctx, lastUri) ?: 0
-
-                        // ⚠️ IMPORTANT : on NE TOUCHE PAS à :
-                        // - selectedTab
-                        // - isPlaying
-                        // Résultat : l'appli s'ouvre sur le même onglet qu'avant,
-                        // avec les mêmes playlists, etc. (grâce à initialTabKey, initialQuickPlaylist, etc.)
-                        // Et le morceau est prêt, mais en pause.
                     }
                 }
-                // ✅ RESTORE DERNIÈRE SESSION ICI (après la déclaration de playWithCrossfade)
 
-                // ... puis tout le reste (DisposableEffect, Scaffold, etc.)
-
-                // ---------------- Release -------------------------------
+                // ---------------- Release ----------------------
 
                 DisposableEffect(Unit) {
                     onDispose {
                         try { loudnessEnhancer.release() } catch (_: Exception) {}
                         try { TrackEqEngine.release() } catch (_: Exception) {}
                         try { mediaPlayer.release() } catch (_: Exception) {}
+                        // ExoPlayer release géré par AudioEngine (si besoin plus tard)
                     }
                 }
 
-                // ---------------- UI principale -------------------------
+                // ---------------- UI principale ----------------------
 
                 Scaffold(
                     containerColor = Color.Black,
@@ -335,16 +340,11 @@ class MainActivity : ComponentActivity() {
                         BottomTabsBar(
                             selected = selectedTab,
                             onSelected = { tab ->
-
-                                // ✅ Si on clique sur "Lecteur", on envoie un signal pour fermer "Mixage du titre"
-                                if (tab is BottomTab.Player) {
-                                    closeMixSignal++
-                                }
+                                if (tab is BottomTab.Player) closeMixSignal++
 
                                 selectedTab = tab
                                 SessionPrefs.saveTab(ctx, tabKeyOf(tab))
 
-                                // on ferme tous les écrans plein écran / overlays
                                 isFillerSettingsOpen = false
                                 isGlobalMixOpen = false
                                 isNotesOpen = false
@@ -359,7 +359,6 @@ class MainActivity : ComponentActivity() {
                         .padding(innerPadding)
                         .windowInsetsPadding(WindowInsets.ime)
 
-                    // 🔹 CONSOLE MIXER VISUELLE (maquette)
                     if (isMixerPreviewOpen) {
                         MixerHomePreviewScreen(
                             modifier = contentModifier,
@@ -386,7 +385,6 @@ class MainActivity : ComponentActivity() {
                         return@Scaffold
                     }
 
-                    // Fond sonore
                     if (isFillerSettingsOpen) {
                         FillerSoundScreen(
                             context = ctx,
@@ -395,7 +393,6 @@ class MainActivity : ComponentActivity() {
                         return@Scaffold
                     }
 
-                    // Mixage global
                     if (isGlobalMixOpen) {
                         GlobalMixScreen(
                             modifier = contentModifier,
@@ -418,7 +415,6 @@ class MainActivity : ComponentActivity() {
                         return@Scaffold
                     }
 
-                    // Prompteur texte plein écran
                     textPrompterId?.let { tid ->
                         TextPrompterScreen(
                             modifier = contentModifier,
@@ -427,8 +423,6 @@ class MainActivity : ComponentActivity() {
                         )
                         return@Scaffold
                     }
-
-                    // -------- navigation par onglet --------
 
                     when (selectedTab) {
 
@@ -455,7 +449,11 @@ class MainActivity : ComponentActivity() {
                             mediaPlayer = mediaPlayer,
                             closeMixSignal = closeMixSignal,
                             isPlaying = isPlaying,
-                            onIsPlayingChange = { isPlaying = it },
+                            onIsPlayingChange = { shouldPlay ->
+                                isPlaying = shouldPlay
+                                if (shouldPlay) exoPlayer.play() else exoPlayer.pause()
+                            },
+
                             parsedLines = parsedLines,
                             onParsedLinesChange = { parsedLines = it },
                             highlightColor = currentLyricsColor,
@@ -471,10 +469,7 @@ class MainActivity : ComponentActivity() {
                             tempo = currentTrackTempo,
                             onTempoChange = { newTempo ->
                                 currentTrackTempo = newTempo
-                                applyTempoAndPitchToPlayer(
-                                    currentTrackTempo,
-                                    currentTrackPitchSemi
-                                )
+                                applyTempoAndPitchToPlayer(currentTrackTempo, currentTrackPitchSemi)
                                 currentPlayingUri?.let { uri ->
                                     TrackTempoPrefs.saveTempo(ctx, uri, newTempo)
                                 }
@@ -483,17 +478,18 @@ class MainActivity : ComponentActivity() {
                             onPitchSemiChange = { newSemi ->
                                 val clamped = newSemi.coerceIn(-6, 6)
                                 currentTrackPitchSemi = clamped
-                                applyTempoAndPitchToPlayer(
-                                    currentTrackTempo,
-                                    currentTrackPitchSemi
-                                )
+                                applyTempoAndPitchToPlayer(currentTrackTempo, currentTrackPitchSemi)
                                 currentPlayingUri?.let { uri ->
                                     TrackPitchPrefs.saveSemi(ctx, uri, clamped)
                                 }
                             },
                             onRequestShowPlaylist = {
                                 selectedTab = BottomTab.QuickPlaylists
-                            }
+                            },
+
+                            getPositionMs = { exoPlayer.currentPosition },
+                            getDurationMs = { exoPlayer.duration },
+                            seekToMs = { ms -> exoPlayer.seekTo(ms) }
                         )
 
                         is BottomTab.QuickPlaylists -> QuickPlaylistsScreen(
@@ -502,9 +498,7 @@ class MainActivity : ComponentActivity() {
                                 if (uri.startsWith("prompter://")) {
                                     val rawId = uri.removePrefix("prompter://")
                                     val numeric = rawId.toLongOrNull()
-                                    textPrompterId =
-                                        if (numeric != null) "note:$numeric"
-                                        else "text:$rawId"
+                                    textPrompterId = if (numeric != null) "note:$numeric" else "text:$rawId"
 
                                     selectedQuickPlaylist = playlistName
                                     SessionPrefs.saveQuickPlaylist(ctx, playlistName)
@@ -526,24 +520,21 @@ class MainActivity : ComponentActivity() {
                             }
                         )
 
-                        is BottomTab.Library ->
-                            LibraryScreen(
-                                modifier = contentModifier,
-                                onPlayFromLibrary = { uriString ->
-                                    playWithCrossfade(uriString, null)
-                                    currentPlayingUri = uriString
-                                    currentLyricsColor = Color(0xFFE040FB)
-                                    selectedTab = BottomTab.Player
-                                    SessionPrefs.saveTab(ctx, TAB_PLAYER)
-                                }
-                            )
+                        is BottomTab.Library -> LibraryScreen(
+                            modifier = contentModifier,
+                            onPlayFromLibrary = { uriString ->
+                                playWithCrossfade(uriString, null)
+                                currentPlayingUri = uriString
+                                currentLyricsColor = Color(0xFFE040FB)
+                                selectedTab = BottomTab.Player
+                                SessionPrefs.saveTab(ctx, TAB_PLAYER)
+                            }
+                        )
 
                         is BottomTab.AllPlaylists -> {
                             AllPlaylistsScreen(
                                 modifier = contentModifier,
                                 onPlaylistClick = { name ->
-                                    // Si un jour tu veux ouvrir un écran "détail playlist",
-                                    // tu auras déjà la valeur ici.
                                     openedPlaylist = name
                                     SessionPrefs.saveOpenedPlaylist(ctx, name)
                                 }
@@ -574,8 +565,6 @@ class MainActivity : ComponentActivity() {
                         )
                     }
 
-                    // -------- overlay "Mes notes" --------
-
                     if (isNotesOpen) {
                         Box(
                             modifier = contentModifier
@@ -595,12 +584,12 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
     override fun onStop() {
         super.onStop()
         BackupManager.autoSaveToDefaultBackupFile(this)
     }
 }
-
 
 /* --------------------------------------------------------------- */
 /*  Conversion BottomTab <-> String                                */
@@ -626,7 +615,6 @@ private fun tabKeyOf(tab: BottomTab): String = when (tab) {
     is BottomTab.Tuner -> TAB_TUNER
 }
 
-
 private fun tabFromKey(key: String): BottomTab = when (key) {
     TAB_HOME -> BottomTab.Home
     TAB_PLAYER -> BottomTab.Player
@@ -635,6 +623,6 @@ private fun tabFromKey(key: String): BottomTab = when (key) {
     TAB_ALL -> BottomTab.AllPlaylists
     TAB_MORE -> BottomTab.More
     TAB_DJ -> BottomTab.Dj
-    TAB_TUNER -> BottomTab.Home
+    TAB_TUNER -> BottomTab.Tuner
     else -> BottomTab.Home
 }
