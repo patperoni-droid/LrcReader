@@ -1,5 +1,5 @@
 package com.patrick.lrcreader.exo
-
+import androidx.media3.common.util.UnstableApi
 import android.util.Log
 import com.patrick.lrcreader.core.lyrics.LyricsResolver
 import android.media.MediaPlayer
@@ -30,7 +30,7 @@ import com.patrick.lrcreader.core.audio.exoCrossfadePlay
 import com.patrick.lrcreader.core.dj.DjEngine
 import com.patrick.lrcreader.ui.*
 import kotlin.math.pow
-
+@OptIn(UnstableApi::class)
 @androidx.media3.common.util.UnstableApi
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {

@@ -411,17 +411,30 @@ fun PlayerScreen(
                             isPlaying = isPlaying,
                             onPlayPause = {
                                 if (isPlaying) {
-                                    onIsPlayingChange(false) // => exoPlayer.pause()
-                                    PlaybackCoordinator.onFillerStart()
-                                    runCatching { FillerSoundManager.startFromPlayerPause(context) }
+                                    // ✅ On lance le fade-out (ça continue à jouer pendant que le volume descend)
+                                    com.patrick.lrcreader.core.audio.AudioEngine.pause(durationMs = 400L)
+
+                                    // ⚠️ IMPORTANT :
+                                    // onIsPlayingChange(false) déclenche encore un "pause sec" ailleurs (MainActivity),
+                                    // donc si on l'appelle tout de suite, ça coupe net et le fade devient inaudible.
+                                    // => on le déclenche APRÈS le fade.
+                                    scope.launch {
+                                        delay(420) // un poil > 250ms pour laisser finir le fade
+                                        onIsPlayingChange(false)
+
+                                        PlaybackCoordinator.onFillerStart()
+                                        runCatching { FillerSoundManager.startFromPlayerPause(context) }
+                                    }
                                 } else {
                                     if (durationMs > 0) {
                                         PlaybackCoordinator.onPlayerStart()
-                                        onIsPlayingChange(true) // => exoPlayer.play()
+                                        onIsPlayingChange(true)
                                         centerCurrentLineLazy(listState)
                                     }
                                 }
                             },
+
+
                             onPrev = {
                                 seekToMs(0L)
                                 if (!isPlaying) {
