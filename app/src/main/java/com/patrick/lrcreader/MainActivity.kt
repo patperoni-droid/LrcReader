@@ -1,10 +1,11 @@
+@file:OptIn(androidx.media3.common.util.UnstableApi::class)
+
 package com.patrick.lrcreader.exo
-import androidx.media3.common.util.UnstableApi
-import android.util.Log
-import com.patrick.lrcreader.core.lyrics.LyricsResolver
+
 import android.media.MediaPlayer
 import android.media.audiofx.LoudnessEnhancer
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
@@ -28,11 +29,19 @@ import com.patrick.lrcreader.core.*
 import com.patrick.lrcreader.core.audio.AudioEngine
 import com.patrick.lrcreader.core.audio.exoCrossfadePlay
 import com.patrick.lrcreader.core.dj.DjEngine
+import com.patrick.lrcreader.core.lyrics.LyricsResolver
 import com.patrick.lrcreader.ui.*
 import kotlin.math.pow
-@OptIn(UnstableApi::class)
-@androidx.media3.common.util.UnstableApi
+
 class MainActivity : ComponentActivity() {
+
+    companion object {
+        // 🎚️ TRICHE SAFE : par défaut on démarre à -5 dB (anti saturation)
+        private const val DEFAULT_TRACK_GAIN_DB = -5
+        private const val MIN_TRACK_DB = -12
+        private const val MAX_TRACK_DB = 0
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -78,11 +87,11 @@ class MainActivity : ComponentActivity() {
                 val embeddedLyricsListener = remember { AudioEngine.getLyricsListener() }
                 DisposableEffect(exoPlayer, embeddedLyricsListener) {
                     exoPlayer.addListener(embeddedLyricsListener)
-                    android.util.Log.d("LYRICS", "Listener attached to exoPlayer ✅")
+                    Log.d("LYRICS", "Listener attached to exoPlayer ✅")
 
                     onDispose {
                         exoPlayer.removeListener(embeddedLyricsListener)
-                        android.util.Log.d("LYRICS", "Listener removed from exoPlayer 🧹")
+                        Log.d("LYRICS", "Listener removed from exoPlayer 🧹")
                     }
                 }
 
@@ -99,7 +108,7 @@ class MainActivity : ComponentActivity() {
                 }
 
                 var selectedTab by remember {
-                    mutableStateOf(initialTabKey?.let { tabFromKey(it) } ?: BottomTab.Home)
+                    mutableStateOf<BottomTab>(initialTabKey?.let { tabFromKey(it) } ?: BottomTab.Home)
                 }
                 var closeMixSignal by remember { mutableIntStateOf(0) }
 
@@ -117,7 +126,10 @@ class MainActivity : ComponentActivity() {
                 var parsedLines by remember { mutableStateOf<List<LrcLine>>(emptyList()) }
 
                 var currentPlayToken by remember { mutableStateOf(0L) }
-                var currentTrackGainDb by remember { mutableStateOf(0) }
+
+                // ✅ IMPORTANT : par défaut -5 dB
+                var currentTrackGainDb by remember { mutableStateOf(DEFAULT_TRACK_GAIN_DB) }
+
                 var currentLyricsColor by remember { mutableStateOf(Color(0xFFE040FB)) }
                 var refreshKey by remember { mutableStateOf(0) }
 
@@ -169,22 +181,21 @@ class MainActivity : ComponentActivity() {
                 }
 
                 // ---------------- Gain par morceau ----------------------
+                // ✅ On “triche” : PAS de +dB. On autorise seulement -12..0.
+                // ✅ Et on démarre à -5 par défaut.
+                fun clampTrackDb(db: Int): Int = db.coerceIn(MIN_TRACK_DB, MAX_TRACK_DB)
 
                 fun applyGainToPlayer(db: Int) {
                     try {
-                        val clamped = db.coerceIn(-12, 12)
+                        val clamped = clampTrackDb(db)
                         val master = playerMasterLevel.coerceIn(0f, 1f)
 
-                        if (clamped <= 0) {
-                            val linear = 10f.pow(clamped / 20f)
-                            val v = linear * master
-                            mediaPlayer.setVolume(v, v)
-                            loudnessEnhancer.setTargetGain(0)
-                        } else {
-                            val v = 1f * master
-                            mediaPlayer.setVolume(v, v)
-                            loudnessEnhancer.setTargetGain(clamped * 100)
-                        }
+                        // toujours <= 0 : gain linéaire
+                        val linear = 10f.pow(clamped / 20f)
+                        val v = (linear * master).coerceIn(0f, 1f)
+
+                        mediaPlayer.setVolume(v, v)
+                        loudnessEnhancer.setTargetGain(0) // jamais de boost
                     } catch (_: Exception) {}
                 }
 
@@ -214,7 +225,7 @@ class MainActivity : ComponentActivity() {
 
                     PlaybackCoordinator.onPlayerStart()
                     currentPlayingUri = uriString
-                  // ok : on vide au démarrage, puis on recharge via onLyricsLoaded
+
                     embeddedLyricsListener.reset()
                     Log.d("LYRICS", "reset lyrics for new track ✅")
 
@@ -229,8 +240,10 @@ class MainActivity : ComponentActivity() {
                     val myToken = currentPlayToken + 1
                     currentPlayToken = myToken
 
-                    // Volume / tempo / pitch par morceau
-                    currentTrackGainDb = TrackVolumePrefs.getDb(ctx, uriString) ?: 0
+                    // ✅ Volume / tempo / pitch par morceau
+                    currentTrackGainDb = clampTrackDb(
+                        TrackVolumePrefs.getDb(ctx, uriString) ?: DEFAULT_TRACK_GAIN_DB
+                    )
                     currentTrackTempo = TrackTempoPrefs.getTempo(ctx, uriString) ?: 1f
                     currentTrackPitchSemi = TrackPitchPrefs.getSemi(ctx, uriString) ?: 0
 
@@ -252,10 +265,7 @@ class MainActivity : ComponentActivity() {
                                 )
                             },
 
-
-
-
-                                    onStart = {
+                            onStart = {
                                 isPlaying = true
 
                                 playlistName?.let { pl ->
@@ -263,8 +273,9 @@ class MainActivity : ComponentActivity() {
                                     refreshKey++
                                 }
 
-                                // ⚠️ Ces fonctions pilotent encore MediaPlayer (pas Exo) pour l’instant
+                                // ✅ Applique le niveau PAR TITRE (triche -5 par défaut)
                                 applyGainToPlayer(currentTrackGainDb)
+
                                 applyTempoAndPitchToPlayer(currentTrackTempo, currentTrackPitchSemi)
 
                                 // EQ par morceau (encore sur MediaPlayer)
@@ -286,7 +297,6 @@ class MainActivity : ComponentActivity() {
                                 isPlaying = false
                                 PlaybackCoordinator.onPlayerStop()
                             }
-                            // ✅ PAS de onNaturalEnd ici (géré par listener STATE_ENDED)
                         )
                     }
 
@@ -308,14 +318,16 @@ class MainActivity : ComponentActivity() {
                     if (!lastUri.isNullOrBlank()) {
                         currentPlayingUri = lastUri
 
-                        // Paroles .lrc si dispo (RESTORE: on ne lit pas les embedded ici)
                         val overrideOk = LrcStorage
                             .loadForTrack(ctx, lastUri)
                             ?.takeIf { it.isNotBlank() }
 
                         parsedLines = if (overrideOk != null) parseLrc(overrideOk) else emptyList()
 
-                        currentTrackGainDb = TrackVolumePrefs.getDb(ctx, lastUri) ?: 0
+                        // ✅ restore volume : défaut -5
+                        currentTrackGainDb = clampTrackDb(
+                            TrackVolumePrefs.getDb(ctx, lastUri) ?: DEFAULT_TRACK_GAIN_DB
+                        )
                         currentTrackTempo = TrackTempoPrefs.getTempo(ctx, lastUri) ?: 1f
                         currentTrackPitchSemi = TrackPitchPrefs.getSemi(ctx, lastUri) ?: 0
                     }
@@ -328,7 +340,6 @@ class MainActivity : ComponentActivity() {
                         try { loudnessEnhancer.release() } catch (_: Exception) {}
                         try { TrackEqEngine.release() } catch (_: Exception) {}
                         try { mediaPlayer.release() } catch (_: Exception) {}
-                        // ExoPlayer release géré par AudioEngine (si besoin plus tard)
                     }
                 }
 
@@ -460,11 +471,12 @@ class MainActivity : ComponentActivity() {
                             currentTrackUri = currentPlayingUri,
                             currentTrackGainDb = currentTrackGainDb,
                             onTrackGainChange = { db ->
+                                val safeDb = clampTrackDb(db) // ✅ interdit +dB
                                 currentPlayingUri?.let { uri ->
-                                    TrackVolumePrefs.saveDb(ctx, uri, db)
+                                    TrackVolumePrefs.saveDb(ctx, uri, safeDb)
                                 }
-                                currentTrackGainDb = db
-                                applyGainToPlayer(db)
+                                currentTrackGainDb = safeDb
+                                applyGainToPlayer(safeDb)
                             },
                             tempo = currentTrackTempo,
                             onTempoChange = { newTempo ->

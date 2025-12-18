@@ -1,3 +1,4 @@
+@file:OptIn(androidx.media3.common.util.UnstableApi::class)
 // PlayerScreen.kt
 package com.patrick.lrcreader.ui
 
@@ -27,6 +28,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.media3.common.util.UnstableApi
 import com.patrick.lrcreader.core.AutoReturnPrefs
 import com.patrick.lrcreader.core.DisplayPrefs
 import com.patrick.lrcreader.core.FillerSoundManager
@@ -35,6 +37,7 @@ import com.patrick.lrcreader.core.LrcStorage
 import com.patrick.lrcreader.core.MidiCueDispatcher
 import com.patrick.lrcreader.core.PlaybackCoordinator
 import com.patrick.lrcreader.core.PlayerBusController
+import com.patrick.lrcreader.core.audio.AudioEngine
 import com.patrick.lrcreader.core.parseLrc
 import com.patrick.lrcreader.core.pauseWithFade
 import kotlinx.coroutines.delay
@@ -64,7 +67,6 @@ fun PlayerScreen(
     getPositionMs: () -> Long,
     getDurationMs: () -> Long,
     seekToMs: (Long) -> Unit
-
 ) {
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
@@ -75,6 +77,13 @@ fun PlayerScreen(
     LaunchedEffect(Unit) {
         PlayerBusController.attachPlayer(context, mediaPlayer)
         PlayerBusController.applyCurrentVolume(context)
+    }
+
+    // ✅ REBRANCHAGE "Niveau du titre" sur ExoPlayer
+    // - au changement de titre
+    // - au changement de gain
+    LaunchedEffect(currentTrackUri, currentTrackGainDb) {
+        AudioEngine.applyTrackGainDb(currentTrackGainDb)
     }
 
     // Décalage global des paroles (latence de base)
@@ -137,7 +146,6 @@ fun PlayerScreen(
             rawLyricsText = ""
             editingLines = emptyList()
         }
-
     }
 
     // ---------- centrage indérivable (LazyListState) ----------
@@ -169,7 +177,6 @@ fun PlayerScreen(
         }
     }
 
-
     fun seekAndCenter(targetMs: Int, targetIndex: Int) {
         PlaybackCoordinator.onPlayerStart()
 
@@ -189,7 +196,6 @@ fun PlayerScreen(
             onIsPlayingChange(true) // => MainActivity doit piloter exoPlayer.play()
         }
 
-
         centerCurrentLineLazy(listState)
     }
 
@@ -201,7 +207,6 @@ fun PlayerScreen(
 
             val p = getPositionMs().toInt()
             if (!isDragging) positionMs = p
-
 
             if (parsedLines.isNotEmpty()) {
                 val totalOffsetMs = lyricsDelayMs + userOffsetMs
@@ -238,7 +243,6 @@ fun PlayerScreen(
 
             delay(200)
             if (!isPlaying) delay(200)
-
         }
     }
 
@@ -386,8 +390,6 @@ fun PlayerScreen(
                                     }
                                 }
                             )
-
-
                         }
 
                         TimeBar(
@@ -401,7 +403,6 @@ fun PlayerScreen(
                                 isDragging = false
                                 val safe = min(max(newPos, 0), durationMs)
                                 runCatching { seekToMs(safe.toLong()) }
-
                                 positionMs = safe
                             },
                             highlightColor = highlightColor
@@ -412,14 +413,11 @@ fun PlayerScreen(
                             onPlayPause = {
                                 if (isPlaying) {
                                     // ✅ On lance le fade-out (ça continue à jouer pendant que le volume descend)
-                                    com.patrick.lrcreader.core.audio.AudioEngine.pause(durationMs = 400L)
+                                    AudioEngine.pause(durationMs = 1000L)
 
-                                    // ⚠️ IMPORTANT :
-                                    // onIsPlayingChange(false) déclenche encore un "pause sec" ailleurs (MainActivity),
-                                    // donc si on l'appelle tout de suite, ça coupe net et le fade devient inaudible.
-                                    // => on le déclenche APRÈS le fade.
+                                    // => onIsPlayingChange(false) APRÈS le fade
                                     scope.launch {
-                                        delay(420) // un poil > 250ms pour laisser finir le fade
+                                        delay(420)
                                         onIsPlayingChange(false)
 
                                         PlaybackCoordinator.onFillerStart()
@@ -433,8 +431,6 @@ fun PlayerScreen(
                                     }
                                 }
                             },
-
-
                             onPrev = {
                                 seekToMs(0L)
                                 if (!isPlaying) {
@@ -451,7 +447,6 @@ fun PlayerScreen(
                                 runCatching { FillerSoundManager.startIfConfigured(context) }
                             }
                         )
-
                     }
                 }
             }
@@ -461,7 +456,13 @@ fun PlayerScreen(
                     modifier = Modifier.fillMaxSize(),
                     highlightColor = highlightColor,
                     currentTrackGainDb = currentTrackGainDb,
-                    onTrackGainChange = onTrackGainChange,
+                    onTrackGainChange = { newDb ->
+                        // ✅ 1) ton state/prefs existant
+                        onTrackGainChange(newDb)
+
+                        // ✅ 2) application immédiate au moteur ExoPlayer
+                        AudioEngine.applyTrackGainDb(newDb)
+                    },
                     tempo = tempo,
                     onTempoChange = onTempoChange,
                     pitchSemi = pitchSemi,
@@ -510,7 +511,6 @@ private fun ReaderHeader(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-
             IconButton(onClick = onToggleConcertMode) {
                 Icon(
                     imageVector = Icons.Filled.Tune,

@@ -47,14 +47,38 @@ fun TrackMixScreen(
     val context = LocalContext.current
 
     val minDb = -12
-    val maxDb = 12
+    val maxDb = 0
+
+    // ✅ défaut “anti-saturation”
+    val defaultDb = -5
+
     val minTempo = 0.8f
     val maxTempo = 1.2f
     val minSemi = -6
     val maxSemi = 6
 
-    var gainSlider by remember(currentTrackGainDb) {
-        mutableStateOf((currentTrackGainDb - minDb).toFloat() / (maxDb - minDb))
+    // ✅ Valeur affichée/éditée dans l’écran (source de vérité UI)
+    var displayGainDb by remember(currentTrackUri) {
+        mutableStateOf(
+            // Si le titre arrive avec 0 (cas fréquent quand rien n'a été réglé),
+            // on préfère ouvrir sur -5dB.
+            if (currentTrackGainDb == 0) defaultDb else currentTrackGainDb
+        )
+    }
+
+    // ✅ Au changement de titre : si on reçoit 0 (pas de prefs), on force -5 UNE fois
+    LaunchedEffect(currentTrackUri) {
+        if (currentTrackUri != null && currentTrackGainDb == 0) {
+            displayGainDb = defaultDb
+            onTrackGainChange(defaultDb) // => persist + appli immédiate (selon ton wiring)
+        } else {
+            displayGainDb = currentTrackGainDb
+        }
+    }
+
+    // Slider 0..1 basé sur displayGainDb
+    var gainSlider by remember(displayGainDb) {
+        mutableStateOf(((displayGainDb - minDb).toFloat() / (maxDb - minDb)).coerceIn(0f, 1f))
     }
 
     var tempoSlider by remember(tempo) {
@@ -96,7 +120,6 @@ fun TrackMixScreen(
                 .padding(horizontal = 16.dp, vertical = 10.dp)
         ) {
 
-            // HEADER (sans bouton Fermer)
             Text(
                 text = "Mixage du titre",
                 color = Color.White,
@@ -107,16 +130,18 @@ fun TrackMixScreen(
             // ───── NIVEAU TITRE ─────
             Text("Niveau du titre", color = Color(0xFFB0BEC5), fontSize = 13.sp)
             Text(
-                text = "${if (currentTrackGainDb >= 0) "+$currentTrackGainDb" else currentTrackGainDb} dB",
+                text = "${if (displayGainDb >= 0) "+$displayGainDb" else displayGainDb} dB",
                 color = Color.White,
                 fontSize = 12.sp
             )
 
             Slider(
                 value = gainSlider,
-                onValueChange = {
-                    gainSlider = it
-                    onTrackGainChange((minDb + it * (maxDb - minDb)).toInt())
+                onValueChange = { v01 ->
+                    gainSlider = v01
+                    val newDb = (minDb + v01 * (maxDb - minDb)).toInt().coerceIn(minDb, maxDb)
+                    displayGainDb = newDb
+                    onTrackGainChange(newDb)
                 },
                 colors = SliderDefaults.colors(
                     thumbColor = highlightColor,
@@ -206,7 +231,6 @@ fun TrackMixScreen(
                 EqVerticalFader("Aigus", highGain, { highGain = it; applyAndSaveEq() }, Color(0xFF42A5F5))
             }
 
-            // ───── ZONE DE SORTIE (LA CLEF DU CONFORT SCÈNE) ─────
             Spacer(Modifier.weight(1f))
 
             Box(

@@ -1,6 +1,7 @@
 package com.patrick.lrcreader.core.audio
 
 import android.content.Context
+import android.media.audiofx.LoudnessEnhancer
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
@@ -10,6 +11,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.pow
 
 @UnstableApi
 object AudioEngine {
@@ -27,6 +29,79 @@ object AudioEngine {
     private var fadeJob: Job? = null
     private var normalVolume: Float = 1f
     private val audioScope = CoroutineScope(Dispatchers.Main.immediate)
+
+    // -----------------------------
+    // Niveau du titre (gain par piste)
+    // -----------------------------
+    private var loudnessEnhancer: LoudnessEnhancer? = null
+    private var pendingGainDb: Int? = null
+
+    private fun ensureLoudnessEnhancerReady(player: ExoPlayer) {
+        val sessionId = player.audioSessionId
+        if (sessionId == 0) return // pas prêt
+
+        val existing = loudnessEnhancer
+        if (existing == null) {
+            loudnessEnhancer = LoudnessEnhancer(sessionId).apply { enabled = true }
+        }
+    }
+
+    private fun dbToLinear(db: Int): Float {
+        // db -> amplitude, ex: -6 dB ~ 0.501
+        return (10.0.pow(db / 20.0)).toFloat()
+    }
+
+    /**
+     * ✅ À appeler quand tu changes le slider "Niveau du titre"
+     * - db < 0 : baisse via exoPlayer.volume
+     * - db > 0 : boost via LoudnessEnhancer (ExoPlayer.volume ne peut pas amplifier > 1f)
+     */
+    fun applyTrackGainDb(gainDb: Int) {
+        val player = exoPlayer ?: run {
+            pendingGainDb = gainDb
+            return
+        }
+
+        // audioSessionId pas prêt => on garde en attente
+        if (player.audioSessionId == 0) {
+            pendingGainDb = gainDb
+            return
+        }
+
+        ensureLoudnessEnhancerReady(player)
+
+        // ✅ Réglages de sécurité
+        val minDb = -12
+        val maxDb = 12
+        val safeDb = gainDb.coerceIn(minDb, maxDb)
+
+        // ✅ Headroom anti-clipping :
+        // Quand on boost, on baisse le volume Exo avant (marge),
+        // puis on remonte avec LoudnessEnhancer.
+        // Net = gain demandé, mais avec de l'air pour éviter la saturation immédiate.
+        val headroomDb = 6 // si tu veux encore plus "anti-saturation", mets 9
+
+        if (safeDb <= 0) {
+            // Atténuation simple
+            runCatching { loudnessEnhancer?.setTargetGain(0) }
+            val v = dbToLinear(safeDb).coerceIn(0f, 1f)
+            player.volume = v
+            normalVolume = v
+        } else {
+            // Boost avec marge
+            val preAtten = -headroomDb
+            val v = dbToLinear(preAtten).coerceIn(0f, 1f)
+            player.volume = v
+            normalVolume = v
+
+            val enhancerMb = ((safeDb + headroomDb) * 1000).coerceIn(0, 24000) // 24 dB max côté enhancer
+            runCatching { loudnessEnhancer?.setTargetGain(enhancerMb) }
+        }
+
+        pendingGainDb = null
+    }
+
+
 
     private fun exoFadeOutThen(
         durationMs: Long = 250L,
@@ -50,7 +125,7 @@ object AudioEngine {
 
             endAction(p)
 
-            // Restore volume for next play
+            // Restore volume for next play (et donc pour le niveau du titre)
             p.volume = normalVolume
         }
     }
@@ -98,6 +173,9 @@ object AudioEngine {
             player.addListener(l)
             embeddedLyricsListener = l
             exoPlayer = player
+
+            // ✅ Applique un gain en attente dès que possible
+            pendingGainDb?.let { applyTrackGainDb(it) }
         }
 
         // Ajout du listener de fin UNE SEULE FOIS
@@ -125,6 +203,10 @@ object AudioEngine {
     fun release() {
         fadeJob?.cancel()
         fadeJob = null
+
+        runCatching { loudnessEnhancer?.release() }
+        loudnessEnhancer = null
+        pendingGainDb = null
 
         exoPlayer?.release()
         exoPlayer = null

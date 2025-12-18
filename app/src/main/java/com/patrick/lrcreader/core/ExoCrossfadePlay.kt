@@ -36,15 +36,19 @@ fun exoCrossfadePlay(
         // Si une autre demande est arrivée entre-temps → on annule proprement
         if (getCurrentToken() != playToken) return@launch
 
-        // 🔥 Fade-out du titre en cours SANS pause (sinon ça peut bloquer le démarrage selon ta coordination)
+        // ✅ On mémorise le volume AVANT fade (c’est lui qui doit porter le "niveau du titre")
+        var restoreVolume = exoPlayer.volume.coerceIn(0f, 1f)
+
+        // 🔥 Fade-out du titre en cours SANS pause
         if (exoPlayer.isPlaying) {
             val steps = 24
-            val startVol = exoPlayer.volume.coerceIn(0f, 1f)
+            val startVol = restoreVolume
             val stepDelay = (fadeDurationMs / steps).coerceAtLeast(1L)
 
             for (i in 1..steps) {
                 val t = i.toFloat() / steps.toFloat()
-                exoPlayer.volume = (startVol * (1f - t)).coerceIn(0f, 1f)
+                val curved = 1f - (t * t) // plus naturel à l’oreille
+                exoPlayer.volume = (startVol * curved).coerceIn(0f, 1f)
                 delay(stepDelay)
             }
         }
@@ -86,8 +90,9 @@ fun exoCrossfadePlay(
         exoPlayer.setMediaItem(item)
         exoPlayer.prepare()
 
-        // ✅ IMPORTANT : on remet le volume normal avant le démarrage du nouveau titre
-        exoPlayer.volume = 1f
+        // ✅ IMPORTANT : on restaure le volume d'avant (donc ton niveau du titre),
+        // au lieu de forcer 1f (sinon le gain par titre ne marche jamais).
+        exoPlayer.volume = restoreVolume
 
         exoPlayer.play()
 
