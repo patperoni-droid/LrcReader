@@ -1,8 +1,7 @@
 @file:OptIn(androidx.media3.common.util.UnstableApi::class)
-// PlayerScreen.kt
+
 package com.patrick.lrcreader.ui
 
-import android.media.MediaPlayer
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.scrollBy
@@ -28,7 +27,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.ExoPlayer
 import com.patrick.lrcreader.core.AutoReturnPrefs
 import com.patrick.lrcreader.core.DisplayPrefs
 import com.patrick.lrcreader.core.FillerSoundManager
@@ -36,10 +35,8 @@ import com.patrick.lrcreader.core.LrcLine
 import com.patrick.lrcreader.core.LrcStorage
 import com.patrick.lrcreader.core.MidiCueDispatcher
 import com.patrick.lrcreader.core.PlaybackCoordinator
-import com.patrick.lrcreader.core.PlayerBusController
 import com.patrick.lrcreader.core.audio.AudioEngine
 import com.patrick.lrcreader.core.parseLrc
-import com.patrick.lrcreader.core.pauseWithFade
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.abs
@@ -49,7 +46,8 @@ import kotlin.math.min
 @Composable
 fun PlayerScreen(
     modifier: Modifier = Modifier,
-    mediaPlayer: MediaPlayer,
+    exoPlayer: ExoPlayer, // ok même si pas utilisé directement ici
+
     closeMixSignal: Int = 0,
     isPlaying: Boolean,
     onIsPlayingChange: (Boolean) -> Unit,
@@ -73,37 +71,25 @@ fun PlayerScreen(
     val context = LocalContext.current
     val density = LocalDensity.current
 
-    // 🔊 bus LECTEUR
+    // 🔊 bus LECTEUR (réapplique le mix sur Exo)
     LaunchedEffect(Unit) {
-        PlayerBusController.attachPlayer(context, mediaPlayer)
-        PlayerBusController.applyCurrentVolume(context)
+        AudioEngine.reapplyMixNow()
     }
 
-    // ✅ REBRANCHAGE "Niveau du titre" sur ExoPlayer
-    // - au changement de titre
-    // - au changement de gain
+    // ✅ "Niveau du titre" appliqué au moteur
     LaunchedEffect(currentTrackUri, currentTrackGainDb) {
         AudioEngine.applyTrackGainDb(currentTrackGainDb)
     }
 
-    // Décalage global des paroles (latence de base)
     val lyricsDelayMs = 0L
-
-    // 🔧 Offset ajustable par titre
     var userOffsetMs by remember(currentTrackUri) { mutableStateOf(-100L) }
-
     var isConcertMode by remember { mutableStateOf(DisplayPrefs.isConcertMode(context)) }
 
     var lyricsBoxHeightPx by remember { mutableStateOf(0) }
     var currentLrcIndex by remember { mutableStateOf(0) }
 
-    // MIDI
     var lastMidiIndex by remember(currentTrackUri) { mutableStateOf(-1) }
-
-    // Masque avant 1er tag
     var showLyrics by remember { mutableStateOf(true) }
-
-    // Scroll manuel
     var userScrolling by remember { mutableStateOf(false) }
 
     var durationMs by remember { mutableStateOf(0) }
@@ -141,38 +127,27 @@ fun PlayerScreen(
             rawLyricsText = parsed.joinToString("\n") { it.text }
             editingLines = parsed
         } else {
-            // NE PAS effacer parsedLines ici,
-            // sinon tu tues les paroles embedded (USLT/SYLT) reçues via Exo.
             rawLyricsText = ""
             editingLines = emptyList()
         }
     }
 
-    // ---------- centrage indérivable (LazyListState) ----------
     fun centerCurrentLineLazy(state: LazyListState) {
         if (parsedLines.isEmpty()) return
-
         scope.launch {
-            // si pas visible, on le rapproche
             val visible = state.layoutInfo.visibleItemsInfo.firstOrNull { it.index == currentLrcIndex }
-            if (visible == null) {
-                state.scrollToItem(currentLrcIndex)
-            }
+            if (visible == null) state.scrollToItem(currentLrcIndex)
 
             val info = state.layoutInfo.visibleItemsInfo.firstOrNull { it.index == currentLrcIndex }
             if (info != null) {
-                // ✅ centre du viewport réel (tient compte des paddings, barres, etc.)
                 val start = state.layoutInfo.viewportStartOffset
                 val end = state.layoutInfo.viewportEndOffset
-                val bias = ((end - start) * 0.08f).toInt()   // ajuste la valeur si besoin
+                val bias = ((end - start) * 0.08f).toInt()
                 val viewportCenter = (start + end) / 2 - bias
 
                 val itemCenter = info.offset + info.size / 2
                 val delta = itemCenter - viewportCenter
-
-                if (abs(delta) > 1) {
-                    state.scrollBy(delta.toFloat())
-                }
+                if (abs(delta) > 1) state.scrollBy(delta.toFloat())
             }
         }
     }
@@ -187,15 +162,13 @@ fun PlayerScreen(
             .toInt()
 
         runCatching { seekToMs(seekPos.toLong()) }
-
         currentLrcIndex = targetIndex.coerceIn(0, max(parsedLines.size - 1, 0))
         positionMs = seekPos
 
         if (!isPlaying) {
             PlaybackCoordinator.onPlayerStart()
-            onIsPlayingChange(true) // => MainActivity doit piloter exoPlayer.play()
+            onIsPlayingChange(true)
         }
-
         centerCurrentLineLazy(listState)
     }
 
@@ -228,16 +201,11 @@ fun PlayerScreen(
                     parsedLines[idx].timeMs <= posMs
                 } ?: -1
 
-                if (newIndex != -1 && newIndex != currentLrcIndex) {
-                    currentLrcIndex = newIndex
-                }
+                if (newIndex != -1 && newIndex != currentLrcIndex) currentLrcIndex = newIndex
 
                 if (currentTrackUri != null && newIndex != -1 && newIndex != lastMidiIndex) {
                     lastMidiIndex = newIndex
-                    MidiCueDispatcher.onActiveLineChanged(
-                        trackUri = currentTrackUri,
-                        lineIndex = newIndex
-                    )
+                    MidiCueDispatcher.onActiveLineChanged(trackUri = currentTrackUri, lineIndex = newIndex)
                 }
             }
 
@@ -249,20 +217,13 @@ fun PlayerScreen(
     // ---------- Autoswitch playlist (-10s) ----------
     LaunchedEffect(durationMs, positionMs, hasRequestedPlaylist, currentTrackUri, isEditingLyrics) {
         val enabled = AutoReturnPrefs.isEnabled(context)
-
-        if (
-            enabled &&
-            !isEditingLyrics &&
-            !hasRequestedPlaylist &&
-            durationMs > 0 &&
-            positionMs >= durationMs - 10_000
-        ) {
+        if (enabled && !isEditingLyrics && !hasRequestedPlaylist && durationMs > 0 && positionMs >= durationMs - 10_000) {
             hasRequestedPlaylist = true
             onRequestShowPlaylist()
         }
     }
 
-    // ---------- Suivi scroll user (Lazy) ----------
+    // ---------- Suivi scroll user ----------
     LaunchedEffect(listState) {
         while (true) {
             userScrolling = listState.isScrollInProgress
@@ -274,22 +235,13 @@ fun PlayerScreen(
     LaunchedEffect(isPlaying, parsedLines, lyricsBoxHeightPx, currentLrcIndex) {
         if (parsedLines.isEmpty() || lyricsBoxHeightPx == 0) return@LaunchedEffect
         while (true) {
-            if (isPlaying && !userScrolling && !isDragging) {
-                centerCurrentLineLazy(listState)
-            }
-            delay(120) // ✅ pas besoin de mitrailler
+            if (isPlaying && !userScrolling && !isDragging) centerCurrentLineLazy(listState)
+            delay(120)
         }
     }
 
-    // ─────────────────────────────
-    //  LAYOUT GLOBAL ANALOGIQUE
-    // ─────────────────────────────
     val backgroundBrush = Brush.verticalGradient(
-        listOf(
-            Color(0xFF171717),
-            Color(0xFF101010),
-            Color(0xFF181410)
-        )
+        listOf(Color(0xFF171717), Color(0xFF101010), Color(0xFF181410))
     )
 
     Box(
@@ -309,15 +261,39 @@ fun PlayerScreen(
                 onEditingLinesChange = { editingLines = it },
                 currentEditTab = currentEditTab,
                 onCurrentEditTabChange = { currentEditTab = it },
-                mediaPlayer = mediaPlayer,
+
+                // ✅ Infos lecture (venant du PlayerScreen)
+                isPlaying = isPlaying,
                 positionMs = positionMs,
                 durationMs = durationMs,
                 onIsPlayingChange = onIsPlayingChange,
+
+                // ✅ pour remplacer mediaPlayer.seekTo(...)
+                seekToMs = seekToMs,
+
+                // ✅ callback sauvegarde
                 onSaveSortedLines = { sorted ->
+                    // ✅ 1) met à jour UI
                     rawLyricsText = sorted.joinToString("\n") { it.text }
                     editingLines = sorted
+
+                    // ✅ 2) met à jour le lecteur
                     onParsedLinesChange(sorted)
+
+                    // ✅ 3) ferme l’éditeur
                     isEditingLyrics = false
+
+                    // ✅ 4) sauvegarde sur disque (si on a un titre)
+                    if (currentTrackUri != null) {
+                        runCatching {
+                            // si ton LrcStorage accepte "lines", c'est le mieux :
+                            LrcStorage.saveForTrack(
+                                context = context,
+                                trackUriString = currentTrackUri,
+                                lines = sorted
+                            )
+                        }
+                    }
                 }
             )
         } else {
@@ -337,7 +313,6 @@ fun PlayerScreen(
                             .fillMaxSize()
                             .padding(horizontal = 16.dp, vertical = 10.dp)
                     ) {
-
                         ReaderHeader(
                             isConcertMode = isConcertMode,
                             onToggleConcertMode = {
@@ -379,14 +354,9 @@ fun PlayerScreen(
                                 highlightColor = highlightColor,
                                 onLineClick = { index, timeMs ->
                                     seekAndCenter(timeMs.toInt(), index)
-
-                                    // 🔥 CUE MIDI immédiat au clic
                                     if (currentTrackUri != null) {
                                         lastMidiIndex = index
-                                        MidiCueDispatcher.onActiveLineChanged(
-                                            trackUri = currentTrackUri,
-                                            lineIndex = index
-                                        )
+                                        MidiCueDispatcher.onActiveLineChanged(trackUri = currentTrackUri, lineIndex = index)
                                     }
                                 }
                             )
@@ -412,14 +382,10 @@ fun PlayerScreen(
                             isPlaying = isPlaying,
                             onPlayPause = {
                                 if (isPlaying) {
-                                    // ✅ On lance le fade-out (ça continue à jouer pendant que le volume descend)
                                     AudioEngine.pause(durationMs = 1000L)
-
-                                    // => onIsPlayingChange(false) APRÈS le fade
                                     scope.launch {
                                         delay(420)
                                         onIsPlayingChange(false)
-
                                         PlaybackCoordinator.onFillerStart()
                                         runCatching { FillerSoundManager.startFromPlayerPause(context) }
                                     }
@@ -457,10 +423,7 @@ fun PlayerScreen(
                     highlightColor = highlightColor,
                     currentTrackGainDb = currentTrackGainDb,
                     onTrackGainChange = { newDb ->
-                        // ✅ 1) ton state/prefs existant
                         onTrackGainChange(newDb)
-
-                        // ✅ 2) application immédiate au moteur ExoPlayer
                         AudioEngine.applyTrackGainDb(newDb)
                     },
                     tempo = tempo,
@@ -474,10 +437,6 @@ fun PlayerScreen(
         }
     }
 }
-
-/* ─────────────────────────────
-   HEADER LECTURE – STYLE CONSOLE
-   ───────────────────────────── */
 
 @Composable
 private fun ReaderHeader(
@@ -495,11 +454,7 @@ private fun ReaderHeader(
             .height(40.dp)
             .background(
                 Brush.horizontalGradient(
-                    listOf(
-                        Color(0xFF3A2C24),
-                        Color(0xFF4B372A),
-                        Color(0xFF3A2C24)
-                    )
+                    listOf(Color(0xFF3A2C24), Color(0xFF4B372A), Color(0xFF3A2C24))
                 ),
                 shape = RoundedCornerShape(10.dp)
             )

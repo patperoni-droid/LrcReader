@@ -10,7 +10,6 @@ import androidx.compose.foundation.clickable
 import com.patrick.lrcreader.core.CueMidiStore
 import android.content.Context
 import android.media.MediaMetadataRetriever
-import android.media.MediaPlayer
 import android.net.Uri
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -58,10 +57,17 @@ fun LyricsEditorSection(
     onEditingLinesChange: (List<LrcLine>) -> Unit,
     currentEditTab: Int,
     onCurrentEditTabChange: (Int) -> Unit,
-    mediaPlayer: MediaPlayer,
+
+    // ✅ Infos lecture (venant du PlayerScreen)
+    isPlaying: Boolean,
     positionMs: Int,
     durationMs: Int,
     onIsPlayingChange: (Boolean) -> Unit,
+
+    // ✅ pour remplacer mediaPlayer.seekTo(...)
+    seekToMs: (Long) -> Unit,
+
+    // ✅ callback sauvegarde
     onSaveSortedLines: (List<LrcLine>) -> Unit
 ) {
     if (!isEditingLyrics) return
@@ -69,19 +75,18 @@ fun LyricsEditorSection(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val lazyListState = rememberLazyListState()
+
     var editingCueLineIndex by remember { mutableStateOf<Int?>(null) }
     var lineMenuIndex by remember { mutableStateOf<Int?>(null) }
     var lineMenuText by remember { mutableStateOf("") }
 
-    // 🔹 Toute la logique "Enregistrer" (copiée de ta barre du bas)
+    // 🔹 Enregistrer
     fun handleSave() {
-        // 1) On récupère les lignes du texte brut
         val simpleLines = rawLyricsText
             .lines()
             .map { it.trim() }
             .filter { it.isNotEmpty() }
 
-        // Cas "j'efface tout" → on vide vraiment tout
         if (simpleLines.isEmpty()) {
             onEditingLinesChange(emptyList())
             onRawLyricsTextChange("")
@@ -94,40 +99,24 @@ fun LyricsEditorSection(
             return
         }
 
-        // 2) Quelle est la source de vérité ?
         val finalLines: List<LrcLine> = when (currentEditTab) {
             0 -> {
-                // Onglet SIMPLE :
-                // ➜ On ESSAIE de garder les timings existants (editingLines)
                 if (editingLines.isEmpty()) {
-                    // Rien d'ancien → on crée tout à 0 ms
-                    simpleLines.map { txt ->
-                        LrcLine(timeMs = 0L, text = txt)
-                    }
+                    simpleLines.map { txt -> LrcLine(timeMs = 0L, text = txt) }
                 } else {
-                    // On fusionne le nouveau texte avec les anciens timings
                     mergeLyricsWithOldTimings(
                         newLines = simpleLines,
                         oldLines = editingLines
                     )
                 }
             }
-
             else -> {
-                // Onglet SYNCHRO : on fait CONFIANCE à editingLines
-                // (c'est là que tu as tagué les phrases)
-                editingLines
-                    .filter { it.text.isNotBlank() }
+                editingLines.filter { it.text.isNotBlank() }
             }
         }
 
-        // 🟢 LOG côté éditeur
-        Log.d(
-            "LrcDebug",
-            "EDITOR_SAVE currentTrackUri=$currentTrackUri lines=${finalLines.size}"
-        )
+        Log.d("LrcDebug", "EDITOR_SAVE currentTrackUri=$currentTrackUri lines=${finalLines.size}")
 
-        // 3) Sauvegarde sur disque
         if (currentTrackUri != null) {
             LrcStorage.saveForTrack(
                 context = context,
@@ -136,7 +125,6 @@ fun LyricsEditorSection(
             )
         }
 
-        // 4) Mise à jour de l’état côté parent / lecteur
         onSaveSortedLines(finalLines)
     }
 
@@ -145,15 +133,12 @@ fun LyricsEditorSection(
             .fillMaxSize()
             .padding(horizontal = 16.dp, vertical = 6.dp)
     ) {
-        // 🔹 Ligne du haut : onglets + petit bouton Enregistrer
+        // Onglets + Enregistrer
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(
-                modifier = Modifier.weight(1f)
-            ) {
-                // Onglets
+            Box(modifier = Modifier.weight(1f)) {
                 TabRow(
                     selectedTabIndex = currentEditTab,
                     containerColor = Color.Transparent,
@@ -167,9 +152,6 @@ fun LyricsEditorSection(
                     Tab(
                         selected = currentEditTab == 1,
                         onClick = {
-                            // 🔁 Quand on passe à l’onglet "Synchro",
-                            // on pousse automatiquement le texte vers editingLines
-
                             val simpleLines = rawLyricsText
                                 .lines()
                                 .map { it.trim() }
@@ -177,15 +159,10 @@ fun LyricsEditorSection(
 
                             val newEditing: List<LrcLine> =
                                 if (simpleLines.isEmpty()) {
-                                    // Pas de texte → pas de lignes synchro
                                     emptyList()
                                 } else if (editingLines.isEmpty()) {
-                                    // Pas d’anciennes lignes : on crée tout avec timeMs = 0
-                                    simpleLines.map { txt ->
-                                        LrcLine(timeMs = 0L, text = txt)
-                                    }
+                                    simpleLines.map { txt -> LrcLine(timeMs = 0L, text = txt) }
                                 } else {
-                                    // On a déjà des timings → on réutilise ta logique de fusion
                                     mergeLyricsWithOldTimings(
                                         newLines = simpleLines,
                                         oldLines = editingLines
@@ -193,8 +170,6 @@ fun LyricsEditorSection(
                                 }
 
                             onEditingLinesChange(newEditing)
-
-                            // Puis seulement on bascule sur l’onglet Synchro
                             onCurrentEditTabChange(1)
                         },
                         text = { Text("Synchro") }
@@ -218,7 +193,7 @@ fun LyricsEditorSection(
 
         when (currentEditTab) {
             0 -> {
-                // ---------- Onglet SIMPLE ----------
+                // Onglet SIMPLE
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -245,7 +220,7 @@ fun LyricsEditorSection(
             }
 
             1 -> {
-                // ---------- Onglet SYNCHRO ----------
+                // Onglet SYNCHRO
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -259,37 +234,31 @@ fun LyricsEditorSection(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.Start
                     ) {
-                        IconButton(onClick = {
-                            if (mediaPlayer.isPlaying) {
-                                pauseWithFade(scope, mediaPlayer, 200L) {
+                        IconButton(
+                            onClick = {
+                                if (isPlaying) {
+                                    // ✅ on laisse le PlayerScreen gérer le fade/pause
                                     onIsPlayingChange(false)
-                                    runCatching {
-                                        FillerSoundManager.startIfConfigured(context)
-                                    }
-                                }
-                            } else {
-                                if (durationMs > 0) {
-                                    mediaPlayer.start()
-                                    onIsPlayingChange(true)
-                                    runCatching {
-                                        FillerSoundManager.fadeOutAndStop(200)
+                                } else {
+                                    if (durationMs > 0) {
+                                        onIsPlayingChange(true)
+                                        runCatching { FillerSoundManager.fadeOutAndStop(200) }
                                     }
                                 }
                             }
-                        }) {
+                        ) {
                             Icon(
-                                imageVector = if (mediaPlayer.isPlaying)
-                                    Icons.Filled.Pause
-                                else
-                                    Icons.Filled.PlayArrow,
+                                imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                                 contentDescription = "Play/Pause synchro",
                                 tint = Color.White
                             )
                         }
 
-                        IconButton(onClick = {
-                            runCatching { mediaPlayer.seekTo(0) }
-                        }) {
+                        IconButton(
+                            onClick = {
+                                runCatching { seekToMs(0L) }
+                            }
+                        ) {
                             Icon(
                                 imageVector = Icons.Filled.SkipPrevious,
                                 contentDescription = "Revenir début",
@@ -314,11 +283,7 @@ fun LyricsEditorSection(
                     ) {
                         TextButton(
                             onClick = {
-                                onEditingLinesChange(
-                                    editingLines.map {
-                                        it.copy(timeMs = 0L)
-                                    }
-                                )
+                                onEditingLinesChange(editingLines.map { it.copy(timeMs = 0L) })
                             }
                         ) {
                             Text(
@@ -329,10 +294,8 @@ fun LyricsEditorSection(
                         }
                     }
 
-                    // Cues MIDI pour ce morceau
                     val cuesForTrack = CueMidiStore.getCuesForTrack(currentTrackUri)
 
-                    // Liste des lignes taguables
                     LazyColumn(
                         state = lazyListState,
                         modifier = Modifier
@@ -350,10 +313,7 @@ fun LyricsEditorSection(
                         } else {
                             itemsIndexed(editingLines) { index, line ->
                                 val timeLabel =
-                                    if (line.timeMs > 0)
-                                        formatLrcTime(line.timeMs)
-                                    else
-                                        "--:--.--"
+                                    if (line.timeMs > 0) formatLrcTime(line.timeMs) else "--:--.--"
 
                                 val hasCueForThisLine =
                                     cuesForTrack.any { it.lineIndex == index }
@@ -371,34 +331,23 @@ fun LyricsEditorSection(
                                     ) {
                                         TextButton(
                                             onClick = {
-                                                val now = runCatching {
-                                                    mediaPlayer.currentPosition
-                                                }.getOrElse { 0 }
-
+                                                // ✅ TAG = positionMs actuel (plus de mediaPlayer)
+                                                val now = positionMs.coerceAtLeast(0)
                                                 onEditingLinesChange(
                                                     editingLines.mapIndexed { i, old ->
-                                                        if (i == index)
-                                                            old.copy(timeMs = now.toLong())
-                                                        else old
+                                                        if (i == index) old.copy(timeMs = now.toLong()) else old
                                                     }
                                                 )
 
                                                 // auto-scroll
                                                 scope.launch {
                                                     val layoutInfo = lazyListState.layoutInfo
-                                                    val visibleItem =
-                                                        layoutInfo.visibleItemsInfo
-                                                            .find { it.index == index }
+                                                    val visibleItem = layoutInfo.visibleItemsInfo.find { it.index == index }
                                                     if (visibleItem != null) {
-                                                        val itemCenter =
-                                                            visibleItem.offset + visibleItem.size / 2
-                                                        val viewportCenter =
-                                                            layoutInfo.viewportEndOffset / 2
+                                                        val itemCenter = visibleItem.offset + visibleItem.size / 2
+                                                        val viewportCenter = layoutInfo.viewportEndOffset / 2
                                                         if (itemCenter > viewportCenter) {
-                                                            val nextIndex =
-                                                                (index + 1).coerceAtMost(
-                                                                    editingLines.lastIndex
-                                                                )
+                                                            val nextIndex = (index + 1).coerceAtMost(editingLines.lastIndex)
                                                             lazyListState.animateScrollToItem(
                                                                 nextIndex,
                                                                 scrollOffset = -layoutInfo.viewportEndOffset / 3
@@ -429,45 +378,31 @@ fun LyricsEditorSection(
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         if (hasCueForThisLine) {
-                                            Text(
-                                                text = "🎛",
-                                                fontSize = 14.sp,
-                                                modifier = Modifier.padding(end = 4.dp)
-                                            )
+                                            Text("🎛", fontSize = 14.sp, modifier = Modifier.padding(end = 4.dp))
                                         }
 
                                         Text(
                                             text = line.text,
                                             color = Color.White,
                                             fontSize = 16.sp,
-                                            modifier = Modifier
-                                                .combinedClickable(
-                                                    onClick = {
-                                                        // Clic normal → ouvre le CUE MIDI
-                                                        editingCueLineIndex = index
-                                                    },
-                                                    onLongClick = {
-                                                        // Appui long → ouvre le mini-menu (éditer / supprimer)
-                                                        lineMenuIndex = index
-                                                        lineMenuText = line.text
-                                                    }
-                                                )
+                                            modifier = Modifier.combinedClickable(
+                                                onClick = { editingCueLineIndex = index },
+                                                onLongClick = {
+                                                    lineMenuIndex = index
+                                                    lineMenuText = line.text
+                                                }
+                                            )
                                         )
                                     }
 
                                     // Bouton Play par ligne
                                     IconButton(
                                         onClick = {
-                                            val t = line.timeMs
-                                                .coerceAtLeast(0L)
-                                                .toInt()
-                                            runCatching { mediaPlayer.seekTo(t) }
-                                            if (!mediaPlayer.isPlaying) {
-                                                mediaPlayer.start()
+                                            val t = line.timeMs.coerceAtLeast(0L)
+                                            runCatching { seekToMs(t) }
+                                            if (!isPlaying) {
                                                 onIsPlayingChange(true)
-                                                runCatching {
-                                                    FillerSoundManager.fadeOutAndStop(200)
-                                                }
+                                                runCatching { FillerSoundManager.fadeOutAndStop(200) }
                                             }
                                         },
                                         enabled = line.timeMs > 0L
@@ -475,10 +410,7 @@ fun LyricsEditorSection(
                                         Icon(
                                             imageVector = Icons.Filled.PlayArrow,
                                             contentDescription = "Lire depuis cette phrase",
-                                            tint = if (line.timeMs > 0L)
-                                                Color.White
-                                            else
-                                                Color.DarkGray
+                                            tint = if (line.timeMs > 0L) Color.White else Color.DarkGray
                                         )
                                     }
                                 }
@@ -486,32 +418,21 @@ fun LyricsEditorSection(
                         }
                     }
 
-                    // ─────────────────────────────
-                    //  Menu ÉDITER / SUPPRIMER la ligne (appui long)
-                    // ─────────────────────────────
+                    // Menu ÉDITER / SUPPRIMER
                     if (lineMenuIndex != null) {
                         val idx = lineMenuIndex!!
 
                         AlertDialog(
                             onDismissRequest = { lineMenuIndex = null },
-                            title = {
-                                Text(
-                                    text = "Ligne ${idx + 1}",
-                                    color = Color.White
-                                )
-                            },
+                            title = { Text(text = "Ligne ${idx + 1}", color = Color.White) },
                             text = {
-                                Column(
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
+                                Column(Modifier.fillMaxWidth()) {
                                     Text(
                                         text = "Modifier le texte ou supprimer la phrase.",
                                         color = Color(0xFFB0BEC5),
                                         fontSize = 13.sp
                                     )
-
                                     Spacer(Modifier.height(12.dp))
-
                                     OutlinedTextField(
                                         value = lineMenuText,
                                         onValueChange = { lineMenuText = it },
@@ -525,25 +446,19 @@ fun LyricsEditorSection(
                                 }
                             },
                             confirmButton = {
-                                // Bouton "Modifier"
                                 TextButton(
                                     onClick = {
                                         val list = editingLines.toMutableList()
                                         if (idx in list.indices) {
-                                            list[idx] = list[idx].copy(
-                                                text = lineMenuText.trim()
-                                            )
+                                            list[idx] = list[idx].copy(text = lineMenuText.trim())
                                             onEditingLinesChange(list)
                                         }
                                         lineMenuIndex = null
                                     }
-                                ) {
-                                    Text("Modifier", color = Color(0xFF80CBC4))
-                                }
+                                ) { Text("Modifier", color = Color(0xFF80CBC4)) }
                             },
                             dismissButton = {
                                 Row {
-                                    // Bouton "Supprimer"
                                     TextButton(
                                         onClick = {
                                             val list = editingLines.toMutableList()
@@ -552,19 +467,13 @@ fun LyricsEditorSection(
                                                 onEditingLinesChange(list)
                                             }
 
-                                            // On supprime aussi le CUE éventuel de cette ligne
                                             if (currentTrackUri != null) {
-                                                CueMidiStore.deleteCue(
-                                                    trackUri = currentTrackUri,
-                                                    lineIndex = idx
-                                                )
+                                                CueMidiStore.deleteCue(trackUri = currentTrackUri, lineIndex = idx)
                                             }
 
                                             lineMenuIndex = null
                                         }
-                                    ) {
-                                        Text("Supprimer", color = Color(0xFFFF8A80))
-                                    }
+                                    ) { Text("Supprimer", color = Color(0xFFFF8A80)) }
 
                                     TextButton(onClick = { lineMenuIndex = null }) {
                                         Text("Annuler", color = Color.LightGray)
@@ -574,170 +483,17 @@ fun LyricsEditorSection(
                         )
                     }
 
+                    // ✅ TEMPORAIRE : popup MIDI désactivé (le temps de remettre le fichier au bon endroit)
                     val lineIndexEditing = editingCueLineIndex
                     if (lineIndexEditing != null && currentTrackUri != null) {
-                        CueMidiEditorPopup(
-                            lineIndex = lineIndexEditing,
-                            currentTrackUri = currentTrackUri,
-                            onClose = { editingCueLineIndex = null }
-                        )
-                    }
+                        // CueMidiEditorPopup(...)
+                        editingCueLineIndex = null
 
+                    }
                 }
             }
         }
     }
-}
-
-// ─────────────────────────────
-//  POPUP CUE MIDI
-// ─────────────────────────────
-
-@Composable
-fun CueMidiEditorPopup(
-    lineIndex: Int,
-    currentTrackUri: String?,
-    onClose: () -> Unit
-) {
-    val context = LocalContext.current
-
-    val existingCue = remember(currentTrackUri, lineIndex) {
-        CueMidiStore
-            .getCuesForTrack(currentTrackUri)
-            .firstOrNull { it.lineIndex == lineIndex }
-    }
-
-    var channelText by remember {
-        mutableStateOf(
-            (existingCue?.channel ?: 1).toString()
-        )
-    }
-    var programText by remember {
-        mutableStateOf(
-            (existingCue?.program ?: 1).toString()
-        )
-    }
-
-    val channelError = channelText.toIntOrNull()?.let { it !in 1..16 } ?: false
-    val programError = programText.toIntOrNull()?.let { it !in 1..128 } ?: false
-
-    AlertDialog(
-        onDismissRequest = onClose,
-        title = {
-            Text(
-                text = "CUE MIDI – Ligne ${lineIndex + 1}",
-                color = Color.White
-            )
-        },
-        text = {
-            Column(
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(
-                    text = "Ce CUE enverra un Program Change à ton pédalier quand cette phrase sera jouée.",
-                    color = Color(0xFFB0BEC5),
-                    fontSize = 13.sp
-                )
-
-                Spacer(Modifier.height(12.dp))
-
-                OutlinedTextField(
-                    value = channelText,
-                    onValueChange = { channelText = it },
-                    label = { Text("Canal MIDI (1–16)") },
-                    isError = channelError,
-                    singleLine = true,
-                    textStyle = androidx.compose.ui.text.TextStyle(
-                        color = Color.White,
-                        fontSize = 14.sp
-                    )
-                )
-                if (channelError) {
-                    Text(
-                        text = "Canal entre 1 et 16",
-                        color = Color(0xFFFF8A80),
-                        fontSize = 11.sp
-                    )
-                }
-
-                Spacer(Modifier.height(8.dp))
-
-                OutlinedTextField(
-                    value = programText,
-                    onValueChange = { programText = it },
-                    label = { Text("Programme (1–128)") },
-                    isError = programError,
-                    singleLine = true,
-                    textStyle = androidx.compose.ui.text.TextStyle(
-                        color = Color.White,
-                        fontSize = 14.sp
-                    )
-                )
-                if (programError) {
-                    Text(
-                        text = "Programme entre 1 et 128",
-                        color = Color(0xFFFF8A80),
-                        fontSize = 11.sp
-                    )
-                }
-
-                if (existingCue != null) {
-                    Spacer(Modifier.height(12.dp))
-                    Text(
-                        text = "Un CUE existe déjà pour cette ligne. Tu peux le modifier ou le supprimer.",
-                        color = Color(0xFFFFF59D),
-                        fontSize = 11.sp
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    val trackKey = currentTrackUri
-                    if (trackKey == null) {
-                        onClose()
-                        return@TextButton
-                    }
-
-                    val chan = channelText.toIntOrNull()?.coerceIn(1, 16) ?: 1
-                    val prog = programText.toIntOrNull()?.coerceIn(1, 128) ?: 1
-
-                    val cue = CueMidi(
-                        lineIndex = lineIndex,
-                        channel = chan,
-                        program = prog
-                    )
-
-                    CueMidiStore.upsertCue(trackKey, cue)
-                    onClose()
-                }
-            ) {
-                Text("Enregistrer", color = Color(0xFF80CBC4))
-            }
-        },
-        dismissButton = {
-            Row {
-                if (existingCue != null && currentTrackUri != null) {
-                    TextButton(
-                        onClick = {
-                            CueMidiStore.deleteCue(
-                                trackUri = currentTrackUri,
-                                lineIndex = lineIndex
-                            )
-                            onClose()
-                        }
-                    ) {
-                        Text("Supprimer", color = Color(0xFFFF8A80))
-                    }
-                }
-
-                TextButton(onClick = onClose) {
-                    Text("Annuler", color = Color.LightGray)
-                }
-            }
-        }
-    )
 }
 
 // ─────────────────────────────

@@ -103,8 +103,11 @@ fun GlobalMixScreen(
                     subtitle = "Paroles + playback principal",
                     value = playerLevel,
                     onValueChange = { v ->
-                        onPlayerLevelChange(v.coerceIn(0f, 1f))
+                        val safe = v.coerceIn(0f, 1f)
+                        android.util.Log.d("BUS", "UI slider Lecteur = $safe")
+                        onPlayerLevelChange(safe)
                     }
+
                 )
 
                 // --- FADER DJ (lié au niveau DJ global) ---

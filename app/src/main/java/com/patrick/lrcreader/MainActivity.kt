@@ -2,12 +2,18 @@
 
 package com.patrick.lrcreader.exo
 
-import android.media.MediaPlayer
-import android.media.audiofx.LoudnessEnhancer
+// ─────────────────────────────
+// Android / Activity
+// ─────────────────────────────
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.core.view.WindowCompat
+
+// ─────────────────────────────
+// Compose
+// ─────────────────────────────
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
@@ -22,16 +28,34 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.core.view.WindowCompat
+
+// ─────────────────────────────
+// Media3 / ExoPlayer
+// ─────────────────────────────
 import androidx.media3.common.Player
+import androidx.media3.common.PlaybackParameters
+
+// ─────────────────────────────
+// Kotlin / Coroutines / Math
+// ─────────────────────────────
+import kotlinx.coroutines.delay
+import kotlin.math.pow
+
+// ─────────────────────────────
+// App – Core
+// ─────────────────────────────
 import com.patrick.lrcreader.core.*
 import com.patrick.lrcreader.core.audio.AudioEngine
 import com.patrick.lrcreader.core.audio.exoCrossfadePlay
 import com.patrick.lrcreader.core.dj.DjEngine
 import com.patrick.lrcreader.core.lyrics.LyricsResolver
+
+// ─────────────────────────────
+// App – UI
+// ─────────────────────────────
 import com.patrick.lrcreader.ui.*
-import kotlin.math.pow
 
 class MainActivity : ComponentActivity() {
 
@@ -84,6 +108,7 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
+
                 val embeddedLyricsListener = remember { AudioEngine.getLyricsListener() }
                 DisposableEffect(exoPlayer, embeddedLyricsListener) {
                     exoPlayer.addListener(embeddedLyricsListener)
@@ -95,17 +120,6 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                // ⚠️ On garde MediaPlayer tant que PlayerScreen utilise encore MediaPlayer.
-                val mediaPlayer = remember { MediaPlayer() }
-
-                // EQ attaché à la session du MediaPlayer
-                LaunchedEffect(mediaPlayer.audioSessionId) {
-                    TrackEqEngine.attachToSession(mediaPlayer.audioSessionId)
-                }
-
-                val loudnessEnhancer = remember {
-                    LoudnessEnhancer(mediaPlayer.audioSessionId).apply { enabled = true }
-                }
 
                 var selectedTab by remember {
                     mutableStateOf<BottomTab>(initialTabKey?.let { tabFromKey(it) } ?: BottomTab.Home)
@@ -185,38 +199,17 @@ class MainActivity : ComponentActivity() {
                 // ✅ Et on démarre à -5 par défaut.
                 fun clampTrackDb(db: Int): Int = db.coerceIn(MIN_TRACK_DB, MAX_TRACK_DB)
 
-                fun applyGainToPlayer(db: Int) {
-                    try {
-                        val clamped = clampTrackDb(db)
-                        val master = playerMasterLevel.coerceIn(0f, 1f)
 
-                        // toujours <= 0 : gain linéaire
-                        val linear = 10f.pow(clamped / 20f)
-                        val v = (linear * master).coerceIn(0f, 1f)
-
-                        mediaPlayer.setVolume(v, v)
-                        loudnessEnhancer.setTargetGain(0) // jamais de boost
-                    } catch (_: Exception) {}
-                }
 
                 // ---------------- Tempo + Pitch par morceau ----------------------
 
                 fun applyTempoAndPitchToPlayer(speed: Float, pitchSemi: Int) {
-                    try {
-                        val safeSpeed = speed.coerceIn(0.5f, 2.0f)
-                        val semiClamped = pitchSemi.coerceIn(-6, 6)
+                    val safeSpeed = speed.coerceIn(0.5f, 2.0f)
+                    val semiClamped = pitchSemi.coerceIn(-6, 6)
+                    val pitchFactor = 2f.pow(semiClamped / 12f)
 
-                        val pitchFactor = 2f.pow(semiClamped / 12f)
-
-                        // ⚠️ Sur certains devices, changer playbackParams en pause peut relancer
-                        if (!mediaPlayer.isPlaying) return
-
-                        val params = mediaPlayer.playbackParams
-                            .setSpeed(safeSpeed)
-                            .setPitch(pitchFactor)
-
-                        mediaPlayer.playbackParams = params
-                    } catch (_: Exception) {}
+                    // ✅ ExoPlayer : tempo + pitch
+                    exoPlayer.playbackParameters = PlaybackParameters(safeSpeed, pitchFactor)
                 }
 
                 // ---------------- Play + crossfade ----------------------
@@ -248,6 +241,9 @@ class MainActivity : ComponentActivity() {
                     currentTrackPitchSemi = TrackPitchPrefs.getSemi(ctx, uriString) ?: 0
 
                     val result = runCatching {
+
+                        AudioEngine.reapplyMixNow()
+
                         exoCrossfadePlay(
                             context = ctx,
                             exoPlayer = exoPlayer,
@@ -274,7 +270,7 @@ class MainActivity : ComponentActivity() {
                                 }
 
                                 // ✅ Applique le niveau PAR TITRE (triche -5 par défaut)
-                                applyGainToPlayer(currentTrackGainDb)
+                                AudioEngine.applyTrackGainDb(currentTrackGainDb)
 
                                 applyTempoAndPitchToPlayer(currentTrackTempo, currentTrackPitchSemi)
 
@@ -301,7 +297,10 @@ class MainActivity : ComponentActivity() {
                     }
 
                     if (result.isFailure) {
-                        runCatching { mediaPlayer.reset() }
+                        runCatching {
+                            exoPlayer.stop()
+                            exoPlayer.clearMediaItems()
+                        }
                         isPlaying = false
                         PlaybackCoordinator.onPlayerStop()
                     }
@@ -337,9 +336,9 @@ class MainActivity : ComponentActivity() {
 
                 DisposableEffect(Unit) {
                     onDispose {
-                        try { loudnessEnhancer.release() } catch (_: Exception) {}
+
                         try { TrackEqEngine.release() } catch (_: Exception) {}
-                        try { mediaPlayer.release() } catch (_: Exception) {}
+
                     }
                 }
 
@@ -410,9 +409,10 @@ class MainActivity : ComponentActivity() {
                             playerLevel = playerMasterLevel,
                             onPlayerLevelChange = { lvl ->
                                 playerMasterLevel = lvl
-                                applyGainToPlayer(currentTrackGainDb)
+                                AudioEngine.setPlayerBusLevel(lvl)
                             },
-                            djLevel = djMasterLevel,
+
+                                    djLevel = djMasterLevel,
                             onDjLevelChange = { lvl ->
                                 djMasterLevel = lvl
                                 DjEngine.setMasterVolume(lvl)
@@ -434,7 +434,13 @@ class MainActivity : ComponentActivity() {
                         )
                         return@Scaffold
                     }
+                    val ctx = LocalContext.current
 
+                    val exoPlayer = remember {
+                        AudioEngine.getPlayer(ctx) {
+                            // fin naturelle si besoin
+                        }
+                    }
                     when (selectedTab) {
 
                         is BottomTab.Home -> MixerHomePreviewScreen(
@@ -457,7 +463,7 @@ class MainActivity : ComponentActivity() {
 
                         is BottomTab.Player -> PlayerScreen(
                             modifier = contentModifier,
-                            mediaPlayer = mediaPlayer,
+                            exoPlayer = exoPlayer,
                             closeMixSignal = closeMixSignal,
                             isPlaying = isPlaying,
                             onIsPlayingChange = { shouldPlay ->
@@ -476,8 +482,11 @@ class MainActivity : ComponentActivity() {
                                     TrackVolumePrefs.saveDb(ctx, uri, safeDb)
                                 }
                                 currentTrackGainDb = safeDb
-                                applyGainToPlayer(safeDb)
+
+                                // ✅ APPLIQUER AU VRAI LECTEUR (Exo)
+                                AudioEngine.applyTrackGainDb(safeDb)
                             },
+
                             tempo = currentTrackTempo,
                             onTempoChange = { newTempo ->
                                 currentTrackTempo = newTempo

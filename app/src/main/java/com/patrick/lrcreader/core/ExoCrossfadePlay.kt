@@ -12,7 +12,6 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 
-// ✅ Pour éviter d'empiler des listeners de fin/erreur à chaque lecture
 private var lastEndListener: Player.Listener? = null
 
 @androidx.media3.common.util.UnstableApi
@@ -28,51 +27,41 @@ fun exoCrossfadePlay(
     onStart: () -> Unit,
     onError: () -> Unit,
     onNaturalEnd: () -> Unit = {},
-    fadeDurationMs: Long = 1000
+    fadeDurationMs: Long = 1000L
 ) {
-    // ⚠️ Tout est asynchrone pour pouvoir faire un fade + attendre
     CoroutineScope(Dispatchers.Main).launch {
 
-        // Si une autre demande est arrivée entre-temps → on annule proprement
         if (getCurrentToken() != playToken) return@launch
 
-        // ✅ On mémorise le volume AVANT fade (c’est lui qui doit porter le "niveau du titre")
-        var restoreVolume = exoPlayer.volume.coerceIn(0f, 1f)
-
-        // 🔥 Fade-out du titre en cours SANS pause
+        // ✅ Fade-out via AudioEngine (PAS via exoPlayer.volume)
         if (exoPlayer.isPlaying) {
             val steps = 24
-            val startVol = restoreVolume
             val stepDelay = (fadeDurationMs / steps).coerceAtLeast(1L)
-
             for (i in 1..steps) {
                 val t = i.toFloat() / steps.toFloat()
-                val curved = 1f - (t * t) // plus naturel à l’oreille
-                exoPlayer.volume = (startVol * curved).coerceIn(0f, 1f)
+                val curved = 1f - (t * t)
+                AudioEngine.setFadeMultiplier(curved)   // ✅
                 delay(stepDelay)
             }
         }
 
-        // Si une autre demande est arrivée pendant le fade → on annule
         if (getCurrentToken() != playToken) return@launch
 
-        // 1) On efface les paroles à l’écran au démarrage d’un nouveau titre
+        // reset fade pour repartir propre
+        AudioEngine.setFadeMultiplier(1f)
+
         onLyricsLoaded(null)
 
-        // 2) Reset listener paroles embedded + éviter empilement de listeners
         runCatching { embeddedLyricsListener.reset() }
         runCatching { exoPlayer.removeListener(embeddedLyricsListener) }
         exoPlayer.addListener(embeddedLyricsListener)
 
-        // 3) Listener fin/erreur (on remplace l'ancien)
         lastEndListener?.let { old -> runCatching { exoPlayer.removeListener(old) } }
 
         val endListener = object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
                 if (getCurrentToken() != playToken) return
-                if (state == Player.STATE_ENDED) {
-                    onNaturalEnd()
-                }
+                if (state == Player.STATE_ENDED) onNaturalEnd()
             }
 
             override fun onPlayerError(error: PlaybackException) {
@@ -84,22 +73,27 @@ fun exoCrossfadePlay(
         lastEndListener = endListener
         exoPlayer.addListener(endListener)
 
-        // 4) Charger le titre
         runCatching { exoPlayer.clearMediaItems() }
-        val item = MediaItem.fromUri(uriString)
-        exoPlayer.setMediaItem(item)
+        exoPlayer.setMediaItem(MediaItem.fromUri(uriString))
         exoPlayer.prepare()
 
-        // ✅ IMPORTANT : on restaure le volume d'avant (donc ton niveau du titre),
-        // au lieu de forcer 1f (sinon le gain par titre ne marche jamais).
-        exoPlayer.volume = restoreVolume
+        // ✅ IMPORTANT : après prepare, on réapplique le mix (bus × titre × fade)
+        AudioEngine.reapplyMixNow()
+
+        exoPlayer.prepare()
+
+        AudioEngine.reapplyMixNow()
+        AudioEngine.debugVolumeTag("after prepare")
 
         exoPlayer.play()
+        exoPlayer.volume = 1f
+        android.util.Log.d("BUS", "HARD SET exoPlayer.volume=1f (bypass AudioEngine)")
 
-        // 5) Démarrage OK
+
+// 5) Démarrage OK
         onStart()
 
-        // 6) Récupérer les paroles embedded quand elles arrivent (USLT)
+
         val lyrics = embeddedLyricsListener.lyrics
             .filterNotNull()
             .firstOrNull()

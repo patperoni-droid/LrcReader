@@ -1,7 +1,6 @@
 package com.patrick.lrcreader.core.audio
 
 import android.content.Context
-import android.media.audiofx.LoudnessEnhancer
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
@@ -27,115 +26,143 @@ object AudioEngine {
     // Fade-out (Stop/Pause doux)
     // -----------------------------
     private var fadeJob: Job? = null
-    private var normalVolume: Float = 1f
     private val audioScope = CoroutineScope(Dispatchers.Main.immediate)
 
     // -----------------------------
-    // Niveau du titre (gain par piste)
+    // Mix propre : TrackGain × PlayerBus × Fade
     // -----------------------------
-    private var loudnessEnhancer: LoudnessEnhancer? = null
-    private var pendingGainDb: Int? = null
+    private var trackGainLinear: Float = 1f          // gain par titre (0..1)
+    private var playerBusLevel: Float = 1f           // bus principal lecteur (0..1)
+    private var fadeMultiplier: Float = 1f           // multiplicateur temporaire de fade (0..1)
 
-    private fun ensureLoudnessEnhancerReady(player: ExoPlayer) {
-        val sessionId = player.audioSessionId
-        if (sessionId == 0) return // pas prêt
+    // Valeurs en attente si le player n'est pas prêt
+    private var pendingTrackGainDb: Int? = null
+    private var pendingPlayerBus: Float? = null
 
-        val existing = loudnessEnhancer
-        if (existing == null) {
-            loudnessEnhancer = LoudnessEnhancer(sessionId).apply { enabled = true }
+    // -----------------------------
+    // Conversions / Applis volume
+    // -----------------------------
+
+    private fun dbToLinearAttenuation(db: Int): Float {
+        // db négatif -> amplitude, ex: -6 dB ~ 0.501
+        // IMPORTANT : on ne booste jamais (>0 dB interdit ici)
+        if (db >= 0) return 1f
+        return (10f.pow(db / 20f)).coerceIn(0f, 1f)
+    }
+
+    private fun applyFinalVolume() {
+        val p = exoPlayer ?: return
+
+        val v = (trackGainLinear * playerBusLevel * fadeMultiplier)
+            .coerceIn(0f, 1f)
+
+        p.volume = v
+
+        android.util.Log.d(
+            "BUS",
+            "applyFinalVolume exo.volume=$v track=$trackGainLinear bus=$playerBusLevel fade=$fadeMultiplier"
+        )
+    }
+
+    /** 🔁 À appeler quand Exo remet le volume à sa sauce (prepare / setMediaItem / etc.) */
+    fun reapplyMixNow() {
+        applyFinalVolume()
+    }
+    fun debugVolumeTag(tag: String) {
+        val p = exoPlayer ?: return
+        android.util.Log.d("BUS", "$tag exo.volume=${p.volume} track=$trackGainLinear bus=$playerBusLevel fade=$fadeMultiplier")
+    }
+
+    // ✅ Pour le crossfade : on fade via le mix, pas en écrivant exoPlayer.volume ailleurs
+    fun setFadeMultiplier(value: Float) {
+        fadeMultiplier = value.coerceIn(0f, 1f)
+        applyFinalVolume()
+    }
+    // -----------------------------
+    // BUS PRINCIPAL LECTEUR
+    // -----------------------------
+
+    /**
+     * 🎚️ Bus principal du lecteur (0..1).
+     * À appeler depuis GlobalMixScreen (slider "Player").
+     */
+    fun setPlayerBusLevel(level: Float) {
+        val safe = level.coerceIn(0f, 1f)
+
+        if (exoPlayer == null) {
+            pendingPlayerBus = safe
+            android.util.Log.d("BUS", "setPlayerBusLevel PENDING=$safe (exoPlayer=null)")
+            return
         }
+
+        playerBusLevel = safe
+        android.util.Log.d("BUS", "setPlayerBusLevel ACTIVE=$safe (exoPlayer!=null)")
+
+        applyFinalVolume()
     }
 
-    private fun dbToLinear(db: Int): Float {
-        // db -> amplitude, ex: -6 dB ~ 0.501
-        return (10.0.pow(db / 20.0)).toFloat()
-    }
+    // -----------------------------
+    // NIVEAU DU TITRE (gain par piste)
+    // -----------------------------
 
     /**
      * ✅ À appeler quand tu changes le slider "Niveau du titre"
-     * - db < 0 : baisse via exoPlayer.volume
-     * - db > 0 : boost via LoudnessEnhancer (ExoPlayer.volume ne peut pas amplifier > 1f)
+     * Règle MUSICIENNE :
+     * - on autorise uniquement [-12 dB .. 0 dB]
+     * - aucun boost, donc pas de saturation/compression dégueu
      */
     fun applyTrackGainDb(gainDb: Int) {
-        val player = exoPlayer ?: run {
-            pendingGainDb = gainDb
+        val p = exoPlayer
+        val safeDb = gainDb.coerceIn(-12, 0)
+
+        if (p == null) {
+            pendingTrackGainDb = safeDb
             return
         }
 
-        // audioSessionId pas prêt => on garde en attente
-        if (player.audioSessionId == 0) {
-            pendingGainDb = gainDb
-            return
-        }
+        trackGainLinear = dbToLinearAttenuation(safeDb)
+        applyFinalVolume()
 
-        ensureLoudnessEnhancerReady(player)
-
-        // ✅ Réglages de sécurité
-        val minDb = -12
-        val maxDb = 12
-        val safeDb = gainDb.coerceIn(minDb, maxDb)
-
-        // ✅ Headroom anti-clipping :
-        // Quand on boost, on baisse le volume Exo avant (marge),
-        // puis on remonte avec LoudnessEnhancer.
-        // Net = gain demandé, mais avec de l'air pour éviter la saturation immédiate.
-        val headroomDb = 6 // si tu veux encore plus "anti-saturation", mets 9
-
-        if (safeDb <= 0) {
-            // Atténuation simple
-            runCatching { loudnessEnhancer?.setTargetGain(0) }
-            val v = dbToLinear(safeDb).coerceIn(0f, 1f)
-            player.volume = v
-            normalVolume = v
-        } else {
-            // Boost avec marge
-            val preAtten = -headroomDb
-            val v = dbToLinear(preAtten).coerceIn(0f, 1f)
-            player.volume = v
-            normalVolume = v
-
-            val enhancerMb = ((safeDb + headroomDb) * 1000).coerceIn(0, 24000) // 24 dB max côté enhancer
-            runCatching { loudnessEnhancer?.setTargetGain(enhancerMb) }
-        }
-
-        pendingGainDb = null
+        pendingTrackGainDb = null
     }
 
-
+    // -----------------------------
+    // FADE OUT (propre, sans casser le mix)
+    // -----------------------------
 
     private fun exoFadeOutThen(
-        durationMs: Long = 250L,
+        durationMs: Long = 600L,
         endAction: (ExoPlayer) -> Unit
     ) {
         val p = exoPlayer ?: return
 
         fadeJob?.cancel()
         fadeJob = audioScope.launch {
-            val steps = 12
-            val start = p.volume.coerceIn(0f, 1f)
-            if (start > 0f) normalVolume = start
-
+            val steps = 24
+            val startFade = fadeMultiplier.coerceIn(0f, 1f)
             val stepDelay = (durationMs / steps).coerceAtLeast(1L)
+
+            // Descente progressive du multiplicateur de fade
             for (i in 1..steps) {
                 val t = i.toFloat() / steps.toFloat()
-                val v = (start * (1f - t)).coerceIn(0f, 1f)
-                p.volume = v
+                fadeMultiplier = (startFade * (1f - t)).coerceIn(0f, 1f)
+                applyFinalVolume()
                 delay(stepDelay)
             }
 
             endAction(p)
 
-            // Restore volume for next play (et donc pour le niveau du titre)
-            p.volume = normalVolume
+            // Restore fade pour la lecture suivante
+            fadeMultiplier = 1f
+            applyFinalVolume()
         }
     }
 
     /**
      * ✅ PAUSE DOUX (fade-out)
-     * IMPORTANT: j’ai volontairement gardé le nom "pause()"
-     * pour que ton UI existant continue de marcher sans modification.
+     * IMPORTANT: nom conservé pour que ton UI ne change pas.
      */
-    fun pause(durationMs: Long = 250L) {
+    fun pause(durationMs: Long = 600L) {
         exoFadeOutThen(durationMs) { player ->
             player.pause()
         }
@@ -143,10 +170,9 @@ object AudioEngine {
 
     /**
      * ✅ STOP DOUX (fade-out -> pause -> retour au début)
-     * IMPORTANT: j’ai volontairement gardé le nom "stop()"
-     * pour que ton UI existant continue de marcher sans modification.
+     * IMPORTANT: nom conservé pour que ton UI ne change pas.
      */
-    fun stop(durationMs: Long = 250L) {
+    fun stop(durationMs: Long = 600L) {
         exoFadeOutThen(durationMs) { player ->
             player.pause()
             player.seekTo(0)
@@ -154,13 +180,19 @@ object AudioEngine {
     }
 
     /**
-     * Si tu veux un stop "sec" (debug / cas spécial)
+     * Stop "sec" (debug / cas spécial)
      */
     fun stopImmediate() {
         fadeJob?.cancel()
+        fadeMultiplier = 1f
         exoPlayer?.pause()
         exoPlayer?.seekTo(0)
+        applyFinalVolume()
     }
+
+    // -----------------------------
+    // EXOPLAYER (singleton)
+    // -----------------------------
 
     fun getPlayer(context: Context, onNaturalEnd: () -> Unit): ExoPlayer {
         val appCtx = context.applicationContext
@@ -173,10 +205,15 @@ object AudioEngine {
             player.addListener(l)
             embeddedLyricsListener = l
             exoPlayer = player
-
-            // ✅ Applique un gain en attente dès que possible
-            pendingGainDb?.let { applyTrackGainDb(it) }
         }
+
+        // Appliquer les valeurs en attente (gain/ bus) + volume final
+        pendingPlayerBus?.let { playerBusLevel = it.coerceIn(0f, 1f) }
+        pendingTrackGainDb?.let { trackGainLinear = dbToLinearAttenuation(it.coerceIn(-12, 0)) }
+        fadeMultiplier = 1f
+        applyFinalVolume()
+
+
 
         // Ajout du listener de fin UNE SEULE FOIS
         if (!endedListenerAdded) {
@@ -184,7 +221,6 @@ object AudioEngine {
             p.addListener(object : Player.Listener {
                 override fun onPlaybackStateChanged(state: Int) {
                     if (state == Player.STATE_ENDED) {
-                        // callback actuel (toujours à jour)
                         onNaturalEndCallback?.invoke()
                         FillerSoundManager.startIfConfigured(appCtx)
                     }
@@ -204,9 +240,8 @@ object AudioEngine {
         fadeJob?.cancel()
         fadeJob = null
 
-        runCatching { loudnessEnhancer?.release() }
-        loudnessEnhancer = null
-        pendingGainDb = null
+        pendingTrackGainDb = null
+        pendingPlayerBus = null
 
         exoPlayer?.release()
         exoPlayer = null
