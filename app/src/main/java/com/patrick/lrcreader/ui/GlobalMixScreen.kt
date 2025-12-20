@@ -58,6 +58,9 @@ fun GlobalMixScreen(
     var uiDjVolume by remember {
         mutableStateOf(realToUiVolume(djLevel))
     }
+    LaunchedEffect(djLevel) {
+        uiDjVolume = realToUiVolume(djLevel)
+    }
     // ---------- LECTEUR : on suppose que playerLevel est le volume RÉEL (0..1) ----------
     var uiPlayerVolume by remember {
         mutableStateOf(realToUiVolume(playerLevel))
