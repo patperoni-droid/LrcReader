@@ -1,7 +1,7 @@
 @file:OptIn(androidx.media3.common.util.UnstableApi::class)
 
 package com.patrick.lrcreader.ui
-
+import com.patrick.lrcreader.core.PlayerBusController
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.scrollBy
@@ -70,6 +70,10 @@ fun PlayerScreen(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val density = LocalDensity.current
+    // 🔊 Brancher ExoPlayer au bus principal (fader LECTEUR)
+    LaunchedEffect(exoPlayer) {
+        PlayerBusController.attachPlayer(context, exoPlayer)
+    }
 
     // 🔊 bus LECTEUR (réapplique le mix sur Exo)
     LaunchedEffect(Unit) {

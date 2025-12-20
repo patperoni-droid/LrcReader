@@ -16,6 +16,7 @@ import com.patrick.lrcreader.ui.theme.DarkBlueGradientBackground
 import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.core.FillerSoundPrefs
 import kotlin.math.cbrt
+import com.patrick.lrcreader.core.PlayerBusController
 
 /**
  * Écran de mixage global :
@@ -56,6 +57,13 @@ fun GlobalMixScreen(
     // ---------- DJ : on suppose que djLevel est le volume RéEL (0..1) ----------
     var uiDjVolume by remember {
         mutableStateOf(realToUiVolume(djLevel))
+    }
+    // ---------- LECTEUR : on suppose que playerLevel est le volume RÉEL (0..1) ----------
+    var uiPlayerVolume by remember {
+        mutableStateOf(realToUiVolume(playerLevel))
+    }
+    LaunchedEffect(playerLevel) {
+        uiPlayerVolume = realToUiVolume(playerLevel)
     }
 
     val cardColor = Color(0xFF141414)
@@ -101,13 +109,15 @@ fun GlobalMixScreen(
                 MixFader(
                     title = "Lecteur (playback)",
                     subtitle = "Paroles + playback principal",
-                    value = playerLevel,
+                    value = uiPlayerVolume,
                     onValueChange = { v ->
-                        val safe = v.coerceIn(0f, 1f)
-                        android.util.Log.d("BUS", "UI slider Lecteur = $safe")
-                        onPlayerLevelChange(safe)
-                    }
+                        val ui = v.coerceIn(0f, 1f)
+                        uiPlayerVolume = ui
 
+                        val real = uiToRealVolume(ui) // ✅ courbe douce (cubique)
+                        android.util.Log.d("BUS", "UI Lecteur=$ui -> REAL Lecteur=$real")
+                        onPlayerLevelChange(real) // ✅ le parent doit appliquer à AudioEngine.setPlayerBusLevel(real)
+                    }
                 )
 
                 // --- FADER DJ (lié au niveau DJ global) ---

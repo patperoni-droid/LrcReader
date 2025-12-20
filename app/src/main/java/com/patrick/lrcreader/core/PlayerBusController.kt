@@ -1,59 +1,41 @@
+@file:OptIn(androidx.media3.common.util.UnstableApi::class)
+
 package com.patrick.lrcreader.core
 
 import android.content.Context
-import android.media.MediaPlayer
+import androidx.media3.exoplayer.ExoPlayer
+import com.patrick.lrcreader.core.audio.AudioEngine
 
-/**
- * Bus de volume pour le LECTEUR principal.
- *
- * - stocke un MediaPlayer courant
- * - applique le niveau issu de PlayerVolumePrefs
- * - permet au BUS PRINCIPAL (fader LECTEUR) de rester synchro.
- */
 object PlayerBusController {
 
-    // MediaPlayer actuellement utilisé par PlayerScreen
-    private var currentPlayer: MediaPlayer? = null
+    private var currentPlayer: ExoPlayer? = null
 
-    /**
-     * Appelé depuis PlayerScreen au démarrage de l'écran.
-     * On garde une référence au player et on lui applique le volume courant.
-     */
-    fun attachPlayer(context: Context, player: MediaPlayer) {
+    fun attachPlayer(context: Context, player: ExoPlayer) {
         currentPlayer = player
         applyCurrentVolume(context)
     }
 
-    /**
-     * Applique le volume mémorisé (0f..1f) au MediaPlayer courant.
-     * Utilisé quand on (re)lance la lecture.
-     */
     fun applyCurrentVolume(context: Context) {
         val uiLevel = PlayerVolumePrefs.load(context).coerceIn(0f, 1f)
-        val real = uiLevel            // si tu veux une courbe plus tard, tu modifies ici
-        try {
-            currentPlayer?.setVolume(real, real)
-        } catch (_: Exception) {
-            // on ne fait pas planter si le player n'est plus valide
-        }
+
+        // Chef du mix
+        AudioEngine.setPlayerBusLevel(uiLevel)
+        AudioEngine.reapplyMixNow()
+
+        // Sécurité
+        runCatching { currentPlayer?.volume = uiLevel }
     }
 
-    /**
-     * Appelé depuis le BUS PRINCIPAL quand tu bouges le fader LECTEUR.
-     * Mets à jour les prefs + le MediaPlayer s'il est attaché.
-     */
     fun setUiLevelFromBusUi(context: Context, uiLevel: Float) {
         val clamped = uiLevel.coerceIn(0f, 1f)
         PlayerVolumePrefs.save(context, clamped)
-        val real = clamped
-        try {
-            currentPlayer?.setVolume(real, real)
-        } catch (_: Exception) {
-            // sécurité
-        }
+
+        AudioEngine.setPlayerBusLevel(clamped)
+        AudioEngine.reapplyMixNow()
+
+        runCatching { currentPlayer?.volume = clamped }
     }
 
-    // 🔁 Alias pour compatibilité si d’anciens écrans appellent setUiLevel(...)
     fun setUiLevel(context: Context, uiLevel: Float) {
         setUiLevelFromBusUi(context, uiLevel)
     }
