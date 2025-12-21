@@ -5,7 +5,11 @@ import android.media.MediaPlayer
 import android.net.Uri
 import android.widget.Toast
 import androidx.documentfile.provider.DocumentFile
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.random.Random
 
 /**
@@ -14,6 +18,15 @@ import kotlin.random.Random
  * - si dossier → démarre sur une piste aléatoire
  * - enchaîne avec crossfade quand un titre se termine tout seul
  * - se désactive automatiquement si un titre principal joue
+ *
+ * ✅ Optimisation :
+ * - Si un dossier est configuré, on essaye d’abord de construire la playlist
+ *   depuis l’index JSON de la Bibliothèque (LibraryIndexCache) → instantané.
+ * - Fallback sur DocumentFile si l’index n’existe pas / ne contient pas ce sous-arbre.
+ *
+ * ✅ IMPORTANT (pour éviter les demandes d'autorisations répétées) :
+ * - On NE reconstruit PAS des Uri avec DocumentsContract.
+ * - On réutilise les Uri EXACTES qui viennent de l’index Bibliothèque.
  */
 object FillerSoundManager {
 
@@ -29,7 +42,7 @@ object FillerSoundManager {
     // on mémorise le dossier pour lequel la playlist a été construite
     private var currentFolderUri: Uri? = null
 
-    // 👇 NOUVEAU : indique que le prochain démarrage auto doit avancer d'un morceau
+    // indique que le prochain démarrage auto doit avancer d'un morceau
     private var advanceOnNextStart: Boolean = false
 
     private const val DEFAULT_VOLUME = 0.25f
@@ -47,14 +60,13 @@ object FillerSoundManager {
 
     /** Démarre le fond sonore automatiquement (fin de morceau, etc.) */
     fun startIfConfigured(context: Context) {
-        // ⚠️ ne rien faire si le mode filler est désactivé
+        // ne rien faire si le mode filler est désactivé
         if (!FillerSoundPrefs.isEnabled(context)) {
             fadeOutAndStop(0)
             return
         }
 
-        // ⚠️ sécurité anti-conflit : ne pas lancer automatiquement
-        // si un titre principal (lecteur ou DJ) est en cours
+        // sécurité anti-conflit : ne pas lancer automatiquement si un titre principal joue
         if (PlaybackCoordinator.isMainPlaying) {
             fadeOutAndStop(0)
             return
@@ -69,7 +81,6 @@ object FillerSoundManager {
      */
     fun startFromUi(context: Context) {
         if (!FillerSoundPrefs.isEnabled(context)) {
-            // au cas où, on rallume le filler dans les prefs
             FillerSoundPrefs.setEnabled(context, true)
         }
         internalStart(context)
@@ -77,6 +88,7 @@ object FillerSoundManager {
 
     /** Implémentation commune du démarrage (dossier ou fichier) */
     private fun internalStart(context: Context) {
+        android.util.Log.e("FILLER_DBG", "internalStart() CALLED")
         // volume utilisateur (0..1)
         currentVolume = FillerSoundPrefs.getFillerVolume(context)
 
@@ -84,8 +96,8 @@ object FillerSoundManager {
         val folderUri = FillerSoundPrefs.getFillerFolder(context)
         if (folderUri != null) {
 
-            // 🔹 Si on joue déjà ce dossier → on réutilise la playlist existante
-            val list: List<Uri> = if (
+            // si on joue déjà ce dossier → réutiliser la playlist existante
+            val built: List<Uri> = if (
                 folderPlaylist.isNotEmpty() &&
                 currentFolderUri != null &&
                 currentFolderUri == folderUri
@@ -93,34 +105,28 @@ object FillerSoundManager {
                 folderPlaylist
             } else {
                 // sinon on rebâtit la playlist une seule fois
-                val built = buildPlaylistFromFolder(context, folderUri)
-                if (built.isEmpty()) {
+                val fresh = buildPlaylistFromFolderOptimized(context, folderUri)
+                if (fresh.isEmpty()) {
                     FillerSoundPrefs.clear(context)
                     advanceOnNextStart = false
-                    Toast.makeText(
-                        context,
-                        "Dossier vide ou inaccessible",
-                        Toast.LENGTH_SHORT
-                    ).show()
+                    Toast.makeText(context, "Dossier vide ou inaccessible", Toast.LENGTH_SHORT).show()
                     return
                 }
-                folderPlaylist = built
+                folderPlaylist = fresh
                 currentFolderUri = folderUri
-                // on choisit un index de départ
-                folderIndex = if (built.size == 1) 0 else Random.nextInt(built.size)
-                built
+                folderIndex = if (fresh.size == 1) 0 else Random.nextInt(fresh.size)
+                fresh
             }
 
-            // 👇 si le démarrage vient du Player (pause), on avance d’un morceau
-            if (folderPlaylist.isNotEmpty() && advanceOnNextStart) {
-                if (folderPlaylist.size > 1) {
-                    folderIndex = (folderIndex + 1) % folderPlaylist.size
+            // si le démarrage vient du Player (pause), on avance d’un morceau
+            if (built.isNotEmpty() && advanceOnNextStart) {
+                if (built.size > 1) {
+                    folderIndex = (folderIndex + 1) % built.size
                 }
                 advanceOnNextStart = false
             }
 
             try {
-                // démarre directement à l’index courant
                 startFromFolderIndex(context, folderIndex)
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -139,7 +145,6 @@ object FillerSoundManager {
             FillerSoundPrefs.clear(context)
             Toast.makeText(context, "Impossible de lire le fond sonore.", Toast.LENGTH_SHORT).show()
         } finally {
-            // quoi qu’il arrive on réinitialise le flag
             advanceOnNextStart = false
         }
     }
@@ -150,49 +155,32 @@ object FillerSoundManager {
         else startIfConfigured(context)
     }
 
-    /**
-     * Bouton "suivant" (manuel) :
-     * - coupe le morceau en cours
-     * - lance le suivant SANS crossfade
-     * Le crossfade reste réservé au changement automatique en fin de titre.
-     */
+    /** bouton suivant (manuel, sans crossfade) */
     fun next(context: Context) {
         if (folderPlaylist.isEmpty()) {
-            // pas encore de playlist → on démarre normalement
             startIfConfigured(context)
             return
         }
-
         if (folderPlaylist.size == 1) {
-            // un seul titre → on le relance simplement
-            try {
-                startFromFolderIndex(context, folderIndex)
-            } catch (_: Exception) {}
+            try { startFromFolderIndex(context, folderIndex) } catch (_: Exception) {}
             return
         }
-
         folderIndex = (folderIndex + 1) % folderPlaylist.size
-        try {
-            startFromFolderIndex(context, folderIndex)   // remplace directement le player
-        } catch (_: Exception) {}
+        try { startFromFolderIndex(context, folderIndex) } catch (_: Exception) {}
     }
 
-    /** Bouton "précédent" (manuel, sans crossfade) */
+    /** bouton précédent (manuel, sans crossfade) */
     fun previous(context: Context) {
         if (folderPlaylist.isEmpty()) {
             startIfConfigured(context)
             return
         }
         if (folderPlaylist.size == 1) {
-            try {
-                startFromFolderIndex(context, folderIndex)
-            } catch (_: Exception) {}
+            try { startFromFolderIndex(context, folderIndex) } catch (_: Exception) {}
             return
         }
         folderIndex = (folderIndex - 1 + folderPlaylist.size) % folderPlaylist.size
-        try {
-            startFromFolderIndex(context, folderIndex)
-        } catch (_: Exception) {}
+        try { startFromFolderIndex(context, folderIndex) } catch (_: Exception) {}
     }
 
     fun isPlaying(): Boolean = player?.isPlaying == true
@@ -205,7 +193,6 @@ object FillerSoundManager {
         mp.setDataSource(context, uri)
         mp.isLooping = true
 
-        // ⚠️ asynchrone pour ne pas bloquer l’UI
         mp.setOnPreparedListener { prepared ->
             prepared.setVolume(currentVolume, currentVolume)
             prepared.start()
@@ -217,22 +204,56 @@ object FillerSoundManager {
         currentFolderUri = null
     }
 
-    // ───────────── dossier ─────────────
-    private fun buildPlaylistFromFolder(context: Context, folderUri: Uri): List<Uri> {
-        val doc = DocumentFile.fromTreeUri(context, folderUri) ?: return emptyList()
-        return doc.listFiles()
-            .filter { it.isFile }
-            .filter { f ->
-                val name = f.name ?: return@filter false
-                name.endsWith(".mp3", true) || name.endsWith(".wav", true)
+    // ───────────── dossier (index bibliothèque + fallback) ─────────────
+
+    private fun isAudioName(name: String): Boolean {
+        return name.endsWith(".mp3", true) || name.endsWith(".wav", true)
+    }
+
+    /**
+     * ✅ 1) Essaye l’index Bibliothèque (instantané) en réutilisant les Uri EXACTES du cache
+     * ✅ 2) Fallback DocumentFile si nécessaire
+     */
+    private fun buildPlaylistFromFolderOptimized(
+        context: Context,
+        folderUri: Uri
+    ): List<Uri> {
+        val all = LibraryIndexCache.load(context) ?: return emptyList()
+
+        val rootKey = folderUri.toString()
+
+        // parent -> enfants
+        val childrenByParent: Map<String?, List<LibraryIndexCache.CachedEntry>> =
+            all.groupBy { it.parentUriString }
+
+        val queue = ArrayDeque<String>()
+        queue.addLast(rootKey)
+
+        val out = ArrayList<Pair<String, Uri>>(256)
+
+        while (queue.isNotEmpty()) {
+            val parentKey = queue.removeFirst()
+            val kids = childrenByParent[parentKey].orEmpty()
+
+            for (e in kids) {
+                if (e.isDirectory) {
+                    queue.addLast(e.uriString)
+                } else {
+                    val name = e.name
+                    if (name.isNotBlank() && isAudioName(name)) {
+                        out.add(name to Uri.parse(e.uriString))
+                    }
+                }
             }
-            .sortedBy { it.name ?: "" }
-            .map { it.uri }
+        }
+
+        // tri stable
+        return out.sortedBy { it.first.lowercase() }.map { it.second }
     }
 
     /**
      * Lance directement l’index demandé.
-     * Coupera l’ancien player et garde le crossfade uniquement pour l’auto‐suivant.
+     * Coupe l’ancien player. Crossfade réservé à l’auto-suivant.
      */
     private fun startFromFolderIndex(context: Context, index: Int) {
         if (folderPlaylist.isEmpty()) return
@@ -243,9 +264,8 @@ object FillerSoundManager {
         val mp = MediaPlayer()
         mp.setDataSource(context, uri)
         mp.isLooping = false
-        mp.setOnCompletionListener { playNextInFolder(context) } // auto suivant = crossfade
+        mp.setOnCompletionListener { playNextInFolder(context) }
 
-        // ⚠️ asynchrone pour ne pas bloquer l’UI au lancement manuel
         mp.setOnPreparedListener { prepared ->
             prepared.setVolume(currentVolume, currentVolume)
             prepared.start()
@@ -257,8 +277,7 @@ object FillerSoundManager {
     }
 
     /**
-     * Utilisé uniquement par onCompletion (passage auto au morceau suivant)
-     * → CROSSFADE entre l’ancien et le nouveau.
+     * Auto-suivant : CROSSFADE entre l’ancien et le nouveau.
      */
     private fun playNextInFolder(context: Context) {
         if (folderPlaylist.isEmpty()) { stopNow(); return }
@@ -272,7 +291,6 @@ object FillerSoundManager {
             val newPlayer = MediaPlayer()
             newPlayer.setDataSource(context, nextUri)
             newPlayer.isLooping = false
-            // ici on peut rester en prepare() sync : ça se déclenche en fin de morceau
             newPlayer.prepare()
             newPlayer.setVolume(0f, 0f)
             newPlayer.start()

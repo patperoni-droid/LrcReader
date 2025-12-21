@@ -1,11 +1,8 @@
 package com.patrick.lrcreader.ui
 
 import android.content.Context
-import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -52,9 +49,11 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.patrick.lrcreader.core.BackupFolderPrefs
 import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.core.FillerSoundPrefs
-import kotlin.math.cbrt
+import com.patrick.lrcreader.core.LibraryIndexCache
+import kotlin.math.pow
 
 @Composable
 fun FillerSoundScreen(
@@ -75,10 +74,22 @@ fun FillerSoundScreen(
     val card = Color(0xFF1B1B1B)
     val accent = Color(0xFFFFC107)
 
+    // ✅ Racine Music persistée par Bibliothèque
+    val libraryRoot = remember { BackupFolderPrefs.get(context) }
+
     var isEnabled by remember { mutableStateOf(FillerSoundPrefs.isEnabled(context)) }
     var fillerUri by remember { mutableStateOf(FillerSoundPrefs.getFillerFolder(context)) }
     var fillerName by remember {
         mutableStateOf(fillerUri?.lastPathSegment ?: "Aucun son sélectionné")
+    }
+
+    // ✅ Au premier affichage : si aucun dossier filler n’est défini, on prend Music de la Bibliothèque
+    LaunchedEffect(Unit) {
+        if (fillerUri == null && libraryRoot != null) {
+            FillerSoundPrefs.saveFillerFolder(context, libraryRoot)
+            fillerUri = libraryRoot
+            fillerName = libraryRoot.lastPathSegment ?: "Music"
+        }
     }
 
     // mapping courbe : curseur “doux” en bas
@@ -89,7 +100,7 @@ fun FillerSoundScreen(
 
     fun realToUiVolume(r: Float): Float {
         val clamped = r.coerceIn(0f, 1f)
-        return cbrt(clamped.toDouble()).toFloat() // racine cubique
+        return clamped.toDouble().pow(1.0 / 3.0).toFloat() // racine cubique
     }
 
     val initialReal = FillerSoundPrefs.getFillerVolume(context)
@@ -107,14 +118,23 @@ fun FillerSoundScreen(
         }
     }
 
+    // ✅ Option : si slots vides, on met Music pour tester vite
+    LaunchedEffect(libraryRoot) {
+        if (libraryRoot != null) {
+            slots.forEachIndexed { idx, slot ->
+                if (slot.folderUri == null) {
+                    slots[idx] = slot.copy(folderUri = libraryRoot)
+                    AmbiancePrefs.saveSlot(context, slots[idx])
+                }
+            }
+        }
+    }
+
     // ambiance en cours de lecture (pour colorer en accent)
     var activeIndex by remember { mutableStateOf<Int?>(null) }
 
     // ambiance sélectionnée (pilotée par les gros boutons)
     var selectedIndex by remember { mutableStateOf<Int?>(null) }
-
-    // index du slot pour lequel on choisit un dossier
-    var pendingSlotIndex by remember { mutableStateOf<Int?>(null) }
 
     // état de lecture pour le gros bouton Play/Pause
     var isPlaying by remember { mutableStateOf(false) }
@@ -124,40 +144,9 @@ fun FillerSoundScreen(
     var shouldStart by remember { mutableStateOf(false) }
     var startTargetIndex by remember { mutableStateOf<Int?>(null) }
 
-    // Sélecteur de dossier pour un SLOT d’ambiance
-    val slotFolderLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocumentTree()
-    ) { uri ->
-        val index = pendingSlotIndex
-        if (uri != null && index != null && index in slots.indices) {
-            try {
-                context.contentResolver.takePersistableUriPermission(
-                    uri,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-                )
-            } catch (_: Exception) {
-            }
-
-            val newSlot = slots[index].copy(folderUri = uri)
-            slots[index] = newSlot
-            AmbiancePrefs.saveSlot(context, newSlot)
-
-            // on met aussi ce dossier comme "global" (affichage)
-            FillerSoundPrefs.saveFillerFolder(context, uri)
-            fillerUri = uri
-            fillerName = uri.lastPathSegment ?: newSlot.name
-
-            Toast.makeText(
-                context,
-                "Dossier associé à \"${newSlot.name}\"",
-                Toast.LENGTH_SHORT
-            ).show()
-
-            // auto-sélection du slot quand on revient
-            selectedIndex = index
-        }
-        pendingSlotIndex = null
-    }
+    // ───────────── Sélection dossier (explorateur) ─────────────
+    var showFolderPicker by remember { mutableStateOf(false) }
+    var folderPickSlotIndex by remember { mutableStateOf<Int?>(null) }
 
     // Dialog de renommage
     var slotToRenameIndex by remember { mutableStateOf<Int?>(null) }
@@ -178,12 +167,6 @@ fun FillerSoundScreen(
             )
             .verticalScroll(rememberScrollState())
     ) {
-        // HEADER (sans bouton Retour)
-
-
-        Spacer(Modifier.height(10.dp))
-
-
         Spacer(Modifier.height(10.dp))
 
         // ───────── CARTE PRINCIPALE (réglages + gros boutons) ─────────
@@ -200,9 +183,7 @@ fun FillerSoundScreen(
                         .fillMaxWidth()
                         .padding(bottom = 10.dp),
                     shape = RoundedCornerShape(10.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = Color.Transparent
-                    ),
+                    colors = CardDefaults.cardColors(containerColor = Color.Transparent),
                     elevation = CardDefaults.cardElevation(0.dp)
                 ) {
                     Column(
@@ -226,7 +207,6 @@ fun FillerSoundScreen(
                             fontSize = 13.sp,
                             letterSpacing = 2.sp
                         )
-
                     }
                 }
 
@@ -242,7 +222,6 @@ fun FillerSoundScreen(
                             color = onBg,
                             fontSize = 14.sp
                         )
-
                     }
                     Switch(
                         checked = isEnabled,
@@ -323,13 +302,10 @@ fun FillerSoundScreen(
                             val slot = currentSelectedSlot!!
                             FillerSoundPrefs.saveFillerFolder(context, slot.folderUri!!)
                             fillerUri = slot.folderUri
-                            fillerName =
-                                slot.folderUri.lastPathSegment ?: slot.name
+                            fillerName = slot.folderUri!!.lastPathSegment ?: slot.name
 
                             FillerSoundManager.previous(context)
-                            FillerSoundManager.setVolume(
-                                uiToRealVolume(uiFillerVolume)
-                            )
+                            FillerSoundManager.setVolume(uiToRealVolume(uiFillerVolume))
                             activeIndex = selectedIndex
                             isPlaying = true
                             isStarting = false
@@ -337,13 +313,13 @@ fun FillerSoundScreen(
                             startTargetIndex = null
                         },
                         enabled = canControlSelected,
-                        modifier = Modifier.size(72.dp)  // GROS bouton
+                        modifier = Modifier.size(72.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Filled.SkipPrevious,
                             contentDescription = "Précédent",
                             tint = if (canControlSelected) onBg else sub,
-                            modifier = Modifier.size(40.dp) // Grosse icône
+                            modifier = Modifier.size(40.dp)
                         )
                     }
 
@@ -358,24 +334,21 @@ fun FillerSoundScreen(
                             // on mémorise le dossier choisi dans les prefs
                             FillerSoundPrefs.saveFillerFolder(context, slot.folderUri!!)
                             fillerUri = slot.folderUri
-                            fillerName = slot.folderUri.lastPathSegment ?: slot.name
+                            fillerName = slot.folderUri!!.lastPathSegment ?: slot.name
 
                             if (!isEnabled) {
                                 isEnabled = true
                                 FillerSoundPrefs.setEnabled(context, true)
                             }
 
-                            // Est-ce que C’EST cette ambiance-là qui joue actuellement ?
                             val isPlayingThis =
                                 FillerSoundManager.isPlaying() && activeIndex == targetIndex
 
                             if (!isPlayingThis) {
-                                // ➜ DÉMARRER
                                 isStarting = true
                                 startTargetIndex = targetIndex
                                 shouldStart = true
                             } else {
-                                // ➜ STOPPER
                                 FillerSoundManager.fadeOutAndStop(200)
                                 isPlaying = false
                                 isStarting = false
@@ -387,13 +360,11 @@ fun FillerSoundScreen(
                         enabled = canControlSelected,
                         modifier = Modifier
                             .padding(horizontal = 8.dp)
-                            .size(80.dp) // Play encore plus gros
+                            .size(80.dp)
                     ) {
                         Icon(
                             imageVector = if (FillerSoundManager.isPlaying() && activeIndex == selectedIndex)
-                                Icons.Filled.Pause
-                            else
-                                Icons.Filled.PlayArrow,
+                                Icons.Filled.Pause else Icons.Filled.PlayArrow,
                             contentDescription = "Play / Pause",
                             tint = if (canControlSelected) accent else sub,
                             modifier = Modifier.size(46.dp)
@@ -407,13 +378,10 @@ fun FillerSoundScreen(
                             val slot = currentSelectedSlot!!
                             FillerSoundPrefs.saveFillerFolder(context, slot.folderUri!!)
                             fillerUri = slot.folderUri
-                            fillerName =
-                                slot.folderUri.lastPathSegment ?: slot.name
+                            fillerName = slot.folderUri!!.lastPathSegment ?: slot.name
 
                             FillerSoundManager.next(context)
-                            FillerSoundManager.setVolume(
-                                uiToRealVolume(uiFillerVolume)
-                            )
+                            FillerSoundManager.setVolume(uiToRealVolume(uiFillerVolume))
                             activeIndex = selectedIndex
                             isPlaying = true
                             isStarting = false
@@ -431,6 +399,16 @@ fun FillerSoundScreen(
                         )
                     }
                 }
+
+                // ✅ Petit rappel si la bibliothèque n’est pas configurée
+                if (libraryRoot == null) {
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        "⚠️ Va dans Bibliothèque → “Choisir dossier Music” (1 fois).",
+                        color = sub,
+                        fontSize = 12.sp
+                    )
+                }
             }
         }
 
@@ -444,9 +422,6 @@ fun FillerSoundScreen(
             color = onBg,
             fontSize = 13.sp
         )
-        Spacer(Modifier.height(2.dp))
-
-
         Spacer(Modifier.height(4.dp))
 
         slots.forEachIndexed { index, slot ->
@@ -469,12 +444,11 @@ fun FillerSoundScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Bloc gauche : icône dossier + nom
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.weight(1f)
                 ) {
-                    // 📁 icône cliquable pour choisir le dossier
+                    // 📁 : ouvre notre picker explorateur
                     Text(
                         text = "📁",
                         fontSize = 12.sp,
@@ -482,12 +456,11 @@ fun FillerSoundScreen(
                         modifier = Modifier
                             .padding(end = 4.dp)
                             .clickable {
-                                pendingSlotIndex = index
-                                slotFolderLauncher.launch(null)
+                                folderPickSlotIndex = index
+                                showFolderPicker = true
                             }
                     )
 
-                    // Nom ambiance : clic = sélection pour les gros boutons
                     Text(
                         text = slot.name,
                         fontSize = 11.sp,
@@ -496,27 +469,156 @@ fun FillerSoundScreen(
                             isSelected -> Color(0xFFB388FF)
                             else -> onBg
                         },
-                        modifier = Modifier.clickable {
-                            selectedIndex = index
-                        }
+                        modifier = Modifier.clickable { selectedIndex = index }
                     )
                 }
 
-                // Bloc droit : ✎ rename
                 Text(
                     text = "✎",
                     fontSize = 11.sp,
                     color = accent,
-                    modifier = Modifier
-                        .clickable {
-                            slotToRenameIndex = index
-                            renameText = slot.name
-                        }
+                    modifier = Modifier.clickable {
+                        slotToRenameIndex = index
+                        renameText = slot.name
+                    }
                 )
             }
         }
 
         Spacer(Modifier.height(8.dp))
+    }
+
+    // ───────────────────────────────────────────────
+    //  PICKER DOSSIER (explorateur depuis index Bibliothèque)
+    // ───────────────────────────────────────────────
+    if (showFolderPicker) {
+
+        // ✅ index chargé depuis le cache Bibliothèque (source unique)
+        val allIndexForPicker = LibraryIndexCache.load(context).orEmpty()
+
+        // ✅ point de départ = Music (racine bibliothèque)
+        val root = libraryRoot
+
+        // état navigation dans le picker
+        var pickerFolderUri by remember { mutableStateOf<Uri?>(root) }
+        var pickerStack by remember { mutableStateOf<List<Uri>>(emptyList()) }
+
+        // enfants du dossier courant (uniquement dossiers)
+        val pickerEntries = remember(allIndexForPicker, pickerFolderUri) {
+            val cur = pickerFolderUri
+            if (cur == null) emptyList()
+            else {
+                LibraryIndexCache.childrenOf(allIndexForPicker, cur)
+                    .filter { it.isDirectory }
+                    .filter { it.name.isNotBlank() }
+                    .filter { !it.name.startsWith(".") }
+            }
+        }
+
+        AlertDialog(
+            onDismissRequest = {
+                showFolderPicker = false
+                folderPickSlotIndex = null
+                pickerFolderUri = root
+                pickerStack = emptyList()
+            },
+            title = { Text("Choisir un dossier (dans Music)", color = onBg) },
+            text = {
+                if (root == null) {
+                    Text(
+                        "Bibliothèque non configurée.\nVa dans Bibliothèque → “Choisir dossier Music”.",
+                        color = sub,
+                        fontSize = 12.sp
+                    )
+                } else {
+                    Column(Modifier.verticalScroll(rememberScrollState())) {
+
+                        // ⬅️ Retour (si on est dans un sous-dossier)
+                        if (pickerStack.isNotEmpty()) {
+                            Text(
+                                text = "⬅️ Retour",
+                                color = accent,
+                                fontSize = 12.sp,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 8.dp)
+                                    .clickable {
+                                        val newStack = pickerStack.dropLast(1)
+                                        val parent = newStack.lastOrNull() ?: root
+                                        pickerStack = newStack
+                                        pickerFolderUri = parent
+                                    }
+                            )
+                        }
+
+                        // ✅ Choisir CE dossier (dossier courant)
+                        Text(
+                            text = "✅ Choisir ce dossier",
+                            color = Color(0xFFB388FF),
+                            fontSize = 12.sp,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp)
+                                .clickable {
+                                    val idx = folderPickSlotIndex
+                                    val chosen = pickerFolderUri
+                                    if (idx != null && chosen != null && idx in slots.indices) {
+
+                                        val newSlot = slots[idx].copy(folderUri = chosen)
+                                        slots[idx] = newSlot
+                                        AmbiancePrefs.saveSlot(context, newSlot)
+
+                                        // ✅ on NE change PAS le global ici
+                                        selectedIndex = idx
+
+                                        Toast.makeText(
+                                            context,
+                                            "Dossier associé à \"${newSlot.name}\"",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    }
+
+                                    showFolderPicker = false
+                                    folderPickSlotIndex = null
+                                    pickerFolderUri = root
+                                    pickerStack = emptyList()
+                                }
+                        )
+
+                        Spacer(Modifier.height(6.dp))
+
+                        if (pickerEntries.isEmpty()) {
+                            Text("Aucun sous-dossier ici.", color = sub, fontSize = 12.sp)
+                        } else {
+                            pickerEntries.forEach { e ->
+                                Text(
+                                    text = "📁 ${e.name}",
+                                    color = onBg,
+                                    fontSize = 12.sp,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 6.dp)
+                                        .clickable {
+                                            val next = Uri.parse(e.uriString)
+                                            pickerFolderUri?.let { pickerStack = pickerStack + it }
+                                            pickerFolderUri = next
+                                        }
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showFolderPicker = false
+                    folderPickSlotIndex = null
+                    pickerFolderUri = root
+                    pickerStack = emptyList()
+                }) { Text("Fermer", color = onBg) }
+            },
+            containerColor = Color(0xFF222222)
+        )
     }
 
     // ───────────────────────────────────────────────
@@ -538,9 +640,7 @@ fun FillerSoundScreen(
                         }
                         slotToRenameIndex = null
                     }
-                ) {
-                    Text("OK", color = onBg)
-                }
+                ) { Text("OK", color = onBg) }
             },
             dismissButton = {
                 TextButton(onClick = { slotToRenameIndex = null }) {
@@ -568,10 +668,7 @@ fun FillerSoundScreen(
             val targetIndex = startTargetIndex
             if (targetIndex != null) {
                 FillerSoundManager.startFromUi(context)
-                FillerSoundManager.setVolume(
-                    uiToRealVolume(uiFillerVolume)
-                )
-                // on marque l’ambiance comme active
+                FillerSoundManager.setVolume(uiToRealVolume(uiFillerVolume))
                 activeIndex = targetIndex
                 isPlaying = FillerSoundManager.isPlaying()
             }
