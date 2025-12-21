@@ -182,9 +182,9 @@ object DjEngine {
             if (activeSlot == 0) {
                 // 👉 Première mise en lecture DJ
                 PlaybackCoordinator.onDjStart()
+                runCatching { FillerSoundManager.fadeOutAndStop(400) }
 
-                // rien ne joue → on démarre sur A
-                FillerSoundManager.fadeOutAndStop(400)
+
                 mpA?.release()
 
                 val p = MediaPlayer()
@@ -417,6 +417,7 @@ object DjEngine {
             mpB = null
 
             resetState()
+            PlaybackCoordinator.onDjStop()
         }
     }
 

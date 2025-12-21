@@ -182,18 +182,25 @@ class MainActivity : ComponentActivity() {
                 // ---------------- PlaybackCoordinator -------------------
 
                 PlaybackCoordinator.stopPlayer = {
-                    runCatching { exoPlayer.pause() }
+                    runCatching {
+                        exoPlayer.pause()
+                        // optionnel mais propre : stop net
+                        exoPlayer.stop()
+                        exoPlayer.clearMediaItems()
+                    }
                     isPlaying = false
+                    PlaybackCoordinator.onPlayerStop()
                 }
 
                 PlaybackCoordinator.stopDj = {
                     runCatching { DjEngine.stopDj() }
+                    PlaybackCoordinator.onDjStop()
                 }
 
                 PlaybackCoordinator.stopFiller = {
                     runCatching { FillerSoundManager.fadeOutAndStop(200) }
+                    PlaybackCoordinator.onFillerStop()
                 }
-
                 // ---------------- Gain par morceau ----------------------
                 // ✅ On “triche” : PAS de +dB. On autorise seulement -12..0.
                 // ✅ Et on démarre à -5 par défaut.
@@ -434,13 +441,7 @@ class MainActivity : ComponentActivity() {
                         )
                         return@Scaffold
                     }
-                    val ctx = LocalContext.current
 
-                    val exoPlayer = remember {
-                        AudioEngine.getPlayer(ctx) {
-                            // fin naturelle si besoin
-                        }
-                    }
                     when (selectedTab) {
 
                         is BottomTab.Home -> MixerHomePreviewScreen(
