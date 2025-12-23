@@ -73,22 +73,17 @@ fun exoCrossfadePlay(
         lastEndListener = endListener
         exoPlayer.addListener(endListener)
 
+        runCatching { exoPlayer.stop() }          // ✅ reset propre
         runCatching { exoPlayer.clearMediaItems() }
+
         exoPlayer.setMediaItem(MediaItem.fromUri(uriString))
         exoPlayer.prepare()
 
-        // ✅ IMPORTANT : après prepare, on réapplique le mix (bus × titre × fade)
-        AudioEngine.reapplyMixNow()
-
-        exoPlayer.prepare()
-
+// ✅ IMPORTANT : juste après prepare
         AudioEngine.reapplyMixNow()
         AudioEngine.debugVolumeTag("after prepare")
 
         exoPlayer.play()
-        exoPlayer.volume = 1f
-        android.util.Log.d("BUS", "HARD SET exoPlayer.volume=1f (bypass AudioEngine)")
-
 
 // 5) Démarrage OK
         onStart()

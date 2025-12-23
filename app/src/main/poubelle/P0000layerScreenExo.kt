@@ -32,7 +32,7 @@ fun PlayerScreenExo(
         Text("LECTEUR TEST EXOPLAYER", color = Color.White)
         Spacer(Modifier.height(20.dp))
         IconButton(onClick = {
-            if (exoPlayer.isPlaying) {
+            if (isPlaying) {
                 exoPlayer.pause()
                 onIsPlayingChange(false)
             } else {
@@ -41,7 +41,7 @@ fun PlayerScreenExo(
             }
         }) {
             Icon(
-                imageVector = if (exoPlayer.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                 contentDescription = null,
                 tint = Color.White,
                 modifier = Modifier.size(72.dp)
