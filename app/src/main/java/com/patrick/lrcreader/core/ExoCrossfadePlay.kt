@@ -1,5 +1,7 @@
-package com.patrick.lrcreader.core.audio
+package com.patrick.lrcreader.core
 
+import com.patrick.lrcreader.core.audio.AudioEngine
+import com.patrick.lrcreader.core.audio.EmbeddedLyricsListener
 import android.content.Context
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
@@ -73,21 +75,25 @@ fun exoCrossfadePlay(
         lastEndListener = endListener
         exoPlayer.addListener(endListener)
 
-        runCatching { exoPlayer.stop() }          // ✅ reset propre
+// reset propre
+        runCatching { exoPlayer.stop() }
         runCatching { exoPlayer.clearMediaItems() }
 
         exoPlayer.setMediaItem(MediaItem.fromUri(uriString))
         exoPlayer.prepare()
 
-// ✅ IMPORTANT : juste après prepare
+// ✅ 1) on réapplique le mix (volume bus/titre/fade)
         AudioEngine.reapplyMixNow()
         AudioEngine.debugVolumeTag("after prepare")
 
+// ✅ 2) on VERROUILLE la formule magique AVANT de jouer
+        PlaybackCoordinator.requestStartPlayer()
+
+// ✅ 3) seulement maintenant on lance le son
         exoPlayer.play()
 
-// 5) Démarrage OK
+// ✅ 4) UI / état
         onStart()
-
 
         val lyrics = embeddedLyricsListener.lyrics
             .filterNotNull()

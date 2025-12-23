@@ -48,7 +48,7 @@ import kotlin.math.pow
 // ─────────────────────────────
 import com.patrick.lrcreader.core.*
 import com.patrick.lrcreader.core.audio.AudioEngine
-import com.patrick.lrcreader.core.audio.exoCrossfadePlay
+import com.patrick.lrcreader.core.exoCrossfadePlay
 import com.patrick.lrcreader.core.dj.DjEngine
 import com.patrick.lrcreader.core.lyrics.LyricsResolver
 

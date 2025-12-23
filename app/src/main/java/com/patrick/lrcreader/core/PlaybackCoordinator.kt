@@ -10,6 +10,7 @@ package com.patrick.lrcreader.core
  * - Player, DJ et Filler ne jouent jamais ensemble.
  * - Quand l’un démarre, il coupe les autres via les callbacks stopX.
  */
+
 object PlaybackCoordinator {
 
     enum class Source {
@@ -94,7 +95,25 @@ object PlaybackCoordinator {
         }
         currentSource = Source.Filler
     }
+    // ----------------------------------------------------------
+    //  "PORTES D'ENTRÉE" À UTILISER PARTOUT
+    //  (verrouille la règle : un seul son à la fois)
+    // ----------------------------------------------------------
 
+    @Synchronized
+    fun requestStartPlayer() {
+        onPlayerStart()
+    }
+
+    @Synchronized
+    fun requestStartDj() {
+        onDjStart()
+    }
+
+    @Synchronized
+    fun requestStartFiller() {
+        onFillerStart()
+    }
     @Synchronized
     fun onFillerStop() {
         if (currentSource == Source.Filler) {
