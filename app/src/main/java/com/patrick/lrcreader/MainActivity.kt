@@ -184,8 +184,7 @@ class MainActivity : ComponentActivity() {
                 PlaybackCoordinator.stopPlayer = {
                     runCatching {
                         exoPlayer.pause()
-                        exoPlayer.seekTo(0)     // ✅ remet au début
-                        // ❌ surtout PAS de stop() + clearMediaItems() ici
+
                     }
                     isPlaying = false
                     PlaybackCoordinator.onPlayerStop()

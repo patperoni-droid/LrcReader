@@ -1,6 +1,12 @@
-@file:OptIn(androidx.media3.common.util.UnstableApi::class)
-
+@file:OptIn(androidx.media3.common.util.UnstableApi::class,
+androidx.compose.foundation.ExperimentalFoundationApi::class)
 package com.patrick.lrcreader.ui
+
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.OutlinedTextField
+import com.patrick.lrcreader.core.notes.LiveNote
+import com.patrick.lrcreader.core.notes.LiveNoteManager
 import com.patrick.lrcreader.core.PlayerBusController
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -15,9 +21,11 @@ import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -70,7 +78,17 @@ fun PlayerScreen(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val density = LocalDensity.current
+
+    // 📝 Notes LIVE (création depuis le lecteur)
+    var showAddNoteDialog by remember { mutableStateOf(false) }
+    var noteDraftText by remember { mutableStateOf("") }
+    // durée par défaut (en ms)
+    var noteDraftDurationMs by remember { mutableStateOf(30_000L) }
+    var noteAnchorMs by remember { mutableStateOf<Long?>(null) }      // timecode gelé
+    var wasPlayingBeforeNote by remember { mutableStateOf(false) }    // pour relancer après
+
     // 🔊 Brancher ExoPlayer au bus principal (fader LECTEUR)
+    var activeLiveNote by remember { mutableStateOf<LiveNote?>(null) }
     LaunchedEffect(exoPlayer) {
         PlayerBusController.attachPlayer(context, exoPlayer)
     }
@@ -83,6 +101,21 @@ fun PlayerScreen(
     // ✅ "Niveau du titre" appliqué au moteur
     LaunchedEffect(currentTrackUri, currentTrackGainDb) {
         AudioEngine.applyTrackGainDb(currentTrackGainDb)
+    }
+
+    LaunchedEffect(currentTrackUri) {
+        LiveNoteManager.clear()
+        activeLiveNote = null
+    }
+    LaunchedEffect(isPlaying, currentTrackUri) {
+        while (true) {
+            activeLiveNote = if (isPlaying) {
+                LiveNoteManager.getActiveNote(getPositionMs())
+            } else {
+                null
+            }
+            delay(200)
+        }
     }
 
     val lyricsDelayMs = 0L
@@ -266,31 +299,20 @@ fun PlayerScreen(
                 currentEditTab = currentEditTab,
                 onCurrentEditTabChange = { currentEditTab = it },
 
-                // ✅ Infos lecture (venant du PlayerScreen)
                 isPlaying = isPlaying,
                 positionMs = positionMs,
                 durationMs = durationMs,
                 onIsPlayingChange = onIsPlayingChange,
-
-                // ✅ pour remplacer mediaPlayer.seekTo(...)
                 seekToMs = seekToMs,
 
-                // ✅ callback sauvegarde
                 onSaveSortedLines = { sorted ->
-                    // ✅ 1) met à jour UI
                     rawLyricsText = sorted.joinToString("\n") { it.text }
                     editingLines = sorted
-
-                    // ✅ 2) met à jour le lecteur
                     onParsedLinesChange(sorted)
-
-                    // ✅ 3) ferme l’éditeur
                     isEditingLyrics = false
 
-                    // ✅ 4) sauvegarde sur disque (si on a un titre)
                     if (currentTrackUri != null) {
                         runCatching {
-                            // si ton LrcStorage accepte "lines", c'est le mieux :
                             LrcStorage.saveForTrack(
                                 context = context,
                                 trackUriString = currentTrackUri,
@@ -342,12 +364,26 @@ fun PlayerScreen(
                                 }
                                 currentEditTab = 0
                                 isEditingLyrics = true
+                            },
+                            // ✅ ICI EXACTEMENT
+                            onAddLiveNote = {
+                                // 1) on gèle le timecode ICI (moment précis)
+                                noteAnchorMs = getPositionMs()
+
+                                // 2) on pause pendant qu'il écrit
+                                wasPlayingBeforeNote = isPlaying
+                                if (isPlaying) onIsPlayingChange(false)
+
+                                // 3) on ouvre la popup
+                                showAddNoteDialog = true
                             }
                         )
 
                         Spacer(Modifier.height(8.dp))
 
                         Box(modifier = Modifier.weight(1f)) {
+
+                            // --- PAROLES (INCHANGÉES) ---
                             LyricsAreaLazy(
                                 modifier = Modifier.fillMaxSize(),
                                 listState = listState,
@@ -360,10 +396,45 @@ fun PlayerScreen(
                                     seekAndCenter(timeMs.toInt(), index)
                                     if (currentTrackUri != null) {
                                         lastMidiIndex = index
-                                        MidiCueDispatcher.onActiveLineChanged(trackUri = currentTrackUri, lineIndex = index)
+                                        MidiCueDispatcher.onActiveLineChanged(
+                                            trackUri = currentTrackUri,
+                                            lineIndex = index
+                                        )
                                     }
                                 }
                             )
+
+                            // --- NOTE LIVE (AU-DESSUS DES PAROLES) ---
+                            activeLiveNote?.let { note ->
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.TopCenter)
+                                        .padding(top = 10.dp)
+                                        .combinedClickable(
+                                            onClick = {}, // rien au click simple
+                                            onLongClick = {
+                                                LiveNoteManager.remove(note)
+                                                activeLiveNote = null
+                                            }
+                                        )
+                                        .background(
+                                            Color(0xCC000000),
+                                            RoundedCornerShape(14.dp)
+                                        )
+                                        .border(
+                                            1.dp,
+                                            Color(0x33FFFFFF),
+                                            RoundedCornerShape(14.dp)
+                                        )
+                                        .padding(horizontal = 14.dp, vertical = 10.dp)
+                                ) {
+                                    Text(
+                                        text = "📝 ${note.text}",
+                                        color = Color(0xFFFFC107),
+                                        fontSize = 15.sp
+                                    )
+                                }
+                            }
                         }
 
                         TimeBar(
@@ -440,6 +511,84 @@ fun PlayerScreen(
             }
         }
     }
+
+    // ─────────────────────────────────────────────────────────────
+    //  POPUP : ajouter une note LIVE au timecode courant
+    // ─────────────────────────────────────────────────────────────
+    if (showAddNoteDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                if (wasPlayingBeforeNote) onIsPlayingChange(true)
+                noteAnchorMs = null
+                wasPlayingBeforeNote = false
+                noteDraftText = ""
+                showAddNoteDialog = false
+            },
+            title = { Text("Ajouter une note", color = Color.White) },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = noteDraftText,
+                        onValueChange = { noteDraftText = it },
+                        label = { Text("Ex: Solo guitare — Mi mineur") },
+                        singleLine = false,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(Modifier.height(12.dp))
+
+                    Text(
+                        text = "Durée : ${noteDraftDurationMs / 1000}s",
+                        color = Color(0xFFB0BEC5),
+                        fontSize = 12.sp
+                    )
+
+                    Spacer(Modifier.height(8.dp))
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilledTonalButton(onClick = { noteDraftDurationMs = 10_000L }) { Text("10s") }
+                        FilledTonalButton(onClick = { noteDraftDurationMs = 30_000L }) { Text("30s") }
+                        FilledTonalButton(onClick = { noteDraftDurationMs = 60_000L }) { Text("60s") }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val text = noteDraftText.trim()
+                    if (text.isNotEmpty()) {
+                        val startMs = noteAnchorMs ?: getPositionMs()
+                        val note = LiveNote(
+                            timeMs = startMs,
+                            durationMs = noteDraftDurationMs,
+                            text = text
+                        )
+                        LiveNoteManager.addNote(note)
+                        activeLiveNote = note
+                    }
+
+                    if (wasPlayingBeforeNote) onIsPlayingChange(true)
+                    noteAnchorMs = null
+                    wasPlayingBeforeNote = false
+                    noteDraftText = ""
+                    showAddNoteDialog = false
+                }) {
+                    Text("OK", color = Color(0xFFFFC107))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    if (wasPlayingBeforeNote) onIsPlayingChange(true)
+                    noteAnchorMs = null
+                    wasPlayingBeforeNote = false
+                    noteDraftText = ""
+                    showAddNoteDialog = false
+                }) {
+                    Text("Annuler", color = Color(0xFFB0BEC5))
+                }
+            },
+            containerColor = Color(0xFF222222)
+        )
+    }
 }
 
 @Composable
@@ -450,7 +599,8 @@ private fun ReaderHeader(
     onToggleAutoReturn: () -> Unit,
     highlightColor: Color,
     onOpenMix: () -> Unit,
-    onOpenEditor: () -> Unit
+    onOpenEditor: () -> Unit,
+    onAddLiveNote: () -> Unit
 ) {
     Box(
         modifier = Modifier
@@ -502,6 +652,11 @@ private fun ReaderHeader(
                     contentDescription = "Éditer les paroles",
                     tint = Color(0xFFFFF3E0)
                 )
+            }
+
+            // ✅ bouton note LIVE
+            IconButton(onClick = onAddLiveNote) {
+                Text("📝", color = Color.White, fontSize = 16.sp)
             }
         }
     }
