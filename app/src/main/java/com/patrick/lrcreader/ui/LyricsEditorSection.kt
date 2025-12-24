@@ -1,25 +1,21 @@
 package com.patrick.lrcreader.ui
 
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.combinedClickable
-import android.util.Log
-import com.patrick.lrcreader.core.CueMidi
-import androidx.compose.material3.AlertDialog
-import androidx.compose.runtime.*
-import androidx.compose.foundation.clickable
-import com.patrick.lrcreader.core.CueMidiStore
 import android.content.Context
 import android.media.MediaMetadataRetriever
 import android.net.Uri
+import android.util.Log
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipPrevious
-import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
@@ -27,19 +23,19 @@ import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.patrick.lrcreader.core.CueMidiStore
 import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.core.LrcCleaner
 import com.patrick.lrcreader.core.LrcLine
-import com.patrick.lrcreader.core.pauseWithFade
+import com.patrick.lrcreader.core.LrcStorage
 import kotlinx.coroutines.launch
-import androidx.compose.runtime.rememberCoroutineScope
-import com.patrick.lrcreader.core.LrcStorage   // 🟢 AJOUT IMPORTANT
 
 // ─────────────────────────────
 //  ÉDITEUR DE PAROLES
@@ -64,7 +60,7 @@ fun LyricsEditorSection(
     durationMs: Int,
     onIsPlayingChange: (Boolean) -> Unit,
 
-    // ✅ pour remplacer mediaPlayer.seekTo(...)
+    // ✅ seek (Exo)
     seekToMs: (Long) -> Unit,
 
     // ✅ callback sauvegarde
@@ -110,9 +106,7 @@ fun LyricsEditorSection(
                     )
                 }
             }
-            else -> {
-                editingLines.filter { it.text.isNotBlank() }
-            }
+            else -> editingLines.filter { it.text.isNotBlank() }
         }
 
         Log.d("LrcDebug", "EDITOR_SAVE currentTrackUri=$currentTrackUri lines=${finalLines.size}")
@@ -237,7 +231,6 @@ fun LyricsEditorSection(
                         IconButton(
                             onClick = {
                                 if (isPlaying) {
-                                    // ✅ on laisse le PlayerScreen gérer le fade/pause
                                     onIsPlayingChange(false)
                                 } else {
                                     if (durationMs > 0) {
@@ -255,9 +248,7 @@ fun LyricsEditorSection(
                         }
 
                         IconButton(
-                            onClick = {
-                                runCatching { seekToMs(0L) }
-                            }
+                            onClick = { runCatching { seekToMs(0L) } }
                         ) {
                             Icon(
                                 imageVector = Icons.Filled.SkipPrevious,
@@ -282,9 +273,7 @@ fun LyricsEditorSection(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         TextButton(
-                            onClick = {
-                                onEditingLinesChange(editingLines.map { it.copy(timeMs = 0L) })
-                            }
+                            onClick = { onEditingLinesChange(editingLines.map { it.copy(timeMs = 0L) }) }
                         ) {
                             Text(
                                 text = "Reset TAGs",
@@ -294,7 +283,9 @@ fun LyricsEditorSection(
                         }
                     }
 
-                    val cuesForTrack = CueMidiStore.getCuesForTrack(currentTrackUri)
+                    val cuesForTrack = if (currentTrackUri != null) {
+                        CueMidiStore.getCuesForTrack(currentTrackUri)
+                    } else emptyList()
 
                     LazyColumn(
                         state = lazyListState,
@@ -331,7 +322,6 @@ fun LyricsEditorSection(
                                     ) {
                                         TextButton(
                                             onClick = {
-                                                // ✅ TAG = positionMs actuel (plus de mediaPlayer)
                                                 val now = positionMs.coerceAtLeast(0)
                                                 onEditingLinesChange(
                                                     editingLines.mapIndexed { i, old ->
@@ -357,17 +347,9 @@ fun LyricsEditorSection(
                                                 }
                                             }
                                         ) {
-                                            Text(
-                                                text = "TAG",
-                                                color = Color(0xFF80CBC4),
-                                                fontSize = 12.sp
-                                            )
+                                            Text("TAG", color = Color(0xFF80CBC4), fontSize = 12.sp)
                                         }
-                                        Text(
-                                            text = timeLabel,
-                                            color = Color(0xFFB0BEC5),
-                                            fontSize = 10.sp
-                                        )
+                                        Text(timeLabel, color = Color(0xFFB0BEC5), fontSize = 10.sp)
                                     }
 
                                     // Zone centrale : indicateur CUE + texte cliquable
@@ -483,19 +465,20 @@ fun LyricsEditorSection(
                         )
                     }
 
-                    // ✅ TEMPORAIRE : popup MIDI désactivé (le temps de remettre le fichier au bon endroit)
+                    // ✅ Popup édition CUE MIDI
                     val lineIndexEditing = editingCueLineIndex
                     if (lineIndexEditing != null && currentTrackUri != null) {
-                        // CueMidiEditorPopup(...)
-                        editingCueLineIndex = null
-
+                        CueMidiEditorPopup(
+                            trackUri = currentTrackUri,
+                            lineIndex = lineIndexEditing,
+                            onClose = { editingCueLineIndex = null }
+                        )
                     }
-                }
-            }
-        }
-    }
-}
-
+                } // <-- ferme Column onglet Synchro
+            }     // <-- ferme "1 -> {"
+        }         // <-- ferme when
+    }             // <-- ferme Column principale
+}                 // <-- ferme composable
 // ─────────────────────────────
 //  FONCTIONS UTILITAIRES
 // ─────────────────────────────
@@ -530,7 +513,7 @@ private fun importLyricsFromAudio(
             val field = MediaMetadataRetriever::class.java.getField("METADATA_KEY_LYRICS")
             val key = field.getInt(null)
             retriever.extractMetadata(key)
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             null
         }
 
@@ -546,33 +529,19 @@ private fun importLyricsFromAudio(
             raw.lines()
                 .map { it.trim() }
                 .filter { it.isNotEmpty() }
-                .map { line ->
-                    LrcLine(timeMs = 0L, text = line)
-                }
+                .map { line -> LrcLine(timeMs = 0L, text = line) }
         }
     } catch (_: Exception) {
-        return null
+        null
     }
 }
 
-/**
- * Fusionne un nouveau texte avec les anciens timings.
- *
- * - Si une ligne existait déjà (même texte après trim) → on garde son timeMs.
- * - Si le texte est nouveau ou n'existait pas avant → timeMs = 0.
- *
- * Ça permet :
- *  - de corriger une faute sur UNE ligne (elle perd son TAG, normal)
- *  - tout en gardant les TAGs pour les autres lignes inchangées.
- */
 private fun mergeLyricsWithOldTimings(
     newLines: List<String>,
     oldLines: List<LrcLine>
 ): List<LrcLine> {
     if (oldLines.isEmpty()) {
-        return newLines.map { lineText ->
-            LrcLine(timeMs = 0L, text = lineText)
-        }
+        return newLines.map { lineText -> LrcLine(timeMs = 0L, text = lineText) }
     }
 
     val result = mutableListOf<LrcLine>()
@@ -583,9 +552,6 @@ private fun mergeLyricsWithOldTimings(
         if (newText.isEmpty()) continue
 
         var matchedIndex = -1
-
-        // On cherche une ancienne ligne avec exactement le même texte (après trim),
-        // qui n'a pas déjà été utilisée.
         for (i in oldLines.indices) {
             if (used[i]) continue
             if (oldLines[i].text.trim() == newText) {
@@ -597,15 +563,9 @@ private fun mergeLyricsWithOldTimings(
         if (matchedIndex >= 0) {
             used[matchedIndex] = true
             val old = oldLines[matchedIndex]
-            // On garde le timeMs, on prend le texte nouveau (au cas où tu as changé un espace, etc.)
-            result.add(
-                old.copy(text = newText)
-            )
+            result.add(old.copy(text = newText))
         } else {
-            // Nouvelle ligne → pas de timing
-            result.add(
-                LrcLine(timeMs = 0L, text = newText)
-            )
+            result.add(LrcLine(timeMs = 0L, text = newText))
         }
     }
 
