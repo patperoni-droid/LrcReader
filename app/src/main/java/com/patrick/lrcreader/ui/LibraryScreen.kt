@@ -1,5 +1,6 @@
 package com.patrick.lrcreader.ui
 
+import androidx.compose.foundation.layout.heightIn
 import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -89,7 +90,17 @@ fun LibraryScreen(
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var pendingDeleteUri by remember { mutableStateOf<Uri?>(null) }
     var indexAll by remember { mutableStateOf<List<LibraryIndexCache.CachedEntry>>(emptyList()) }
-
+    val globalAudioEntries = remember(indexAll) {
+        indexAll
+            .filter { !it.isDirectory }
+            .map {
+                LibraryEntry(
+                    uri = Uri.parse(it.uriString),
+                    name = it.name,
+                    isDirectory = false
+                )
+            }
+    }
     var pendingMoveUri by remember { mutableStateOf<Uri?>(null) }
 
     // renommage
@@ -97,6 +108,20 @@ fun LibraryScreen(
     var renameText by remember { mutableStateOf("") }
 
     val bottomBarHeight = 56.dp
+
+    // ✅ Recherche
+    var searchQuery by remember { mutableStateOf("") }
+    val filteredEntries = remember(searchQuery, entries, globalAudioEntries) {
+        if (searchQuery.isBlank()) {
+            // mode normal : navigation par dossier
+            entries
+        } else {
+            // 🔎 mode recherche globale
+            globalAudioEntries.filter { e ->
+                e.name.contains(searchQuery, ignoreCase = true)
+            }
+        }
+    }
 
     suspend fun refreshIndexAndShowCurrent() {
         val root = BackupFolderPrefs.get(context) ?: return
@@ -333,157 +358,179 @@ fun LibraryScreen(
                         .weight(1f)
                         .fillMaxWidth()
                 ) {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(
-                            bottom = if (selectedSongs.isNotEmpty()) bottomBarHeight else 0.dp
-                        )
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
                     ) {
-                        items(entries, key = { it.uri.toString() }) { entry ->
-                            if (entry.isDirectory) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 3.dp)
-                                        .background(cardBg, RoundedCornerShape(10.dp))
-                                        .border(1.dp, rowBorder, RoundedCornerShape(10.dp))
-                                        .clickable {
-                                            scope.launch {
-                                                isLoading = true
-                                                try {
-                                                    currentFolderUri?.let { folderStack = folderStack + it }
-                                                    currentFolderUri = entry.uri
+                        // 🔍 Champ de recherche
+                        OutlinedTextField(
+                            value = searchQuery,
+                            onValueChange = { searchQuery = it },
+                            modifier = Modifier
+                                .fillMaxWidth(0.85f)
+                                .heightIn(min = 44.dp),   // ✅ clé du problème
+                            placeholder = { Text("Rechercher…") },
+                            singleLine = true
+                        )
 
-                                                    entries = LibraryIndexCache.childrenOf(indexAll, entry.uri).map { e ->
-                                                        LibraryEntry(
-                                                            uri = Uri.parse(e.uriString),
-                                                            name = e.name,
-                                                            isDirectory = e.isDirectory
-                                                        )
+                        Spacer(Modifier.height(8.dp))
+
+                        // 📂 Liste filtrée
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(
+                                bottom = if (selectedSongs.isNotEmpty()) bottomBarHeight else 0.dp
+                            )
+                        ) {
+                            items(filteredEntries, key = { it.uri.toString() }) { entry ->
+                                if (entry.isDirectory) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 3.dp)
+                                            .background(cardBg, RoundedCornerShape(10.dp))
+                                            .border(1.dp, rowBorder, RoundedCornerShape(10.dp))
+                                            .clickable {
+                                                scope.launch {
+                                                    isLoading = true
+                                                    try {
+                                                        currentFolderUri?.let { folderStack = folderStack + it }
+                                                        currentFolderUri = entry.uri
+
+                                                        entries = LibraryIndexCache.childrenOf(indexAll, entry.uri).map { e ->
+                                                            LibraryEntry(
+                                                                uri = Uri.parse(e.uriString),
+                                                                name = e.name,
+                                                                isDirectory = e.isDirectory
+                                                            )
+                                                        }
+
+                                                        // ✅ reset recherche quand on change de dossier (sinon tu crois que ça “marche pas”)
+                                                        searchQuery = ""
+
+                                                        selectedSongs = emptySet()
+                                                    } finally {
+                                                        delay(150)
+                                                        isLoading = false
                                                     }
-
-
-                                                    selectedSongs = emptySet()
-                                                } finally {
-                                                    delay(150)
-                                                    isLoading = false
                                                 }
                                             }
-                                        }
-                                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        Icons.Default.Folder,
-                                        contentDescription = null,
-                                        tint = accent,
-                                        modifier = Modifier.size(22.dp)
-                                    )
-                                    Spacer(Modifier.width(10.dp))
-                                    Text(
-                                        entry.name,
-                                        color = Color.White,
-                                        fontSize = 15.sp
-                                    )
-                                }
-                            } else {
-                                // ─── Fichier ───
-                                val uri = entry.uri
-                                val isSelected = selectedSongs.contains(uri)
-                                var menuOpen by remember { mutableStateOf(false) }
-
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 3.dp)
-                                        .background(cardBg, RoundedCornerShape(10.dp))
-                                        .border(
-                                            1.dp,
-                                            if (isSelected) accent else rowBorder,
-                                            RoundedCornerShape(10.dp)
+                                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Folder,
+                                            contentDescription = null,
+                                            tint = accent,
+                                            modifier = Modifier.size(22.dp)
                                         )
-                                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    // Carré sélection
-                                    Box(
+                                        Spacer(Modifier.width(10.dp))
+                                        Text(
+                                            entry.name,
+                                            color = Color.White,
+                                            fontSize = 15.sp
+                                        )
+                                    }
+                                } else {
+                                    // ─── Fichier ───
+                                    val uri = entry.uri
+                                    val isSelected = selectedSongs.contains(uri)
+                                    var menuOpen by remember { mutableStateOf(false) }
+
+                                    Row(
                                         modifier = Modifier
-                                            .size(20.dp)
-                                            .background(
-                                                if (isSelected) accent.copy(alpha = 0.18f) else Color.Transparent,
-                                                RoundedCornerShape(4.dp)
-                                            )
+                                            .fillMaxWidth()
+                                            .padding(vertical = 3.dp)
+                                            .background(cardBg, RoundedCornerShape(10.dp))
                                             .border(
                                                 1.dp,
-                                                if (isSelected) accent else Color.White.copy(alpha = 0.7f),
-                                                RoundedCornerShape(4.dp)
+                                                if (isSelected) accent else rowBorder,
+                                                RoundedCornerShape(10.dp)
                                             )
-                                            .clickable {
-                                                selectedSongs =
-                                                    if (isSelected) selectedSongs - uri
-                                                    else selectedSongs + uri
-                                            },
-                                        contentAlignment = Alignment.Center
+                                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        if (isSelected) {
-                                            Text("✕", color = accent, fontSize = 13.sp)
-                                        }
-                                    }
-
-                                    Spacer(Modifier.width(10.dp))
-
-                                    Text(
-                                        entry.name,
-                                        color = Color.White,
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .clickable { onPlayFromLibrary(uri.toString()) }
-                                    )
-
-                                    // Menu ⋮
-                                    Box {
-                                        IconButton(onClick = { menuOpen = true }) {
-                                            Icon(Icons.Default.MoreVert, contentDescription = "Options", tint = Color.White)
-                                        }
-                                        DropdownMenu(
-                                            expanded = menuOpen,
-                                            onDismissRequest = { menuOpen = false }
+                                        // Carré sélection
+                                        Box(
+                                            modifier = Modifier
+                                                .size(20.dp)
+                                                .background(
+                                                    if (isSelected) accent.copy(alpha = 0.18f) else Color.Transparent,
+                                                    RoundedCornerShape(4.dp)
+                                                )
+                                                .border(
+                                                    1.dp,
+                                                    if (isSelected) accent else Color.White.copy(alpha = 0.7f),
+                                                    RoundedCornerShape(4.dp)
+                                                )
+                                                .clickable {
+                                                    selectedSongs =
+                                                        if (isSelected) selectedSongs - uri
+                                                        else selectedSongs + uri
+                                                },
+                                            contentAlignment = Alignment.Center
                                         ) {
-                                            DropdownMenuItem(
-                                                text = { Text("Attribuer à une playlist", color = Color.White) },
-                                                onClick = {
-                                                    menuOpen = false
-                                                    selectedSongs = setOf(uri)
-                                                    showAssignDialog = true
-                                                }
-                                            )
+                                            if (isSelected) {
+                                                Text("✕", color = accent, fontSize = 13.sp)
+                                            }
+                                        }
 
-                                            DropdownMenuItem(
-                                                text = { Text("Déplacer vers un dossier", color = Color.White) },
-                                                onClick = {
-                                                    menuOpen = false
-                                                    pendingMoveUri = uri
-                                                    moveToFolderLauncher.launch(null)
-                                                }
-                                            )
+                                        Spacer(Modifier.width(10.dp))
 
-                                            DropdownMenuItem(
-                                                text = { Text("Renommer", color = Color.White) },
-                                                onClick = {
-                                                    menuOpen = false
-                                                    renameTarget = entry
-                                                    renameText = entry.name
-                                                }
-                                            )
+                                        Text(
+                                            entry.name,
+                                            color = Color.White,
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .clickable { onPlayFromLibrary(uri.toString()) }
+                                        )
 
-                                            DropdownMenuItem(
-                                                text = { Text("Supprimer définitivement", color = Color(0xFFFF6464)) },
-                                                onClick = {
-                                                    menuOpen = false
-                                                    pendingDeleteUri = uri
-                                                    showDeleteConfirmDialog = true
-                                                }
-                                            )
+                                        // Menu ⋮
+                                        Box {
+                                            IconButton(onClick = { menuOpen = true }) {
+                                                Icon(Icons.Default.MoreVert, contentDescription = "Options", tint = Color.White)
+                                            }
+                                            DropdownMenu(
+                                                expanded = menuOpen,
+                                                onDismissRequest = { menuOpen = false }
+                                            ) {
+                                                DropdownMenuItem(
+                                                    text = { Text("Attribuer à une playlist", color = Color.White) },
+                                                    onClick = {
+                                                        menuOpen = false
+                                                        selectedSongs = setOf(uri)
+                                                        showAssignDialog = true
+                                                    }
+                                                )
+
+                                                DropdownMenuItem(
+                                                    text = { Text("Déplacer vers un dossier", color = Color.White) },
+                                                    onClick = {
+                                                        menuOpen = false
+                                                        pendingMoveUri = uri
+                                                        moveToFolderLauncher.launch(null)
+                                                    }
+                                                )
+
+                                                DropdownMenuItem(
+                                                    text = { Text("Renommer", color = Color.White) },
+                                                    onClick = {
+                                                        menuOpen = false
+                                                        renameTarget = entry
+                                                        renameText = entry.name
+                                                    }
+                                                )
+
+                                                DropdownMenuItem(
+                                                    text = { Text("Supprimer définitivement", color = Color(0xFFFF6464)) },
+                                                    onClick = {
+                                                        menuOpen = false
+                                                        pendingDeleteUri = uri
+                                                        showDeleteConfirmDialog = true
+                                                    }
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -491,7 +538,7 @@ fun LibraryScreen(
                         }
                     }
 
-                    // ✅ Spinner
+                    // ✅ Spinner (overlay)
                     if (isLoading) {
                         Box(
                             modifier = Modifier
@@ -511,48 +558,43 @@ fun LibraryScreen(
                         }
                     }
 
-                    // Barre sélection multiple
+                    // ✅ Barre sélection multiple (overlay bas)
                     if (selectedSongs.isNotEmpty()) {
-                        Box(
+                        BottomAppBar(
+                            containerColor = Color(0xFF1E1E1E),
+                            contentColor = Color.White,
+                            tonalElevation = 6.dp,
                             modifier = Modifier
                                 .align(Alignment.BottomCenter)
-                                .fillMaxWidth()
+                                .navigationBarsPadding()
+                                .height(bottomBarHeight)
                         ) {
-                            BottomAppBar(
-                                containerColor = Color(0xFF1E1E1E),
-                                contentColor = Color.White,
-                                tonalElevation = 6.dp,
+                            Box(
                                 modifier = Modifier
-                                    .navigationBarsPadding()
-                                    .height(bottomBarHeight)
+                                    .padding(start = 16.dp)
+                                    .size(28.dp)
+                                    .border(
+                                        width = 1.dp,
+                                        color = Color.White.copy(alpha = 0.85f),
+                                        shape = CircleShape
+                                    ),
+                                contentAlignment = Alignment.Center
                             ) {
-                                Box(
-                                    modifier = Modifier
-                                        .padding(start = 16.dp)
-                                        .size(28.dp)
-                                        .border(
-                                            width = 1.dp,
-                                            color = Color.White.copy(alpha = 0.85f),
-                                            shape = CircleShape
-                                        ),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = selectedSongs.size.toString(),
-                                        color = Color.White,
-                                        fontSize = 13.sp
-                                    )
-                                }
+                                Text(
+                                    text = selectedSongs.size.toString(),
+                                    color = Color.White,
+                                    fontSize = 13.sp
+                                )
+                            }
 
-                                Spacer(Modifier.weight(1f))
+                            Spacer(Modifier.weight(1f))
 
-                                TextButton(onClick = { showAssignDialog = true }) {
-                                    Text("Attribuer", color = Color.White)
-                                }
-                                Spacer(Modifier.width(8.dp))
-                                TextButton(onClick = { selectedSongs = emptySet() }) {
-                                    Text("Désélect.", color = Color(0xFFB0B0B0))
-                                }
+                            TextButton(onClick = { showAssignDialog = true }) {
+                                Text("Attribuer", color = Color.White)
+                            }
+                            Spacer(Modifier.width(8.dp))
+                            TextButton(onClick = { selectedSongs = emptySet() }) {
+                                Text("Désélect.", color = Color(0xFFB0B0B0))
                             }
                         }
                     }
