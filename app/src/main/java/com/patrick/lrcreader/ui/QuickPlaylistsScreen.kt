@@ -57,7 +57,9 @@ fun QuickPlaylistsScreen(
     currentPlayingUri: String? = null,
     selectedPlaylist: String? = null,
     onSelectedPlaylistChange: (String?) -> Unit = {},
-    onPlaylistColorChange: (Color) -> Unit = {}
+    onPlaylistColorChange: (Color) -> Unit = {},
+    onRequestShowPlayer: () -> Unit = {}   // ✅ DEFAULT
+
 ) {
     val context = LocalContext.current
 
@@ -510,8 +512,13 @@ fun QuickPlaylistsScreen(
                                         .weight(1f)
                                         .clickable {
                                             internalSelected?.let { pl ->
+                                                android.util.Log.d("NAV", "CLICK in QuickPlaylistsScreen uri=$uriString pl=$pl color=$currentListColor")
                                                 onPlaySong(uriString, pl, currentListColor)
+                                                android.util.Log.d("NAV", "AFTER onPlaySong (still in QuickPlaylistsScreen)")
                                                 onSelectedPlaylistChange(pl)
+                                                onRequestShowPlayer()
+                                            } ?: run {
+                                                android.util.Log.d("NAV", "CLICK but internalSelected is null -> no action")
                                             }
                                         }
                                 )

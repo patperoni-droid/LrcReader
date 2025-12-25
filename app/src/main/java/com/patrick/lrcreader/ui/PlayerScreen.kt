@@ -129,13 +129,20 @@ fun PlayerScreen(
     var showLyrics by remember { mutableStateOf(true) }
     var userScrolling by remember { mutableStateOf(false) }
 
-    var durationMs by remember { mutableStateOf(0) }
-    var positionMs by remember { mutableStateOf(0) }
-    var isDragging by remember { mutableStateOf(false) }
-    var dragPosMs by remember { mutableStateOf(0) }
+    var durationMs by remember(currentTrackUri) { mutableStateOf(0) }
+    var positionMs by remember(currentTrackUri) { mutableStateOf(0) }
+    var isDragging by remember(currentTrackUri) { mutableStateOf(false) }
+    var dragPosMs by remember(currentTrackUri) { mutableStateOf(0) }
+
 
     var hasRequestedPlaylist by remember(currentTrackUri) { mutableStateOf(false) }
+    var autoReturnArmed by remember(currentTrackUri) { mutableStateOf(false) }
 
+    LaunchedEffect(currentTrackUri) {
+        autoReturnArmed = false
+        delay(1500) // laisse Exo stabiliser duration/position après changement de titre
+        autoReturnArmed = true
+    }
     var isAutoReturnEnabled by remember {
         mutableStateOf(AutoReturnPrefs.isEnabled(context))
     }
@@ -252,9 +259,16 @@ fun PlayerScreen(
     }
 
     // ---------- Autoswitch playlist (-10s) ----------
-    LaunchedEffect(durationMs, positionMs, hasRequestedPlaylist, currentTrackUri, isEditingLyrics) {
+    LaunchedEffect(durationMs, positionMs, hasRequestedPlaylist, currentTrackUri, isEditingLyrics, autoReturnArmed) {
         val enabled = AutoReturnPrefs.isEnabled(context)
-        if (enabled && !isEditingLyrics && !hasRequestedPlaylist && durationMs > 0 && positionMs >= durationMs - 10_000) {
+        if (enabled &&
+            autoReturnArmed &&
+            !isEditingLyrics &&
+            !hasRequestedPlaylist &&
+            durationMs > 0 &&
+            positionMs > 3_000 &&
+            positionMs >= durationMs - 10_000
+        ) {
             hasRequestedPlaylist = true
             onRequestShowPlaylist()
         }

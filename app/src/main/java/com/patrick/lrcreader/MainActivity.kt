@@ -123,6 +123,10 @@ class MainActivity : ComponentActivity() {
 
                 var selectedTab by remember {
                     mutableStateOf<BottomTab>(initialTabKey?.let { tabFromKey(it) } ?: BottomTab.Home)
+
+                }
+                LaunchedEffect(selectedTab) {
+                    Log.d("NAV", "UI now showing tab = $selectedTab")
                 }
                 var closeMixSignal by remember { mutableIntStateOf(0) }
 
@@ -514,29 +518,37 @@ class MainActivity : ComponentActivity() {
 
                         is BottomTab.QuickPlaylists -> QuickPlaylistsScreen(
                             modifier = contentModifier,
-                            onPlaySong = { uri, playlistName, color ->
+                            onPlaySong = { uri: String, playlistName: String, color: Color ->
                                 if (uri.startsWith("prompter://")) {
-                                    val rawId = uri.removePrefix("prompter://")
-                                    val numeric = rawId.toLongOrNull()
-                                    textPrompterId = if (numeric != null) "note:$numeric" else "text:$rawId"
-
-                                    selectedQuickPlaylist = playlistName
-                                    SessionPrefs.saveQuickPlaylist(ctx, playlistName)
-                                    currentLyricsColor = color
+                                    // ...
                                 } else {
+                                    Log.d("NAV", "MainActivity else(audio) -> play + go Player")
                                     playWithCrossfade(uri, playlistName)
                                     currentPlayingUri = uri
                                     selectedQuickPlaylist = playlistName
                                     SessionPrefs.saveQuickPlaylist(ctx, playlistName)
                                     currentLyricsColor = color
+
+                                    // ✅ tu peux garder ça OU le laisser au callback ci-dessous
+                                    selectedTab = BottomTab.Player
+                                    Log.d("NAV", "selectedTab set to Player ✅")
+
+                                    SessionPrefs.saveTab(ctx, TAB_PLAYER)
                                 }
                             },
                             refreshKey = refreshKey,
                             currentPlayingUri = currentPlayingUri,
                             selectedPlaylist = selectedQuickPlaylist,
-                            onSelectedPlaylistChange = { name ->
+                            onSelectedPlaylistChange = { name: String? ->
                                 selectedQuickPlaylist = name
                                 SessionPrefs.saveQuickPlaylist(ctx, name)
+                            },
+                            onPlaylistColorChange = { c: Color -> currentLyricsColor = c },
+
+                            // ✅ OBLIGATOIRE
+                            onRequestShowPlayer = {
+                                selectedTab = BottomTab.Player
+                                SessionPrefs.saveTab(ctx, TAB_PLAYER)
                             }
                         )
 
