@@ -1,5 +1,7 @@
 package com.patrick.lrcreader.ui
 
+import com.patrick.lrcreader.core.PlaybackCoordinator   // pour stopPlayer et stopDj et stopFiller
+import com.patrick.lrcreader.core.FillerSoundManager    // pour fadeOutAndStop du fond sonore
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -42,7 +44,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.core.FillerSoundPrefs
 import com.patrick.lrcreader.core.PlayerBusController
 import com.patrick.lrcreader.core.PlayerVolumePrefs
@@ -226,28 +227,35 @@ fun MixerHomePreviewScreen(
                         horizontalArrangement = Arrangement.SpaceEvenly,
                         verticalAlignment = Alignment.Bottom
                     ) {
-                        // LECTEUR = branché sur PlayerBusController
+                        // LECTEUR = STOP DU LECTEUR
                         MixerChannelColumn(
                             label = "LECTEUR",
                             subtitle = "Playlists",
                             icon = Icons.Filled.MusicNote,
                             faderColor = Color(0xFF81C784),
                             meterColor = Color(0xFF66BB6A),
-                            onClick = onOpenPlayer,
+                            // <<< ici : stop du lecteur au lieu d'ouvrir l'écran
+                            onClick = {
+                                // stop du player (nullable lambda)
+                                PlaybackCoordinator.stopPlayer?.invoke()
+                            },
                             initialLevel = lecteurInitialUi
                         ) { uiLevel ->
                             // 🔊 Bus principal -> bus lecteur (prefs + MediaPlayer attaché)
                             PlayerBusController.setUiLevelFromBusUi(context, uiLevel)
                         }
 
-                        // FOND = 🔥 branché sur FillerSound (sécurisé)
+                        // FOND = STOP DU FOND SONORE
                         MixerChannelColumn(
                             label = "FOND",
                             subtitle = "Ambiance",
                             icon = Icons.Filled.LibraryMusic,
                             faderColor = Color(0xFFFFC107),
                             meterColor = Color(0xFFFFA000),
-                            onClick = onOpenFondSonore,
+                            // <<< ici : stop du fond sonore
+                            onClick = {
+                                PlaybackCoordinator.stopFiller?.invoke()
+                            },
                             initialLevel = fondInitialUi
                         ) { uiLevel ->
                             try {
@@ -259,14 +267,17 @@ fun MixerHomePreviewScreen(
                             }
                         }
 
-                        // DJ → FADER RELIÉ AU MASTER DJ via DjBusController
+                        // DJ = STOP DU DJ
                         MixerChannelColumn(
                             label = "DJ",
                             subtitle = "Bus DJ",
                             icon = Icons.Filled.Headphones,
                             faderColor = Color(0xFF64B5F6),
                             meterColor = Color(0xFF42A5F5),
-                            onClick = onOpenDj,
+                            // <<< ici : stop du DJ
+                            onClick = {
+                                PlaybackCoordinator.stopDj?.invoke()
+                            },
                             initialLevel = djInitialUi
                         ) { uiLevel ->
                             DjBusController.setUiLevel(uiLevel)
