@@ -1,111 +1,76 @@
 package com.patrick.lrcreader.ui
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PlaylistPlay
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Waves
+import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 // ---------------------------------------------------------------------
 // Onglets
 // ---------------------------------------------------------------------
 sealed class BottomTab(val id: String, val label: String) {
-    @Composable
-    abstract fun Icon()
+    @Composable abstract fun Icon()
 
-    // Accueil
     object Home : BottomTab("home", "Accueil") {
-        @Composable
-        override fun Icon() {
-            Icon(
-                imageVector = Icons.Filled.Home,
-                contentDescription = null
-            )
-        }
+        @Composable override fun Icon() = Icon(Icons.Filled.Home, contentDescription = null)
     }
 
     object QuickPlaylists : BottomTab("quick", "Playlists") {
-        @Composable
-        override fun Icon() {
-            Icon(
-                imageVector = Icons.Filled.PlaylistPlay,
-                contentDescription = null
-            )
-        }
+        @Composable override fun Icon() = Icon(Icons.Filled.PlaylistPlay, contentDescription = null)
     }
 
     object Player : BottomTab("player", "Lecteur") {
-        @Composable
-        override fun Icon() {
-            Icon(
-                imageVector = Icons.Filled.MusicNote,
-                contentDescription = null
-            )
-        }
+        @Composable override fun Icon() = Icon(Icons.Filled.MusicNote, contentDescription = null)
     }
 
+    object Filler : BottomTab("filler", "Fond") {
+        @Composable override fun Icon() = Icon(Icons.Filled.Waves, contentDescription = null)
+    }
+
+    object Dj : BottomTab("dj", "DJ") {
+        @Composable override fun Icon() = Text("DJ", fontSize = 14.sp, color = Color.White)
+    }
+
+    // ✅ Loupe = action (overlay), pas un “écran onglet”
+    object Search : BottomTab("search", "Recherche") {
+        @Composable override fun Icon() = Icon(Icons.Filled.Search, contentDescription = null)
+    }
+
+    // ✅ ⋮ = action (menu), pas un “écran onglet”
+    object More : BottomTab("more", "Plus") {
+        @Composable override fun Icon() = Icon(Icons.Filled.MoreVert, contentDescription = null)
+    }
+
+    // Reste accessible via ⋮
     object Library : BottomTab("library", "Bibliothèque") {
-        @Composable
-        override fun Icon() {
-            Icon(
-                imageVector = Icons.Filled.LibraryMusic,
-                contentDescription = null
-            )
-        }
+        @Composable override fun Icon() = Icon(Icons.Filled.Menu, contentDescription = null)
     }
 
     object AllPlaylists : BottomTab("all", "Toutes") {
-        @Composable
-        override fun Icon() {
-            Icon(
-                imageVector = Icons.Filled.Menu,
-                contentDescription = null
-            )
-        }
+        @Composable override fun Icon() = Icon(Icons.Filled.Menu, contentDescription = null)
     }
 
-    object More : BottomTab("more", "Plus") {
-        @Composable
-        override fun Icon() {
-            Icon(
-                imageVector = Icons.Filled.MoreVert,
-                contentDescription = null
-            )
-        }
-    }
-
-    // Onglet DJ : texte "DJ" bien visible
-    object Dj : BottomTab("dj", "DJ") {
-        @Composable
-        override fun Icon() {
-            Text(
-                text = "DJ",
-                fontSize = 20.sp,
-                color = Color.White
-            )
-        }
-    }
-
-    // Écran accordeur (pas forcément présent dans la barre du bas)
     object Tuner : BottomTab("tuner", "Accordeur") {
-        @Composable
-        override fun Icon() {
-            Icon(
-                imageVector = Icons.Filled.GraphicEq,
-                contentDescription = null
-            )
-        }
+        @Composable override fun Icon() = Icon(Icons.Filled.GraphicEq, contentDescription = null)
     }
 }
 
@@ -115,31 +80,43 @@ sealed class BottomTab(val id: String, val label: String) {
 @Composable
 fun BottomTabsBar(
     selected: BottomTab,
-    onSelected: (BottomTab) -> Unit
+    onSelected: (BottomTab) -> Unit,
+    onSearchClick: () -> Unit,
+    onMoreClick: () -> Unit
 ) {
-    // On NE met PAS Tuner ici : il est accessible via l’accueil
+    // ✅ 7 icônes (comme tu veux) : Home / Playlists / Player / Fond / DJ / Loupe / ⋮
     val tabs = listOf(
         BottomTab.Home,
         BottomTab.QuickPlaylists,
         BottomTab.Player,
-        BottomTab.Library,
-        BottomTab.AllPlaylists,
-        BottomTab.More,
-        BottomTab.Dj
+        BottomTab.Filler,
+        BottomTab.Dj,
+        BottomTab.Search,
+        BottomTab.More
     )
 
-    NavigationBar(
-        containerColor = Color.Black,
-        contentColor = Color.White
-    ) {
+    NavigationBar(containerColor = Color.Black, contentColor = Color.White) {
         tabs.forEach { tab ->
             val isSelected = tab.id == selected.id
 
             NavigationBarItem(
                 selected = isSelected,
-                onClick = { onSelected(tab) },
-                icon = { tab.Icon() },
+                onClick = {
+                    when (tab) {
+                        is BottomTab.Search -> onSearchClick()
+                        is BottomTab.More -> onMoreClick()
+                        else -> onSelected(tab)
+                    }
+                },
                 alwaysShowLabel = false,
+                icon = {
+                    Box(
+                        modifier = Modifier
+                            .padding(vertical = 2.dp)
+                            .size(22.dp),
+                        contentAlignment = Alignment.Center
+                    ) { tab.Icon() }
+                },
                 colors = NavigationBarItemDefaults.colors(
                     selectedIconColor = Color.White,
                     unselectedIconColor = Color.White.copy(alpha = 0.4f),
