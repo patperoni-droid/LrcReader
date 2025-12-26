@@ -1,10 +1,11 @@
 package com.patrick.lrcreader.ui
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Headset
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
-import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Menu
@@ -47,7 +48,10 @@ sealed class BottomTab(val id: String, val label: String) {
     }
 
     object Dj : BottomTab("dj", "DJ") {
-        @Composable override fun Icon() = Text("DJ", fontSize = 14.sp, color = Color.White)
+        @Composable
+        override fun Icon() {
+            Icon(imageVector = Icons.Filled.Headset, contentDescription = null)
+        }
     }
 
     // ✅ Loupe = action (overlay), pas un “écran onglet”

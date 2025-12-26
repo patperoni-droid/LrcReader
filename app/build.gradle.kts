@@ -56,24 +56,36 @@ android {
 }
 
 dependencies {
+    // BOM Compose pour gérer les versions cohérentes
     val composeBom = platform("androidx.compose:compose-bom:2024.10.00")
     implementation(composeBom)
     androidTestImplementation(composeBom)
 
-    // Compose UI
+    // Compose UI de base
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.ui:ui-tooling-preview")
     debugImplementation("androidx.compose.ui:ui-tooling")
+
+    // ✅ Paquet d’icônes Material étendu :
+    //    contient beaucoup d’icônes supplémentaires (par exemple Headset, Search, etc.)
+    //    Utile si tu veux changer l’icône DJ par un casque audio.
     implementation("androidx.compose.material:material-icons-extended")
 
+    // Activité Compose
     implementation("androidx.activity:activity-compose:1.9.3")
+
+    // Pour la gestion de dossiers / fichiers
     implementation("androidx.documentfile:documentfile:1.0.1")
 
-    // Media3 (UNE SEULE VERSION)
+    // Media3 – ExoPlayer et modules associés
+    //  une seule version pour éviter les conflits
     val media3 = "1.6.1"
     implementation("androidx.media3:media3-exoplayer:$media3")
     implementation("androidx.media3:media3-extractor:$media3")
     implementation("androidx.media3:media3-ui:$media3")
     implementation("androidx.media3:media3-common:$media3")
 }
+
+
+

@@ -263,24 +263,20 @@ class MainActivity : ComponentActivity() {
                                 if (tab !is BottomTab.Search) isSearchOpen = false
                                 isMoreMenuOpen = false
 
-                                // ✅ comportement spécial "Fond sonore"
+                                // ✅ comportement spécial "Fond sonore" = overlay, mais on ne "reste pas coincé"
                                 if (tab is BottomTab.Filler) {
                                     isFillerSettingsOpen = true
-                                    // (optionnel) tu peux laisser selectedTab inchangé ou le mettre sur Filler
+                                } else {
                                     selectedTab = tab
                                     SessionPrefs.saveTab(ctx, tabKeyOf(tab))
-                                    return@BottomTabsBar
                                 }
-
-                                // ✅ onglets normaux
-                                selectedTab = tab
-                                SessionPrefs.saveTab(ctx, tabKeyOf(tab))
                             },
                             onSearchClick = { isSearchOpen = true },
                             onMoreClick = { isMoreMenuOpen = true }
                         )
                     }
                 ) { innerPadding ->
+                    // ... tu laisses TOUT le reste comme tu as déjà
 
                     val contentModifier = Modifier
                         .padding(innerPadding)
@@ -348,7 +344,6 @@ class MainActivity : ComponentActivity() {
                     }
 
                     when (selectedTab) {
-                        is BottomTab.Filler -> isFillerSettingsOpen = true
 
                         is BottomTab.Home -> MixerHomePreviewScreen(
                             modifier = contentModifier,
