@@ -2,6 +2,7 @@
 
 package com.patrick.lrcreader.exo
 
+import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -119,6 +120,9 @@ class MainActivity : ComponentActivity() {
                 var isMoreMenuOpen by remember { mutableStateOf(false) }
                 var isSearchOpen by remember { mutableStateOf(false) }
 
+                // ✅ MODE de recherche (PLAYER ou DJ)
+                var searchMode by remember { mutableStateOf(SearchMode.PLAYER) }
+
                 // ✅ Index pour SearchScreen
                 var indexAll by remember { mutableStateOf(LibraryIndexCache.load(ctx) ?: emptyList()) }
                 LaunchedEffect(refreshKey) {
@@ -226,6 +230,20 @@ class MainActivity : ComponentActivity() {
                     SessionPrefs.saveTab(ctx, TAB_PLAYER)
                 }
 
+                // ✅ helper : lancer depuis recherche en mode DJ
+                fun playFromSearchInDj(uriString: String) {
+                    // On récupère un nom "humain" depuis l'index (sinon fallback)
+                    val name = indexAll.firstOrNull { it.uriString == uriString }?.name
+                        ?: Uri.parse(uriString).lastPathSegment
+                        ?: "Titre"
+
+                    PlaybackCoordinator.onDjStart()
+                    DjEngine.selectTrackFromList(uriString, name)
+
+                    selectedTab = BottomTab.Dj
+                    SessionPrefs.saveTab(ctx, TAB_DJ)
+                }
+
                 LaunchedEffect(Unit) {
                     val (lastUri, _) = SessionPrefs.getLastSession(ctx)
                     if (!lastUri.isNullOrBlank()) {
@@ -273,7 +291,11 @@ class MainActivity : ComponentActivity() {
                                     SessionPrefs.saveTab(ctx, tabKeyOf(tab))
                                 }
                             },
-                            onSearchClick = { isSearchOpen = true },
+                            onSearchClick = {
+                                // ✅ capture le contexte AU MOMENT où on ouvre la recherche
+                                searchMode = if (selectedTab is BottomTab.Dj) SearchMode.DJ else SearchMode.PLAYER
+                                isSearchOpen = true
+                            },
                             onMoreClick = { isMoreMenuOpen = true }
                         )
                     }
@@ -506,11 +528,19 @@ class MainActivity : ComponentActivity() {
                                 indexAll = indexAll,
                                 onBack = { isSearchOpen = false },
                                 onPlay = { uriString ->
-                                    playWithCrossfade(uriString, null)
-                                    currentPlayingUri = uriString
-                                    currentLyricsColor = Color(0xFFE040FB)
-                                    selectedTab = BottomTab.Player
-                                    SessionPrefs.saveTab(ctx, TAB_PLAYER)
+                                    when (searchMode) {
+                                        SearchMode.PLAYER -> {
+                                            playWithCrossfade(uriString, null)
+                                            currentPlayingUri = uriString
+                                            currentLyricsColor = Color(0xFFE040FB)
+                                            selectedTab = BottomTab.Player
+                                            SessionPrefs.saveTab(ctx, TAB_PLAYER)
+                                        }
+
+                                        SearchMode.DJ -> {
+                                            playFromSearchInDj(uriString)
+                                        }
+                                    }
                                     isSearchOpen = false
                                 }
                             )
@@ -623,3 +653,9 @@ private fun tabFromKey(key: String): BottomTab = when (key) {
     TAB_SEARCH -> BottomTab.Home // on ne “restore” pas un overlay comme un onglet
     else -> BottomTab.Home
 }
+
+/* --------------------------------------------------------------- */
+/*  Search mode                                                    */
+/* --------------------------------------------------------------- */
+
+private enum class SearchMode { PLAYER, DJ }
