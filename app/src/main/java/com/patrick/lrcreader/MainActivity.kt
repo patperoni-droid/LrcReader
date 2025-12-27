@@ -3,7 +3,6 @@
 package com.patrick.lrcreader.exo
 
 import android.os.Bundle
-import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.core.view.WindowCompat
@@ -28,13 +27,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
-import kotlin.math.pow
 import com.patrick.lrcreader.core.*
 import com.patrick.lrcreader.core.audio.AudioEngine
 import com.patrick.lrcreader.core.dj.DjEngine
 import com.patrick.lrcreader.core.exoCrossfadePlay
 import com.patrick.lrcreader.core.lyrics.LyricsResolver
 import com.patrick.lrcreader.ui.*
+import kotlin.math.pow
 
 class MainActivity : ComponentActivity() {
 
@@ -120,7 +119,7 @@ class MainActivity : ComponentActivity() {
                 var isMoreMenuOpen by remember { mutableStateOf(false) }
                 var isSearchOpen by remember { mutableStateOf(false) }
 
-                // ✅ Index pour SearchScreen (tu pourras l’améliorer après)
+                // ✅ Index pour SearchScreen
                 var indexAll by remember { mutableStateOf(LibraryIndexCache.load(ctx) ?: emptyList()) }
                 LaunchedEffect(refreshKey) {
                     indexAll = LibraryIndexCache.load(ctx) ?: emptyList()
@@ -194,9 +193,7 @@ class MainActivity : ComponentActivity() {
                             playToken = myToken,
                             getCurrentToken = { currentPlayToken },
                             onLyricsLoaded = { embeddedOrNull ->
-                                parsedLines = LyricsResolver.resolveLyrics(
-                                    ctx, uriString, embeddedOrNull
-                                )
+                                parsedLines = LyricsResolver.resolveLyrics(ctx, uriString, embeddedOrNull)
                             },
                             onStart = {
                                 isPlaying = true
@@ -236,13 +233,15 @@ class MainActivity : ComponentActivity() {
 
                         val overrideOk = LrcStorage.loadForTrack(ctx, lastUri)?.takeIf { it.isNotBlank() }
                         parsedLines = if (overrideOk != null) parseLrc(overrideOk) else emptyList()
-// IMPORTANT:
-// -5 dB est la valeur par défaut volontaire (headroom).
-// NE PAS réinitialiser automatiquement si la valeur est 0.
-// 0 dB est un choix utilisateur valide.
+
+                        // IMPORTANT:
+                        // -5 dB est la valeur par défaut volontaire (headroom).
+                        // NE PAS réinitialiser automatiquement si la valeur est 0.
+                        // 0 dB est un choix utilisateur valide.
                         currentTrackGainDb = clampTrackDb(
                             TrackVolumePrefs.getDb(ctx, lastUri) ?: DEFAULT_TRACK_GAIN_DB
                         )
+
                         currentTrackTempo = TrackTempoPrefs.getTempo(ctx, lastUri) ?: 1f
                         currentTrackPitchSemi = TrackPitchPrefs.getSemi(ctx, lastUri) ?: 0
                     }
@@ -266,7 +265,7 @@ class MainActivity : ComponentActivity() {
                                 if (tab !is BottomTab.Search) isSearchOpen = false
                                 isMoreMenuOpen = false
 
-                                // ✅ comportement spécial "Fond sonore" = overlay, mais on ne "reste pas coincé"
+                                // ✅ "Fond sonore" = overlay
                                 if (tab is BottomTab.Filler) {
                                     isFillerSettingsOpen = true
                                 } else {
@@ -279,7 +278,6 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                 ) { innerPadding ->
-                    // ... tu laisses TOUT le reste comme tu as déjà
 
                     val contentModifier = Modifier
                         .padding(innerPadding)
@@ -337,6 +335,7 @@ class MainActivity : ComponentActivity() {
                         return@Scaffold
                     }
 
+                    // ✅ overlay PROMPTEUR
                     textPrompterId?.let { tid ->
                         TextPrompterScreen(
                             modifier = contentModifier,
@@ -408,13 +407,31 @@ class MainActivity : ComponentActivity() {
                         is BottomTab.QuickPlaylists -> QuickPlaylistsScreen(
                             modifier = contentModifier,
                             onPlaySong = { uri, playlistName, color ->
-                                playWithCrossfade(uri, playlistName)
-                                currentPlayingUri = uri
-                                selectedQuickPlaylist = playlistName
-                                SessionPrefs.saveQuickPlaylist(ctx, playlistName)
-                                currentLyricsColor = color
-                                selectedTab = BottomTab.Player
-                                SessionPrefs.saveTab(ctx, TAB_PLAYER)
+
+                                when (val target = PlaybackRouter.resolve(uri, playlistName)) {
+
+                                    is PlaybackRouter.Target.Prompter -> {
+                                        textPrompterId = target.id
+                                        // ✅ pas de playWithCrossfade : l’overlay TextPrompterScreen va s’afficher
+                                        return@QuickPlaylistsScreen
+                                    }
+
+                                    is PlaybackRouter.Target.Audio -> {
+                                        playWithCrossfade(target.uri, target.playlist)
+                                        currentPlayingUri = target.uri
+
+                                        selectedQuickPlaylist = target.playlist
+                                        target.playlist?.let { SessionPrefs.saveQuickPlaylist(ctx, it) }
+
+                                        currentLyricsColor = color
+                                        selectedTab = BottomTab.Player
+                                        SessionPrefs.saveTab(ctx, TAB_PLAYER)
+                                    }
+
+                                    is PlaybackRouter.Target.Unknown -> {
+                                        // rien
+                                    }
+                                }
                             },
                             refreshKey = refreshKey,
                             currentPlayingUri = currentPlayingUri,
@@ -429,6 +446,7 @@ class MainActivity : ComponentActivity() {
                                 SessionPrefs.saveTab(ctx, TAB_PLAYER)
                             }
                         )
+
                         is BottomTab.Library -> LibraryScreen(
                             modifier = contentModifier,
                             onPlayFromLibrary = { uriString ->
@@ -447,6 +465,7 @@ class MainActivity : ComponentActivity() {
                                 SessionPrefs.saveOpenedPlaylist(ctx, name)
                             }
                         )
+
                         is BottomTab.Dj -> DjScreen(modifier = contentModifier, context = ctx)
 
                         is BottomTab.More -> MoreScreen(
@@ -467,7 +486,10 @@ class MainActivity : ComponentActivity() {
                             }
                         )
 
-                        else -> Box(modifier = contentModifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        else -> Box(
+                            modifier = contentModifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
                             Text("Écran inconnu", color = Color.White)
                         }
                     }
