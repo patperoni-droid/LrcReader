@@ -1,14 +1,11 @@
 package com.patrick.lrcreader.ui
+
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.*
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
@@ -23,12 +20,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
-
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
@@ -36,16 +31,13 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 
 import com.patrick.lrcreader.core.TrackEqEngine
 import com.patrick.lrcreader.core.TrackEqPrefs
 import com.patrick.lrcreader.core.TrackEqSettings
-
 import kotlin.math.roundToInt
-
 
 @Composable
 fun TrackMixScreen(
@@ -68,35 +60,40 @@ fun TrackMixScreen(
 
     val minDb = -12
     val maxDb = 0
-    val defaultDb = -5
+    val defaultDb = -5 // ✅ voulu par toi
 
     val minTempo = 0.8f
     val maxTempo = 1.2f
     val minSemi = -6
     val maxSemi = 6
 
-    // ✅ Valeur affichée (source UI)
+    /**
+     * ✅ FIX IMPORTANT :
+     * - On NE considère plus "0" comme une valeur spéciale.
+     *   0 dB est une vraie valeur (et c’est ton maxDb).
+     * - La source de vérité = currentTrackGainDb (déjà chargé depuis prefs dans MainActivity).
+     */
     var displayGainDb by remember(currentTrackUri) {
-        mutableStateOf(if (currentTrackGainDb == 0) defaultDb else currentTrackGainDb)
+        mutableIntStateOf(currentTrackGainDb.coerceIn(minDb, maxDb))
     }
 
-    LaunchedEffect(currentTrackUri) {
-        if (currentTrackUri != null && currentTrackGainDb == 0) {
-            displayGainDb = defaultDb
-            onTrackGainChange(defaultDb)
-        } else {
-            displayGainDb = currentTrackGainDb
-        }
+    // Resync UI quand on change de titre OU quand le parent change la valeur
+    LaunchedEffect(currentTrackUri, currentTrackGainDb) {
+        val clamped = currentTrackGainDb.coerceIn(minDb, maxDb)
+        displayGainDb = clamped
     }
 
     // mapping slider 0..1 pour le fader gain
     var gain01 by remember(displayGainDb) {
-        mutableStateOf(((displayGainDb - minDb).toFloat() / (maxDb - minDb)).coerceIn(0f, 1f))
+        mutableFloatStateOf(
+            ((displayGainDb - minDb).toFloat() / (maxDb - minDb)).coerceIn(0f, 1f)
+        )
     }
 
     var tempo01 by remember(tempo) {
-        mutableStateOf(((tempo - minTempo) / (maxTempo - minTempo)).coerceIn(0f, 1f))
+        mutableFloatStateOf(((tempo - minTempo) / (maxTempo - minTempo)).coerceIn(0f, 1f))
     }
+
     // ✅ Anti-craquement SPEED : on évite 200 updates/sec vers ExoPlayer
     val scope = rememberCoroutineScope()
     var tempoApplyJob by remember { mutableStateOf<Job?>(null) }
@@ -106,22 +103,22 @@ fun TrackMixScreen(
         tempoPending = newTempo
         tempoApplyJob?.cancel()
         tempoApplyJob = scope.launch {
-            delay(90) // 60..120ms : +haut = encore moins de craquements
+            delay(90)
             onTempoChange(tempoPending)
         }
     }
 
     var pitch01 by remember(pitchSemi) {
-        mutableStateOf(((pitchSemi - minSemi).toFloat() / (maxSemi - minSemi)).coerceIn(0f, 1f))
+        mutableFloatStateOf(((pitchSemi - minSemi).toFloat() / (maxSemi - minSemi)).coerceIn(0f, 1f))
     }
 
     val initialEq = remember(currentTrackUri) {
         currentTrackUri?.let { TrackEqPrefs.load(context, it) } ?: TrackEqSettings(0f, 0f, 0f)
     }
 
-    var lowGain by remember(currentTrackUri) { mutableStateOf(initialEq.low) }
-    var midGain by remember(currentTrackUri) { mutableStateOf(initialEq.mid) }
-    var highGain by remember(currentTrackUri) { mutableStateOf(initialEq.high) }
+    var lowGain by remember(currentTrackUri) { mutableFloatStateOf(initialEq.low) }
+    var midGain by remember(currentTrackUri) { mutableFloatStateOf(initialEq.mid) }
+    var highGain by remember(currentTrackUri) { mutableFloatStateOf(initialEq.high) }
 
     fun applyAndSaveEq() {
         TrackEqEngine.setBands(lowGain, midGain, highGain)
@@ -197,7 +194,17 @@ fun TrackMixScreen(
                                     .toInt()
                                     .coerceIn(minDb, maxDb)
                                 displayGainDb = newDb
+
+                                // ✅ On applique + on sauvegarde via le parent (TrackVolumePrefs etc.)
                                 onTrackGainChange(newDb)
+                            },
+                            // ✅ commit optionnel (utile si plus tard tu veux "save only on release")
+                            onCommit = { v ->
+                                val finalDb = (minDb + v * (maxDb - minDb))
+                                    .toInt()
+                                    .coerceIn(minDb, maxDb)
+                                displayGainDb = finalDb
+                                onTrackGainChange(finalDb)
                             },
                             labelMin = "$minDb",
                             labelMax = "$maxDb"
@@ -220,16 +227,14 @@ fun TrackMixScreen(
                             label = String.format("x%.2f", tempo),
                             onChange = { v ->
                                 tempo01 = v
-                                val newTempo = (minTempo + v * (maxTempo - minTempo)).coerceIn(minTempo, maxTempo)
-
-                                // ✅ apply throttlé (anti-craquement)
+                                val newTempo = (minTempo + v * (maxTempo - minTempo))
+                                    .coerceIn(minTempo, maxTempo)
                                 scheduleTempoApply(newTempo)
                             },
                             onCommit = { v ->
                                 tempoApplyJob?.cancel()
-                                val finalTempo = (minTempo + v * (maxTempo - minTempo)).coerceIn(minTempo, maxTempo)
-
-                                // ✅ apply final sûr quand tu lâches
+                                val finalTempo = (minTempo + v * (maxTempo - minTempo))
+                                    .coerceIn(minTempo, maxTempo)
                                 onTempoChange(finalTempo)
                             }
                         )
@@ -272,7 +277,6 @@ fun TrackMixScreen(
                         Text("VU", color = textSub, fontSize = 11.sp, letterSpacing = 2.sp)
                         Spacer(Modifier.height(10.dp))
 
-                        // Niveau simulé à partir du gain (c’est visuel, pas du vrai RMS)
                         val vu01 = ((displayGainDb - minDb).toFloat() / (maxDb - minDb))
                             .coerceIn(0f, 1f)
 
@@ -407,7 +411,6 @@ private fun VuMeter(
         val h = size.height
         val pad = w * 0.18f
 
-        // slot
         drawRoundRect(
             color = base,
             topLeft = Offset(pad, 0f),
@@ -432,7 +435,6 @@ private fun VuMeter(
             cornerRadius = CornerRadius((w - 2 * pad) / 2f)
         )
 
-        // petites graduations
         val tickX0 = pad * 0.55f
         val tickX1 = w - tickX0
         for (i in 1..9) {
@@ -458,6 +460,7 @@ private fun AnalogFader(
     knobColor: Color,
     height: androidx.compose.ui.unit.Dp,
     onChange: (Float) -> Unit,
+    onCommit: (Float) -> Unit = {}, // ✅ FIX : optionnel (sinon “rouge”)
     labelMin: String,
     labelMax: String
 ) {
@@ -473,6 +476,7 @@ private fun AnalogFader(
 
             val valueState = rememberUpdatedState(value01)
             val onChangeState = rememberUpdatedState(onChange)
+            val onCommitState = rememberUpdatedState(onCommit)
 
             Canvas(
                 modifier = Modifier
@@ -481,8 +485,6 @@ private fun AnalogFader(
                     .background(Color(0xFF0F1012), shape)
                     .border(1.dp, Color(0xFF3A3C42), shape)
                     .pointerInput(Unit) {
-                        // ✅ Drag "analog" : on part d'une valeur de départ,
-                        // puis on applique le delta cumulé avec une sensibilité.
                         var startValue = 0f
                         var accDragPx = 0f
 
@@ -491,15 +493,23 @@ private fun AnalogFader(
                                 startValue = valueState.value
                                 accDragPx = 0f
                             },
+                            onDragEnd = {
+                                val pixelsForFullTravel = size.height * 3.5f
+                                val delta01 = (-accDragPx / pixelsForFullTravel)
+                                val next = (startValue + delta01).coerceIn(0f, 1f)
+                                onCommitState.value(next)
+                            },
+                            onDragCancel = {
+                                val pixelsForFullTravel = size.height * 3.5f
+                                val delta01 = (-accDragPx / pixelsForFullTravel)
+                                val next = (startValue + delta01).coerceIn(0f, 1f)
+                                onCommitState.value(next)
+                            },
                             onVerticalDrag = { change, dragAmount ->
                                 change.consume()
-
                                 accDragPx += dragAmount
 
-                                // ✅ Sensibilité : plus c'est grand, plus c'est fin.
-                                // Ici : ~3.5 hauteurs de fader pour faire 0→1.
                                 val pixelsForFullTravel = size.height * 3.5f
-
                                 val delta01 = (-accDragPx / pixelsForFullTravel)
                                 val next = (startValue + delta01).coerceIn(0f, 1f)
 
@@ -513,7 +523,6 @@ private fun AnalogFader(
                 val slotW = w * 0.22f
                 val x = (w - slotW) / 2f
 
-                // slot metal
                 drawRoundRect(
                     color = Color(0xFF2B2D33),
                     topLeft = Offset(x, 12f),
@@ -521,7 +530,6 @@ private fun AnalogFader(
                     cornerRadius = CornerRadius(slotW)
                 )
 
-                // ticks
                 val tx0 = x - w * 0.22f
                 val tx1 = x - w * 0.06f
                 val tx2 = x + slotW + w * 0.06f
@@ -534,7 +542,6 @@ private fun AnalogFader(
                     drawLine(tickColor.copy(alpha = a), Offset(tx2, y), Offset(tx3, y), thick)
                 }
 
-                // fill (look)
                 val v = value01.coerceIn(0f, 1f)
                 val fillH = (h - 24f) * v
                 drawRoundRect(
@@ -544,7 +551,6 @@ private fun AnalogFader(
                     cornerRadius = CornerRadius(slotW)
                 )
 
-                // knob
                 val knobY = 12f + (h - 24f) * (1f - v)
                 drawRoundRect(
                     color = Color(0xFF3C3F46),
@@ -572,15 +578,14 @@ private fun AnalogKnob(
     value01: Float,
     accent: Color,
     label: String,
-    onChange: (Float) -> Unit,          // ✅ “preview” fluide
-    onCommit: (Float) -> Unit = {}      // ✅ “save” à la fin
+    onChange: (Float) -> Unit,
+    onCommit: (Float) -> Unit = {}
 ) {
     val sizeDp = 96.dp
 
     var internal by remember { mutableFloatStateOf(value01.coerceIn(0f, 1f)) }
     var isDragging by remember { mutableStateOf(false) }
 
-    // ✅ IMPORTANT : on resync seulement si on ne touche pas
     LaunchedEffect(value01) {
         if (!isDragging) internal = value01.coerceIn(0f, 1f)
     }
@@ -604,8 +609,7 @@ private fun AnalogKnob(
                     ) { change, dragAmount ->
                         change.consume()
 
-                        // ✅ Réglage simple et stable : “full travel” en pixels
-                        val pixelsForFullTravel = 2600f // augmente = plus fin
+                        val pixelsForFullTravel = 2600f
                         val delta = (-dragAmount / pixelsForFullTravel)
 
                         internal = (internal + delta).coerceIn(0f, 1f)
@@ -661,8 +665,8 @@ private fun AnalogKnob(
         }
 
         Spacer(Modifier.height(6.dp))
-        androidx.compose.material3.Text(label, color = Color(0xFFEFE8DA), fontSize = 12.sp)
-        androidx.compose.material3.Text("drag ↑↓", color = Color(0xFF9AA6AF), fontSize = 10.sp)
+        Text(label, color = Color(0xFFEFE8DA), fontSize = 12.sp)
+        Text("drag ↑↓", color = Color(0xFF9AA6AF), fontSize = 10.sp)
     }
 }
 
@@ -675,7 +679,9 @@ private fun EqAnalogFader(
     onGainChange: (Float) -> Unit,
     color: Color
 ) {
-    var sliderValue by remember(gain) { mutableStateOf(((gain + 12f) / 24f).coerceIn(0f, 1f)) }
+    var sliderValue by remember(gain) {
+        mutableFloatStateOf(((gain + 12f) / 24f).coerceIn(0f, 1f))
+    }
 
     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(92.dp)) {
         Text(label, color = Color(0xFFF5F0E6), fontSize = 12.sp, letterSpacing = 2.sp)
@@ -689,7 +695,7 @@ private fun EqAnalogFader(
                 .width(54.dp)
                 .background(Color(0xFF0F1012), RoundedCornerShape(14.dp))
                 .border(1.dp, Color(0xFF3A3C42), RoundedCornerShape(14.dp))
-                .pointerInput(sliderValue) {  // ✅ pas Unit
+                .pointerInput(sliderValue) {
                     var local = sliderValue
                     detectVerticalDragGestures { change, drag ->
                         change.consume()
@@ -699,9 +705,6 @@ private fun EqAnalogFader(
                     }
                 }
         ) {
-            // ... (tout le draw reste IDENTIQUE)
-
-
             val w = size.width
             val h = size.height
 
@@ -710,7 +713,6 @@ private fun EqAnalogFader(
             val topPad = 10f
             val usableH = h - 2 * topPad
 
-            // slot
             drawRoundRect(
                 color = Color(0xFF2B2D33),
                 topLeft = Offset(x, topPad),
@@ -718,7 +720,6 @@ private fun EqAnalogFader(
                 cornerRadius = CornerRadius(slotW)
             )
 
-            // ticks
             val tickL0 = x - w * 0.20f
             val tickL1 = x - w * 0.05f
             val tickR0 = x + slotW + w * 0.05f
@@ -732,7 +733,6 @@ private fun EqAnalogFader(
                 drawLine(Color.White.copy(alpha = a), Offset(tickR0, y), Offset(tickR1, y), sw)
             }
 
-            // fill (look)
             val v = sliderValue.coerceIn(0f, 1f)
             val fillH = usableH * v
             drawRoundRect(
@@ -742,7 +742,6 @@ private fun EqAnalogFader(
                 cornerRadius = CornerRadius(slotW)
             )
 
-            // knob
             val knobY = topPad + usableH * (1f - v)
             drawRoundRect(
                 color = Color(0xFF3C3F46),
@@ -759,7 +758,7 @@ private fun EqAnalogFader(
 @Composable
 fun TrackMixScreenPreview() {
     TrackMixScreen(
-        currentTrackGainDb = 0,
+        currentTrackGainDb = -5,
         onTrackGainChange = {},
         tempo = 1f,
         onTempoChange = {},
