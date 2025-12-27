@@ -202,7 +202,7 @@ class MainActivity : ComponentActivity() {
                                 isPlaying = true
 
                                 playlistName?.let { pl ->
-                                    PlaylistRepository.moveSongToEnd(pl, uriString)
+                                    PlaylistRepository.markSongPlayed(pl, uriString)
                                     refreshKey++
                                 }
 
