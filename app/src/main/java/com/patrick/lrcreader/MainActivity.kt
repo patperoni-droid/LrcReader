@@ -236,7 +236,10 @@ class MainActivity : ComponentActivity() {
 
                         val overrideOk = LrcStorage.loadForTrack(ctx, lastUri)?.takeIf { it.isNotBlank() }
                         parsedLines = if (overrideOk != null) parseLrc(overrideOk) else emptyList()
-
+// IMPORTANT:
+// -5 dB est la valeur par défaut volontaire (headroom).
+// NE PAS réinitialiser automatiquement si la valeur est 0.
+// 0 dB est un choix utilisateur valide.
                         currentTrackGainDb = clampTrackDb(
                             TrackVolumePrefs.getDb(ctx, lastUri) ?: DEFAULT_TRACK_GAIN_DB
                         )
