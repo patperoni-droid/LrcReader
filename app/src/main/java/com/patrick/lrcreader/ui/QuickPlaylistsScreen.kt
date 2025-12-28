@@ -1,5 +1,6 @@
 package com.patrick.lrcreader.ui
 
+import android.content.Context
 import com.patrick.lrcreader.ui.theme.DarkBlueGradientBackground
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -11,15 +12,14 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.VolumeUp
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -40,11 +40,10 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.core.FillerSoundManager
+import com.patrick.lrcreader.core.NotesRepository
 import com.patrick.lrcreader.core.PlaylistRepository
 import com.patrick.lrcreader.core.TextSongRepository
-import com.patrick.lrcreader.core.NotesRepository
 import java.net.URLDecoder
-import android.content.Context
 
 /**
  * QuickPlaylistsScreen + titres "texte seul" (prompteur).
@@ -59,7 +58,6 @@ fun QuickPlaylistsScreen(
     onSelectedPlaylistChange: (String?) -> Unit = {},
     onPlaylistColorChange: (Color) -> Unit = {},
     onRequestShowPlayer: () -> Unit = {}   // ✅ DEFAULT
-
 ) {
     val context = LocalContext.current
 
@@ -72,7 +70,6 @@ fun QuickPlaylistsScreen(
     val songs = remember { mutableStateListOf<String>() }
 
     var currentListColor by remember { mutableStateOf(Color(0xFFE86FFF)) }
-    var colorMenuOpen by remember { mutableStateOf(false) }
 
     var showMenu by remember { mutableStateOf(false) }
 
@@ -94,6 +91,9 @@ fun QuickPlaylistsScreen(
 
     // 🔹 version des notes : incrémentée quand une note change
     var notesVersion by remember { mutableStateOf(0) }
+
+    // 🔸 version des couleurs par titre : on incrémente pour forcer recompose après un choix
+    var songColorsVersion by remember { mutableStateOf(0) }
 
     // Abonnement aux changements de notes
     LaunchedEffect(Unit) {
@@ -228,7 +228,6 @@ fun QuickPlaylistsScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.padding(start = 6.dp)
                 ) {
-
                     // ➕ création titre texte (ancienne méthode)
                     IconButton(
                         onClick = {
@@ -246,55 +245,7 @@ fun QuickPlaylistsScreen(
                         )
                     }
 
-                    // palette
-                    Box {
-                        IconButton(onClick = { colorMenuOpen = true }) {
-                            Icon(
-                                imageVector = Icons.Filled.Palette,
-                                contentDescription = "Couleur de la liste",
-                                tint = currentListColor
-                            )
-                        }
-                        DropdownMenu(
-                            expanded = colorMenuOpen,
-                            onDismissRequest = { colorMenuOpen = false },
-                            modifier = Modifier.background(Color(0xFF1E1E1E))
-                        ) {
-                            val colors = listOf(
-                                Color.White,
-                                Color(0xFFE86FFF),
-                                Color(0xFF6AC5FE),
-                                Color(0xFFFFB74D),
-                                Color(0xFF81C784),
-                                Color(0xFFFF6F91),
-                            )
-                            colors.forEach { c ->
-                                DropdownMenuItem(
-                                    leadingIcon = {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(22.dp)
-                                                .background(c, RoundedCornerShape(999.dp))
-                                                .border(
-                                                    1.dp,
-                                                    Color.White,
-                                                    RoundedCornerShape(999.dp)
-                                                )
-                                        )
-                                    },
-                                    text = { Text("") },
-                                    onClick = {
-                                        currentListColor = c
-                                        internalSelected?.let { pl ->
-                                            savePlaylistColor(context, pl, c)
-                                        }
-                                        colorMenuOpen = false
-                                        onPlaylistColorChange(c)
-                                    }
-                                )
-                            }
-                        }
-                    }
+
 
                     // reset (NE TOUCHE PAS aux "à revoir", seulement "joué")
                     if (internalSelected != null) {
@@ -424,6 +375,12 @@ fun QuickPlaylistsScreen(
                                 PlaylistRepository.isSongToReview(it, uriString)
                             } ?: false
 
+                            // 🔸 couleur custom par titre (force recompose quand songColorsVersion change)
+                            val _forceRecompose = songColorsVersion
+                            val customSongColor: Color? = internalSelected?.let { pl ->
+                                loadSongColor(context, pl, uriString)
+                            }
+
                             val isCurrentPlaying = currentPlayingUri == uriString
                             val isDraggingThis = draggingUri == uriString
 
@@ -505,14 +462,17 @@ fun QuickPlaylistsScreen(
                                         isToReview -> Color(0xFFFF6F6F)      // rouge = à revoir
                                         isCurrentPlaying -> Color(0xFFFFFDE7)
                                         isPlayed -> Color(0xFF8D8D8D)
-                                        else -> currentListColor
+                                        else -> (customSongColor ?: currentListColor)
                                     },
                                     fontSize = 14.sp,
                                     modifier = Modifier
                                         .weight(1f)
                                         .clickable {
                                             internalSelected?.let { pl ->
-                                                android.util.Log.d("NAV", "CLICK in QuickPlaylistsScreen uri=$uriString pl=$pl color=$currentListColor")
+                                                android.util.Log.d(
+                                                    "NAV",
+                                                    "CLICK in QuickPlaylistsScreen uri=$uriString pl=$pl color=$currentListColor"
+                                                )
                                                 onPlaySong(uriString, pl, currentListColor)
                                                 android.util.Log.d("NAV", "AFTER onPlaySong (still in QuickPlaylistsScreen)")
                                                 onSelectedPlaylistChange(pl)
@@ -577,6 +537,63 @@ fun QuickPlaylistsScreen(
                                                 menuOpen = false
                                             }
                                         )
+
+                                        // 🎨 Couleur du titre (palette)
+                                        DropdownMenuItem(
+                                            text = { Text("Couleur du titre", color = Color.White) },
+                                            onClick = { /* pas d'action, palette dessous */ }
+                                        )
+
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            val colors = listOf(
+                                                Color.Red,
+                                                Color.Yellow,
+                                                Color.Blue,
+                                                Color(0xFFFF9800), // orange
+                                                Color.Green,
+                                                Color.Magenta,
+                                                Color.Cyan,
+                                                Color.White
+                                            )
+
+                                            // X = revient à la couleur de la playlist
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(26.dp)
+                                                    .background(Color(0xFF2A2A2A), RoundedCornerShape(999.dp))
+                                                    .border(1.dp, Color.White, RoundedCornerShape(999.dp))
+                                                    .clickable {
+                                                        internalSelected?.let { pl ->
+                                                            clearSongColor(context, pl, uriString)
+                                                            songColorsVersion++
+                                                        }
+                                                        menuOpen = false
+                                                    },
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Text("X", color = Color.White, fontSize = 12.sp)
+                                            }
+
+                                            colors.forEach { c ->
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(26.dp)
+                                                        .background(c, RoundedCornerShape(999.dp))
+                                                        .border(1.dp, Color.White, RoundedCornerShape(999.dp))
+                                                        .clickable {
+                                                            internalSelected?.let { pl ->
+                                                                saveSongColor(context, pl, uriString, c)
+                                                                songColorsVersion++
+                                                            }
+                                                            menuOpen = false
+                                                        }
+                                                )
+                                            }
+                                        }
+
                                         DropdownMenuItem(
                                             text = {
                                                 Text(
@@ -734,23 +751,48 @@ private fun <T> MutableList<T>.swap(i: Int, j: Int) {
     this[j] = tmp
 }
 
-// prefs couleur
+// prefs couleur playlist
 private const val PLAYLIST_COLOR_PREF = "playlist_color_pref"
 
 private fun savePlaylistColor(context: Context, playlist: String, color: Color) {
-    val prefs =
-        context.getSharedPreferences(PLAYLIST_COLOR_PREF, Context.MODE_PRIVATE)
+    val prefs = context.getSharedPreferences(PLAYLIST_COLOR_PREF, Context.MODE_PRIVATE)
     prefs.edit()
         .putInt(playlist, color.toArgb())
         .apply()
 }
 
 private fun loadPlaylistColor(context: Context, playlist: String): Color? {
-    val prefs =
-        context.getSharedPreferences(PLAYLIST_COLOR_PREF, Context.MODE_PRIVATE)
+    val prefs = context.getSharedPreferences(PLAYLIST_COLOR_PREF, Context.MODE_PRIVATE)
     return if (prefs.contains(playlist)) {
         Color(prefs.getInt(playlist, Color(0xFFE86FFF).toArgb()))
     } else null
+}
+
+// prefs couleur par TITRE
+private const val SONG_COLOR_PREF = "song_color_pref"
+
+private fun songColorKey(playlist: String, uri: String): String = "$playlist|$uri"
+
+private fun saveSongColor(context: Context, playlist: String, uri: String, color: Color) {
+    val prefs = context.getSharedPreferences(SONG_COLOR_PREF, Context.MODE_PRIVATE)
+    prefs.edit()
+        .putInt(songColorKey(playlist, uri), color.toArgb())
+        .apply()
+}
+
+private fun loadSongColor(context: Context, playlist: String, uri: String): Color? {
+    val prefs = context.getSharedPreferences(SONG_COLOR_PREF, Context.MODE_PRIVATE)
+    val key = songColorKey(playlist, uri)
+    return if (prefs.contains(key)) {
+        Color(prefs.getInt(key, Color.White.toArgb()))
+    } else null
+}
+
+private fun clearSongColor(context: Context, playlist: String, uri: String) {
+    val prefs = context.getSharedPreferences(SONG_COLOR_PREF, Context.MODE_PRIVATE)
+    prefs.edit()
+        .remove(songColorKey(playlist, uri))
+        .apply()
 }
 
 /**
