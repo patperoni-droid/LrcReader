@@ -445,11 +445,17 @@ fun QuickPlaylistsScreen(
                                                 if (dragOffsetPx >= rowHeightPx / 2f) {
                                                     val next = currentIndex + 1
                                                     if (next < songs.size) songs.swap(currentIndex, next)
+                                                    internalSelected?.let { pl ->
+                                                        PlaylistRepository.updatePlayListOrder(pl, songs.toList())
+                                                    }
                                                     dragOffsetPx = 0f
                                                 }
                                                 if (dragOffsetPx <= -rowHeightPx / 2f) {
                                                     val prev = currentIndex - 1
                                                     if (prev >= 0) songs.swap(currentIndex, prev)
+                                                    internalSelected?.let { pl ->
+                                                        PlaylistRepository.updatePlayListOrder(pl, songs.toList())
+                                                    }
                                                     dragOffsetPx = 0f
                                                 }
                                             }
