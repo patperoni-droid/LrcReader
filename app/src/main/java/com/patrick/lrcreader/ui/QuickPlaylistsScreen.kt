@@ -348,6 +348,8 @@ fun QuickPlaylistsScreen(
 
                             // 🔹 NOM D’AFFICHAGE
                             val displayName = if (uriString.startsWith("prompter://")) {
+                                val isPrompter = uriString.startsWith("prompter://")
+                                val prefix = if (isPrompter) "📝 " else ""   // ou 📜 si tu préfères
                                 val idPart = uriString.removePrefix("prompter://")
                                 val numericId = idPart.toLongOrNull()
 
@@ -461,9 +463,10 @@ fun QuickPlaylistsScreen(
                                             }
                                         }
                                 )
-
+                                val isPrompter = uriString.startsWith("prompter://")
+                                val prefix = if (isPrompter) "📝 " else ""
                                 Text(
-                                    text = displayName.uppercase(),
+                                    text = (prefix + displayName).uppercase(),
                                     color = when {
                                         isToReview -> Color(0xFFFF6F6F)      // rouge = à revoir
                                         isCurrentPlaying -> Color(0xFFFFFDE7)
@@ -475,16 +478,9 @@ fun QuickPlaylistsScreen(
                                         .weight(1f)
                                         .clickable {
                                             internalSelected?.let { pl ->
-                                                android.util.Log.d(
-                                                    "NAV",
-                                                    "CLICK in QuickPlaylistsScreen uri=$uriString pl=$pl color=$currentListColor"
-                                                )
                                                 onPlaySong(uriString, pl, currentListColor)
-                                                android.util.Log.d("NAV", "AFTER onPlaySong (still in QuickPlaylistsScreen)")
                                                 onSelectedPlaylistChange(pl)
                                                 onRequestShowPlayer()
-                                            } ?: run {
-                                                android.util.Log.d("NAV", "CLICK but internalSelected is null -> no action")
                                             }
                                         }
                                 )
