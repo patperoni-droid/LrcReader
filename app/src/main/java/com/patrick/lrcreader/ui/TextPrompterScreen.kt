@@ -121,112 +121,45 @@ fun TextPrompterScreen(
                 .fillMaxSize()
                 .padding(12.dp)
         ) {
-            // HEADER
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = onClose) {
-                    Icon(
-                        imageVector = Icons.Filled.ArrowBack,
-                        contentDescription = "Retour",
-                        tint = Color.White
-                    )
-                }
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text = songInfo.title ?: "Titre texte",
-                    color = Color.White,
-                    fontSize = 20.sp
-                )
-            }
+
 
             Spacer(Modifier.height(8.dp))
 
-            // CONTROLES
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { isPlaying = !isPlaying }) {
-                        Icon(
-                            imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                            contentDescription = "Play/Pause",
-                            tint = Color.White
-                        )
-                    }
-                    Text(
-                        text = if (isPlaying) "Défilement" else "En pause",
-                        color = Color.White,
-                        fontSize = 14.sp
-                    )
-                }
+            val scrollState = rememberScrollState()
 
-                Column(modifier = Modifier.width(200.dp)) {
-                    Text(
-                        text = "Vitesse (${String.format("%.1fx", speedFactor)})",
-                        color = Color(0xFFB0BEC5),
-                        fontSize = 11.sp
-                    )
-                    Slider(
-                        value = speedFactor,
-                        onValueChange = {
-                            speedFactor = it
-                            TextPrompterPrefs.saveSpeed(context, songId, it)
-                        },
-                        valueRange = 0.3f..3f
-                    )
+            AutoScrollEffect(
+                key1 = songId,
+                isPlaying = isPlaying,
+                speed = speedFactor,
+                scrollState = scrollState,
+                extraDelayBeforeStartMs = 1200L // si tu veux garder ton délai “safe”
+            )
+
+            PrompterHeader(
+                title = songInfo.title ?: "Titre texte",
+                onClose = onClose
+            )
+
+            Spacer(Modifier.height(8.dp))
+
+            PrompterControls(
+                isPlaying = isPlaying,
+                onTogglePlay = { isPlaying = !isPlaying },
+                speed = speedFactor,
+                onSpeedChange = {
+                    speedFactor = it
+                    TextPrompterPrefs.saveSpeed(context, songId, it)
                 }
-            }
+            )
 
             Spacer(Modifier.height(12.dp))
 
-            // TEXTE
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color(0xFF050912))
-            ) {
-                val content = songInfo.content
-                if (content.isNullOrBlank()) {
-                    Text(
-                        text = "Texte introuvable.",
-                        color = Color.Gray,
-                        modifier = Modifier.align(Alignment.Center)
-                    )
-                } else {
-                    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-                        val startOffsetFraction = 0.55f
-                        val topPad = maxHeight * startOffsetFraction
-                        val bottomPad = maxHeight * 0.30f
-
-                        Column(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .verticalScroll(scrollState)
-                                .padding(horizontal = 16.dp, vertical = 8.dp)
-                        ) {
-                            // ✅ le texte commence bas MAIS la fenêtre reste grande
-                            Spacer(Modifier.height(topPad))
-
-                            Text(
-                                text = content,
-                                color = Color.White,
-                                fontSize = 26.sp,
-                                lineHeight = 32.sp,
-                                modifier = Modifier.fillMaxWidth()
-                            )
-
-                            // ✅ marge pour que la fin du texte puisse remonter correctement
-                            Spacer(Modifier.height(bottomPad))
-                        }
-                    }
-                }
-            }
+            PrompterTextViewport(
+                content = songInfo.content.orEmpty(),
+                scrollState = scrollState,
+                startOffsetFraction = 0.55f,
+                bottomOffsetFraction = 0.30f
+            )
         }
     }
 }
