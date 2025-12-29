@@ -4,6 +4,7 @@ import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -27,16 +28,11 @@ import com.patrick.lrcreader.core.TextPrompterPrefs
 import com.patrick.lrcreader.ui.theme.DarkBlueGradientBackground
 import kotlinx.coroutines.delay
 
-// Petit conteneur local pour ne pas dépendre du type exact de TextSongRepository
 private data class SongInfo(
     val title: String?,
     val content: String?
 )
 
-/**
- * Prompteur texte seul (pas d'audio).
- * Auto-scroll simple avec vitesse réglable.
- */
 @Composable
 fun TextPrompterScreen(
     modifier: Modifier = Modifier,
@@ -45,19 +41,10 @@ fun TextPrompterScreen(
 ) {
     val context = LocalContext.current
 
-    // 🔥 Résout le problème "Texte introuvable" :
-    // on supporte :
-    //  - "note:123"  -> NotesRepository
-    //  - "text:xyz"  -> TextSongRepository
-    //  - "123"       -> NotesRepository (compat)
-    //  - "xyz"       -> TextSongRepository (compat)
     val songInfo = remember(songId) {
-        // par défaut : rien trouvé
         var result = SongInfo(title = null, content = null)
-
         try {
             when {
-                // NOTE moderne : note:<idLong>
                 songId.startsWith("note:") -> {
                     val raw = songId.removePrefix("note:")
                     val idLong = raw.toLongOrNull()
@@ -72,20 +59,13 @@ fun TextPrompterScreen(
                     }
                 }
 
-                // Ancien texte prompteur : text:<idString>
                 songId.startsWith("text:") -> {
                     val raw = songId.removePrefix("text:")
                     val s = TextSongRepository.get(context, raw)
-                    if (s != null) {
-                        result = SongInfo(
-                            title = s.title,
-                            content = s.content
-                        )
-                    }
+                    if (s != null) result = SongInfo(title = s.title, content = s.content)
                 }
 
                 else -> {
-                    // Compatibilité : si c'est un nombre -> peut-être une Note
                     val numeric = songId.toLongOrNull()
                     if (numeric != null) {
                         val note = NotesRepository.get(context, numeric)
@@ -95,70 +75,43 @@ fun TextPrompterScreen(
                                 content = note.content
                             )
                         } else {
-                            // sinon, on tente TextSongRepository avec l'id brut
                             val s = TextSongRepository.get(context, songId)
-                            if (s != null) {
-                                result = SongInfo(
-                                    title = s.title,
-                                    content = s.content
-                                )
-                            }
+                            if (s != null) result = SongInfo(title = s.title, content = s.content)
                         }
                     } else {
-                        // id non numérique -> ancien TextSongRepository
                         val s = TextSongRepository.get(context, songId)
-                        if (s != null) {
-                            result = SongInfo(
-                                title = s.title,
-                                content = s.content
-                            )
-                        }
+                        if (s != null) result = SongInfo(title = s.title, content = s.content)
                     }
                 }
             }
         } catch (_: Exception) {
-            // en cas de bug, on laisse result vide -> "Texte introuvable"
         }
-
         result
     }
 
     val scrollState = rememberScrollState()
-
     var isPlaying by remember { mutableStateOf(true) }
 
-    // 🔹 Vitesse mémorisée par texte (0.3x .. 3x)
     var speedFactor by remember(songId) {
         mutableStateOf(
-            TextPrompterPrefs
-                .getSpeed(context, songId)
-                ?.coerceIn(0.3f, 3f)
-                ?: 1f
+            TextPrompterPrefs.getSpeed(context, songId)?.coerceIn(0.3f, 3f) ?: 1f
         )
     }
 
-    // 🔁 Auto-scroll basé sur une animation
     LaunchedEffect(songId, isPlaying, speedFactor) {
         if (!isPlaying) return@LaunchedEffect
-
-        // petit délai pour laisser le temps au layout de mesurer la hauteur
         delay(50)
 
         val max = scrollState.maxValue
         if (max <= 0) return@LaunchedEffect
 
         val clampedSpeed = speedFactor.coerceIn(0.3f, 3f)
-
-        // Durée de base = 60s pour traverser tout le texte à vitesse 1.0
         val baseDurationMs = 60_000L
         val duration = (baseDurationMs / clampedSpeed).toInt().coerceAtLeast(500)
-
+        delay(1200) // ou 1500 si tu veux vraiment le temps
         scrollState.animateScrollTo(
             value = max,
-            animationSpec = tween(
-                durationMillis = duration,
-                easing = LinearEasing
-            )
+            animationSpec = tween(durationMillis = duration, easing = LinearEasing)
         )
     }
 
@@ -213,9 +166,7 @@ fun TextPrompterScreen(
                     )
                 }
 
-                Column(
-                    modifier = Modifier.width(200.dp)
-                ) {
+                Column(modifier = Modifier.width(200.dp)) {
                     Text(
                         text = "Vitesse (${String.format("%.1fx", speedFactor)})",
                         color = Color(0xFFB0BEC5),
@@ -225,7 +176,6 @@ fun TextPrompterScreen(
                         value = speedFactor,
                         onValueChange = {
                             speedFactor = it
-                            // 💾 mémorisation immédiate pour ce texte
                             TextPrompterPrefs.saveSpeed(context, songId, it)
                         },
                         valueRange = 0.3f..3f
@@ -249,16 +199,32 @@ fun TextPrompterScreen(
                         modifier = Modifier.align(Alignment.Center)
                     )
                 } else {
-                    Text(
-                        text = content,
-                        color = Color.White,
-                        fontSize = 26.sp,
-                        lineHeight = 32.sp,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp)
-                            .verticalScroll(scrollState)
-                    )
+                    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                        val startOffsetFraction = 0.55f
+                        val topPad = maxHeight * startOffsetFraction
+                        val bottomPad = maxHeight * 0.30f
+
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .verticalScroll(scrollState)
+                                .padding(horizontal = 16.dp, vertical = 8.dp)
+                        ) {
+                            // ✅ le texte commence bas MAIS la fenêtre reste grande
+                            Spacer(Modifier.height(topPad))
+
+                            Text(
+                                text = content,
+                                color = Color.White,
+                                fontSize = 26.sp,
+                                lineHeight = 32.sp,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+
+                            // ✅ marge pour que la fin du texte puisse remonter correctement
+                            Spacer(Modifier.height(bottomPad))
+                        }
+                    }
                 }
             }
         }

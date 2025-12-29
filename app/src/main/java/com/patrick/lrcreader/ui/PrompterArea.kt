@@ -72,6 +72,11 @@ fun PrompterArea(
                 .verticalScroll(scrollState)
         ) {
             Spacer(Modifier.height(4.dp))
+            Text(
+                text = "✅ PROMPTERAREA ICI",
+                color = Color.Red,
+                fontSize = 18.sp
+            )
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
