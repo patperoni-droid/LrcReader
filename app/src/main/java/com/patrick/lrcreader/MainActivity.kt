@@ -283,6 +283,9 @@ class MainActivity : ComponentActivity() {
                                 if (tab !is BottomTab.Search) isSearchOpen = false
                                 isMoreMenuOpen = false
 
+                                // ✅ sortir du prompteur dès qu'on touche la bottom bar
+                                textPrompterId = null
+
                                 // ✅ "Fond sonore" = overlay
                                 if (tab is BottomTab.Filler) {
                                     isFillerSettingsOpen = true
@@ -292,11 +295,16 @@ class MainActivity : ComponentActivity() {
                                 }
                             },
                             onSearchClick = {
-                                // ✅ capture le contexte AU MOMENT où on ouvre la recherche
-                                searchMode = if (selectedTab is BottomTab.Dj) SearchMode.DJ else SearchMode.PLAYER
+                                textPrompterId = null
+                                searchMode =
+                                    if (selectedTab is BottomTab.Dj) SearchMode.DJ
+                                    else SearchMode.PLAYER
                                 isSearchOpen = true
                             },
-                            onMoreClick = { isMoreMenuOpen = true }
+                            onMoreClick = {
+                                textPrompterId = null
+                                isMoreMenuOpen = true
+                            }
                         )
                     }
                 ) { innerPadding ->
