@@ -1,6 +1,5 @@
 package com.patrick.lrcreader.ui
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
@@ -130,25 +129,29 @@ fun TextPrompterScreen(
 
     DarkBlueGradientBackground {
 
-        // ✅ insets
+
+        // ✅ Insets (base propre)
         val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-        val transportBottom = navBottom + -24.dp
+
+        val transportBottom = navBottom + 80.dp      // ✅ TOUJOURS POSITIF
         val transportHeight = 72.dp
 
-        // ✅ vitre: élargissement gauche/droite (c’est ICI que tu règles)
+        val transportNudgeY = (+107).dp              // ✅ ton réglage fin (ici tu descends/monte)
+
+        // ✅ Vitre : élargissement gauche/droite
         val glassOverhangLeft = 12.dp
         val glassOverhangRight = 36.dp
 
-        // ✅ slider tiroir : dimensions
+        // ✅ Slider tiroir : dimensions
         val sliderHeight = 550.dp
         val sliderWidth = 60.dp
         val overhangRight = 18.dp
 
-        // ✅ réglages fins (position bloc slider)
-        val blockOffsetY = (-80).dp
+        // ✅ Réglages fins : bloc slider
+        val blockOffsetY = (-10).dp
         val blockPaddingEnd = 10.dp
 
-        // ✅ réglages fins (position bouton)
+        // ✅ Réglages fins : bouton slider
         val buttonOffsetX = 18.dp
         val buttonOffsetY = 10.dp
 
@@ -187,16 +190,18 @@ fun TextPrompterScreen(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .padding(bottom = transportBottom)
-                    // centre si overhang L/R pas identiques
-                    .offset(x = (glassOverhangRight - glassOverhangLeft) / 2)
+                    .offset(
+                        x = (glassOverhangRight - glassOverhangLeft) / 2,
+                        y = transportNudgeY
+                    )
                     .width(
                         LocalConfiguration.current.screenWidthDp.dp +
                                 glassOverhangLeft + glassOverhangRight
                     )
-                    .height(transportHeight + 44.dp) // hauteur vitre
+                    .height(transportHeight + 44.dp)
                     .zIndex(1f)
                     .clip(RoundedCornerShape(16.dp))
-                    .background(Color.Black) // opaque
+                    .background(Color.Black)
                     .border(
                         1.dp,
                         Color.White.copy(alpha = 0.12f),
@@ -204,7 +209,7 @@ fun TextPrompterScreen(
                     )
             )
 
-            // ✅ PROGRESS AU-DESSUS de la vitre
+// ✅ PROGRESS AU-DESSUS de la vitre
             Row(
                 modifier = Modifier
                     .zIndex(2f)
@@ -213,7 +218,8 @@ fun TextPrompterScreen(
                         start = 12.dp,
                         end = 12.dp,
                         bottom = transportBottom + transportHeight + 2.dp
-                    ),
+                    )
+                    .offset(y = transportNudgeY),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
@@ -244,7 +250,7 @@ fun TextPrompterScreen(
                 )
             }
 
-            // ✅ TRANSPORT AU-DESSUS de la vitre
+// ✅ TRANSPORT AU-DESSUS de la vitre
             PrompterTransportBarAudioLike(
                 isPlaying = isPlaying,
                 onPlayPause = { isPlaying = !isPlaying },
@@ -270,19 +276,10 @@ fun TextPrompterScreen(
                         end = 12.dp,
                         bottom = transportBottom
                     )
+                    .offset(y = transportNudgeY)
             )
 
             // 4) SLIDER + BOUTON (bloc complet)
-            val sliderHeight = 550.dp
-            val sliderWidth = 60.dp
-            val overhangRight = 18.dp
-
-// ✅ réglages fins
-            val blockOffsetY = (-10).dp
-            val blockPaddingEnd = 10.dp
-            val buttonOffsetX = 18.dp
-            val buttonOffsetY = 10.dp
-
             Column(
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
@@ -303,7 +300,7 @@ fun TextPrompterScreen(
                     androidx.compose.animation.AnimatedVisibility(
                         visible = isSpeedSliderOpen,
                         enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(),
-                        exit  = slideOutHorizontally(targetOffsetX = { it }) + fadeOut()
+                        exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut()
                     ) {
                         VerticalTransparentSpeedSlider(
                             value = speedFactor,
