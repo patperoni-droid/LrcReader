@@ -24,7 +24,7 @@ fun VerticalTransparentSpeedSlider(
     modifier: Modifier = Modifier,
     height: Dp = 550.dp,
     width: Dp = 100.dp,
-    sliderOffsetX: Dp = 0.dp, // ✅ décalage interne du slider (trait + curseur)
+    sliderOffsetX: Dp = 15.dp, // ✅ décalage interne du slider (trait + curseur)
 
     // visuel
     panelTintAlpha: Float = 0.22f,     // 👈 plus opaque = texte derrière moins présent

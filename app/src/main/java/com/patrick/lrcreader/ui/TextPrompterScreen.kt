@@ -243,32 +243,40 @@ fun TextPrompterScreen(
             }
 
 
-            // 4) SLIDER VITESSE : EN DERNIER => AU-DESSUS DU TEXTE + décor
+            // 4) SLIDER VITESSE + BOUTON
             Column(
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
                     .padding(end = 10.dp)
-                    .offset(y = (-80).dp)   // ✅ ICI : remonte TOUT le bloc
+                    .offset(y = (-80).dp)   // position verticale globale du bloc
                     .zIndex(10f),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
 
-                // SLIDER
-                VerticalTransparentSpeedSlider(
-                    value = speedFactor,
-                    onValueChange = { new ->
-                        speedFactor = new
-                        TextPrompterPrefs.saveSpeed(context, songId, new)
-                    },
-                    overhangRight = 18.dp
-                )
+                val sliderHeight = 550.dp   // 🔥 HAUTEUR RÉSERVÉE (doit matcher le slider)
 
-                Spacer(modifier = Modifier.height(8.dp))
+                if (isSpeedSliderOpen) {
+                    VerticalTransparentSpeedSlider(
+                        value = speedFactor,
+                        onValueChange = { new ->
+                            speedFactor = new
+                            TextPrompterPrefs.saveSpeed(context, songId, new)
+                        },
+                        overhangRight = 18.dp
+                    )
+                } else {
+                    // ✅ ESPACE FANTÔME quand le slider est fermé
+                    Spacer(modifier = Modifier.height(sliderHeight))
+                }
 
-                // BOUTON OUVRIR / FERMER
+                Spacer(modifier = Modifier.height(8.dp)) // petit écart esthétique
+
+                // BOUTON OUVRIR / FERMER (NE BOUGE PLUS)
                 FilledTonalIconButton(
                     onClick = { isSpeedSliderOpen = !isSpeedSliderOpen },
-                    modifier = Modifier.size(40.dp)
+                    modifier = Modifier
+                        .size(40.dp)
+                        .offset(x = 18.dp) // réglage horizontal uniquement
                 ) {
                     Icon(
                         imageVector = if (isSpeedSliderOpen)
