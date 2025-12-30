@@ -32,9 +32,9 @@ fun VerticalTransparentSpeedSlider(
 
     // track & thumb
     trackThickness: Dp = 4.dp,         // 👈 trait central fin
-    thumbHeight: Dp = 64.dp,           // 👈 curseur moins grand
-    thumbWidth: Dp = 16.dp,
-    thumbCorner: Dp = 6.dp             // 👈 moins arrondi (curseur)
+    thumbHeight: Dp = 25.dp,           // 👈 curseur moins grand
+    thumbWidth: Dp = 55.dp,
+    thumbCorner: Dp = 5.dp             // 👈 moins arrondi (curseur)
 ) {
     val density = LocalDensity.current
     val shape = RoundedCornerShape(corner)
