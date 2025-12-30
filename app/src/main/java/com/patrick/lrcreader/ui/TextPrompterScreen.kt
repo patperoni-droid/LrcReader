@@ -1,5 +1,10 @@
 package com.patrick.lrcreader.ui
 
+import androidx.compose.foundation.border
+import androidx.compose.foundation.background
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.zIndex
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.foundation.layout.Row
 import androidx.compose.material3.Slider
@@ -118,13 +123,10 @@ fun TextPrompterScreen(
         val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
         val transportBottom = navBottom + 80.dp
         val transportHeight = 72.dp
-        val sliderHeight = 40.dp
-        val gapTextToSlider = 12.dp        // 👈 LA marge esthétique
-        val reserveBottom =
-            transportBottom + transportHeight + sliderHeight + gapTextToSlider
+
         Box(modifier = Modifier.fillMaxSize()) {
 
-            // TEXTE (on réserve de la place pour slider + barre transport)
+            // 1) TEXTE : plein écran, PAS de réserve => le texte passe dessous le slider
             PrompterTextViewport(
                 content = songInfo.content.orEmpty(),
                 scrollState = scrollState,
@@ -132,16 +134,15 @@ fun TextPrompterScreen(
                 bottomOffsetFraction = 0.30f,
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(bottom = reserveBottom) // ✅ plus de texte derrière
+                    .zIndex(0f)
             )
 
-            // BARRE PROGRESSION (lecture seule)
+            // 2) BARRE PROGRESSION (lecture seule) + timings
             val progress =
                 if (scrollState.maxValue > 0)
                     scrollState.value.toFloat() / scrollState.maxValue.toFloat()
                 else 0f
 
-            // Durée "virtuelle" du prompteur (comme ton autoscroll)
             val speed = speedFactor.coerceIn(0.3f, 3f)
             val totalMs = (60_000f / speed).toLong().coerceAtLeast(500L)
             val currentMs = (progress * totalMs.toFloat()).toLong().coerceIn(0L, totalMs)
@@ -152,9 +153,53 @@ fun TextPrompterScreen(
                 val s = totalSec % 60
                 return "%d:%02d".format(m, s)
             }
+            // 3) BARRE DE TRANSPORT (boutons)
+            PrompterTransportBarAudioLike(
+                isPlaying = isPlaying,
+                onPlayPause = { isPlaying = !isPlaying },
+                onPrev = {
+                    scope.launch {
+                        val step = (scrollState.maxValue * 0.08f).toInt().coerceAtLeast(80)
+                        val target = (scrollState.value - step).coerceAtLeast(0)
+                        scrollState.animateScrollTo(target)
+                    }
+                },
+                onNext = {
+                    scope.launch {
+                        val step = (scrollState.maxValue * 0.08f).toInt().coerceAtLeast(80)
+                        val target = (scrollState.value + step).coerceAtMost(scrollState.maxValue)
+                        scrollState.animateScrollTo(target)
+                    }
+                },
+                modifier = Modifier
+                    .zIndex(3f) // ✅ AU-DESSUS de la vitre
+                    .align(Alignment.BottomCenter)
+                    .padding(
+                        start = 12.dp,
+                        end = 12.dp,
+                        bottom = transportBottom
+                    )
+            )
 
+// ✅ VITRE derrière "progress + transport" (au BON endroit)
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(
+                        start = 8.dp,
+                        end = 8.dp,
+                        bottom = transportBottom // ✅ CRUCIAL : remonte la vitre
+                    )
+                    .fillMaxWidth()
+                    .height(transportHeight + 44.dp) // ajuste si besoin
+                    .zIndex(2f)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color.Black)
+                    .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(16.dp))
+            )
             Row(
                 modifier = Modifier
+                    .zIndex(3f) // ✅ AU-DESSUS de la vitre
                     .align(Alignment.BottomCenter)
                     .padding(
                         start = 12.dp,
@@ -191,31 +236,19 @@ fun TextPrompterScreen(
                 )
             }
 
-            // BARRE DE TRANSPORT (boutons)
-            PrompterTransportBarAudioLike(
-                isPlaying = isPlaying,
-                onPlayPause = { isPlaying = !isPlaying },
-                onPrev = {
-                    scope.launch {
-                        val step = (scrollState.maxValue * 0.08f).toInt().coerceAtLeast(80)
-                        val target = (scrollState.value - step).coerceAtLeast(0)
-                        scrollState.animateScrollTo(target)
-                    }
-                },
-                onNext = {
-                    scope.launch {
-                        val step = (scrollState.maxValue * 0.08f).toInt().coerceAtLeast(80)
-                        val target = (scrollState.value + step).coerceAtMost(scrollState.maxValue)
-                        scrollState.animateScrollTo(target)
-                    }
+
+            // 4) SLIDER VITESSE : EN DERNIER => AU-DESSUS DU TEXTE + décor
+            VerticalTransparentSpeedSlider(
+                value = speedFactor,
+                onValueChange = { new ->
+                    speedFactor = new
+                    TextPrompterPrefs.saveSpeed(context, songId, new)
                 },
                 modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(
-                        start = 12.dp,
-                        end = 12.dp,
-                        bottom = transportBottom
-                    )
+                    .align(Alignment.CenterEnd)
+                    .padding(end = 10.dp)
+                    .zIndex(10f),
+                overhangRight = 18.dp
             )
         }
     }
