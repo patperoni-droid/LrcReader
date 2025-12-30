@@ -248,6 +248,7 @@ fun TextPrompterScreen(
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
                     .padding(end = 10.dp)
+                    .offset(y = (-80).dp)   // ✅ ICI : remonte TOUT le bloc
                     .zIndex(10f),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
@@ -267,12 +268,13 @@ fun TextPrompterScreen(
                 // BOUTON OUVRIR / FERMER
                 FilledTonalIconButton(
                     onClick = { isSpeedSliderOpen = !isSpeedSliderOpen },
-                    modifier = Modifier
-                        .size(40.dp)
-                        .offset(y = (-60).dp) // ✅ remonte (augmente en négatif si besoin)
+                    modifier = Modifier.size(40.dp)
                 ) {
                     Icon(
-                        imageVector = if (isSpeedSliderOpen) Icons.Filled.KeyboardArrowRight else Icons.Filled.KeyboardArrowLeft,
+                        imageVector = if (isSpeedSliderOpen)
+                            Icons.Filled.KeyboardArrowRight
+                        else
+                            Icons.Filled.KeyboardArrowLeft,
                         contentDescription = "Ouvrir / Fermer slider"
                     )
                 }
