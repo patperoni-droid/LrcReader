@@ -19,10 +19,9 @@ object MidiCueDispatcher {
         val cuesForTrack = CueMidiStore.getCuesForTrack(trackUri)
         val cue = cuesForTrack.firstOrNull { it.lineIndex == lineIndex } ?: return
 
-        Log.d(
-            TAG,
-            "CUE MIDI déclenché pour track='$key' lineIndex=$lineIndex " +
-                    "=> ProgramChange: channel=${cue.channel}, program=${cue.program}"
+        MidiOutput.sendProgramChange(
+            channel = cue.channel,
+            program = cue.program
         )
         // plus tard : vrai envoi MIDI ici
     }

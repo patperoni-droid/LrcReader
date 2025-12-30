@@ -136,6 +136,8 @@ fun TextPrompterScreen(
     DarkBlueGradientBackground {
 
 
+
+
         // ✅ Insets (base propre)
         val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
@@ -209,8 +211,8 @@ fun TextPrompterScreen(
                     .clip(RoundedCornerShape(16.dp))
                     .background(Color.Black)
                     .border(
-                        1.dp,
-                        Color.White.copy(alpha = 0.12f),
+                        2.dp,
+                        Color.White.copy(alpha = 0.22f),
                         RoundedCornerShape(16.dp)
                     )
             )
