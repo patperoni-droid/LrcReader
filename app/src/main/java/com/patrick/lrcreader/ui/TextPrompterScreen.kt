@@ -244,6 +244,8 @@ fun TextPrompterScreen(
                     speedFactor = new
                     TextPrompterPrefs.saveSpeed(context, songId, new)
                 },
+                panelTintAlpha = 0.45f,   // 👈 ICI tu règles la transparence
+                sliderOffsetX = 14.dp, // ✅ décale le curseur/trait vers la droite (ajuste 10..30dp)
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
                     .padding(end = 10.dp)

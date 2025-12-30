@@ -23,7 +23,8 @@ fun VerticalTransparentSpeedSlider(
     valueRange: ClosedFloatingPointRange<Float> = 0.3f..3f,
     modifier: Modifier = Modifier,
     height: Dp = 550.dp,
-    width: Dp = 60.dp,
+    width: Dp = 100.dp,
+    sliderOffsetX: Dp = 0.dp, // ✅ décalage interne du slider (trait + curseur)
 
     // visuel
     panelTintAlpha: Float = 0.22f,     // 👈 plus opaque = texte derrière moins présent
@@ -74,6 +75,7 @@ fun VerticalTransparentSpeedSlider(
         Box(
             modifier = Modifier
                 .matchParentSize()
+                .offset(x = sliderOffsetX) // ✅ décale le slider (visuel + touch)
                 .pointerInput(min, max, panelHeightPx, thumbHeightPx) {
                     detectDragGestures(
                         onDragStart = { offset ->
@@ -98,7 +100,7 @@ fun VerticalTransparentSpeedSlider(
                     .fillMaxHeight()
                     .padding(vertical = 12.dp)
                     .clip(RoundedCornerShape(999.dp))
-                    .background(Color.White.copy(alpha = 0.22f))
+                    .background(Color.White.copy(alpha = 0.20f))
             )
 
             // Curseur
