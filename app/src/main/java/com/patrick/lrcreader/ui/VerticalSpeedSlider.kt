@@ -35,7 +35,7 @@ fun VerticalTransparentSpeedSlider(
     trackThickness: Dp = 4.dp,         // 👈 trait central fin
     thumbHeight: Dp = 25.dp,           // 👈 curseur moins grand
     thumbWidth: Dp = 55.dp,
-    thumbCorner: Dp = 5.dp             // 👈 moins arrondi (curseur)
+    thumbCorner: Dp = 1.dp             // 👈 moins arrondi (curseur)
 ) {
     val density = LocalDensity.current
     val shape = RoundedCornerShape(corner)
@@ -63,7 +63,7 @@ fun VerticalTransparentSpeedSlider(
         Box(
             modifier = Modifier
                 .align(Alignment.CenterEnd)
-                .offset(x = overhangRight)                 // déborde à droite
+                .offset(x = overhangRight + 10.dp) // 👈 décor pousse encore à droite
                 .width(width + overhangRight)              // côté droit plus large
                 .fillMaxHeight()
                 .clip(shape)

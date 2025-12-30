@@ -1,5 +1,10 @@
 package com.patrick.lrcreader.ui
 
+import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.ui.draw.clip
@@ -94,6 +99,7 @@ fun TextPrompterScreen(
     val scope = rememberCoroutineScope()
 
     var isPlaying by remember { mutableStateOf(true) }
+    var isSpeedSliderOpen by remember { mutableStateOf(true) }
     var speedFactor by remember(songId) {
         mutableStateOf(TextPrompterPrefs.getSpeed(context, songId)?.coerceIn(0.3f, 3f) ?: 1f)
     }
@@ -238,20 +244,39 @@ fun TextPrompterScreen(
 
 
             // 4) SLIDER VITESSE : EN DERNIER => AU-DESSUS DU TEXTE + décor
-            VerticalTransparentSpeedSlider(
-                value = speedFactor,
-                onValueChange = { new ->
-                    speedFactor = new
-                    TextPrompterPrefs.saveSpeed(context, songId, new)
-                },
-                panelTintAlpha = 0.45f,   // 👈 ICI tu règles la transparence
-                sliderOffsetX = 14.dp, // ✅ décale le curseur/trait vers la droite (ajuste 10..30dp)
+            Column(
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
                     .padding(end = 10.dp)
                     .zIndex(10f),
-                overhangRight = 18.dp
-            )
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+
+                // SLIDER
+                VerticalTransparentSpeedSlider(
+                    value = speedFactor,
+                    onValueChange = { new ->
+                        speedFactor = new
+                        TextPrompterPrefs.saveSpeed(context, songId, new)
+                    },
+                    overhangRight = 18.dp
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // BOUTON OUVRIR / FERMER
+                FilledTonalIconButton(
+                    onClick = { isSpeedSliderOpen = !isSpeedSliderOpen },
+                    modifier = Modifier
+                        .size(40.dp)
+                        .offset(y = (-60).dp) // ✅ remonte (augmente en négatif si besoin)
+                ) {
+                    Icon(
+                        imageVector = if (isSpeedSliderOpen) Icons.Filled.KeyboardArrowRight else Icons.Filled.KeyboardArrowLeft,
+                        contentDescription = "Ouvrir / Fermer slider"
+                    )
+                }
+            }
         }
     }
 }

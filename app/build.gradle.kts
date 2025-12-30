@@ -81,6 +81,7 @@ dependencies {
     // Media3 – ExoPlayer et modules associés
     //  une seule version pour éviter les conflits
     val media3 = "1.6.1"
+    implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.media3:media3-exoplayer:$media3")
     implementation("androidx.media3:media3-extractor:$media3")
     implementation("androidx.media3:media3-ui:$media3")
