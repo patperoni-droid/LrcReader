@@ -1,30 +1,35 @@
 package com.patrick.lrcreader.ui
 
-import androidx.compose.material3.FilledTonalIconButton
-import androidx.compose.material3.Icon
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.KeyboardArrowRight
-import androidx.compose.foundation.border
-import androidx.compose.foundation.background
-import androidx.compose.ui.draw.clip
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.ui.zIndex
-import androidx.compose.material3.SliderDefaults
-import androidx.compose.foundation.layout.Row
+import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
-import androidx.compose.ui.unit.sp
-import androidx.compose.ui.graphics.Color
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import com.patrick.lrcreader.core.NotesRepository
 import com.patrick.lrcreader.core.TextPrompterPrefs
 import com.patrick.lrcreader.core.TextSongRepository
@@ -32,8 +37,8 @@ import com.patrick.lrcreader.ui.theme.DarkBlueGradientBackground
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
 
 private data class SongInfo(
     val title: String?,
@@ -123,16 +128,33 @@ fun TextPrompterScreen(
         )
     }
 
-    // ✅ padding dynamique (nav bars)
-
     DarkBlueGradientBackground {
+
+        // ✅ insets
         val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-        val transportBottom = navBottom + 80.dp
+        val transportBottom = navBottom + -24.dp
         val transportHeight = 72.dp
 
-        Box(modifier = Modifier.fillMaxSize()) {
+        // ✅ vitre: élargissement gauche/droite (c’est ICI que tu règles)
+        val glassOverhangLeft = 12.dp
+        val glassOverhangRight = 36.dp
 
-            // 1) TEXTE : plein écran, PAS de réserve => le texte passe dessous le slider
+        // ✅ slider tiroir : dimensions
+        val sliderHeight = 550.dp
+        val sliderWidth = 60.dp
+        val overhangRight = 18.dp
+
+        // ✅ réglages fins (position bloc slider)
+        val blockOffsetY = (-80).dp
+        val blockPaddingEnd = 10.dp
+
+        // ✅ réglages fins (position bouton)
+        val buttonOffsetX = 18.dp
+        val buttonOffsetY = 10.dp
+
+        Box(modifier = modifier.fillMaxSize()) {
+
+            // 1) TEXTE plein écran
             PrompterTextViewport(
                 content = songInfo.content.orEmpty(),
                 scrollState = scrollState,
@@ -143,7 +165,7 @@ fun TextPrompterScreen(
                     .zIndex(0f)
             )
 
-            // 2) BARRE PROGRESSION (lecture seule) + timings
+            // 2) PROGRESS (calculs)
             val progress =
                 if (scrollState.maxValue > 0)
                     scrollState.value.toFloat() / scrollState.maxValue.toFloat()
@@ -159,53 +181,33 @@ fun TextPrompterScreen(
                 val s = totalSec % 60
                 return "%d:%02d".format(m, s)
             }
-            // 3) BARRE DE TRANSPORT (boutons)
-            PrompterTransportBarAudioLike(
-                isPlaying = isPlaying,
-                onPlayPause = { isPlaying = !isPlaying },
-                onPrev = {
-                    scope.launch {
-                        val step = (scrollState.maxValue * 0.08f).toInt().coerceAtLeast(80)
-                        val target = (scrollState.value - step).coerceAtLeast(0)
-                        scrollState.animateScrollTo(target)
-                    }
-                },
-                onNext = {
-                    scope.launch {
-                        val step = (scrollState.maxValue * 0.08f).toInt().coerceAtLeast(80)
-                        val target = (scrollState.value + step).coerceAtMost(scrollState.maxValue)
-                        scrollState.animateScrollTo(target)
-                    }
-                },
-                modifier = Modifier
-                    .zIndex(3f) // ✅ AU-DESSUS de la vitre
-                    .align(Alignment.BottomCenter)
-                    .padding(
-                        start = 12.dp,
-                        end = 12.dp,
-                        bottom = transportBottom
-                    )
-            )
 
-// ✅ VITRE derrière "progress + transport" (au BON endroit)
+            // ✅ VITRE (derrière progress + transport)
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(
-                        start = 8.dp,
-                        end = 8.dp,
-                        bottom = transportBottom // ✅ CRUCIAL : remonte la vitre
+                    .padding(bottom = transportBottom)
+                    // centre si overhang L/R pas identiques
+                    .offset(x = (glassOverhangRight - glassOverhangLeft) / 2)
+                    .width(
+                        LocalConfiguration.current.screenWidthDp.dp +
+                                glassOverhangLeft + glassOverhangRight
                     )
-                    .fillMaxWidth()
-                    .height(transportHeight + 44.dp) // ajuste si besoin
-                    .zIndex(2f)
+                    .height(transportHeight + 44.dp) // hauteur vitre
+                    .zIndex(1f)
                     .clip(RoundedCornerShape(16.dp))
-                    .background(Color.Black)
-                    .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(16.dp))
+                    .background(Color.Black) // opaque
+                    .border(
+                        1.dp,
+                        Color.White.copy(alpha = 0.12f),
+                        RoundedCornerShape(16.dp)
+                    )
             )
+
+            // ✅ PROGRESS AU-DESSUS de la vitre
             Row(
                 modifier = Modifier
-                    .zIndex(3f) // ✅ AU-DESSUS de la vitre
+                    .zIndex(2f)
                     .align(Alignment.BottomCenter)
                     .padding(
                         start = 12.dp,
@@ -242,41 +244,88 @@ fun TextPrompterScreen(
                 )
             }
 
+            // ✅ TRANSPORT AU-DESSUS de la vitre
+            PrompterTransportBarAudioLike(
+                isPlaying = isPlaying,
+                onPlayPause = { isPlaying = !isPlaying },
+                onPrev = {
+                    scope.launch {
+                        val step = (scrollState.maxValue * 0.08f).toInt().coerceAtLeast(80)
+                        val target = (scrollState.value - step).coerceAtLeast(0)
+                        scrollState.animateScrollTo(target)
+                    }
+                },
+                onNext = {
+                    scope.launch {
+                        val step = (scrollState.maxValue * 0.08f).toInt().coerceAtLeast(80)
+                        val target = (scrollState.value + step).coerceAtMost(scrollState.maxValue)
+                        scrollState.animateScrollTo(target)
+                    }
+                },
+                modifier = Modifier
+                    .zIndex(2f)
+                    .align(Alignment.BottomCenter)
+                    .padding(
+                        start = 12.dp,
+                        end = 12.dp,
+                        bottom = transportBottom
+                    )
+            )
 
-            // 4) SLIDER VITESSE + BOUTON
+            // 4) SLIDER + BOUTON (bloc complet)
+            val sliderHeight = 550.dp
+            val sliderWidth = 60.dp
+            val overhangRight = 18.dp
+
+// ✅ réglages fins
+            val blockOffsetY = (-10).dp
+            val blockPaddingEnd = 10.dp
+            val buttonOffsetX = 18.dp
+            val buttonOffsetY = 10.dp
+
             Column(
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
-                    .padding(end = 10.dp)
-                    .offset(y = (-80).dp)   // position verticale globale du bloc
+                    .padding(end = blockPaddingEnd)
+                    .offset(y = blockOffsetY)
                     .zIndex(10f),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
 
-                val sliderHeight = 550.dp   // 🔥 HAUTEUR RÉSERVÉE (doit matcher le slider)
-
-                if (isSpeedSliderOpen) {
-                    VerticalTransparentSpeedSlider(
-                        value = speedFactor,
-                        onValueChange = { new ->
-                            speedFactor = new
-                            TextPrompterPrefs.saveSpeed(context, songId, new)
-                        },
-                        overhangRight = 18.dp
-                    )
-                } else {
-                    // ✅ ESPACE FANTÔME quand le slider est fermé
-                    Spacer(modifier = Modifier.height(sliderHeight))
+                // ✅ Zone réservée : le bouton ne bouge jamais (place fixe)
+                Box(
+                    modifier = Modifier
+                        .height(sliderHeight)
+                        .width(sliderWidth + overhangRight + 20.dp),
+                    contentAlignment = Alignment.CenterEnd
+                ) {
+                    // ✅ “Tiroir” : le slider glisse / disparaît mais la place reste
+                    androidx.compose.animation.AnimatedVisibility(
+                        visible = isSpeedSliderOpen,
+                        enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(),
+                        exit  = slideOutHorizontally(targetOffsetX = { it }) + fadeOut()
+                    ) {
+                        VerticalTransparentSpeedSlider(
+                            value = speedFactor,
+                            onValueChange = { new ->
+                                speedFactor = new
+                                TextPrompterPrefs.saveSpeed(context, songId, new)
+                            },
+                            height = sliderHeight,
+                            width = sliderWidth,
+                            overhangRight = overhangRight
+                        )
+                    }
                 }
 
-                Spacer(modifier = Modifier.height(8.dp)) // petit écart esthétique
+                Spacer(modifier = Modifier.height(8.dp))
 
-                // BOUTON OUVRIR / FERMER (NE BOUGE PLUS)
+                // ✅ Bouton (position stable)
                 FilledTonalIconButton(
                     onClick = { isSpeedSliderOpen = !isSpeedSliderOpen },
                     modifier = Modifier
                         .size(40.dp)
-                        .offset(x = 18.dp) // réglage horizontal uniquement
+                        .offset(x = buttonOffsetX, y = buttonOffsetY)
                 ) {
                     Icon(
                         imageVector = if (isSpeedSliderOpen)
