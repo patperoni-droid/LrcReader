@@ -104,8 +104,14 @@ fun TextPrompterScreen(
 
     var isPlaying by remember { mutableStateOf(true) }
     var isSpeedSliderOpen by remember { mutableStateOf(true) }
+    val minSpeed = 0.30f
+    val maxSpeed = 1.40f
+
     var speedFactor by remember(songId) {
-        mutableStateOf(TextPrompterPrefs.getSpeed(context, songId)?.coerceIn(0.3f, 3f) ?: 1f)
+        mutableStateOf(
+            (TextPrompterPrefs.getSpeed(context, songId) ?: 1f)
+                .coerceIn(minSpeed, maxSpeed)
+        )
     }
 
     // ✅ Auto scroll
@@ -116,7 +122,7 @@ fun TextPrompterScreen(
         val max = scrollState.maxValue
         if (max <= 0) return@LaunchedEffect
 
-        val clampedSpeed = speedFactor.coerceIn(0.3f, 3f)
+        val clampedSpeed = speedFactor.coerceIn(minSpeed, maxSpeed)
         val baseDurationMs = 60_000L
         val duration = (baseDurationMs / clampedSpeed).toInt().coerceAtLeast(500)
 
@@ -305,9 +311,10 @@ fun TextPrompterScreen(
                         VerticalTransparentSpeedSlider(
                             value = speedFactor,
                             onValueChange = { new ->
-                                speedFactor = new
-                                TextPrompterPrefs.saveSpeed(context, songId, new)
+                                speedFactor = new.coerceIn(minSpeed, maxSpeed)
+                                TextPrompterPrefs.saveSpeed(context, songId, speedFactor)
                             },
+                            valueRange = (minSpeed..maxSpeed),   // ✅ ICI c’est ça
                             height = sliderHeight,
                             width = sliderWidth,
                             overhangRight = overhangRight

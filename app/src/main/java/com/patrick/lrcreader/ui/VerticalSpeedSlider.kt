@@ -63,7 +63,8 @@ fun VerticalTransparentSpeedSlider(
         Box(
             modifier = Modifier
                 .align(Alignment.CenterEnd)
-                .offset(x = overhangRight + 10.dp) // 👈 décor pousse encore à droite
+                .offset(x = 10.dp)
+                .width(width + overhangRight)// 👈 décor pousse encore à droite
                 .width(width + overhangRight)              // côté droit plus large
                 .fillMaxHeight()
                 .clip(shape)
