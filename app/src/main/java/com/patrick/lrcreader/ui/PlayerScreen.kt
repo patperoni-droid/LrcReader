@@ -2,6 +2,10 @@
 androidx.compose.foundation.ExperimentalFoundationApi::class)
 package com.patrick.lrcreader.ui
 
+import android.util.Log
+import com.patrick.lrcreader.core.MidiOutput
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedTextField
@@ -77,6 +81,14 @@ fun PlayerScreen(
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    LaunchedEffect(Unit) {
+        MidiOutput.init(context)
+    }
+    android.util.Log.d("PlayerScreen", "COMPOSED ✅ PlayerScreen actif")
+
+    LaunchedEffect(Unit) {
+        android.util.Log.d("PlayerScreen", "MIDI INIT LaunchedEffect ✅")
+    }
     val density = LocalDensity.current
 
     // 📝 Notes LIVE (création depuis le lecteur)
@@ -671,6 +683,18 @@ private fun ReaderHeader(
             // ✅ bouton note LIVE
             IconButton(onClick = onAddLiveNote) {
                 Text("📝", color = Color.White, fontSize = 16.sp)
+            }
+            // ✅ bouton TEST BLE (fait clignoter la LED bleue du WIDI)
+            IconButton(
+                onClick = {
+                    MidiOutput.sendBleBlinkTest(channel = 1)
+                }
+            ) {
+                Text(
+                    "BLE",
+                    color = Color.Cyan,
+                    fontSize = 12.sp
+                )
             }
         }
     }
