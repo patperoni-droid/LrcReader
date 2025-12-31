@@ -21,6 +21,7 @@ object MidiCueDispatcher {
         val key = trackUri?.takeIf { it.isNotBlank() } ?: return
 
         val last = lastLineByTrack[key]
+        val isFirstForTrack = (last == null)
         if (last == lineIndex) return
         lastLineByTrack[key] = lineIndex
 
@@ -32,30 +33,26 @@ object MidiCueDispatcher {
             return
         }
 
-        val send: () -> Unit = {
+        fun doSend() {
             MidiOutput.sendProgramChange(channel = cue.channel, program = cue.program)
             Log.d(TAG, "PC envoyé: line=$lineIndex ch=${cue.channel} prog=${cue.program} pos=$positionMs")
+
+            // ✅ warmup : au tout premier PC du morceau, on renvoie une 2e fois
+            if (isFirstForTrack) {
+                mainHandler.postDelayed({
+                    MidiOutput.sendProgramChange(channel = cue.channel, program = cue.program)
+                    Log.d(TAG, "PC renvoyé (warmup): line=$lineIndex ch=${cue.channel} prog=${cue.program}")
+                }, 200L)
+            }
         }
 
-        val delayMs =
-            if (positionMs < START_GUARD_MS)
-                (START_GUARD_MS - positionMs + EXTRA_PAD_MS).coerceAtMost(1200L)
-            else
-                0L
-
-        if (delayMs > 0L) {
-            Log.w(TAG, "PC trop proche du début (pos=$positionMs ms) → delay=${delayMs}ms")
-            mainHandler.postDelayed({ send() }, delayMs)
-        } else {
-            send()
-        }
-
+// ✅ retard si trop près du début (WIDI/JV pas prêt)
         if (positionMs < START_GUARD_MS) {
             val delayMs = (START_GUARD_MS - positionMs + EXTRA_PAD_MS).coerceAtMost(1200L)
             Log.w(TAG, "PC trop proche du début (pos=$positionMs ms) → delay=${delayMs}ms")
-            mainHandler.postDelayed({ send() }, delayMs)
+            mainHandler.postDelayed({ doSend() }, delayMs)
         } else {
-            send()
+            doSend()
         }
     }
 

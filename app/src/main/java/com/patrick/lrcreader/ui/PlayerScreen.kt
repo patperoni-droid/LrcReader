@@ -385,17 +385,14 @@ fun PlayerScreen(
                                 currentEditTab = 0
                                 isEditingLyrics = true
                             },
-                            // ✅ ICI EXACTEMENT
                             onAddLiveNote = {
-                                // 1) on gèle le timecode ICI (moment précis)
                                 noteAnchorMs = getPositionMs()
-
-                                // 2) on pause pendant qu'il écrit
                                 wasPlayingBeforeNote = isPlaying
                                 if (isPlaying) onIsPlayingChange(false)
-
-                                // 3) on ouvre la popup
                                 showAddNoteDialog = true
+                            },
+                            onBleTest = {
+                                MidiOutput.sendBleBlinkTest(channel = 1)
                             }
                         )
 
@@ -613,7 +610,8 @@ fun PlayerScreen(
 }
 
 @Composable
-private fun ReaderHeader(
+private fun
+        ReaderHeader(
     isConcertMode: Boolean,
     onToggleConcertMode: () -> Unit,
     autoReturnEnabled: Boolean,
@@ -621,7 +619,8 @@ private fun ReaderHeader(
     highlightColor: Color,
     onOpenMix: () -> Unit,
     onOpenEditor: () -> Unit,
-    onAddLiveNote: () -> Unit
+    onAddLiveNote: () -> Unit,
+    onBleTest: () -> Unit
 ) {
     Box(
         modifier = Modifier
@@ -681,9 +680,7 @@ private fun ReaderHeader(
             }
             // ✅ bouton TEST BLE (fait clignoter la LED bleue du WIDI)
             IconButton(
-                onClick = {
-                    MidiOutput.sendBleBlinkTest(channel = 1)
-                }
+                onClick = onBleTest
             ) {
                 Text(
                     "BLE",
