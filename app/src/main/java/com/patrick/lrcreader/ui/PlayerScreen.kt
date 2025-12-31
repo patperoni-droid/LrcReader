@@ -261,7 +261,11 @@ fun PlayerScreen(
 
                 if (currentTrackUri != null && newIndex != -1 && newIndex != lastMidiIndex) {
                     lastMidiIndex = newIndex
-                    MidiCueDispatcher.onActiveLineChanged(trackUri = currentTrackUri, lineIndex = newIndex)
+                    MidiCueDispatcher.onActiveLineChanged(
+                        trackUri = currentTrackUri,
+                        lineIndex = newIndex,
+                        positionMs = getPositionMs()
+                    )
                 }
             }
 
@@ -424,7 +428,8 @@ fun PlayerScreen(
                                         lastMidiIndex = index
                                         MidiCueDispatcher.onActiveLineChanged(
                                             trackUri = currentTrackUri,
-                                            lineIndex = index
+                                            lineIndex = index,
+                                            positionMs = getPositionMs()
                                         )
                                     }
                                 }
