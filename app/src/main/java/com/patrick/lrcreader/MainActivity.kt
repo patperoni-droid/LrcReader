@@ -57,6 +57,9 @@ class MainActivity : ComponentActivity() {
 
         DjEngine.init(this)
 
+// ✅ MIDI : init tôt (une seule fois)
+        MidiOutput.init(applicationContext)
+        android.util.Log.d("MainActivity", "MIDI init demandé dès onCreate")
         val savedRoot = BackupFolderPrefs.get(this)
         if (savedRoot != null) {
             val hasPerm = contentResolver.persistedUriPermissions.any { p ->
