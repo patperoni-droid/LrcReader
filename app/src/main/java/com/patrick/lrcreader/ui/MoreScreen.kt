@@ -1,5 +1,6 @@
 package com.patrick.lrcreader.ui
 
+import com.patrick.lrcreader.core.MidiOutput
 import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -192,7 +193,10 @@ private fun MoreRootScreen(
 
                     SettingsHeader("Avancé")
                     SettingsItem("⚙️  Avancé", onClick = {})
-
+                    SettingsItem("📶  Test Bluetooth MIDI", onClick = {
+                        MidiOutput.init(context)
+                        MidiOutput.sendProgramChange(channel = 1, program = 1)
+                    })
                     Spacer(modifier = Modifier.height(12.dp))
 
                     Text(
