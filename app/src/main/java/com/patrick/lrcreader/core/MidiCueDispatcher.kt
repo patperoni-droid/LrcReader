@@ -32,17 +32,30 @@ object MidiCueDispatcher {
             return
         }
 
-        val sendNowOrLater: () -> Unit = {
+        val send: () -> Unit = {
             MidiOutput.sendProgramChange(channel = cue.channel, program = cue.program)
             Log.d(TAG, "PC envoyé: line=$lineIndex ch=${cue.channel} prog=${cue.program} pos=$positionMs")
+        }
+
+        val delayMs =
+            if (positionMs < START_GUARD_MS)
+                (START_GUARD_MS - positionMs + EXTRA_PAD_MS).coerceAtMost(1200L)
+            else
+                0L
+
+        if (delayMs > 0L) {
+            Log.w(TAG, "PC trop proche du début (pos=$positionMs ms) → delay=${delayMs}ms")
+            mainHandler.postDelayed({ send() }, delayMs)
+        } else {
+            send()
         }
 
         if (positionMs < START_GUARD_MS) {
             val delayMs = (START_GUARD_MS - positionMs + EXTRA_PAD_MS).coerceAtMost(1200L)
             Log.w(TAG, "PC trop proche du début (pos=$positionMs ms) → delay=${delayMs}ms")
-            mainHandler.postDelayed({ sendNowOrLater() }, delayMs)
+            mainHandler.postDelayed({ send() }, delayMs)
         } else {
-            sendNowOrLater()
+            send()
         }
     }
 

@@ -2,6 +2,7 @@
 
 package com.patrick.lrcreader.exo
 
+import com.patrick.lrcreader.core.MidiOutput
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -49,7 +50,7 @@ class MainActivity : ComponentActivity() {
 
         WindowCompat.setDecorFitsSystemWindows(window, false)
         AutoRestore.restoreIfNeeded(this)
-
+        MidiOutput.init(applicationContext)
         val initialTabKey = SessionPrefs.getTab(this)
         val initialQuickPlaylist = SessionPrefs.getQuickPlaylist(this)
         val initialOpenedPlaylist = SessionPrefs.getOpenedPlaylist(this)

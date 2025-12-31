@@ -79,11 +79,8 @@ fun PlayerScreen(
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
-    LaunchedEffect(Unit) {
-        MidiOutput.init(context)
-    }
 
-    val density = LocalDensity.current
+
 
     // 📝 Notes LIVE (création depuis le lecteur)
     var showAddNoteDialog by remember { mutableStateOf(false) }
