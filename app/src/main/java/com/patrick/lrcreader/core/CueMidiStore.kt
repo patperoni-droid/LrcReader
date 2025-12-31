@@ -1,6 +1,7 @@
 package com.patrick.lrcreader.core
 
 import android.net.Uri
+import android.content.Context
 /**
  * Stockage simple des Cues MIDI en mémoire.
  * (pas encore de persistance disque, on verra plus tard)
@@ -9,7 +10,18 @@ object CueMidiStore {
 
     // trackUri (String) -> liste mutable de Cues
     private val cuesByTrack: MutableMap<String, MutableList<CueMidi>> = mutableMapOf()
+    private var appContext: Context? = null
 
+    fun init(context: Context) {
+        appContext = context.applicationContext
+        cuesByTrack.clear()
+        cuesByTrack.putAll(CueMidiStorePersistence.load(appContext!!))
+    }
+
+    private fun persist() {
+        val ctx = appContext ?: return
+        CueMidiStorePersistence.save(ctx, cuesByTrack)
+    }
     private fun keyFor(trackUri: String?): String? {
         val raw = trackUri?.trim().orEmpty()
         if (raw.isBlank()) return null
@@ -30,10 +42,12 @@ object CueMidiStore {
                 cue.lineIndex == deletedLineIndex -> null // supprimé
                 cue.lineIndex > deletedLineIndex -> cue.copy(lineIndex = cue.lineIndex - 1)
                 else -> cue
+
             }
         }.toMutableList()
 
         if (shifted.isEmpty()) cuesByTrack.remove(key) else cuesByTrack[key] = shifted
+        persist()
     }
 
     /**
@@ -50,6 +64,7 @@ object CueMidiStore {
         } else {
             list += cue
         }
+        persist()
     }
 
     /**
@@ -60,5 +75,6 @@ object CueMidiStore {
         val list = cuesByTrack[key] ?: return
         list.removeAll { it.lineIndex == lineIndex }
         if (list.isEmpty()) cuesByTrack.remove(key)
+        persist()
     }
 }

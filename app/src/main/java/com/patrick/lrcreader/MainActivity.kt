@@ -51,6 +51,7 @@ class MainActivity : ComponentActivity() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         AutoRestore.restoreIfNeeded(this)
         MidiOutput.init(applicationContext)
+        CueMidiStore.init(applicationContext)
         val initialTabKey = SessionPrefs.getTab(this)
         val initialQuickPlaylist = SessionPrefs.getQuickPlaylist(this)
         val initialOpenedPlaylist = SessionPrefs.getOpenedPlaylist(this)
