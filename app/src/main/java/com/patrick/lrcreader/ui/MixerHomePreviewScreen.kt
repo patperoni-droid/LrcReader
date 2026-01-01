@@ -1,5 +1,6 @@
 package com.patrick.lrcreader.ui
 
+import androidx.compose.runtime.LaunchedEffect
 import com.patrick.lrcreader.core.PlaybackCoordinator   // pour stopPlayer et stopDj et stopFiller
 import com.patrick.lrcreader.core.FillerSoundManager    // pour fadeOutAndStop du fond sonore
 import androidx.compose.animation.core.LinearEasing
@@ -63,13 +64,18 @@ fun MixerHomePreviewScreen(
     onOpenPlayer: () -> Unit = {},
     onOpenFondSonore: () -> Unit = {},
     onOpenDj: () -> Unit = {},
-    onOpenTuner: () -> Unit = {} // appelé par l’icône Accordeur
+    onOpenTuner: () -> Unit = {},// appelé par l’icône Accordeur
+    openNotesSignal: Int = 0
 ) {
 
     val context = LocalContext.current
 
     // Affichage du bloc-notes par-dessus le BUS PRINCIPAL
     var showNotes by remember { mutableStateOf(false) }
+    LaunchedEffect(openNotesSignal) {
+        if (openNotesSignal > 0) showNotes = true
+    }
+    // ✅ Ouvrir le bloc-notes depuis l'extérieur (menu ⋮ du bas)
 
     // === mêmes courbes que dans FillerSoundScreen =========================
 
@@ -152,14 +158,7 @@ fun MixerHomePreviewScreen(
 
                 Spacer(Modifier.width(4.dp))
 
-                // Icône : bloc-notes
-                IconButton(onClick = { showNotes = true }) {
-                    Icon(
-                        imageVector = Icons.Filled.Edit,
-                        contentDescription = "Bloc-notes",
-                        tint = Color(0xFFFFF59D)
-                    )
-                }
+
 
                 Spacer(Modifier.width(4.dp))
 

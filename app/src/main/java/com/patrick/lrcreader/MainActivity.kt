@@ -112,7 +112,8 @@ class MainActivity : ComponentActivity() {
 
                 var currentTrackTempo by remember { mutableStateOf(1f) }
                 var currentTrackPitchSemi by remember { mutableStateOf(0) }
-
+                var isMoreMenuOpen by remember { mutableStateOf(false) }
+                var openNotesSignal by remember { mutableStateOf(0) }
                 var isGlobalMixOpen by remember { mutableStateOf(false) }
                 var playerMasterLevel by remember { mutableStateOf(1f) }
                 var djMasterLevel by remember { mutableStateOf(1f) }
@@ -122,7 +123,6 @@ class MainActivity : ComponentActivity() {
                 var textPrompterId by remember { mutableStateOf<String?>(null) }
 
                 // ✅ overlay states
-                var isMoreMenuOpen by remember { mutableStateOf(false) }
                 var isSearchOpen by remember { mutableStateOf(false) }
 
                 // ✅ MODE de recherche (PLAYER ou DJ)
@@ -317,10 +317,17 @@ class MainActivity : ComponentActivity() {
                     val contentModifier = Modifier
                         .padding(innerPadding)
                         .windowInsetsPadding(WindowInsets.ime)
-
+                    DropdownMenuItem(
+                        text = { Text("Bloc Notes") },
+                        onClick = {
+                            isMoreMenuOpen = false
+                            openNotesSignal++
+                        }
+                    )
                     if (isMixerPreviewOpen) {
                         MixerHomePreviewScreen(
                             modifier = contentModifier,
+                            openNotesSignal = openNotesSignal,
                             onBack = {},
                             onOpenPlayer = {
                                 isMixerPreviewOpen = false
