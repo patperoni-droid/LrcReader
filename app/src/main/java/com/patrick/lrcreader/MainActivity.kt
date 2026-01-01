@@ -317,13 +317,7 @@ class MainActivity : ComponentActivity() {
                     val contentModifier = Modifier
                         .padding(innerPadding)
                         .windowInsetsPadding(WindowInsets.ime)
-                    DropdownMenuItem(
-                        text = { Text("Bloc Notes") },
-                        onClick = {
-                            isMoreMenuOpen = false
-                            openNotesSignal++
-                        }
-                    )
+
                     if (isMixerPreviewOpen) {
                         MixerHomePreviewScreen(
                             modifier = contentModifier,
@@ -571,7 +565,15 @@ class MainActivity : ComponentActivity() {
                     DropdownMenu(
                         expanded = isMoreMenuOpen,
                         onDismissRequest = { isMoreMenuOpen = false }
+
                     ) {
+                        DropdownMenuItem(
+                            text = { Text("Bloc Notes") },
+                            onClick = {
+                                isMoreMenuOpen = false
+                                isNotesOpen = true
+                            }
+                        )
                         DropdownMenuItem(
                             text = { Text("Bibliothèque") },
                             onClick = {
