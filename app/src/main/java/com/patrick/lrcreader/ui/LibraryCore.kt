@@ -146,7 +146,18 @@ fun scanAllFoldersOnce(context: Context, rootUri: Uri) {
 
     scanFolder(rootUri)
 }
+private fun isAudioOrVideo(context: Context, uri: Uri, name: String): Boolean {
+    // 1) MIME (le plus fiable via SAF)
+    val mime = runCatching { context.contentResolver.getType(uri) }.getOrNull()
+    if (mime != null) return mime.startsWith("audio/") || mime.startsWith("video/")
 
+    // 2) Fallback extension si getType == null
+    val lower = name.lowercase()
+    return lower.endsWith(".mp3") || lower.endsWith(".wav") || lower.endsWith(".flac") ||
+            lower.endsWith(".m4a") || lower.endsWith(".aac") || lower.endsWith(".ogg") ||
+            lower.endsWith(".mp4") || lower.endsWith(".mkv") || lower.endsWith(".mov") ||
+            lower.endsWith(".webm") || lower.endsWith(".avi")
+}
 /** Scan récursif COMPLET du dossier Music. 1 seule fois. */
 fun buildFullIndex(context: Context, rootUri: Uri): List<LibraryIndexCache.CachedEntry> {
     val out = ArrayList<LibraryIndexCache.CachedEntry>()
@@ -155,6 +166,11 @@ fun buildFullIndex(context: Context, rootUri: Uri): List<LibraryIndexCache.Cache
     fun recurse(folderDoc: DocumentFile, parentKey: String) {
         folderDoc.listFiles().forEach { child ->
             val name = child.name ?: (if (child.isDirectory) "Dossier" else "Fichier")
+
+            // ✅ FILTRE ICI : on garde dossiers + audio/vidéo uniquement
+            if (!child.isDirectory) {
+                if (!isAudioOrVideo(context, child.uri, name)) return@forEach
+            }
 
             out.add(
                 LibraryIndexCache.CachedEntry(
@@ -171,7 +187,6 @@ fun buildFullIndex(context: Context, rootUri: Uri): List<LibraryIndexCache.Cache
         }
     }
 
-    // IMPORTANT : la racine doit matcher EXACTEMENT le treeUri sélectionné
     recurse(rootDoc, rootUri.toString())
     return out
 }
