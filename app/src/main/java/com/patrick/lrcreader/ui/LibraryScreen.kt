@@ -483,7 +483,17 @@ fun LibraryScreen(
                                             color = Color.White,
                                             modifier = Modifier
                                                 .weight(1f)
-                                                .clickable { onPlayFromLibrary(uri.toString()) }
+                                                .clickable {
+                                                    // ✅ SÉCURITÉ SCÈNE :
+                                                    // s’il y a AU MOINS un titre sélectionné → JAMAIS de lecture
+                                                    if (selectedSongs.isNotEmpty()) {
+                                                        selectedSongs =
+                                                            if (isSelected) selectedSongs - uri
+                                                            else selectedSongs + uri
+                                                    } else {
+                                                        onPlayFromLibrary(uri.toString())
+                                                    }
+                                                }
                                         )
 
                                         // Menu ⋮

@@ -583,7 +583,7 @@ class MainActivity : ComponentActivity() {
                             }
                         )
                         DropdownMenuItem(
-                            text = { Text("Toutes les playlists") },
+                            text = { Text("playlists") },
                             onClick = {
                                 isMoreMenuOpen = false
                                 selectedTab = BottomTab.AllPlaylists
