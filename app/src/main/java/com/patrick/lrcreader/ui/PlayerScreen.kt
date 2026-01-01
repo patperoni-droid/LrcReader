@@ -391,9 +391,6 @@ fun PlayerScreen(
                                 if (isPlaying) onIsPlayingChange(false)
                                 showAddNoteDialog = true
                             },
-                            onBleTest = {
-                                MidiOutput.sendBleBlinkTest(channel = 1)
-                            }
                         )
 
                         Spacer(Modifier.height(8.dp))
@@ -620,7 +617,7 @@ private fun
     onOpenMix: () -> Unit,
     onOpenEditor: () -> Unit,
     onAddLiveNote: () -> Unit,
-    onBleTest: () -> Unit
+
 ) {
     Box(
         modifier = Modifier
@@ -677,16 +674,6 @@ private fun
             // ✅ bouton note LIVE
             IconButton(onClick = onAddLiveNote) {
                 Text("📝", color = Color.White, fontSize = 16.sp)
-            }
-            // ✅ bouton TEST BLE (fait clignoter la LED bleue du WIDI)
-            IconButton(
-                onClick = onBleTest
-            ) {
-                Text(
-                    "BLE",
-                    color = Color.Cyan,
-                    fontSize = 12.sp
-                )
             }
         }
     }
