@@ -17,9 +17,6 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.SkipNext
-import androidx.compose.material.icons.filled.VolumeOff
-import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -267,38 +264,8 @@ fun QuickPlaylistsScreen(
                         }
                     }
 
-                    // toggle filler
-                    IconButton(
-                        onClick = {
-                            if (isFillerRunning) {
-                                FillerSoundManager.fadeOutAndStop(200)
-                                isFillerRunning = false
-                            } else {
-                                FillerSoundManager.startIfConfigured(context)
-                                isFillerRunning = FillerSoundManager.isPlaying()
-                            }
-                        }
-                    ) {
-                        Icon(
-                            imageVector = if (isFillerRunning) Icons.Filled.VolumeOff else Icons.Filled.VolumeUp,
-                            contentDescription = null,
-                            tint = currentListColor
-                        )
-                    }
 
-                    // next filler
-                    IconButton(
-                        onClick = {
-                            FillerSoundManager.next(context)
-                            isFillerRunning = FillerSoundManager.isPlaying()
-                        }
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.SkipNext,
-                            contentDescription = null,
-                            tint = currentListColor
-                        )
-                    }
+
                 }
             }
 
