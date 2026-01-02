@@ -1,5 +1,6 @@
 package com.patrick.lrcreader.ui
 
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.foundation.layout.heightIn
 import android.content.Intent
 import android.net.Uri
@@ -89,6 +90,7 @@ fun LibraryScreen(
 
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var pendingDeleteUri by remember { mutableStateOf<Uri?>(null) }
+
     var indexAll by remember { mutableStateOf<List<LibraryIndexCache.CachedEntry>>(emptyList()) }
     val globalAudioEntries = remember(indexAll) {
         indexAll
@@ -101,22 +103,21 @@ fun LibraryScreen(
                 )
             }
     }
+
     var pendingMoveUri by remember { mutableStateOf<Uri?>(null) }
 
     // renommage
     var renameTarget by remember { mutableStateOf<LibraryEntry?>(null) }
     var renameText by remember { mutableStateOf("") }
-
+    val focusManager = LocalFocusManager.current
     val bottomBarHeight = 56.dp
 
     // ✅ Recherche
     var searchQuery by remember { mutableStateOf("") }
     val filteredEntries = remember(searchQuery, entries, globalAudioEntries) {
         if (searchQuery.isBlank()) {
-            // mode normal : navigation par dossier
             entries
         } else {
-            // 🔎 mode recherche globale
             globalAudioEntries.filter { e ->
                 e.name.contains(searchQuery, ignoreCase = true)
             }
@@ -140,6 +141,33 @@ fun LibraryScreen(
         }
     }
 
+    suspend fun refreshCurrentFolderOnly() {
+        val folderUri = currentFolderUri ?: BackupFolderPrefs.get(context) ?: return
+
+        val folderDoc = DocumentFile.fromTreeUri(context, folderUri)
+            ?: DocumentFile.fromSingleUri(context, folderUri)
+            ?: return
+
+        val all = folderDoc.listFiles()
+
+        val folders = all
+            .filter { it.isDirectory }
+            .sortedBy { it.name?.lowercase() ?: "" }
+            .map { LibraryEntry(it.uri, it.name ?: "Dossier", true) }
+
+        val jsonFiles = all
+            .filter { it.isFile && it.name?.endsWith(".json", ignoreCase = true) == true }
+            .sortedBy { it.name?.lowercase() ?: "" }
+            .map { LibraryEntry(it.uri, it.name ?: "sauvegarde.json", false) }
+
+        val mediaFiles = all
+            .filter { it.isFile && isAudioOrVideo(it.name) }
+            .sortedBy { it.name?.lowercase() ?: "" }
+            .map { f -> LibraryEntry(f.uri, f.name ?: "media", false) }
+
+        entries = folders + jsonFiles + mediaFiles
+    }
+
     // --- Choix du dossier racine de la bibliothèque ---
     val pickRootFolderLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree(),
@@ -148,7 +176,6 @@ fun LibraryScreen(
                 scope.launch {
                     isLoading = true
                     try {
-                        // 1) Permission persistante
                         try {
                             context.contentResolver.takePersistableUriPermission(
                                 uri,
@@ -157,20 +184,17 @@ fun LibraryScreen(
                             )
                         } catch (_: Exception) {}
 
-                        // 2) On mémorise le dossier racine
                         BackupFolderPrefs.save(context, uri)
 
-                        // 3) On scanne ce dossier (une fois)
                         currentFolderUri = uri
                         folderStack = emptyList()
 
                         val full = withContext(Dispatchers.IO) {
-                            buildFullIndex(context, uri) // scan récursif COMPLET
+                            buildFullIndex(context, uri)
                         }
                         LibraryIndexCache.save(context, full)
                         indexAll = full
 
-// afficher les enfants de Music immédiatement (sans re-scan)
                         entries = LibraryIndexCache.childrenOf(full, uri).map { e ->
                             LibraryEntry(
                                 uri = Uri.parse(e.uriString),
@@ -178,8 +202,6 @@ fun LibraryScreen(
                                 isDirectory = e.isDirectory
                             )
                         }
-
-
                     } finally {
                         delay(150)
                         isLoading = false
@@ -189,7 +211,7 @@ fun LibraryScreen(
         }
     )
 
-    // --- Choix du dossier de destination pour "Déplacer vers un dossier" ---
+    // --- Déplacer vers dossier ---
     val moveToFolderLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree(),
         onResult = { destUri ->
@@ -212,10 +234,7 @@ fun LibraryScreen(
                         if (ok) {
                             selectedSongs = selectedSongs - srcUri
                             refreshIndexAndShowCurrent()
-
-
                         }
-
                     } finally {
                         pendingMoveUri = null
                         delay(150)
@@ -228,7 +247,7 @@ fun LibraryScreen(
         }
     )
 
-    // ✅ Premier chargement : on recharge depuis le cache disque si présent
+    // ✅ Premier chargement
     LaunchedEffect(Unit) {
         val root = BackupFolderPrefs.get(context)
         currentFolderUri = root
@@ -244,12 +263,9 @@ fun LibraryScreen(
                 )
             }
         } else {
-            // pas d'index => écran vide + l'utilisateur devra choisir Music
             entries = emptyList()
         }
     }
-
-
 
     DarkBlueGradientBackground {
         Column(
@@ -283,7 +299,6 @@ fun LibraryScreen(
                                     }
                                 } ?: emptyList()
 
-
                                 folderStack = newStack
                                 selectedSongs = emptySet()
                             } finally {
@@ -304,8 +319,8 @@ fun LibraryScreen(
                     Text("Bibliothèque", color = titleColor, fontSize = 20.sp)
                     Text(
                         text = currentFolderUri?.let {
-                            (DocumentFile.fromTreeUri(context, it) ?: DocumentFile.fromSingleUri(context, it))?.name
-
+                            (DocumentFile.fromTreeUri(context, it)
+                                ?: DocumentFile.fromSingleUri(context, it))?.name
                         } ?: "Aucun dossier sélectionné",
                         color = subtitleColor,
                         fontSize = 11.sp
@@ -358,25 +373,20 @@ fun LibraryScreen(
                         .weight(1f)
                         .fillMaxWidth()
                 ) {
+                    Column(modifier = Modifier.fillMaxSize()) {
 
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                    ) {
-                        // 🔍 Champ de recherche
                         OutlinedTextField(
                             value = searchQuery,
                             onValueChange = { searchQuery = it },
                             modifier = Modifier
                                 .fillMaxWidth(0.85f)
-                                .heightIn(min = 44.dp),   // ✅ clé du problème
+                                .heightIn(min = 44.dp),
                             placeholder = { Text("Rechercher…") },
                             singleLine = true
                         )
 
                         Spacer(Modifier.height(8.dp))
 
-                        // 📂 Liste filtrée
                         LazyColumn(
                             modifier = Modifier.fillMaxSize(),
                             contentPadding = PaddingValues(
@@ -406,9 +416,7 @@ fun LibraryScreen(
                                                             )
                                                         }
 
-                                                        // ✅ reset recherche quand on change de dossier (sinon tu crois que ça “marche pas”)
                                                         searchQuery = ""
-
                                                         selectedSongs = emptySet()
                                                     } finally {
                                                         delay(150)
@@ -426,14 +434,9 @@ fun LibraryScreen(
                                             modifier = Modifier.size(22.dp)
                                         )
                                         Spacer(Modifier.width(10.dp))
-                                        Text(
-                                            entry.name,
-                                            color = Color.White,
-                                            fontSize = 15.sp
-                                        )
+                                        Text(entry.name, color = Color.White, fontSize = 15.sp)
                                     }
                                 } else {
-                                    // ─── Fichier ───
                                     val uri = entry.uri
                                     val isSelected = selectedSongs.contains(uri)
                                     var menuOpen by remember { mutableStateOf(false) }
@@ -451,7 +454,6 @@ fun LibraryScreen(
                                             .padding(horizontal = 12.dp, vertical = 8.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        // Carré sélection
                                         Box(
                                             modifier = Modifier
                                                 .size(20.dp)
@@ -471,9 +473,7 @@ fun LibraryScreen(
                                                 },
                                             contentAlignment = Alignment.Center
                                         ) {
-                                            if (isSelected) {
-                                                Text("✕", color = accent, fontSize = 13.sp)
-                                            }
+                                            if (isSelected) Text("✕", color = accent, fontSize = 13.sp)
                                         }
 
                                         Spacer(Modifier.width(10.dp))
@@ -484,8 +484,6 @@ fun LibraryScreen(
                                             modifier = Modifier
                                                 .weight(1f)
                                                 .clickable {
-                                                    // ✅ SÉCURITÉ SCÈNE :
-                                                    // s’il y a AU MOINS un titre sélectionné → JAMAIS de lecture
                                                     if (selectedSongs.isNotEmpty()) {
                                                         selectedSongs =
                                                             if (isSelected) selectedSongs - uri
@@ -496,7 +494,6 @@ fun LibraryScreen(
                                                 }
                                         )
 
-                                        // Menu ⋮
                                         Box {
                                             IconButton(onClick = { menuOpen = true }) {
                                                 Icon(Icons.Default.MoreVert, contentDescription = "Options", tint = Color.White)
@@ -548,7 +545,6 @@ fun LibraryScreen(
                         }
                     }
 
-                    // ✅ Spinner (overlay)
                     if (isLoading) {
                         Box(
                             modifier = Modifier
@@ -559,16 +555,11 @@ fun LibraryScreen(
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 CircularProgressIndicator(color = Color.White)
                                 Spacer(Modifier.height(12.dp))
-                                Text(
-                                    "Chargement…",
-                                    color = Color.White.copy(alpha = 0.8f),
-                                    fontSize = 16.sp
-                                )
+                                Text("Chargement…", color = Color.White.copy(alpha = 0.8f), fontSize = 16.sp)
                             }
                         }
                     }
 
-                    // ✅ Barre sélection multiple (overlay bas)
                     if (selectedSongs.isNotEmpty()) {
                         BottomAppBar(
                             containerColor = Color(0xFF1E1E1E),
@@ -583,18 +574,10 @@ fun LibraryScreen(
                                 modifier = Modifier
                                     .padding(start = 16.dp)
                                     .size(28.dp)
-                                    .border(
-                                        width = 1.dp,
-                                        color = Color.White.copy(alpha = 0.85f),
-                                        shape = CircleShape
-                                    ),
+                                    .border(1.dp, Color.White.copy(alpha = 0.85f), CircleShape),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text(
-                                    text = selectedSongs.size.toString(),
-                                    color = Color.White,
-                                    fontSize = 13.sp
-                                )
+                                Text(text = selectedSongs.size.toString(), color = Color.White, fontSize = 13.sp)
                             }
 
                             Spacer(Modifier.weight(1f))
@@ -621,10 +604,7 @@ fun LibraryScreen(
             title = { Text("Ajouter à une playlist", color = Color.White) },
             text = {
                 if (playlists.isEmpty()) {
-                    Text(
-                        "Aucune playlist.\nVa dans l’onglet “Toutes” pour en créer.",
-                        color = Color.Gray
-                    )
+                    Text("Aucune playlist.\nVa dans l’onglet “Toutes” pour en créer.", color = Color.Gray)
                 } else {
                     Column {
                         playlists.forEach { plName ->
@@ -670,15 +650,17 @@ fun LibraryScreen(
                         val target = pendingDeleteUri ?: return@TextButton
                         scope.launch {
                             isLoading = true
-                            val ok = withContext(Dispatchers.IO) { deleteLibraryFile(context, target) }
-                            if (ok) {
-                                selectedSongs = selectedSongs - target
-                                refreshIndexAndShowCurrent()
+                            try {
+                                val ok = withContext(Dispatchers.IO) { deleteLibraryFile(context, target) }
+                                if (ok) {
+                                    selectedSongs = selectedSongs - target
+                                    refreshCurrentFolderOnly()
+                                }
+                            } finally {
+                                isLoading = false
+                                showDeleteConfirmDialog = false
+                                pendingDeleteUri = null
                             }
-
-                            isLoading = false
-                            showDeleteConfirmDialog = false
-                            pendingDeleteUri = null
                         }
                     }
                 ) { Text("Supprimer", color = Color(0xFFFF6464)) }
@@ -710,33 +692,117 @@ fun LibraryScreen(
             },
             confirmButton = {
                 TextButton(
+                    enabled = !isLoading,
                     onClick = {
+                        focusManager.clearFocus(force = true)
+
                         val target = renameTarget ?: return@TextButton
                         val newBase = renameText.trim()
-                        val folderUri = currentFolderUri
-                        if (newBase.isEmpty() || folderUri == null) {
+                        if (newBase.isEmpty()) {
                             renameTarget = null
                             return@TextButton
                         }
 
-                        scope.launch {
-                            isLoading = true
-                            val ok = withContext(Dispatchers.IO) {
-                                renameLibraryFile(
-                                    context = context,
-                                    folderUri = folderUri,
-                                    fileUri = target.uri,
-                                    newBaseName = newBase
-                                )
+                        val folderUri = indexAll
+                            .firstOrNull { it.uriString == target.uri.toString() }
+                            ?.parentUriString
+                            ?.let { Uri.parse(it) }
+                            ?: currentFolderUri
+                            ?: run {
+                                android.util.Log.e("LibraryRename", "No parent folder found for uri=${target.uri}")
+                                return@TextButton
                             }
-                            if (ok) refreshIndexAndShowCurrent()
 
+                        renameTarget = null
+                        isLoading = true
 
-                            isLoading = false
-                            renameTarget = null
+                        scope.launch {
+                            try {
+                                val oldName = target.name
+                                val ext = oldName.substringAfterLast('.', "")
+                                val newNameFinal =
+                                    if (ext.isNotEmpty() && !newBase.contains(".")) "$newBase.$ext" else newBase
+
+                                android.util.Log.d("LibraryRename", "RENAME request: ${target.name} -> $newNameFinal folderUri=$folderUri")
+
+                                val ok = withContext(Dispatchers.IO) {
+
+                                    val parentDoc =
+                                        DocumentFile.fromTreeUri(context, folderUri)
+                                            ?: return@withContext false
+
+                                    val srcName = target.name
+                                    val fileDoc = parentDoc.findFile(srcName) ?: run {
+                                        android.util.Log.e(
+                                            "LibraryRename",
+                                            "findFile failed in parent. srcName=$srcName folderUri=$folderUri"
+                                        )
+                                        return@withContext false
+                                    }
+
+                                    try {
+                                        fileDoc.renameTo(newNameFinal)
+                                    } catch (e: Exception) {
+                                        android.util.Log.e(
+                                            "LibraryRename",
+                                            "renameTo failed: ${e.javaClass.simpleName}: ${e.message}"
+                                        )
+                                        false
+                                    }
+                                }
+
+                                if (ok) {
+                                    // 1) UI instantanée : on change le nom tout de suite (sans rescan)
+                                    entries = entries.map { e ->
+                                        if (e.uri == target.uri) e.copy(name = newNameFinal) else e
+                                    }
+
+                                    indexAll = indexAll.map { ce ->
+                                        if (ce.uriString == target.uri.toString()) ce.copy(name = newNameFinal) else ce
+                                    }
+                                    LibraryIndexCache.save(context, indexAll)
+
+                                    // 2) On coupe le spinner tout de suite
+                                    isLoading = false
+
+                                    // 3) Vérif URI en arrière-plan (AU CAS OÙ Android change l'URI)
+                                    scope.launch {
+                                        try {
+                                            delay(150)
+                                            val newUri = findUriByNameInFolder(context, folderUri, newNameFinal)
+
+                                            if (newUri != null && newUri != target.uri) {
+                                                entries = entries.map { e ->
+                                                    if (e.uri == target.uri) e.copy(uri = newUri, name = newNameFinal) else e
+                                                }
+
+                                                indexAll = indexAll.map { ce ->
+                                                    if (ce.uriString == target.uri.toString()) {
+                                                        ce.copy(uriString = newUri.toString(), name = newNameFinal)
+                                                    } else ce
+                                                }
+                                                LibraryIndexCache.save(context, indexAll)
+
+                                                if (selectedSongs.contains(target.uri)) {
+                                                    selectedSongs = (selectedSongs - target.uri) + newUri
+                                                }
+                                            }
+                                        } catch (e: Exception) {
+                                            android.util.Log.e("LibraryRename", "post-rename URI check failed: ${e.message}")
+                                        }
+                                    }
+
+                                } else {
+                                    android.util.Log.e("LibraryRename", "rename FAILED uri=${target.uri} newBase=$newBase")
+                                }
+                            } finally {
+                                isLoading = false
+                            }
                         }
                     }
-                ) { Text("OK", color = Color.White) }
+                ) {
+                    Text("OK", color = Color.White)
+                }
             },
             dismissButton = {
                 TextButton(onClick = { renameTarget = null }) {
@@ -746,4 +812,27 @@ fun LibraryScreen(
             containerColor = Color(0xFF222222)
         )
     }
+}
+
+private fun isAudioOrVideo(name: String?): Boolean {
+    val n = name?.lowercase() ?: return false
+    return n.endsWith(".mp3") || n.endsWith(".wav") ||
+            n.endsWith(".m4a") || n.endsWith(".aac") ||
+            n.endsWith(".flac") || n.endsWith(".ogg") ||
+            n.endsWith(".mp4") || n.endsWith(".mkv") ||
+            n.endsWith(".webm") || n.endsWith(".mov")
+}
+
+private fun findUriByNameInFolder(
+    context: android.content.Context,
+    folderUri: Uri,
+    fileName: String
+): Uri? {
+    val folderDoc = DocumentFile.fromTreeUri(context, folderUri)
+        ?: DocumentFile.fromSingleUri(context, folderUri)
+        ?: return null
+
+    return folderDoc.listFiles()
+        .firstOrNull { it.isFile && it.name == fileName }
+        ?.uri
 }

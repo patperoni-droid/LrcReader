@@ -5,6 +5,8 @@ import android.content.Intent
 import android.net.Uri
 import androidx.documentfile.provider.DocumentFile
 import com.patrick.lrcreader.core.LibraryIndexCache
+import android.provider.DocumentsContract
+
 /* -----------------------------------------------------------
    MOTEUR BIBLIOTHÈQUE : cache + utilitaires fichiers
    ----------------------------------------------------------- */
@@ -199,42 +201,26 @@ fun buildFullIndex(context: Context, rootUri: Uri): List<LibraryIndexCache.Cache
  */
 fun renameLibraryFile(
     context: Context,
-    folderUri: Uri,
+    folderUri: Uri,      // tu peux le garder, on ne s'en sert pas
     fileUri: Uri,
     newBaseName: String
 ): Boolean {
     return try {
-        val folderDoc = DocumentFile.fromTreeUri(context, folderUri) ?: return false
+        val doc = DocumentFile.fromSingleUri(context, fileUri) ?: return false
+        val currentName = doc.name ?: return false
 
-        // On retrouve le DocumentFile correspondant au fileUri dans ce dossier
-        val srcDoc = folderDoc.listFiles().firstOrNull { it.uri == fileUri } ?: return false
-
-        val currentName = srcDoc.name ?: return false
         val ext = currentName.substringAfterLast('.', missingDelimiterValue = "")
         val finalName = if (ext.isNotEmpty()) "$newBaseName.$ext" else newBaseName
-        val mime = srcDoc.type ?: "application/octet-stream"
 
-        // On crée le nouveau fichier
-        val destDoc = folderDoc.createFile(mime, finalName) ?: return false
+        val newUri = DocumentsContract.renameDocument(
+            context.contentResolver,
+            fileUri,
+            finalName
+        ) ?: return false
 
-        // Copie du contenu
-        val cr = context.contentResolver
-        cr.openInputStream(srcDoc.uri).use { input ->
-            cr.openOutputStream(destDoc.uri).use { output ->
-                if (input == null || output == null) return false
-                val buffer = ByteArray(8 * 1024)
-                while (true) {
-                    val read = input.read(buffer)
-                    if (read <= 0) break
-                    output.write(buffer, 0, read)
-                }
-            }
-        }
-
-        // Suppression de l’original
-        srcDoc.delete()
-    } catch (_: Exception) {
+        true
+    } catch (e: Exception) {
+        android.util.Log.e("LibraryRename", "rename exception", e)
         false
     }
-
 }
