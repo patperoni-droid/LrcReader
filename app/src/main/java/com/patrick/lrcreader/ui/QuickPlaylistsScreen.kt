@@ -1,5 +1,9 @@
 package com.patrick.lrcreader.ui
 
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import android.content.Context
 import com.patrick.lrcreader.ui.theme.DarkBlueGradientBackground
 import androidx.compose.foundation.background
@@ -85,7 +89,11 @@ fun QuickPlaylistsScreen(
     var showCreateTextDialog by remember { mutableStateOf(false) }
     var newTextTitle by remember { mutableStateOf("") }
     var newTextContent by remember { mutableStateOf("") }
-
+// ✅ dialog édition titre texte (prompteur)
+    var showEditTextDialog by remember { mutableStateOf(false) }
+    var editTargetUri by remember { mutableStateOf<String?>(null) }
+    var editTextTitle by remember { mutableStateOf("") }
+    var editTextContent by remember { mutableStateOf("") }
     // 🔹 version des notes : incrémentée quand une note change
     var notesVersion by remember { mutableStateOf(0) }
 
@@ -314,6 +322,7 @@ fun QuickPlaylistsScreen(
                                 .trim()
 
                             // 🔹 NOM D’AFFICHAGE
+                            val _forceNotes = notesVersion
                             val displayName = if (uriString.startsWith("prompter://")) {
                                 val isPrompter = uriString.startsWith("prompter://")
                                 val prefix = if (isPrompter) "📝 " else ""   // ou 📜 si tu préfères
@@ -488,6 +497,7 @@ fun QuickPlaylistsScreen(
                                                 )
                                             },
                                             onClick = {
+
                                                 internalSelected?.let { pl ->
                                                     PlaylistRepository.removeSongFromPlaylist(
                                                         pl,
@@ -506,7 +516,30 @@ fun QuickPlaylistsScreen(
                                                 menuOpen = false
                                             }
                                         )
+                                        // ✅ Éditer texte prompteur (uniquement si c'est un "prompter://")
+                                        if (uriString.startsWith("prompter://")) {
+                                            DropdownMenuItem(
+                                                text = { Text("Éditer le texte prompteur", color = Color.White) },
+                                                onClick = {
+                                                    val idPart = uriString.removePrefix("prompter://")
+                                                    val numericId = idPart.toLongOrNull()
 
+                                                    if (numericId != null) {
+                                                        val note = NotesRepository.get(context, numericId)
+                                                        editTextTitle = note?.title.orEmpty()
+                                                        editTextContent = note?.content.orEmpty()
+                                                    } else {
+                                                        val textSong = TextSongRepository.get(context, idPart)
+                                                        editTextTitle = textSong?.title.orEmpty()
+                                                        editTextContent = textSong?.content.orEmpty()
+                                                    }
+
+                                                    editTargetUri = uriString
+                                                    showEditTextDialog = true
+                                                    menuOpen = false
+                                                }
+                                            )
+                                        }
                                         // 🎨 Couleur du titre (palette)
                                         DropdownMenuItem(
                                             text = { Text("Couleur du titre", color = Color.White) },
@@ -605,51 +638,49 @@ fun QuickPlaylistsScreen(
                 )
             },
             confirmButton = {
-                TextButton(onClick = {
-                    val targetUri = renameTarget ?: return@TextButton
-                    val pl = internalSelected ?: return@TextButton
-                    val newTitle = renameText.trim()
+                TextButton(
+                    onClick = {
+                        val targetUri = renameTarget ?: return@TextButton
+                        val pl = internalSelected ?: return@TextButton
+                        val newTitle = renameText.trim()
+                        if (newTitle.isBlank()) return@TextButton
 
-                    if (targetUri.startsWith("prompter://")) {
-                        // 👉 Cas prompteur : on renomme LA SOURCE
-                        val idPart = targetUri.removePrefix("prompter://")
-                        val numericId = idPart.toLongOrNull()
+                        if (targetUri.startsWith("prompter://")) {
+                            // 👉 Cas prompteur : on renomme LA SOURCE (NotesRepository ou TextSongRepository)
+                            val idPart = targetUri.removePrefix("prompter://")
+                            val numericId = idPart.toLongOrNull()
 
-                        if (numericId != null) {
-                            // NOTE basée sur NotesRepository
-                            val note = NotesRepository.get(context, numericId)
-                            if (note != null) {
-                                NotesRepository.upsert(
-                                    context = context,
-                                    id = note.id,                 // même id
-                                    title = newTitle,             // nouveau titre
-                                    content = note.content        // on garde le texte
-                                )
-                                NotesEventBus.notifyNotesChanged()
+                            if (numericId != null) {
+                                val note = NotesRepository.get(context, numericId)
+                                if (note != null) {
+                                    NotesRepository.upsert(
+                                        context = context,
+                                        id = note.id,
+                                        title = newTitle,
+                                        content = note.content
+                                    )
+                                    NotesEventBus.notifyNotesChanged()
+                                }
+                            } else {
+                                val textSong = TextSongRepository.get(context, idPart)
+                                if (textSong != null) {
+                                    TextSongRepository.update(
+                                        context = context,
+                                        id = idPart,
+                                        title = newTitle,
+                                        content = textSong.content
+                                    )
+                                    NotesEventBus.notifyNotesChanged()
+                                }
                             }
                         } else {
-                            // Ancien système TextSongRepository
-                            val textSong = TextSongRepository.get(context, idPart)
-                            if (textSong != null) {
-                                TextSongRepository.update(
-                                    context = context,
-                                    id = idPart,
-                                    title = newTitle,
-                                    content = textSong.content
-                                )
-                            }
+                            // 👉 Cas audio normal : renommer seulement dans la playlist
+                            PlaylistRepository.renameSongInPlaylist(pl, targetUri, newTitle)
                         }
-                    } else {
-                        // 👉 Cas audio normal : on renomme dans la playlist comme avant
-                        PlaylistRepository.renameSongInPlaylist(
-                            pl,
-                            targetUri,
-                            newTitle
-                        )
-                    }
 
-                    renameTarget = null
-                }) {
+                        renameTarget = null
+                    }
+                ) {
                     Text("OK", color = Color.White)
                 }
             },
@@ -662,7 +693,7 @@ fun QuickPlaylistsScreen(
         )
     }
 
-    // dialog création titre texte (ancienne méthode)
+// dialog création titre texte (ancienne méthode)
     if (showCreateTextDialog && internalSelected != null) {
         AlertDialog(
             onDismissRequest = { showCreateTextDialog = false },
@@ -710,7 +741,139 @@ fun QuickPlaylistsScreen(
             containerColor = Color(0xFF222222)
         )
     }
-}
+
+// ✅ dialog ÉDITION titre texte (prompteur) — version LARGE + boutons visibles
+    if (showEditTextDialog && editTargetUri != null) {
+
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = {
+                showEditTextDialog = false
+                editTargetUri = null
+            },
+            properties = androidx.compose.ui.window.DialogProperties(
+                usePlatformDefaultWidth = false
+            )
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth(0.95f)
+                    .heightIn(max = 700.dp)              // ✅ empêche la carte de descendre trop bas
+                    .navigationBarsPadding()             // ✅ évite barre du bas
+                    .imePadding()                        // ✅ évite clavier
+                    .background(Color(0xFF222222), RoundedCornerShape(18.dp))
+                    .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(18.dp))
+                    .padding(16.dp)
+            ) {
+                Text(
+                    "Éditer le prompteur",
+                    color = Color.White,
+                    fontSize = 18.sp
+                )
+
+                Spacer(Modifier.height(12.dp))
+
+                OutlinedTextField(
+                    value = editTextTitle,
+                    onValueChange = { editTextTitle = it },
+                    label = { Text("Titre") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(Modifier.height(12.dp))
+
+                // ✅ Zone centrale qui prend l'espace restant (scroll si besoin)
+                val scroll = rememberScrollState()
+                Column(
+                    modifier = Modifier
+                        .weight(1f, fill = true)
+                        .verticalScroll(scroll)
+                ) {
+                    OutlinedTextField(
+                        value = editTextContent,
+                        onValueChange = { editTextContent = it },
+                        label = { Text("Texte du prompteur") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 260.dp),
+                        minLines = 10
+                    )
+                }
+
+                Spacer(Modifier.height(12.dp))
+
+                // ✅ BOUTONS TOUJOURS VISIBLES (hors zone scroll)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(
+                        onClick = {
+                            showEditTextDialog = false
+                            editTargetUri = null
+                        }
+                    ) {
+                        Text("Annuler", color = Color(0xFFB0BEC5))
+                    }
+
+                    Spacer(Modifier.width(8.dp))
+
+                    TextButton(
+                        onClick = {
+                            val uri = editTargetUri ?: return@TextButton
+                            val title = editTextTitle.trim()
+                            val content = editTextContent.trim()
+                            if (title.isBlank() || content.isBlank()) return@TextButton
+
+                            if (uri.startsWith("prompter://")) {
+                                val idPart = uri.removePrefix("prompter://")
+                                val numericId = idPart.toLongOrNull()
+
+                                if (numericId != null) {
+                                    val note = NotesRepository.get(context, numericId)
+                                    if (note != null) {
+                                        NotesRepository.upsert(
+                                            context = context,
+                                            id = note.id,
+                                            title = title,
+                                            content = content
+                                        )
+                                    }
+                                } else {
+                                    val textSong = TextSongRepository.get(context, idPart)
+                                    if (textSong != null) {
+                                        TextSongRepository.update(
+                                            context = context,
+                                            id = idPart,
+                                            title = title,
+                                            content = content
+                                        )
+                                    }
+                                }
+
+                                // ✅ refresh titres prompteur
+                                NotesEventBus.notifyNotesChanged()
+                            }
+
+                            showEditTextDialog = false
+                            editTargetUri = null
+                        }
+                    ) {
+                        Text("Enregistrer", color = Color.White)
+                    }
+                }
+            }
+        }
+    }
+
+// ✅ IMPORTANT : cette accolade DOIT fermer QuickPlaylistsScreen()
+// Mets-la ici si tu es à la fin de la fonction.
+} // <-- FIN QuickPlaylistsScreen()
+
+
+// ─────────────────────────────────────────────
+// Helpers (OBLIGATOIREMENT en dehors du Composable)
+// ─────────────────────────────────────────────
 
 // utilitaire drag
 private fun <T> MutableList<T>.swap(i: Int, j: Int) {
@@ -779,3 +942,4 @@ object NotesEventBus {
         listeners.forEach { it.invoke() }
     }
 }
+
