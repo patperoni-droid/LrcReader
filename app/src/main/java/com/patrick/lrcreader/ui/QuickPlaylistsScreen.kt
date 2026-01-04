@@ -519,7 +519,7 @@ fun QuickPlaylistsScreen(
                                         // ✅ Éditer texte prompteur (uniquement si c'est un "prompter://")
                                         if (uriString.startsWith("prompter://")) {
                                             DropdownMenuItem(
-                                                text = { Text("Éditer le texte prompteur", color = Color.White) },
+                                                text = { Text( "Éditer le prompteur ✅ TEST 2026", color = Color.White) },
                                                 onClick = {
                                                     val idPart = uriString.removePrefix("prompter://")
                                                     val numericId = idPart.toLongOrNull()
@@ -697,7 +697,7 @@ fun QuickPlaylistsScreen(
     if (showCreateTextDialog && internalSelected != null) {
         AlertDialog(
             onDismissRequest = { showCreateTextDialog = false },
-            title = { Text("Nouveau titre (prompteur)", color = Color.White) },
+            title = { Text("Nouveau titre (prompteur 2026 )", color = Color.White) },
             text = {
                 Column {
                     OutlinedTextField(
@@ -743,6 +743,7 @@ fun QuickPlaylistsScreen(
     }
 
 // ✅ dialog ÉDITION titre texte (prompteur) — version LARGE + boutons visibles
+    // ✅ Dialog ÉDITION prompteur — grand + boutons toujours visibles
     if (showEditTextDialog && editTargetUri != null) {
 
         androidx.compose.ui.window.Dialog(
@@ -756,16 +757,16 @@ fun QuickPlaylistsScreen(
         ) {
             Column(
                 modifier = Modifier
-                    .fillMaxWidth(0.95f)
-                    .heightIn(max = 700.dp)              // ✅ empêche la carte de descendre trop bas
-                    .navigationBarsPadding()             // ✅ évite barre du bas
-                    .imePadding()                        // ✅ évite clavier
+                    .fillMaxWidth(0.96f)
+                    .fillMaxHeight(0.90f)          // ✅ plus haut (90% écran)
+                    .navigationBarsPadding()        // ✅ évite barre du bas
+                    .imePadding()                   // ✅ évite le clavier
                     .background(Color(0xFF222222), RoundedCornerShape(18.dp))
                     .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(18.dp))
                     .padding(16.dp)
             ) {
                 Text(
-                    "Éditer le prompteur",
+                    "Éditer le prompteur ✅ TEST 2026",
                     color = Color.White,
                     fontSize = 18.sp
                 )
@@ -782,7 +783,7 @@ fun QuickPlaylistsScreen(
 
                 Spacer(Modifier.height(12.dp))
 
-                // ✅ Zone centrale qui prend l'espace restant (scroll si besoin)
+                // ✅ Zone centrale scrollable, prend tout l'espace restant
                 val scroll = rememberScrollState()
                 Column(
                     modifier = Modifier
@@ -802,7 +803,7 @@ fun QuickPlaylistsScreen(
 
                 Spacer(Modifier.height(12.dp))
 
-                // ✅ BOUTONS TOUJOURS VISIBLES (hors zone scroll)
+                // ✅ Boutons FIXES en bas : toujours visibles
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End
@@ -823,6 +824,7 @@ fun QuickPlaylistsScreen(
                             val uri = editTargetUri ?: return@TextButton
                             val title = editTextTitle.trim()
                             val content = editTextContent.trim()
+
                             if (title.isBlank() || content.isBlank()) return@TextButton
 
                             if (uri.startsWith("prompter://")) {
@@ -851,7 +853,6 @@ fun QuickPlaylistsScreen(
                                     }
                                 }
 
-                                // ✅ refresh titres prompteur
                                 NotesEventBus.notifyNotesChanged()
                             }
 
