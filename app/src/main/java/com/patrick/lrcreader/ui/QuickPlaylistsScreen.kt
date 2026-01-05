@@ -1,5 +1,11 @@
 package com.patrick.lrcreader.ui
 
+import android.net.Uri
+import androidx.documentfile.provider.DocumentFile
+import com.patrick.lrcreader.core.LibraryIndexCache
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.imePadding
@@ -58,11 +64,20 @@ fun QuickPlaylistsScreen(
     selectedPlaylist: String? = null,
     onSelectedPlaylistChange: (String?) -> Unit = {},
     onPlaylistColorChange: (Color) -> Unit = {},
-    onRequestShowPlayer: () -> Unit = {}   // ✅ DEFAULT
+    onRequestShowPlayer: () -> Unit = {},
+    indexAll: List<LibraryIndexCache.CachedEntry> = emptyList() // ✅ propre + default
 ) {
+
     val context = LocalContext.current
 
-    val playlists = remember(refreshKey) { PlaylistRepository.getPlaylists() }
+    val scope = rememberCoroutineScope()
+    var isRenameBusy by remember { mutableStateOf(false) }
+
+// ✅ IMPORTANT : on observe le repo RAM (sinon la playlist garde des URI "morts" après rename en bibliothèque)
+    val repoVersion = PlaylistRepository.version.value
+
+// ✅ la liste des playlists se met à jour dès que le repo change
+    val playlists = remember(refreshKey, repoVersion) { PlaylistRepository.getPlaylists() }
 
     var internalSelected by rememberSaveable {
         mutableStateOf<String?>(selectedPlaylist ?: playlists.firstOrNull())
@@ -108,7 +123,7 @@ fun QuickPlaylistsScreen(
     }
 
     // recharge quand playlist ou notes changent
-    LaunchedEffect(internalSelected, refreshKey, notesVersion) {
+    LaunchedEffect(internalSelected, refreshKey, notesVersion, repoVersion) {
         songs.clear()
         val pl = internalSelected
         if (pl != null) {
@@ -120,7 +135,7 @@ fun QuickPlaylistsScreen(
     }
 
     // si le parent force une playlist
-    LaunchedEffect(selectedPlaylist) {
+    LaunchedEffect(selectedPlaylist, repoVersion) {
         if (selectedPlaylist != null) {
             internalSelected = selectedPlaylist
             songs.clear()
@@ -646,7 +661,7 @@ fun QuickPlaylistsScreen(
                         if (newTitle.isBlank()) return@TextButton
 
                         if (targetUri.startsWith("prompter://")) {
-                            // 👉 Cas prompteur : on renomme LA SOURCE (NotesRepository ou TextSongRepository)
+                            // 👉 Cas prompteur : on renomme LA SOURCE
                             val idPart = targetUri.removePrefix("prompter://")
                             val numericId = idPart.toLongOrNull()
 
@@ -674,11 +689,41 @@ fun QuickPlaylistsScreen(
                                 }
                             }
                         } else {
-                            // 👉 Cas audio normal : renommer seulement dans la playlist
-                            PlaylistRepository.renameSongInPlaylist(pl, targetUri, newTitle)
-                        }
+                            // ✅ Cas audio normal : RENOMMAGE RÉEL DU FICHIER (source unique)
+                            if (isRenameBusy) return@TextButton
+                            isRenameBusy = true
 
-                        renameTarget = null
+                            scope.launch {
+                                try {
+                                    val result = withContext(Dispatchers.IO) {
+                                        renameAudioFileUsingLibraryCache(
+                                            context = context,
+                                            oldUriString = targetUri,
+                                            newBaseName = newTitle
+                                        )
+                                    }
+
+                                    if (result != null) {
+                                        val (newUriString, _) = result
+
+                                        // 1) migration des URI partout (playlist + états)
+                                        if (newUriString != targetUri) {
+                                            PlaylistRepository.replaceSongUriEverywhere(
+                                                oldUri = targetUri,
+                                                newUri = newUriString
+                                            )
+                                        }
+
+                                        // 2) on supprime les titres custom qui masquent le nom réel
+                                        PlaylistRepository.clearCustomTitleEverywhere(targetUri)
+                                        PlaylistRepository.clearCustomTitleEverywhere(newUriString)
+                                    }
+                                } finally {
+                                    isRenameBusy = false
+                                    renameTarget = null
+                                }
+                            }
+                        }
                     }
                 ) {
                     Text("OK", color = Color.White)
@@ -932,6 +977,70 @@ private fun clearSongColor(context: Context, playlist: String, uri: String) {
  * Petit bus d'événements pour signaler que les notes ont changé.
  * (utilisé pour forcer le refresh des playlists affichant des prompteurs)
  */
+private fun findUriByNameInFolder(
+    context: Context,
+    folderUri: Uri,
+    fileName: String
+): Uri? {
+    val folderDoc = DocumentFile.fromTreeUri(context, folderUri)
+        ?: DocumentFile.fromSingleUri(context, folderUri)
+        ?: return null
+
+    return folderDoc.listFiles()
+        .firstOrNull { it.isFile && it.name == fileName }
+        ?.uri
+}
+
+/**
+ * Renomme un fichier audio en s'appuyant sur le cache d'index de la bibliothèque.
+ * Retourne Pair(newUriString, newFileNameFinal) si OK, sinon null.
+ */
+private fun renameAudioFileUsingLibraryCache(
+    context: Context,
+    oldUriString: String,
+    newBaseName: String
+): Pair<String, String>? {
+    val cache = LibraryIndexCache.load(context) ?: return null
+    val entry = cache.firstOrNull { it.uriString == oldUriString } ?: return null
+
+    val parentUri = entry.parentUriString?.let { Uri.parse(it) } ?: return null
+
+    val oldName = entry.name
+    val ext = oldName.substringAfterLast('.', "")
+    val cleanBase = newBaseName.trim()
+    if (cleanBase.isEmpty()) return null
+
+    val newNameFinal =
+        if (ext.isNotEmpty() && !cleanBase.contains(".")) "$cleanBase.$ext" else cleanBase
+
+    val parentDoc = DocumentFile.fromTreeUri(context, parentUri) ?: return null
+    val fileDoc = parentDoc.findFile(oldName) ?: return null
+
+    val ok = try {
+        fileDoc.renameTo(newNameFinal)
+    } catch (_: Exception) {
+        false
+    }
+    if (!ok) return null
+
+    // URI peut changer => on le recherche par nom dans le dossier
+    val newUri = findUriByNameInFolder(context, parentUri, newNameFinal)
+    val finalUriString = (newUri ?: Uri.parse(oldUriString)).toString()
+
+    // Mise à jour du cache bibliothèque (nom + éventuellement uri)
+    val newCache = cache.map { ce ->
+        if (ce.uriString == oldUriString) {
+            if (finalUriString != oldUriString) {
+                ce.copy(uriString = finalUriString, name = newNameFinal)
+            } else {
+                ce.copy(name = newNameFinal)
+            }
+        } else ce
+    }
+    LibraryIndexCache.save(context, newCache)
+
+    return finalUriString to newNameFinal
+}
 object NotesEventBus {
     private val listeners = mutableListOf<() -> Unit>()
 
@@ -943,4 +1052,5 @@ object NotesEventBus {
         listeners.forEach { it.invoke() }
     }
 }
+
 

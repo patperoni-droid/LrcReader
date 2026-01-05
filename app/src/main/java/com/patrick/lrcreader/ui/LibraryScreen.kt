@@ -1,5 +1,6 @@
 package com.patrick.lrcreader.ui
 
+
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.foundation.layout.heightIn
 import android.content.Intent
@@ -342,6 +343,45 @@ fun LibraryScreen(
                             pickRootFolderLauncher.launch(null)
                         }
                     )
+                    // ✅ RESCAN bibliothèque (rebuild index + réparer playlists)
+                    DropdownMenuItem(
+                        text = { Text("Rescan bibliothèque") },
+                        onClick = {
+                            actionsExpanded = false
+                            scope.launch {
+                                isLoading = true
+                                try {
+                                    val root = BackupFolderPrefs.get(context) ?: return@launch
+
+                                    // rebuild index EN LOCAL (pas via state)
+                                    val newFull = withContext(Dispatchers.IO) { buildFullIndex(context, root) }
+                                    LibraryIndexCache.save(context, newFull)
+
+                                    // ✅ mettre à jour l’UI
+                                    indexAll = newFull
+                                    val folderToShow = currentFolderUri ?: root
+                                    entries = LibraryIndexCache.childrenOf(newFull, folderToShow).map { e ->
+                                        LibraryEntry(
+                                            uri = Uri.parse(e.uriString),
+                                            name = e.name,
+                                            isDirectory = e.isDirectory
+                                        )
+                                    }
+
+                                    // ✅ réparer AVEC le bon index
+                                    com.patrick.lrcreader.core.PlaylistRepair.repairDeadUrisFromIndex(
+                                        context = context,
+                                        indexAll = newFull
+                                    )
+
+                                } finally {
+                                    delay(150)
+                                    isLoading = false
+                                }
+                            }
+                        }
+                    )
+
                     DropdownMenuItem(
                         text = { Text("Oublier le dossier") },
                         onClick = {
@@ -723,24 +763,28 @@ fun LibraryScreen(
                                 val newNameFinal =
                                     if (ext.isNotEmpty() && !newBase.contains(".")) "$newBase.$ext" else newBase
 
-                                android.util.Log.d("LibraryRename", "RENAME request: ${target.name} -> $newNameFinal folderUri=$folderUri")
+                                android.util.Log.d(
+                                    "LibraryRename",
+                                    "RENAME request: ${target.name} -> $newNameFinal folderUri=$folderUri"
+                                )
 
-                                val ok = withContext(Dispatchers.IO) {
+                                // ✅ DEVICE-SAFE rename : on récupère directement le nouvel URI après rename
+                                val newUriAfterRename: Uri? = withContext(Dispatchers.IO) {
 
                                     val parentDoc =
                                         DocumentFile.fromTreeUri(context, folderUri)
-                                            ?: return@withContext false
+                                            ?: return@withContext null
 
                                     val srcName = target.name
                                     val fileDoc = parentDoc.findFile(srcName) ?: run {
                                         android.util.Log.e(
                                             "LibraryRename",
-                                            "findFile failed in parent. srcName=$srcName folderUri=$folderUri"
+                                            "findFile failed. srcName=$srcName folderUri=$folderUri"
                                         )
-                                        return@withContext false
+                                        return@withContext null
                                     }
 
-                                    try {
+                                    val renamedOk = try {
                                         fileDoc.renameTo(newNameFinal)
                                     } catch (e: Exception) {
                                         android.util.Log.e(
@@ -749,53 +793,129 @@ fun LibraryScreen(
                                         )
                                         false
                                     }
+
+                                    if (!renamedOk) return@withContext null
+
+                                    // 🔥 CRUCIAL : sur device, c’est la seule méthode fiable
+                                    parentDoc.findFile(newNameFinal)?.uri
+                                        ?: findUriByNameInFolder(context, folderUri, newNameFinal)
                                 }
 
-                                if (ok) {
-                                    // 1) UI instantanée : on change le nom tout de suite (sans rescan)
+                                if (newUriAfterRename == null) {
+                                    android.util.Log.e(
+                                        "LibraryRename",
+                                        "rename FAILED (newUriAfterRename=null) oldUri=${target.uri} newName=$newNameFinal"
+                                    )
+                                    return@launch
+                                }
+
+// 1) UI immédiate (nom)
+                                entries = entries.map { e ->
+                                    if (e.uri == target.uri) e.copy(name = newNameFinal) else e
+                                }
+
+                                indexAll = indexAll.map { ce ->
+                                    if (ce.uriString == target.uri.toString()) ce.copy(name = newNameFinal) else ce
+                                }
+                                LibraryIndexCache.save(context, indexAll)
+
+// 2) Supprime les renommages playlist qui masquent le vrai nom
+                                PlaylistRepository.clearCustomTitleEverywhere(target.uri.toString())
+
+// 3) DEVICE FIX : re-persist permission sur le nouveau document
+                                try {
+                                    context.contentResolver.takePersistableUriPermission(
+                                        newUriAfterRename,
+                                        Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                                    )
+                                } catch (_: Exception) {}
+
+// 4) Si l’URI a changé → migration complète
+                                if (newUriAfterRename != target.uri) {
+
+                                    PlaylistRepository.clearCustomTitleEverywhere(newUriAfterRename.toString())
+
                                     entries = entries.map { e ->
-                                        if (e.uri == target.uri) e.copy(name = newNameFinal) else e
+                                        if (e.uri == target.uri) e.copy(uri = newUriAfterRename, name = newNameFinal) else e
                                     }
 
                                     indexAll = indexAll.map { ce ->
-                                        if (ce.uriString == target.uri.toString()) ce.copy(name = newNameFinal) else ce
+                                        if (ce.uriString == target.uri.toString()) {
+                                            ce.copy(uriString = newUriAfterRename.toString(), name = newNameFinal)
+                                        } else ce
                                     }
                                     LibraryIndexCache.save(context, indexAll)
 
-                                    // 2) On coupe le spinner tout de suite
-                                    isLoading = false
+                                    PlaylistRepository.replaceSongUriEverywhere(
+                                        oldUri = target.uri.toString(),
+                                        newUri = newUriAfterRename.toString()
+                                    )
 
-                                    // 3) Vérif URI en arrière-plan (AU CAS OÙ Android change l'URI)
-                                    scope.launch {
-                                        try {
-                                            delay(150)
-                                            val newUri = findUriByNameInFolder(context, folderUri, newNameFinal)
+                                    if (selectedSongs.contains(target.uri)) {
+                                        selectedSongs = (selectedSongs - target.uri) + newUriAfterRename
+                                    }
+                                }
+                                // 1) UI immédiate (nom)
+                                entries = entries.map { e ->
+                                    if (e.uri == target.uri) e.copy(name = newNameFinal) else e
+                                }
 
-                                            if (newUri != null && newUri != target.uri) {
-                                                entries = entries.map { e ->
-                                                    if (e.uri == target.uri) e.copy(uri = newUri, name = newNameFinal) else e
-                                                }
+                                indexAll = indexAll.map { ce ->
+                                    if (ce.uriString == target.uri.toString()) ce.copy(name = newNameFinal) else ce
+                                }
+                                LibraryIndexCache.save(context, indexAll)
 
-                                                indexAll = indexAll.map { ce ->
-                                                    if (ce.uriString == target.uri.toString()) {
-                                                        ce.copy(uriString = newUri.toString(), name = newNameFinal)
-                                                    } else ce
-                                                }
-                                                LibraryIndexCache.save(context, indexAll)
+                                // 2) IMPORTANT : supprimer tout customTitle qui masquerait le vrai nom
+                                PlaylistRepository.clearCustomTitleEverywhere(target.uri.toString())
 
-                                                if (selectedSongs.contains(target.uri)) {
-                                                    selectedSongs = (selectedSongs - target.uri) + newUri
-                                                }
-                                            }
-                                        } catch (e: Exception) {
-                                            android.util.Log.e("LibraryRename", "post-rename URI check failed: ${e.message}")
-                                        }
+                                // 3) Retrouver la NOUVELLE URI après rename
+                                val newUri = withContext(Dispatchers.IO) {
+                                    findUriByNameInFolder(context, folderUri, newNameFinal)
+                                }
+
+                                // 4) DEVICE FIX : sécuriser permissions sur la nouvelle URI
+                                if (newUri != null) {
+                                    try {
+                                        context.contentResolver.takePersistableUriPermission(
+                                            newUri,
+                                            Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                                                    Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                                        )
+                                    } catch (_: Exception) {
+                                        // OK si déjà autorisé ou non persistable
+                                    }
+                                }
+
+                                // 5) Si l'URI a changé → MIGRATION GLOBALE
+                                if (newUri != null && newUri != target.uri) {
+
+                                    // nettoyage customTitle aussi côté nouvelle URI
+                                    PlaylistRepository.clearCustomTitleEverywhere(newUri.toString())
+
+                                    entries = entries.map { e ->
+                                        if (e.uri == target.uri) e.copy(uri = newUri, name = newNameFinal) else e
                                     }
 
-                                } else {
-                                    android.util.Log.e("LibraryRename", "rename FAILED uri=${target.uri} newBase=$newBase")
+                                    indexAll = indexAll.map { ce ->
+                                        if (ce.uriString == target.uri.toString()) {
+                                            ce.copy(uriString = newUri.toString(), name = newNameFinal)
+                                        } else ce
+                                    }
+                                    LibraryIndexCache.save(context, indexAll)
+
+                                    // 🔥 FIX LECTURE : playlists + états
+                                    PlaylistRepository.replaceSongUriEverywhere(
+                                        oldUri = target.uri.toString(),
+                                        newUri = newUri.toString()
+                                    )
+
+                                    if (selectedSongs.contains(target.uri)) {
+                                        selectedSongs = (selectedSongs - target.uri) + newUri
+                                    }
                                 }
+
                             } finally {
+                                // 6) FIN PROPRE
                                 isLoading = false
                             }
                         }

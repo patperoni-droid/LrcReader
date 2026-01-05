@@ -147,12 +147,29 @@ object PlaylistRepository {
     // -------------------------------------------------
     // TITRES PERSONNALISÉS (RENOMMAGE)
     // -------------------------------------------------
+    /** Supprime le titre personnalisé (customTitle) pour cet URI dans TOUTES les playlists. */
+    fun clearCustomTitleEverywhere(uri: String) {
+        customTitles.forEach { (_, map) ->
+            map.remove(uri)
+        }
+        bump()
+    }
 
     /** Récupère un titre custom si on en a un, sinon null. */
     fun getCustomTitle(playlistName: String, uri: String): String? {
         return customTitles[playlistName]?.get(uri)
     }
 
+    fun getAnyCustomTitleForUri(uriString: String): String? {
+        return runCatching {
+            val pls = getPlaylists()
+            for (pl in pls) {
+                val t = getCustomTitle(pl, uriString)
+                if (!t.isNullOrBlank()) return@runCatching t
+            }
+            null
+        }.getOrNull()
+    }
     /** Définit / change le titre affiché pour une chanson dans une playlist. */
     fun renameSongInPlaylist(playlistName: String, uri: String, newTitle: String) {
         val clean = newTitle.trim()
@@ -178,6 +195,10 @@ object PlaylistRepository {
     // -------------------------------------------------
     // COULEURS DE PLAYLIST
     // -------------------------------------------------
+    /**
+     * Supprime le titre personnalisé (customTitle) pour cet URI dans TOUTES les playlists.
+     * Utilisé quand on renomme réellement un fichier audio : on veut que la playlist affiche le nom réel.
+     */
 
     fun setPlaylistColor(playlist: String, color: Long) {
         playlistColors[playlist] = color
@@ -291,7 +312,48 @@ object PlaylistRepository {
     // -------------------------------------------------
     // INTERNE
     // -------------------------------------------------
+// -------------------------------------------------
+// FIX: MIGRATION D'URI APRÈS RENOMMAGE D'UN FICHIER
+// -------------------------------------------------
 
+    /**
+     * Quand un fichier est renommé dans la bibliothèque, Android peut changer son URI.
+     * Les playlists (et états played/review + titres custom) pointent encore sur l'ancien URI,
+     * donc: pas jouable + nom pas à jour.
+     */
+    fun replaceSongUriEverywhere(oldUri: String, newUri: String) {
+        if (oldUri == newUri) return
+
+        // 1) playlists: remplacer l'URI dans la liste
+        playlists.forEach { (_, list) ->
+            for (i in list.indices) {
+                if (list[i] == oldUri) list[i] = newUri
+            }
+        }
+        /**
+         * Quand on renomme un fichier dans la bibliothèque, on veut que la playlist affiche le NOM RÉEL
+         * (donc on vire les titres custom éventuels qui masqueraient le nouveau nom).
+         */
+
+
+        // 2) playedSongs: déplacer l'URI si présent
+        playedSongs.forEach { (_, set) ->
+            if (set.remove(oldUri)) set.add(newUri)
+        }
+
+        // 3) reviewSongs: déplacer l'URI si présent
+        reviewSongs.forEach { (_, set) ->
+            if (set.remove(oldUri)) set.add(newUri)
+        }
+
+        // 4) customTitles: déplacer la clé oldUri -> newUri (en gardant le titre custom)
+        customTitles.forEach { (_, map) ->
+            val t = map.remove(oldUri)
+            if (t != null) map[newUri] = t
+        }
+
+        bump()
+    }
     private fun bump() {
         version.value = version.value + 1
     }
@@ -299,3 +361,12 @@ object PlaylistRepository {
     /** force une recomposition manuelle (utile après un import) */
     fun touch() = bump()
 }
+
+
+
+
+/**
+ * À adapter si ton repo stocke déjà les customTitle différemment.
+ * Ici je suppose que tu as déjà une fonction getCustomTitle(playlist, uri)
+ * puisque tu as clearCustomTitleEverywhere().
+ */
