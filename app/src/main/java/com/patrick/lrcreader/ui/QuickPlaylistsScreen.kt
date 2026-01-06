@@ -611,25 +611,7 @@ fun QuickPlaylistsScreen(
                                             }
                                         }
 
-                                        DropdownMenuItem(
-                                            text = {
-                                                Text(
-                                                    if (isToReview) "Retirer \"à revoir\""
-                                                    else "Marquer \"à revoir\"",
-                                                    color = Color.White
-                                                )
-                                            },
-                                            onClick = {
-                                                internalSelected?.let { pl ->
-                                                    PlaylistRepository.setSongToReview(
-                                                        pl,
-                                                        uriString,
-                                                        !isToReview
-                                                    )
-                                                }
-                                                menuOpen = false
-                                            }
-                                        )
+
                                     }
                                 }
                             }
