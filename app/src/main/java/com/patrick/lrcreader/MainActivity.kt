@@ -301,9 +301,20 @@ class MainActivity : ComponentActivity() {
                             },
                             onSearchClick = {
                                 textPrompterId = null
-                                searchMode =
-                                    if (selectedTab is BottomTab.Dj) SearchMode.DJ
-                                    else SearchMode.PLAYER
+
+                                searchMode = when {
+                                    selectedTab is BottomTab.Dj ->
+                                        SearchMode.DJ
+
+                                    // ✅ Recherche limitée à la playlist affichée
+                                    selectedTab is BottomTab.QuickPlaylists &&
+                                            !selectedQuickPlaylist.isNullOrBlank() ->
+                                        SearchMode.PLAYLIST
+
+                                    else ->
+                                        SearchMode.PLAYER
+                                }
+
                                 isSearchOpen = true
                             },
                             onMoreClick = {
@@ -554,8 +565,24 @@ class MainActivity : ComponentActivity() {
                                         SearchMode.DJ -> {
                                             playFromSearchInDj(uriString)
                                         }
+
+                                        SearchMode.PLAYLIST -> {
+                                            // ✅ comme PLAYER : on lance et on bascule sur le lecteur
+                                            playWithCrossfade(uriString, null)
+                                            currentPlayingUri = uriString
+                                            currentLyricsColor = Color(0xFFE040FB)
+                                            selectedTab = BottomTab.Player
+                                            SessionPrefs.saveTab(ctx, TAB_PLAYER)
+                                        }
                                     }
                                     isSearchOpen = false
+                                },
+                                restrictToUriStrings = if (searchMode == SearchMode.PLAYLIST) {
+                                    openedPlaylist?.let { plName ->
+                                        PlaylistRepository.getSongsFor(plName).toSet()
+                                    }
+                                } else {
+                                    null
                                 }
                             )
                         }
@@ -680,4 +707,8 @@ private fun tabFromKey(key: String): BottomTab = when (key) {
 /*  Search mode                                                    */
 /* --------------------------------------------------------------- */
 
-private enum class SearchMode { PLAYER, DJ }
+private enum class SearchMode {
+    PLAYER,
+    DJ,
+    PLAYLIST // ✅ nouveau
+}

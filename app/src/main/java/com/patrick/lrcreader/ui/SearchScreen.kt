@@ -28,7 +28,10 @@ fun SearchScreen(
     modifier: Modifier = Modifier,
     indexAll: List<LibraryIndexCache.CachedEntry>,
     onBack: () -> Unit,
-    onPlay: (String) -> Unit
+    onPlay: (String) -> Unit,
+    // null => recherche globale (comme avant)
+    // non null => recherche limitée (ex: playlist)
+    restrictToUriStrings: Set<String>? = null
 ) {
     // look "analogique"
     val titleColor = Color(0xFFFFF8E1)
@@ -37,15 +40,20 @@ fun SearchScreen(
     val rowBorder = Color(0x33FFFFFF)
     val accent = Color(0xFFFFC107)
 
-    // ✅ liste globale des fichiers audio (pas les dossiers)
-    val allAudio = remember(indexAll) {
-        indexAll.filter { !it.isDirectory }.map {
-            LibraryEntry(
-                uri = Uri.parse(it.uriString),
-                name = it.name,
-                isDirectory = false
-            )
-        }
+    // ✅ liste globale des fichiers (pas les dossiers) + restriction optionnelle
+    val allAudio = remember(indexAll, restrictToUriStrings) {
+        indexAll
+            .asSequence()
+            .filter { !it.isDirectory }
+            .filter { ce -> restrictToUriStrings?.contains(ce.uriString) ?: true }
+            .map {
+                LibraryEntry(
+                    uri = Uri.parse(it.uriString),
+                    name = it.name,
+                    isDirectory = false
+                )
+            }
+            .toList()
     }
 
     var q by remember { mutableStateOf("") }
@@ -53,8 +61,10 @@ fun SearchScreen(
     val results = remember(q, allAudio) {
         if (q.isBlank()) emptyList()
         else allAudio.filter { it.name.contains(q, ignoreCase = true) }
-            .take(300) // ✅ sécurité perf
+            .take(300)
     }
+
+
 
     Column(
         modifier = modifier
