@@ -6,6 +6,7 @@ import android.net.Uri
 import androidx.documentfile.provider.DocumentFile
 import com.patrick.lrcreader.core.LibraryIndexCache
 import android.provider.DocumentsContract
+import com.patrick.lrcreader.core.BackupFolderPrefs
 
 /* -----------------------------------------------------------
    MOTEUR BIBLIOTHÈQUE : cache + utilitaires fichiers
@@ -97,38 +98,88 @@ fun deleteLibraryFile(context: Context, uri: Uri): Boolean {
     }
 }
 
-/** Copie le fichier vers un autre dossier puis supprime l’original. */
+data class MoveResult(
+    val ok: Boolean,
+    val newUri: Uri? = null
+)
+
 fun moveLibraryFile(
     context: Context,
     sourceUri: Uri,
+    sourceParentTreeUri: Uri,
     destFolderTreeUri: Uri
-): Boolean {
+): MoveResult {
+    val cr = context.contentResolver
+
+    // ✅ MOVE NATIF (instant) si possible
+    if (android.os.Build.VERSION.SDK_INT >= 24) {
+        try {
+            val rootTree = BackupFolderPrefs.get(context)
+
+            if (rootTree != null) {
+                val srcDocId = DocumentsContract.getDocumentId(sourceUri)
+
+                val srcParentDocId = try {
+                    DocumentsContract.getDocumentId(sourceParentTreeUri)
+                } catch (_: Exception) {
+                    DocumentsContract.getTreeDocumentId(sourceParentTreeUri)
+                }
+
+                val destDocId = try {
+                    DocumentsContract.getDocumentId(destFolderTreeUri)
+                } catch (_: Exception) {
+                    DocumentsContract.getTreeDocumentId(destFolderTreeUri)
+                }
+
+                val srcDocUri = DocumentsContract.buildDocumentUriUsingTree(rootTree, srcDocId)
+                val srcParentDocUri = DocumentsContract.buildDocumentUriUsingTree(rootTree, srcParentDocId)
+                val destFolderDocUri = DocumentsContract.buildDocumentUriUsingTree(rootTree, destDocId)
+
+                val movedUri = DocumentsContract.moveDocument(
+                    cr,
+                    srcDocUri,
+                    srcParentDocUri,
+                    destFolderDocUri
+                )
+
+                if (movedUri != null) {
+                    android.util.Log.d("MOVE", "native move OK newUri=$movedUri")
+                    return MoveResult(ok = true, newUri = movedUri)
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("MOVE", "native move failed -> fallback copy", e)
+        }
+    }
+
+    // 🔁 FALLBACK : copie + delete (lent)
     return try {
-        val srcDoc = DocumentFile.fromSingleUri(context, sourceUri) ?: return false
-        val destDir = DocumentFile.fromTreeUri(context, destFolderTreeUri) ?: return false
+        val srcDoc = DocumentFile.fromSingleUri(context, sourceUri) ?: return MoveResult(false)
+        val destDir = DocumentFile.fromTreeUri(context, destFolderTreeUri) ?: return MoveResult(false)
 
         val mime = srcDoc.type ?: "application/octet-stream"
-        val name = srcDoc.name ?: "audio"
+        val name = srcDoc.name ?: "file"
+        val destFile = destDir.createFile(mime, name) ?: return MoveResult(false)
 
-        val destDoc = destDir.createFile(mime, name) ?: return false
-
-        val cr = context.contentResolver
         cr.openInputStream(srcDoc.uri).use { input ->
-            cr.openOutputStream(destDoc.uri).use { output ->
-                if (input == null || output == null) return false
-                val buffer = ByteArray(8 * 1024)
+            cr.openOutputStream(destFile.uri, "w").use { output ->
+                if (input == null || output == null) return MoveResult(false)
+                val buffer = ByteArray(256 * 1024)
                 while (true) {
                     val read = input.read(buffer)
                     if (read <= 0) break
                     output.write(buffer, 0, read)
                 }
+                output.flush()
             }
         }
 
-        // on supprime l’original
-        srcDoc.delete()
-    } catch (_: Exception) {
-        false
+        val delOk = srcDoc.delete()
+        MoveResult(ok = delOk, newUri = if (delOk) destFile.uri else null)
+
+    } catch (e: Exception) {
+        android.util.Log.e("MOVE", "moveLibraryFile exception", e)
+        MoveResult(false)
     }
 }
 

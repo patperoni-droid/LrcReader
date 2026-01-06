@@ -1,6 +1,6 @@
 package com.patrick.lrcreader.ui
 
-
+import android.provider.DocumentsContract
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.foundation.layout.heightIn
 import android.content.Intent
@@ -88,6 +88,10 @@ fun LibraryScreen(
     var showAssignDialog by remember { mutableStateOf(false) }
     var actionsExpanded by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(false) }
+    // ✅ Déplacement interne (sans SAF picker)
+    var showMoveBrowser by remember { mutableStateOf(false) }
+    var moveBrowserFolder by remember { mutableStateOf<Uri?>(null) } // dossier affiché dans le browser
+    var moveBrowserStack by remember { mutableStateOf<List<Uri>>(emptyList()) }
 
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var pendingDeleteUri by remember { mutableStateOf<Uri?>(null) }
@@ -168,7 +172,40 @@ fun LibraryScreen(
 
         entries = folders + jsonFiles + mediaFiles
     }
+    suspend fun applyMoveResult(
+        src: Uri,
+        dest: Uri,
+        result: MoveResult
+    ) {
+        if (!result.ok) return
 
+        val oldName = entries.firstOrNull { it.uri == src }?.name ?: "Fichier"
+        val newUri = result.newUri
+
+        // UI : enlever l'ancien
+        entries = entries.filterNot { it.uri == src }
+        selectedSongs = selectedSongs - src
+
+        // ✅ INDEX : enlever ancien + ajouter nouveau (évite Rescan)
+        if (newUri != null) {
+            val srcStr = src.toString()
+            val newStr = newUri.toString()
+            val destParentStr = dest.toString()
+
+            indexAll = indexAll.filterNot { it.uriString == srcStr }
+
+            indexAll = indexAll + LibraryIndexCache.CachedEntry(
+                uriString = newStr,
+                name = oldName,
+                isDirectory = false,
+                parentUriString = destParentStr
+            )
+
+            LibraryIndexCache.save(context, indexAll)
+        }
+
+        refreshCurrentFolderOnly()
+    }
     // --- Choix du dossier racine de la bibliothèque ---
     val pickRootFolderLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree(),
@@ -229,13 +266,32 @@ fun LibraryScreen(
                             )
                         } catch (_: Exception) {}
 
-                        val ok = withContext(Dispatchers.IO) {
-                            moveLibraryFile(context, srcUri, destUri)
+                        val rootTree = BackupFolderPrefs.get(context) ?: return@launch
+
+                        val srcParent = indexAll
+                            .firstOrNull { it.uriString == srcUri.toString() }
+                            ?.parentUriString
+                            ?.let { Uri.parse(it) }
+                            ?: rootTree
+
+                        val srcParentFixed = asTreeDocumentUri(rootTree, srcParent)
+                        val destFixed = asTreeDocumentUri(rootTree, destUri)
+
+                        val result = withContext(Dispatchers.IO) {
+                            moveLibraryFile(
+                                context = context,
+                                sourceUri = srcUri,
+                                sourceParentTreeUri = srcParentFixed,
+                                destFolderTreeUri = destFixed
+                            )
                         }
-                        if (ok) {
-                            selectedSongs = selectedSongs - srcUri
-                            refreshIndexAndShowCurrent()
-                        }
+                        android.util.Log.d("MOVE", "ok=${result.ok} newUri=${result.newUri}")
+
+                        applyMoveResult(
+                            src = srcUri,
+                            dest = destUri,
+                            result = result
+                        )
                     } finally {
                         pendingMoveUri = null
                         delay(150)
@@ -343,7 +399,7 @@ fun LibraryScreen(
                             pickRootFolderLauncher.launch(null)
                         }
                     )
-                    // ✅ RESCAN bibliothèque (rebuild index + réparer playlists)
+
                     DropdownMenuItem(
                         text = { Text("Rescan bibliothèque") },
                         onClick = {
@@ -352,12 +408,9 @@ fun LibraryScreen(
                                 isLoading = true
                                 try {
                                     val root = BackupFolderPrefs.get(context) ?: return@launch
-
-                                    // rebuild index EN LOCAL (pas via state)
                                     val newFull = withContext(Dispatchers.IO) { buildFullIndex(context, root) }
                                     LibraryIndexCache.save(context, newFull)
 
-                                    // ✅ mettre à jour l’UI
                                     indexAll = newFull
                                     val folderToShow = currentFolderUri ?: root
                                     entries = LibraryIndexCache.childrenOf(newFull, folderToShow).map { e ->
@@ -368,12 +421,10 @@ fun LibraryScreen(
                                         )
                                     }
 
-                                    // ✅ réparer AVEC le bon index
                                     com.patrick.lrcreader.core.PlaylistRepair.repairDeadUrisFromIndex(
                                         context = context,
                                         indexAll = newFull
                                     )
-
                                 } finally {
                                     delay(150)
                                     isLoading = false
@@ -556,7 +607,12 @@ fun LibraryScreen(
                                                     onClick = {
                                                         menuOpen = false
                                                         pendingMoveUri = uri
-                                                        moveToFolderLauncher.launch(null)
+
+                                                        // ✅ on ouvre notre explorateur interne sur le ROOT (ou le dossier courant si tu préfères)
+                                                        val root = BackupFolderPrefs.get(context)
+                                                        moveBrowserFolder = root
+                                                        moveBrowserStack = emptyList()
+                                                        showMoveBrowser = true
                                                     }
                                                 )
 
@@ -932,6 +988,127 @@ fun LibraryScreen(
             containerColor = Color(0xFF222222)
         )
     }
+    // ✅ Explorateur interne de destination (sans permissions, sans rescan complet)
+    if (showMoveBrowser && pendingMoveUri != null) {
+
+        val root = BackupFolderPrefs.get(context)
+
+        // fallback sécurité
+        val currentDest = moveBrowserFolder ?: root
+
+        // dossiers enfants du dossier affiché
+        val destFolders = remember(indexAll, currentDest) {
+            if (currentDest == null) emptyList()
+            else LibraryIndexCache.childrenOf(indexAll, currentDest)
+                .filter { it.isDirectory }
+                .map { e ->
+                    LibraryEntry(
+                        uri = Uri.parse(e.uriString),
+                        name = e.name,
+                        isDirectory = true
+                    )
+                }
+                .sortedBy { it.name.lowercase() }
+        }
+
+        AlertDialog(
+            onDismissRequest = {
+                showMoveBrowser = false
+                pendingMoveUri = null
+            },
+            title = { Text("Déplacer vers…", color = Color.White) },
+            text = {
+                Column {
+
+                    // ✅ bouton “remonter”
+                    if (moveBrowserStack.isNotEmpty()) {
+                        Text(
+                            "⬅ Retour",
+                            color = Color(0xFFB0BEC5),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp)
+                                .clickable {
+                                    val newStack = moveBrowserStack.dropLast(1)
+                                    val parent = newStack.lastOrNull() ?: root
+                                    moveBrowserStack = newStack
+                                    moveBrowserFolder = parent
+                                }
+                        )
+                    }
+
+
+                    // ✅ action “déplacer ici”
+                    Text(
+                        "📥 Déplacer ici",
+                        color = Color(0xFFFFC107),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 10.dp)
+                            .clickable {
+                                val rootTree = BackupFolderPrefs.get(context) ?: return@clickable
+                                val dest = moveBrowserFolder ?: rootTree
+                                val src = pendingMoveUri ?: return@clickable
+
+                                scope.launch {
+                                    isLoading = true
+                                    try {
+                                        val destFixed = asTreeDocumentUri(rootTree, dest)
+
+                                        val result = withContext(Dispatchers.IO) {
+                                            moveLibraryFile(
+                                                context,
+                                                src,
+                                                currentFolderUri ?: BackupFolderPrefs.get(context)!!,
+                                                destFixed
+                                            )
+                                        }
+
+                                        applyMoveResult(
+                                            src = src,
+                                            dest = dest,      // parent logique (celui du browser)
+                                            result = result
+                                        )
+                                    } finally {
+                                        isLoading = false
+                                        showMoveBrowser = false
+                                        pendingMoveUri = null
+                                    }
+                                }
+                            }
+                    )
+
+                    Spacer(Modifier.height(8.dp))
+
+                    LazyColumn {
+                        items(destFolders, key = { it.uri.toString() }) { folder ->
+                            Text(
+                                text = "📁 ${folder.name}",
+                                color = Color.White,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 8.dp)
+                                    .clickable {
+                                        val from = moveBrowserFolder ?: root ?: folder.uri
+                                        moveBrowserStack = moveBrowserStack + from
+                                        moveBrowserFolder = folder.uri
+                                    }
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = {
+                    // 🛟 au cas où : ancienne méthode SAF
+                    showMoveBrowser = false
+                    moveToFolderLauncher.launch(null)
+                }) { Text("Autre dossier…", color = Color.Gray) }
+            },
+            containerColor = Color(0xFF222222)
+        )
+    }
 }
 
 private fun isAudioOrVideo(name: String?): Boolean {
@@ -955,4 +1132,15 @@ private fun findUriByNameInFolder(
     return folderDoc.listFiles()
         .firstOrNull { it.isFile && it.name == fileName }
         ?.uri
+}
+private fun asTreeDocumentUri(rootTreeUri: Uri, docUriOrTreeUri: Uri): Uri {
+    return try {
+        // Si c’est déjà un treeUri → OK
+        DocumentsContract.getTreeDocumentId(docUriOrTreeUri)
+        docUriOrTreeUri
+    } catch (_: Exception) {
+        // Sinon c’est un documentUri : on le “rebuild” dans le tree root
+        val docId = DocumentsContract.getDocumentId(docUriOrTreeUri)
+        DocumentsContract.buildDocumentUriUsingTree(rootTreeUri, docId)
+    }
 }
