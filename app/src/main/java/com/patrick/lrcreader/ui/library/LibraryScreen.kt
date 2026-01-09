@@ -1,6 +1,5 @@
 package com.patrick.lrcreader.ui.library
 
-import android.content.Intent
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
@@ -18,6 +17,9 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.documentfile.provider.DocumentFile
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
 import com.patrick.lrcreader.core.BackupFolderPrefs
 import com.patrick.lrcreader.core.LibraryIndexCache
 import com.patrick.lrcreader.core.PlaylistRepository
@@ -33,13 +35,12 @@ fun LibraryScreen(
     modifier: Modifier = Modifier,
     onPlayFromLibrary: (String) -> Unit
 ) {
-    // palette analogique commune
+// palette analogique commune
     val titleColor = Color(0xFFFFF8E1)
     val subtitleColor = Color(0xFFB0BEC5)
     val cardBg = Color(0xFF181818)
     val rowBorder = Color(0x33FFFFFF)
     val accent = Color(0xFFFFC107)
-
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
@@ -62,7 +63,7 @@ fun LibraryScreen(
 
     var indexAll by remember { mutableStateOf<List<LibraryIndexCache.CachedEntry>>(emptyList()) }
 
-    // dialogs state
+// dialogs state
     var showAssignDialog by remember { mutableStateOf(false) }
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var pendingDeleteUri by remember { mutableStateOf<Uri?>(null) }
@@ -75,7 +76,7 @@ fun LibraryScreen(
     var renameTarget by remember { mutableStateOf<LibraryEntry?>(null) }
     var renameText by remember { mutableStateOf("") }
 
-    // search
+// search
     var searchQuery by remember { mutableStateOf("") }
     val globalAudioEntries = remember(indexAll) {
         indexAll.filter { !it.isDirectory }.map {
@@ -88,6 +89,57 @@ fun LibraryScreen(
     }
 
     val bottomBarHeight = 56.dp
+
+// --------------------------------------------------------------------
+// ✅ QUICK PLAY (sans ouvrir le lecteur)
+// --------------------------------------------------------------------
+    val quickPlayer = remember { ExoPlayer.Builder(context).build() }
+    var quickNowUri by remember { mutableStateOf<Uri?>(null) }
+    var quickIsPlaying by remember { mutableStateOf(false) }
+
+    DisposableEffect(quickPlayer) {
+        val listener = object : Player.Listener {
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                quickIsPlaying = isPlaying
+            }
+
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_ENDED) {
+                    quickIsPlaying = false
+                }
+            }
+        }
+        quickPlayer.addListener(listener)
+
+        onDispose {
+            quickPlayer.removeListener(listener)
+            quickPlayer.release()
+        }
+    }
+
+    fun quickPlayToggle(uri: Uri) {
+        try {
+            if (quickNowUri == null || quickNowUri != uri) {
+                quickNowUri = uri
+                quickPlayer.setMediaItem(MediaItem.fromUri(uri))
+                quickPlayer.prepare()
+                quickPlayer.playWhenReady = true
+                return
+            }
+            if (quickPlayer.isPlaying) quickPlayer.pause() else quickPlayer.play()
+        } catch (e: Exception) {
+            Log.e("LibraryQuickPlay", "Erreur quick play", e)
+        }
+    }
+
+    fun stopQuickPlay() {
+        try {
+            if (quickPlayer.isPlaying) quickPlayer.pause()
+        } catch (_: Exception) {
+        }
+        quickIsPlaying = false
+    }
+// --------------------------------------------------------------------
 
     fun startLoading(label: String, determinate: Boolean) {
         loadingStartedAt = System.currentTimeMillis()
@@ -105,7 +157,7 @@ fun LibraryScreen(
         moveLabel = null
     }
 
-    // ---------- SAF launchers ----------
+// ---------- SAF launchers ----------
     val pickRootFolderLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree(),
         onResult = { uri ->
@@ -181,7 +233,7 @@ fun LibraryScreen(
         }
     )
 
-    // ---------- initial load ----------
+// ---------- initial load ----------
     LaunchedEffect(Unit) {
         currentFolderUri = BackupFolderPrefs.get(context)
         libraryLoadInitial(
@@ -192,7 +244,7 @@ fun LibraryScreen(
         )
     }
 
-    // ---------- UI ----------
+// ---------- UI ----------
     val currentFolderName = currentFolderUri?.let {
         (DocumentFile.fromTreeUri(context, it) ?: DocumentFile.fromSingleUri(context, it))?.name
     } ?: "Aucun dossier sélectionné"
@@ -250,6 +302,8 @@ fun LibraryScreen(
                     }
                 },
                 onForgetRoot = {
+                    stopQuickPlay()
+
                     clearPersistedUris(context)
                     BackupFolderPrefs.clear(context)
                     LibraryIndexCache.clear(context)
@@ -317,7 +371,18 @@ fun LibraryScreen(
                                     }
                                 }
                             },
-                            onPlay = { uri -> onPlayFromLibrary(uri.toString()) },
+
+                            // 🔥 CLIC SUR LE TITRE = OUVRE LE LECTEUR
+                            onOpenPlayer = { uri ->
+                                stopQuickPlay()
+                                onPlayFromLibrary(uri.toString())
+                            },
+
+                            // ▶️ BOUTON PLAY = QUICK PLAY (sans ouvrir le lecteur)
+                            onQuickPlay = { uri ->
+                                quickPlayToggle(uri)
+                            },
+
                             onAssignOne = { uri ->
                                 selectedSongs = setOf(uri)
                                 showAssignDialog = true
@@ -341,10 +406,11 @@ fun LibraryScreen(
                     }
 
                     if (selectedSongs.isNotEmpty()) {
-                        Box(modifier = Modifier
-                            .fillMaxWidth()
-                            .height(bottomBarHeight)
-                            .align(androidx.compose.ui.Alignment.BottomCenter)
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(bottomBarHeight)
+                                .align(androidx.compose.ui.Alignment.BottomCenter)
                         ) {
                             LibraryBottomBar(
                                 bottomBarHeight = bottomBarHeight,
@@ -445,19 +511,15 @@ fun LibraryScreen(
 
                             if (newUriAfterRename == null) return@launch
 
-                            // update index name
                             indexAll = indexAll.map { ce ->
                                 if (ce.uriString == target.uri.toString()) ce.copy(name = newNameFinal) else ce
                             }
                             LibraryIndexCache.save(context, indexAll)
 
-                            // clear custom title
                             PlaylistRepository.clearCustomTitleEverywhere(target.uri.toString())
 
-                            // persist perm if possible
                             persistTreePermIfPossible(context, newUriAfterRename)
 
-                            // if uri changed -> migrate
                             if (newUriAfterRename != target.uri) {
                                 PlaylistRepository.clearCustomTitleEverywhere(newUriAfterRename.toString())
 

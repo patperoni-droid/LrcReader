@@ -11,7 +11,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material3.*
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -23,130 +28,134 @@ import com.patrick.lrcreader.ui.LibraryEntry
 
 @Composable
 fun LibraryList(
+    entries: List<LibraryEntry>,
     cardBg: Color,
     rowBorder: Color,
     accent: Color,
     bottomPadding: Dp,
-    filteredEntries: List<LibraryEntry>,
     selectedSongs: Set<Uri>,
-    searchQuery: String,
-    onSearchChange: (String) -> Unit,
     onToggleSelect: (Uri) -> Unit,
     onOpenFolder: (LibraryEntry) -> Unit,
-    onPlay: (Uri) -> Unit,
-    onAssignRequest: (Uri) -> Unit,
-    onMoveRequest: (Uri) -> Unit,
-    onRenameRequest: (LibraryEntry) -> Unit,
-    onDeleteRequest: (Uri) -> Unit,
+
+    // ✅ ouvre le vrai lecteur (ton écran lecteur)
+    onOpenPlayer: (Uri) -> Unit,
+
+    // ✅ quick play dans la bibliothèque (sans ouvrir le lecteur)
+    onQuickPlay: (Uri) -> Unit,
+
+    onAssignOne: (Uri) -> Unit,
+    onMoveOne: (Uri) -> Unit,
+    onRenameOne: (LibraryEntry) -> Unit,
+    onDeleteOne: (Uri) -> Unit
 ) {
-    Column(modifier = Modifier.fillMaxSize()) {
+    val selectionMode = selectedSongs.isNotEmpty()
 
-        OutlinedTextField(
-            value = searchQuery,
-            onValueChange = onSearchChange,
-            modifier = Modifier
-                .fillMaxWidth(0.85f)
-                .heightIn(min = 44.dp),
-            placeholder = { Text("Rechercher…") },
-            singleLine = true
-        )
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(bottom = bottomPadding)
+    ) {
+        items(entries, key = { it.uri.toString() }) { entry ->
 
-        Spacer(Modifier.height(8.dp))
+            if (entry.isDirectory) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 3.dp)
+                        .background(cardBg, RoundedCornerShape(10.dp))
+                        .border(1.dp, rowBorder, RoundedCornerShape(10.dp))
+                        .clickable { onOpenFolder(entry) }
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.Folder, null, tint = accent, modifier = Modifier.size(22.dp))
+                    Spacer(Modifier.width(10.dp))
+                    Text(entry.name, color = Color.White, fontSize = 15.sp)
+                }
+            } else {
+                val uri = entry.uri
+                val isSelected = selectedSongs.contains(uri)
+                var menuOpen by remember { mutableStateOf(false) }
 
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = bottomPadding)
-        ) {
-            items(filteredEntries, key = { it.uri.toString() }) { entry ->
-                if (entry.isDirectory) {
-                    Row(
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 3.dp)
+                        .background(cardBg, RoundedCornerShape(10.dp))
+                        .border(1.dp, if (isSelected) accent else rowBorder, RoundedCornerShape(10.dp))
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // carré select
+                    Box(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 3.dp)
-                            .background(cardBg, RoundedCornerShape(10.dp))
-                            .border(1.dp, rowBorder, RoundedCornerShape(10.dp))
-                            .clickable { onOpenFolder(entry) }
-                            .padding(horizontal = 12.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Default.Folder, null, tint = accent, modifier = Modifier.size(22.dp))
-                        Spacer(Modifier.width(10.dp))
-                        Text(entry.name, color = Color.White, fontSize = 15.sp)
-                    }
-                } else {
-                    val uri = entry.uri
-                    val isSelected = selectedSongs.contains(uri)
-                    var menuOpen by remember(uri.toString()) { mutableStateOf(false) }
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 3.dp)
-                            .background(cardBg, RoundedCornerShape(10.dp))
+                            .size(20.dp)
+                            .background(
+                                if (isSelected) accent.copy(alpha = 0.18f) else Color.Transparent,
+                                RoundedCornerShape(4.dp)
+                            )
                             .border(
                                 1.dp,
-                                if (isSelected) accent else rowBorder,
-                                RoundedCornerShape(10.dp)
+                                if (isSelected) accent else Color.White.copy(alpha = 0.7f),
+                                RoundedCornerShape(4.dp)
                             )
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                            .clickable { onToggleSelect(uri) },
+                        contentAlignment = Alignment.Center
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(20.dp)
-                                .background(
-                                    if (isSelected) accent.copy(alpha = 0.18f) else Color.Transparent,
-                                    RoundedCornerShape(4.dp)
-                                )
-                                .border(
-                                    1.dp,
-                                    if (isSelected) accent else Color.White.copy(alpha = 0.7f),
-                                    RoundedCornerShape(4.dp)
-                                )
-                                .clickable { onToggleSelect(uri) },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            if (isSelected) Text("✕", color = accent, fontSize = 13.sp)
-                        }
+                        if (isSelected) Text("✕", color = accent, fontSize = 13.sp)
+                    }
 
-                        Spacer(Modifier.width(10.dp))
+                    Spacer(Modifier.width(10.dp))
 
-                        Text(
-                            entry.name,
-                            color = Color.White,
-                            modifier = Modifier
-                                .weight(1f)
-                                .clickable {
-                                    if (selectedSongs.isNotEmpty()) onToggleSelect(uri)
-                                    else onPlay(uri)
-                                }
+                    // clic sur le titre : ouvre le lecteur (sauf mode sélection)
+                    Text(
+                        entry.name,
+                        color = Color.White,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable {
+                                if (selectionMode) onToggleSelect(uri)
+                                else onOpenPlayer(uri)
+                            }
+                    )
+
+                    // ✅ bouton PLAY : quick play (sauf mode sélection)
+                    IconButton(
+                        onClick = {
+                            if (selectionMode) onToggleSelect(uri)
+                            else onQuickPlay(uri)
+                        },
+                        modifier = Modifier.size(44.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PlayArrow,
+                            contentDescription = "Lire (bibliothèque)",
+                            tint = accent,
+                            modifier = Modifier.size(26.dp)
                         )
+                    }
 
-                        Box {
-                            IconButton(onClick = { menuOpen = true }) {
-                                Icon(Icons.Default.MoreVert, null, tint = Color.White)
-                            }
-                            DropdownMenu(
-                                expanded = menuOpen,
-                                onDismissRequest = { menuOpen = false }
-                            ) {
-                                DropdownMenuItem(
-                                    text = { Text("Attribuer à une playlist", color = Color.White) },
-                                    onClick = { menuOpen = false; onAssignRequest(uri) }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("Déplacer vers un dossier", color = Color.White) },
-                                    onClick = { menuOpen = false; onMoveRequest(uri) }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("Renommer", color = Color.White) },
-                                    onClick = { menuOpen = false; onRenameRequest(entry) }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("Supprimer définitivement", color = Color(0xFFFF6464)) },
-                                    onClick = { menuOpen = false; onDeleteRequest(uri) }
-                                )
-                            }
+                    // menu ⋮
+                    Box {
+                        IconButton(onClick = { menuOpen = true }) {
+                            Icon(Icons.Default.MoreVert, null, tint = Color.White)
+                        }
+                        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                            DropdownMenuItem(
+                                text = { Text("Attribuer à une playlist", color = Color.White) },
+                                onClick = { menuOpen = false; onAssignOne(uri) }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Déplacer vers un dossier", color = Color.White) },
+                                onClick = { menuOpen = false; onMoveOne(uri) }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Renommer", color = Color.White) },
+                                onClick = { menuOpen = false; onRenameOne(entry) }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Supprimer définitivement", color = Color(0xFFFF6464)) },
+                                onClick = { menuOpen = false; onDeleteOne(uri) }
+                            )
                         }
                     }
                 }
