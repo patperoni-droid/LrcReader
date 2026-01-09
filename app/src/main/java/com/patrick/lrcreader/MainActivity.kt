@@ -35,6 +35,7 @@ import com.patrick.lrcreader.core.dj.DjEngine
 import com.patrick.lrcreader.core.exoCrossfadePlay
 import com.patrick.lrcreader.core.lyrics.LyricsResolver
 import com.patrick.lrcreader.ui.*
+import com.patrick.lrcreader.ui.library.LibraryScreen
 import kotlin.math.pow
 
 class MainActivity : ComponentActivity() {
