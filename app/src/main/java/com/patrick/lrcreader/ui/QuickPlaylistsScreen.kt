@@ -955,23 +955,6 @@ private fun clearSongColor(context: Context, playlist: String, uri: String) {
         .apply()
 }
 
-/**
- * Petit bus d'événements pour signaler que les notes ont changé.
- * (utilisé pour forcer le refresh des playlists affichant des prompteurs)
- */
-private fun findUriByNameInFolder(
-    context: Context,
-    folderUri: Uri,
-    fileName: String
-): Uri? {
-    val folderDoc = DocumentFile.fromTreeUri(context, folderUri)
-        ?: DocumentFile.fromSingleUri(context, folderUri)
-        ?: return null
-
-    return folderDoc.listFiles()
-        .firstOrNull { it.isFile && it.name == fileName }
-        ?.uri
-}
 
 /**
  * Renomme un fichier audio en s'appuyant sur le cache d'index de la bibliothèque.

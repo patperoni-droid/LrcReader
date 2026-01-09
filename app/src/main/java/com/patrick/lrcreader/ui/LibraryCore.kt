@@ -243,7 +243,114 @@ fun buildFullIndex(context: Context, rootUri: Uri): List<LibraryIndexCache.Cache
     recurse(rootDoc, rootUri.toString())
     return out
 }
+fun moveLibraryFileWithProgress(
+    context: Context,
+    sourceUri: Uri,
+    sourceParentTreeUri: Uri,
+    destFolderTreeUri: Uri,
+    onProgress: (progress01: Float?, label: String) -> Unit
+): MoveResult {
+    val cr = context.contentResolver
 
+    // ✅ MOVE NATIF (quasi instant)
+    if (android.os.Build.VERSION.SDK_INT >= 24) {
+        try {
+            onProgress(null, "Déplacement…")
+            val rootTree = BackupFolderPrefs.get(context)
+
+            if (rootTree != null) {
+                val srcDocId = DocumentsContract.getDocumentId(sourceUri)
+
+                val srcParentDocId = try {
+                    DocumentsContract.getDocumentId(sourceParentTreeUri)
+                } catch (_: Exception) {
+                    DocumentsContract.getTreeDocumentId(sourceParentTreeUri)
+                }
+
+                val destDocId = try {
+                    DocumentsContract.getDocumentId(destFolderTreeUri)
+                } catch (_: Exception) {
+                    DocumentsContract.getTreeDocumentId(destFolderTreeUri)
+                }
+
+                val srcDocUri = DocumentsContract.buildDocumentUriUsingTree(rootTree, srcDocId)
+                val srcParentDocUri = DocumentsContract.buildDocumentUriUsingTree(rootTree, srcParentDocId)
+                val destFolderDocUri = DocumentsContract.buildDocumentUriUsingTree(rootTree, destDocId)
+
+                val movedUri = DocumentsContract.moveDocument(
+                    cr,
+                    srcDocUri,
+                    srcParentDocUri,
+                    destFolderDocUri
+                )
+
+                if (movedUri != null) {
+                    android.util.Log.d("MOVE", "native move OK newUri=$movedUri")
+                    return MoveResult(ok = true, newUri = movedUri)
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("MOVE", "native move failed -> fallback copy", e)
+        }
+    }
+
+    // 🔁 FALLBACK : copie + delete (lent) → progress réel
+    return try {
+        val srcDoc = DocumentFile.fromSingleUri(context, sourceUri) ?: return MoveResult(false)
+        val destDir = DocumentFile.fromTreeUri(context, destFolderTreeUri) ?: return MoveResult(false)
+
+        val total = runCatching { srcDoc.length() }.getOrNull()?.coerceAtLeast(0L) ?: 0L
+        var copied = 0L
+
+        val mime = srcDoc.type ?: "application/octet-stream"
+        val name = srcDoc.name ?: "file"
+        val destFile = destDir.createFile(mime, name) ?: return MoveResult(false)
+
+        onProgress(0f, "Copie…")
+
+        var lastEmitAt = 0L
+        var lastPct = -1
+
+        cr.openInputStream(srcDoc.uri).use { input ->
+            cr.openOutputStream(destFile.uri, "w").use { output ->
+                if (input == null || output == null) return MoveResult(false)
+                val buffer = ByteArray(256 * 1024)
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read <= 0) break
+                    output.write(buffer, 0, read)
+                    copied += read.toLong()
+
+                    if (total > 0L) {
+                        val p = (copied.toDouble() / total.toDouble()).toFloat().coerceIn(0f, 1f)
+                        val pct = (p * 100f).toInt()
+                        val now = android.os.SystemClock.uptimeMillis()
+                        if (pct != lastPct && (now - lastEmitAt) > 40) {
+                            lastEmitAt = now
+                            lastPct = pct
+                            onProgress(p, "Copie…")
+                        }
+                    } else {
+                        val now = android.os.SystemClock.uptimeMillis()
+                        if ((now - lastEmitAt) > 200) {
+                            lastEmitAt = now
+                            onProgress(null, "Copie…")
+                        }
+                    }
+                }
+                output.flush()
+            }
+        }
+
+        onProgress(1f, "Finalisation…")
+        val delOk = srcDoc.delete()
+        MoveResult(ok = delOk, newUri = if (delOk) destFile.uri else null)
+
+    } catch (e: Exception) {
+        android.util.Log.e("MOVE", "moveLibraryFileWithProgress exception", e)
+        MoveResult(false)
+    }
+}
 
 
 /**
