@@ -326,6 +326,7 @@ class MainActivity : ComponentActivity() {
                     }
                 ) { innerPadding ->
 
+
                     val contentModifier = Modifier
                         .padding(innerPadding)
                         .windowInsetsPadding(WindowInsets.ime)
@@ -355,15 +356,12 @@ class MainActivity : ComponentActivity() {
                                 SessionPrefs.saveTab(ctx, TAB_TUNER)
                             }
                         )
-                        return@Scaffold
-                    }
-
-                    if (isFillerSettingsOpen) {
-                        FillerSoundScreen(context = ctx, onBack = { isFillerSettingsOpen = false })
-                        return@Scaffold
-                    }
-
-                    if (isGlobalMixOpen) {
+                    } else if (isFillerSettingsOpen) {
+                        FillerSoundScreen(
+                            context = ctx,
+                            onBack = { isFillerSettingsOpen = false }
+                        )
+                    } else if (isGlobalMixOpen) {
                         GlobalMixScreen(
                             modifier = contentModifier,
                             playerLevel = playerMasterLevel,
@@ -380,165 +378,162 @@ class MainActivity : ComponentActivity() {
                             onFillerLevelChange = { lvl -> fillerMasterLevel = lvl },
                             onBack = { isGlobalMixOpen = false }
                         )
-                        return@Scaffold
-                    }
+                    } else {
+                        // ✅ overlay PROMPTEUR
+                        textPrompterId?.let { tid ->
+                            TextPrompterScreen(
+                                modifier = contentModifier,
+                                songId = tid,
+                                onClose = { textPrompterId = null }
+                            )
+                        } ?: run {
+                            when (selectedTab) {
 
-                    // ✅ overlay PROMPTEUR
-                    textPrompterId?.let { tid ->
-                        TextPrompterScreen(
-                            modifier = contentModifier,
-                            songId = tid,
-                            onClose = { textPrompterId = null }
-                        )
-                        return@Scaffold
-                    }
-
-                    when (selectedTab) {
-
-                        is BottomTab.Home -> MixerHomePreviewScreen(
-                            modifier = contentModifier,
-                            onBack = {},
-                            onOpenPlayer = {
-                                selectedTab = BottomTab.Player
-                                SessionPrefs.saveTab(ctx, TAB_PLAYER)
-                            },
-                            onOpenFondSonore = { isFillerSettingsOpen = true },
-                            onOpenDj = {
-                                selectedTab = BottomTab.Dj
-                                SessionPrefs.saveTab(ctx, TAB_DJ)
-                            },
-                            onOpenTuner = {
-                                selectedTab = BottomTab.Tuner
-                                SessionPrefs.saveTab(ctx, TAB_TUNER)
-                            }
-                        )
-
-                        is BottomTab.Player -> PlayerScreen(
-                            modifier = contentModifier,
-                            exoPlayer = exoPlayer,
-                            closeMixSignal = closeMixSignal,
-                            isPlaying = isPlaying,
-                            onIsPlayingChange = { shouldPlay ->
-                                isPlaying = shouldPlay
-                                if (shouldPlay) exoPlayer.play() else exoPlayer.pause()
-                            },
-                            parsedLines = parsedLines,
-                            onParsedLinesChange = { parsedLines = it },
-                            highlightColor = currentLyricsColor,
-                            currentTrackUri = currentPlayingUri,
-                            currentTrackGainDb = currentTrackGainDb,
-                            onTrackGainChange = { db ->
-                                val safeDb = clampTrackDb(db)
-                                currentPlayingUri?.let { uri -> TrackVolumePrefs.saveDb(ctx, uri, safeDb) }
-                                currentTrackGainDb = safeDb
-                                AudioEngine.applyTrackGainDb(safeDb)
-                            },
-                            tempo = currentTrackTempo,
-                            onTempoChange = { newTempo ->
-                                currentTrackTempo = newTempo
-                                applyTempoAndPitchToPlayer(currentTrackTempo, currentTrackPitchSemi)
-                                currentPlayingUri?.let { uri -> TrackTempoPrefs.saveTempo(ctx, uri, newTempo) }
-                            },
-                            pitchSemi = currentTrackPitchSemi,
-                            onPitchSemiChange = { newSemi ->
-                                val clamped = newSemi.coerceIn(-6, 6)
-                                currentTrackPitchSemi = clamped
-                                applyTempoAndPitchToPlayer(currentTrackTempo, currentTrackPitchSemi)
-                                currentPlayingUri?.let { uri -> TrackPitchPrefs.saveSemi(ctx, uri, clamped) }
-                            },
-                            onRequestShowPlaylist = { selectedTab = BottomTab.QuickPlaylists },
-                            getPositionMs = { exoPlayer.currentPosition },
-                            getDurationMs = { exoPlayer.duration },
-                            seekToMs = { ms -> exoPlayer.seekTo(ms) }
-                        )
-
-                        is BottomTab.QuickPlaylists -> QuickPlaylistsScreen(
-                            modifier = contentModifier,
-                            onPlaySong = { uri, playlistName, color ->
-
-                                when (val target = PlaybackRouter.resolve(uri, playlistName)) {
-
-                                    is PlaybackRouter.Target.Prompter -> {
-                                        textPrompterId = target.id
-                                        // ✅ pas de playWithCrossfade : l’overlay TextPrompterScreen va s’afficher
-                                        return@QuickPlaylistsScreen
+                                is BottomTab.Home -> MixerHomePreviewScreen(
+                                    modifier = contentModifier,
+                                    onBack = {},
+                                    onOpenPlayer = {
+                                        selectedTab = BottomTab.Player
+                                        SessionPrefs.saveTab(ctx, TAB_PLAYER)
+                                    },
+                                    onOpenFondSonore = { isFillerSettingsOpen = true },
+                                    onOpenDj = {
+                                        selectedTab = BottomTab.Dj
+                                        SessionPrefs.saveTab(ctx, TAB_DJ)
+                                    },
+                                    onOpenTuner = {
+                                        selectedTab = BottomTab.Tuner
+                                        SessionPrefs.saveTab(ctx, TAB_TUNER)
                                     }
+                                )
 
-                                    is PlaybackRouter.Target.Audio -> {
-                                        playWithCrossfade(target.uri, target.playlist)
-                                        currentPlayingUri = target.uri
+                                is BottomTab.Player -> PlayerScreen(
+                                    modifier = contentModifier,
+                                    exoPlayer = exoPlayer,
+                                    closeMixSignal = closeMixSignal,
+                                    isPlaying = isPlaying,
+                                    onIsPlayingChange = { shouldPlay ->
+                                        isPlaying = shouldPlay
+                                        if (shouldPlay) exoPlayer.play() else exoPlayer.pause()
+                                    },
+                                    parsedLines = parsedLines,
+                                    onParsedLinesChange = { parsedLines = it },
+                                    highlightColor = currentLyricsColor,
+                                    currentTrackUri = currentPlayingUri,
+                                    currentTrackGainDb = currentTrackGainDb,
+                                    onTrackGainChange = { db ->
+                                        val safeDb = clampTrackDb(db)
+                                        currentPlayingUri?.let { uri -> TrackVolumePrefs.saveDb(ctx, uri, safeDb) }
+                                        currentTrackGainDb = safeDb
+                                        AudioEngine.applyTrackGainDb(safeDb)
+                                    },
+                                    tempo = currentTrackTempo,
+                                    onTempoChange = { newTempo ->
+                                        currentTrackTempo = newTempo
+                                        applyTempoAndPitchToPlayer(currentTrackTempo, currentTrackPitchSemi)
+                                        currentPlayingUri?.let { uri -> TrackTempoPrefs.saveTempo(ctx, uri, newTempo) }
+                                    },
+                                    pitchSemi = currentTrackPitchSemi,
+                                    onPitchSemiChange = { newSemi ->
+                                        val clamped = newSemi.coerceIn(-6, 6)
+                                        currentTrackPitchSemi = clamped
+                                        applyTempoAndPitchToPlayer(currentTrackTempo, currentTrackPitchSemi)
+                                        currentPlayingUri?.let { uri -> TrackPitchPrefs.saveSemi(ctx, uri, clamped) }
+                                    },
+                                    onRequestShowPlaylist = { selectedTab = BottomTab.QuickPlaylists },
+                                    getPositionMs = { exoPlayer.currentPosition },
+                                    getDurationMs = { exoPlayer.duration },
+                                    seekToMs = { ms -> exoPlayer.seekTo(ms) }
+                                )
 
-                                        selectedQuickPlaylist = target.playlist
-                                        target.playlist?.let { SessionPrefs.saveQuickPlaylist(ctx, it) }
+                                is BottomTab.QuickPlaylists -> QuickPlaylistsScreen(
+                                    modifier = contentModifier,
+                                    onPlaySong = { uri, playlistName, color ->
 
-                                        currentLyricsColor = color
+                                        when (val target = PlaybackRouter.resolve(uri, playlistName)) {
+
+                                            is PlaybackRouter.Target.Prompter -> {
+                                                textPrompterId = target.id
+                                                return@QuickPlaylistsScreen
+                                            }
+
+                                            is PlaybackRouter.Target.Audio -> {
+                                                playWithCrossfade(target.uri, target.playlist)
+                                                currentPlayingUri = target.uri
+
+                                                selectedQuickPlaylist = target.playlist
+                                                target.playlist?.let { SessionPrefs.saveQuickPlaylist(ctx, it) }
+
+                                                currentLyricsColor = color
+                                                selectedTab = BottomTab.Player
+                                                SessionPrefs.saveTab(ctx, TAB_PLAYER)
+                                            }
+
+                                            is PlaybackRouter.Target.Unknown -> {
+                                                // rien
+                                            }
+                                        }
+                                    },
+                                    refreshKey = refreshKey,
+                                    currentPlayingUri = currentPlayingUri,
+                                    selectedPlaylist = selectedQuickPlaylist,
+                                    onSelectedPlaylistChange = { name ->
+                                        selectedQuickPlaylist = name
+                                        SessionPrefs.saveQuickPlaylist(ctx, name)
+                                    },
+                                    onPlaylistColorChange = { c -> currentLyricsColor = c },
+                                    onRequestShowPlayer = {
                                         selectedTab = BottomTab.Player
                                         SessionPrefs.saveTab(ctx, TAB_PLAYER)
                                     }
+                                )
 
-                                    is PlaybackRouter.Target.Unknown -> {
-                                        // rien
+                                is BottomTab.Library -> LibraryScreen(
+                                    modifier = contentModifier,
+                                    onPlayFromLibrary = { uriString ->
+                                        playWithCrossfade(uriString, null)
+                                        currentPlayingUri = uriString
+                                        currentLyricsColor = Color(0xFFE040FB)
+                                        selectedTab = BottomTab.Player
+                                        SessionPrefs.saveTab(ctx, TAB_PLAYER)
                                     }
+                                )
+
+                                is BottomTab.AllPlaylists -> AllPlaylistsScreen(
+                                    modifier = contentModifier,
+                                    onPlaylistClick = { name ->
+                                        openedPlaylist = name
+                                        SessionPrefs.saveOpenedPlaylist(ctx, name)
+                                    }
+                                )
+
+                                is BottomTab.Dj -> DjScreen(modifier = contentModifier, context = ctx)
+
+                                is BottomTab.More -> MoreScreen(
+                                    modifier = contentModifier,
+                                    context = ctx,
+                                    onAfterImport = { refreshKey++ },
+                                    onOpenTuner = {
+                                        selectedTab = BottomTab.Tuner
+                                        SessionPrefs.saveTab(ctx, TAB_TUNER)
+                                    }
+                                )
+
+                                is BottomTab.Tuner -> TunerScreen(
+                                    modifier = contentModifier,
+                                    onClose = {
+                                        selectedTab = BottomTab.Home
+                                        SessionPrefs.saveTab(ctx, TAB_HOME)
+                                    }
+                                )
+
+                                else -> Box(
+                                    modifier = contentModifier.fillMaxSize(),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text("Écran inconnu", color = Color.White)
                                 }
-                            },
-                            refreshKey = refreshKey,
-                            currentPlayingUri = currentPlayingUri,
-                            selectedPlaylist = selectedQuickPlaylist,
-                            onSelectedPlaylistChange = { name ->
-                                selectedQuickPlaylist = name
-                                SessionPrefs.saveQuickPlaylist(ctx, name)
-                            },
-                            onPlaylistColorChange = { c -> currentLyricsColor = c },
-                            onRequestShowPlayer = {
-                                selectedTab = BottomTab.Player
-                                SessionPrefs.saveTab(ctx, TAB_PLAYER)
                             }
-                        )
-
-                        is BottomTab.Library -> LibraryScreen(
-                            modifier = contentModifier,
-                            onPlayFromLibrary = { uriString ->
-                                playWithCrossfade(uriString, null)
-                                currentPlayingUri = uriString
-                                currentLyricsColor = Color(0xFFE040FB)
-                                selectedTab = BottomTab.Player
-                                SessionPrefs.saveTab(ctx, TAB_PLAYER)
-                            }
-                        )
-
-                        is BottomTab.AllPlaylists -> AllPlaylistsScreen(
-                            modifier = contentModifier,
-                            onPlaylistClick = { name ->
-                                openedPlaylist = name
-                                SessionPrefs.saveOpenedPlaylist(ctx, name)
-                            }
-                        )
-
-                        is BottomTab.Dj -> DjScreen(modifier = contentModifier, context = ctx)
-
-                        is BottomTab.More -> MoreScreen(
-                            modifier = contentModifier,
-                            context = ctx,
-                            onAfterImport = { refreshKey++ },
-                            onOpenTuner = {
-                                selectedTab = BottomTab.Tuner
-                                SessionPrefs.saveTab(ctx, TAB_TUNER)
-                            }
-                        )
-
-                        is BottomTab.Tuner -> TunerScreen(
-                            modifier = contentModifier,
-                            onClose = {
-                                selectedTab = BottomTab.Home
-                                SessionPrefs.saveTab(ctx, TAB_HOME)
-                            }
-                        )
-
-                        else -> Box(
-                            modifier = contentModifier.fillMaxSize(),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text("Écran inconnu", color = Color.White)
                         }
                     }
 
@@ -600,6 +595,12 @@ class MainActivity : ComponentActivity() {
                             onClick = {
                                 isMoreMenuOpen = false
                                 isNotesOpen = true
+                                // ✅ si on est sur “Fond sonore” (overlay), il faut le fermer sinon on reste bloqué dessus
+                                isFillerSettingsOpen = false
+                                isGlobalMixOpen = false
+                                isSearchOpen = false
+                                textPrompterId = null
+                                isMixerPreviewOpen = false
                             }
                         )
                         DropdownMenuItem(
@@ -608,6 +609,12 @@ class MainActivity : ComponentActivity() {
                                 isMoreMenuOpen = false
                                 selectedTab = BottomTab.Library
                                 SessionPrefs.saveTab(ctx, TAB_LIBRARY)
+                                // ✅ si on est sur “Fond sonore” (overlay), il faut le fermer sinon on reste bloqué dessus
+                                isFillerSettingsOpen = false
+                                isGlobalMixOpen = false
+                                isSearchOpen = false
+                                textPrompterId = null
+                                isMixerPreviewOpen = false
                             }
                         )
                         DropdownMenuItem(
@@ -616,6 +623,12 @@ class MainActivity : ComponentActivity() {
                                 isMoreMenuOpen = false
                                 selectedTab = BottomTab.AllPlaylists
                                 SessionPrefs.saveTab(ctx, TAB_ALL)
+                                // ✅ si on est sur “Fond sonore” (overlay), il faut le fermer sinon on reste bloqué dessus
+                                isFillerSettingsOpen = false
+                                isGlobalMixOpen = false
+                                isSearchOpen = false
+                                textPrompterId = null
+                                isMixerPreviewOpen = false
                             }
                         )
                         DropdownMenuItem(
@@ -624,6 +637,12 @@ class MainActivity : ComponentActivity() {
                                 isMoreMenuOpen = false
                                 selectedTab = BottomTab.More
                                 SessionPrefs.saveTab(ctx, TAB_MORE)
+                                // ✅ si on est sur “Fond sonore” (overlay), il faut le fermer sinon on reste bloqué dessus
+                                isFillerSettingsOpen = false
+                                isGlobalMixOpen = false
+                                isSearchOpen = false
+                                textPrompterId = null
+                                isMixerPreviewOpen = false
                             }
                         )
                         DropdownMenuItem(
@@ -632,6 +651,12 @@ class MainActivity : ComponentActivity() {
                                 isMoreMenuOpen = false
                                 selectedTab = BottomTab.Tuner
                                 SessionPrefs.saveTab(ctx, TAB_TUNER)
+                                // ✅ si on est sur “Fond sonore” (overlay), il faut le fermer sinon on reste bloqué dessus
+                                isFillerSettingsOpen = false
+                                isGlobalMixOpen = false
+                                isSearchOpen = false
+                                textPrompterId = null
+                                isMixerPreviewOpen = false
                             }
                         )
                     }
