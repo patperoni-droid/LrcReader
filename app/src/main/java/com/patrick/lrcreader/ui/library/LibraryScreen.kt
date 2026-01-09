@@ -1,5 +1,6 @@
 package com.patrick.lrcreader.ui.library
 
+import androidx.compose.ui.zIndex
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
@@ -409,8 +410,8 @@ fun LibraryScreen(
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(bottomBarHeight)
                                 .align(androidx.compose.ui.Alignment.BottomCenter)
+                                .zIndex(20f) // optionnel mais conseillé
                         ) {
                             LibraryBottomBar(
                                 bottomBarHeight = bottomBarHeight,
