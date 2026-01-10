@@ -151,17 +151,17 @@ fun TextPrompterScreen(
         val glassOverhangRight = 36.dp
 
         // ✅ Slider tiroir : dimensions
-        val sliderHeight = 550.dp
+        val sliderHeight = 450.dp
         val sliderWidth = 60.dp
         val overhangRight = 18.dp
 
         // ✅ Réglages fins : bloc slider
-        val blockOffsetY = (-10).dp
+        val blockOffsetY = (-20).dp
         val blockPaddingEnd = 10.dp
 
         // ✅ Réglages fins : bouton slider
         val buttonOffsetX = 30.dp
-        val buttonOffsetY = -30.dp
+        val buttonOffsetY = -0.dp
 
         Box(modifier = modifier.fillMaxSize()) {
 
@@ -301,7 +301,7 @@ fun TextPrompterScreen(
                 Box(
                     modifier = Modifier
                         .height(sliderHeight)
-                        .width(sliderWidth + overhangRight + 20.dp),
+                        .width(sliderWidth + overhangRight + 9.dp),
                     contentAlignment = Alignment.CenterEnd
                 ) {
                     // ✅ “Tiroir” : le slider glisse / disparaît mais la place reste
