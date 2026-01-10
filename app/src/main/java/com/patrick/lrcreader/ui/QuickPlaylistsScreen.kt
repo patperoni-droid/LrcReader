@@ -566,14 +566,14 @@ fun QuickPlaylistsScreen(
                                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                                         ) {
                                             val colors = listOf(
-                                                Color.Red,
-                                                Color.Yellow,
-                                                Color.Blue,
-                                                Color(0xFFFF9800), // orange
-                                                Color.Green,
-                                                Color.Magenta,
-                                                Color.Cyan,
-                                                Color.White
+                                                Color(0xFFD32F2F), // rouge DJ (plus punchy)
+                                                Color(0xFFFFEB3B), // JAUNE franc (spot / scène)
+                                                Color(0xFF1976D2), // bleu DJ lumineux
+                                                Color(0xFFFF9800), // orange scène
+                                                Color(0xFF388E3C), // vert console
+                                                Color(0xFF7B1FA2), // violet électro
+                                                Color(0xFF00ACC1), // cyan club
+                                                Color(0xFFE0E0E0)  // gris clair pro (pas blanc pur)
                                             )
 
                                             // X = revient à la couleur de la playlist
