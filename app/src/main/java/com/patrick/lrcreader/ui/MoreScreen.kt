@@ -89,6 +89,10 @@ private fun MoreRootScreen(
     onOpenTuner: () -> Unit
 ) {
     val context = LocalContext.current
+    // ✅ Séquence de Program Change pour le test MIDI
+    val testProgramChanges = listOf(8, 39, 58, 127)
+    var testPcIndex by remember { mutableStateOf(0) }
+
 
     // État du switch "retour auto"
     var autoReturnEnabled by remember {
@@ -195,7 +199,11 @@ private fun MoreRootScreen(
                     SettingsItem("⚙️  Avancé", onClick = {})
                     SettingsItem("📶  Test Bluetooth MIDI", onClick = {
                         MidiOutput.init(context)
-                        MidiOutput.sendProgramChange(channel = 1, program = 1)
+
+                        val pc = testProgramChanges[testPcIndex]
+                        MidiOutput.sendProgramChange(channel = 1, program = pc)
+
+                        testPcIndex = (testPcIndex + 1) % testProgramChanges.size
                     })
                     Spacer(modifier = Modifier.height(12.dp))
 
