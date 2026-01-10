@@ -1,5 +1,8 @@
 package com.patrick.lrcreader.ui
 
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
 import android.content.Context
 import android.net.Uri
 import android.widget.Toast
@@ -137,12 +140,13 @@ fun FillerSoundScreen(
     var selectedIndex by remember { mutableStateOf<Int?>(null) }
 
     // état de lecture pour le gros bouton Play/Pause
+    // état de lecture pour le gros bouton Play/Pause
     var isPlaying by remember { mutableStateOf(false) }
 
-    // indicateurs pour le démarrage asynchrone
+// ✅ démarrage fiable (on lance directement en coroutine, pas via LaunchedEffect)
+    val scope = rememberCoroutineScope()
     var isStarting by remember { mutableStateOf(false) }
-    var shouldStart by remember { mutableStateOf(false) }
-    var startTargetIndex by remember { mutableStateOf<Int?>(null) }
+    var startJob by remember { mutableStateOf<Job?>(null) }
 
     // ───────────── Sélection dossier (explorateur) ─────────────
     var showFolderPicker by remember { mutableStateOf(false) }
@@ -233,8 +237,8 @@ fun FillerSoundScreen(
                                 isPlaying = false
                                 activeIndex = null
                                 isStarting = false
-                                shouldStart = false
-                                startTargetIndex = null
+                                startJob?.cancel()
+                                startJob = null
                             }
                         }
                     )
@@ -309,8 +313,8 @@ fun FillerSoundScreen(
                             activeIndex = selectedIndex
                             isPlaying = true
                             isStarting = false
-                            shouldStart = false
-                            startTargetIndex = null
+                            startJob?.cancel()
+                            startJob = null
                         },
                         enabled = canControlSelected,
                         modifier = Modifier.size(72.dp)
@@ -327,11 +331,12 @@ fun FillerSoundScreen(
                     IconButton(
                         onClick = {
                             if (!canControlSelected) return@IconButton
+                            if (isStarting) return@IconButton
 
                             val slot = currentSelectedSlot ?: return@IconButton
                             val targetIndex = selectedIndex ?: return@IconButton
 
-                            // on mémorise le dossier choisi dans les prefs
+                            // mémorise le dossier choisi dans les prefs
                             FillerSoundPrefs.saveFillerFolder(context, slot.folderUri!!)
                             fillerUri = slot.folderUri
                             fillerName = slot.folderUri!!.lastPathSegment ?: slot.name
@@ -341,19 +346,28 @@ fun FillerSoundScreen(
                                 FillerSoundPrefs.setEnabled(context, true)
                             }
 
-                            val isPlayingThis =
-                                FillerSoundManager.isPlaying() && activeIndex == targetIndex
+                            val isPlayingThis = FillerSoundManager.isPlaying() && activeIndex == targetIndex
 
                             if (!isPlayingThis) {
+                                // ✅ START (direct)
                                 isStarting = true
-                                startTargetIndex = targetIndex
-                                shouldStart = true
+                                activeIndex = targetIndex
+
+                                startJob?.cancel()
+                                startJob = scope.launch {
+                                    runCatching {
+                                        FillerSoundManager.startFromUi(context)
+                                        FillerSoundManager.setVolume(uiToRealVolume(uiFillerVolume))
+                                    }
+
+                                    isPlaying = FillerSoundManager.isPlaying()
+                                    isStarting = false
+                                }
                             } else {
+                                // ✅ STOP
                                 FillerSoundManager.fadeOutAndStop(200)
                                 isPlaying = false
                                 isStarting = false
-                                shouldStart = false
-                                startTargetIndex = null
                                 activeIndex = null
                             }
                         },
@@ -362,9 +376,10 @@ fun FillerSoundScreen(
                             .padding(horizontal = 8.dp)
                             .size(80.dp)
                     ) {
+                        val showPause = FillerSoundManager.isPlaying() && activeIndex == selectedIndex
+
                         Icon(
-                            imageVector = if (FillerSoundManager.isPlaying() && activeIndex == selectedIndex)
-                                Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                            imageVector = if (showPause) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                             contentDescription = "Play / Pause",
                             tint = if (canControlSelected) accent else sub,
                             modifier = Modifier.size(46.dp)
@@ -385,8 +400,8 @@ fun FillerSoundScreen(
                             activeIndex = selectedIndex
                             isPlaying = true
                             isStarting = false
-                            shouldStart = false
-                            startTargetIndex = null
+                            startJob?.cancel()
+                            startJob = null
                         },
                         enabled = canControlSelected,
                         modifier = Modifier.size(72.dp)
@@ -661,21 +676,8 @@ fun FillerSoundScreen(
     }
 
     // ───────────────────────────────────────────────
-    //  LANCEMENT RÉEL DU FILLER APRÈS RECOMPOSITION
-    // ───────────────────────────────────────────────
-    LaunchedEffect(shouldStart) {
-        if (shouldStart) {
-            val targetIndex = startTargetIndex
-            if (targetIndex != null) {
-                FillerSoundManager.startFromUi(context)
-                FillerSoundManager.setVolume(uiToRealVolume(uiFillerVolume))
-                activeIndex = targetIndex
-                isPlaying = FillerSoundManager.isPlaying()
-            }
-            isStarting = false
-            shouldStart = false
-        }
-    }
+
+
 }
 
 /* ─────────────────────────────────────────────
