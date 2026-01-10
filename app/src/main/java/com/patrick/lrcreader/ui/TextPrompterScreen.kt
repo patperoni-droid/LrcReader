@@ -144,7 +144,7 @@ fun TextPrompterScreen(
         val transportBottom = navBottom + 80.dp      // ✅ TOUJOURS POSITIF
         val transportHeight = 72.dp
 
-        val transportNudgeY = (+107).dp              // ✅ ton réglage fin (ici tu descends/monte)
+        val transportNudgeY = (+140).dp              // ✅ ton réglage fin (ici tu descends/monte)
 
         // ✅ Vitre : élargissement gauche/droite
         val glassOverhangLeft = 12.dp
