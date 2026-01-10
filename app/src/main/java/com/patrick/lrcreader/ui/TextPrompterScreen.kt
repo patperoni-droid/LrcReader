@@ -147,8 +147,8 @@ fun TextPrompterScreen(
         val transportNudgeY = (+140).dp              // ✅ ton réglage fin (ici tu descends/monte)
 
         // ✅ Vitre : élargissement gauche/droite
-        val glassOverhangLeft = 12.dp
-        val glassOverhangRight = 36.dp
+        val glassOverhangLeft = 30.dp
+        val glassOverhangRight = 30.dp
 
         // ✅ Slider tiroir : dimensions
         val sliderHeight = 450.dp
@@ -197,6 +197,7 @@ fun TextPrompterScreen(
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
+                    .wrapContentWidth(unbounded = true)
                     .padding(bottom = transportBottom)
                     .offset(
                         x = (glassOverhangRight - glassOverhangLeft) / 2,
