@@ -160,8 +160,8 @@ fun TextPrompterScreen(
         val blockPaddingEnd = 10.dp
 
         // ✅ Réglages fins : bouton slider
-        val buttonOffsetX = 18.dp
-        val buttonOffsetY = 10.dp
+        val buttonOffsetX = 30.dp
+        val buttonOffsetY = -30.dp
 
         Box(modifier = modifier.fillMaxSize()) {
 
