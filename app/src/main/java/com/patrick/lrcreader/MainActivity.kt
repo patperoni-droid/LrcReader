@@ -307,7 +307,6 @@ class MainActivity : ComponentActivity() {
                                     selectedTab is BottomTab.Dj ->
                                         SearchMode.DJ
 
-                                    // ✅ Recherche limitée à la playlist affichée
                                     selectedTab is BottomTab.QuickPlaylists &&
                                             !selectedQuickPlaylist.isNullOrBlank() ->
                                         SearchMode.PLAYLIST
@@ -321,6 +320,12 @@ class MainActivity : ComponentActivity() {
                             onMoreClick = {
                                 textPrompterId = null
                                 isMoreMenuOpen = true
+                            },
+                            onPlayerReselect = {
+                                // ✅ C'EST ICI LE FIX :
+                                // même si selectedTab est déjà Player, on demande explicitement au PlayerScreen
+                                // de fermer Track Console et revenir à l'écran lecteur.
+                                closeMixSignal++
                             }
                         )
                     }

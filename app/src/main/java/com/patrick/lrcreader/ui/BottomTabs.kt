@@ -86,9 +86,9 @@ fun BottomTabsBar(
     selected: BottomTab,
     onSelected: (BottomTab) -> Unit,
     onSearchClick: () -> Unit,
-    onMoreClick: () -> Unit
+    onMoreClick: () -> Unit,
+    onPlayerReselect: () -> Unit // ✅ NEW
 ) {
-    // ✅ 7 icônes (comme tu veux) : Home / Playlists / Player / Fond / DJ / Loupe / ⋮
     val tabs = listOf(
         BottomTab.Home,
         BottomTab.QuickPlaylists,
@@ -109,6 +109,13 @@ fun BottomTabsBar(
                     when (tab) {
                         is BottomTab.Search -> onSearchClick()
                         is BottomTab.More -> onMoreClick()
+
+                        // ✅ Si on reclique sur Lecteur alors qu'il est déjà sélectionné,
+                        // on déclenche un événement spécial (retour depuis Track Console).
+                        is BottomTab.Player -> {
+                            if (isSelected) onPlayerReselect() else onSelected(tab)
+                        }
+
                         else -> onSelected(tab)
                     }
                 },
