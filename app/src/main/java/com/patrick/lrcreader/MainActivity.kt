@@ -292,6 +292,9 @@ class MainActivity : ComponentActivity() {
                                 // ✅ sortir du prompteur dès qu'on touche la bottom bar
                                 textPrompterId = null
 
+                                // ✅ sortir de “Mes notes” dès qu'on touche la bottom bar
+                                isNotesOpen = false
+
                                 // ✅ "Fond sonore" = overlay
                                 if (tab is BottomTab.Filler) {
                                     isFillerSettingsOpen = true
@@ -301,7 +304,11 @@ class MainActivity : ComponentActivity() {
                                 }
                             },
                             onSearchClick = {
+                                // ✅ fermer ce qui doit se fermer quand on ouvre la recherche
                                 textPrompterId = null
+                                isNotesOpen = false
+                                isFillerSettingsOpen = false
+                                isMoreMenuOpen = false
 
                                 searchMode = when {
                                     selectedTab is BottomTab.Dj ->
