@@ -126,7 +126,7 @@ fun TextPrompterScreen(
         val baseDurationMs = 60_000L
         val duration = (baseDurationMs / clampedSpeed).toInt().coerceAtLeast(500)
 
-        delay(1200)
+        delay(1)
         scrollState.animateScrollTo(
             value = max,
             animationSpec = tween(durationMillis = duration, easing = LinearEasing)
