@@ -103,7 +103,7 @@ fun TextPrompterScreen(
     val scope = rememberCoroutineScope()
 
     var isPlaying by remember { mutableStateOf(true) }
-    var isSpeedSliderOpen by remember { mutableStateOf(true) }
+    var isSpeedSliderOpen by remember { mutableStateOf(false) }
     val minSpeed = 0.30f
     val maxSpeed = 1.40f
 

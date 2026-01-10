@@ -84,7 +84,7 @@ fun VerticalTransparentSpeedSlider(
                             onValueChange(min + tt * (max - min))
                         },
                         onDrag = { change, _ ->
-                            change.consumeAllChanges()
+                            change.consume()
                             val y = (change.position.y - thumbHeightPx / 2f).coerceIn(0f, travelPx)
                             val tt = 1f - (y / travelPx)
                             onValueChange(min + tt * (max - min))
