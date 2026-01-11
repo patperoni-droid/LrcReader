@@ -463,7 +463,7 @@ object DjEngine {
             val localMpB = mpB
 
             if (localMpA == null && localMpB == null) {
-                resetState()
+                resetState(clearQueue = false)
                 return@launch
             }
 
@@ -486,12 +486,12 @@ object DjEngine {
             mpA = null
             mpB = null
 
-            resetState()
+            resetState(clearQueue = false)
             PlaybackCoordinator.onDjStop()
         }
     }
 
-    private fun resetState() {
+    private fun resetState(clearQueue: Boolean = false) {
         activeSlot = 0
         playingUri = null
         progress = 0f
@@ -501,7 +501,11 @@ object DjEngine {
         deckAUri = null
         deckBUri = null
         crossfadePos = 0.5f
-        queueInternal.clear()
+        // on garde masterLevel et queueAutoPlay tels quels
+
+        if (clearQueue) {
+            queueInternal.clear()
+        }
         pushState()
     }
 
@@ -513,5 +517,9 @@ object DjEngine {
         try {
             stopDj(durationMs.toInt())
         } catch (_: Exception) {}
+    }
+    fun clearQueue() {
+        queueInternal.clear()
+        pushState()
     }
 }
