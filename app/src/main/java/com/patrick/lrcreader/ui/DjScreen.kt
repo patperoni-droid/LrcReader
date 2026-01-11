@@ -361,7 +361,6 @@ fun DjScreen(
                 accentGo = accentGo,
                 deckAGlow = deckAGlow,
                 deckBGlow = deckBGlow,
-                masterLevel = djState.masterLevel,
                 crossfadePos = djState.crossfadePos,
                 activeSlot = djState.activeSlot,
                 deckATitle = djState.deckATitle,
@@ -371,11 +370,6 @@ fun DjScreen(
                 angleB = angleB,
                 pulse = pulse,
                 goEnabled = goEnabled,
-                onMasterLevelChange = { v ->
-                    val clamped = v.coerceIn(0f, 1f)
-                    DjEngine.setMasterVolume(clamped)
-                    DjBusController.setUiLevel(clamped)
-                },
                 onCrossfadeChange = { DjEngine.setCrossfadePos(it) },
                 onGo = {
                     PlaybackCoordinator.onDjStart()

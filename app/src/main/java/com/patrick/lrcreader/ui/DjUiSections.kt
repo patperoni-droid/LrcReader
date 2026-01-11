@@ -45,7 +45,6 @@ fun DjMainCard(
     accentGo: Color,
     deckAGlow: Color,
     deckBGlow: Color,
-    masterLevel: Float,
     crossfadePos: Float,
     activeSlot: Int,
     deckATitle: String,
@@ -55,7 +54,6 @@ fun DjMainCard(
     angleB: Float,
     pulse: Float,
     goEnabled: Boolean,
-    onMasterLevelChange: (Float) -> Unit,
     onCrossfadeChange: (Float) -> Unit,
     onGo: () -> Unit,
     onStop: () -> Unit
@@ -66,11 +64,7 @@ fun DjMainCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(10.dp)
-        ) {
+        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
             // Bandeau BUS DJ
             Box(
                 modifier = Modifier
@@ -101,33 +95,7 @@ fun DjMainCard(
                 )
             }
 
-            // Volume DJ
-            Spacer(Modifier.height(4.dp))
-            val djLevel = masterLevel.coerceIn(0f, 1f)
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Volume DJ",
-                    color = subColor,
-                    fontSize = 11.sp,
-                    modifier = Modifier.weight(1f)
-                )
-                Text(
-                    text = "${(djLevel * 100).toInt()}%",
-                    color = onBg,
-                    fontSize = 11.sp
-                )
-            }
-            Slider(
-                value = djLevel,
-                onValueChange = onMasterLevelChange,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 4.dp)
-            )
 
             // Platines + crossfader + GO
             Row(
@@ -351,7 +319,9 @@ fun DjQueuePanel(
 
             // ✅ HEADER + switch bien placé (pas le bordel dans le header global)
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(32.dp),   // 🔥 hauteur contrôlée
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
