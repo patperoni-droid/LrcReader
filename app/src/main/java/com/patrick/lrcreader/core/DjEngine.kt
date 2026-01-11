@@ -1,10 +1,10 @@
 package com.patrick.lrcreader.core.dj
 
-import com.patrick.lrcreader.core.PlaybackCoordinator
 import android.content.Context
 import android.media.MediaPlayer
 import android.net.Uri
 import com.patrick.lrcreader.core.FillerSoundManager
+import com.patrick.lrcreader.core.PlaybackCoordinator
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -16,7 +16,8 @@ data class DjQueuedTrack(
 )
 
 data class DjUiState(
-    val activeSlot: Int = 0,            // 0 = rien, 1 = A, 2 = B
+    val queueAutoPlay: Boolean = false,   // ✅ virgule manquante chez toi
+    val activeSlot: Int = 0,              // 0 = rien, 1 = A, 2 = B
     val playingUri: String? = null,
     val progress: Float = 0f,
     val currentDurationMs: Int = 0,
@@ -25,7 +26,7 @@ data class DjUiState(
     val deckAUri: String? = null,
     val deckBUri: String? = null,
     val crossfadePos: Float = 0.5f,
-    val masterLevel: Float = 1f,        // 🔊 niveau DJ global (0..1)
+    val masterLevel: Float = 1f,          // 🔊 niveau DJ global (0..1)
     val queue: List<DjQueuedTrack> = emptyList()
 )
 
@@ -35,7 +36,6 @@ data class DjUiState(
 object DjEngine {
 
     private lateinit var appContext: Context
-
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private var mpA: MediaPlayer? = null
@@ -54,13 +54,17 @@ object DjEngine {
 
     private var crossfadePos: Float = 0.5f
 
-    // 🔊 volume MASTER DJ (0..1) appliqué à A et B (contrôlé par le fader DJ du bus)
+    // 🔊 volume MASTER DJ (0..1)
     private var masterLevel: Float = 1f
+
+    // ✅ mode auto-play de la queue
+    private var queueAutoPlay: Boolean = false
 
     private val queueInternal = mutableListOf<DjQueuedTrack>()
 
     private val _state = MutableStateFlow(
         DjUiState(
+            queueAutoPlay = queueAutoPlay,
             activeSlot = activeSlot,
             playingUri = playingUri,
             progress = progress,
@@ -94,6 +98,7 @@ object DjEngine {
 
     private fun pushState() {
         _state.value = DjUiState(
+            queueAutoPlay = queueAutoPlay,
             activeSlot = activeSlot,
             playingUri = playingUri,
             progress = progress,
@@ -106,6 +111,11 @@ object DjEngine {
             masterLevel = masterLevel,
             queue = queueInternal.toList()
         )
+    }
+
+    fun setQueueAutoPlay(enabled: Boolean) {
+        queueAutoPlay = enabled
+        pushState()
     }
 
     private fun startTimelineIfNeeded() {
@@ -164,7 +174,6 @@ object DjEngine {
             for (i in 0 until steps) {
                 val t = (i + 1) / steps.toFloat()
                 crossfadePos = (start + (target - start) * t).coerceIn(0f, 1f)
-                // pas d'applyCrossfader ici → uniquement visuel si une seule platine joue
                 pushState()
                 delay(50)
             }
@@ -184,9 +193,7 @@ object DjEngine {
                 PlaybackCoordinator.onDjStart()
                 runCatching { FillerSoundManager.fadeOutAndStop(400) }
 
-
                 mpA?.release()
-
                 val p = MediaPlayer()
                 mpA = p
 
@@ -195,8 +202,11 @@ object DjEngine {
                         p.setDataSource(appContext, Uri.parse(uriString))
                         p.prepare()
                     }
+
+                    // ✅ important : completion listener (auto-play)
+                    attachOnComplete(1, p)
+
                     currentDurationMs = p.duration
-                    // volume appliqué via master + crossfader
                     p.setVolume(1f, 1f)
                     p.start()
 
@@ -206,7 +216,6 @@ object DjEngine {
                     activeSlot = 1
                     playingUri = uriString
 
-                    // visuel + volumes
                     animateSliderTo(0f, durationMs = 300)
                     applyCrossfader()
                 } catch (e: Exception) {
@@ -217,12 +226,11 @@ object DjEngine {
                     currentDurationMs = 0
                 }
             } else {
-                // 👉 Il y a déjà une platine qui joue :
-                // on prépare L’AUTRE deck à 0 de volume, sans changer activeSlot.
+                // 👉 Une platine joue : on charge l'autre deck en muet
                 val loadIntoA = (activeSlot == 2)
 
                 if (loadIntoA) {
-                    // B joue → on charge le nouveau titre sur A (en muet)
+                    // B joue → on charge A
                     mpA?.release()
                     val p = MediaPlayer()
                     mpA = p
@@ -231,7 +239,10 @@ object DjEngine {
                             p.setDataSource(appContext, Uri.parse(uriString))
                             p.prepare()
                         }
-                        // prêt mais muet – on le fera sortir au crossfade
+
+                        // ✅ completion listener (même si A devient active ensuite)
+                        attachOnComplete(1, p)
+
                         p.setVolume(0f, 0f)
                         deckATitle = displayName
                         deckAUri = uriString
@@ -242,7 +253,7 @@ object DjEngine {
                         deckAUri = null
                     }
                 } else {
-                    // A joue → on charge le nouveau titre sur B (en muet)
+                    // A joue → on charge B
                     mpB?.release()
                     val p = MediaPlayer()
                     mpB = p
@@ -251,7 +262,10 @@ object DjEngine {
                             p.setDataSource(appContext, Uri.parse(uriString))
                             p.prepare()
                         }
-                        // prêt mais muet – on le fera sortir au crossfade
+
+                        // ✅ completion listener
+                        attachOnComplete(2, p)
+
                         p.setVolume(0f, 0f)
                         deckBTitle = displayName
                         deckBUri = uriString
@@ -262,7 +276,6 @@ object DjEngine {
                         deckBUri = null
                     }
                 }
-                // activeSlot, playingUri et currentDurationMs restent ceux de la platine qui joue.
             }
 
             pushState()
@@ -270,24 +283,89 @@ object DjEngine {
         }
     }
 
+    private fun attachOnComplete(slot: Int, p: MediaPlayer) {
+        p.setOnCompletionListener {
+            scope.launch { onDeckCompleted(slot) }
+        }
+    }
+
+    private suspend fun onDeckCompleted(slot: Int) {
+        // On ne réagit que si c’est bien la platine active
+        if (slot != activeSlot) return
+
+        // ✅ mode auto OFF ou queue vide => on laisse finir (comportement actuel)
+        if (!queueAutoPlay || queueInternal.isEmpty()) return
+
+        val next = queueInternal.removeAt(0)
+        val nextSlot = if (activeSlot == 1) 2 else 1
+        val nextUri = next.uri
+        val nextTitle = next.title
+
+        if (nextSlot == 1) {
+            mpA?.release()
+            val p = MediaPlayer()
+            mpA = p
+
+            withContext(Dispatchers.IO) {
+                p.setDataSource(appContext, Uri.parse(nextUri))
+                p.prepare()
+            }
+            attachOnComplete(1, p)
+
+            p.setVolume(0f, 0f)
+            deckATitle = nextTitle
+            deckAUri = nextUri
+
+            p.seekTo(0)
+            p.start()
+
+            activeSlot = 1
+            playingUri = nextUri
+            currentDurationMs = try { p.duration } catch (_: Exception) { 0 }
+            animateSliderTo(0f, 200)
+        } else {
+            mpB?.release()
+            val p = MediaPlayer()
+            mpB = p
+
+            withContext(Dispatchers.IO) {
+                p.setDataSource(appContext, Uri.parse(nextUri))
+                p.prepare()
+            }
+            attachOnComplete(2, p)
+
+            p.setVolume(0f, 0f)
+            deckBTitle = nextTitle
+            deckBUri = nextUri
+
+            p.seekTo(0)
+            p.start()
+
+            activeSlot = 2
+            playingUri = nextUri
+            currentDurationMs = try { p.duration } catch (_: Exception) { 0 }
+            animateSliderTo(1f, 200)
+        }
+
+        applyCrossfader()
+        pushState()
+    }
+
     /* ---------------------------- CROSSFADER ----------------------------- */
 
     fun setCrossfadePos(value: Float) {
-        // si l'utilisateur touche le slider, on annule une anim éventuelle
         xfadeAnimJob?.cancel()
         crossfadePos = value.coerceIn(0f, 1f)
         applyCrossfader()
         pushState()
     }
 
-    // 🔊 Volume MASTER DJ (0..1) appliqué à A et B
     fun setMasterVolume(level: Float) {
         masterLevel = level.coerceIn(0f, 1f)
-        applyCrossfader()   // réapplique tout de suite aux deux platines
-        pushState()         // notifie UI (fader DJ bus + écran DJ)
+        applyCrossfader()
+        pushState()
     }
 
-    // applique les volumes A/B pour un niveau donné (0..1)
     private fun applyCrossfaderInternal(level: Float) {
         val baseA = 1f - crossfadePos
         val baseB = crossfadePos
@@ -300,14 +378,12 @@ object DjEngine {
         try { mpB?.setVolume(bVol, bVol) } catch (_: Exception) {}
     }
 
-    // version normale : utilise masterLevel (lié au fader DJ du bus principal)
     private fun applyCrossfader() {
         applyCrossfaderInternal(masterLevel)
     }
 
     fun launchCrossfade() {
         scope.launch {
-            // cas 1 : A joue, B prêt → A -> B
             if (activeSlot == 1 && mpA != null && mpB != null) {
                 val playerA = mpA!!
                 val playerB = mpB!!
@@ -321,7 +397,7 @@ object DjEngine {
 
                 val fadeSteps = 20
                 val fromPos = crossfadePos
-                val toPos = 1f   // on va vers B
+                val toPos = 1f
 
                 repeat(fadeSteps) { i ->
                     val t = (i + 1) / fadeSteps.toFloat()
@@ -331,7 +407,6 @@ object DjEngine {
                     delay(50)
                 }
 
-                // fin : B devient la platine active
                 try { playerA.stop() } catch (_: Exception) {}
                 playerA.release()
                 mpA = null
@@ -344,7 +419,6 @@ object DjEngine {
                 return@launch
             }
 
-            // cas 2 : B joue, A prêt → B -> A
             if (activeSlot == 2 && mpA != null && mpB != null) {
                 val playerA = mpA!!
                 val playerB = mpB!!
@@ -358,7 +432,7 @@ object DjEngine {
 
                 val fadeSteps = 20
                 val fromPos = crossfadePos
-                val toPos = 0f   // on va vers A
+                val toPos = 0f
 
                 repeat(fadeSteps) { i ->
                     val t = (i + 1) / fadeSteps.toFloat()
@@ -388,25 +462,21 @@ object DjEngine {
             val localMpA = mpA
             val localMpB = mpB
 
-            // Rien ne joue → reset simple
             if (localMpA == null && localMpB == null) {
                 resetState()
                 return@launch
             }
 
-            // On part du niveau master actuel (lié au fader DJ du bus principal)
             val startMaster = masterLevel.coerceIn(0f, 1f)
 
-            // Petit fade-out en respectant ce masterLevel
             val steps = (fadeMs / 50).coerceAtLeast(1)
             for (i in 0 until steps) {
-                val factor = 1f - (i + 1) / steps.toFloat()   // 1 → 0
-                val level = startMaster * factor              // on descend depuis le niveau réel
+                val factor = 1f - (i + 1) / steps.toFloat()
+                val level = startMaster * factor
                 applyCrossfaderInternal(level)
                 delay(50)
             }
 
-            // Stop réel
             try { localMpA?.stop() } catch (_: Exception) {}
             try { localMpB?.stop() } catch (_: Exception) {}
 
@@ -431,7 +501,6 @@ object DjEngine {
         deckAUri = null
         deckBUri = null
         crossfadePos = 0.5f
-        // on garde masterLevel tel quel → le fader DJ ne saute pas visuellement
         queueInternal.clear()
         pushState()
     }

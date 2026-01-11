@@ -1,5 +1,7 @@
 package com.patrick.lrcreader.ui
 
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.material3.Switch
 import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -16,7 +18,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
@@ -324,6 +325,10 @@ fun DjMainCard(
 /*  File d’attente                                                            */
 /* -------------------------------------------------------------------------- */
 
+/* -------------------------------------------------------------------------- */
+/*  File d’attente                                                            */
+/* -------------------------------------------------------------------------- */
+
 @Composable
 fun DjQueuePanel(
     cardColor: Color,
@@ -331,6 +336,8 @@ fun DjQueuePanel(
     queue: List<DjQueuedTrack>,
     isOpen: Boolean,
     onToggleOpen: () -> Unit,
+    queueAutoPlay: Boolean,                 // ✅ NEW
+    onToggleAutoPlay: (Boolean) -> Unit,    // ✅ NEW
     onPlayItem: (DjQueuedTrack) -> Unit,
     onRemoveItem: (DjQueuedTrack) -> Unit
 ) {
@@ -340,58 +347,73 @@ fun DjQueuePanel(
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(6.dp)
-        ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+
+            // ✅ HEADER + switch bien placé (pas le bordel dans le header global)
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onToggleOpen() },
+                modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Liste d’attente (${queue.size})",
-                    color = Color(0xFF81D4FA),
-                    fontSize = 12.sp,
+                    text = if (isOpen) "File d’attente" else "File d’attente (${queue.size})",
+                    color = Color.White,
+                    fontSize = 14.sp,
                     modifier = Modifier.weight(1f)
                 )
+
                 Text(
-                    text = if (isOpen) "▲" else "▼",
-                    color = subColor,
+                    text = "Auto",
+                    color = Color.White.copy(alpha = 0.75f),
                     fontSize = 12.sp
+                )
+
+                Spacer(Modifier.width(8.dp))
+
+                Switch(
+                    checked = queueAutoPlay,
+                    onCheckedChange = onToggleAutoPlay
+                )
+
+                Spacer(Modifier.width(6.dp))
+
+                Text(
+                    text = if (isOpen) "▾" else "▸",
+                    color = Color.White,
+                    fontSize = 16.sp,
+                    modifier = Modifier
+                        .padding(start = 6.dp)
+                        .clickable { onToggleOpen() }
                 )
             }
 
             if (isOpen) {
-                Spacer(Modifier.height(4.dp))
-                queue.forEach { qItem ->
+                Spacer(Modifier.height(10.dp))
+
+                // ✅ Liste
+                queue.forEach { item ->
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(32.dp)
-                            .clickable { onPlayItem(qItem) }
-                            .padding(horizontal = 4.dp),
+                            .clickable { onPlayItem(item) }          // ✅ clic sur le titre = charger la platine
+                            .padding(vertical = 2.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = qItem.title,
-                            color = Color(0xFF81D4FA),
-                            fontSize = 12.sp,
+                            text = item.title,
+                            color = Color(0xFF81D4FA), // ✅ bleu clair autoplay
+                            fontSize = 13.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f)
                         )
-                        IconButton(
-                            onClick = { onRemoveItem(qItem) },
-                            modifier = Modifier.size(22.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Stop,
-                                contentDescription = "Retirer",
-                                tint = Color(0xFFFF8A80),
-                                modifier = Modifier.size(14.dp)
-                            )
-                        }
+                        Text(
+                            text = "X",
+                            color = Color.White.copy(alpha = 0.65f),
+                            fontSize = 13.sp,
+                            modifier = Modifier
+                                .padding(start = 10.dp)
+                                .clickable { onRemoveItem(item) }    // ✅ remove
+                        )
                     }
                 }
             }

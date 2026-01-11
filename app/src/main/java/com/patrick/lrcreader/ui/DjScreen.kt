@@ -1,5 +1,7 @@
 package com.patrick.lrcreader.ui
 
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.Switch
 import android.content.Context
 import android.net.Uri
 import androidx.compose.animation.core.LinearEasing
@@ -88,6 +90,11 @@ fun DjScreen(
 
     // état DJ global
     val djState by DjEngine.state.collectAsState()
+
+    Spacer(Modifier.height(8.dp))
+
+
+
 
     // --------------------- animation platines rondes ---------------------
     val infinite = rememberInfiniteTransition(label = "dj-discs")
@@ -386,6 +393,10 @@ fun DjScreen(
                     queue = djState.queue,
                     isOpen = isQueuePanelOpen,
                     onToggleOpen = { isQueuePanelOpen = !isQueuePanelOpen },
+
+                    queueAutoPlay = djState.queueAutoPlay,
+                    onToggleAutoPlay = { enabled -> DjEngine.setQueueAutoPlay(enabled) },
+
                     onPlayItem = { qItem ->
                         PlaybackCoordinator.onDjStart()
                         DjEngine.playFromQueue(qItem)
