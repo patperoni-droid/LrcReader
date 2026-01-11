@@ -105,8 +105,8 @@ fun TextPrompterScreen(
 
     var isPlaying by remember { mutableStateOf(true) }
     var isSpeedSliderOpen by remember { mutableStateOf(false) }
-    val minSpeed = 0.30f
-    val maxSpeed = 1.40f
+    val minSpeed = 0.10f
+    val maxSpeed = 1.40f // + rapide possible → marge en haut
 
     var speedFactor by remember(songId) {
         mutableStateOf(
@@ -114,23 +114,45 @@ fun TextPrompterScreen(
                 .coerceIn(minSpeed, maxSpeed)
         )
     }
-
+    // ✅ Slider “linéaire” 0..1 (ce que l’utilisateur bouge)
+    var speedSlider by remember(songId) {
+        mutableStateOf(
+            ((speedFactor - minSpeed) / (maxSpeed - minSpeed)).coerceIn(0f, 1f)
+        )
+    }
+    fun sliderToSpeed(slider: Float, min: Float, max: Float): Float {
+        val t = slider.coerceIn(0f, 1f)
+        val expo = t * t * t   // ✅ cubic = ÉNORMÉMENT plus de marge en bas
+        return min + expo * (max - min)
+    }
     // ✅ Auto scroll
-    LaunchedEffect(songId, isPlaying, speedFactor) {
+    LaunchedEffect(songId, isPlaying, speedSlider) {
         if (!isPlaying) return@LaunchedEffect
         delay(50)
 
         val max = scrollState.maxValue
         if (max <= 0) return@LaunchedEffect
 
-        val clampedSpeed = speedFactor.coerceIn(minSpeed, maxSpeed)
-        val baseDurationMs = 60_000L
-        val duration = (baseDurationMs / clampedSpeed).toInt().coerceAtLeast(500)
+// vitesse issue du slider (ta fonction existante)
+        val clampedSpeed = sliderToSpeed(speedSlider, minSpeed, maxSpeed)
+
+// ✅ VITESSE RÉELLE (indépendante de l’écran)
+        val basePxPerSec = 220f   // ← réglage clé (à ajuster UNE fois)
+        val pxPerSec = basePxPerSec * clampedSpeed
+
+// durée = distance / vitesse
+        val duration = ((max / pxPerSec) * 1000f)
+            .toInt()
+            .coerceAtLeast(500)
 
         delay(1)
+
         scrollState.animateScrollTo(
             value = max,
-            animationSpec = tween(durationMillis = duration, easing = LinearEasing)
+            animationSpec = tween(
+                durationMillis = duration,
+                easing = LinearEasing
+            )
         )
     }
 
@@ -319,17 +341,20 @@ fun TextPrompterScreen(
                         exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut()
                     ) {
                         VerticalTransparentSpeedSlider(
-                            value = speedFactor,
-                            onValueChange = { new ->
-                                speedFactor = new.coerceIn(minSpeed, maxSpeed)
+                            value = speedSlider,
+                            onValueChange = { new01 ->
+                                speedSlider = new01.coerceIn(0f, 1f)
+
+                                // ✅ vitesse réelle (celle qui sert au défilement)
+                                speedFactor = sliderToSpeed(speedSlider, minSpeed, maxSpeed)
+
+                                // ✅ on sauvegarde la vitesse réelle (comme avant, donc pas de casse)
                                 TextPrompterPrefs.saveSpeed(context, songId, speedFactor)
                             },
-                            valueRange = (minSpeed..maxSpeed),
+                            valueRange = (0f..1f),
                             height = sliderHeight,
                             width = sliderWidth,
-                            overhangRight = overhangRight,
-                            contentOffsetX = mechanismNudgeX
-
+                            overhangRight = overhangRight
                         )
                     }
                 }
