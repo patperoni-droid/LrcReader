@@ -1,5 +1,6 @@
 package com.patrick.lrcreader.ui
 
+import androidx.compose.ui.zIndex
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
@@ -154,6 +155,9 @@ fun TextPrompterScreen(
         val sliderHeight = 450.dp
         val sliderWidth = 60.dp
         val overhangRight = 18.dp
+        val sliderControlsShiftX = (-60).dp
+        // ✅ Réglage fin : déplacement du MÉCANISME (slider + bouton) vers la gauche
+        val mechanismNudgeX = (-16).dp
 
         // ✅ Réglages fins : bloc slider
         val blockOffsetY = (-20).dp
@@ -293,8 +297,11 @@ fun TextPrompterScreen(
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
                     .padding(end = blockPaddingEnd)
-                    .offset(y = blockOffsetY)
-                    .zIndex(10f),
+                    .offset(
+                        x = (0).dp,   // 👈 recule tout le bloc vers la gauche
+                        y = blockOffsetY
+                    )
+                    .zIndex(9999f),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
 
@@ -317,10 +324,12 @@ fun TextPrompterScreen(
                                 speedFactor = new.coerceIn(minSpeed, maxSpeed)
                                 TextPrompterPrefs.saveSpeed(context, songId, speedFactor)
                             },
-                            valueRange = (minSpeed..maxSpeed),   // ✅ ICI c’est ça
+                            valueRange = (minSpeed..maxSpeed),
                             height = sliderHeight,
                             width = sliderWidth,
-                            overhangRight = overhangRight
+                            overhangRight = overhangRight,
+                            contentOffsetX = mechanismNudgeX
+
                         )
                     }
                 }
