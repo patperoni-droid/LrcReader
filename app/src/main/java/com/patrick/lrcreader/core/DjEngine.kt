@@ -88,7 +88,7 @@ object DjEngine {
 
     private var timelineJobStarted = false
     private var xfadeAnimJob: Job? = null   // anim visuelle du slider
-    private const val AUTO_MIX_BEFORE_END_MS = 10_000
+    private const val AUTO_MIX_BEFORE_END_MS = 20_000
     private const val AUTO_FADE_DURATION_MS = 1_500
     private var autoMixTriggeredForUri: String? = null
     private var autoMixJob: Job? = null
