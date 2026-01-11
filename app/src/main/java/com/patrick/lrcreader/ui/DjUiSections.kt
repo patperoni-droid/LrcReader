@@ -64,27 +64,24 @@ fun DjMainCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
-            // Bandeau BUS DJ
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 10.dp, vertical = 8.dp)
+        ) {
+            // Bandeau BUS DJ (un poil moins haut)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 8.dp)
+                    .padding(bottom = 6.dp)
                     .background(
                         Brush.horizontalGradient(
-                            listOf(
-                                Color(0xFF3A2C24),
-                                Color(0xFF4B372A),
-                                Color(0xFF3A2C24)
-                            )
+                            listOf(Color(0xFF3A2C24), Color(0xFF4B372A), Color(0xFF3A2C24))
                         ),
                         shape = RoundedCornerShape(10.dp)
                     )
-                    .border(
-                        1.dp,
-                        Color(0x55FFFFFF),
-                        RoundedCornerShape(10.dp)
-                    ),
+                    .border(1.dp, Color(0x55FFFFFF), RoundedCornerShape(10.dp))
+                    .padding(vertical = 6.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
@@ -95,8 +92,6 @@ fun DjMainCard(
                 )
             }
 
-
-
             // Platines + crossfader + GO
             Row(
                 modifier = Modifier
@@ -106,9 +101,7 @@ fun DjMainCard(
             ) {
                 // Deck A
                 Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight(),
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
@@ -116,10 +109,7 @@ fun DjMainCard(
                         modifier = Modifier
                             .size(90.dp)
                             .background(
-                                color = if (activeSlot == 1)
-                                    deckAGlow.copy(alpha = 0.4f)
-                                else
-                                    Color.Transparent,
+                                color = if (activeSlot == 1) deckAGlow.copy(alpha = 0.4f) else Color.Transparent,
                                 shape = CircleShape
                             ),
                         contentAlignment = Alignment.Center
@@ -130,34 +120,22 @@ fun DjMainCard(
                                 .graphicsLayer {
                                     rotationZ = if (activeSlot == 1) angleA else 0f
                                     val s = if (activeSlot == 1) pulse else 1f
-                                    scaleX = s
-                                    scaleY = s
+                                    scaleX = s; scaleY = s
                                 }
                                 .background(Color(0xFF1F1F1F), CircleShape)
                                 .border(2.dp, deckAGlow, CircleShape),
                             contentAlignment = Alignment.Center
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(16.dp)
-                                    .background(Color.Black, CircleShape)
-                            )
+                            Box(Modifier.size(16.dp).background(Color.Black, CircleShape))
                         }
                     }
                     Spacer(Modifier.height(6.dp))
-                    Text(
-                        deckATitle,
-                        color = onBg,
-                        fontSize = 11.sp,
-                        maxLines = 1
-                    )
+                    Text(deckATitle, color = onBg, fontSize = 11.sp, maxLines = 1)
                 }
 
-                // Centre : crossfader + GO
+                // Centre
                 Column(
-                    modifier = Modifier
-                        .width(100.dp)
-                        .fillMaxHeight(),
+                    modifier = Modifier.width(100.dp).fillMaxHeight(),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
@@ -168,16 +146,13 @@ fun DjMainCard(
                         modifier = Modifier.height(60.dp)
                     )
                     Spacer(Modifier.height(6.dp))
-
                     Button(
                         onClick = onGo,
                         enabled = goEnabled,
                         modifier = Modifier
                             .height(40.dp)
                             .width(80.dp)
-                            .graphicsLayer {
-                                if (goEnabled) shadowElevation = 18f
-                            },
+                            .graphicsLayer { if (goEnabled) shadowElevation = 18f },
                         colors = ButtonDefaults.buttonColors(
                             containerColor = accentGo,
                             contentColor = Color.Black,
@@ -185,16 +160,12 @@ fun DjMainCard(
                             disabledContentColor = Color(0xFF222222)
                         ),
                         shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Text("GO", fontSize = 12.sp)
-                    }
+                    ) { Text("GO", fontSize = 12.sp) }
                 }
 
                 // Deck B
                 Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight(),
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
@@ -202,10 +173,7 @@ fun DjMainCard(
                         modifier = Modifier
                             .size(90.dp)
                             .background(
-                                color = if (activeSlot == 2)
-                                    deckBGlow.copy(alpha = 0.4f)
-                                else
-                                    Color.Transparent,
+                                color = if (activeSlot == 2) deckBGlow.copy(alpha = 0.4f) else Color.Transparent,
                                 shape = CircleShape
                             ),
                         contentAlignment = Alignment.Center
@@ -216,73 +184,46 @@ fun DjMainCard(
                                 .graphicsLayer {
                                     rotationZ = if (activeSlot == 2) angleB else 0f
                                     val s = if (activeSlot == 2) pulse else 1f
-                                    scaleX = s
-                                    scaleY = s
+                                    scaleX = s; scaleY = s
                                 }
                                 .background(Color(0xFF1F1F1F), CircleShape)
                                 .border(2.dp, deckBGlow, CircleShape),
                             contentAlignment = Alignment.Center
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(16.dp)
-                                    .background(Color.Black, CircleShape)
-                            )
+                            Box(Modifier.size(16.dp).background(Color.Black, CircleShape))
                         }
                     }
                     Spacer(Modifier.height(6.dp))
-                    Text(
-                        deckBTitle,
-                        color = onBg,
-                        fontSize = 11.sp,
-                        maxLines = 1
-                    )
+                    Text(deckBTitle, color = onBg, fontSize = 11.sp, maxLines = 1)
                 }
             }
 
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(8.dp))
 
-            // timeline + stop
+            // Stop
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(26.dp),
+                modifier = Modifier.fillMaxWidth().height(26.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 LinearProgressIndicator(
-                    progress = 0f, // géré ailleurs via overlay ou à enrichir plus tard si besoin
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(6.dp),
+                    progress = 0f,
+                    modifier = Modifier.weight(1f).height(6.dp),
                     color = deckBGlow,
                     trackColor = Color(0x33E040FB)
                 )
                 Spacer(Modifier.width(10.dp))
-
                 Box(
                     modifier = Modifier
                         .size(48.dp)
                         .background(
-                            color = if (isPlaying)
-                                Color(0xFFFF5252)
-                            else
-                                Color(0xFF444444),
+                            color = if (isPlaying) Color(0xFFFF5252) else Color(0xFF444444),
                             shape = RoundedCornerShape(12.dp)
                         )
-                        .border(
-                            width = 1.dp,
-                            color = Color(0x55FFFFFF),
-                            shape = RoundedCornerShape(12.dp)
-                        )
+                        .border(1.dp, Color(0x55FFFFFF), RoundedCornerShape(12.dp))
                         .clickable { onStop() },
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        imageVector = Icons.Filled.Stop,
-                        contentDescription = "Arrêter DJ",
-                        tint = Color.White,
-                        modifier = Modifier.size(28.dp)
-                    )
+                    Icon(Icons.Filled.Stop, contentDescription = "Arrêter DJ", tint = Color.White, modifier = Modifier.size(28.dp))
                 }
             }
         }

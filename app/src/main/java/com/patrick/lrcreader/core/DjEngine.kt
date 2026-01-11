@@ -82,7 +82,10 @@ object DjEngine {
 
     private var timelineJobStarted = false
     private var xfadeAnimJob: Job? = null   // anim visuelle du slider
-
+    private const val AUTO_MIX_BEFORE_END_MS = 10_000
+    private const val AUTO_FADE_DURATION_MS = 1_500
+    private var autoMixTriggeredForUri: String? = null
+    private var autoMixJob: Job? = null
     fun init(context: Context) {
         if (!::appContext.isInitialized) {
             appContext = context.applicationContext
@@ -125,8 +128,9 @@ object DjEngine {
         scope.launch {
             while (isActive) {
                 delay(200)
-                if (playingUri != null && currentDurationMs > 0) {
-                    val pos = try {
+
+                val pos = if (playingUri != null && currentDurationMs > 0) {
+                    try {
                         when (activeSlot) {
                             1 -> mpA?.currentPosition ?: 0
                             2 -> mpB?.currentPosition ?: 0
@@ -135,15 +139,36 @@ object DjEngine {
                     } catch (_: Exception) {
                         0
                     }
-                    progress = pos.toFloat() / currentDurationMs.toFloat()
                 } else {
-                    progress = 0f
+                    0
                 }
+
+                // progress UI
+                progress = if (playingUri != null && currentDurationMs > 0) {
+                    pos.toFloat() / currentDurationMs.toFloat()
+                } else {
+                    0f
+                }
+
+                // ✅ AUTO-MIX : 10s avant la fin (mode danse)
+                val curUri = playingUri
+                if (queueAutoPlay && curUri != null && currentDurationMs > 0) {
+                    val remaining = (currentDurationMs - pos).coerceAtLeast(0)
+                    val canTrigger =
+                        queueInternal.isNotEmpty() &&
+                                remaining <= AUTO_MIX_BEFORE_END_MS
+                                autoMixTriggeredForUri != curUri
+
+                    if (canTrigger) {
+                        autoMixTriggeredForUri = curUri
+                        scope.launch { autoMixNextFromQueueDance() }
+                    }
+                }
+
                 pushState()
             }
         }
     }
-
     /* --------------------------- file d’attente --------------------------- */
 
     fun addToQueue(uriString: String, title: String) {
@@ -350,7 +375,55 @@ object DjEngine {
         applyCrossfader()
         pushState()
     }
+    private suspend fun autoMixNextFromQueueDance() {
+        if (!queueAutoPlay) return
+        if (queueInternal.isEmpty()) return
+        if (playingUri == null) return
 
+        // évite double déclenchement
+        autoMixJob?.cancel()
+        autoMixJob = scope.launch {
+            val next = queueInternal.removeAt(0)
+
+            // 1) on charge la piste suivante dans l'autre deck (muet)
+            val targetSlot = if (activeSlot == 1) 2 else 1
+            val nextUri = next.uri
+            val nextTitle = next.title
+
+            if (targetSlot == 2) {
+                // charger B
+                mpB?.release()
+                val p = MediaPlayer()
+                mpB = p
+                withContext(Dispatchers.IO) {
+                    p.setDataSource(appContext, Uri.parse(nextUri))
+                    p.prepare()
+                }
+                attachOnComplete(2, p)
+                p.setVolume(0f, 0f)
+                deckBTitle = nextTitle
+                deckBUri = nextUri
+            } else {
+                // charger A
+                mpA?.release()
+                val p = MediaPlayer()
+                mpA = p
+                withContext(Dispatchers.IO) {
+                    p.setDataSource(appContext, Uri.parse(nextUri))
+                    p.prepare()
+                }
+                attachOnComplete(1, p)
+                p.setVolume(0f, 0f)
+                deckATitle = nextTitle
+                deckAUri = nextUri
+            }
+
+            pushState()
+
+            // 2) lancer le crossfade automatique (comme si tu appuyais GO)
+            launchCrossfadeAuto(durationMs = AUTO_FADE_DURATION_MS)
+        }
+    }
     /* ---------------------------- CROSSFADER ----------------------------- */
 
     fun setCrossfadePos(value: Float) {
@@ -381,77 +454,77 @@ object DjEngine {
     private fun applyCrossfader() {
         applyCrossfaderInternal(masterLevel)
     }
-
     fun launchCrossfade() {
         scope.launch {
-            if (activeSlot == 1 && mpA != null && mpB != null) {
-                val playerA = mpA!!
-                val playerB = mpB!!
+            launchCrossfadeAuto(durationMs = AUTO_FADE_DURATION_MS)
+        }
+    }
+    private suspend fun launchCrossfadeAuto(durationMs: Int) {
+        // A joue -> B prêt
+        if (activeSlot == 1 && mpA != null && mpB != null) {
+            val playerA = mpA!!
+            val playerB = mpB!!
 
-                if (!playerB.isPlaying) {
-                    try {
-                        playerB.seekTo(0)
-                        playerB.start()
-                    } catch (_: Exception) {}
-                }
-
-                val fadeSteps = 20
-                val fromPos = crossfadePos
-                val toPos = 1f
-
-                repeat(fadeSteps) { i ->
-                    val t = (i + 1) / fadeSteps.toFloat()
-                    crossfadePos = (fromPos + (toPos - fromPos) * t).coerceIn(0f, 1f)
-                    applyCrossfader()
-                    pushState()
-                    delay(50)
-                }
-
-                try { playerA.stop() } catch (_: Exception) {}
-                playerA.release()
-                mpA = null
-
-                activeSlot = 2
-                playingUri = deckBUri
-                currentDurationMs = try { playerB.duration } catch (_: Exception) { 0 }
-
-                pushState()
-                return@launch
+            if (!playerB.isPlaying) {
+                try { playerB.seekTo(0); playerB.start() } catch (_: Exception) {}
             }
 
-            if (activeSlot == 2 && mpA != null && mpB != null) {
-                val playerA = mpA!!
-                val playerB = mpB!!
+            val stepMs = 50
+            val steps = (durationMs / stepMs).coerceAtLeast(1)
+            val fromPos = crossfadePos
+            val toPos = 1f
 
-                if (!playerA.isPlaying) {
-                    try {
-                        playerA.seekTo(0)
-                        playerA.start()
-                    } catch (_: Exception) {}
-                }
-
-                val fadeSteps = 20
-                val fromPos = crossfadePos
-                val toPos = 0f
-
-                repeat(fadeSteps) { i ->
-                    val t = (i + 1) / fadeSteps.toFloat()
-                    crossfadePos = (fromPos + (toPos - fromPos) * t).coerceIn(0f, 1f)
-                    applyCrossfader()
-                    pushState()
-                    delay(50)
-                }
-
-                try { playerB.stop() } catch (_: Exception) {}
-                playerB.release()
-                mpB = null
-
-                activeSlot = 1
-                playingUri = deckAUri
-                currentDurationMs = try { playerA.duration } catch (_: Exception) { 0 }
-
+            repeat(steps) { i ->
+                val t = (i + 1) / steps.toFloat()
+                crossfadePos = (fromPos + (toPos - fromPos) * t).coerceIn(0f, 1f)
+                applyCrossfader()
                 pushState()
+                delay(stepMs.toLong())
             }
+
+            try { playerA.stop() } catch (_: Exception) {}
+            playerA.release()
+            mpA = null
+
+            activeSlot = 2
+            playingUri = deckBUri
+            currentDurationMs = try { playerB.duration } catch (_: Exception) { 0 }
+            autoMixTriggeredForUri = playingUri // évite re-trigger instant
+            pushState()
+            return
+        }
+
+        // B joue -> A prêt
+        if (activeSlot == 2 && mpA != null && mpB != null) {
+            val playerA = mpA!!
+            val playerB = mpB!!
+
+            if (!playerA.isPlaying) {
+                try { playerA.seekTo(0); playerA.start() } catch (_: Exception) {}
+            }
+
+            val stepMs = 50
+            val steps = (durationMs / stepMs).coerceAtLeast(1)
+            val fromPos = crossfadePos
+            val toPos = 0f
+
+            repeat(steps) { i ->
+                val t = (i + 1) / steps.toFloat()
+                crossfadePos = (fromPos + (toPos - fromPos) * t).coerceIn(0f, 1f)
+                applyCrossfader()
+                pushState()
+                delay(stepMs.toLong())
+            }
+
+            try { playerB.stop() } catch (_: Exception) {}
+            playerB.release()
+            mpB = null
+
+            activeSlot = 1
+            playingUri = deckAUri
+            currentDurationMs = try { playerA.duration } catch (_: Exception) { 0 }
+            autoMixTriggeredForUri = playingUri
+            pushState()
         }
     }
 
@@ -501,6 +574,9 @@ object DjEngine {
         deckAUri = null
         deckBUri = null
         crossfadePos = 0.5f
+        autoMixTriggeredForUri = null
+        autoMixJob?.cancel()
+        autoMixJob = null
         // on garde masterLevel et queueAutoPlay tels quels
 
         if (clearQueue) {
