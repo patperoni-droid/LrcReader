@@ -16,17 +16,22 @@ data class DjQueuedTrack(
 )
 
 data class DjUiState(
-    val queueAutoPlay: Boolean = false,   // ✅ virgule manquante chez toi
+    val queueAutoPlay: Boolean = false,
     val activeSlot: Int = 0,              // 0 = rien, 1 = A, 2 = B
     val playingUri: String? = null,
-    val progress: Float = 0f,
+
+    // ✅ progression lecture
+    val progress: Float = 0f,             // 0..1
+    val currentPositionMs: Int = 0,       // ✅ NOUVEAU
     val currentDurationMs: Int = 0,
+
     val deckATitle: String = "A vide",
     val deckBTitle: String = "B vide",
     val deckAUri: String? = null,
     val deckBUri: String? = null,
+
     val crossfadePos: Float = 0.5f,
-    val masterLevel: Float = 1f,          // 🔊 niveau DJ global (0..1)
+    val masterLevel: Float = 1f,
     val queue: List<DjQueuedTrack> = emptyList()
 )
 
@@ -68,6 +73,7 @@ object DjEngine {
             activeSlot = activeSlot,
             playingUri = playingUri,
             progress = progress,
+            currentPositionMs = 0,
             currentDurationMs = currentDurationMs,
             deckATitle = deckATitle,
             deckBTitle = deckBTitle,
@@ -99,12 +105,13 @@ object DjEngine {
         }
     }
 
-    private fun pushState() {
+    private fun pushState(currentPositionMs: Int = 0) {
         _state.value = DjUiState(
             queueAutoPlay = queueAutoPlay,
             activeSlot = activeSlot,
             playingUri = playingUri,
             progress = progress,
+            currentPositionMs = currentPositionMs,
             currentDurationMs = currentDurationMs,
             deckATitle = deckATitle,
             deckBTitle = deckBTitle,
@@ -129,34 +136,31 @@ object DjEngine {
             while (isActive) {
                 delay(200)
 
-                val pos = if (playingUri != null && currentDurationMs > 0) {
-                    try {
-                        when (activeSlot) {
-                            1 -> mpA?.currentPosition ?: 0
-                            2 -> mpB?.currentPosition ?: 0
-                            else -> 0
+                val posMs: Int =
+                    if (playingUri != null && currentDurationMs > 0) {
+                        try {
+                            when (activeSlot) {
+                                1 -> mpA?.currentPosition ?: 0
+                                2 -> mpB?.currentPosition ?: 0
+                                else -> 0
+                            }
+                        } catch (_: Exception) {
+                            0
                         }
-                    } catch (_: Exception) {
-                        0
-                    }
-                } else {
-                    0
-                }
+                    } else 0
 
-                // progress UI
-                progress = if (playingUri != null && currentDurationMs > 0) {
-                    pos.toFloat() / currentDurationMs.toFloat()
-                } else {
-                    0f
-                }
+                progress =
+                    if (playingUri != null && currentDurationMs > 0) {
+                        (posMs.toFloat() / currentDurationMs.toFloat()).coerceIn(0f, 1f)
+                    } else 0f
 
                 // ✅ AUTO-MIX : 10s avant la fin (mode danse)
                 val curUri = playingUri
                 if (queueAutoPlay && curUri != null && currentDurationMs > 0) {
-                    val remaining = (currentDurationMs - pos).coerceAtLeast(0)
+                    val remaining = (currentDurationMs - posMs).coerceAtLeast(0)
                     val canTrigger =
                         queueInternal.isNotEmpty() &&
-                                remaining <= AUTO_MIX_BEFORE_END_MS
+                                remaining <= AUTO_MIX_BEFORE_END_MS &&
                                 autoMixTriggeredForUri != curUri
 
                     if (canTrigger) {
@@ -165,7 +169,7 @@ object DjEngine {
                     }
                 }
 
-                pushState()
+                pushState(currentPositionMs = posMs)
             }
         }
     }
@@ -240,6 +244,9 @@ object DjEngine {
 
                     activeSlot = 1
                     playingUri = uriString
+                    autoMixTriggeredForUri = null
+                    autoMixJob?.cancel()
+                    autoMixJob = null
 
                     animateSliderTo(0f, durationMs = 300)
                     applyCrossfader()
@@ -424,6 +431,26 @@ object DjEngine {
             launchCrossfadeAuto(durationMs = AUTO_FADE_DURATION_MS)
         }
     }
+
+    fun seekTo(positionMs: Int) {
+        val dur = currentDurationMs
+        val curUri = playingUri
+        if (curUri == null || dur <= 0) return
+
+        val safeMs = positionMs.coerceIn(0, dur)
+
+        try {
+            when (activeSlot) {
+                1 -> mpA?.seekTo(safeMs)
+                2 -> mpB?.seekTo(safeMs)
+            }
+        } catch (_: Exception) {
+            // ignore
+        }
+
+
+        autoMixTriggeredForUri = null
+    }
     /* ---------------------------- CROSSFADER ----------------------------- */
 
     fun setCrossfadePos(value: Float) {
@@ -488,8 +515,13 @@ object DjEngine {
 
             activeSlot = 2
             playingUri = deckBUri
+
+            autoMixTriggeredForUri = null
+            autoMixJob?.cancel()
+            autoMixJob = null
+
             currentDurationMs = try { playerB.duration } catch (_: Exception) { 0 }
-            autoMixTriggeredForUri = playingUri // évite re-trigger instant
+
             pushState()
             return
         }
@@ -522,9 +554,15 @@ object DjEngine {
 
             activeSlot = 1
             playingUri = deckAUri
+
+            autoMixTriggeredForUri = null
+            autoMixJob?.cancel()
+            autoMixJob = null
+
             currentDurationMs = try { playerA.duration } catch (_: Exception) { 0 }
-            autoMixTriggeredForUri = playingUri
+
             pushState()
+            return
         }
     }
 

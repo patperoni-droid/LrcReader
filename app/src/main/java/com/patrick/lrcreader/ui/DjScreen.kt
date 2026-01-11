@@ -1,7 +1,11 @@
 package com.patrick.lrcreader.ui
 
-import androidx.compose.material3.SwitchDefaults
-import androidx.compose.material3.Switch
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.geometry.Offset
+import kotlin.math.roundToInt
+import androidx.compose.material3.LinearProgressIndicator
 import android.content.Context
 import android.net.Uri
 import androidx.compose.animation.core.LinearEasing
@@ -377,9 +381,106 @@ fun DjScreen(
                 },
                 onStop = { DjEngine.stopDj() }
             )
+// ───────── Progress + timing (titre en cours) ─────────
+            // ───────── Progress + timing (titre en cours) + SEEK tactile ─────────
+            if (djState.playingUri != null && djState.currentDurationMs > 0) {
 
+                fun formatMs(ms: Int): String {
+                    val totalSec = (ms / 1000).coerceAtLeast(0)
+                    val m = totalSec / 60
+                    val s = totalSec % 60
+                    return "%d:%02d".format(m, s)
+                }
+
+                var isSeeking by remember { mutableStateOf(false) }
+                var seekProgress by remember { mutableStateOf(0f) } // 0..1
+
+                val elapsedMs = djState.currentPositionMs.coerceIn(0, djState.currentDurationMs)
+                val remainingMs = (djState.currentDurationMs - elapsedMs).coerceAtLeast(0)
+
+                val shownProgress = if (isSeeking) seekProgress else djState.progress.coerceIn(0f, 1f)
+
+                fun progressFromX(x: Float, widthPx: Float): Float {
+                    if (widthPx <= 1f) return 0f
+                    return (x / widthPx).coerceIn(0f, 1f)
+                }
+
+                fun commitSeek(p: Float) {
+                    val ms = (p.coerceIn(0f, 1f) * djState.currentDurationMs.toFloat()).roundToInt()
+                    DjEngine.seekTo(ms)
+                }
+
+                Spacer(Modifier.height(10.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // gauche = restant
+                    Text(
+                        text = "-${formatMs(remainingMs)}",
+                        color = sub,
+                        fontSize = 12.sp
+                    )
+
+                    Spacer(Modifier.width(10.dp))
+
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(18.dp) // zone tactile plus grande que la barre
+                            .pointerInput(djState.playingUri, djState.currentDurationMs) {
+                                detectTapGestures { offset: Offset ->
+                                    val p = progressFromX(offset.x, size.width.toFloat())
+                                    seekProgress = p
+                                    isSeeking = false
+                                    commitSeek(p)
+                                }
+                            }
+                            .pointerInput(djState.playingUri, djState.currentDurationMs) {
+                                detectDragGestures(
+                                    onDragStart = { offset ->
+                                        isSeeking = true
+                                        seekProgress = progressFromX(offset.x, size.width.toFloat())
+                                    },
+                                    onDrag = { change, dragAmount ->
+                                        change.consume()
+                                        val newX = change.position.x
+                                        seekProgress = progressFromX(newX, size.width.toFloat())
+                                    },
+                                    onDragEnd = {
+                                        isSeeking = false
+                                        commitSeek(seekProgress)
+                                    },
+                                    onDragCancel = {
+                                        isSeeking = false
+                                    }
+                                )
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        LinearProgressIndicator(
+                            progress = shownProgress,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(6.dp)
+                        )
+                    }
+
+                    Spacer(Modifier.width(10.dp))
+
+                    // droite = écoulé
+                    Text(
+                        text = formatMs(elapsedMs),
+                        color = sub,
+                        fontSize = 12.sp
+                    )
+                }
+            }
             // ---------------------- File d’attente -------------------------
-            if (djState.queue.isNotEmpty()) {
+            val showQueuePanel = djState.queueAutoPlay || djState.queue.isNotEmpty()
+            if (djState.queueAutoPlay) isQueuePanelOpen = true
+            if (showQueuePanel) {
                 Spacer(Modifier.height(8.dp))
                 DjQueuePanel(
                     cardColor = card,
