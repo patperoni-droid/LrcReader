@@ -34,7 +34,7 @@ fun VerticalTransparentSpeedSlider(
     width: Dp = 100.dp,
 
     sliderOffsetX: Dp = 20.dp,        // décale le slider (touch + visuel)
-    contentOffsetX: Dp = 0.dp,        // déplace SEULEMENT le mécanisme (pas la vitre)
+    contentOffsetX: Dp = -15.dp,        // déplace SEULEMENT le mécanisme (pas la vitre)
     decorOffsetX: Dp = 20.dp,          // ✅ déplace SEULEMENT la vitre (pas le mécanisme)
 
     // visuel
