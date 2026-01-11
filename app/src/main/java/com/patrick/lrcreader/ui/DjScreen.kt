@@ -1,11 +1,20 @@
 package com.patrick.lrcreader.ui
 
+
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.pointerInput
 import kotlin.math.roundToInt
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Stop
+import androidx.compose.foundation.shape.RoundedCornerShape
+import kotlin.math.roundToInt
 import android.content.Context
 import android.net.Uri
 import androidx.compose.animation.core.LinearEasing
@@ -14,7 +23,6 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -26,14 +34,12 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.OutlinedTextField
@@ -55,7 +61,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.documentfile.provider.DocumentFile
 import com.patrick.lrcreader.core.BackupFolderPrefs
-import com.patrick.lrcreader.core.DjBusController
 import com.patrick.lrcreader.core.LibraryIndexCache
 import com.patrick.lrcreader.core.PlaybackCoordinator
 import com.patrick.lrcreader.core.dj.DjEngine
@@ -96,9 +101,6 @@ fun DjScreen(
     val djState by DjEngine.state.collectAsState()
 
     Spacer(Modifier.height(8.dp))
-
-
-
 
     // --------------------- animation platines rondes ---------------------
     val infinite = rememberInfiniteTransition(label = "dj-discs")
@@ -379,7 +381,13 @@ fun DjScreen(
                     PlaybackCoordinator.onDjStart()
                     DjEngine.launchCrossfade()
                 },
-                onStop = { DjEngine.stopDj() }
+                onStop = { DjEngine.stopDj() },
+
+                // ✅ AJOUTS ICI
+                progress = djState.progress,
+                currentPositionMs = djState.currentPositionMs,
+                currentDurationMs = djState.currentDurationMs,
+                onSeekTo = { ms -> DjEngine.seekTo(ms) }
             )
 // ───────── Progress + timing (titre en cours) ─────────
             // ───────── Progress + timing (titre en cours) + SEEK tactile ─────────
@@ -425,10 +433,11 @@ fun DjScreen(
 
                     Spacer(Modifier.width(10.dp))
 
+                    // barre seek
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .height(18.dp) // zone tactile plus grande que la barre
+                            .height(18.dp)
                             .pointerInput(djState.playingUri, djState.currentDurationMs) {
                                 detectTapGestures { offset: Offset ->
                                     val p = progressFromX(offset.x, size.width.toFloat())
@@ -443,18 +452,15 @@ fun DjScreen(
                                         isSeeking = true
                                         seekProgress = progressFromX(offset.x, size.width.toFloat())
                                     },
-                                    onDrag = { change, dragAmount ->
+                                    onDrag = { change, _ ->
                                         change.consume()
-                                        val newX = change.position.x
-                                        seekProgress = progressFromX(newX, size.width.toFloat())
+                                        seekProgress = progressFromX(change.position.x, size.width.toFloat())
                                     },
                                     onDragEnd = {
                                         isSeeking = false
                                         commitSeek(seekProgress)
                                     },
-                                    onDragCancel = {
-                                        isSeeking = false
-                                    }
+                                    onDragCancel = { isSeeking = false }
                                 )
                             },
                         contentAlignment = Alignment.Center
@@ -475,6 +481,25 @@ fun DjScreen(
                         color = sub,
                         fontSize = 12.sp
                     )
+
+                    Spacer(Modifier.width(10.dp))
+
+                    // STOP à droite
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .background(Color(0xFFFF5252), RoundedCornerShape(10.dp))
+                            .border(1.dp, Color(0x55FFFFFF), RoundedCornerShape(10.dp))
+                            .clickable { DjEngine.stopDj() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Stop,
+                            contentDescription = "Stop DJ",
+                            tint = Color.White,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
                 }
             }
             // ---------------------- File d’attente -------------------------

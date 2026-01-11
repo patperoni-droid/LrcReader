@@ -1,5 +1,15 @@
 package com.patrick.lrcreader.ui
 
+import androidx.compose.ui.input.pointer.consumeAllChanges
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.geometry.Offset
+import kotlin.math.roundToInt
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material3.Switch
 import android.net.Uri
@@ -56,7 +66,11 @@ fun DjMainCard(
     goEnabled: Boolean,
     onCrossfadeChange: (Float) -> Unit,
     onGo: () -> Unit,
-    onStop: () -> Unit
+    onStop: () -> Unit,
+    progress: Float,
+    currentPositionMs: Int,
+    currentDurationMs: Int,
+    onSeekTo: (Int) -> Unit
 ) {
     Card(
         colors = CardDefaults.cardColors(containerColor = cardColor),
@@ -200,39 +214,14 @@ fun DjMainCard(
 
             Spacer(Modifier.height(8.dp))
 
-            // Stop
-            Row(
-                modifier = Modifier.fillMaxWidth().height(26.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                LinearProgressIndicator(
-                    progress = 0f,
-                    modifier = Modifier.weight(1f).height(6.dp),
-                    color = deckBGlow,
-                    trackColor = Color(0x33E040FB)
-                )
-                Spacer(Modifier.width(10.dp))
-                Box(
-                    modifier = Modifier
-                        .size(48.dp)
-                        .background(
-                            color = if (isPlaying) Color(0xFFFF5252) else Color(0xFF444444),
-                            shape = RoundedCornerShape(12.dp)
-                        )
-                        .border(1.dp, Color(0x55FFFFFF), RoundedCornerShape(12.dp))
-                        .clickable { onStop() },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(Icons.Filled.Stop, contentDescription = "Arrêter DJ", tint = Color.White, modifier = Modifier.size(28.dp))
-                }
-            }
+
+
+           }
         }
     }
-}
 
-/* -------------------------------------------------------------------------- */
-/*  File d’attente                                                            */
-/* -------------------------------------------------------------------------- */
+
+
 
 /* -------------------------------------------------------------------------- */
 /*  File d’attente                                                            */
