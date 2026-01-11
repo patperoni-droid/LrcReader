@@ -140,13 +140,13 @@ fun TextPrompterScreen(
 
 
         // ✅ Insets (base propre)
-        val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+        val safeBottom = WindowInsets.safeDrawing.asPaddingValues().calculateBottomPadding()
 
-        val transportBottom = navBottom + 80.dp      // ✅ TOUJOURS POSITIF
+        val transportBottom = safeBottom + 0.dp   // <- seul réglage “look”
         val transportHeight = 72.dp
 
-        val transportNudgeY = (+140).dp              // ✅ ton réglage fin (ici tu descends/monte)
-
+// IMPORTANT : transportNudgeY = 0 (ou tu le vires)
+        val transportNudgeY = 50.dp
         // ✅ Vitre : élargissement gauche/droite
         val glassOverhangLeft = 30.dp
         val glassOverhangRight = 30.dp
