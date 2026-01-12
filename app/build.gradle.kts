@@ -87,6 +87,8 @@ dependencies {
     implementation("androidx.media3:media3-ui:$media3")
     implementation("androidx.media3:media3-common:$media3")
     implementation("androidx.compose.animation:animation")
+    // ViewModel pour Jetpack Compose (nécessaire pour viewModel())
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
 }
 
 

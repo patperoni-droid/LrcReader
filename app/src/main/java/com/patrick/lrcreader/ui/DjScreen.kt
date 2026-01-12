@@ -1,6 +1,6 @@
 package com.patrick.lrcreader.ui
 
-
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -72,12 +72,10 @@ fun DjScreen(
 ) {
     DjEngine.init(context)
 
-    // ✅ On réutilise EXACTEMENT la même racine + le même index que la Bibliothèque
-    // (donc : pas de rescan, pas de demande d’autorisation)
-    var rootFolderUri by remember { mutableStateOf<Uri?>(BackupFolderPrefs.get(context)) }
-    var currentFolderUri by remember { mutableStateOf<Uri?>(rootFolderUri) }
-    var folderStack by remember { mutableStateOf<List<Uri>>(emptyList()) }
+    // ✅ ÉTAT PERSISTANT (reste mémorisé quand tu changes d’onglet)
+    val browserVm: DjBrowserViewModel = viewModel()
 
+    // ✅ On réutilise EXACTEMENT la même racine + le même index que la Bibliothèque
     var indexAll by remember { mutableStateOf<List<LibraryIndexCache.CachedEntry>>(emptyList()) }
     var entries by remember { mutableStateOf<List<DjEntry>>(emptyList()) }
 
@@ -101,7 +99,6 @@ fun DjScreen(
     val djState by DjEngine.state.collectAsState()
 
     Spacer(Modifier.height(8.dp))
-
     // --------------------- animation platines rondes ---------------------
     val infinite = rememberInfiniteTransition(label = "dj-discs")
     val angleA by infinite.animateFloat(
@@ -141,8 +138,8 @@ fun DjScreen(
     }
 
     fun refreshFromIndex() {
-        val root = rootFolderUri
-        val cur = currentFolderUri ?: root
+        val root = browserVm.rootFolderUri
+        val cur = browserVm.currentFolderUri ?: root
 
         if (root == null) {
             entries = emptyList()
@@ -169,9 +166,15 @@ fun DjScreen(
     LaunchedEffect(Unit) {
         isLoading = true
         try {
-            rootFolderUri = BackupFolderPrefs.get(context)
-            currentFolderUri = rootFolderUri
-            folderStack = emptyList()
+            // ✅ On n’écrase PAS le dossier courant si déjà mémorisé
+            val prefRoot = BackupFolderPrefs.get(context)
+
+            if (browserVm.rootFolderUri == null) {
+                browserVm.setRoot(prefRoot)
+            }
+            if (browserVm.currentFolderUri == null) {
+                browserVm.setCurrent(browserVm.rootFolderUri)
+            }
 
             val cachedAll = LibraryIndexCache.load(context)
             indexAll = cachedAll ?: emptyList()
@@ -232,12 +235,9 @@ fun DjScreen(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                if (folderStack.isNotEmpty()) {
+                if (browserVm.folderStack.isNotEmpty()) {
                     IconButton(onClick = {
-                        val newStack = folderStack.dropLast(1)
-                        val parentUri = newStack.lastOrNull() ?: rootFolderUri
-                        currentFolderUri = parentUri
-                        folderStack = newStack
+                        browserVm.popToParentOrRoot()
                         refreshFromIndex()
                         searchQuery = ""
                     }) {
@@ -263,7 +263,7 @@ fun DjScreen(
 
                     Spacer(Modifier.width(10.dp))
 
-                    val shownUri = currentFolderUri ?: rootFolderUri
+                    val shownUri = browserVm.currentFolderUri ?: browserVm.rootFolderUri
                     Text(
                         text = shownUri?.let {
                             DocumentFile.fromTreeUri(context, it)?.name ?: "…"
@@ -306,8 +306,13 @@ fun DjScreen(
                             menuOpen = false
                             isLoading = true
                             try {
-                                rootFolderUri = BackupFolderPrefs.get(context)
-                                if (currentFolderUri == null) currentFolderUri = rootFolderUri
+                                val prefRoot = BackupFolderPrefs.get(context)
+                                browserVm.setRoot(prefRoot)
+
+                                if (browserVm.currentFolderUri == null) {
+                                    browserVm.setCurrent(browserVm.rootFolderUri)
+                                }
+
                                 indexAll = LibraryIndexCache.load(context) ?: emptyList()
                                 refreshFromIndex()
                             } finally {
@@ -315,12 +320,14 @@ fun DjScreen(
                             }
                         }
                     )
+
                     DropdownMenuItem(
                         text = { Text("Info : Music se choisit dans Bibliothèque") },
                         onClick = { menuOpen = false }
                     )
                 }
             }
+
 
             // 🔍 barre de recherche
             if (isSearchOpen) {
@@ -546,39 +553,40 @@ fun DjScreen(
             Spacer(Modifier.height(8.dp))
 
             // ───────── Liste dossiers + titres (dossier courant) ─────────
-            DjFolderBrowser(
-                currentFolderUri = currentFolderUri,
-                visibleEntries = visibleEntries,
-                onBg = onBg,
-                subColor = sub,
-                isLoading = isLoading,
-                onDirectoryClick = { entry ->
-                    val old = currentFolderUri ?: rootFolderUri
-                    if (old != null) folderStack = folderStack + old
-                    currentFolderUri = entry.uri
-                    refreshFromIndex()
-                    searchQuery = ""
-                },
-                onFilePlay = { entry ->
-                    val uriStr = entry.uri.toString()
-                    PlaybackCoordinator.onDjStart()
-                    DjEngine.selectTrackFromList(uriStr, entry.name)
-                },
-                onFileEnqueue = { entry ->
-                    val uriStr = entry.uri.toString()
-                    DjEngine.addToQueue(uriStr, entry.name)
-                }
-            )
+        DjFolderBrowser(
+            currentFolderUri = browserVm.currentFolderUri,
+            visibleEntries = visibleEntries,
+            onBg = onBg,
+            subColor = sub,
+            isLoading = isLoading,
+            onDirectoryClick = { entry ->
+                val old = browserVm.currentFolderUri ?: browserVm.rootFolderUri
+                if (old != null) browserVm.pushCurrent(old)
+
+                browserVm.setCurrent(entry.uri)
+                refreshFromIndex()
+                searchQuery = ""
+            },
+            onFilePlay = { entry ->
+                val uriStr = entry.uri.toString()
+                PlaybackCoordinator.onDjStart()
+                DjEngine.selectTrackFromList(uriStr, entry.name)
+            },
+            onFileEnqueue = { entry ->
+                val uriStr = entry.uri.toString()
+                DjEngine.addToQueue(uriStr, entry.name)
+            }
+        )
 
             // ✅ Petit message si pas de dossier Music choisi
-            if (rootFolderUri == null) {
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    "⚠️ Va dans Bibliothèque → “Choisir dossier Music” (1 fois). Ensuite DJ sera instantané.",
-                    color = sub,
-                    fontSize = 12.sp
-                )
-            }
+        if (browserVm.rootFolderUri == null) {
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "⚠️ Va dans Bibliothèque → “Choisir dossier Music” (1 fois). Ensuite DJ sera instantané.",
+                color = sub,
+                fontSize = 12.sp
+            )
+        }
 
             // ✅ Spinner si index vide (rare) / refresh
             if (isLoading) {
