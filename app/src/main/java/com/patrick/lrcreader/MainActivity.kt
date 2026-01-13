@@ -2,6 +2,14 @@
 
 package com.patrick.lrcreader.exo
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import android.content.Intent
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.material3.Button
+import androidx.documentfile.provider.DocumentFile
 import com.patrick.lrcreader.core.MidiOutput
 import android.net.Uri
 import android.os.Bundle
@@ -44,6 +52,8 @@ class MainActivity : ComponentActivity() {
         private const val DEFAULT_TRACK_GAIN_DB = -5
         private const val MIN_TRACK_DB = -12
         private const val MAX_TRACK_DB = 0
+
+
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -81,6 +91,110 @@ class MainActivity : ComponentActivity() {
             MaterialTheme(colorScheme = darkColorScheme()) {
 
                 val ctx = this@MainActivity
+// -------------------- SETUP SPL (bloc unique, inratable) --------------------
+                var setupTick by remember { mutableIntStateOf(0) }
+                var forceSetup by rememberSaveable { mutableStateOf(false) }
+
+// On ne se base PAS uniquement sur l'URI (Android peut restaurer),
+// on se base sur un flag explicite "setup_done".
+                val isSetupDone = remember(setupTick) { BackupFolderPrefs.isDone(ctx) }
+
+                val pickFolderLauncher = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.OpenDocumentTree()
+                ) { treeUri: Uri? ->
+                    if (treeUri == null) return@rememberLauncherForActivityResult
+
+                    // Permission persistée sur LE TREE URI
+                    try {
+                        ctx.contentResolver.takePersistableUriPermission(
+                            treeUri,
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                        )
+                    } catch (_: Exception) { }
+
+                    val baseTree = DocumentFile.fromTreeUri(ctx, treeUri) ?: return@rememberLauncherForActivityResult
+
+                    // Crée / récupère SPL_Music à l’intérieur du dossier choisi
+                    val splRoot = baseTree.findFile("SPL_Music") ?: baseTree.createDirectory("SPL_Music")
+                    if (splRoot == null || !splRoot.isDirectory) return@rememberLauncherForActivityResult
+
+                    fun ensureDir(parent: DocumentFile, name: String): DocumentFile? {
+                        return parent.findFile(name) ?: parent.createDirectory(name)
+                    }
+
+                    val backing = ensureDir(splRoot, "BackingTracks")
+                    ensureDir(splRoot, "DJ")
+                    ensureDir(splRoot, "Backups")
+                    ensureDir(splRoot, "Imports")
+                    ensureDir(splRoot, "Exports")
+
+                    if (backing != null) {
+                        ensureDir(backing, "audio")
+                        ensureDir(backing, "video")
+                        ensureDir(backing, "lyrics")
+                    }
+
+                    // On sauvegarde le TREE URI (celui qui a la permission)
+                    BackupFolderPrefs.save(ctx, treeUri)
+
+                    // On marque le setup terminé (c'est LA vérité)
+                    BackupFolderPrefs.setDone(ctx, true)
+
+                    forceSetup = false
+                    setupTick++
+                }
+
+                val shouldShowSetup = forceSetup || !isSetupDone
+
+                if (shouldShowSetup) {
+                    Box(
+                        modifier = Modifier.fillMaxSize().background(Color.Black),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("SPL : Choix du dossier", color = Color.White, style = MaterialTheme.typography.titleLarge)
+                            Spacer(Modifier.height(12.dp))
+                            Text(
+                                "Choisis un dossier (recommandé : Documents).\n\n" +
+                                        "Création auto : SPL_Music + sous-dossiers.\n" +
+                                        "Backups ira dans : SPL_Music/Backups",
+                                color = Color.White
+                            )
+                            Spacer(Modifier.height(16.dp))
+
+// ✅ BOUTON PRINCIPAL : choisir le dossier
+                            Button(onClick = {
+                                pickFolderLauncher.launch(null)
+                            }) {
+                                Text("Choisir un dossier")
+                            }
+
+                            Spacer(Modifier.height(12.dp))
+
+// ✅ DEBUG : reset setup (optionnel)
+                            val isDebug = remember {
+                                (ctx.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
+                            }
+
+                            if (isDebug) {
+                                Button(onClick = {
+                                    BackupFolderPrefs.clearAll(ctx)
+                                    forceSetup = true
+                                    setupTick++
+                                }) {
+                                    Text("DEBUG : reset setup")
+                                }
+                            }
+
+
+                        }
+
+                        }
+                    return@MaterialTheme
+                }
+// -------------------- FIN SETUP SPL --------------------
+
+
 
                 val exoPlayer = remember { AudioEngine.getPlayer(ctx) {} }
 

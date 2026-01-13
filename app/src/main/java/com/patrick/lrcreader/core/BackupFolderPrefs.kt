@@ -30,4 +30,25 @@ object BackupFolderPrefs {
             .remove(KEY_URI)
             .apply()
     }
+    private const val KEY_DONE = "setup_done"
+
+    fun setDone(context: Context, done: Boolean) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_DONE, done)
+            .apply()
+    }
+
+    fun isDone(context: Context): Boolean {
+        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(KEY_DONE, false)
+    }
+
+    fun clearAll(context: Context) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .clear()
+            .apply()
+    }
+
 }

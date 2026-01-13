@@ -264,32 +264,31 @@ object BackupManager {
      * Ce fichier est précisément celui qu’AutoRestore essaie de charger au démarrage.
      */
     fun autoSaveToDefaultBackupFile(context: Context) {
-        // 1) On récupère le dossier de sauvegarde configuré (même logique que AutoRestore)
-        val folderUri = BackupFolderPrefs.get(context) ?: return
-        val docTree = DocumentFile.fromTreeUri(context, folderUri) ?: return
+        // 1) Backups dir = SPL_Music/Backups (créé au setup)
+        val backupsDir = SplFolders.backupsDir(context) ?: return
 
-        // 2) On fabrique le JSON d’état complet
-        //    - lastPlayer : pour l’instant on laisse null (ce n’est pas bloquant)
-        //    - libraryFolders : pas encore exploité à l’import, on peut mettre une liste vide
+        // 2) JSON état complet
         val json = exportState(
             context = context,
             lastPlayer = null,
             libraryFolders = emptyList()
         )
 
-        // 3) On cible un fichier unique "lrc_backup.json"
+        // 3) Fichier unique
         val backupName = "lrc_backup.json"
-        val existing = docTree.findFile(backupName)
+        val existing = backupsDir.findFile(backupName)
 
         val target = when {
             existing != null && existing.isFile -> existing
-            else -> docTree.createFile("application/json", backupName)
+            else -> backupsDir.createFile("application/json", backupName)
         } ?: return
 
-        // 4) On écrit le JSON dedans (en UTF-8)
+        // 4) Écriture UTF-8
         context.contentResolver.openOutputStream(target.uri, "w")?.use { out ->
             out.write(json.toByteArray(Charsets.UTF_8))
             out.flush()
         }
     }
+
+
 }

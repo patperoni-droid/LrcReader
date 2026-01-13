@@ -134,7 +134,7 @@ fun MixerHomePreviewScreen(
 
                 Column {
                     Text(
-                        text = "Live in Pocket",
+                        text = "Stage Music Player",
                         color = Color(0xFFFFE082),
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold
