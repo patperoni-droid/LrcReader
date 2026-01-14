@@ -1,5 +1,6 @@
 package com.patrick.lrcreader.ui.library
 
+import androidx.compose.ui.text.style.TextOverflow
 import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -108,8 +109,10 @@ fun LibraryList(
 
                     // clic sur le titre : ouvre le lecteur (sauf mode sélection)
                     Text(
-                        entry.name,
+                        text = entry.name,
                         color = Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                         modifier = Modifier
                             .weight(1f)
                             .clickable {
