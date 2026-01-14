@@ -3,9 +3,9 @@ package com.patrick.lrcreader.core
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import androidx.documentfile.provider.DocumentFile
 import org.json.JSONArray
 import org.json.JSONObject
-import androidx.documentfile.provider.DocumentFile
 
 /**
  * Gère l’export / import de l’état de l’appli
@@ -43,7 +43,7 @@ object BackupManager {
         }
         root.put("played", playedJson)
 
-        // 3) dossiers (ce que tu avais déjà)
+        // 3) dossiers
         root.put("libraryFolders", JSONArray(libraryFolders))
 
         // 4) dernier morceau
@@ -186,8 +186,6 @@ object BackupManager {
                     val uri = Uri.parse(uriStr)
                     FillerSoundPrefs.saveFillerUri(context, uri)
                     FillerSoundPrefs.saveFillerVolume(context, volume)
-
-                    // on essaie de reprendre la permission
                     try {
                         context.contentResolver.takePersistableUriPermission(
                             uri,
@@ -201,7 +199,6 @@ object BackupManager {
         // 5) réglages d’édition
         val editsJson = root.optJSONObject("edits")
         if (editsJson != null) {
-            // on repart propre
             EditPrefs.clearAll(context)
 
             val keys = editsJson.keys()
@@ -217,7 +214,6 @@ object BackupManager {
                     EditPrefs.EditData(startMs, endMs)
                 )
 
-                // bonus : on tente de reprendre la permission sur ce fichier-là aussi
                 try {
                     val uri = Uri.parse(uriString)
                     context.contentResolver.takePersistableUriPermission(
@@ -236,7 +232,6 @@ object BackupManager {
                 val name = names.next()
                 val arr = reviewJson.getJSONArray(name)
 
-                // on nettoie d’abord les anciens flags de cette playlist
                 PlaylistRepository.clearReviewForPlaylist(name)
 
                 for (i in 0 until arr.length()) {
@@ -257,38 +252,69 @@ object BackupManager {
             }
         }
     }
+
+    private const val DEFAULT_BACKUP_FILE = "lrc_backup.json"
+
     /**
-     * Sauvegarde automatique de l’état complet de l’appli
-     * dans un fichier fixe "lrc_backup.json" dans le dossier de backup.
-     *
-     * Ce fichier est précisément celui qu’AutoRestore essaie de charger au démarrage.
+     * Renvoie le DocumentFile dossier de backup :
+     * 1) dossier choisi par l'utilisateur via BackupFolderPrefs
+     * 2) fallback : SplFolders.backupsDir(context) si tu l'utilises encore
+     */
+    private fun getBackupDir(context: Context): DocumentFile? {
+        val folderUri = BackupFolderPrefs.get(context)
+        if (folderUri != null) {
+            val tree = DocumentFile.fromTreeUri(context, folderUri)
+            if (tree != null && tree.canWrite()) return tree
+        }
+        return SplFolders.backupsDir(context)
+    }
+
+    /**
+     * Sauvegarde automatique dans un fichier fixe DEFAULT_BACKUP_FILE.
      */
     fun autoSaveToDefaultBackupFile(context: Context) {
-        // 1) Backups dir = SPL_Music/Backups (créé au setup)
-        val backupsDir = SplFolders.backupsDir(context) ?: return
+        val dir = getBackupDir(context) ?: return
 
-        // 2) JSON état complet
         val json = exportState(
             context = context,
             lastPlayer = null,
             libraryFolders = emptyList()
         )
 
-        // 3) Fichier unique
-        val backupName = "lrc_backup.json"
-        val existing = backupsDir.findFile(backupName)
-
+        val existing = dir.findFile(DEFAULT_BACKUP_FILE)
         val target = when {
             existing != null && existing.isFile -> existing
-            else -> backupsDir.createFile("application/json", backupName)
+            else -> dir.createFile("application/json", DEFAULT_BACKUP_FILE)
         } ?: return
 
-        // 4) Écriture UTF-8
         context.contentResolver.openOutputStream(target.uri, "w")?.use { out ->
             out.write(json.toByteArray(Charsets.UTF_8))
             out.flush()
         }
     }
 
+    /**
+     * Auto-restore : lit DEFAULT_BACKUP_FILE et applique importState.
+     * Retourne true si un restore a été fait.
+     */
+    fun autoRestoreFromDefaultBackupFile(context: Context, onLastPlayed: (LastPlayed?) -> Unit = {}): Boolean {
+        val dir = getBackupDir(context) ?: return false
+        val file = dir.findFile(DEFAULT_BACKUP_FILE) ?: return false
+        if (!file.isFile) return false
 
+        val json = try {
+            context.contentResolver.openInputStream(file.uri)?.use { input ->
+                input.readBytes().toString(Charsets.UTF_8)
+            }
+        } catch (_: Exception) {
+            null
+        } ?: return false
+
+        return try {
+            importState(context, json, onLastPlayed)
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
 }

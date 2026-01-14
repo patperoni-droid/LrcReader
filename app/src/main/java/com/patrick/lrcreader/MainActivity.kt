@@ -72,21 +72,32 @@ class MainActivity : ComponentActivity() {
 // ✅ MIDI : init tôt (une seule fois)
         MidiOutput.init(applicationContext)
         android.util.Log.d("MainActivity", "MIDI init demandé dès onCreate")
-        val savedRoot = BackupFolderPrefs.get(this)
-        if (savedRoot != null) {
+        val savedBackupsUri = BackupFolderPrefs.get(this)
+        if (savedBackupsUri != null) {
+
+            // ✅ Si on a encore la permission persistée, OK
             val hasPerm = contentResolver.persistedUriPermissions.any { p ->
-                p.uri == savedRoot && p.isReadPermission
+                p.uri == savedBackupsUri && p.isReadPermission
             }
+
             if (hasPerm) {
-                LibrarySnapshot.rootFolderUri = savedRoot
-                val cached = LibraryIndexCache.load(this)
-                if (!cached.isNullOrEmpty()) {
-                    LibrarySnapshot.entries = cached.map { it.uriString }
-                    LibrarySnapshot.isReady = true
+                // ✅ Pour ta lib : on garde ton mécanisme, mais on doit viser la racine SPL_Music.
+                // Backups = .../SPL_Music/Backups
+                // Root   = .../SPL_Music
+                // Donc on remonte d’un niveau via DocumentFile.
+                val backupsDir = DocumentFile.fromTreeUri(this, savedBackupsUri)
+                val splRoot = backupsDir?.parentFile
+
+                if (splRoot != null) {
+                    LibrarySnapshot.rootFolderUri = splRoot.uri
+                    val cached = LibraryIndexCache.load(this)
+                    if (!cached.isNullOrEmpty()) {
+                        LibrarySnapshot.entries = cached.map { it.uriString }
+                        LibrarySnapshot.isReady = true
+                    }
                 }
             }
         }
-
         setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {
 
@@ -104,17 +115,12 @@ class MainActivity : ComponentActivity() {
                 ) { treeUri: Uri? ->
                     if (treeUri == null) return@rememberLauncherForActivityResult
 
-                    // Permission persistée sur LE TREE URI
-                    try {
-                        ctx.contentResolver.takePersistableUriPermission(
-                            treeUri,
-                            Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-                        )
-                    } catch (_: Exception) { }
+                    // ✅ 1) Permission persistée sur LE TREE URI (propre)
+                    BackupFolderPrefs.persistAndSave(ctx, treeUri)
 
                     val baseTree = DocumentFile.fromTreeUri(ctx, treeUri) ?: return@rememberLauncherForActivityResult
 
-                    // Crée / récupère SPL_Music à l’intérieur du dossier choisi
+                    // ✅ 2) Crée / récupère SPL_Music à l’intérieur du dossier choisi
                     val splRoot = baseTree.findFile("SPL_Music") ?: baseTree.createDirectory("SPL_Music")
                     if (splRoot == null || !splRoot.isDirectory) return@rememberLauncherForActivityResult
 
@@ -124,7 +130,10 @@ class MainActivity : ComponentActivity() {
 
                     val backing = ensureDir(splRoot, "BackingTracks")
                     ensureDir(splRoot, "DJ")
-                    ensureDir(splRoot, "Backups")
+
+                    // ✅ 3) Backups = dossier réel des sauvegardes automatiques
+                    val backupsDir = ensureDir(splRoot, "Backups") ?: return@rememberLauncherForActivityResult
+
                     ensureDir(splRoot, "Imports")
                     ensureDir(splRoot, "Exports")
 
@@ -134,10 +143,11 @@ class MainActivity : ComponentActivity() {
                         ensureDir(backing, "lyrics")
                     }
 
-                    // On sauvegarde le TREE URI (celui qui a la permission)
-                    BackupFolderPrefs.save(ctx, treeUri)
+                    // ✅ 4) IMPORTANT : on stocke l'URI DU DOSSIER Backups (pas la racine)
+                    // -> comme ça BackupManager écrit directement au bon endroit.
+                    BackupFolderPrefs.save(ctx, backupsDir.uri)
 
-                    // On marque le setup terminé (c'est LA vérité)
+                    // ✅ 5) Flag setup terminé
                     BackupFolderPrefs.setDone(ctx, true)
 
                     forceSetup = false

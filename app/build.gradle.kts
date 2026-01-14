@@ -89,6 +89,8 @@ dependencies {
     implementation("androidx.compose.animation:animation")
     // ViewModel pour Jetpack Compose (nécessaire pour viewModel())
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
+    // WorkManager (pour AutoBackupWorker)
+    implementation("androidx.work:work-runtime-ktx:2.9.0")
 }
 
 
