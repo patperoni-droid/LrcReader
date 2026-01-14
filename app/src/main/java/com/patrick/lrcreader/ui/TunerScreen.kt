@@ -24,6 +24,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -41,13 +42,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.patrick.lrcreader.core.TunerEngine
+import kotlinx.coroutines.delay
 import kotlin.math.abs
+import kotlin.math.max
 import kotlin.math.roundToInt
 
-/**
- * Accordeur "pro scène" (sobre + lisible), branché sur TunerEngine.
- * Look plus classe : 1 accent couleur, jauge horizontale, moins de dégradés.
- */
 @Composable
 fun TunerScreen(
     modifier: Modifier = Modifier,
@@ -55,7 +54,6 @@ fun TunerScreen(
 ) {
     val context = LocalContext.current
 
-    // --- Permission micro ---
     var hasMicPermission by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(
@@ -70,22 +68,15 @@ fun TunerScreen(
         onResult = { granted -> hasMicPermission = granted }
     )
 
-    // --- État de l'accordeur (TunerEngine) ---
     val tunerState by TunerEngine.state.collectAsState()
 
-    // Démarrage / arrêt du moteur quand l’écran est visible
     DisposableEffect(hasMicPermission) {
         if (hasMicPermission) TunerEngine.start()
         onDispose { TunerEngine.stop() }
     }
 
-    // Fond Live in Pocket (dark)
     val backgroundBrush = Brush.verticalGradient(
-        listOf(
-            TunerUi.BgTop,
-            TunerUi.BgMid,
-            TunerUi.BgBottom
-        )
+        listOf(TunerUi.BgTop, TunerUi.BgMid, TunerUi.BgBottom)
     )
 
     Box(
@@ -96,7 +87,6 @@ fun TunerScreen(
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
 
-            // ───── BARRE DU HAUT ─────
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
@@ -137,7 +127,6 @@ fun TunerScreen(
 
             Spacer(Modifier.height(12.dp))
 
-            // ───── MODULE PRINCIPAL ─────
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -150,17 +139,77 @@ fun TunerScreen(
                 val currentNote = tunerState.noteName
                 val currentFreqText = tunerState.frequency?.let { "${it.toInt()} Hz" } ?: "—"
 
-                val absOffset = centsOffset?.let { abs(it) } ?: 999f
-                val isOk = centsOffset != null && absOffset < 5f
+                // ✅ Détection notes sensibles (B + E aigu)
+                val isB = currentNote.startsWith("B")
+                val eOct = currentNote.drop(1).takeWhile { it.isDigit() }.toIntOrNull()
+                val isHighE = currentNote.startsWith("E") && (eOct == null || eOct >= 5)
 
-                val noteColor = if (isOk) TunerUi.Accent else TunerUi.TextMain
+                // ✅ AIGUILLE (valeur réellement affichée)
+                // IMPORTANT : on calcule UNE SEULE fois et on l'utilise
+                // 1) pour l'affichage de la jauge
+                // 2) pour déclencher le jaune (OK)
+                val needleCents: Float? = centsOffset?.let { raw ->
+                    magnetizeCents(raw = raw, isB = isB, isHighE = isHighE)
+                }
+
+                var holdUntilMs by remember { mutableStateOf(0L) }
+                var nowMs by remember { mutableStateOf(System.currentTimeMillis()) }
+
+                LaunchedEffect(Unit) {
+                    while (true) {
+                        nowMs = System.currentTimeMillis()
+                        delay(50)
+                    }
+                }
+
+                // ✅ RÈGLE D'OR : le jaune suit l'aiguille (pas le son brut)
+                LaunchedEffect(needleCents, currentNote) {
+                    val t = System.currentTimeMillis()
+                    val absNeedle = needleCents?.let { abs(it) } ?: 999f
+
+                    // Hold : B + E aigu un peu plus long
+                    val holdMs = if (isB || isHighE) 1200L else 900L
+
+                    // ✅ RÈGLE : jaune immédiat quand l’aiguille est au centre
+                    // E aigu : plus permissif
+                    val enterTol = when {
+                        isHighE -> 4.5f
+                        isB -> 3.0f
+                        else -> 2.5f
+                    }
+
+                    // ✅ HYSTÉRÉSIS (anti-aléatoire) :
+                    // pour rester jaune, on autorise un tout petit peu plus large que pour entrer
+                    val stayTol = enterTol + 1.0f
+
+                    // On considère "ok" si :
+                    // - on est dans la zone centrale (enterTol)
+                    // - OU on est déjà en hold et on n'est pas sorti trop loin (stayTol)
+                    val currentlyHolding = holdUntilMs > t
+                    val okNow = (needleCents != null && absNeedle < enterTol) ||
+                            (currentlyHolding && needleCents != null && absNeedle < stayTol)
+
+                    if (okNow) {
+                        holdUntilMs = max(holdUntilMs, t + holdMs)
+                    }
+                }
+
+                val displayOk = holdUntilMs > nowMs
+
+                // ✅ L'affichage de la jauge : aiguille aimantée, puis figée au centre pendant le hold
+                val shownCentsOffset: Float? = when {
+                    needleCents == null -> null
+                    displayOk -> 0f
+                    else -> needleCents
+                }
+
+                val noteColor = if (displayOk) TunerUi.Accent else TunerUi.TextMain
 
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(16.dp)
                 ) {
-                    // Bandeau "module" (sobre)
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -187,17 +236,13 @@ fun TunerScreen(
 
                     Spacer(Modifier.height(18.dp))
 
-                    // ───── ZONE CENTRALE : NOTE + METER ─────
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .weight(1f)
                             .background(
                                 brush = Brush.verticalGradient(
-                                    listOf(
-                                        Color(0xFF121212),
-                                        Color(0xFF0C0C0C)
-                                    )
+                                    listOf(Color(0xFF121212), Color(0xFF0C0C0C))
                                 ),
                                 shape = RoundedCornerShape(20.dp)
                             )
@@ -211,9 +256,8 @@ fun TunerScreen(
                         Column(
                             modifier = Modifier.fillMaxSize(),
                             horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.SpaceEvenly
+                            verticalArrangement = Arrangement.spacedBy(14.dp, Alignment.CenterVertically)
                         ) {
-                            // NOTE (grosse, premium, lisible)
                             Text(
                                 text = currentNote,
                                 color = noteColor,
@@ -222,24 +266,35 @@ fun TunerScreen(
                                 letterSpacing = (-2).sp
                             )
 
-                            // Jauge horizontale pro
+// ✅ Espace réservé pour éviter le "saut" de la lettre
+                            Text(
+                                text = "IN TUNE",
+                                color = if (displayOk) TunerUi.Accent else Color.Transparent,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                letterSpacing = 3.sp
+                            )
+
                             TunerMeterPro(
-                                centsOffset = centsOffset,
+                                centsOffset = shownCentsOffset,
+                                isLockedOk = displayOk,
                                 modifier = Modifier.fillMaxWidth()
                             )
 
-                            // Infos secondaires (sobres)
                             Text(
                                 text = currentFreqText,
                                 color = TunerUi.TextSoft,
                                 fontSize = 14.sp
                             )
 
-                            val centsText = centsOffset?.let { "${it.roundToInt()} cents" } ?: "— cents"
+                            val centsText =
+                                shownCentsOffset?.let { "${it.roundToInt()} cents" } ?: "— cents"
+                            val absShown = shownCentsOffset?.let { abs(it) } ?: 999f
+
                             val centsColor = when {
-                                centsOffset == null -> TunerUi.TextSoft
-                                absOffset < 5f -> TunerUi.Accent
-                                absOffset < 15f -> TunerUi.TextSoft
+                                shownCentsOffset == null -> TunerUi.TextSoft
+                                displayOk -> TunerUi.Accent
+                                absShown < 15f -> TunerUi.TextSoft
                                 else -> TunerUi.Bad
                             }
 
@@ -254,7 +309,6 @@ fun TunerScreen(
 
                     Spacer(Modifier.height(12.dp))
 
-                    // ───── BARRE DE CONTROLE / MIC / PERMISSION ─────
                     Column(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalAlignment = Alignment.CenterHorizontally
@@ -288,7 +342,6 @@ fun TunerScreen(
 
                         Spacer(Modifier.height(10.dp))
 
-                        // Niveau d'entrée (vu simple)
                         val level = tunerState.inputLevel.coerceIn(0f, 1f)
                         Text(
                             text = "Niveau d’entrée : ${(level * 100).toInt()} %",
@@ -297,7 +350,7 @@ fun TunerScreen(
                         )
                         Slider(
                             value = level,
-                            onValueChange = { /* read only */ },
+                            onValueChange = { },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 8.dp),
@@ -331,7 +384,6 @@ fun TunerScreen(
 
             Spacer(Modifier.height(8.dp))
 
-            // Bandeau bas type rack (sobre)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -352,10 +404,6 @@ fun TunerScreen(
 }
 
 private object TunerUi {
-    /**
-     * ⚠️ Mets ici LA couleur accent de Live in Pocket (rouge, jaune, etc.)
-     * (j’ai laissé ton jaune actuel par défaut)
-     */
     val Accent = Color(0xFFFFC107)
 
     val BgTop = Color(0xFF171717)
@@ -372,27 +420,54 @@ private object TunerUi {
     val Bad = Color(0xFFFF5252)
 }
 
-/**
- * Jauge d'accordage horizontale "pro scène"
- * - plage : -50..+50 cents
- * - centre = 0 cents
- */
+// 🎯 Aimant : transforme le cents brut en valeur d’aiguille (celle affichée)
+private fun magnetizeCents(raw: Float, isB: Boolean, isHighE: Boolean): Float {
+    val a = abs(raw)
+
+    // E aigu : aimant plus fort, B : moyen, le reste : normal
+    val t1 = when {
+        isHighE -> 7f
+        isB -> 5f
+        else -> 4f
+    }
+    val t2 = when {
+        isHighE -> 14f
+        isB -> 10f
+        else -> 8f
+    }
+    val t3 = when {
+        isHighE -> 22f
+        isB -> 16f
+        else -> 12f
+    }
+
+    return when {
+        a < t1 -> raw * 0.10f
+        a < t2 -> raw * 0.25f
+        a < t3 -> raw * 0.55f
+        else -> raw
+    }
+}
+
 @Composable
 private fun TunerMeterPro(
     centsOffset: Float?,
+    isLockedOk: Boolean,
     modifier: Modifier = Modifier
 ) {
     val clamped = (centsOffset ?: 0f).coerceIn(-50f, 50f)
-    val target = (clamped / 50f) // -1..+1
+    val target = (clamped / 50f)
+
+    val duration = if (isLockedOk) 320 else 140
 
     val pos by animateFloatAsState(
         targetValue = target,
-        animationSpec = tween(durationMillis = 120),
+        animationSpec = tween(durationMillis = duration),
         label = "tunerMeterPos"
     )
 
     val absOffset = abs(clamped)
-    val isOk = centsOffset != null && absOffset < 5f
+    val isOk = isLockedOk || (centsOffset != null && absOffset < 5f)
     val pointerColor = if (isOk) TunerUi.Accent else TunerUi.TextSoft.copy(alpha = 0.9f)
 
     Column(
@@ -410,11 +485,9 @@ private fun TunerMeterPro(
         ) {
             Canvas(modifier = Modifier.fillMaxSize()) {
                 val w = size.width
-                val h = size.height
                 val midX = w / 2f
-                val midY = h / 2f
+                val midY = size.height / 2f
 
-                // Rail
                 drawLine(
                     color = Color.White.copy(alpha = 0.14f),
                     start = Offset(0f, midY),
@@ -422,7 +495,6 @@ private fun TunerMeterPro(
                     strokeWidth = 6f
                 )
 
-                // Centre (0)
                 drawLine(
                     color = Color.White.copy(alpha = 0.35f),
                     start = Offset(midX, midY - 18f),
@@ -430,7 +502,6 @@ private fun TunerMeterPro(
                     strokeWidth = 5f
                 )
 
-                // Graduations
                 val ticks = 10
                 for (i in 1..ticks) {
                     val xL = midX - (w * 0.45f) * (i / ticks.toFloat())
@@ -452,21 +523,16 @@ private fun TunerMeterPro(
                     )
                 }
 
-                // Curseur
                 val range = w * 0.45f
                 val x = midX + (pos * range)
 
-                val pointerTop = midY - 26f
-                val pointerBot = midY + 26f
-
                 drawLine(
                     color = pointerColor,
-                    start = Offset(x, pointerTop),
-                    end = Offset(x, pointerBot),
+                    start = Offset(x, midY - 26f),
+                    end = Offset(x, midY + 26f),
                     strokeWidth = 8f
                 )
 
-                // Glow discret
                 drawCircle(
                     color = pointerColor.copy(alpha = 0.18f),
                     radius = 22f,
