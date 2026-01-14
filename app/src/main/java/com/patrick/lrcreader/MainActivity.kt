@@ -98,6 +98,19 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+        // ✅ Auto backup : planifie le worker à chaque démarrage (WorkManager gère le "unique")
+        AutoBackupScheduler.ensureScheduled(this)
+
+// ✅ Auto restore "propre" : si un backup existe, et seulement une fois
+        run {
+            val already = BackupRestorePrefs.wasRestoredOnce(this)
+            if (!already) {
+                val restored = BackupManager.autoRestoreFromDefaultBackupFile(this)
+                if (restored) {
+                    BackupRestorePrefs.setRestoredOnce(this, true)
+                }
+            }
+        }
         setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {
 
@@ -189,6 +202,7 @@ class MainActivity : ComponentActivity() {
                             if (isDebug) {
                                 Button(onClick = {
                                     BackupFolderPrefs.clearAll(ctx)
+                                    BackupRestorePrefs.clear(ctx)
                                     forceSetup = true
                                     setupTick++
                                 }) {
