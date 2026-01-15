@@ -13,10 +13,15 @@ object LyricsResolver {
         embeddedLyrics: String?
     ): List<LrcLine> {
 
-        // 1️⃣ Priorité absolue : paroles utilisateur (.lrc sauvegardé)
-        val override = LrcStorage
-            .loadForTrack(context, trackUriString)
-            ?.takeIf { it.isNotBlank() }
+        android.util.Log.d("LrcDebug", "RESOLVE uri=$trackUriString")
+
+        val override = LrcStorage.loadForTrack(context, trackUriString)
+        android.util.Log.d(
+            "LrcDebug",
+            "RESOLVE override null=${override == null} len=${override?.length}"
+        )
+
+
 
         if (override != null) {
             return parseLrc(override)

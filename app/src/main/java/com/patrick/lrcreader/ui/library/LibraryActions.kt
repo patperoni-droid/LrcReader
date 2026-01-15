@@ -30,6 +30,10 @@ suspend fun libraryLoadInitial(
     onEntries: (List<LibraryEntry>) -> Unit
 ) {
     val root = currentFolderUri ?: BackupFolderPrefs.get(context)
+    android.util.Log.d(
+        "LibDebug",
+        "LOAD_INITIAL rootUri=$root"
+    )
     if (root == null) {
         onEntries(emptyList())
         return
@@ -71,29 +75,34 @@ suspend fun libraryRefreshCurrentFolderOnly(
     folderUri: Uri,
     onEntries: (List<LibraryEntry>) -> Unit
 ) {
+    android.util.Log.d(
+        "LibDebug",
+        "REFRESH_FOLDER folderUri=$folderUri"
+    )
     val newEntries: List<LibraryEntry> = withContext(Dispatchers.IO) {
         val folderDoc = DocumentFile.fromTreeUri(context, folderUri)
             ?: DocumentFile.fromSingleUri(context, folderUri)
             ?: return@withContext emptyList()
 
         val all = folderDoc.listFiles()
-
+        all.forEach {
+            android.util.Log.d(
+                "LibDebug",
+                "REFRESH raw child name=${it.name} dir=${it.isDirectory}"
+            )
+        }
         val folders = all
             .filter { it.isDirectory }
             .sortedBy { it.name?.lowercase() ?: "" }
             .map { LibraryEntry(it.uri, it.name ?: "Dossier", true) }
 
-        val jsonFiles = all
-            .filter { it.isFile && it.name?.endsWith(".json", ignoreCase = true) == true }
+        // ✅ fichiers qu’on veut voir aussi (lyrics / backups / exports / imports)
+        val otherFiles = all
+            .filter { it.isFile }
             .sortedBy { it.name?.lowercase() ?: "" }
-            .map { LibraryEntry(it.uri, it.name ?: "sauvegarde.json", false) }
+            .map { f -> LibraryEntry(f.uri, f.name ?: "fichier", false) }
 
-        val mediaFiles = all
-            .filter { it.isFile && isAudioOrVideo(it.name) }
-            .sortedBy { it.name?.lowercase() ?: "" }
-            .map { f -> LibraryEntry(f.uri, f.name ?: "media", false) }
-
-        folders + jsonFiles + mediaFiles
+        folders + otherFiles
     }
 
     onEntries(newEntries)

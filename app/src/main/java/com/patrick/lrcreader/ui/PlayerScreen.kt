@@ -2,7 +2,13 @@
 androidx.compose.foundation.ExperimentalFoundationApi::class)
 package com.patrick.lrcreader.ui
 
-import com.patrick.lrcreader.core.MidiOutput
+import android.util.Log
+import android.provider.MediaStore
+import java.io.File
+import android.provider.DocumentsContract
+import android.net.Uri
+import com.patrick.lrcreader.core.readSyltAsLrcFromUri
+import com.patrick.lrcreader.core.readUsltFromUri
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.material3.AlertDialog
@@ -157,7 +163,7 @@ fun PlayerScreen(
     var editingLines by remember(currentTrackUri) { mutableStateOf<List<LrcLine>>(emptyList()) }
     var currentEditTab by remember { mutableStateOf(0) }
 
-    // 🔁 reload LRC depuis storage
+    // 🔁 reload paroles (priorité : SYLT -> cache interne -> USLT)
     LaunchedEffect(currentTrackUri) {
         if (currentTrackUri == null) {
             onParsedLinesChange(emptyList())
@@ -166,16 +172,69 @@ fun PlayerScreen(
             return@LaunchedEffect
         }
 
+        val trackUri = runCatching { Uri.parse(currentTrackUri) }.getOrNull()
+        Log.d("LrcDebug", "TRACK uriString=$currentTrackUri")
+        Log.d("LrcDebug", "TRACK uriParsed=$trackUri scheme=${trackUri?.scheme} authority=${trackUri?.authority}")
+        // 1) SYLT (synchronisé) -> LRC
+        val syltLrcText: String? = if (trackUri != null) {
+            runCatching { readSyltAsLrcFromUri(context, trackUri) }.getOrNull()
+        } else null
+
+        if (!syltLrcText.isNullOrBlank()) {
+            val parsed = parseLrc(syltLrcText)
+            onParsedLinesChange(parsed)
+            rawLyricsText = parsed.joinToString("\n") { it.text }
+            editingLines = parsed
+            return@LaunchedEffect
+        }
+        // 1.b) Fallback : chercher un .lrc "à côté" du MP3 (même nom)
+// - si SAF tree => readSidecarLrcNearTrack
+// - si MediaStore/file => lire le .lrc via chemin fichier
+        val sidecarLrcText: String? = if (trackUri != null) {
+            runCatching { readSidecarLrcSmart(context, trackUri) }.getOrNull()
+        } else null
+
+        Log.d("LrcDebug", "SIDECAR found=${!sidecarLrcText.isNullOrBlank()}")
+
+        if (!sidecarLrcText.isNullOrBlank()) {
+            val parsed = parseLrc(sidecarLrcText)
+            onParsedLinesChange(parsed)
+            rawLyricsText = parsed.joinToString("\n") { it.text }
+            editingLines = parsed
+            return@LaunchedEffect
+        }
+        // 2) Cache interne (notre app)
         val stored = LrcStorage.loadForTrack(context, currentTrackUri)
         if (!stored.isNullOrBlank()) {
             val parsed = parseLrc(stored)
             onParsedLinesChange(parsed)
             rawLyricsText = parsed.joinToString("\n") { it.text }
             editingLines = parsed
-        } else {
-            rawLyricsText = ""
-            editingLines = emptyList()
+            return@LaunchedEffect
         }
+
+        // 3) USLT (non synchronisé)
+        val usltText: String? = if (trackUri != null) {
+            runCatching { readUsltFromUri(context, trackUri) }.getOrNull()
+        } else null
+
+        if (!usltText.isNullOrBlank()) {
+            val lines = usltText
+                .replace("\r\n", "\n")
+                .split("\n")
+                .map { it.trimEnd() }
+                .filter { it.isNotBlank() }
+                .map { LrcLine(timeMs = 0L, text = it) }
+
+            onParsedLinesChange(lines)
+            rawLyricsText = lines.joinToString("\n") { it.text }
+            editingLines = lines
+            return@LaunchedEffect
+        }
+
+        onParsedLinesChange(emptyList())
+        rawLyricsText = ""
+        editingLines = emptyList()
     }
 
     fun centerCurrentLineLazy(state: LazyListState) {
@@ -217,6 +276,7 @@ fun PlayerScreen(
         }
         centerCurrentLineLazy(listState)
     }
+
 
     // ---------- Suivi lecture + index ligne courante + MIDI + masque ----------
     LaunchedEffect(isPlaying, parsedLines, userOffsetMs, currentTrackUri) {
@@ -607,8 +667,7 @@ fun PlayerScreen(
 }
 
 @Composable
-private fun
-        ReaderHeader(
+private fun ReaderHeader(
     isConcertMode: Boolean,
     onToggleConcertMode: () -> Unit,
     autoReturnEnabled: Boolean,
@@ -617,7 +676,6 @@ private fun
     onOpenMix: () -> Unit,
     onOpenEditor: () -> Unit,
     onAddLiveNote: () -> Unit,
-
 ) {
     Box(
         modifier = Modifier
@@ -671,10 +729,106 @@ private fun
                 )
             }
 
-            // ✅ bouton note LIVE
             IconButton(onClick = onAddLiveNote) {
                 Text("📝", color = Color.White, fontSize = 16.sp)
             }
         }
     }
+}
+
+private fun readSidecarLrcNearTrack(context: android.content.Context, trackUri: Uri): String? {
+    // trackUri = content://com.android.externalstorage.documents/tree/.../document/...
+    val docId = runCatching { DocumentsContract.getDocumentId(trackUri) }.getOrNull() ?: return null
+
+    // docId ressemble à: primary:Documents/SPL_Music/BackingTracks/audio/RED RED WINE-31.wav
+    val slash = docId.lastIndexOf('/')
+    if (slash <= 0) return null
+
+    val parentDocId = docId.substring(0, slash)
+    val fileName = docId.substring(slash + 1)
+    val baseName = fileName.substringBeforeLast('.', fileName)
+
+    // On cherche un .lrc avec le même nom de base
+    val targetLrcName = "$baseName.lrc"
+
+    val cr = context.contentResolver
+
+    // ✅ IMPORTANT : childrenUri doit être construit avec le TREE uri (trackUri), pas avec parentUri
+    val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(
+        trackUri,
+        parentDocId
+    )
+
+    val projection = arrayOf(
+        DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+        DocumentsContract.Document.COLUMN_DISPLAY_NAME
+    )
+
+    cr.query(childrenUri, projection, null, null, null)?.use { c ->
+        val idCol = c.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
+        val nameCol = c.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+
+        while (c.moveToNext()) {
+            val childId = c.getString(idCol)
+            val childName = (c.getString(nameCol) ?: "")
+
+            if (childName.equals(targetLrcName, ignoreCase = true)) {
+                // ✅ Pour ouvrir le fichier, on reconstruit une URI document via le TREE
+                val lrcUri = DocumentsContract.buildDocumentUriUsingTree(trackUri, childId)
+                return cr.openInputStream(lrcUri)
+                    ?.bufferedReader(Charsets.UTF_8)
+                    ?.use { it.readText() }
+            }
+        }
+    }
+
+    return null
+}
+private fun readSidecarLrcSmart(context: android.content.Context, trackUri: Uri): String? {
+    // 1) Si c’est un SAF tree (DocumentsContract) : on utilise la méthode SAF
+    val isDoc = runCatching { DocumentsContract.isDocumentUri(context, trackUri) }.getOrDefault(false)
+    if (isDoc) {
+        return readSidecarLrcNearTrack(context, trackUri)
+    }
+
+    // 2) Si c’est un MediaStore content://media/... : essayer d’obtenir un chemin fichier
+    if (trackUri.scheme == "content" && trackUri.authority == MediaStore.AUTHORITY) {
+        val path = queryMediaStoreDataPath(context, trackUri)
+        if (!path.isNullOrBlank()) {
+            return readSidecarFromFilePath(path)
+        }
+        return null
+    }
+
+    // 3) Si c’est file://... : chemin direct
+    if (trackUri.scheme == "file") {
+        val path = trackUri.path
+        if (!path.isNullOrBlank()) return readSidecarFromFilePath(path)
+    }
+
+    return null
+}
+
+private fun readSidecarFromFilePath(mp3Path: String): String? {
+    val mp3File = File(mp3Path)
+    if (!mp3File.exists()) return null
+
+    val base = mp3File.nameWithoutExtension
+    val lrcFile = File(mp3File.parentFile, "$base.lrc")
+    if (!lrcFile.exists() || !lrcFile.isFile) return null
+
+    return runCatching { lrcFile.readText(Charsets.UTF_8) }.getOrNull()
+}
+
+private fun queryMediaStoreDataPath(context: android.content.Context, uri: Uri): String? {
+    // ⚠️ Android 10+ : DATA peut être null selon le stockage / permissions.
+    val projection = arrayOf(MediaStore.MediaColumns.DATA)
+    return runCatching {
+        context.contentResolver.query(uri, projection, null, null, null)?.use { c ->
+            val col = c.getColumnIndex(MediaStore.MediaColumns.DATA)
+            if (col == -1) return@use null
+            if (!c.moveToFirst()) return@use null
+            c.getString(col)
+        }
+    }.getOrNull()
 }

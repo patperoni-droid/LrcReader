@@ -211,6 +211,28 @@ private fun isAudioOrVideo(context: Context, uri: Uri, name: String): Boolean {
             lower.endsWith(".mp4") || lower.endsWith(".mkv") || lower.endsWith(".mov") ||
             lower.endsWith(".webm") || lower.endsWith(".avi")
 }
+
+/**
+ * ✅ FICHIERS SPL AUTORISÉS DANS LA BIBLIOTHÈQUE
+ * (médias + paroles + backups + exports/imports)
+ */
+private fun isSplIndexableFile(
+    context: Context,
+    uri: Uri,
+    name: String
+): Boolean {
+    val lower = name.lowercase()
+
+    // 1) médias
+    if (isAudioOrVideo(context, uri, name)) return true
+
+    // 2) fichiers SPL utiles
+    return lower.endsWith(".lrc") ||
+            lower.endsWith(".json") ||
+            lower.endsWith(".zip") ||
+            lower.endsWith(".lp-settings") ||
+            lower.endsWith(".lp-backup")
+}
 /** Scan récursif COMPLET du dossier Music. 1 seule fois. */
 fun buildFullIndex(context: Context, rootUri: Uri): List<LibraryIndexCache.CachedEntry> {
     val out = ArrayList<LibraryIndexCache.CachedEntry>()
@@ -221,8 +243,15 @@ fun buildFullIndex(context: Context, rootUri: Uri): List<LibraryIndexCache.Cache
             val name = child.name ?: (if (child.isDirectory) "Dossier" else "Fichier")
 
             // ✅ FILTRE ICI : on garde dossiers + audio/vidéo uniquement
+            // ✅ FILTRE : on garde dossiers + audio/vidéo + fichiers utiles (lrc/json)
             if (!child.isDirectory) {
-                if (!isAudioOrVideo(context, child.uri, name)) return@forEach
+                val lower = name.lowercase()
+                val keep =
+                    isAudioOrVideo(context, child.uri, name) ||
+                            lower.endsWith(".lrc") ||
+                            lower.endsWith(".json")
+
+                if (!keep) return@forEach
             }
 
             out.add(

@@ -153,7 +153,20 @@ class MainActivity : ComponentActivity() {
                     if (backing != null) {
                         ensureDir(backing, "audio")
                         ensureDir(backing, "video")
-                        ensureDir(backing, "lyrics")
+                        val lyricsDir = ensureDir(backing, "lyrics")
+
+                        android.util.Log.d("LrcDebug", "SETUP backing=${backing.uri}")
+                        android.util.Log.d("LrcDebug", "SETUP lyricsDir=${lyricsDir?.uri}")
+
+                        if (lyricsDir != null) {
+                            LyricsFolderPrefs.save(ctx, lyricsDir.uri)
+                            android.util.Log.d("LrcDebug", "SETUP saved lyricsUri=${lyricsDir.uri}")
+
+                            // 🔥 preuve ultime : on relit immédiatement
+                            android.util.Log.d("LrcDebug", "SETUP reread lyricsUri=${LyricsFolderPrefs.get(ctx)}")
+                        } else {
+                            android.util.Log.e("LrcDebug", "SETUP lyricsDir is NULL (create/find failed)")
+                        }
                     }
 
                     // ✅ 4) IMPORTANT : on stocke l'URI DU DOSSIER Backups (pas la racine)
