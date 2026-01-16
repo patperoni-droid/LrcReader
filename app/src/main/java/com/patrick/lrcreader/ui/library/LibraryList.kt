@@ -27,6 +27,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.ui.LibraryEntry
 
+private fun isPlayableByName(name: String): Boolean {
+    val n = name.lowercase()
+    return n.endsWith(".mp3") || n.endsWith(".wav") || n.endsWith(".m4a") || n.endsWith(".aac") ||
+            n.endsWith(".flac") || n.endsWith(".ogg") ||
+            n.endsWith(".mp4") || n.endsWith(".mkv") || n.endsWith(".webm") ||
+            n.endsWith(".mov") || n.endsWith(".avi")
+}
+
+private fun isJsonByName(name: String): Boolean = name.lowercase().endsWith(".json")
+private fun isLrcByName(name: String): Boolean = name.lowercase().endsWith(".lrc")
+
 @Composable
 fun LibraryList(
     entries: List<LibraryEntry>,
@@ -43,6 +54,9 @@ fun LibraryList(
 
     // ✅ quick play dans la bibliothèque (sans ouvrir le lecteur)
     onQuickPlay: (Uri) -> Unit,
+
+    // ✅ import d’un backup JSON (ne doit pas lancer le lecteur)
+    onImportBackupJson: (Uri) -> Unit,
 
     onAssignOne: (Uri) -> Unit,
     onMoveOne: (Uri) -> Unit,
@@ -72,10 +86,15 @@ fun LibraryList(
                     Spacer(Modifier.width(10.dp))
                     Text(entry.name, color = Color.White, fontSize = 15.sp)
                 }
+
             } else {
                 val uri = entry.uri
                 val isSelected = selectedSongs.contains(uri)
                 var menuOpen by remember { mutableStateOf(false) }
+
+                val canPlay = isPlayableByName(entry.name)
+                val isJson = isJsonByName(entry.name)
+                val isLrc = isLrcByName(entry.name)
 
                 Row(
                     modifier = Modifier
@@ -107,7 +126,10 @@ fun LibraryList(
 
                     Spacer(Modifier.width(10.dp))
 
-                    // clic sur le titre : ouvre le lecteur (sauf mode sélection)
+                    // clic sur le titre :
+                    // - si sélection -> toggle
+                    // - sinon -> ouvre lecteur UNIQUEMENT si media
+                    // - sinon (json/lrc/etc) -> rien
                     Text(
                         text = entry.name,
                         color = Color.White,
@@ -117,22 +139,27 @@ fun LibraryList(
                             .weight(1f)
                             .clickable {
                                 if (selectionMode) onToggleSelect(uri)
-                                else onOpenPlayer(uri)
+                                else if (canPlay) onOpenPlayer(uri)
+                                else {
+                                    // Option future :
+                                    // if (isLrc) ouvrir éditeur LRC
+                                    // if (isJson) ouvrir preview/import dialog
+                                }
                             }
                     )
 
-                    // ✅ bouton PLAY : quick play (sauf mode sélection)
+                    // ▶️ bouton PLAY : quick play UNIQUEMENT si media
                     IconButton(
                         onClick = {
                             if (selectionMode) onToggleSelect(uri)
-                            else onQuickPlay(uri)
+                            else if (canPlay) onQuickPlay(uri)
                         },
                         modifier = Modifier.size(44.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.PlayArrow,
                             contentDescription = "Lire (bibliothèque)",
-                            tint = accent,
+                            tint = if (canPlay) accent else Color.White.copy(alpha = 0.25f),
                             modifier = Modifier.size(26.dp)
                         )
                     }
@@ -143,6 +170,15 @@ fun LibraryList(
                             Icon(Icons.Default.MoreVert, null, tint = Color.White)
                         }
                         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+
+                            // ✅ uniquement pour les .json
+                            if (isJson) {
+                                DropdownMenuItem(
+                                    text = { Text("Importer ce backup", color = Color.White) },
+                                    onClick = { menuOpen = false; onImportBackupJson(uri) }
+                                )
+                            }
+
                             DropdownMenuItem(
                                 text = { Text("Attribuer à une playlist", color = Color.White) },
                                 onClick = { menuOpen = false; onAssignOne(uri) }

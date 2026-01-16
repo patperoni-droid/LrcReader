@@ -141,7 +141,29 @@ fun LibraryScreen(
         quickIsPlaying = false
     }
 // --------------------------------------------------------------------
+fun isPlayableMediaUri(uri: Uri): Boolean {
+    val mime = runCatching { context.contentResolver.getType(uri) }.getOrNull()
+    if (mime != null) return mime.startsWith("audio/") || mime.startsWith("video/")
 
+    val name = runCatching {
+        DocumentFile.fromSingleUri(context, uri)?.name
+            ?: DocumentFile.fromTreeUri(context, uri)?.name
+    }.getOrNull()?.lowercase()
+
+    return name?.let {
+        it.endsWith(".mp3") || it.endsWith(".wav") || it.endsWith(".m4a") || it.endsWith(".aac") ||
+                it.endsWith(".flac") || it.endsWith(".ogg") ||
+                it.endsWith(".mp4") || it.endsWith(".mkv") || it.endsWith(".webm") || it.endsWith(".mov") || it.endsWith(".avi")
+    } ?: false
+}
+
+    fun fileExtOf(uri: Uri): String {
+        val name = runCatching {
+            DocumentFile.fromSingleUri(context, uri)?.name
+                ?: DocumentFile.fromTreeUri(context, uri)?.name
+        }.getOrNull() ?: return ""
+        return name.substringAfterLast('.', "").lowercase()
+    }
     fun startLoading(label: String, determinate: Boolean) {
         loadingStartedAt = System.currentTimeMillis()
         isLoading = true
@@ -383,7 +405,15 @@ fun LibraryScreen(
                             onQuickPlay = { uri ->
                                 quickPlayToggle(uri)
                             },
+                            onImportBackupJson = { uri ->
+                                stopQuickPlay()
+                                Log.d("BackupImport", "IMPORT requested uri=$uri")
 
+                                // ✅ ICI tu branches TON import existant
+                                // Exemple (à adapter à TON code) :
+                                // BackupImporter.importFromJsonUri(context, uri)
+                                // ou PlaylistRepository.importBackup(context, uri)
+                            },
                             onAssignOne = { uri ->
                                 selectedSongs = setOf(uri)
                                 showAssignDialog = true

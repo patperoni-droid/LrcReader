@@ -153,19 +153,28 @@ class MainActivity : ComponentActivity() {
                     if (backing != null) {
                         ensureDir(backing, "audio")
                         ensureDir(backing, "video")
+
                         val lyricsDir = ensureDir(backing, "lyrics")
+                        val midiDir = ensureDir(backing, "midi") // ✅ nouveau
 
                         android.util.Log.d("LrcDebug", "SETUP backing=${backing.uri}")
                         android.util.Log.d("LrcDebug", "SETUP lyricsDir=${lyricsDir?.uri}")
+                        android.util.Log.d("LrcDebug", "SETUP midiDir=${midiDir?.uri}")
 
                         if (lyricsDir != null) {
                             LyricsFolderPrefs.save(ctx, lyricsDir.uri)
                             android.util.Log.d("LrcDebug", "SETUP saved lyricsUri=${lyricsDir.uri}")
-
-                            // 🔥 preuve ultime : on relit immédiatement
                             android.util.Log.d("LrcDebug", "SETUP reread lyricsUri=${LyricsFolderPrefs.get(ctx)}")
                         } else {
                             android.util.Log.e("LrcDebug", "SETUP lyricsDir is NULL (create/find failed)")
+                        }
+
+                        if (midiDir != null) {
+                            MidiCuesFolderPrefs.save(ctx, midiDir.uri)
+                            android.util.Log.d("CueMidiStore", "SETUP saved midiUri=${midiDir.uri}")
+                            android.util.Log.d("CueMidiStore", "SETUP reread midiUri=${MidiCuesFolderPrefs.get(ctx)}")
+                        } else {
+                            android.util.Log.e("CueMidiStore", "SETUP midiDir is NULL (create/find failed)")
                         }
                     }
 
