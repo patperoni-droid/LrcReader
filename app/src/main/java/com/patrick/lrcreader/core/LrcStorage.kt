@@ -108,7 +108,7 @@ object LrcStorage {
         }
         os.use { it.write(content.toByteArray(Charsets.UTF_8)) }
         android.util.Log.d("LrcDebug", "SAVE DONE ✅ bytes=${content.toByteArray(Charsets.UTF_8).size}")
-        LibraryIndexCache.bumpVersion(context)
+
         // ✅ MAJ INDEX (pas besoin de rescan)
         val parent = dir.uri.toString()
 
@@ -122,7 +122,7 @@ object LrcStorage {
         android.util.Log.d("LrcDebug", "INDEX upsert lrc ok size=${newIndex.size}")
 
         // ✅ Réveille l'UI (si tu observes une "version" côté LibraryScreen)
-        com.patrick.lrcreader.core.LibraryIndexCache.bumpVersion(context)
+
     }
 
     // ---------- Helpers LRC ----------
@@ -165,7 +165,7 @@ object LrcStorage {
         }
 
         // ✅ Réveille l'UI après suppression
-        com.patrick.lrcreader.core.LibraryIndexCache.bumpVersion(context)
+
     }
 }
 

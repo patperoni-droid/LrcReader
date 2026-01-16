@@ -58,6 +58,9 @@ fun LibraryList(
     // ✅ import d’un backup JSON (ne doit pas lancer le lecteur)
     onImportBackupJson: (Uri) -> Unit,
 
+    // ✅ ouvre l’éditeur LRC
+    onOpenLrcEditor: (Uri) -> Unit,
+
     onAssignOne: (Uri) -> Unit,
     onMoveOne: (Uri) -> Unit,
     onRenameOne: (LibraryEntry) -> Unit,
@@ -129,7 +132,8 @@ fun LibraryList(
                     // clic sur le titre :
                     // - si sélection -> toggle
                     // - sinon -> ouvre lecteur UNIQUEMENT si media
-                    // - sinon (json/lrc/etc) -> rien
+                    // - sinon -> si .lrc -> ouvre éditeur
+                    // - sinon (json/etc) -> rien
                     Text(
                         text = entry.name,
                         color = Color.White,
@@ -140,11 +144,7 @@ fun LibraryList(
                             .clickable {
                                 if (selectionMode) onToggleSelect(uri)
                                 else if (canPlay) onOpenPlayer(uri)
-                                else {
-                                    // Option future :
-                                    // if (isLrc) ouvrir éditeur LRC
-                                    // if (isJson) ouvrir preview/import dialog
-                                }
+                                else if (isLrc) onOpenLrcEditor(uri)
                             }
                     )
 
@@ -170,6 +170,14 @@ fun LibraryList(
                             Icon(Icons.Default.MoreVert, null, tint = Color.White)
                         }
                         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+
+                            // ✅ uniquement pour les .lrc
+                            if (isLrc) {
+                                DropdownMenuItem(
+                                    text = { Text("Éditer ce .lrc", color = Color.White) },
+                                    onClick = { menuOpen = false; onOpenLrcEditor(uri) }
+                                )
+                            }
 
                             // ✅ uniquement pour les .json
                             if (isJson) {

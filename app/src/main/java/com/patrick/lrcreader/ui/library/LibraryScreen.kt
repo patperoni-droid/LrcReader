@@ -1,5 +1,15 @@
 package com.patrick.lrcreader.ui.library
 
+
+
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import android.net.Uri
 import android.os.Handler
@@ -15,7 +25,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.documentfile.provider.DocumentFile
 import androidx.media3.common.MediaItem
@@ -47,6 +56,10 @@ fun LibraryScreen(
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
     val focusManager = LocalFocusManager.current
 
+    var showLrcEditor by remember { mutableStateOf(false) }
+    var lrcEditorUri by remember { mutableStateOf<Uri?>(null) }
+    var lrcEditorName by remember { mutableStateOf("") }
+    var lrcEditorText by remember { mutableStateOf("") }
     val initialFolder = remember { BackupFolderPrefs.get(context) }
 
     var currentFolderUri by remember { mutableStateOf<Uri?>(initialFolder) }
@@ -132,7 +145,22 @@ fun LibraryScreen(
             Log.e("LibraryQuickPlay", "Erreur quick play", e)
         }
     }
+    fun readTextFromUri(uri: Uri): String? {
+        return runCatching {
+            context.contentResolver.openInputStream(uri)
+                ?.bufferedReader(Charsets.UTF_8)
+                ?.use { it.readText() }
+        }.getOrNull()
+    }
 
+    fun writeTextToUri(uri: Uri, text: String): Boolean {
+        return runCatching {
+            context.contentResolver.openOutputStream(uri, "wt")
+                ?.bufferedWriter(Charsets.UTF_8)
+                ?.use { it.write(text) }
+            true
+        }.getOrElse { false }
+    }
     fun stopQuickPlay() {
         try {
             if (quickPlayer.isPlaying) quickPlayer.pause()
@@ -266,30 +294,24 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
             onEntries = { entries = it }
         )
     }
-// 🔁 Auto-refresh de la bibliothèque quand un fichier (.lrc / midi / json) est créé
+    // ✅ écoute les modifs d'index (LRC / midi / import / export) sans rescan
     LaunchedEffect(Unit) {
-        var lastVersion =
-            com.patrick.lrcreader.core.LibraryIndexCache.readVersion(context)
+        com.patrick.lrcreader.core.LibraryIndexCache.updates.collect {
+            val fresh = com.patrick.lrcreader.core.LibraryIndexCache.load(context).orEmpty()
+            indexAll = fresh
 
-        while (true) {
-            val v = com.patrick.lrcreader.core.LibraryIndexCache.readVersion(context)
-            if (v != lastVersion) {
-                lastVersion = v
+            val folder =
+                currentFolderUri ?: com.patrick.lrcreader.core.BackupFolderPrefs.get(context)
 
-                val folder =
-                    currentFolderUri
-                        ?: com.patrick.lrcreader.core.BackupFolderPrefs.get(context)
-
-                if (folder != null) {
-                    libraryRefreshCurrentFolderOnly(
-                        context = context,
-                        folderUri = folder
-                    ) { entries = it }
-                }
+            if (folder != null) {
+                entries = com.patrick.lrcreader.core.LibraryIndexCache
+                    .childrenOf(fresh, folder)
+                    .map { e -> LibraryEntry(Uri.parse(e.uriString), e.name, e.isDirectory) }
             }
-            kotlinx.coroutines.delay(500)
         }
     }
+// 🔁 Auto-refresh de la bibliothèque quand un fichier (.lrc / midi / json) est créé
+
 // ---------- UI ----------
     val currentFolderName = currentFolderUri?.let {
         (DocumentFile.fromTreeUri(context, it) ?: DocumentFile.fromSingleUri(context, it))?.name
@@ -373,6 +395,7 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
                         fontSize = 13.sp
                     )
                 } else {
+
                     Column(modifier = Modifier.fillMaxSize()) {
 
                         OutlinedTextField(
@@ -392,10 +415,12 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
                             accent = accent,
                             bottomPadding = if (selectedSongs.isNotEmpty()) bottomBarHeight else 0.dp,
                             selectedSongs = selectedSongs,
+
                             onToggleSelect = { uri ->
                                 selectedSongs =
                                     if (selectedSongs.contains(uri)) selectedSongs - uri else selectedSongs + uri
                             },
+
                             onOpenFolder = { entry ->
                                 scope.launch {
                                     isLoading = true
@@ -405,9 +430,9 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
                                         currentFolderUri?.let { folderStack = folderStack + it }
                                         currentFolderUri = entry.uri
 
-                                        entries = LibraryIndexCache.childrenOf(indexAll, entry.uri).map { e ->
-                                            LibraryEntry(Uri.parse(e.uriString), e.name, e.isDirectory)
-                                        }
+                                        entries = LibraryIndexCache
+                                            .childrenOf(indexAll, entry.uri)
+                                            .map { e -> LibraryEntry(Uri.parse(e.uriString), e.name, e.isDirectory) }
 
                                         searchQuery = ""
                                         selectedSongs = emptySet()
@@ -418,25 +443,37 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
                                 }
                             },
 
-                            // 🔥 CLIC SUR LE TITRE = OUVRE LE LECTEUR
+                            // 🔥 OUVERTURE DU LECTEUR AUDIO
                             onOpenPlayer = { uri ->
                                 stopQuickPlay()
                                 onPlayFromLibrary(uri.toString())
                             },
 
-                            // ▶️ BOUTON PLAY = QUICK PLAY (sans ouvrir le lecteur)
+                            // ▶️ QUICK PLAY
                             onQuickPlay = { uri ->
                                 quickPlayToggle(uri)
                             },
-                            onImportBackupJson = { uri ->
-                                stopQuickPlay()
-                                Log.d("BackupImport", "IMPORT requested uri=$uri")
 
-                                // ✅ ICI tu branches TON import existant
-                                // Exemple (à adapter à TON code) :
-                                // BackupImporter.importFromJsonUri(context, uri)
-                                // ou PlaylistRepository.importBackup(context, uri)
+                            // 📦 IMPORT JSON
+                            onImportBackupJson = { uri ->
+                                Log.d("BackupImport", "Import demandé pour $uri")
+                                // TODO: on recâble ton vrai import après
                             },
+                            // ✏️ OUVRIR ÉDITEUR LRC  ← ← ← ICI LE NOUVEAU CALLBACK
+                            onOpenLrcEditor = { lrcUri ->
+                                stopQuickPlay()
+
+                                lrcEditorUri = lrcUri
+                                lrcEditorName = runCatching {
+                                    DocumentFile.fromSingleUri(context, lrcUri)?.name
+                                        ?: DocumentFile.fromTreeUri(context, lrcUri)?.name
+                                        ?: "lyrics.lrc"
+                                }.getOrNull() ?: "lyrics.lrc"
+
+                                lrcEditorText = readTextFromUri(lrcUri) ?: ""
+                                showLrcEditor = true
+                            },
+
                             onAssignOne = { uri ->
                                 selectedSongs = setOf(uri)
                                 showAssignDialog = true
@@ -624,6 +661,7 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
                     moveBrowserFolder = parent
                 },
                 onEnterFolder = { folderUri ->
+
                     val root = BackupFolderPrefs.get(context)
                     val from = moveBrowserFolder ?: root ?: folderUri
                     moveBrowserStack = moveBrowserStack + from
@@ -676,6 +714,113 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
                     moveToFolderLauncher.launch(null)
                 }
             )
+            // ----------------------------
+// ✏️ LRC Editor Dialog
+// ----------------------------
+            if (showLrcEditor && lrcEditorUri != null) {
+                androidx.compose.material3.AlertDialog(
+                    modifier = Modifier
+                        .fillMaxWidth(0.98f), // ← 🔥 ICI
+                    onDismissRequest = { showLrcEditor = false },
+                    title = {
+                        Text(text = "Édition : $lrcEditorName")
+                    },
+                    text = {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .fillMaxHeight()
+                        ) {
+                            androidx.compose.material3.OutlinedTextField(
+                                value = lrcEditorText,
+                                onValueChange = { lrcEditorText = it },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .fillMaxHeight(),
+                                singleLine = false
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        androidx.compose.material3.TextButton(
+                            onClick = {
+                                val uri = lrcEditorUri ?: return@TextButton
+                                val ok = writeTextToUri(uri, lrcEditorText)
+                                if (ok) {
+                                    // on ferme
+                                    showLrcEditor = false
+                                } else {
+                                    Log.e("LRC", "Échec écriture sur $uri")
+                                }
+                            }
+                        ) { androidx.compose.material3.Text("Enregistrer") }
+                    },
+                    dismissButton = {
+                        androidx.compose.material3.TextButton(
+                            onClick = { showLrcEditor = false }
+                        ) { androidx.compose.material3.Text("Annuler") }
+                    }
+                )
+            }
+            // ---------------- LRC EDITOR DIALOG ----------------
+            if (showLrcEditor) {
+                androidx.compose.ui.window.Dialog(
+                    onDismissRequest = { showLrcEditor = false },
+                    properties = androidx.compose.ui.window.DialogProperties(
+                        usePlatformDefaultWidth = false
+                    )
+                ) {
+                    androidx.compose.material3.Surface(
+                        modifier = Modifier
+                            .fillMaxWidth(0.98f)
+                            .fillMaxHeight(0.92f),
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
+                        tonalElevation = 6.dp
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(16.dp)
+                        ) {
+                            androidx.compose.material3.Text(
+                                text = "Édition : $lrcEditorName",
+                                modifier = Modifier.padding(bottom = 12.dp)
+                            )
+
+                            androidx.compose.material3.OutlinedTextField(
+                                value = lrcEditorText,
+                                onValueChange = { lrcEditorText = it },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .weight(1f),
+                                singleLine = false
+                            )
+
+                            Spacer(Modifier.height(12.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End
+                            ) {
+                                androidx.compose.material3.TextButton(
+                                    onClick = { showLrcEditor = false }
+                                ) { androidx.compose.material3.Text("Annuler") }
+
+                                Spacer(Modifier.width(8.dp))
+
+                                androidx.compose.material3.TextButton(
+                                    onClick = {
+                                        val uri = lrcEditorUri ?: return@TextButton
+                                        val ok = writeTextToUri(uri, lrcEditorText)
+                                        if (ok) showLrcEditor = false
+                                        else android.util.Log.e("LRC", "Échec écriture sur $uri")
+                                    }
+                                ) { androidx.compose.material3.Text("Enregistrer") }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
