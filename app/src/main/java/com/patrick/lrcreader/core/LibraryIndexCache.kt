@@ -5,7 +5,8 @@ import android.net.Uri
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
-
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 /**
  * Index disque pour navigation instantanée.
  * On stocke tout l'arbre en "flat list" avec parentUriString.
@@ -19,6 +20,53 @@ object LibraryIndexCache {
         val isDirectory: Boolean,
         val parentUriString: String? // null uniquement pour la racine "vue"
     )
+    fun upsert(
+        context: android.content.Context,
+        uriString: String,
+        name: String,
+        isDirectory: Boolean,
+        parentUriString: String
+    ): List<CachedEntry> {
+        val current = load(context).orEmpty()
+        val newEntry = CachedEntry(
+            uriString = uriString,
+            name = name,
+            isDirectory = isDirectory,
+            parentUriString = parentUriString
+        )
+
+        val out = ArrayList<CachedEntry>(current.size + 1)
+        var replaced = false
+
+        for (e in current) {
+            if (e.uriString == uriString) {
+                out += newEntry
+                replaced = true
+            } else {
+                out += e
+            }
+        }
+
+        if (!replaced) out += newEntry
+
+        save(context, out)
+        return out
+    }
+    private val _updates = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val updates = _updates.asSharedFlow()
+    private const val PREFS = "library_index_cache"
+    private const val KEY_VERSION = "version"
+
+    fun readVersion(context: Context): Long {
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getLong(KEY_VERSION, 0L)
+    }
+
+    fun bumpVersion(context: Context) {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val v = prefs.getLong(KEY_VERSION, 0L) + 1L
+        prefs.edit().putLong(KEY_VERSION, v).apply()
+    }
 
     fun save(context: Context, items: List<CachedEntry>) {
         val arr = JSONArray()
@@ -77,4 +125,6 @@ object LibraryIndexCache {
         return all.filter { it.parentUriString == key }
             .sortedWith(compareBy<CachedEntry> { !it.isDirectory }.thenBy { it.name.lowercase() })
     }
+
 }
+

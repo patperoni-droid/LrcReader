@@ -55,7 +55,6 @@ object LrcStorage {
         trackUriString: String?,
         lines: List<LrcLine>
     ) {
-        // 🔎 LOG 1 : entrée dans la fonction
         android.util.Log.d("LrcDebug", "SAVE called track=$trackUriString lines=${lines.size}")
 
         if (trackUriString.isNullOrBlank()) {
@@ -85,7 +84,6 @@ object LrcStorage {
             }
         }
 
-        // 🔎 LOG 2 : contenu prêt
         android.util.Log.d("LrcDebug", "SAVE contentLength=${content.length}")
 
         // Supprime l’ancien fichier si présent
@@ -100,7 +98,6 @@ object LrcStorage {
             android.util.Log.d("LrcDebug", "SAVE abort: createFile failed")
             return
         }
-
         android.util.Log.d("LrcDebug", "SAVE file created uri=${doc.uri}")
 
         // Écriture
@@ -111,7 +108,23 @@ object LrcStorage {
         }
         os.use { it.write(content.toByteArray(Charsets.UTF_8)) }
         android.util.Log.d("LrcDebug", "SAVE DONE ✅ bytes=${content.toByteArray(Charsets.UTF_8).size}")
+        LibraryIndexCache.bumpVersion(context)
+        // ✅ MAJ INDEX (pas besoin de rescan)
+        val parent = dir.uri.toString()
+
+        val newIndex = com.patrick.lrcreader.core.LibraryIndexCache.upsert(
+            context = context,
+            uriString = doc.uri.toString(),
+            name = name,
+            isDirectory = false,
+            parentUriString = parent
+        )
+        android.util.Log.d("LrcDebug", "INDEX upsert lrc ok size=${newIndex.size}")
+
+        // ✅ Réveille l'UI (si tu observes une "version" côté LibraryScreen)
+        com.patrick.lrcreader.core.LibraryIndexCache.bumpVersion(context)
     }
+
     // ---------- Helpers LRC ----------
     private fun formatLrcTime(ms: Long): String {
         val total = (ms / 10) // centièmes
@@ -120,9 +133,9 @@ object LrcStorage {
         val cs = total % 100
         return "[%02d:%02d.%02d]".format(min, sec, cs)
     }
+
     fun deleteForTrack(context: Context, trackUriString: String?) {
         if (trackUriString.isNullOrBlank()) return
-
         android.util.Log.d("LrcDebug", "DELETE called track=$trackUriString")
 
         // 1) Suppression dans SPL_Music/BackingTracks/lyrics
@@ -150,6 +163,9 @@ object LrcStorage {
                 f.delete()
             }
         }
+
+        // ✅ Réveille l'UI après suppression
+        com.patrick.lrcreader.core.LibraryIndexCache.bumpVersion(context)
     }
 }
 

@@ -266,7 +266,30 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
             onEntries = { entries = it }
         )
     }
+// 🔁 Auto-refresh de la bibliothèque quand un fichier (.lrc / midi / json) est créé
+    LaunchedEffect(Unit) {
+        var lastVersion =
+            com.patrick.lrcreader.core.LibraryIndexCache.readVersion(context)
 
+        while (true) {
+            val v = com.patrick.lrcreader.core.LibraryIndexCache.readVersion(context)
+            if (v != lastVersion) {
+                lastVersion = v
+
+                val folder =
+                    currentFolderUri
+                        ?: com.patrick.lrcreader.core.BackupFolderPrefs.get(context)
+
+                if (folder != null) {
+                    libraryRefreshCurrentFolderOnly(
+                        context = context,
+                        folderUri = folder
+                    ) { entries = it }
+                }
+            }
+            kotlinx.coroutines.delay(500)
+        }
+    }
 // ---------- UI ----------
     val currentFolderName = currentFolderUri?.let {
         (DocumentFile.fromTreeUri(context, it) ?: DocumentFile.fromSingleUri(context, it))?.name
