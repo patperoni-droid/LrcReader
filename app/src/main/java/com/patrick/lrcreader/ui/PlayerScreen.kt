@@ -358,7 +358,11 @@ fun PlayerScreen(
     }
 
     val backgroundBrush = Brush.verticalGradient(
-        listOf(Color(0xFF171717), Color(0xFF101010), Color(0xFF181410))
+        listOf(
+            Color(0xFF0B0B0B), // noir très foncé
+            Color(0xFF070707), // encore plus sombre
+            Color(0xFF0B0B0B)  // légère variation (pas de “gris sale”)
+        )
     )
 
     Box(
@@ -410,7 +414,7 @@ fun PlayerScreen(
             ) {
                 Card(
                     modifier = Modifier.fillMaxSize(),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1B1B1B)),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF0C0C0C)),
                     shape = RoundedCornerShape(16.dp),
                     elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
                 ) {

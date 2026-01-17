@@ -51,18 +51,13 @@ fun LyricsAreaLazy(
             contentPadding = PaddingValues(top = 220.dp, bottom = 220.dp)
         ) {
             itemsIndexed(parsedLines, key = { idx, _ -> idx }) { index, line ->
-                val dist = abs(index - currentLrcIndex)
 
-                val alpha =
-                    if (!isConcertMode) 1f
-                    else when (dist) {
-                        0 -> 1f
-                        1 -> 0.8f
-                        2 -> 0.4f
-                        else -> 0.08f
-                    }
+                // ✅ 2 couleurs fixes (lisible sur fond noir)
+                // ✅ 2 couleurs fixes (lisibles sur fond noir)
+                val activeColor = Color.White
+                val inactiveColor = Color(0xFF7A7A7A) // gris plus foncé, contraste propre sur fond noir // gris un peu plus foncé, toujours très lisible
 
-                val color = highlightColor.copy(alpha = alpha)
+                val color = if (index == currentLrcIndex) activeColor else inactiveColor
 
                 Box(
                     modifier = Modifier
