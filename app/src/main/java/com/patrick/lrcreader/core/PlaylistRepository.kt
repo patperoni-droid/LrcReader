@@ -1,6 +1,7 @@
 package com.patrick.lrcreader.core
 
 import androidx.compose.runtime.mutableStateOf
+import android.os.SystemClock
 
 /**
  * Petit repo en mémoire pour gérer :
@@ -35,6 +36,102 @@ object PlaylistRepository {
         private set
 
     // -------------------------------------------------
+    // NOW PLAYING + "PLAYED" APRÈS 10s DE LECTURE RÉELLE
+    // -------------------------------------------------
+
+    private var nowPlayingPlaylist: String? = null
+    private var nowPlayingUri: String? = null
+
+    private var playbackAccumMs: Long = 0L
+    private var lastTickElapsedMs: Long? = null
+    private var playedTriggeredForCurrent: Boolean = false
+
+    // ✅ garde-fou : moment exact où on a armé le suivi (pour bloquer un "played" trop tôt)
+    private var nowPlayingArmedAtElapsedMs: Long? = null
+
+    private const val PLAYED_DELAY_MS = 10_000L
+
+    /**
+     * À appeler au clic sur un titre (quand on ouvre le player).
+     * Ne marque rien "played" ici : on arme juste le suivi.
+     */
+    fun setNowPlaying(playlistName: String, uri: String) {
+        nowPlayingPlaylist = playlistName
+        nowPlayingUri = uri
+        playbackAccumMs = 0L
+        lastTickElapsedMs = null
+        playedTriggeredForCurrent = false
+        nowPlayingArmedAtElapsedMs = SystemClock.elapsedRealtime() // ✅ armement
+    }
+
+    /** Optionnel : si tu sors du player ou si tu changes de contexte. */
+    fun clearNowPlaying() {
+        nowPlayingPlaylist = null
+        nowPlayingUri = null
+        playbackAccumMs = 0L
+        lastTickElapsedMs = null
+        playedTriggeredForCurrent = false
+        nowPlayingArmedAtElapsedMs = null
+    }
+
+    /**
+     * À appeler régulièrement depuis le player (ex: toutes les 200ms).
+     * On cumule uniquement quand isPlaying == true.
+     * Quand on dépasse 10s de lecture réelle => on marque "played" + on met à la fin.
+     */
+    fun onPlaybackTick(isPlaying: Boolean) {
+        val pl = nowPlayingPlaylist ?: return
+        val uri = nowPlayingUri ?: return
+
+        // On ne déclenche qu'une fois par titre
+        if (playedTriggeredForCurrent) return
+
+        // Si déjà joué (ex: import, restore), inutile
+        if (isSongPlayed(pl, uri)) {
+            playedTriggeredForCurrent = true
+            return
+        }
+
+        val now = SystemClock.elapsedRealtime()
+
+        if (!isPlaying) {
+            // pause => on stoppe l'accumulation
+            lastTickElapsedMs = null
+            return
+        }
+
+        val last = lastTickElapsedMs
+        if (last == null) {
+            lastTickElapsedMs = now
+            return
+        }
+
+        val delta = (now - last).coerceAtLeast(0L)
+        playbackAccumMs += delta
+        lastTickElapsedMs = now
+
+        if (playbackAccumMs >= PLAYED_DELAY_MS) {
+            playedTriggeredForCurrent = true
+            nowPlayingArmedAtElapsedMs = null // ✅ plus besoin du garde-fou
+
+            // ✅ Marque joué + met à la fin, puis bump() une seule fois
+            val set = playedSongs.getOrPut(pl) { mutableSetOf() }
+            set.add(uri)
+
+            val list = playlists[pl]
+            if (list != null) {
+                val idx = list.indexOf(uri)
+                if (idx != -1) {
+                    list.removeAt(idx)
+                    list.add(uri)
+                }
+            }
+
+            bump()
+        }
+    }
+
+    // -------------------------------------------------
     // PLAYLISTS / CHANSONS
     // -------------------------------------------------
 
@@ -62,8 +159,6 @@ object PlaylistRepository {
      * On garde l’ordre défini par la playlist, mais on met les titres joués en fin :
      * - d’abord tous les non joués
      * - puis les joués (toujours dans leur ordre relatif).
-     *
-     * Les titres "à revoir" ne changent pas l’ordre, ils sont juste stylés en rouge dans l’UI.
      */
     fun getSongsFor(playlistName: String): List<String> {
         val all = playlists[playlistName] ?: emptyList()
@@ -95,6 +190,18 @@ object PlaylistRepository {
     }
 
     fun markSongPlayed(playlistName: String, uri: String) {
+        // ✅ GARDE-FOU : si quelqu’un essaye de marquer "joué" trop tôt sur le titre armé
+        if (playlistName == nowPlayingPlaylist && uri == nowPlayingUri) {
+            val armedAt = nowPlayingArmedAtElapsedMs
+            if (armedAt != null) {
+                val elapsed = SystemClock.elapsedRealtime() - armedAt
+                if (elapsed in 0 until PLAYED_DELAY_MS) {
+                    // on ignore : c’est exactement ton bug "ça descend direct"
+                    return
+                }
+            }
+        }
+
         val set = playedSongs.getOrPut(playlistName) { mutableSetOf() }
         if (set.add(uri)) {
             bump()
@@ -122,23 +229,16 @@ object PlaylistRepository {
     // TITRES "À REVOIR"
     // -------------------------------------------------
 
-    /** Est-ce que ce titre est marqué "à revoir" pour cette playlist ? */
     fun isSongToReview(playlistName: String, uri: String): Boolean {
         return reviewSongs[playlistName]?.contains(uri) == true
     }
 
-    /**
-     * Marque / démarque un titre comme "à revoir".
-     * toReview = true  -> on ajoute
-     * toReview = false -> on enlève
-     */
     fun setSongToReview(playlistName: String, uri: String, toReview: Boolean) {
         val set = reviewSongs.getOrPut(playlistName) { mutableSetOf() }
         val changed = if (toReview) set.add(uri) else set.remove(uri)
         if (changed) bump()
     }
 
-    /** Pour plus tard si on veut vider les "à revoir" d’une playlist. */
     fun clearReviewForPlaylist(playlistName: String) {
         reviewSongs.remove(playlistName)
         bump()
@@ -147,15 +247,12 @@ object PlaylistRepository {
     // -------------------------------------------------
     // TITRES PERSONNALISÉS (RENOMMAGE)
     // -------------------------------------------------
-    /** Supprime le titre personnalisé (customTitle) pour cet URI dans TOUTES les playlists. */
+
     fun clearCustomTitleEverywhere(uri: String) {
-        customTitles.forEach { (_, map) ->
-            map.remove(uri)
-        }
+        customTitles.forEach { (_, map) -> map.remove(uri) }
         bump()
     }
 
-    /** Récupère un titre custom si on en a un, sinon null. */
     fun getCustomTitle(playlistName: String, uri: String): String? {
         return customTitles[playlistName]?.get(uri)
     }
@@ -170,19 +267,14 @@ object PlaylistRepository {
             null
         }.getOrNull()
     }
-    /** Définit / change le titre affiché pour une chanson dans une playlist. */
+
     fun renameSongInPlaylist(playlistName: String, uri: String, newTitle: String) {
         val clean = newTitle.trim()
         val map = customTitles.getOrPut(playlistName) { mutableMapOf() }
-        if (clean.isEmpty()) {
-            map.remove(uri)
-        } else {
-            map[uri] = clean
-        }
+        if (clean.isEmpty()) map.remove(uri) else map[uri] = clean
         bump()
     }
 
-    /** Quand on retire un titre, on vire aussi son éventuel nom custom et son flag "à revoir". */
     fun removeSongFromPlaylist(playlistName: String, uri: String) {
         val list = playlists[playlistName] ?: return
         list.remove(uri)
@@ -195,10 +287,6 @@ object PlaylistRepository {
     // -------------------------------------------------
     // COULEURS DE PLAYLIST
     // -------------------------------------------------
-    /**
-     * Supprime le titre personnalisé (customTitle) pour cet URI dans TOUTES les playlists.
-     * Utilisé quand on renomme réellement un fichier audio : on veut que la playlist affiche le nom réel.
-     */
 
     fun setPlaylistColor(playlist: String, color: Long) {
         playlistColors[playlist] = color
@@ -206,14 +294,13 @@ object PlaylistRepository {
     }
 
     fun getPlaylistColor(playlist: String): Long {
-        return playlistColors[playlist] ?: 0xFFE86FFF // rose par défaut
+        return playlistColors[playlist] ?: 0xFFE86FFF
     }
 
     // -------------------------------------------------
     // TOOLS POUR BACKUP / IMPORT
     // -------------------------------------------------
 
-    /** Vide complètement le repo (playlists + états). */
     fun clearAll() {
         playlists.clear()
         playedSongs.clear()
@@ -222,33 +309,31 @@ object PlaylistRepository {
         playlistColors.clear()
         bump()
     }
+
     fun moveSongToEnd(playlistName: String, uri: String) {
+        // ✅ GARDE-FOU : idem, on bloque le "descend direct" si ça arrive trop tôt
+        if (playlistName == nowPlayingPlaylist && uri == nowPlayingUri) {
+            val armedAt = nowPlayingArmedAtElapsedMs
+            if (armedAt != null) {
+                val elapsed = SystemClock.elapsedRealtime() - armedAt
+                if (elapsed in 0 until PLAYED_DELAY_MS) return
+            }
+        }
+
         val list = playlists[playlistName] ?: return
         val idx = list.indexOf(uri)
         if (idx == -1) return
-
-        // on enlève et on remet à la fin
         list.removeAt(idx)
         list.add(uri)
         bump()
     }
 
-    /** Pour être sûr qu’une playlist existe (pratique à l’import). */
-    fun createIfNotExists(name: String) {
-        addPlaylist(name)
-    }
+    fun createIfNotExists(name: String) = addPlaylist(name)
 
-    /** Ajoute une chanson sans logique d’affichage (utilisé à l’import). */
-    fun addSong(name: String, uri: String) {
-        assignSongToPlaylist(name, uri)
-    }
+    fun addSong(name: String, uri: String) = assignSongToPlaylist(name, uri)
 
-    /** Alias lisible pour l’import. */
-    fun importMarkPlayed(playlistName: String, uri: String) {
-        markSongPlayed(playlistName, uri)
-    }
+    fun importMarkPlayed(playlistName: String, uri: String) = markSongPlayed(playlistName, uri)
 
-    /** Vue brute de tout pour debug éventuel. */
     fun exportRaw(): Map<String, Pair<List<String>, Set<String>>> {
         return playlists.mapValues { (plName, list) ->
             val played = playedSongs[plName] ?: emptySet()
@@ -256,97 +341,41 @@ object PlaylistRepository {
         }
     }
 
-    // -------------------------------------------------
-    // RENOMMAGE DE PLAYLIST
-    // -------------------------------------------------
-
-    /**
-     * Renomme une playlist.
-     * On déplace aussi les infos "played", "review", les titres custom et la couleur.
-     */
     fun renamePlaylist(oldName: String, newName: String): Boolean {
         val clean = newName.trim()
         if (clean.isEmpty()) return false
         if (!playlists.containsKey(oldName)) return false
         if (playlists.containsKey(clean)) return false
 
-        // 1. déplacer la liste de chansons
         val songs = playlists.remove(oldName) ?: mutableListOf()
         playlists[clean] = songs
-
-        // 2. déplacer l’état "joué"
         playedSongs[clean] = playedSongs.remove(oldName) ?: mutableSetOf()
-
-        // 3. déplacer l’état "à revoir"
         reviewSongs[clean] = reviewSongs.remove(oldName) ?: mutableSetOf()
-
-        // 4. déplacer les titres custom
         customTitles[clean] = customTitles.remove(oldName) ?: mutableMapOf()
-
-        // 5. déplacer la couleur
         playlistColors[clean] = playlistColors.remove(oldName) ?: 0xFFE86FFF
 
         bump()
         return true
     }
-    // -------------------------------------------------
-    // SUPPRESSION DE PLAYLIST
-    // -------------------------------------------------
 
     fun deletePlaylist(name: String) {
-        // Si la playlist n'existe pas, on ne fait rien
         if (!playlists.containsKey(name)) return
-
-        // 1. on enlève la liste de chansons
         playlists.remove(name)
-
-        // 2. on enlève tous les états associés
         playedSongs.remove(name)
         reviewSongs.remove(name)
         customTitles.remove(name)
         playlistColors.remove(name)
-
-        // 3. on force la recomposition
         bump()
     }
-    // -------------------------------------------------
-    // INTERNE
-    // -------------------------------------------------
-// -------------------------------------------------
-// FIX: MIGRATION D'URI APRÈS RENOMMAGE D'UN FICHIER
-// -------------------------------------------------
 
-    /**
-     * Quand un fichier est renommé dans la bibliothèque, Android peut changer son URI.
-     * Les playlists (et états played/review + titres custom) pointent encore sur l'ancien URI,
-     * donc: pas jouable + nom pas à jour.
-     */
     fun replaceSongUriEverywhere(oldUri: String, newUri: String) {
         if (oldUri == newUri) return
 
-        // 1) playlists: remplacer l'URI dans la liste
         playlists.forEach { (_, list) ->
-            for (i in list.indices) {
-                if (list[i] == oldUri) list[i] = newUri
-            }
+            for (i in list.indices) if (list[i] == oldUri) list[i] = newUri
         }
-        /**
-         * Quand on renomme un fichier dans la bibliothèque, on veut que la playlist affiche le NOM RÉEL
-         * (donc on vire les titres custom éventuels qui masqueraient le nouveau nom).
-         */
-
-
-        // 2) playedSongs: déplacer l'URI si présent
-        playedSongs.forEach { (_, set) ->
-            if (set.remove(oldUri)) set.add(newUri)
-        }
-
-        // 3) reviewSongs: déplacer l'URI si présent
-        reviewSongs.forEach { (_, set) ->
-            if (set.remove(oldUri)) set.add(newUri)
-        }
-
-        // 4) customTitles: déplacer la clé oldUri -> newUri (en gardant le titre custom)
+        playedSongs.forEach { (_, set) -> if (set.remove(oldUri)) set.add(newUri) }
+        reviewSongs.forEach { (_, set) -> if (set.remove(oldUri)) set.add(newUri) }
         customTitles.forEach { (_, map) ->
             val t = map.remove(oldUri)
             if (t != null) map[newUri] = t
@@ -354,19 +383,14 @@ object PlaylistRepository {
 
         bump()
     }
+
+    // -------------------------------------------------
+    // INTERNE
+    // -------------------------------------------------
+
     private fun bump() {
         version.value = version.value + 1
     }
 
-    /** force une recomposition manuelle (utile après un import) */
     fun touch() = bump()
 }
-
-
-
-
-/**
- * À adapter si ton repo stocke déjà les customTitle différemment.
- * Ici je suppose que tu as déjà une fonction getCustomTitle(playlist, uri)
- * puisque tu as clearCustomTitleEverywhere().
- */

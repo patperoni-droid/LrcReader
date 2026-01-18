@@ -468,11 +468,19 @@ fun QuickPlaylistsScreen(
                                     modifier = Modifier
                                         .weight(1f)
                                         .clickable {
-                                            internalSelected?.let { pl ->
-                                                onPlaySong(uriString, pl, currentListColor)
-                                                onSelectedPlaylistChange(pl)
-                                                onRequestShowPlayer()
-                                            }
+                                            val pl = internalSelected ?: return@clickable
+
+                                            // ✅ On arme le suivi "10s de lecture réelle"
+                                            PlaylistRepository.setNowPlaying(pl, uriString)
+
+                                            // ✅ Lance le player
+                                            onPlaySong(uriString, pl, currentListColor)
+
+                                            // ⚠️ IMPORTANT : on NE rappelle PAS onSelectedPlaylistChange(pl) ici,
+                                            // sinon le parent peut recharger la playlist immédiatement (LaunchedEffect),
+                                            // ce qui donne l'impression que le titre "descend direct".
+                                            onRequestShowPlayer()
+
                                         }
                                 )
 

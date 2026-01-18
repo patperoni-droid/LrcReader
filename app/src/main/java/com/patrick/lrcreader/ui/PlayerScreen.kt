@@ -49,6 +49,8 @@ import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.core.LrcLine
 import com.patrick.lrcreader.core.LrcStorage
 import com.patrick.lrcreader.core.MidiCueDispatcher
+// ✅ On retire l’import pour éviter tout auto-import douteux
+// import com.patrick.lrcreader.core.PlaylistRepository
 import com.patrick.lrcreader.core.PlaybackCoordinator
 import com.patrick.lrcreader.core.audio.AudioEngine
 import com.patrick.lrcreader.core.parseLrc
@@ -122,7 +124,7 @@ fun PlayerScreen(
             } else {
                 null
             }
-            delay(200)
+            delay(200L)
         }
     }
 
@@ -148,7 +150,7 @@ fun PlayerScreen(
 
     LaunchedEffect(currentTrackUri) {
         autoReturnArmed = false
-        delay(1500) // laisse Exo stabiliser duration/position après changement de titre
+        delay(1500L) // laisse Exo stabiliser duration/position après changement de titre
         autoReturnArmed = true
     }
     var isAutoReturnEnabled by remember {
@@ -319,8 +321,14 @@ fun PlayerScreen(
                 }
             }
 
-            delay(200)
-            if (!isPlaying) delay(200)
+            // ✅ Suivi lecture réelle : déclenche "joué + fin de liste" après 10s
+// ⚠️ IMPORTANT : si tu as plusieurs overloads de onPlaybackTick(), on force l'appel avec des named args
+            // ✅ Suivi lecture réelle : déclenche "joué + fin de liste" après 10s
+            com.patrick.lrcreader.core.PlaylistRepository.onPlaybackTick(isPlaying)
+
+
+            delay(200L)
+            if (!isPlaying) delay(200L)
         }
     }
 
