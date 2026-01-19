@@ -857,6 +857,7 @@ class MainActivity : ComponentActivity() {
         super.onStop()
         BackupManager.autoSaveToDefaultBackupFile(this)
     }
+
 }
 
 /* --------------------------------------------------------------- */
@@ -909,4 +910,6 @@ private enum class SearchMode {
     PLAYER,
     DJ,
     PLAYLIST // ✅ nouveau
+
+
 }

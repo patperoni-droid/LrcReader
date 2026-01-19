@@ -7,6 +7,22 @@ plugins {
 }
 
 android {
+
+    flavorDimensions += "mode"
+
+    productFlavors {
+        create("concert") {
+            dimension = "mode"
+            applicationIdSuffix = ".concert"
+            versionNameSuffix = "-concert"
+        }
+
+        create("labo") {
+            dimension = "mode"
+            applicationIdSuffix = ".labo"
+            versionNameSuffix = "-labo"
+        }
+    }
     namespace = "com.patrick.lrcreader.exo"
     compileSdk = 35
 
@@ -20,14 +36,10 @@ android {
     }
 
     buildTypes {
-        // --- version de développement ---
         getByName("debug") {
-            applicationIdSuffix = ".dev"      // → com.patrick.lrcreader.exo.dev
-            versionNameSuffix = "-dev"
-            resValue("string", "app_name", "LRC Reader EXO (dev)")
+            // Ne rien mettre ici : on gère l'identité via les flavors (concert / labo)
         }
 
-        // --- version "prod" ---
         getByName("release") {
             isMinifyEnabled = false
             proguardFiles(
@@ -39,6 +51,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true   // ✅ OBLIGATOIRE pour BuildConfig.FLAVOR
     }
 
     composeOptions {
@@ -81,7 +94,6 @@ dependencies {
     // Media3 – ExoPlayer et modules associés
     //  une seule version pour éviter les conflits
     val media3 = "1.6.1"
-    implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.media3:media3-exoplayer:$media3")
     implementation("androidx.media3:media3-extractor:$media3")
     implementation("androidx.media3:media3-ui:$media3")

@@ -1,5 +1,6 @@
 package com.patrick.lrcreader.ui
 
+import com.patrick.lrcreader.exo.BuildConfig
 import androidx.compose.runtime.LaunchedEffect
 import com.patrick.lrcreader.core.PlaybackCoordinator   // pour stopPlayer et stopDj et stopFiller
 import com.patrick.lrcreader.core.FillerSoundManager    // pour fadeOutAndStop du fond sonore
@@ -134,7 +135,10 @@ fun MixerHomePreviewScreen(
 
                 Column {
                     Text(
-                        text = "Stage Music Player",
+                        text = if (BuildConfig.FLAVOR == "labo")
+                            "🧪 LABO - Stage Music Player"
+                        else
+                            "Stage Music Player",
                         color = Color(0xFFFFE082),
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold
