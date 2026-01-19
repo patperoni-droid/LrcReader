@@ -3,7 +3,6 @@ package com.patrick.lrcreader.core
 import android.content.Context
 import android.net.Uri
 import org.json.JSONArray
-import org.json.JSONObject
 
 object DjFolderPrefs {
     private const val PREF = "dj_folder_prefs"
@@ -14,6 +13,9 @@ object DjFolderPrefs {
     // nouveaux champs
     private const val KEY_URIS = "dj_folder_uris"       // JSON array de strings
     private const val KEY_CURRENT = "dj_folder_current" // string
+
+    // ✅ nouveau flag : scan DJ déjà fait ?
+    private const val KEY_DJ_SCANNED = "dj_scanned"
 
     /**
      * Ajoute (ou remplace) un dossier DJ et le met courant.
@@ -35,6 +37,8 @@ object DjFolderPrefs {
             // nouveaux champs
             .putString(KEY_URIS, toJsonArray(all).toString())
             .putString(KEY_CURRENT, asString)
+            // ✅ nouveau dossier => scan requis
+            .putBoolean(KEY_DJ_SCANNED, false)
             .apply()
     }
 
@@ -64,11 +68,27 @@ object DjFolderPrefs {
 
     /**
      * Change juste le dossier courant parmi ceux déjà enregistrés.
+     * ✅ si on change de dossier : on force "scan requis"
      */
     fun setCurrent(context: Context, uri: Uri) {
         val prefs = context.getSharedPreferences(PREF, Context.MODE_PRIVATE)
         prefs.edit()
             .putString(KEY_CURRENT, uri.toString())
+            .putBoolean(KEY_DJ_SCANNED, false)
+            .apply()
+    }
+
+    /** ✅ Le dossier DJ courant a déjà été scanné ? */
+    fun isScanned(context: Context): Boolean {
+        return context.getSharedPreferences(PREF, Context.MODE_PRIVATE)
+            .getBoolean(KEY_DJ_SCANNED, false)
+    }
+
+    /** ✅ Marque “scanné” (après un scan réussi) */
+    fun setScanned(context: Context, scanned: Boolean) {
+        context.getSharedPreferences(PREF, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_DJ_SCANNED, scanned)
             .apply()
     }
 
@@ -81,6 +101,7 @@ object DjFolderPrefs {
             .remove(KEY_URI)
             .remove(KEY_URIS)
             .remove(KEY_CURRENT)
+            .remove(KEY_DJ_SCANNED)
             .apply()
     }
 

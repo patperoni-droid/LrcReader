@@ -302,6 +302,44 @@ fun buildFullIndex(context: Context, rootUri: Uri): List<LibraryIndexCache.Cache
     recurse(rootDoc, rootUri.toString())
     return out
 }
+// ------------------------------------------------------------
+// ✅ SCAN DJ (sur demande) → index séparé (DJ seulement)
+// ------------------------------------------------------------
+fun buildDjFullIndex(
+    context: Context,
+    djRootUri: Uri
+): List<com.patrick.lrcreader.core.DjIndexCache.Entry> {
+
+    val out = ArrayList<com.patrick.lrcreader.core.DjIndexCache.Entry>()
+    val rootDoc = DocumentFile.fromTreeUri(context, djRootUri) ?: return emptyList()
+
+    fun recurse(folderDoc: DocumentFile, parentKey: String) {
+        folderDoc.listFiles().forEach { child ->
+            val name = child.name ?: (if (child.isDirectory) "Dossier" else "Fichier")
+
+            // ✅ DJ: on garde uniquement dossiers + médias
+            if (!child.isDirectory) {
+                if (!isAudioOrVideo(context, child.uri, name)) return@forEach
+            }
+
+            out.add(
+                com.patrick.lrcreader.core.DjIndexCache.Entry(
+                    uriString = child.uri.toString(),
+                    name = name,
+                    isDirectory = child.isDirectory,
+                    parentUriString = parentKey
+                )
+            )
+
+            if (child.isDirectory) {
+                recurse(child, child.uri.toString())
+            }
+        }
+    }
+
+    recurse(rootDoc, djRootUri.toString())
+    return out
+}
 
 fun moveLibraryFileWithProgress(
     context: Context,

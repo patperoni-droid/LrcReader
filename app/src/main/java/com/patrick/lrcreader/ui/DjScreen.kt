@@ -1,20 +1,10 @@
 package com.patrick.lrcreader.ui
 
-import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.input.pointer.pointerInput
-import kotlin.math.roundToInt
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.material3.Icon
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Stop
-import androidx.compose.foundation.shape.RoundedCornerShape
-import kotlin.math.roundToInt
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import android.content.Context
 import android.net.Uri
 import androidx.compose.animation.core.LinearEasing
@@ -23,47 +13,36 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.LocalTextStyle
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.documentfile.provider.DocumentFile
-import com.patrick.lrcreader.core.BackupFolderPrefs
-import com.patrick.lrcreader.core.LibraryIndexCache
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.patrick.lrcreader.core.DjFolderPrefs
+import com.patrick.lrcreader.core.DjIndexCache
 import com.patrick.lrcreader.core.PlaybackCoordinator
 import com.patrick.lrcreader.core.dj.DjEngine
+import kotlin.math.roundToInt
 
 @Composable
 fun DjScreen(
@@ -75,15 +54,11 @@ fun DjScreen(
     // ✅ ÉTAT PERSISTANT (reste mémorisé quand tu changes d’onglet)
     val browserVm: DjBrowserViewModel = viewModel()
 
-    // ✅ On réutilise EXACTEMENT la même racine + le même index que la Bibliothèque
-    var indexAll by remember { mutableStateOf<List<LibraryIndexCache.CachedEntry>>(emptyList()) }
+    // ✅ Mode DJ = dossier + index séparés (pas la bibliothèque)
+    var indexAll by remember { mutableStateOf<List<DjIndexCache.Entry>>(emptyList()) }
     var entries by remember { mutableStateOf<List<DjEntry>>(emptyList()) }
 
-    // (spinner seulement si index absent/invalide)
     var isLoading by remember { mutableStateOf(false) }
-
-    // ---------------------- état purement UI local ----------------------
-    val scope = rememberCoroutineScope()
 
     var menuOpen by remember { mutableStateOf(false) }
     var isQueuePanelOpen by remember { mutableStateOf(false) }
@@ -95,10 +70,82 @@ fun DjScreen(
     // 🔁 index global (tous les titres audio)
     var allAudioEntries by remember { mutableStateOf<List<DjEntry>>(emptyList()) }
 
+    // ✅ pour lancer des traitements lourds hors UI
+    val scope = rememberCoroutineScope()
+
+    val pickDjFolderLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree(),
+        onResult = { uri ->
+            if (uri == null) return@rememberLauncherForActivityResult
+
+            // 1) persister la permission SAF
+            try {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                )
+            } catch (_: Exception) {}
+
+            // 2) sauver la racine DJ + mettre à jour le browser
+            DjFolderPrefs.save(context, uri)
+            browserVm.setRoot(uri)
+            browserVm.setCurrent(uri)
+
+            // 3) scanner en arrière-plan (sinon écran noir / crash)
+            scope.launch {
+                isLoading = true
+                try {
+                    val newDjIndex = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        buildDjFullIndex(context, uri)
+                    }
+
+                    DjIndexCache.save(context, newDjIndex)
+                    indexAll = newDjIndex
+
+                    // refresh UI à partir de l’index LOCAL (pas indexAll qui peut être "en retard")
+                    val root = browserVm.rootFolderUri
+                    val cur = browserVm.currentFolderUri ?: root
+
+                    if (root == null) {
+                        entries = emptyList()
+                        allAudioEntries = emptyList()
+                    } else {
+                        entries = if (cur == null) {
+                            emptyList()
+                        } else {
+                            val children = DjIndexCache.childrenOf(newDjIndex, cur)
+                            children.map { e ->
+                                DjEntry(
+                                    uri = Uri.parse(e.uriString),
+                                    name = e.name,
+                                    isDirectory = e.isDirectory
+                                )
+                            }
+                        }
+
+                        allAudioEntries = newDjIndex
+                            .asSequence()
+                            .filter { !it.isDirectory }
+                            .map { e ->
+                                DjEntry(
+                                    uri = Uri.parse(e.uriString),
+                                    name = e.name,
+                                    isDirectory = e.isDirectory
+                                )
+                            }
+                            .toList()
+                    }
+                } catch (t: Throwable) {
+                    android.util.Log.e("DJ", "Pick/Scan DJ folder crash: ${t.javaClass.simpleName}: ${t.message}", t)
+                } finally {
+                    isLoading = false
+                }
+            }
+        }
+    )
     // état DJ global
     val djState by DjEngine.state.collectAsState()
 
-    Spacer(Modifier.height(8.dp))
     // --------------------- animation platines rondes ---------------------
     val infinite = rememberInfiniteTransition(label = "dj-discs")
     val angleA by infinite.animateFloat(
@@ -129,7 +176,7 @@ fun DjScreen(
         label = "pulse"
     )
 
-    fun cachedToDjEntry(e: LibraryIndexCache.CachedEntry): DjEntry {
+    fun cachedToDjEntry(e: DjIndexCache.Entry): DjEntry {
         return DjEntry(
             uri = Uri.parse(e.uriString),
             name = e.name,
@@ -147,14 +194,15 @@ fun DjScreen(
             return
         }
 
-        if (cur == null) {
-            entries = emptyList()
+        // 📁 contenu du dossier courant
+        entries = if (cur == null) {
+            emptyList()
         } else {
-            val children = LibraryIndexCache.childrenOf(indexAll, cur)
-            entries = children.map { cachedToDjEntry(it) }
+            val children = DjIndexCache.childrenOf(indexAll, cur)
+            children.map { cachedToDjEntry(it) }
         }
 
-        // Index global audio : instantané (filtre en mémoire)
+        // 🎵 index global audio : instantané (filtre en mémoire)
         allAudioEntries = indexAll
             .asSequence()
             .filter { !it.isDirectory }
@@ -166,19 +214,16 @@ fun DjScreen(
     LaunchedEffect(Unit) {
         isLoading = true
         try {
-            // ✅ On n’écrase PAS le dossier courant si déjà mémorisé
-            val prefRoot = BackupFolderPrefs.get(context)
+            val djRoot = DjFolderPrefs.get(context)
 
             if (browserVm.rootFolderUri == null) {
-                browserVm.setRoot(prefRoot)
+                browserVm.setRoot(djRoot)
             }
             if (browserVm.currentFolderUri == null) {
                 browserVm.setCurrent(browserVm.rootFolderUri)
             }
 
-            val cachedAll = LibraryIndexCache.load(context)
-            indexAll = cachedAll ?: emptyList()
-
+            indexAll = DjIndexCache.load(context) ?: emptyList()
             refreshFromIndex()
         } finally {
             isLoading = false
@@ -230,11 +275,13 @@ fun DjScreen(
                 .fillMaxSize()
                 .padding(14.dp)
         ) {
+
             // HEADER
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+
                 if (browserVm.folderStack.isNotEmpty()) {
                     IconButton(onClick = {
                         browserVm.popToParentOrRoot()
@@ -265,16 +312,15 @@ fun DjScreen(
 
                     val shownUri = browserVm.currentFolderUri ?: browserVm.rootFolderUri
                     Text(
-                        text = shownUri?.let {
-                            DocumentFile.fromTreeUri(context, it)?.name ?: "…"
-                        } ?: "Choisis d’abord Music dans Bibliothèque",
+                        text = shownUri?.let { DocumentFile.fromTreeUri(context, it)?.name ?: "…" }
+                            ?: "Aucun dossier DJ choisi",
                         color = Color.Gray,
                         fontSize = 12.sp,
                         maxLines = 1
                     )
                 }
 
-                // 🔍 icône recherche
+                // 🔍 recherche
                 IconButton(
                     onClick = {
                         isSearchOpen = !isSearchOpen
@@ -288,6 +334,7 @@ fun DjScreen(
                     )
                 }
 
+                // ⋮ menu
                 IconButton(onClick = { menuOpen = true }) {
                     Icon(
                         imageVector = Icons.Filled.MoreVert,
@@ -301,20 +348,28 @@ fun DjScreen(
                     onDismissRequest = { menuOpen = false }
                 ) {
                     DropdownMenuItem(
-                        text = { Text("Rafraîchir depuis l’index Bibliothèque") },
+                        text = { Text("Scanner / rafraîchir le dossier DJ") },
                         onClick = {
                             menuOpen = false
                             isLoading = true
                             try {
-                                val prefRoot = BackupFolderPrefs.get(context)
-                                browserVm.setRoot(prefRoot)
+                                val djRoot = DjFolderPrefs.get(context)
 
+                                // racine + current
+                                browserVm.setRoot(djRoot)
                                 if (browserVm.currentFolderUri == null) {
                                     browserVm.setCurrent(browserVm.rootFolderUri)
                                 }
 
-                                indexAll = LibraryIndexCache.load(context) ?: emptyList()
-                                refreshFromIndex()
+                                if (djRoot == null) {
+                                    indexAll = emptyList()
+                                    refreshFromIndex()
+                                } else {
+                                    val newDjIndex = buildDjFullIndex(context, djRoot)
+                                    DjIndexCache.save(context, newDjIndex)
+                                    indexAll = newDjIndex
+                                    refreshFromIndex()
+                                }
                             } finally {
                                 isLoading = false
                             }
@@ -322,12 +377,15 @@ fun DjScreen(
                     )
 
                     DropdownMenuItem(
-                        text = { Text("Info : Music se choisit dans Bibliothèque") },
-                        onClick = { menuOpen = false }
+                        text = { Text("Choisir dossier DJ…") },
+                        onClick = {
+                            menuOpen = false
+                            pickDjFolderLauncher.launch(null)
+                        }
                     )
-                }
+                } // <- ferme DropdownMenu
+            // <- ferme Row du header
             }
-
 
             // 🔍 barre de recherche
             if (isSearchOpen) {
@@ -345,7 +403,7 @@ fun DjScreen(
                     ),
                     placeholder = {
                         Text(
-                            "Recherche (tous dossiers)…",
+                            "Recherche (tous dossiers DJ)…",
                             fontSize = 12.sp,
                             color = Color(0x77FFFFFF)
                         )
@@ -354,7 +412,7 @@ fun DjScreen(
                         Icon(
                             imageVector = Icons.Filled.Search,
                             contentDescription = null,
-                            tint = Color(0xFFFFC107)
+                            tint = accentGo
                         )
                     }
                 )
@@ -390,14 +448,14 @@ fun DjScreen(
                 },
                 onStop = { DjEngine.stopDj() },
 
-                // ✅ AJOUTS ICI
+                // ✅ progress/seek
                 progress = djState.progress,
                 currentPositionMs = djState.currentPositionMs,
                 currentDurationMs = djState.currentDurationMs,
                 onSeekTo = { ms -> DjEngine.seekTo(ms) }
             )
-// ───────── Progress + timing (titre en cours) ─────────
-            // ───────── Progress + timing (titre en cours) + SEEK tactile ─────────
+
+            // ───────── Progress + timing + SEEK tactile ─────────
             if (djState.playingUri != null && djState.currentDurationMs > 0) {
 
                 fun formatMs(ms: Int): String {
@@ -412,7 +470,6 @@ fun DjScreen(
 
                 val elapsedMs = djState.currentPositionMs.coerceIn(0, djState.currentDurationMs)
                 val remainingMs = (djState.currentDurationMs - elapsedMs).coerceAtLeast(0)
-
                 val shownProgress = if (isSeeking) seekProgress else djState.progress.coerceIn(0f, 1f)
 
                 fun progressFromX(x: Float, widthPx: Float): Float {
@@ -431,16 +488,10 @@ fun DjScreen(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // gauche = restant
-                    Text(
-                        text = "-${formatMs(remainingMs)}",
-                        color = sub,
-                        fontSize = 12.sp
-                    )
+                    Text(text = "-${formatMs(remainingMs)}", color = sub, fontSize = 12.sp)
 
                     Spacer(Modifier.width(10.dp))
 
-                    // barre seek
                     Box(
                         modifier = Modifier
                             .weight(1f)
@@ -482,16 +533,10 @@ fun DjScreen(
 
                     Spacer(Modifier.width(10.dp))
 
-                    // droite = écoulé
-                    Text(
-                        text = formatMs(elapsedMs),
-                        color = sub,
-                        fontSize = 12.sp
-                    )
+                    Text(text = formatMs(elapsedMs), color = sub, fontSize = 12.sp)
 
                     Spacer(Modifier.width(10.dp))
 
-                    // STOP à droite
                     Box(
                         modifier = Modifier
                             .size(40.dp)
@@ -509,6 +554,7 @@ fun DjScreen(
                     }
                 }
             }
+
             // ---------------------- File d’attente -------------------------
             val showQueuePanel = djState.queueAutoPlay || djState.queue.isNotEmpty()
             if (djState.queueAutoPlay) isQueuePanelOpen = true
@@ -520,10 +566,8 @@ fun DjScreen(
                     queue = djState.queue,
                     isOpen = isQueuePanelOpen,
                     onToggleOpen = { isQueuePanelOpen = !isQueuePanelOpen },
-
                     queueAutoPlay = djState.queueAutoPlay,
                     onToggleAutoPlay = { enabled -> DjEngine.setQueueAutoPlay(enabled) },
-
                     onPlayItem = { qItem ->
                         PlaybackCoordinator.onDjStart()
                         DjEngine.playFromQueue(qItem)
@@ -553,42 +597,42 @@ fun DjScreen(
             Spacer(Modifier.height(8.dp))
 
             // ───────── Liste dossiers + titres (dossier courant) ─────────
-        DjFolderBrowser(
-            currentFolderUri = browserVm.currentFolderUri,
-            visibleEntries = visibleEntries,
-            onBg = onBg,
-            subColor = sub,
-            isLoading = isLoading,
-            onDirectoryClick = { entry ->
-                val old = browserVm.currentFolderUri ?: browserVm.rootFolderUri
-                if (old != null) browserVm.pushCurrent(old)
+            DjFolderBrowser(
+                currentFolderUri = browserVm.currentFolderUri,
+                visibleEntries = visibleEntries,
+                onBg = onBg,
+                subColor = sub,
+                isLoading = isLoading,
+                onDirectoryClick = { entry ->
+                    val old = browserVm.currentFolderUri ?: browserVm.rootFolderUri
+                    if (old != null) browserVm.pushCurrent(old)
 
-                browserVm.setCurrent(entry.uri)
-                refreshFromIndex()
-                searchQuery = ""
-            },
-            onFilePlay = { entry ->
-                val uriStr = entry.uri.toString()
-                PlaybackCoordinator.onDjStart()
-                DjEngine.selectTrackFromList(uriStr, entry.name)
-            },
-            onFileEnqueue = { entry ->
-                val uriStr = entry.uri.toString()
-                DjEngine.addToQueue(uriStr, entry.name)
-            }
-        )
-
-            // ✅ Petit message si pas de dossier Music choisi
-        if (browserVm.rootFolderUri == null) {
-            Spacer(Modifier.height(10.dp))
-            Text(
-                "⚠️ Va dans Bibliothèque → “Choisir dossier Music” (1 fois). Ensuite DJ sera instantané.",
-                color = sub,
-                fontSize = 12.sp
+                    browserVm.setCurrent(entry.uri)
+                    refreshFromIndex()
+                    searchQuery = ""
+                },
+                onFilePlay = { entry ->
+                    val uriStr = entry.uri.toString()
+                    PlaybackCoordinator.onDjStart()
+                    DjEngine.selectTrackFromList(uriStr, entry.name)
+                },
+                onFileEnqueue = { entry ->
+                    val uriStr = entry.uri.toString()
+                    DjEngine.addToQueue(uriStr, entry.name)
+                }
             )
-        }
 
-            // ✅ Spinner si index vide (rare) / refresh
+            // ✅ Petit message si pas de dossier DJ choisi
+            if (browserVm.rootFolderUri == null) {
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    "⚠️ Menu ⋮ → “Scanner / rafraîchir le dossier DJ” (1 fois). Ensuite DJ sera instantané.",
+                    color = sub,
+                    fontSize = 12.sp
+                )
+            }
+
+            // ✅ Spinner si refresh
             if (isLoading) {
                 Spacer(Modifier.height(10.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
