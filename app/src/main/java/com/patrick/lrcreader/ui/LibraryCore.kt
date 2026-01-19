@@ -26,14 +26,33 @@ object LibraryFolderCache {
 }
 
 /** Entrée affichée dans la bibliothèque (fichier ou dossier). */
+/** Entrée affichée dans la bibliothèque (fichier ou dossier). */
 data class LibraryEntry(
     val uri: Uri,
     val name: String,
-    val isDirectory: Boolean
+    val isDirectory: Boolean,
+    val disabled: Boolean = false,
+    val disabledReason: String? = null
 )
 
 /* ------------------ utils principaux ------------------ */
 
+/** ✅ Règle unique : est-ce que ce dossier s'appelle "DJ" ? */
+private fun isDjFolderName(name: String?): Boolean {
+    return name?.trim()?.equals("DJ", ignoreCase = true) == true
+}
+
+/** ✅ Variante DocumentFile (utile quand on est déjà dans la récursion SAF) */
+private fun isDjFolderDoc(doc: DocumentFile): Boolean {
+    val n = doc.name?.trim().orEmpty()
+    if (n.equals("DJ", ignoreCase = true)) return true
+    // fallback si le provider encode le nom dans le path
+    val p = doc.uri.path.orEmpty()
+    return p.contains("/DJ/", ignoreCase = true)
+}
+
+/** Liste les dossiers + fichiers audio + JSON dans un dossier racine. */
+/** Liste les dossiers + fichiers audio + JSON dans un dossier racine. */
 /** Liste les dossiers + fichiers audio + JSON dans un dossier racine. */
 fun listEntriesInFolder(context: Context, folderUri: Uri): List<LibraryEntry> {
     val docFile =
@@ -46,7 +65,16 @@ fun listEntriesInFolder(context: Context, folderUri: Uri): List<LibraryEntry> {
     val folders = all
         .filter { it.isDirectory }
         .sortedBy { it.name?.lowercase() ?: "" }
-        .map { LibraryEntry(it.uri, it.name ?: "Dossier", true) }
+        .map {
+            val isDj = isDjFolderName(it.name)
+            LibraryEntry(
+                uri = it.uri,
+                name = it.name ?: "Dossier",
+                isDirectory = true,
+                disabled = isDj,
+                disabledReason = if (isDj) "Exclu de la bibliothèque (utilisé en mode DJ)" else null
+            )
+        }
 
     val jsonFiles = all
         .filter { it.isFile && it.name?.endsWith(".json", ignoreCase = true) == true }
@@ -191,14 +219,16 @@ fun scanAllFoldersOnce(context: Context, rootUri: Uri) {
         // on met en cache la liste pour CE dossier
         LibraryFolderCache.put(folderUri, list)
 
-        // on descend dans les sous-dossiers
-        list.filter { it.isDirectory }.forEach { dir ->
-            scanFolder(dir.uri)
-        }
+        // 🔒 on descend dans les sous-dossiers, SAUF "DJ"
+        list.filter { it.isDirectory && !isDjFolderName(it.name) }
+            .forEach { dir ->
+                scanFolder(dir.uri)
+            }
     }
 
     scanFolder(rootUri)
 }
+
 private fun isAudioOrVideo(context: Context, uri: Uri, name: String): Boolean {
     // 1) MIME (le plus fiable via SAF)
     val mime = runCatching { context.contentResolver.getType(uri) }.getOrNull()
@@ -233,25 +263,25 @@ private fun isSplIndexableFile(
             lower.endsWith(".lp-settings") ||
             lower.endsWith(".lp-backup")
 }
+
 /** Scan récursif COMPLET du dossier Music. 1 seule fois. */
 fun buildFullIndex(context: Context, rootUri: Uri): List<LibraryIndexCache.CachedEntry> {
     val out = ArrayList<LibraryIndexCache.CachedEntry>()
     val rootDoc = DocumentFile.fromTreeUri(context, rootUri) ?: return emptyList()
 
     fun recurse(folderDoc: DocumentFile, parentKey: String) {
+        // 🔒 si ce dossier est DJ -> on coupe ici (pas indexé, pas récursé)
+        if (folderDoc.isDirectory && isDjFolderDoc(folderDoc)) return
+
         folderDoc.listFiles().forEach { child ->
             val name = child.name ?: (if (child.isDirectory) "Dossier" else "Fichier")
 
-            // ✅ FILTRE ICI : on garde dossiers + audio/vidéo uniquement
-            // ✅ FILTRE : on garde dossiers + audio/vidéo + fichiers utiles (lrc/json)
-            if (!child.isDirectory) {
-                val lower = name.lowercase()
-                val keep =
-                    isAudioOrVideo(context, child.uri, name) ||
-                            lower.endsWith(".lrc") ||
-                            lower.endsWith(".json")
+            // 🔒 si c'est un dossier DJ -> on ne l'indexe pas et on ne descend pas dedans
+            if (child.isDirectory && isDjFolderDoc(child)) return@forEach
 
-                if (!keep) return@forEach
+            // ✅ filtre fichiers : on garde dossiers + fichiers SPL indexables
+            if (!child.isDirectory) {
+                if (!isSplIndexableFile(context, child.uri, name)) return@forEach
             }
 
             out.add(
@@ -272,6 +302,7 @@ fun buildFullIndex(context: Context, rootUri: Uri): List<LibraryIndexCache.Cache
     recurse(rootDoc, rootUri.toString())
     return out
 }
+
 fun moveLibraryFileWithProgress(
     context: Context,
     sourceUri: Uri,

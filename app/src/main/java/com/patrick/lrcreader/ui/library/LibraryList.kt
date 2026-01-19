@@ -20,6 +20,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
@@ -73,21 +74,48 @@ fun LibraryList(
         contentPadding = PaddingValues(bottom = bottomPadding)
     ) {
         items(entries, key = { it.uri.toString() }) { entry ->
-
+            val isDisabled = entry.disabled
             if (entry.isDirectory) {
+
+                val rowClick = if (!isDisabled) {
+                    Modifier.clickable { onOpenFolder(entry) }
+                } else {
+                    Modifier
+                }
+
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(vertical = 3.dp)
                         .background(cardBg, RoundedCornerShape(10.dp))
                         .border(1.dp, rowBorder, RoundedCornerShape(10.dp))
-                        .clickable { onOpenFolder(entry) }
+                        .then(rowClick)
+                        .alpha(if (isDisabled) 0.45f else 1f)
                         .padding(horizontal = 12.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Default.Folder, null, tint = accent, modifier = Modifier.size(22.dp))
+                    Icon(
+                        Icons.Default.Folder,
+                        null,
+                        tint = if (isDisabled) accent.copy(alpha = 0.55f) else accent,
+                        modifier = Modifier.size(22.dp)
+                    )
                     Spacer(Modifier.width(10.dp))
-                    Text(entry.name, color = Color.White, fontSize = 15.sp)
+
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(entry.name, color = Color.White, fontSize = 15.sp)
+
+                        if (isDisabled && !entry.disabledReason.isNullOrBlank()) {
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                text = entry.disabledReason!!,
+                                color = Color.White.copy(alpha = 0.65f),
+                                fontSize = 11.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
                 }
 
             } else {

@@ -76,7 +76,45 @@ fun LibraryScreen(
     var moveLabel by remember { mutableStateOf<String?>(null) }
 
     var indexAll by remember { mutableStateOf<List<LibraryIndexCache.CachedEntry>>(emptyList()) }
+    // ------------------------------------------------------------
+    // ✅ Injection DJ : visible mais désactivé
+    // ------------------------------------------------------------
+    fun buildEntriesForFolder(folderUri: Uri): List<LibraryEntry> {
+        val fromIndex = LibraryIndexCache.childrenOf(indexAll, folderUri).map { e ->
+            LibraryEntry(
+                uri = Uri.parse(e.uriString),
+                name = e.name,
+                isDirectory = e.isDirectory
+            )
+        }.toMutableList()
 
+        val folderDoc =
+            DocumentFile.fromTreeUri(context, folderUri)
+                ?: DocumentFile.fromSingleUri(context, folderUri)
+
+        val djDoc = folderDoc?.listFiles()
+            ?.firstOrNull { it.isDirectory && it.name.equals("DJ", ignoreCase = true) }
+
+        if (djDoc != null) {
+            val already = fromIndex.any { it.isDirectory && it.name.equals("DJ", ignoreCase = true) }
+            if (!already) {
+                fromIndex.add(
+                    LibraryEntry(
+                        uri = djDoc.uri,
+                        name = djDoc.name ?: "DJ",
+                        isDirectory = true,
+                        disabled = true,
+                        disabledReason = "Exclu de la bibliothèque (utilisé en mode DJ)"
+                    )
+                )
+            }
+        }
+
+        return fromIndex.sortedWith(
+            compareByDescending<LibraryEntry> { it.isDirectory }
+                .thenBy { it.name.lowercase() }
+        )
+    }
 // dialogs state
     var showAssignDialog by remember { mutableStateOf(false) }
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
@@ -229,6 +267,8 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
                             onIndexAll = { indexAll = it },
                             onEntries = { entries = it }
                         )
+                        // ✅ réinjecte DJ grisé dans la vue courante
+                        entries = buildEntriesForFolder(uri)
                     } finally {
                         stopLoadingNice()
                     }
@@ -292,7 +332,12 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
             currentFolderUri = currentFolderUri,
             onIndexAll = { indexAll = it },
             onEntries = { entries = it }
+
         )
+        // ✅ inject DJ désactivé si besoin
+        currentFolderUri?.let { folder ->
+            entries = buildEntriesForFolder(folder)
+        }
     }
     // ✅ écoute les modifs d'index (LRC / midi / import / export) sans rescan
     LaunchedEffect(Unit) {
@@ -304,9 +349,7 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
                 currentFolderUri ?: com.patrick.lrcreader.core.BackupFolderPrefs.get(context)
 
             if (folder != null) {
-                entries = com.patrick.lrcreader.core.LibraryIndexCache
-                    .childrenOf(fresh, folder)
-                    .map { e -> LibraryEntry(Uri.parse(e.uriString), e.name, e.isDirectory) }
+                entries = buildEntriesForFolder(folder)
             }
         }
     }
@@ -334,9 +377,7 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
                             currentFolderUri = parentUri
 
                             entries = parentUri?.let { uri ->
-                                LibraryIndexCache.childrenOf(indexAll, uri).map { e ->
-                                    LibraryEntry(Uri.parse(e.uriString), e.name, e.isDirectory)
-                                }
+                                buildEntriesForFolder(uri)
                             } ?: emptyList()
 
                             folderStack = newStack
@@ -363,6 +404,9 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
                                 onIndexAll = { indexAll = it },
                                 onEntries = { entries = it }
                             )
+                            currentFolderUri?.let { folder ->
+                                entries = buildEntriesForFolder(folder)
+                            }
                         } finally {
                             delay(150)
                             isLoading = false
@@ -422,6 +466,8 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
                             },
 
                             onOpenFolder = { entry ->
+                                // 🔒 DJ = visible mais non ouvrable
+                                if (entry.disabled) return@LibraryList
                                 scope.launch {
                                     isLoading = true
                                     moveProgress = null
@@ -430,9 +476,8 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
                                         currentFolderUri?.let { folderStack = folderStack + it }
                                         currentFolderUri = entry.uri
 
-                                        entries = LibraryIndexCache
-                                            .childrenOf(indexAll, entry.uri)
-                                            .map { e -> LibraryEntry(Uri.parse(e.uriString), e.name, e.isDirectory) }
+                                        entries = buildEntriesForFolder(entry.uri)
+                                      
 
                                         searchQuery = ""
                                         selectedSongs = emptySet()
