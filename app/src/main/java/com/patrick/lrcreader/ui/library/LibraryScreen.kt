@@ -60,7 +60,7 @@ fun LibraryScreen(
     var lrcEditorUri by remember { mutableStateOf<Uri?>(null) }
     var lrcEditorName by remember { mutableStateOf("") }
     var lrcEditorText by remember { mutableStateOf("") }
-    val initialFolder = remember { BackupFolderPrefs.get(context) }
+    val initialFolder = remember { BackupFolderPrefs.getLibraryRootUri(context) }
 
     var currentFolderUri by remember { mutableStateOf<Uri?>(initialFolder) }
     var folderStack by remember { mutableStateOf<List<Uri>>(emptyList()) }
@@ -256,7 +256,7 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
                     try {
                         persistTreePermIfPossible(context, uri)
 
-                        BackupFolderPrefs.save(context, uri)
+                        BackupFolderPrefs.saveLibraryRootUri(context, uri)
                         currentFolderUri = uri
                         folderStack = emptyList()
 
@@ -326,7 +326,7 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
 
 // ---------- initial load ----------
     LaunchedEffect(Unit) {
-        currentFolderUri = BackupFolderPrefs.get(context)
+        currentFolderUri = BackupFolderPrefs.getLibraryRootUri(context)
         libraryLoadInitial(
             context = context,
             currentFolderUri = currentFolderUri,
@@ -346,7 +346,7 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
             indexAll = fresh
 
             val folder =
-                currentFolderUri ?: com.patrick.lrcreader.core.BackupFolderPrefs.get(context)
+                currentFolderUri ?: com.patrick.lrcreader.core.BackupFolderPrefs.getLibraryRootUri(context)
 
             if (folder != null) {
                 entries = buildEntriesForFolder(folder)
@@ -373,7 +373,7 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
                         startLoading("Chargement…", determinate = false)
                         try {
                             val newStack = folderStack.dropLast(1)
-                            val parentUri = newStack.lastOrNull() ?: BackupFolderPrefs.get(context)
+                            val parentUri = newStack.lastOrNull() ?: BackupFolderPrefs.getLibraryRootUri(context)
                             currentFolderUri = parentUri
 
                             entries = parentUri?.let { uri ->
@@ -395,7 +395,7 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
                     scope.launch {
                         startLoading("Analyse de la bibliothèque…", determinate = false)
                         try {
-                            val root = BackupFolderPrefs.get(context) ?: return@launch
+                            val root = BackupFolderPrefs.getLibraryRootUri(context) ?: return@launch
                             val folderToShow = currentFolderUri ?: root
                             libraryRescanAll(
                                 context = context,
@@ -525,7 +525,14 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
                             },
                             onMoveOne = { uri ->
                                 pendingMoveUri = uri
-                                val root = BackupFolderPrefs.get(context)
+
+                                val root = BackupFolderPrefs.getLibraryRootUri(context)
+                                if (root == null) {
+                                    // pas de dossier bibliothèque => pas de navigateur de déplacement
+                                    showMoveBrowser = false
+                                    return@LibraryList
+                                }
+
                                 moveBrowserFolder = root
                                 moveBrowserStack = emptyList()
                                 showMoveBrowser = true
@@ -586,7 +593,7 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
                             val ok = libraryDeleteFile(context, target)
                             if (ok) {
                                 selectedSongs = selectedSongs - target
-                                val folderUri = currentFolderUri ?: BackupFolderPrefs.get(context)
+                                val folderUri = currentFolderUri ?:BackupFolderPrefs.getLibraryRootUri(context)
                                 if (folderUri != null) {
                                     libraryRefreshCurrentFolderOnly(context, folderUri) { entries = it }
                                 }
@@ -695,25 +702,24 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
             MoveBrowserDialog(
                 show = showMoveBrowser && pendingMoveUri != null,
                 indexAll = indexAll,
-                root = BackupFolderPrefs.get(context),
+                root = BackupFolderPrefs.getLibraryRootUri(context),
                 moveBrowserFolder = moveBrowserFolder,
                 moveBrowserStack = moveBrowserStack,
                 onGoUp = {
-                    val root = BackupFolderPrefs.get(context)
+                    val root = BackupFolderPrefs.getLibraryRootUri(context)
                     val newStack = moveBrowserStack.dropLast(1)
                     val parent = newStack.lastOrNull() ?: root
                     moveBrowserStack = newStack
                     moveBrowserFolder = parent
                 },
                 onEnterFolder = { folderUri ->
-
-                    val root = BackupFolderPrefs.get(context)
+                    val root = BackupFolderPrefs.getLibraryRootUri(context)
                     val from = moveBrowserFolder ?: root ?: folderUri
                     moveBrowserStack = moveBrowserStack + from
                     moveBrowserFolder = folderUri
                 },
                 onMoveHere = {
-                    val rootTree = BackupFolderPrefs.get(context) ?: return@MoveBrowserDialog
+                    val rootTree = BackupFolderPrefs.getLibraryRootUri(context) ?: return@MoveBrowserDialog
                     val dest = moveBrowserFolder ?: rootTree
                     val src = pendingMoveUri ?: return@MoveBrowserDialog
 
@@ -760,53 +766,7 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
                 }
             )
             // ----------------------------
-// ✏️ LRC Editor Dialog
-// ----------------------------
-            if (showLrcEditor && lrcEditorUri != null) {
-                androidx.compose.material3.AlertDialog(
-                    modifier = Modifier
-                        .fillMaxWidth(0.98f), // ← 🔥 ICI
-                    onDismissRequest = { showLrcEditor = false },
-                    title = {
-                        Text(text = "Édition : $lrcEditorName")
-                    },
-                    text = {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .fillMaxHeight()
-                        ) {
-                            androidx.compose.material3.OutlinedTextField(
-                                value = lrcEditorText,
-                                onValueChange = { lrcEditorText = it },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .fillMaxHeight(),
-                                singleLine = false
-                            )
-                        }
-                    },
-                    confirmButton = {
-                        androidx.compose.material3.TextButton(
-                            onClick = {
-                                val uri = lrcEditorUri ?: return@TextButton
-                                val ok = writeTextToUri(uri, lrcEditorText)
-                                if (ok) {
-                                    // on ferme
-                                    showLrcEditor = false
-                                } else {
-                                    Log.e("LRC", "Échec écriture sur $uri")
-                                }
-                            }
-                        ) { androidx.compose.material3.Text("Enregistrer") }
-                    },
-                    dismissButton = {
-                        androidx.compose.material3.TextButton(
-                            onClick = { showLrcEditor = false }
-                        ) { androidx.compose.material3.Text("Annuler") }
-                    }
-                )
-            }
+
             // ---------------- LRC EDITOR DIALOG ----------------
             if (showLrcEditor) {
                 androidx.compose.ui.window.Dialog(

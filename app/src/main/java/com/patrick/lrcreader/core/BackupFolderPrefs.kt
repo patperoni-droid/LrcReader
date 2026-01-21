@@ -81,6 +81,25 @@ object BackupFolderPrefs {
             .getString(KEY_SETUP_TREE_URI, null) ?: return null
         return Uri.parse(s)
     }
+    fun saveLibraryRootUri(context: Context, uri: Uri) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KEY_LIBRARY_ROOT_URI, uri.toString())
+            .apply()
+    }
+
+    fun getLibraryRootUri(context: Context): Uri? {
+        val s = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString(KEY_LIBRARY_ROOT_URI, null) ?: return null
+        return Uri.parse(s)
+    }
+
+    fun hasValidLibraryPermission(context: Context): Boolean {
+        val lib = getLibraryRootUri(context) ?: return false
+        return context.contentResolver.persistedUriPermissions.any { p ->
+            p.uri == lib && p.isReadPermission
+        }
+    }
     fun hasValidSetupTreePermission(context: Context): Boolean {
         val tree = getSetupTreeUri(context) ?: return false
         return context.contentResolver.persistedUriPermissions.any { p ->
