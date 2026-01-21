@@ -267,8 +267,9 @@ private fun isSplIndexableFile(
 /** Scan récursif COMPLET du dossier Music. 1 seule fois. */
 fun buildFullIndex(context: Context, rootUri: Uri): List<LibraryIndexCache.CachedEntry> {
     val out = ArrayList<LibraryIndexCache.CachedEntry>()
-    val rootDoc = DocumentFile.fromTreeUri(context, rootUri) ?: return emptyList()
-
+    val rootDoc = DocumentFile.fromTreeUri(context, rootUri)
+        ?: DocumentFile.fromSingleUri(context, rootUri)
+        ?: return emptyList()
     fun recurse(folderDoc: DocumentFile, parentKey: String) {
         // 🔒 si ce dossier est DJ -> on coupe ici (pas indexé, pas récursé)
         if (folderDoc.isDirectory && isDjFolderDoc(folderDoc)) return

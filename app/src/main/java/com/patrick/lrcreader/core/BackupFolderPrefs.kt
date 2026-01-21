@@ -5,18 +5,24 @@ import android.content.Intent
 import android.net.Uri
 
 /**
- * Stocke le dossier choisi via OpenDocumentTree pour les sauvegardes.
- * IMPORTANT : on garde aussi des flags utiles (setup_done).
+ * Stocke le dossier choisi via OpenDocumentTree.
+ *
+ * - KEY_URI : actuellement tu stockes l'URI du dossier Backups (…/SPL_Music/Backups)
+ * - KEY_SETUP_TREE_URI : le TreeUri de setup (le vrai OpenDocumentTree), indispensable pour importer ensuite.
+ * - KEY_DONE : flag setup_done
  */
 object BackupFolderPrefs {
 
     private const val PREFS_NAME = "backup_folder_prefs"
+
+    // actuellement : BackupsUri (…/SPL_Music/Backups)
     private const val KEY_URI = "folder_uri"
     private const val KEY_DONE = "setup_done"
 
-    /**
-     * Sauve juste l'URI (si la permission persistante a déjà été prise ailleurs).
-     */
+    // ✅ NOUVEAU : TreeUri choisi au setup (OpenDocumentTree)
+    private const val KEY_SETUP_TREE_URI = "setup_tree_uri"
+
+    /** Sauve juste l'URI (sans tenter de prendre la permission). */
     fun save(context: Context, uri: Uri) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit()
@@ -26,7 +32,7 @@ object BackupFolderPrefs {
 
     /**
      * Variante "safe" : tente de prendre la permission persistante puis sauvegarde l'URI.
-     * À appeler idéalement juste après le retour du picker DocumentTree.
+     * À appeler juste après OpenDocumentTree.
      */
     fun persistAndSave(context: Context, uri: Uri) {
         try {
@@ -35,7 +41,7 @@ object BackupFolderPrefs {
                 Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
             )
         } catch (_: Exception) {
-            // Si ça échoue, on sauvegarde quand même l'URI (mais l'écriture pourra échouer plus tard).
+            // si ça échoue, on sauvegarde quand même (mais l'accès pourra échouer plus tard)
         }
         save(context, uri)
     }
@@ -46,10 +52,48 @@ object BackupFolderPrefs {
         return Uri.parse(s)
     }
 
+    // --------------------------------------------------------------------
+    // ✅ SETUP TREE URI (OpenDocumentTree)
+    // --------------------------------------------------------------------
+
+    /**
+     * Sauve le TreeUri de setup ET prend la permission persistante.
+     * C'est indispensable pour importer ensuite des fichiers vers SPL_Music.
+     */
+    fun saveSetupTreeUri(context: Context, treeUri: Uri) {
+        try {
+            context.contentResolver.takePersistableUriPermission(
+                treeUri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            )
+        } catch (_: Exception) {
+            // idem : on stocke quand même
+        }
+
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KEY_SETUP_TREE_URI, treeUri.toString())
+            .apply()
+    }
+
+    fun getSetupTreeUri(context: Context): Uri? {
+        val s = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString(KEY_SETUP_TREE_URI, null) ?: return null
+        return Uri.parse(s)
+    }
+    fun hasValidSetupTreePermission(context: Context): Boolean {
+        val tree = getSetupTreeUri(context) ?: return false
+        return context.contentResolver.persistedUriPermissions.any { p ->
+            p.uri == tree && p.isReadPermission && p.isWritePermission
+        }
+    }
+    // --------------------------------------------------------------------
+
     fun clear(context: Context) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit()
             .remove(KEY_URI)
+            .remove(KEY_SETUP_TREE_URI) // ✅ important
             .apply()
     }
 
