@@ -214,6 +214,7 @@ class MainActivity : ComponentActivity() {
                     val baseTree = DocumentFile.fromTreeUri(ctx, treeUri) ?: return@rememberLauncherForActivityResult
 
                     val splRoot = baseTree.findFile("SPL_Music") ?: baseTree.createDirectory("SPL_Music")
+
                     if (splRoot == null || !splRoot.isDirectory) return@rememberLauncherForActivityResult
 
                     fun ensureDir(parent: DocumentFile, name: String): DocumentFile? {

@@ -436,7 +436,9 @@ fun DjScreen(
                         }
                     )
                 }
+            } // <-- FIN DU Row du header
             // 🔍 barre de recherche
+
             if (isSearchOpen) {
                 Spacer(Modifier.height(6.dp))
                 OutlinedTextField(
@@ -696,5 +698,4 @@ fun DjScreen(
             }
         }
     }
-}
 }
