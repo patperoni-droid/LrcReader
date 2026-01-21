@@ -1,5 +1,7 @@
 package com.patrick.lrcreader.ui
 
+
+import com.patrick.lrcreader.core.BackupFolderPrefs
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import android.content.Intent
@@ -140,6 +142,39 @@ fun DjScreen(
                 } finally {
                     isLoading = false
                 }
+            }
+        }
+    )
+    // ✅ Import MP3 vers SPL Music/backingtracks
+    val pickAudioFilesLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenMultipleDocuments(),
+        onResult = { uris ->
+            if (uris.isNullOrEmpty()) return@rememberLauncherForActivityResult
+
+            // ⚠️ Ici, on a besoin du dossier SPL Music (TreeUri) – celui que tu utilises pour créer backingtracks.
+            // Je pars sur ton stockage central : BackupFolderPrefs (si chez toi c’est un autre Pref, dis-moi lequel et on le remplace).
+            val appRoot = BackupFolderPrefs.get(context)
+
+            if (appRoot == null) {
+                // pas de crash : on ne fait rien, mais tu peux afficher un toast/snackbar si tu veux
+                return@rememberLauncherForActivityResult
+            }
+
+            isLoading = true
+            try {
+                val res = com.patrick.lrcreader.core.ImportAudioManager.importAudioFiles(
+                    context = context,
+                    appRootTreeUri = appRoot,
+                    sourceUris = uris,
+                    destFolderName = "backingtracks",
+                    overwriteIfExists = false
+                )
+
+                // 👉 Option simple : après import, tu rescannes (si ta bibliothèque pointe sur SPL Music).
+                // Si ta bibliothèque scanne un autre root (Music choisi ailleurs), on branchera le rescan au bon endroit.
+                // Ici on rafraîchit juste l’index DJ si besoin, sinon laisse.
+            } finally {
+                isLoading = false
             }
         }
     )
@@ -347,6 +382,15 @@ fun DjScreen(
                     expanded = menuOpen,
                     onDismissRequest = { menuOpen = false }
                 ) {
+
+                    DropdownMenuItem(
+                        text = { Text("Choisir dossier DJ…") },
+                        onClick = {
+                            menuOpen = false
+                            pickDjFolderLauncher.launch(null)
+                        }
+                    )
+
                     DropdownMenuItem(
                         text = { Text("Scanner / rafraîchir le dossier DJ") },
                         onClick = {
@@ -355,7 +399,6 @@ fun DjScreen(
                             try {
                                 val djRoot = DjFolderPrefs.get(context)
 
-                                // racine + current
                                 browserVm.setRoot(djRoot)
                                 if (browserVm.currentFolderUri == null) {
                                     browserVm.setCurrent(browserVm.rootFolderUri)
@@ -376,17 +419,23 @@ fun DjScreen(
                         }
                     )
 
+                    Divider()
+
                     DropdownMenuItem(
-                        text = { Text("Choisir dossier DJ…") },
+                        text = { Text("Importer des musiques (→ backingtracks)") },
                         onClick = {
                             menuOpen = false
-                            pickDjFolderLauncher.launch(null)
+                            // sélection multi-fichiers
+                            pickAudioFilesLauncher.launch(
+                                arrayOf(
+                                    "audio/*",
+                                    "application/ogg",
+                                    "application/octet-stream"
+                                )
+                            )
                         }
                     )
-                } // <- ferme DropdownMenu
-            // <- ferme Row du header
-            }
-
+                }
             // 🔍 barre de recherche
             if (isSearchOpen) {
                 Spacer(Modifier.height(6.dp))
@@ -647,4 +696,5 @@ fun DjScreen(
             }
         }
     }
+}
 }

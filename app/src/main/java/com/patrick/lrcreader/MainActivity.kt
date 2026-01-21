@@ -2,16 +2,21 @@
 
 package com.patrick.lrcreader.exo
 
+
+import android.net.Uri
+import android.provider.DocumentsContract
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import com.patrick.lrcreader.core.ImportAudioManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import android.content.Intent
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.material3.Button
 import androidx.documentfile.provider.DocumentFile
 import com.patrick.lrcreader.core.MidiOutput
-import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -118,22 +123,96 @@ class MainActivity : ComponentActivity() {
 // -------------------- SETUP SPL (bloc unique, inratable) --------------------
                 var setupTick by remember { mutableIntStateOf(0) }
                 var forceSetup by rememberSaveable { mutableStateOf(false) }
-
+                var setupStep by rememberSaveable { mutableIntStateOf(0) } // 0=choix dossier, 1=proposer import
+                var isImporting by remember { mutableStateOf(false) }
+                val scope = rememberCoroutineScope()
 // On ne se base PAS uniquement sur l'URI (Android peut restaurer),
 // on se base sur un flag explicite "setup_done".
                 val isSetupDone = remember(setupTick) { BackupFolderPrefs.isDone(ctx) }
+                val hasSetupPerm = remember(setupTick) { BackupFolderPrefs.hasValidSetupTreePermission(ctx) }
 
+                val shouldShowSetup = forceSetup || !isSetupDone || !hasSetupPerm || (setupStep == 1)
+                val pickAudioFilesLauncher = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.OpenMultipleDocuments()
+                ) { uris ->
+                    if (uris.isNullOrEmpty()) return@rememberLauncherForActivityResult
+
+                    val setupTree = BackupFolderPrefs.getSetupTreeUri(ctx) ?: run {
+                        android.util.Log.e("IMPORT", "setupTreeUri manquant")
+                        return@rememberLauncherForActivityResult
+                    }
+
+                    val baseTree = DocumentFile.fromTreeUri(ctx, setupTree) ?: run {
+                        android.util.Log.e("IMPORT", "baseTree null (permission tree ?)")
+                        return@rememberLauncherForActivityResult
+                    }
+
+                    val splRootDoc = baseTree.findFile("SPL_Music") ?: run {
+                        android.util.Log.e("IMPORT", "SPL_Music introuvable")
+                        return@rememberLauncherForActivityResult
+                    }
+
+                    val backingDoc = splRootDoc.findFile("BackingTracks") ?: run {
+                        android.util.Log.e("IMPORT", "BackingTracks introuvable")
+                        return@rememberLauncherForActivityResult
+                    }
+
+                    val audioDoc = backingDoc.findFile("audio") ?: run {
+                        android.util.Log.e("IMPORT", "BackingTracks/audio introuvable")
+                        return@rememberLauncherForActivityResult
+                    }
+
+                    // ✅ ImportAudioManager veut un TreeUri => on passe le TreeUri du dossier DESTINATION (= audio)
+                    val audioTreeUri = toTreeUri(audioDoc.uri)
+
+                    scope.launch {
+                        isImporting = true
+                        try {
+                            val result = withContext(Dispatchers.IO) {
+                                ImportAudioManager.importAudioFiles(
+                                    context = ctx,
+                                    appRootTreeUri = setupTree, // ✅ LE TREE URI autorisé
+                                    sourceUris = uris,
+                                    destFolderName = "BackingTracks/audio",
+                                    overwriteIfExists = false
+                                )
+                            }
+
+                            android.util.Log.d(
+                                "IMPORT",
+                                "copied=${result.copiedCount} skipped=${result.skippedCount} errors=${result.errors.size}"
+                            )
+                            result.errors.take(20).forEach { android.util.Log.e("IMPORT", it) }
+
+                            val newIndex = withContext(Dispatchers.IO) {
+                                buildFullIndex(ctx, setupTree) // ✅ si ton buildFullIndex sait descendre depuis le dossier choisi
+                            }
+                            LibraryIndexCache.save(ctx, newIndex)
+                            LibrarySnapshot.entries = newIndex.map { it.uriString }
+                            LibrarySnapshot.isReady = true
+
+                        } finally {
+                            isImporting = false
+                            BackupFolderPrefs.setDone(ctx, true)
+                            forceSetup = false
+                            setupStep = 0
+                            setupTick++
+                        }
+                    }
+                }
                 val pickFolderLauncher = rememberLauncherForActivityResult(
                     contract = ActivityResultContracts.OpenDocumentTree()
                 ) { treeUri: Uri? ->
                     if (treeUri == null) return@rememberLauncherForActivityResult
 
-                    // ✅ 1) Permission persistée sur LE TREE URI (propre)
+                    // ✅ 1) permission persistée + sauvegarde (ton mécanisme)
                     BackupFolderPrefs.persistAndSave(ctx, treeUri)
+
+                    // ✅ 2) on garde le TreeUri de setup pour l’import
+                    BackupFolderPrefs.saveSetupTreeUri(ctx, treeUri)
 
                     val baseTree = DocumentFile.fromTreeUri(ctx, treeUri) ?: return@rememberLauncherForActivityResult
 
-                    // ✅ 2) Crée / récupère SPL_Music à l’intérieur du dossier choisi
                     val splRoot = baseTree.findFile("SPL_Music") ?: baseTree.createDirectory("SPL_Music")
                     if (splRoot == null || !splRoot.isDirectory) return@rememberLauncherForActivityResult
 
@@ -144,52 +223,33 @@ class MainActivity : ComponentActivity() {
                     val backing = ensureDir(splRoot, "BackingTracks")
                     ensureDir(splRoot, "DJ")
 
-                    // ✅ 3) Backups = dossier réel des sauvegardes automatiques
                     val backupsDir = ensureDir(splRoot, "Backups") ?: return@rememberLauncherForActivityResult
-
                     ensureDir(splRoot, "Imports")
                     ensureDir(splRoot, "Exports")
 
                     if (backing != null) {
-                        ensureDir(backing, "audio")
+                        val audio = ensureDir(backing, "audio")
                         ensureDir(backing, "video")
 
                         val lyricsDir = ensureDir(backing, "lyrics")
-                        val midiDir = ensureDir(backing, "midi") // ✅ nouveau
+                        val midiDir = ensureDir(backing, "midi")
 
                         android.util.Log.d("LrcDebug", "SETUP backing=${backing.uri}")
+                        android.util.Log.d("LrcDebug", "SETUP audio=${audio?.uri}")
                         android.util.Log.d("LrcDebug", "SETUP lyricsDir=${lyricsDir?.uri}")
                         android.util.Log.d("LrcDebug", "SETUP midiDir=${midiDir?.uri}")
 
-                        if (lyricsDir != null) {
-                            LyricsFolderPrefs.save(ctx, lyricsDir.uri)
-                            android.util.Log.d("LrcDebug", "SETUP saved lyricsUri=${lyricsDir.uri}")
-                            android.util.Log.d("LrcDebug", "SETUP reread lyricsUri=${LyricsFolderPrefs.get(ctx)}")
-                        } else {
-                            android.util.Log.e("LrcDebug", "SETUP lyricsDir is NULL (create/find failed)")
-                        }
-
-                        if (midiDir != null) {
-                            MidiCuesFolderPrefs.save(ctx, midiDir.uri)
-                            android.util.Log.d("CueMidiStore", "SETUP saved midiUri=${midiDir.uri}")
-                            android.util.Log.d("CueMidiStore", "SETUP reread midiUri=${MidiCuesFolderPrefs.get(ctx)}")
-                        } else {
-                            android.util.Log.e("CueMidiStore", "SETUP midiDir is NULL (create/find failed)")
-                        }
+                        lyricsDir?.let { LyricsFolderPrefs.save(ctx, it.uri) }
+                        midiDir?.let { MidiCuesFolderPrefs.save(ctx, it.uri) }
                     }
 
-                    // ✅ 4) IMPORTANT : on stocke l'URI DU DOSSIER Backups (pas la racine)
-                    // -> comme ça BackupManager écrit directement au bon endroit.
+                    // ✅ IMPORTANT : on stocke l’URI du dossier Backups (comme avant)
                     BackupFolderPrefs.save(ctx, backupsDir.uri)
 
-                    // ✅ 5) Flag setup terminé
-                    BackupFolderPrefs.setDone(ctx, true)
-
-                    forceSetup = false
+                    // ✅ on passe à l’étape import
+                    setupStep = 1
                     setupTick++
                 }
-
-                val shouldShowSetup = forceSetup || !isSetupDone
 
                 if (shouldShowSetup) {
                     Box(
@@ -208,14 +268,44 @@ class MainActivity : ComponentActivity() {
                             Spacer(Modifier.height(16.dp))
 
 // ✅ BOUTON PRINCIPAL : choisir le dossier
-                            Button(onClick = {
-                                pickFolderLauncher.launch(null)
-                            }) {
-                                Text("Choisir un dossier")
+                            if (setupStep == 0) {
+
+                                Button(onClick = { pickFolderLauncher.launch(null) }) {
+                                    Text("Choisir un dossier")
+                                }
+
+                            } else {
+                                Text(
+                                    "Dossier SPL_Music créé ✅\n\nSouhaites-tu importer des musiques maintenant ?",
+                                    color = Color.White
+                                )
+
+                                Spacer(Modifier.height(12.dp))
+
+                                Button(
+                                    onClick = {
+                                        pickAudioFilesLauncher.launch(arrayOf("audio/*"))
+                                    },
+                                    enabled = !isImporting
+                                ) {
+                                    Text(if (isImporting) "Import en cours…" else "Importer des musiques (→ BackingTracks/audio)")
+                                }
+
+                                Spacer(Modifier.height(8.dp))
+
+                                Button(
+                                    onClick = {
+                                        // pas d'import : on termine le setup
+                                        BackupFolderPrefs.setDone(ctx, true)
+                                        forceSetup = false
+                                        setupStep = 0
+                                        setupTick++
+                                    },
+                                    enabled = !isImporting
+                                ) {
+                                    Text("Passer (je le ferai plus tard)")
+                                }
                             }
-
-                            Spacer(Modifier.height(12.dp))
-
 // ✅ DEBUG : reset setup (optionnel)
                             val isDebug = remember {
                                 (ctx.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
@@ -852,7 +942,6 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
-
     override fun onStop() {
         super.onStop()
         BackupManager.autoSaveToDefaultBackupFile(this)
@@ -905,7 +994,11 @@ private fun tabFromKey(key: String): BottomTab = when (key) {
 /* --------------------------------------------------------------- */
 /*  Search mode                                                    */
 /* --------------------------------------------------------------- */
-
+private fun toTreeUri(docUri: Uri): Uri {
+    val authority = docUri.authority ?: return docUri
+    val docId = DocumentsContract.getDocumentId(docUri)
+    return DocumentsContract.buildTreeDocumentUri(authority, docId)
+}
 private enum class SearchMode {
     PLAYER,
     DJ,
