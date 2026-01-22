@@ -26,7 +26,7 @@ object ImportAudioManager {
         context: Context,
         appRootTreeUri: Uri,
         sourceUris: List<Uri>,
-        destFolderName: String = "backingtracks", // ou "dj"
+        destFolderName: String = "BackingTracks", // ou "DJ"
         overwriteIfExists: Boolean = false
     ): Result {
 
@@ -176,5 +176,29 @@ object ImportAudioManager {
             try { cursor?.close() } catch (_: Exception) {}
         }
     }
+    fun ensureSplSubFolder(
+        context: Context,
+        appRootTreeUri: Uri,
+        subPath: String
+    ): Uri? {
+        val rootParent = DocumentFile.fromTreeUri(context, appRootTreeUri) ?: return null
+        if (!rootParent.isDirectory) return null
 
+        fun ensureDir(parent: DocumentFile, name: String): DocumentFile? {
+            val parts = name.split("/").filter { it.isNotBlank() }
+            var cur: DocumentFile = parent
+            for (p in parts) {
+                val existing = cur.findFile(p)
+                cur = when {
+                    existing != null && existing.isDirectory -> existing
+                    existing != null && !existing.isDirectory -> return null
+                    else -> cur.createDirectory(p) ?: return null
+                }
+            }
+            return cur
+        }
+
+        val dir = ensureDir(rootParent, subPath) ?: return null
+        return dir.uri
+    }
 }

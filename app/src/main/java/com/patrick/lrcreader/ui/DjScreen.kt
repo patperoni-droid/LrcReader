@@ -259,6 +259,28 @@ fun DjScreen(
             }
 
             indexAll = DjIndexCache.load(context) ?: emptyList()
+            // ✅ si on a un dossier DJ mais pas d'index => on scanne automatiquement 1 fois
+            if (indexAll.isEmpty()) {
+                val djRoot = DjFolderPrefs.get(context)
+                if (djRoot != null) {
+                    isLoading = true
+                    try {
+                        val newDjIndex = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            buildDjFullIndex(context, djRoot)
+                        }
+                        DjIndexCache.save(context, newDjIndex)
+                        indexAll = newDjIndex
+
+                        // important : mettre à jour le browser VM aussi
+                        if (browserVm.rootFolderUri == null) browserVm.setRoot(djRoot)
+                        if (browserVm.currentFolderUri == null) browserVm.setCurrent(djRoot)
+                    } catch (t: Throwable) {
+                        android.util.Log.e("DJ", "Auto-scan DJ failed: ${t.message}", t)
+                    } finally {
+                        isLoading = false
+                    }
+                }
+            }
             refreshFromIndex()
         } finally {
             isLoading = false

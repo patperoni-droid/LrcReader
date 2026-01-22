@@ -21,6 +21,7 @@ object BackupFolderPrefs {
 
     // ✅ NOUVEAU : TreeUri choisi au setup (OpenDocumentTree)
     private const val KEY_SETUP_TREE_URI = "setup_tree_uri"
+    private const val KEY_LIBRARY_ROOT_URI = "library_root_uri"
 
     /** Sauve juste l'URI (sans tenter de prendre la permission). */
     fun save(context: Context, uri: Uri) {

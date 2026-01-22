@@ -1,7 +1,7 @@
 package com.patrick.lrcreader.ui.library
 
-
-
+import android.provider.DocumentsContract
+import com.patrick.lrcreader.core.DjFolderPrefs
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Column
@@ -87,7 +87,22 @@ fun LibraryScreen(
                 isDirectory = e.isDirectory
             )
         }.toMutableList()
+        if (fromIndex.isEmpty()) {
+            val folderDoc =
+                DocumentFile.fromTreeUri(context, folderUri)
+                    ?: DocumentFile.fromSingleUri(context, folderUri)
 
+            val real = folderDoc?.listFiles().orEmpty().mapNotNull { f ->
+                val n = f.name ?: return@mapNotNull null
+                LibraryEntry(
+                    uri = f.uri,
+                    name = n,
+                    isDirectory = f.isDirectory
+                )
+            }
+
+            fromIndex.addAll(real)
+        }
         val folderDoc =
             DocumentFile.fromTreeUri(context, folderUri)
                 ?: DocumentFile.fromSingleUri(context, folderUri)
@@ -250,31 +265,123 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
     val pickRootFolderLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree(),
         onResult = { uri ->
-            if (uri != null) {
-                scope.launch {
-                    startLoading("Analyse de la bibliothèque…", determinate = false)
-                    try {
-                        persistTreePermIfPossible(context, uri)
+            if (uri == null) return@rememberLauncherForActivityResult
 
-                        BackupFolderPrefs.saveLibraryRootUri(context, uri)
-                        currentFolderUri = uri
-                        folderStack = emptyList()
+            scope.launch {
+                startLoading("Analyse de la bibliothèque…", determinate = false)
+                try {
+                    // 1) Permission persistée sur le dossier choisi par l’utilisateur
+                    persistTreePermIfPossible(context, uri)
 
-                        libraryRescanAll(
-                            context = context,
-                            root = uri,
-                            folderToShow = uri,
-                            onIndexAll = { indexAll = it },
-                            onEntries = { entries = it }
-                        )
-                        // ✅ réinjecte DJ grisé dans la vue courante
-                        entries = buildEntriesForFolder(uri)
-                    } finally {
-                        stopLoadingNice()
+// ⭐ Important : on mémorise aussi le dossier “base” choisi au setup
+                    BackupFolderPrefs.saveSetupTreeUri(context, uri)
+
+// 2) Dossier choisi = parent (ex : Documents)
+                    val baseTree = DocumentFile.fromTreeUri(context, uri) ?: return@launch
+
+// 3) Créer / retrouver SPL_Music (NE PAS DUPLIQUER)
+                    val splRoot =
+                        baseTree.listFiles().firstOrNull { it.isDirectory && it.name.equals("SPL_Music", ignoreCase = true) }
+                            ?: baseTree.createDirectory("SPL_Music")
+
+                    if (splRoot == null || !splRoot.isDirectory) return@launch
+
+                    fun ensureDirSmart(
+                        context: android.content.Context,
+                        parent: DocumentFile,
+                        expectedName: String,
+                        aliases: List<String> = emptyList()
+                    ): DocumentFile? {
+
+                        fun norm(s: String): String =
+                            s.trim().lowercase().replace(" ", "").replace(Regex("\\(\\d+\\)$"), "")
+
+                        val wanted = (listOf(expectedName) + aliases).map { norm(it) }
+
+                        val parentUri = parent.uri
+                        val parentDocId = runCatching { DocumentsContract.getDocumentId(parentUri) }.getOrNull()
+                            ?: return parent.findFile(expectedName) ?: parent.createDirectory(expectedName)
+
+                        val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(parentUri, parentDocId)
+
+                        val cr = context.contentResolver
+                        cr.query(
+                            childrenUri,
+                            arrayOf(
+                                DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                                DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                                DocumentsContract.Document.COLUMN_MIME_TYPE
+                            ),
+                            null,
+                            null,
+                            null
+                        )?.use { c ->
+                            val idCol = c.getColumnIndex(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
+                            val nameCol = c.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+                            val mimeCol = c.getColumnIndex(DocumentsContract.Document.COLUMN_MIME_TYPE)
+
+                            while (c.moveToNext()) {
+                                val mime = c.getString(mimeCol) ?: ""
+                                if (mime != DocumentsContract.Document.MIME_TYPE_DIR) continue
+
+                                val name = c.getString(nameCol) ?: continue
+                                val n = norm(name)
+
+                                if (wanted.any { w -> n == w || n.startsWith(w) }) {
+                                    val childDocId = c.getString(idCol)
+                                    val childUri = DocumentsContract.buildDocumentUriUsingTree(parentUri, childDocId)
+                                    return DocumentFile.fromSingleUri(context, childUri)
+                                }
+                            }
+                        }
+
+                        return parent.createDirectory(expectedName)
                     }
+
+// 4) Sous-dossiers standards (NE PAS DUPLIQUER)
+                    val backingDir = ensureDirSmart(
+                        context = context,
+                        parent = splRoot,
+                        expectedName = "BackingTracks",
+                        aliases = listOf("BackingTrack")
+                    )
+
+                    val djDir = ensureDirSmart(
+                        context = context,
+                        parent = splRoot,
+                        expectedName = "DJ"
+                    )
+
+// 5) ✅ LA LIGNE CLÉ : bibliothèque = SPL_Music (TREE URI)
+                    val splTreeUri = toTreeUri(splRoot.uri)
+                    BackupFolderPrefs.saveLibraryRootUri(context, splTreeUri)
+                    Log.d("LibDebug", "SAVE rootUri=$splTreeUri")
+                    currentFolderUri = splTreeUri
+                    folderStack = emptyList()
+
+// 6) DJ = SPL_Music/DJ
+                    if (djDir != null) {
+                        DjFolderPrefs.save(context, toTreeUri(djDir.uri))
+                    }
+
+// 7) Scan IMMÉDIAT de SPL_Music
+                    libraryRescanAll(
+                        context = context,
+                        root = splTreeUri,
+                        folderToShow = splTreeUri,
+                        onIndexAll = { indexAll = it },
+                        onEntries = { entries = it }
+                    )
+
+// 8) Injection DJ grisé
+                    entries = buildEntriesForFolder(splTreeUri)
+
+                } finally {
+                    stopLoadingNice()
                 }
             }
         }
+
     )
 
     val moveToFolderLauncher = rememberLauncherForActivityResult(
@@ -326,38 +433,47 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
 
 // ---------- initial load ----------
     LaunchedEffect(Unit) {
-        currentFolderUri = BackupFolderPrefs.getLibraryRootUri(context)
-        libraryLoadInitial(
-            context = context,
-            currentFolderUri = currentFolderUri,
-            onIndexAll = { indexAll = it },
-            onEntries = { entries = it }
-
-        )
-        // ✅ inject DJ désactivé si besoin
-        currentFolderUri?.let { folder ->
-            entries = buildEntriesForFolder(folder)
-        }
-    }
-    // ✅ écoute les modifs d'index (LRC / midi / import / export) sans rescan
-    LaunchedEffect(Unit) {
-        com.patrick.lrcreader.core.LibraryIndexCache.updates.collect {
-            val fresh = com.patrick.lrcreader.core.LibraryIndexCache.load(context).orEmpty()
-            indexAll = fresh
-
-            val folder =
-                currentFolderUri ?: com.patrick.lrcreader.core.BackupFolderPrefs.getLibraryRootUri(context)
-
-            if (folder != null) {
-                entries = buildEntriesForFolder(folder)
+        var root = BackupFolderPrefs.getLibraryRootUri(context)
+        Log.d("LibDebug", "LOAD_INITIAL rootUri=$root indexSize=${indexAll.size}")
+        // ✅ si root pointe sur BackingTracks / un sous-dossier → on remonte sur SPL_Music
+        if (root != null) {
+            val fixed = normalizeToSplMusicDocUri(context, root)
+            if (fixed != root) {
+                BackupFolderPrefs.saveLibraryRootUri(context, fixed)
+                root = fixed
             }
+        }
+
+        currentFolderUri = root
+
+        // 2) Charger l’index existant
+        indexAll = LibraryIndexCache.load(context) ?: emptyList()
+
+        // 3) Si on a un root mais pas d’index → rescan automatique
+        if (root != null && indexAll.isEmpty()) {
+            startLoading("Analyse de la bibliothèque…", determinate = false)
+            try {
+                libraryRescanAll(
+                    context = context,
+                    root = root,
+                    folderToShow = root,
+                    onIndexAll = { indexAll = it },
+                    onEntries = { entries = it }
+                )
+            } finally {
+                stopLoadingNice()
+            }
+        } else {
+            // 4) Index déjà là → affichage direct
+            entries = root?.let { buildEntriesForFolder(it) } ?: emptyList()
         }
     }
 // 🔁 Auto-refresh de la bibliothèque quand un fichier (.lrc / midi / json) est créé
 
 // ---------- UI ----------
-    val currentFolderName = currentFolderUri?.let {
-        (DocumentFile.fromTreeUri(context, it) ?: DocumentFile.fromSingleUri(context, it))?.name
+    val currentFolderName = currentFolderUri?.let { u ->
+        val doc = DocumentFile.fromTreeUri(context, u) ?: DocumentFile.fromSingleUri(context, u)
+        doc?.name ?: "SPL_Music"
     } ?: "Aucun dossier sélectionné"
 
     DarkBlueGradientBackground {
@@ -828,4 +944,33 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
             }
         }
     }
+}
+private fun toTreeUri(docUri: Uri): Uri {
+    val authority = docUri.authority ?: return docUri
+    val docId = runCatching { DocumentsContract.getDocumentId(docUri) }.getOrNull() ?: return docUri
+    // docId = "primary:Documents/SPL_Music" → c’est aussi un treeId valide
+    return DocumentsContract.buildTreeDocumentUri(authority, docId)
+}
+private fun normalizeToSplMusicDocUri(
+    context: android.content.Context,
+    anyTreeOrDocUri: Uri
+): Uri {
+
+    val setupTree = BackupFolderPrefs.getSetupTreeUri(context) ?: return anyTreeOrDocUri
+    val authority = setupTree.authority ?: return anyTreeOrDocUri
+
+    // On récupère un id exploitable
+    val id = runCatching { DocumentsContract.getTreeDocumentId(anyTreeOrDocUri) }.getOrNull()
+        ?: runCatching { DocumentsContract.getDocumentId(anyTreeOrDocUri) }.getOrNull()
+        ?: return anyTreeOrDocUri
+
+    // Ex: primary:Documents/SPL_Music/BackingTracks (5)
+    val parts = id.split('/')
+    val idx = parts.indexOfFirst { it.equals("SPL_Music", ignoreCase = true) }
+    if (idx < 0) return anyTreeOrDocUri
+
+    val splId = parts.take(idx + 1).joinToString("/") // => primary:Documents/SPL_Music
+
+    // ⚠️ IMPORTANT : on renvoie une *DocumentUri sous le treeUri setup* (hérite de la permission)
+    return DocumentsContract.buildDocumentUriUsingTree(setupTree, splId)
 }

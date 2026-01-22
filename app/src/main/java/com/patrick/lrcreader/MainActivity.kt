@@ -214,8 +214,6 @@ class MainActivity : ComponentActivity() {
                     val baseTree = DocumentFile.fromTreeUri(ctx, treeUri) ?: return@rememberLauncherForActivityResult
 
                     val splRoot = baseTree.findFile("SPL_Music") ?: baseTree.createDirectory("SPL_Music")
-// ✅ Bibliothèque = SPL_Music par défaut (plus besoin de choisir un dossier Music après)
-                    BackupFolderPrefs.saveLibraryRootUri(ctx, toTreeUri(splRoot.uri))
                     if (splRoot == null || !splRoot.isDirectory) return@rememberLauncherForActivityResult
 
                     fun ensureDir(parent: DocumentFile, name: String): DocumentFile? {
@@ -223,7 +221,17 @@ class MainActivity : ComponentActivity() {
                     }
 
                     val backing = ensureDir(splRoot, "BackingTracks")
-                    ensureDir(splRoot, "DJ")
+                    val dj = ensureDir(splRoot, "DJ")
+
+// ✅ Bibliothèque = backingtracks (app prête)
+                    if (backing != null && backing.isDirectory) {
+                        BackupFolderPrefs.saveLibraryRootUri(ctx, toTreeUri(splRoot.uri))
+                    }
+
+// ✅ DJ = DJ (app prête)
+                    if (dj != null && dj.isDirectory) {
+                        com.patrick.lrcreader.core.DjFolderPrefs.save(ctx, toTreeUri(dj.uri))
+                    }
 
                     val backupsDir = ensureDir(splRoot, "Backups") ?: return@rememberLauncherForActivityResult
                     ensureDir(splRoot, "Imports")
