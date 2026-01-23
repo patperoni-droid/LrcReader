@@ -47,15 +47,18 @@ fun LibraryScreen(
     onPlayFromLibrary: (String) -> Unit
 ) {
 // palette analogique commune
+    val context = LocalContext.current
     val titleColor = Color(0xFFFFF8E1)
     val subtitleColor = Color(0xFFB0BEC5)
     val cardBg = Color(0xFF181818)
     val rowBorder = Color(0x33FFFFFF)
     val accent = Color(0xFFFFC107)
-    val context = LocalContext.current
+    val setupTree = remember { BackupFolderPrefs.getSetupTreeUri(context) }
+    val libRoot = remember { BackupFolderPrefs.getLibraryRootUri(context) }
     val scope = rememberCoroutineScope()
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
     val focusManager = LocalFocusManager.current
+
 
     var showLrcEditor by remember { mutableStateOf(false) }
     var lrcEditorUri by remember { mutableStateOf<Uri?>(null) }
@@ -523,6 +526,30 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
         val doc = DocumentFile.fromTreeUri(context, u) ?: DocumentFile.fromSingleUri(context, u)
         doc?.name ?: "SPL_Music"
     } ?: "Aucun dossier sélectionné"
+
+    val isSetupDone = BackupFolderPrefs.getSetupTreeUri(context) != null
+    if (!isSetupDone) {
+        DarkBlueGradientBackground {
+            SetupInstallScreen(
+                titleColor = titleColor,
+                subtitleColor = subtitleColor,
+                accent = accent,
+                onSetupDone = {
+                    // après setup, on relance un load simple
+                    currentFolderUri = BackupFolderPrefs.getLibraryRootUri(context)
+                },
+                onImportNow = {
+                    // déclenche ton import (ton launcher existe déjà)
+                    importTargetFolderUri = BackupFolderPrefs.getLibraryRootUri(context)
+                    importAudioLauncher.launch(arrayOf("audio/*"))
+                },
+                onImportLater = {
+                    // rien à faire
+                }
+            )
+        }
+        return
+    }
 
     DarkBlueGradientBackground {
         Column(modifier = modifier.fillMaxSize().padding(16.dp)) {

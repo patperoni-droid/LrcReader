@@ -2,7 +2,7 @@
 
 package com.patrick.lrcreader.exo
 
-
+import com.patrick.lrcreader.ui.library.SetupInstallScreen
 import android.net.Uri
 import android.provider.DocumentsContract
 import kotlinx.coroutines.Dispatchers
@@ -11,9 +11,6 @@ import kotlinx.coroutines.withContext
 import com.patrick.lrcreader.core.ImportAudioManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.height
 import androidx.compose.material3.Button
 import androidx.documentfile.provider.DocumentFile
 import com.patrick.lrcreader.core.MidiOutput
@@ -117,13 +114,17 @@ class MainActivity : ComponentActivity() {
             }
         }
         setContent {
-            MaterialTheme(colorScheme = darkColorScheme()) {
+            val scheme = darkColorScheme(
+                primary = Color(0xFFFFC107),
+                onPrimary = Color.Black
+            )
+            MaterialTheme(colorScheme = scheme) {
 
                 val ctx = this@MainActivity
 // -------------------- SETUP SPL (bloc unique, inratable) --------------------
                 var setupTick by remember { mutableIntStateOf(0) }
                 var forceSetup by rememberSaveable { mutableStateOf(false) }
-                var setupStep by rememberSaveable { mutableIntStateOf(0) } // 0=choix dossier, 1=proposer import
+
                 var isImporting by remember { mutableStateOf(false) }
                 val scope = rememberCoroutineScope()
 // On ne se base PAS uniquement sur l'URI (Android peut restaurer),
@@ -131,7 +132,7 @@ class MainActivity : ComponentActivity() {
                 val isSetupDone = remember(setupTick) { BackupFolderPrefs.isDone(ctx) }
                 val hasSetupPerm = remember(setupTick) { BackupFolderPrefs.hasValidSetupTreePermission(ctx) }
 
-                val shouldShowSetup = forceSetup || !isSetupDone || !hasSetupPerm || (setupStep == 1)
+                val shouldShowSetup = forceSetup || !isSetupDone || !hasSetupPerm
                 val pickAudioFilesLauncher = rememberLauncherForActivityResult(
                     contract = ActivityResultContracts.OpenMultipleDocuments()
                 ) { uris ->
@@ -195,147 +196,47 @@ class MainActivity : ComponentActivity() {
                             isImporting = false
                             BackupFolderPrefs.setDone(ctx, true)
                             forceSetup = false
-                            setupStep = 0
                             setupTick++
                         }
                     }
                 }
-                val pickFolderLauncher = rememberLauncherForActivityResult(
-                    contract = ActivityResultContracts.OpenDocumentTree()
-                ) { treeUri: Uri? ->
-                    if (treeUri == null) return@rememberLauncherForActivityResult
 
-                    // ✅ 1) permission persistée + sauvegarde (ton mécanisme)
-                    BackupFolderPrefs.persistAndSave(ctx, treeUri)
-
-                    // ✅ 2) on garde le TreeUri de setup pour l’import
-                    BackupFolderPrefs.saveSetupTreeUri(ctx, treeUri)
-
-                    val baseTree = DocumentFile.fromTreeUri(ctx, treeUri) ?: return@rememberLauncherForActivityResult
-
-                    val splRoot = baseTree.findFile("SPL_Music") ?: baseTree.createDirectory("SPL_Music")
-                    if (splRoot == null || !splRoot.isDirectory) return@rememberLauncherForActivityResult
-
-                    fun ensureDir(parent: DocumentFile, name: String): DocumentFile? {
-                        return parent.findFile(name) ?: parent.createDirectory(name)
-                    }
-
-                    val backing = ensureDir(splRoot, "BackingTracks")
-                    val dj = ensureDir(splRoot, "DJ")
-
-// ✅ Bibliothèque = backingtracks (app prête)
-                    if (backing != null && backing.isDirectory) {
-                        BackupFolderPrefs.saveLibraryRootUri(ctx, toTreeUri(splRoot.uri))
-                    }
-
-// ✅ DJ = DJ (app prête)
-                    if (dj != null && dj.isDirectory) {
-                        com.patrick.lrcreader.core.DjFolderPrefs.save(ctx, toTreeUri(dj.uri))
-                    }
-
-                    val backupsDir = ensureDir(splRoot, "Backups") ?: return@rememberLauncherForActivityResult
-                    ensureDir(splRoot, "Imports")
-                    ensureDir(splRoot, "Exports")
-
-                    if (backing != null) {
-                        val audio = ensureDir(backing, "audio")
-                        ensureDir(backing, "video")
-
-                        val lyricsDir = ensureDir(backing, "lyrics")
-                        val midiDir = ensureDir(backing, "midi")
-
-                        android.util.Log.d("LrcDebug", "SETUP backing=${backing.uri}")
-                        android.util.Log.d("LrcDebug", "SETUP audio=${audio?.uri}")
-                        android.util.Log.d("LrcDebug", "SETUP lyricsDir=${lyricsDir?.uri}")
-                        android.util.Log.d("LrcDebug", "SETUP midiDir=${midiDir?.uri}")
-
-                        lyricsDir?.let { LyricsFolderPrefs.save(ctx, it.uri) }
-                        midiDir?.let { MidiCuesFolderPrefs.save(ctx, it.uri) }
-                    }
-
-                    // ✅ IMPORTANT : on stocke l’URI du dossier Backups (comme avant)
-                    BackupFolderPrefs.save(ctx, backupsDir.uri)
-
-                    // ✅ on passe à l’étape import
-                    setupStep = 1
-                    setupTick++
-                }
 
                 if (shouldShowSetup) {
-                    Box(
-                        modifier = Modifier.fillMaxSize().background(Color.Black),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("SPL : Choix du dossier", color = Color.White, style = MaterialTheme.typography.titleLarge)
-                            Spacer(Modifier.height(12.dp))
-                            Text(
-                                "Choisis un dossier (recommandé : Documents).\n\n" +
-                                        "Création auto : SPL_Music + sous-dossiers.\n" +
-                                        "Backups ira dans : SPL_Music/Backups",
-                                color = Color.White
-                            )
-                            Spacer(Modifier.height(16.dp))
 
-// ✅ BOUTON PRINCIPAL : choisir le dossier
-                            if (setupStep == 0) {
+                    SetupInstallScreen(
+                        titleColor = Color.White,
+                        subtitleColor = Color(0xFFB0BEC5),
+                        accent = Color(0xFFFFC107),
 
-                                Button(onClick = { pickFolderLauncher.launch(null) }) {
-                                    Text("Choisir un dossier")
-                                }
+                        onSetupDone = {
+                            BackupFolderPrefs.setDone(ctx, true)
+                            forceSetup = false
+                            setupTick++
+                        },
 
-                            } else {
-                                Text(
-                                    "Dossier SPL_Music créé ✅\n\nSouhaites-tu importer des musiques maintenant ?",
-                                    color = Color.White
-                                )
+                        onImportNow = {
+                            pickAudioFilesLauncher.launch(arrayOf("audio/*"))
+                        },
 
-                                Spacer(Modifier.height(12.dp))
-
-                                Button(
-                                    onClick = {
-                                        pickAudioFilesLauncher.launch(arrayOf("audio/*"))
-                                    },
-                                    enabled = !isImporting
-                                ) {
-                                    Text(if (isImporting) "Import en cours…" else "Importer des musiques (→ BackingTracks/audio)")
-                                }
-
-                                Spacer(Modifier.height(8.dp))
-
-                                Button(
-                                    onClick = {
-                                        // pas d'import : on termine le setup
-                                        BackupFolderPrefs.setDone(ctx, true)
-                                        forceSetup = false
-                                        setupStep = 0
-                                        setupTick++
-                                    },
-                                    enabled = !isImporting
-                                ) {
-                                    Text("Passer (je le ferai plus tard)")
-                                }
-                            }
-// ✅ DEBUG : reset setup (optionnel)
-                            val isDebug = remember {
-                                (ctx.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
-                            }
-
-                            if (isDebug) {
-                                Button(onClick = {
-                                    BackupFolderPrefs.clearAll(ctx)
-                                    BackupRestorePrefs.clear(ctx)
-                                    forceSetup = true
-                                    setupTick++
-                                }) {
-                                    Text("DEBUG : reset setup")
-                                }
-                            }
-
-
+                        onImportLater = {
+                            // rien : on continue sans importer
                         }
+                    )
 
-                        }
+                    // ✅ DEBUG : reset setup (optionnel) — tu peux le garder
+                    val isDebug = remember {
+                        (ctx.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
+                    }
+                    if (isDebug) {
+                        Button(onClick = {
+                            BackupFolderPrefs.clearAll(ctx)
+                            BackupRestorePrefs.clear(ctx)
+                            forceSetup = true
+                            setupTick++
+                        }) { Text("DEBUG : reset setup") }
+                    }
+
                     return@MaterialTheme
                 }
 // -------------------- FIN SETUP SPL --------------------

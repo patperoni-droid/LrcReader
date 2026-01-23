@@ -69,10 +69,7 @@ fun LibraryHeader(
             expanded = actionsExpanded,
             onDismissRequest = { actionsExpanded = false }
         ) {
-            DropdownMenuItem(
-                text = { Text("Choisir dossier Music") },
-                onClick = { actionsExpanded = false; onPickRoot() }
-            )
+
 
             DropdownMenuItem(
                 text = { Text("Rescan bibliothèque") },
