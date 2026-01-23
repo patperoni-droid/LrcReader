@@ -1,5 +1,6 @@
 package com.patrick.lrcreader.ui.library
 
+import com.patrick.lrcreader.core.ImportAudioManager
 import android.provider.DocumentsContract
 import com.patrick.lrcreader.core.DjFolderPrefs
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -67,7 +68,7 @@ fun LibraryScreen(
     var entries by remember { mutableStateOf<List<LibraryEntry>>(emptyList()) }
     var selectedSongs by remember { mutableStateOf<Set<Uri>>(emptySet()) }
 
-    var actionsExpanded by remember { mutableStateOf(false) }
+
 
     var isLoading by remember { mutableStateOf(false) }
     var loadingStartedAt by remember { mutableStateOf(0L) }
@@ -76,7 +77,9 @@ fun LibraryScreen(
     var moveLabel by remember { mutableStateOf<String?>(null) }
 
     var indexAll by remember { mutableStateOf<List<LibraryIndexCache.CachedEntry>>(emptyList()) }
+    var importTargetFolderUri by remember { mutableStateOf<Uri?>(null) } // ✅ dossier où importer
     // ------------------------------------------------------------
+
     // ✅ Injection DJ : visible mais désactivé
     // ------------------------------------------------------------
     fun buildEntriesForFolder(folderUri: Uri): List<LibraryEntry> {
@@ -430,7 +433,52 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
             }
         }
     )
+// ---------- Import audio (BackingTracks) ----------
+    val importAudioLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenMultipleDocuments()
+    ) { pickedUris ->
+        if (pickedUris.isNullOrEmpty()) return@rememberLauncherForActivityResult
 
+        scope.launch {
+            startLoading("Import des musiques…", determinate = false)
+            try {
+                val splRoot = BackupFolderPrefs.getLibraryRootUri(context) ?: return@launch
+                val baseTree = BackupFolderPrefs.getSetupTreeUri(context) ?: splRoot
+
+                val rawDest = importTargetFolderUri ?: currentFolderUri ?: splRoot
+                val destDoc = DocumentFile.fromTreeUri(context, rawDest) ?: DocumentFile.fromSingleUri(context, rawDest)
+                val destFolder = if (destDoc != null && destDoc.isDirectory) rawDest else splRoot
+
+                // (optionnel mais safe) : tente de persister la permission sur le dossier courant
+                persistTreePermIfPossible(context, destFolder)
+
+                ImportAudioManager.importAudioFiles(
+                    context = context,
+                    appRootTreeUri = baseTree,        // juste pour passer la vérif "rootParent"
+                    sourceUris = pickedUris,
+                    destFolderName = "BackingTracks", // ignoré si destFolderUri != null
+                    overwriteIfExists = false,
+                    destFolderUri = destFolder        // ✅ IMPORT ICI
+                )
+
+                // Rescan SPL_Music, mais on reste affiché dans le dossier courant
+                libraryRescanAll(
+                    context = context,
+                    root = splRoot,
+                    folderToShow = destFolder,
+                    onIndexAll = { indexAll = it },
+                    onEntries = { entries = it }
+                )
+
+                currentFolderUri = destFolder
+                entries = buildEntriesForFolder(destFolder)
+
+            } finally {
+                importTargetFolderUri = null   // ✅ reset
+                stopLoadingNice()
+            }
+        }
+    }
 // ---------- initial load ----------
     LaunchedEffect(Unit) {
         var root = BackupFolderPrefs.getLibraryRootUri(context)
@@ -482,8 +530,9 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
             LibraryHeader(
                 titleColor = titleColor,
                 subtitleColor = subtitleColor,
-                currentFolderName = currentFolderName,
+                currentFolderUri = currentFolderUri,
                 canGoBack = folderStack.isNotEmpty(),
+
                 onBack = {
                     scope.launch {
                         startLoading("Chargement…", determinate = false)
@@ -499,20 +548,20 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
                             folderStack = newStack
                             selectedSongs = emptySet()
                         } finally {
-                            delay(150)
-                            isLoading = false
+                            stopLoadingNice()
                         }
                     }
                 },
-                actionsExpanded = actionsExpanded,
-                onActionsExpanded = { actionsExpanded = it },
+
                 onPickRoot = { pickRootFolderLauncher.launch(null) },
+
                 onRescan = {
                     scope.launch {
                         startLoading("Analyse de la bibliothèque…", determinate = false)
                         try {
                             val root = BackupFolderPrefs.getLibraryRootUri(context) ?: return@launch
                             val folderToShow = currentFolderUri ?: root
+
                             libraryRescanAll(
                                 context = context,
                                 root = root,
@@ -520,16 +569,18 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
                                 onIndexAll = { indexAll = it },
                                 onEntries = { entries = it }
                             )
+
+                            // rebuild (avec DJ grisé)
                             currentFolderUri?.let { folder ->
                                 entries = buildEntriesForFolder(folder)
                             }
                         } finally {
-                            delay(150)
-                            isLoading = false
+                            stopLoadingNice()
                         }
                     }
                 },
-                onForgetRoot = {
+
+                onForget = {
                     stopQuickPlay()
 
                     clearPersistedUris(context)
@@ -541,6 +592,11 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
                     selectedSongs = emptySet()
                     folderStack = emptyList()
                     LibraryFolderCache.clear()
+                },
+
+                onImportBackingTracks = {
+                    importTargetFolderUri = currentFolderUri // ✅ on importe dans le dossier où tu es
+                    importAudioLauncher.launch(arrayOf("audio/*"))
                 }
             )
 

@@ -27,7 +27,8 @@ object ImportAudioManager {
         appRootTreeUri: Uri,
         sourceUris: List<Uri>,
         destFolderName: String = "BackingTracks", // ou "DJ"
-        overwriteIfExists: Boolean = false
+        overwriteIfExists: Boolean = false,
+        destFolderUri: Uri? = null               // ✅ NOUVEAU
     ): Result {
 
         val errors = mutableListOf<String>()
@@ -39,15 +40,39 @@ object ImportAudioManager {
         if (rootParent == null || !rootParent.isDirectory) {
             return Result(0, 0, listOf("Dossier racine invalide (permission manquante ?)"))
         }
+        // ✅ Mode "import ici" : si un dossier cible est fourni, on copie directement dedans
+        if (destFolderUri != null) {
+            val destDir = (DocumentFile.fromTreeUri(context, destFolderUri)
+                ?: DocumentFile.fromSingleUri(context, destFolderUri))
+
+            if (destDir == null || !destDir.isDirectory) {
+                return Result(0, 0, listOf("Dossier destination invalide"))
+            }
+
+            return importIntoDir(
+                context = context,
+                destDir = destDir,
+                sourceUris = sourceUris,
+                overwriteIfExists = overwriteIfExists
+            )
+        }
 
         // 2) SPL_Music sous la racine
-        val splMusicDir = ensureDir(rootParent, "SPL_Music")
-            ?: return Result(0, 0, listOf("Impossible de créer/ouvrir SPL_Music"))
+        // 2) SPL_Music sous la racine (⚠️ si rootParent est déjà SPL_Music, on ne recrée pas)
+        val splMusicDir = if ((rootParent.name ?: "").equals("SPL_Music", ignoreCase = true)) {
+            rootParent
+        } else {
+            ensureDir(rootParent, "SPL_Music")
+        } ?: return Result(0, 0, listOf("Impossible de créer/ouvrir SPL_Music"))
 
         // 3) Dossier destination (backingtracks / dj) sous SPL_Music
-        val destDir = ensureDir(splMusicDir, destFolderName)
-            ?: return Result(0, 0, listOf("Impossible de créer/ouvrir $destFolderName"))
-
+        val destDir = when (destFolderName.lowercase()) {
+            "backingtracks" -> (
+                    ensureDir(splMusicDir, "BackingTracks")
+                        ?: ensureDir(splMusicDir, "BackingTrack")
+                    )
+            else -> ensureDir(splMusicDir, destFolderName)
+        } ?: return Result(0, 0, listOf("Impossible de créer/ouvrir $destFolderName"))
         sourceUris.forEach { srcUri ->
             try {
                 val srcName = guessDisplayName(context, srcUri)
@@ -103,22 +128,85 @@ object ImportAudioManager {
 
         return Result(copied, skipped, errors)
     }
+    private fun importIntoDir(
+        context: Context,
+        destDir: DocumentFile,
+        sourceUris: List<Uri>,
+        overwriteIfExists: Boolean
+    ): Result {
+        val errors = mutableListOf<String>()
+        var copied = 0
+        var skipped = 0
 
+        sourceUris.forEach { srcUri ->
+            try {
+                val srcName = guessDisplayName(context, srcUri)
+                if (srcName.isNullOrBlank()) {
+                    skipped++
+                    errors.add("Nom de fichier introuvable pour: $srcUri")
+                    return@forEach
+                }
+
+                if (!looksLikeAudio(srcName)) {
+                    skipped++
+                    return@forEach
+                }
+
+                val finalName = if (overwriteIfExists) srcName else uniqueName(destDir, srcName)
+
+                if (overwriteIfExists) {
+                    destDir.findFile(srcName)?.delete()
+                }
+
+                val mime = context.contentResolver.getType(srcUri) ?: mimeFromName(srcName)
+                val outFile = destDir.createFile(mime, finalName)
+                    ?: throw FileNotFoundException("createFile a échoué pour: $finalName")
+
+                context.contentResolver.openInputStream(srcUri).use { input ->
+                    if (input == null) throw FileNotFoundException("openInputStream null: $srcUri")
+
+                    context.contentResolver.openOutputStream(outFile.uri, "w").use { output ->
+                        if (output == null) throw FileNotFoundException("openOutputStream null: ${outFile.uri}")
+
+                        val buffer = ByteArray(256 * 1024)
+                        while (true) {
+                            val r = input.read(buffer)
+                            if (r <= 0) break
+                            output.write(buffer, 0, r)
+                        }
+                        output.flush()
+                    }
+                }
+
+                copied++
+            } catch (e: Exception) {
+                skipped++
+                errors.add("Erreur import ${srcUri}: ${e.javaClass.simpleName} ${e.message ?: ""}".trim())
+            }
+        }
+
+        return Result(copied, skipped, errors)
+    }
     // ----------------- Helpers -----------------
 
     private fun ensureDir(parent: DocumentFile, name: String): DocumentFile? {
-        // ✅ Supporte "a/b/c"
         val parts = name.split("/").filter { it.isNotBlank() }
         var cur: DocumentFile = parent
 
         for (p in parts) {
-            val existing = cur.findFile(p)
+
+            // Cherche enfant (fichier ou dossier) en ignorant la casse
+            val existingAny = cur.listFiles()
+                .firstOrNull { (it.name ?: "").equals(p, ignoreCase = true) }
+
             cur = when {
-                existing != null && existing.isDirectory -> existing
-                existing != null && !existing.isDirectory -> return null
+                existingAny != null && existingAny.isDirectory -> existingAny
+                existingAny != null && !existingAny.isDirectory -> return null
                 else -> cur.createDirectory(p) ?: return null
             }
         }
+
+        // ✅ IL MANQUAIT CETTE LIGNE
         return cur
     }
 
@@ -184,21 +272,29 @@ object ImportAudioManager {
         val rootParent = DocumentFile.fromTreeUri(context, appRootTreeUri) ?: return null
         if (!rootParent.isDirectory) return null
 
-        fun ensureDir(parent: DocumentFile, name: String): DocumentFile? {
-            val parts = name.split("/").filter { it.isNotBlank() }
-            var cur: DocumentFile = parent
-            for (p in parts) {
-                val existing = cur.findFile(p)
-                cur = when {
-                    existing != null && existing.isDirectory -> existing
-                    existing != null && !existing.isDirectory -> return null
-                    else -> cur.createDirectory(p) ?: return null
-                }
-            }
-            return cur
-        }
-
+        // ✅ on réutilise LE ensureDir() DU HAUT DU FICHIER
         val dir = ensureDir(rootParent, subPath) ?: return null
         return dir.uri
+
+    }
+    fun importAudioFilesToFolder(
+        context: Context,
+        destFolderUri: Uri,
+        sourceUris: List<Uri>,
+        overwriteIfExists: Boolean = false
+    ): Result {
+        val destDir = DocumentFile.fromTreeUri(context, destFolderUri)
+            ?: DocumentFile.fromSingleUri(context, destFolderUri)
+            ?: return Result(0, 0, listOf("Dossier destination invalide"))
+
+        if (!destDir.isDirectory) return Result(0, 0, listOf("Dossier destination invalide"))
+
+        return importIntoDir(
+            context = context,
+            destDir = destDir,
+            sourceUris = sourceUris,
+            overwriteIfExists = overwriteIfExists
+        )
     }
 }
+

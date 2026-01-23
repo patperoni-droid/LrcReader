@@ -25,6 +25,7 @@ fun LibraryHeader(
     onPickRoot: () -> Unit,
     onRescan: () -> Unit,
     onForget: () -> Unit,
+    onImportBackingTracks: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -36,6 +37,8 @@ fun LibraryHeader(
                 ?: DocumentFile.fromSingleUri(context, it))?.name
         } ?: "Aucun dossier sélectionné"
     }
+
+    val hasRoot = currentFolderUri != null
 
     Row(
         modifier = modifier
@@ -70,14 +73,184 @@ fun LibraryHeader(
                 text = { Text("Choisir dossier Music") },
                 onClick = { actionsExpanded = false; onPickRoot() }
             )
+
             DropdownMenuItem(
                 text = { Text("Rescan bibliothèque") },
+                enabled = hasRoot,
                 onClick = { actionsExpanded = false; onRescan() }
             )
+
+            DropdownMenuItem(
+                text = { Text("Importer des musiques (→ BackingTracks)") },
+                enabled = hasRoot,
+                onClick = { actionsExpanded = false; onImportBackingTracks() }
+            )
+
             DropdownMenuItem(
                 text = { Text("Oublier le dossier") },
+                enabled = hasRoot,
                 onClick = { actionsExpanded = false; onForget() }
             )
         }
     }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
