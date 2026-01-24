@@ -42,7 +42,8 @@ fun exoCrossfadePlay(
 
         if (getCurrentToken() != playToken) return@launch
 
-        if (exoPlayer.isPlaying) {
+        val wasPlaying = exoPlayer.isPlaying
+        if (wasPlaying) {
             val steps = 24
             val stepDelay = (fadeDurationMs / steps).coerceAtLeast(1L)
             for (i in 1..steps) {
@@ -51,11 +52,17 @@ fun exoCrossfadePlay(
                 AudioEngine.setFadeMultiplier(curved)
                 delay(stepDelay)
             }
+            // ✅ IMPORTANT : on reste à 0 (silence) tant que l'ancien player n'est pas stoppé
+            AudioEngine.setFadeMultiplier(0f)
         }
 
-        if (getCurrentToken() != playToken) return@launch
+        if (getCurrentToken() != playToken) {
+            // ✅ sécurité : éviter de laisser le bus muet si on a été interrompu
+            AudioEngine.setFadeMultiplier(1f)
+            return@launch
+        }
 
-        AudioEngine.setFadeMultiplier(1f)
+        // ✅ on nettoie l'UI paroles dès qu'on bascule de morceau
         onLyricsLoaded(null)
 
         runCatching { embeddedLyricsListener.reset() }
@@ -79,8 +86,12 @@ fun exoCrossfadePlay(
         lastEndListener = endListener
         exoPlayer.addListener(endListener)
 
+        // ✅ stop réel de l'ancien titre AVANT de remettre le volume "normal"
         runCatching { exoPlayer.stop() }
         runCatching { exoPlayer.clearMediaItems() }
+
+        // ✅ maintenant seulement, on remet le bus à 1 pour le nouveau titre
+        AudioEngine.setFadeMultiplier(1f)
 
         val playableUriString = withContext(Dispatchers.IO) {
             resolvePlayableUriString(context, uriString)
