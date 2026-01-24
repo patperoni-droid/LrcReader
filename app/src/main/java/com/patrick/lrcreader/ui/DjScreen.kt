@@ -630,7 +630,6 @@ fun DjScreen(
 
             // ---------------------- File d’attente -------------------------
             val showQueuePanel = djState.queueAutoPlay || djState.queue.isNotEmpty()
-            if (djState.queueAutoPlay) isQueuePanelOpen = true
             if (showQueuePanel) {
                 Spacer(Modifier.height(8.dp))
                 DjQueuePanel(
