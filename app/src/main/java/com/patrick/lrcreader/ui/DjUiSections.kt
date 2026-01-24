@@ -213,12 +213,9 @@ fun DjMainCard(
             }
 
             Spacer(Modifier.height(8.dp))
-
-
-
-           }
         }
     }
+}
 
 
 
@@ -289,31 +286,36 @@ fun DjQueuePanel(
             if (isOpen) {
                 Spacer(Modifier.height(10.dp))
 
-                // ✅ Liste
-                queue.forEach { item ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onPlayItem(item) }          // ✅ clic sur le titre = charger la platine
-                            .padding(vertical = 2.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = item.title,
-                            color = Color(0xFF81D4FA), // ✅ bleu clair autoplay
-                            fontSize = 13.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Text(
-                            text = "X",
-                            color = Color.White.copy(alpha = 0.65f),
-                            fontSize = 13.sp,
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 220.dp)   // ajuste si tu veux plus ou moins de hauteur
+                ) {
+                    items(queue) { item ->
+                        Row(
                             modifier = Modifier
-                                .padding(start = 10.dp)
-                                .clickable { onRemoveItem(item) }    // ✅ remove
-                        )
+                                .fillMaxWidth()
+                                .clickable { onPlayItem(item) }
+                                .padding(vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = item.title,
+                                color = Color(0xFF81D4FA),
+                                fontSize = 13.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Text(
+                                text = "X",
+                                color = Color.White.copy(alpha = 0.65f),
+                                fontSize = 13.sp,
+                                modifier = Modifier
+                                    .padding(start = 10.dp)
+                                    .clickable { onRemoveItem(item) }
+                            )
+                        }
                     }
                 }
             }
