@@ -85,7 +85,7 @@ fun QuickPlaylistsScreen(
 
     val songs = remember { mutableStateListOf<String>() }
 
-    var currentListColor by remember { mutableStateOf(Color(0xFFE86FFF)) }
+    var currentListColor by remember { mutableStateOf(Color.White) } // ✅ plus de couleur "globale" de playlist
 
     var showMenu by remember { mutableStateOf(false) }
 
@@ -128,9 +128,9 @@ fun QuickPlaylistsScreen(
         val pl = internalSelected
         if (pl != null) {
             songs.addAll(PlaylistRepository.getSongsFor(pl))
-            val savedColor = loadPlaylistColor(context, pl)
-            currentListColor = savedColor ?: Color(0xFFE86FFF)
-            onPlaylistColorChange(currentListColor)
+            currentListColor = Color.White
+            // ✅ on ne pousse plus de couleur playlist vers le lecteur
+            // onPlaylistColorChange(currentListColor)
         }
     }
 
@@ -140,9 +140,9 @@ fun QuickPlaylistsScreen(
             internalSelected = selectedPlaylist
             songs.clear()
             songs.addAll(PlaylistRepository.getSongsFor(selectedPlaylist))
-            val savedColor = loadPlaylistColor(context, selectedPlaylist)
-            currentListColor = savedColor ?: Color(0xFFE86FFF)
-            onPlaylistColorChange(currentListColor)
+            currentListColor = Color.White
+            // ✅ on ne pousse plus de couleur playlist vers le lecteur
+            // onPlaylistColorChange(currentListColor)
         }
     }
 
@@ -154,10 +154,10 @@ fun QuickPlaylistsScreen(
             songs.clear()
             if (first != null) {
                 songs.addAll(PlaylistRepository.getSongsFor(first))
-                val savedColor = loadPlaylistColor(context, first)
-                currentListColor = savedColor ?: Color(0xFFE86FFF)
+                currentListColor = Color.White
                 onSelectedPlaylistChange(first)
-                onPlaylistColorChange(currentListColor)
+                // ✅ on ne pousse plus de couleur playlist vers le lecteur
+                // onPlaylistColorChange(currentListColor)
             }
         }
     }
@@ -228,7 +228,7 @@ fun QuickPlaylistsScreen(
                                 text = {
                                     Text(
                                         text = name,
-                                        color = if (isCurrent) currentListColor else Color.White,
+                                        color = Color.White,
                                         fontSize = 16.sp
                                     )
                                 },
@@ -392,7 +392,7 @@ fun QuickPlaylistsScreen(
                                     .border(
                                         width = 1.dp,
                                         color = if (isCurrentPlaying)
-                                            currentListColor.copy(alpha = 0.8f)
+                                            Color.White.copy(alpha = 0.8f)
                                         else
                                             Color(0x33FFFFFF),
                                         shape = RoundedCornerShape(12.dp)
@@ -403,7 +403,7 @@ fun QuickPlaylistsScreen(
                                 Icon(
                                     imageVector = Icons.Filled.DragHandle,
                                     contentDescription = "Déplacer",
-                                    tint = currentListColor,
+                                    tint = Color.White,
                                     modifier = Modifier
                                         .size(34.dp)
                                         .padding(end = 6.dp)
@@ -462,7 +462,7 @@ fun QuickPlaylistsScreen(
                                         isToReview -> Color(0xFFFF6F6F)      // rouge = à revoir
                                         isCurrentPlaying -> Color(0xFFFFFDE7)
                                         isPlayed -> Color(0xFF8D8D8D)
-                                        else -> (customSongColor ?: currentListColor)
+                                        else -> (customSongColor ?: Color.White) // ✅ blanc par défaut, mais on garde la couleur par titre
                                     },
                                     fontSize = 14.sp,
                                     modifier = Modifier
@@ -474,8 +474,7 @@ fun QuickPlaylistsScreen(
                                             PlaylistRepository.setNowPlaying(pl, uriString)
 
                                             // ✅ Lance le player
-                                            onPlaySong(uriString, pl, currentListColor)
-
+                                            onPlaySong(uriString, pl, Color.White) // ✅ ne teinte plus le lecteur / paroles
                                             // ⚠️ IMPORTANT : on NE rappelle PAS onSelectedPlaylistChange(pl) ici,
                                             // sinon le parent peut recharger la playlist immédiatement (LaunchedEffect),
                                             // ce qui donne l'impression que le titre "descend direct".

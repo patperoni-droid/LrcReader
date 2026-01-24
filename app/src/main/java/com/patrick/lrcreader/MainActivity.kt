@@ -266,7 +266,7 @@ class MainActivity : ComponentActivity() {
 
                 var currentPlayToken by remember { mutableStateOf(0L) }
                 var currentTrackGainDb by remember { mutableStateOf(DEFAULT_TRACK_GAIN_DB) }
-                var currentLyricsColor by remember { mutableStateOf(Color(0xFFE040FB)) }
+                var currentLyricsColor by remember { mutableStateOf(Color.White) }
                 var refreshKey by remember { mutableStateOf(0) }
 
                 var isNotesOpen by remember { mutableStateOf(false) }
@@ -654,7 +654,7 @@ class MainActivity : ComponentActivity() {
                                         selectedQuickPlaylist = name
                                         SessionPrefs.saveQuickPlaylist(ctx, name)
                                     },
-                                    onPlaylistColorChange = { c -> currentLyricsColor = c },
+                                    onPlaylistColorChange = { _ -> currentLyricsColor = Color.White },
                                     onRequestShowPlayer = {
                                         selectedTab = BottomTab.Player
                                         SessionPrefs.saveTab(ctx, TAB_PLAYER)
@@ -666,7 +666,7 @@ class MainActivity : ComponentActivity() {
                                     onPlayFromLibrary = { uriString ->
                                         playWithCrossfade(uriString, null)
                                         currentPlayingUri = uriString
-                                        currentLyricsColor = Color(0xFFE040FB)
+                                        currentLyricsColor = Color.White
                                         selectedTab = BottomTab.Player
                                         SessionPrefs.saveTab(ctx, TAB_PLAYER)
                                     }
@@ -726,7 +726,6 @@ class MainActivity : ComponentActivity() {
                                         SearchMode.PLAYER -> {
                                             playWithCrossfade(uriString, null)
                                             currentPlayingUri = uriString
-                                            currentLyricsColor = Color(0xFFE040FB)
                                             selectedTab = BottomTab.Player
                                             SessionPrefs.saveTab(ctx, TAB_PLAYER)
                                         }
