@@ -20,4 +20,51 @@
     <string name="mixer_channel_dj">DJ</string>
     <string name="mixer_channel_dj_subtitle">Bus DJ</string>
 
+    <!-- Filler / Fond sonore -->
+    <string name="filler_none_selected">Aucun son sélectionné</string>
+    <string name="filler_default_music_name">Music</string>
+
+    <string name="filler_scan_dj_running">Scan DJ en cours…</string>
+    <string name="filler_scan_dj_long">Scan DJ en cours… (ça peut durer 1–2 min)</string>
+    <string name="filler_scan_dj_wait_end">Scan DJ en cours… (attends la fin, sinon tout semble vide)</string>
+    <string name="filler_starting">Démarrage de l’ambiance…</string>
+    <string name="filler_dj_scan_error">Erreur pendant le scan DJ</string>
+    <string name="filler_dj_scan_wait">Scan DJ en cours… patiente 🙂</string>
+
+    <string name="filler_bus_title">BUS FOND SONORE</string>
+    <string name="filler_enable">Activer le fond sonore</string>
+    <string name="filler_volume">Volume</string>
+    <string name="filler_percent">%1$d %%</string>
+
+    <string name="filler_prev">Précédent</string>
+    <string name="filler_next">Suivant</string>
+    <string name="filler_play_pause">Play / Pause</string>
+
+    <string name="filler_library_missing">⚠️ Va dans Bibliothèque → “Choisir dossier Music” (1 fois).</string>
+
+    <string name="filler_quick_ambiences">Ambiances rapides</string>
+
+    <string name="filler_dj_required_title">Ambiances : dossier obligatoire</string>
+    <string name="filler_dj_required_text">Pour que les ambiances fonctionnent, elles doivent être placées dans le dossier :\n\nSPL_Music / DJ</string>
+    <string name="filler_choose_dj">Choisir le dossier DJ</string>
+
+    <string name="filler_picker_title">Choisir un dossier (dans DJ)</string>
+    <string name="filler_dj_missing">Dossier DJ non choisi (ou permission manquante).\nAppuie sur 📁 puis choisis le dossier DJ (SPL_Music/DJ).</string>
+    <string name="filler_current_folder">Dossier courant : %1$s</string>
+    <string name="filler_back">⬅️ Retour</string>
+    <string name="filler_choose_this">✅ Choisir ce dossier</string>
+    <string name="filler_no_subfolder">Aucun sous-dossier ici.</string>
+    <string name="filler_no_name">Sans nom</string>
+    <string name="filler_folder_linked">Dossier associé à \"%1$s\"</string>
+
+    <string name="filler_rename_title">Renommer l’ambiance</string>
+    <string name="filler_rename_label">Nom de l’ambiance</string>
+
+    <string name="ambiance_default">Ambiance %1$d</string>
+
+    <!-- Communs -->
+    <string name="common_ok">OK</string>
+    <string name="common_cancel">Annuler</string>
+    <string name="common_close">Fermer</string>
+
 </resources>

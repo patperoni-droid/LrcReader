@@ -20,4 +20,56 @@
     <string name="mixer_channel_dj">DJ</string>
     <string name="mixer_channel_dj_subtitle">DJ Bus</string>
 
+
+    <!-- Filler / Background sound -->
+    <string name="filler_none_selected">No sound selected</string>
+    <string name="filler_default_music_name">Music</string>
+
+    <string name="filler_bus_title">BACKGROUND BUS</string>
+
+    <string name="filler_enable">Enable background sound</string>
+    <string name="filler_volume">Volume</string>
+    <string name="filler_percent">%1$d %%</string>
+
+    <string name="filler_scan_dj_running">DJ scan in progress…</string>
+    <string name="filler_scan_dj_long">DJ scan in progress… (may take 1–2 min)</string>
+    <string name="filler_scan_dj_wait_end">DJ scan in progress… (wait until it finishes, otherwise everything looks empty)</string>
+    <string name="filler_starting">Starting ambience…</string>
+
+    <string name="filler_dj_scan_error">Error during DJ scan</string>
+    <string name="filler_dj_scan_wait">DJ scan in progress… please wait 🙂</string>
+
+    <string name="filler_prev">Previous</string>
+    <string name="filler_next">Next</string>
+    <string name="filler_play_pause">Play / Pause</string>
+
+    <string name="filler_library_missing">⚠️ Go to Library → “Choose Music folder” (once).</string>
+
+    <string name="filler_quick_ambiences">Quick ambiences</string>
+
+    <string name="filler_folder_linked">Folder linked to "%1$s"</string>
+
+    <string name="filler_dj_required_title">Ambiences: required folder</string>
+    <string name="filler_dj_required_text">For ambiences to work, they must be inside:\n\nSPL_Music / DJ</string>
+    <string name="filler_choose_dj">Choose DJ folder</string>
+
+    <string name="filler_picker_title">Choose a folder (inside DJ)</string>
+    <string name="filler_dj_missing">DJ folder not selected (or missing permission).\nTap 📁 then choose the DJ folder (SPL_Music/DJ).</string>
+
+    <string name="filler_current_folder">Current folder: %1$s</string>
+    <string name="filler_back">⬅️ Back</string>
+    <string name="filler_choose_this">✅ Select this folder</string>
+    <string name="filler_no_subfolder">No subfolders here.</string>
+    <string name="filler_no_name">No name</string>
+
+    <string name="filler_rename_title">Rename ambience</string>
+    <string name="filler_rename_label">Ambience name</string>
+
+    <string name="ambiance_default">Ambience %1$d</string>
+
+    <!-- Common -->
+    <string name="common_ok">OK</string>
+    <string name="common_cancel">Cancel</string>
+    <string name="common_close">Close</string>
+
 </resources>

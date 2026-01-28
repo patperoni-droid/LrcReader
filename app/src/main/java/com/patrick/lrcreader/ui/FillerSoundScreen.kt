@@ -1,27 +1,15 @@
 package com.patrick.lrcreader.ui
 
-import androidx.compose.runtime.collectAsState
-import android.provider.DocumentsContract
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.provider.DocumentsContract
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -30,29 +18,13 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
-import androidx.compose.material3.Switch
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.documentfile.provider.DocumentFile
@@ -61,6 +33,7 @@ import com.patrick.lrcreader.core.DjFolderPrefs
 import com.patrick.lrcreader.core.DjIndexCache
 import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.core.FillerSoundPrefs
+import com.patrick.lrcreader.exo.R
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -72,6 +45,12 @@ fun FillerSoundScreen(
     context: Context,
     onBack: () -> Unit
 ) {
+    // ✅ IMPORTANT :
+    // stringResource() est @Composable -> on l’utilise UNIQUEMENT dans le "corps" Composable
+    // et pas dans remember { ... } ni dans des init de state.
+    val sNoneSelected = stringResource(R.string.filler_none_selected)
+    val sDefaultMusic = stringResource(R.string.filler_default_music_name)
+
     // Palette cohérente avec la console & l’accordeur
     val backgroundBrush = Brush.verticalGradient(
         listOf(
@@ -99,13 +78,16 @@ fun FillerSoundScreen(
             DocumentsContract.buildTreeDocumentUri(u.authority, docId)
         }.getOrElse { u }
     }
+
     // ✅ Racine Music persistée par Bibliothèque
     val libraryRoot = remember { BackupFolderPrefs.get(context) }
 
     var isEnabled by remember { mutableStateOf(FillerSoundPrefs.isEnabled(context)) }
     var fillerUri by remember { mutableStateOf(FillerSoundPrefs.getFillerFolder(context)) }
-    var fillerName by remember {
-        mutableStateOf(fillerUri?.lastPathSegment ?: "Aucun son sélectionné")
+
+    // ⚠️ NE PAS mettre stringResource() dans remember { ... }
+    var fillerName by remember(fillerUri) {
+        mutableStateOf(fillerUri?.lastPathSegment ?: sNoneSelected)
     }
 
     // ✅ Au premier affichage : si aucun dossier filler n’est défini, on prend Music de la Bibliothèque
@@ -113,9 +95,10 @@ fun FillerSoundScreen(
         if (fillerUri == null && libraryRoot != null) {
             FillerSoundPrefs.saveFillerFolder(context, libraryRoot)
             fillerUri = libraryRoot
-            fillerName = libraryRoot.lastPathSegment ?: "Music"
+            fillerName = libraryRoot.lastPathSegment ?: sDefaultMusic
         }
     }
+
     fun canOpenTree(u: Uri?): Boolean {
         val tree = normalizeToTreeUri(u) ?: return false
         return runCatching {
@@ -123,6 +106,7 @@ fun FillerSoundScreen(
             doc != null && doc.exists() && doc.canRead()
         }.getOrDefault(false)
     }
+
     // mapping courbe : curseur “doux” en bas
     fun uiToRealVolume(u: Float): Float {
         val clamped = u.coerceIn(0f, 1f)
@@ -135,9 +119,7 @@ fun FillerSoundScreen(
     }
 
     val initialReal = FillerSoundPrefs.getFillerVolume(context)
-    var uiFillerVolume by remember {
-        mutableStateOf(realToUiVolume(initialReal))
-    }
+    var uiFillerVolume by remember { mutableStateOf(realToUiVolume(initialReal)) }
 
     // ─────────────────────────────────────────────────────────────
     //  Ambiances rapides : 5 slots
@@ -173,14 +155,19 @@ fun FillerSoundScreen(
     val scope = rememberCoroutineScope()
     var isStarting by remember { mutableStateOf(false) }
     var startJob by remember { mutableStateOf<Job?>(null) }
-// ✅ Scan DJ (indépendant du playback)
+
+    // ✅ Scan DJ (indépendant du playback)
     var isDjScanning by remember { mutableStateOf(false) }
-    var djScanProgressText by remember { mutableStateOf("Scan DJ en cours…") }
+    var djScanProgressText by remember {
+        mutableStateOf(context.getString(R.string.filler_scan_dj_running))
+    }
+
     // Picker
     var showFolderPicker by remember { mutableStateOf(false) }
     var folderPickSlotIndex by remember { mutableStateOf<Int?>(null) }
     var showDjInfoDialog by remember { mutableStateOf(false) }
     var pendingSlotIndex by remember { mutableStateOf<Int?>(null) }
+
     // Dialog de renommage
     var slotToRenameIndex by remember { mutableStateOf<Int?>(null) }
     var renameText by remember { mutableStateOf("") }
@@ -201,7 +188,8 @@ fun FillerSoundScreen(
                     treeUri,
                     Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
                 )
-            } catch (_: Exception) {}
+            } catch (_: Exception) {
+            }
 
             // ✅ on enregistre la racine DJ (partagée avec l’écran DJ)
             DjFolderPrefs.save(context, treeUri)
@@ -209,7 +197,7 @@ fun FillerSoundScreen(
 
             // ✅ feedback immédiat (sinon l’utilisateur reclique)
             isDjScanning = true
-            djScanProgressText = "Scan DJ en cours… (ça peut durer 1–2 min)"
+            djScanProgressText = context.getString(R.string.filler_scan_dj_long)
 
             scope.launch {
                 try {
@@ -223,7 +211,11 @@ fun FillerSoundScreen(
                     showFolderPicker = true
                 } catch (t: Throwable) {
                     android.util.Log.e("DJ_SCAN", "Scan DJ crash: ${t.message}", t)
-                    Toast.makeText(context, "Erreur pendant le scan DJ", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(
+                        context,
+                        context.getString(R.string.filler_dj_scan_error),
+                        Toast.LENGTH_SHORT
+                    ).show()
                 } finally {
                     isDjScanning = false
                 }
@@ -281,7 +273,7 @@ fun FillerSoundScreen(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            text = "BUS FOND SONORE",
+                            text = stringResource(R.string.filler_bus_title),
                             color = Color(0xFFFFECB3),
                             fontSize = 13.sp,
                             letterSpacing = 2.sp
@@ -297,7 +289,7 @@ fun FillerSoundScreen(
                 ) {
                     Column(Modifier.weight(1f)) {
                         Text(
-                            text = "Activer le fond sonore",
+                            text = stringResource(R.string.filler_enable),
                             color = onBg,
                             fontSize = 14.sp
                         )
@@ -322,7 +314,7 @@ fun FillerSoundScreen(
                 Spacer(Modifier.height(12.dp))
 
                 // VOLUME GLOBAL
-                Text("Volume", color = sub, fontSize = 11.sp)
+                Text(stringResource(R.string.filler_volume), color = sub, fontSize = 11.sp)
 
                 Slider(
                     value = uiFillerVolume,
@@ -344,7 +336,7 @@ fun FillerSoundScreen(
 
                 val realDisplay = uiToRealVolume(uiFillerVolume)
                 Text(
-                    text = "${(realDisplay * 100).toInt()} %",
+                    text = stringResource(R.string.filler_percent, (realDisplay * 100).toInt()),
                     color = onBg,
                     fontSize = 11.sp
                 )
@@ -352,7 +344,7 @@ fun FillerSoundScreen(
                 if (isStarting || isDjScanning) {
                     Spacer(Modifier.height(6.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        androidx.compose.material3.CircularProgressIndicator(
+                        CircularProgressIndicator(
                             modifier = Modifier.size(14.dp),
                             strokeWidth = 2.dp,
                             color = onBg
@@ -360,9 +352,9 @@ fun FillerSoundScreen(
                         Spacer(modifier = Modifier.padding(start = 8.dp))
                         Text(
                             text = if (isDjScanning)
-                                "Scan DJ en cours… (attends la fin, sinon tout semble vide)"
+                                stringResource(R.string.filler_scan_dj_wait_end)
                             else
-                                "Démarrage de l’ambiance…",
+                                stringResource(R.string.filler_starting),
                             color = sub,
                             fontSize = 11.sp
                         )
@@ -372,10 +364,8 @@ fun FillerSoundScreen(
                 // ───────── GROS BOUTONS DE TRANSPORT ─────────
                 Spacer(Modifier.height(8.dp))
 
-                val currentSelectedSlot =
-                    selectedIndex?.let { idx -> slots.getOrNull(idx) }
-                val canControlSelected =
-                    isEnabled && currentSelectedSlot?.folderUri != null
+                val currentSelectedSlot = selectedIndex?.let { idx -> slots.getOrNull(idx) }
+                val canControlSelected = isEnabled && currentSelectedSlot?.folderUri != null
 
                 Row(
                     modifier = Modifier
@@ -406,7 +396,7 @@ fun FillerSoundScreen(
                     ) {
                         Icon(
                             imageVector = Icons.Filled.SkipPrevious,
-                            contentDescription = "Précédent",
+                            contentDescription = stringResource(R.string.filler_prev),
                             tint = if (canControlSelected) onBg else sub,
                             modifier = Modifier.size(40.dp)
                         )
@@ -464,7 +454,7 @@ fun FillerSoundScreen(
 
                         Icon(
                             imageVector = if (showPause) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                            contentDescription = "Play / Pause",
+                            contentDescription = stringResource(R.string.filler_play_pause),
                             tint = if (canControlSelected) accent else sub,
                             modifier = Modifier.size(46.dp)
                         )
@@ -492,7 +482,7 @@ fun FillerSoundScreen(
                     ) {
                         Icon(
                             imageVector = Icons.Filled.SkipNext,
-                            contentDescription = "Suivant",
+                            contentDescription = stringResource(R.string.filler_next),
                             tint = if (canControlSelected) onBg else sub,
                             modifier = Modifier.size(40.dp)
                         )
@@ -502,7 +492,7 @@ fun FillerSoundScreen(
                 if (libraryRoot == null) {
                     Spacer(Modifier.height(10.dp))
                     Text(
-                        "⚠️ Va dans Bibliothèque → “Choisir dossier Music” (1 fois).",
+                        text = stringResource(R.string.filler_library_missing),
                         color = sub,
                         fontSize = 12.sp
                     )
@@ -513,7 +503,7 @@ fun FillerSoundScreen(
         Spacer(Modifier.height(10.dp))
 
         Text(
-            text = "Ambiances rapides",
+            text = stringResource(R.string.filler_quick_ambiences),
             color = onBg,
             fontSize = 13.sp
         )
@@ -551,7 +541,11 @@ fun FillerSoundScreen(
                             .padding(end = 4.dp)
                             .clickable {
                                 if (isDjScanning) {
-                                    Toast.makeText(context, "Scan DJ en cours… patiente 🙂", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(
+                                        context,
+                                        context.getString(R.string.filler_dj_scan_wait),
+                                        Toast.LENGTH_SHORT
+                                    ).show()
                                     return@clickable
                                 }
 
@@ -559,10 +553,10 @@ fun FillerSoundScreen(
 
                                 val djRoot = DjFolderPrefs.get(context)
                                 val djCache = DjIndexCache.load(context).orEmpty()
-                                val needScan = (djRoot == null) || djCache.isEmpty() || !DjFolderPrefs.isScanned(context)
+                                val needScan =
+                                    (djRoot == null) || djCache.isEmpty() || !DjFolderPrefs.isScanned(context)
 
                                 if (needScan) {
-                                    // On affiche un message clair au lieu de lancer direct le picker
                                     showDjInfoDialog = true
                                 } else {
                                     folderPickSlotIndex = index
@@ -597,13 +591,14 @@ fun FillerSoundScreen(
 
         Spacer(Modifier.height(8.dp))
     }
+
     if (showDjInfoDialog) {
         AlertDialog(
             onDismissRequest = { showDjInfoDialog = false },
-            title = { Text("Ambiances : dossier obligatoire", color = onBg) },
+            title = { Text(stringResource(R.string.filler_dj_required_title), color = onBg) },
             text = {
                 Text(
-                    "Pour que les ambiances fonctionnent, elles doivent être placées dans le dossier :\n\nSPL_Music / DJ",
+                    stringResource(R.string.filler_dj_required_text),
                     color = sub,
                     fontSize = 12.sp
                 )
@@ -612,43 +607,39 @@ fun FillerSoundScreen(
                 TextButton(onClick = {
                     showDjInfoDialog = false
                     folderPickSlotIndex = pendingSlotIndex
-                    // Lance le SAF pour choisir le dossier DJ (comme l’écran DJ)
                     pickDjFolderLauncher.launch(null)
-                }) { Text("Choisir le dossier DJ", color = onBg) }
+                }) { Text(stringResource(R.string.filler_choose_dj), color = onBg) }
             },
             dismissButton = {
                 TextButton(onClick = {
                     showDjInfoDialog = false
                     pendingSlotIndex = null
-                }) { Text("Annuler", color = sub) }
+                }) { Text(stringResource(R.string.common_cancel), color = sub) }
             },
             containerColor = Color(0xFF222222)
         )
     }
+
     // ───────────────────────────────────────────────
-    //  PICKER DOSSIER (SAF direct, affiche toujours les sous-dossiers)
+    //  PICKER DOSSIER (SAF direct, navigation DocumentFile)
     // ───────────────────────────────────────────────
-    // ───────────────────────────────────────────────
-//  PICKER DOSSIER (SAF direct, navigation DocumentFile)
-// ───────────────────────────────────────────────
     if (showFolderPicker) {
 
         val djRootTree = normalizeToTreeUri(DjFolderPrefs.get(context))
 
-        // DocumentFile racine (DJ)
         val rootDoc: DocumentFile? = remember(showFolderPicker, djRootTree) {
             djRootTree?.let { DocumentFile.fromTreeUri(context, it) }
         }
+
         LaunchedEffect(rootDoc) {
             android.util.Log.e("DJ_PICKER", "djRootTree=$djRootTree")
             android.util.Log.e("DJ_PICKER", "rootDoc=${rootDoc?.uri} name=${rootDoc?.name}")
             android.util.Log.e("DJ_PICKER", "childrenCount=${rootDoc?.listFiles()?.size ?: -1}")
         }
-        // Navigation: on garde des DocumentFile (PAS des Uri)
+
         var pickerDoc by remember(showFolderPicker, rootDoc) { mutableStateOf<DocumentFile?>(rootDoc) }
         var pickerStack by remember(showFolderPicker, rootDoc) { mutableStateOf<List<DocumentFile>>(emptyList()) }
 
-        // Sous-dossiers du dossier courant
         val pickerEntries: List<DocumentFile> = remember(pickerDoc) {
             val cur = pickerDoc ?: return@remember emptyList()
             cur.listFiles()
@@ -665,26 +656,29 @@ fun FillerSoundScreen(
                 pickerDoc = rootDoc
                 pickerStack = emptyList()
             },
-            title = { Text("Choisir un dossier (dans DJ)", color = onBg) },
+            title = { Text(stringResource(R.string.filler_picker_title), color = onBg) },
             text = {
                 if (djRootTree == null || rootDoc == null) {
                     Text(
-                        "Dossier DJ non choisi (ou permission manquante).\nAppuie sur 📁 puis choisis le dossier DJ (SPL_Music/DJ).",
-                        color = sub, fontSize = 12.sp
+                        stringResource(R.string.filler_dj_missing),
+                        color = sub,
+                        fontSize = 12.sp
                     )
                 } else {
                     Column(Modifier.verticalScroll(rememberScrollState())) {
 
-                        // Debug rapide (tu peux virer après)
                         Text(
-                            text = "Dossier courant : ${pickerDoc?.name ?: "(racine)"}",
+                            text = stringResource(
+                                R.string.filler_current_folder,
+                                pickerDoc?.name ?: "(racine)"
+                            ),
                             color = sub,
                             fontSize = 11.sp
                         )
 
                         if (pickerStack.isNotEmpty()) {
                             Text(
-                                text = "⬅️ Retour",
+                                text = stringResource(R.string.filler_back),
                                 color = accent,
                                 fontSize = 12.sp,
                                 modifier = Modifier
@@ -700,7 +694,7 @@ fun FillerSoundScreen(
                         }
 
                         Text(
-                            text = "✅ Choisir ce dossier",
+                            text = stringResource(R.string.filler_choose_this),
                             color = Color(0xFFB388FF),
                             fontSize = 12.sp,
                             modifier = Modifier
@@ -710,10 +704,7 @@ fun FillerSoundScreen(
                                     val idx = folderPickSlotIndex
                                     val chosenDoc = pickerDoc
                                     if (idx != null && chosenDoc != null && idx in slots.indices) {
-
-                                        // ✅ on stocke l'URI du DocumentFile choisi
                                         val chosenUri = chosenDoc.uri
-
                                         val newSlot = slots[idx].copy(folderUri = chosenUri)
                                         slots[idx] = newSlot
                                         AmbiancePrefs.saveSlot(context, newSlot)
@@ -721,7 +712,7 @@ fun FillerSoundScreen(
 
                                         Toast.makeText(
                                             context,
-                                            "Dossier associé à \"${newSlot.name}\"",
+                                            context.getString(R.string.filler_folder_linked, newSlot.name),
                                             Toast.LENGTH_SHORT
                                         ).show()
                                     }
@@ -736,10 +727,10 @@ fun FillerSoundScreen(
                         Spacer(Modifier.height(6.dp))
 
                         if (pickerEntries.isEmpty()) {
-                            Text("Aucun sous-dossier ici.", color = sub, fontSize = 12.sp)
+                            Text(stringResource(R.string.filler_no_subfolder), color = sub, fontSize = 12.sp)
                         } else {
                             pickerEntries.forEach { f ->
-                                val name = f.name ?: "Sans nom"
+                                val name = f.name ?: context.getString(R.string.filler_no_name)
                                 Text(
                                     text = "📁 $name",
                                     color = onBg,
@@ -763,7 +754,7 @@ fun FillerSoundScreen(
                     folderPickSlotIndex = null
                     pickerDoc = rootDoc
                     pickerStack = emptyList()
-                }) { Text("Fermer", color = onBg) }
+                }) { Text(stringResource(R.string.common_close), color = onBg) }
             },
             containerColor = Color(0xFF222222)
         )
@@ -788,27 +779,26 @@ fun FillerSoundScreen(
                         }
                         slotToRenameIndex = null
                     }
-                ) { Text("OK", color = onBg) }
+                ) { Text(stringResource(R.string.common_ok), color = onBg) }
             },
             dismissButton = {
                 TextButton(onClick = { slotToRenameIndex = null }) {
-                    Text("Annuler", color = sub)
+                    Text(stringResource(R.string.common_cancel), color = sub)
                 }
             },
-            title = { Text("Renommer l’ambiance", color = onBg) },
+            title = { Text(stringResource(R.string.filler_rename_title), color = onBg) },
             text = {
                 OutlinedTextField(
                     value = renameText,
                     onValueChange = { renameText = it },
                     singleLine = true,
-                    label = { Text("Nom de l’ambiance") }
+                    label = { Text(stringResource(R.string.filler_rename_label)) }
                 )
             },
             containerColor = Color(0xFF222222)
         )
     }
 }
-
 
 /* ─────────────────────────────────────────────
    Stockage des 5 ambiances (nom + dossier)
@@ -829,8 +819,8 @@ private object AmbiancePrefs {
     fun loadSlots(context: Context, count: Int): List<AmbianceSlot> {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         return (0 until count).map { i ->
-            val name =
-                prefs.getString(keyName(i), "Ambiance ${i + 1}") ?: "Ambiance ${i + 1}"
+            val defaultName = context.getString(R.string.ambiance_default, i + 1)
+            val name = prefs.getString(keyName(i), defaultName) ?: defaultName
             val uriString = prefs.getString(keyUri(i), null)
             val uri = uriString?.let { Uri.parse(it) }
             AmbianceSlot(index = i, name = name, folderUri = uri)
