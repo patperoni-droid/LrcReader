@@ -1,5 +1,7 @@
 package com.patrick.lrcreader.ui
 
+import androidx.compose.ui.res.stringResource
+import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.exo.BuildConfig
 import androidx.compose.runtime.LaunchedEffect
 import com.patrick.lrcreader.core.PlaybackCoordinator   // pour stopPlayer et stopDj et stopFiller
@@ -19,7 +21,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.LibraryMusic
@@ -43,6 +44,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -127,7 +129,7 @@ fun MixerHomePreviewScreen(
                 IconButton(onClick = onBack) {
                     Icon(
                         imageVector = Icons.Filled.ArrowBack,
-                        contentDescription = "Retour",
+                        contentDescription = stringResource(R.string.mixer_cd_back),
                         tint = Color(0xFFEEEEEE)
                     )
                 }
@@ -136,15 +138,15 @@ fun MixerHomePreviewScreen(
                 Column {
                     Text(
                         text = if (BuildConfig.FLAVOR == "labo")
-                            "🧪 LABO - Stage Music Player"
+                            stringResource(R.string.mixer_app_title_labo)
                         else
-                            "Stage Music Player",
+                            stringResource(R.string.mixer_app_title),
                         color = Color(0xFFFFE082),
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "Console Studio",
+                        text = stringResource(R.string.mixer_console_studio),
                         color = Color(0xFFB0BEC5),
                         fontSize = 12.sp
                     )
@@ -162,15 +164,13 @@ fun MixerHomePreviewScreen(
 
                 Spacer(Modifier.width(4.dp))
 
-
-
                 Spacer(Modifier.width(4.dp))
 
                 // Nouvelle icône : ACCORDEUR
                 IconButton(onClick = onOpenTuner) {
                     Icon(
                         imageVector = Icons.Filled.Tune,
-                        contentDescription = "Accordeur",
+                        contentDescription = stringResource(R.string.mixer_cd_tuner),
                         tint = Color(0xFF80DEEA)
                     )
                 }
@@ -213,7 +213,7 @@ fun MixerHomePreviewScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "BUS PRINCIPAL",
+                            text = stringResource(R.string.mixer_bus_main),
                             color = Color(0xFFFFECB3),
                             fontSize = 13.sp,
                             letterSpacing = 2.sp
@@ -232,8 +232,8 @@ fun MixerHomePreviewScreen(
                     ) {
                         // LECTEUR = STOP DU LECTEUR
                         MixerChannelColumn(
-                            label = "LECTEUR",
-                            subtitle = "Playlists",
+                            label = stringResource(R.string.mixer_channel_player),
+                            subtitle = stringResource(R.string.mixer_channel_player_subtitle),
                             icon = Icons.Filled.MusicNote,
                             faderColor = Color(0xFF81C784),
                             meterColor = Color(0xFF66BB6A),
@@ -250,8 +250,8 @@ fun MixerHomePreviewScreen(
 
                         // FOND = STOP DU FOND SONORE
                         MixerChannelColumn(
-                            label = "FOND",
-                            subtitle = "Ambiance",
+                            label = stringResource(R.string.mixer_channel_fond),
+                            subtitle = stringResource(R.string.mixer_channel_fond_subtitle),
                             icon = Icons.Filled.LibraryMusic,
                             faderColor = Color(0xFFFFC107),
                             meterColor = Color(0xFFFFA000),
@@ -272,8 +272,8 @@ fun MixerHomePreviewScreen(
 
                         // DJ = STOP DU DJ
                         MixerChannelColumn(
-                            label = "DJ",
-                            subtitle = "Bus DJ",
+                            label = stringResource(R.string.mixer_channel_dj),
+                            subtitle = stringResource(R.string.mixer_channel_dj_subtitle),
                             icon = Icons.Filled.Headphones,
                             faderColor = Color(0xFF64B5F6),
                             meterColor = Color(0xFF42A5F5),

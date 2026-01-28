@@ -1,4 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Stage Music Player</string>
+
+    <!-- Mixer / Console -->
+    <string name="mixer_app_title">Stage Music Player</string>
+    <string name="mixer_app_title_labo">🧪 LABO - Stage Music Player</string>
+    <string name="mixer_console_studio">Console Studio</string>
+
+    <string name="mixer_cd_back">Retour</string>
+    <string name="mixer_cd_tuner">Accordeur</string>
+
+    <string name="mixer_bus_main">BUS PRINCIPAL</string>
+
+    <string name="mixer_channel_player">LECTEUR</string>
+    <string name="mixer_channel_player_subtitle">Playlists</string>
+
+    <string name="mixer_channel_fond">FOND</string>
+    <string name="mixer_channel_fond_subtitle">Ambiance</string>
+
+    <string name="mixer_channel_dj">DJ</string>
+    <string name="mixer_channel_dj_subtitle">Bus DJ</string>
+
 </resources>
