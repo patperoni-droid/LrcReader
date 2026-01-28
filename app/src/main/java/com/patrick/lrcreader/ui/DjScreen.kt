@@ -1,16 +1,11 @@
 package com.patrick.lrcreader.ui
 
-import com.patrick.lrcreader.core.DjScanState
-import android.widget.Toast
-import kotlinx.coroutines.Dispatchers
-import com.patrick.lrcreader.core.BackupFolderPrefs
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import android.content.Context
 import android.content.Intent
+import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import android.content.Context
-import android.net.Uri
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -34,18 +29,23 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.patrick.lrcreader.core.BackupFolderPrefs
 import com.patrick.lrcreader.core.DjFolderPrefs
 import com.patrick.lrcreader.core.DjIndexCache
+import com.patrick.lrcreader.core.DjScanState
 import com.patrick.lrcreader.core.PlaybackCoordinator
 import com.patrick.lrcreader.core.dj.DjEngine
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
 @Composable
@@ -110,6 +110,44 @@ fun DjScreen(
             .map { cachedToDjEntry(it) }
             .toList()
     }
+
+    // ✅ 1 seule source de vérité pour lancer un scan DJ depuis n'importe où
+    fun launchDjScan(djRoot: Uri, showToast: Boolean) {
+        if (DjScanState.isScanning.value) {
+            if (showToast) Toast.makeText(context, "Scan DJ déjà en cours…", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        scope.launch {
+            isLoading = true
+            DjScanState.start()
+            try {
+                val newDjIndex = withContext(Dispatchers.IO) {
+                    buildDjFullIndex(context, djRoot)
+                }
+                DjIndexCache.save(context, newDjIndex)
+                DjFolderPrefs.setScanned(context, true)
+
+                indexAll = newDjIndex
+                refreshFromIndex()
+
+                if (showToast) {
+                    Toast.makeText(
+                        context,
+                        "Scan DJ terminé (${newDjIndex.size} entrées)",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            } catch (t: Throwable) {
+                android.util.Log.e("DJ", "Scan DJ failed: ${t.message}", t)
+                if (showToast) Toast.makeText(context, "Erreur pendant le scan DJ", Toast.LENGTH_SHORT).show()
+            } finally {
+                DjScanState.stop()
+                isLoading = false
+            }
+        }
+    }
+
     val pickDjFolderLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree(),
         onResult = { uri ->
@@ -128,74 +166,34 @@ fun DjScreen(
             browserVm.setRoot(uri)
             browserVm.setCurrent(uri)
 
-            // 3) scanner en arrière-plan (sinon écran noir / crash)
-            scope.launch {
-                isLoading = true
-                DjScanState.start()
-                try {
-                    val newDjIndex = withContext(Dispatchers.IO) {
-                        buildDjFullIndex(context, uri)
-                    }
-
-                    DjIndexCache.save(context, newDjIndex)
-                    DjFolderPrefs.setScanned(context, true)
-
-                    indexAll = newDjIndex
-                    refreshFromIndex()
-
-                    Toast.makeText(
-                        context,
-                        "Scan DJ terminé (${newDjIndex.size} entrées)",
-                        Toast.LENGTH_SHORT
-                    ).show()
-
-                } catch (t: Throwable) {
-                    android.util.Log.e(
-                        "DJ",
-                        "Pick/Scan DJ folder crash: ${t.javaClass.simpleName}: ${t.message}",
-                        t
-                    )
-                    Toast.makeText(context, "Erreur pendant le scan DJ", Toast.LENGTH_SHORT).show()
-                } finally {
-                    DjScanState.stop()
-                    isLoading = false
-                }
-            }
+            // 3) scanner en arrière-plan
+            launchDjScan(uri, showToast = false)
         }
     )
+
     // ✅ Import MP3 vers SPL Music/backingtracks
     val pickAudioFilesLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenMultipleDocuments(),
         onResult = { uris ->
             if (uris.isNullOrEmpty()) return@rememberLauncherForActivityResult
 
-            // ⚠️ Ici, on a besoin du dossier SPL Music (TreeUri) – celui que tu utilises pour créer backingtracks.
-            // Je pars sur ton stockage central : BackupFolderPrefs (si chez toi c’est un autre Pref, dis-moi lequel et on le remplace).
-            val appRoot = BackupFolderPrefs.get(context)
-
-            if (appRoot == null) {
-                // pas de crash : on ne fait rien, mais tu peux afficher un toast/snackbar si tu veux
-                return@rememberLauncherForActivityResult
-            }
+            val appRoot = BackupFolderPrefs.get(context) ?: return@rememberLauncherForActivityResult
 
             isLoading = true
             try {
-                val res = com.patrick.lrcreader.core.ImportAudioManager.importAudioFiles(
+                com.patrick.lrcreader.core.ImportAudioManager.importAudioFiles(
                     context = context,
                     appRootTreeUri = appRoot,
                     sourceUris = uris,
                     destFolderName = "backingtracks",
                     overwriteIfExists = false
                 )
-
-                // 👉 Option simple : après import, tu rescannes (si ta bibliothèque pointe sur SPL Music).
-                // Si ta bibliothèque scanne un autre root (Music choisi ailleurs), on branchera le rescan au bon endroit.
-                // Ici on rafraîchit juste l’index DJ si besoin, sinon laisse.
             } finally {
                 isLoading = false
             }
         }
     )
+
     // état DJ global
     val djState by DjEngine.state.collectAsState()
 
@@ -229,47 +227,21 @@ fun DjScreen(
         label = "pulse"
     )
 
-
-
-
     // -------------------------- 1er chargement ---------------------------
     LaunchedEffect(Unit) {
-        isLoading = true
-        try {
-            val rootUri = DjFolderPrefs.get(context)
+        val root = DjFolderPrefs.get(context)
 
-            // VM navigation : root + current
-            if (browserVm.rootFolderUri == null) browserVm.setRoot(rootUri)
-            if (browserVm.currentFolderUri == null) browserVm.setCurrent(browserVm.rootFolderUri)
+        // (1) synchro VM
+        if (browserVm.rootFolderUri == null) browserVm.setRoot(root)
+        if (browserVm.currentFolderUri == null) browserVm.setCurrent(browserVm.rootFolderUri)
 
-            // Charge l'index cache
-            indexAll = DjIndexCache.load(context) ?: emptyList()
+        // (2) charge cache DJ
+        indexAll = DjIndexCache.load(context).orEmpty()
+        refreshFromIndex()
 
-            // ✅ Auto-scan 1 seule fois si index vide ET root défini ET pas déjà scanné
-            val needAutoScan = (rootUri != null) && indexAll.isEmpty() && !DjFolderPrefs.isScanned(context)
-            if (needAutoScan) {
-                DjScanState.start()
-                try {
-                    val newDjIndex = withContext(Dispatchers.IO) {
-                        buildDjFullIndex(context, rootUri)
-                    }
-                    DjIndexCache.save(context, newDjIndex)
-                    DjFolderPrefs.setScanned(context, true)
-                    indexAll = newDjIndex
-                } catch (t: Throwable) {
-                    android.util.Log.e(
-                        "DJ",
-                        "Auto-scan DJ failed: ${t.javaClass.simpleName}: ${t.message}",
-                        t
-                    )
-                } finally {
-                    DjScanState.stop()
-                }
-            }
-
-            refreshFromIndex()
-        } finally {
-            isLoading = false
+        // (3) auto-scan 1 fois si on a un root mais pas d’index
+        if (root != null && indexAll.isEmpty()) {
+            launchDjScan(root, showToast = false)
         }
     }
 
@@ -416,37 +388,7 @@ fun DjScreen(
                                 return@DropdownMenuItem
                             }
 
-                            scope.launch {
-                                isLoading = true
-                                DjScanState.start()
-                                try {
-                                    val newDjIndex = withContext(Dispatchers.IO) {
-                                        buildDjFullIndex(context, djRoot)
-                                    }
-
-                                    DjIndexCache.save(context, newDjIndex)
-                                    DjFolderPrefs.setScanned(context, true)
-
-                                    indexAll = newDjIndex
-                                    refreshFromIndex()
-
-                                    Toast.makeText(
-                                        context,
-                                        "Scan DJ terminé (${newDjIndex.size} entrées)",
-                                        Toast.LENGTH_SHORT
-                                    ).show()
-                                } catch (t: Throwable) {
-                                    android.util.Log.e(
-                                        "DJ",
-                                        "Rescan DJ failed: ${t.javaClass.simpleName}: ${t.message}",
-                                        t
-                                    )
-                                    Toast.makeText(context, "Erreur pendant le scan DJ", Toast.LENGTH_SHORT).show()
-                                } finally {
-                                    DjScanState.stop()
-                                    isLoading = false
-                                }
-                            }
+                            launchDjScan(djRoot, showToast = true)
                         }
                     )
 
@@ -456,7 +398,6 @@ fun DjScreen(
                         text = { Text("Importer des musiques (→ backingtracks)") },
                         onClick = {
                             menuOpen = false
-                            // sélection multi-fichiers
                             pickAudioFilesLauncher.launch(
                                 arrayOf(
                                     "audio/*",
@@ -468,8 +409,8 @@ fun DjScreen(
                     )
                 }
             } // <-- FIN DU Row du header
-            // 🔍 barre de recherche
 
+            // 🔍 barre de recherche
             if (isSearchOpen) {
                 Spacer(Modifier.height(6.dp))
                 OutlinedTextField(
