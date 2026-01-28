@@ -1,18 +1,13 @@
 package com.patrick.lrcreader.ui
 
-import android.content.Intent
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import com.patrick.lrcreader.core.DjFolderPrefs
-import com.patrick.lrcreader.core.DjIndexCache
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.launch
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.collectAsState
+import android.provider.DocumentsContract
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -52,6 +47,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -59,10 +55,16 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.documentfile.provider.DocumentFile
 import com.patrick.lrcreader.core.BackupFolderPrefs
+import com.patrick.lrcreader.core.DjFolderPrefs
+import com.patrick.lrcreader.core.DjIndexCache
 import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.core.FillerSoundPrefs
-import com.patrick.lrcreader.core.LibraryIndexCache
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.math.pow
 
 @Composable
@@ -84,6 +86,19 @@ fun FillerSoundScreen(
     val card = Color(0xFF1B1B1B)
     val accent = Color(0xFFFFC107)
 
+    fun normalizeToTreeUri(u: Uri?): Uri? {
+        if (u == null) return null
+        val p = u.path ?: return u
+
+        // Déjà un tree uri
+        if (p.contains("/tree/")) return u
+
+        // Si on a un document uri, on le reconvertit en tree uri
+        return runCatching {
+            val docId = DocumentsContract.getDocumentId(u)
+            DocumentsContract.buildTreeDocumentUri(u.authority, docId)
+        }.getOrElse { u }
+    }
     // ✅ Racine Music persistée par Bibliothèque
     val libraryRoot = remember { BackupFolderPrefs.get(context) }
 
@@ -121,7 +136,6 @@ fun FillerSoundScreen(
     // ─────────────────────────────────────────────────────────────
     //  Ambiances rapides : 5 slots
     // ─────────────────────────────────────────────────────────────
-
     val slots = remember {
         mutableStateListOf<AmbianceSlot>().apply {
             addAll(AmbiancePrefs.loadSlots(context, 5))
@@ -147,58 +161,71 @@ fun FillerSoundScreen(
     var selectedIndex by remember { mutableStateOf<Int?>(null) }
 
     // état de lecture pour le gros bouton Play/Pause
-    // état de lecture pour le gros bouton Play/Pause
     var isPlaying by remember { mutableStateOf(false) }
 
-// ✅ démarrage fiable (on lance directement en coroutine, pas via LaunchedEffect)
+    // ✅ démarrage fiable (on lance directement en coroutine, pas via LaunchedEffect)
     val scope = rememberCoroutineScope()
     var isStarting by remember { mutableStateOf(false) }
     var startJob by remember { mutableStateOf<Job?>(null) }
+// ✅ Scan DJ (indépendant du playback)
+    var isDjScanning by remember { mutableStateOf(false) }
+    var djScanProgressText by remember { mutableStateOf("Scan DJ en cours…") }
+    // Picker
     var showFolderPicker by remember { mutableStateOf(false) }
     var folderPickSlotIndex by remember { mutableStateOf<Int?>(null) }
-    val pickDjFolderLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocumentTree(),
-        onResult = { uri ->
-            if (uri == null) return@rememberLauncherForActivityResult
-
-            // permission persistante
-            try {
-                context.contentResolver.takePersistableUriPermission(
-                    uri,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-                )
-            } catch (_: Exception) {}
-
-            DjFolderPrefs.save(context, uri)
-
-            scope.launch {
-                isStarting = true // ou un autre flag "loadingPicker"
-                try {
-                    val newDjIndex = withContext(Dispatchers.IO) {
-                        buildDjFullIndex(context, uri)   // ✅ tu l’as déjà dans ton projet
-                    }
-                    DjIndexCache.save(context, newDjIndex)
-                    DjFolderPrefs.setScanned(context, true)
-
-// ✅ ouvrir le picker automatiquement après scan
-                    showFolderPicker = true
-                } finally {
-                    isStarting = false
-                }
-            }
-        }
-    )
-
-
-    // ───────────── Sélection dossier (explorateur) ─────────────
-
 
     // Dialog de renommage
     var slotToRenameIndex by remember { mutableStateOf<Int?>(null) }
     var renameText by remember { mutableStateOf("") }
 
     // ─────────────────────────────────────────────────────────────
-    //  FOND + LAYOUT
+    //  1) Autorisation + scan DJ (1ère fois)
+    // ─────────────────────────────────────────────────────────────
+    val pickDjFolderLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree(),
+        onResult = { picked ->
+            if (picked == null) return@rememberLauncherForActivityResult
+
+            val treeUri = normalizeToTreeUri(picked) ?: picked
+
+            // permission persistante
+            try {
+                context.contentResolver.takePersistableUriPermission(
+                    treeUri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                )
+            } catch (_: Exception) {}
+
+            // ✅ on enregistre la racine DJ (partagée avec l’écran DJ)
+            DjFolderPrefs.save(context, treeUri)
+            DjFolderPrefs.setScanned(context, false)
+
+            // ✅ feedback immédiat (sinon l’utilisateur reclique)
+            isDjScanning = true
+            djScanProgressText = "Scan DJ en cours… (ça peut durer 1–2 min)"
+
+            scope.launch {
+                try {
+                    val newDjIndex = withContext(Dispatchers.IO) {
+                        buildDjFullIndex(context, treeUri) // ⚠️ treeUri, pas picked
+                    }
+                    DjIndexCache.save(context, newDjIndex)
+                    DjFolderPrefs.setScanned(context, true)
+
+                    // ✅ ouvrir le picker seulement quand le scan est terminé
+                    showFolderPicker = true
+                } catch (t: Throwable) {
+                    android.util.Log.e("DJ_SCAN", "Scan DJ crash: ${t.message}", t)
+                    Toast.makeText(context, "Erreur pendant le scan DJ", Toast.LENGTH_SHORT).show()
+                } finally {
+                    isDjScanning = false
+                }
+            }
+        }
+    )
+
+    // ─────────────────────────────────────────────────────────────
+    //  UI
     // ─────────────────────────────────────────────────────────────
     Column(
         modifier = Modifier
@@ -315,14 +342,24 @@ fun FillerSoundScreen(
                     fontSize = 11.sp
                 )
 
-                // petit texte d’attente
-                if (isStarting) {
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        text = "Démarrage de l’ambiance...",
-                        color = sub,
-                        fontSize = 11.sp
-                    )
+                if (isStarting || isDjScanning) {
+                    Spacer(Modifier.height(6.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        androidx.compose.material3.CircularProgressIndicator(
+                            modifier = Modifier.size(14.dp),
+                            strokeWidth = 2.dp,
+                            color = onBg
+                        )
+                        Spacer(modifier = Modifier.padding(start = 8.dp))
+                        Text(
+                            text = if (isDjScanning)
+                                "Scan DJ en cours… (attends la fin, sinon tout semble vide)"
+                            else
+                                "Démarrage de l’ambiance…",
+                            color = sub,
+                            fontSize = 11.sp
+                        )
+                    }
                 }
 
                 // ───────── GROS BOUTONS DE TRANSPORT ─────────
@@ -377,7 +414,6 @@ fun FillerSoundScreen(
                             val slot = currentSelectedSlot ?: return@IconButton
                             val targetIndex = selectedIndex ?: return@IconButton
 
-                            // mémorise le dossier choisi dans les prefs
                             FillerSoundPrefs.saveFillerFolder(context, slot.folderUri!!)
                             fillerUri = slot.folderUri
                             fillerName = slot.folderUri!!.lastPathSegment ?: slot.name
@@ -387,10 +423,10 @@ fun FillerSoundScreen(
                                 FillerSoundPrefs.setEnabled(context, true)
                             }
 
-                            val isPlayingThis = FillerSoundManager.isPlaying() && activeIndex == targetIndex
+                            val isPlayingThis =
+                                FillerSoundManager.isPlaying() && activeIndex == targetIndex
 
                             if (!isPlayingThis) {
-                                // ✅ START (direct)
                                 isStarting = true
                                 activeIndex = targetIndex
 
@@ -405,7 +441,6 @@ fun FillerSoundScreen(
                                     isStarting = false
                                 }
                             } else {
-                                // ✅ STOP
                                 FillerSoundManager.fadeOutAndStop(200)
                                 isPlaying = false
                                 isStarting = false
@@ -417,7 +452,8 @@ fun FillerSoundScreen(
                             .padding(horizontal = 8.dp)
                             .size(80.dp)
                     ) {
-                        val showPause = FillerSoundManager.isPlaying() && activeIndex == selectedIndex
+                        val showPause =
+                            FillerSoundManager.isPlaying() && activeIndex == selectedIndex
 
                         Icon(
                             imageVector = if (showPause) Icons.Filled.Pause else Icons.Filled.PlayArrow,
@@ -456,7 +492,6 @@ fun FillerSoundScreen(
                     }
                 }
 
-                // ✅ Petit rappel si la bibliothèque n’est pas configurée
                 if (libraryRoot == null) {
                     Spacer(Modifier.height(10.dp))
                     Text(
@@ -468,9 +503,6 @@ fun FillerSoundScreen(
             }
         }
 
-        // ───────────────────────────────────────────────
-        //  AMBIANCES RAPIDES (liste compacte)
-        // ───────────────────────────────────────────────
         Spacer(Modifier.height(10.dp))
 
         Text(
@@ -504,7 +536,6 @@ fun FillerSoundScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.weight(1f)
                 ) {
-                    // 📁 : ouvre notre picker explorateur
                     Text(
                         text = "📁",
                         fontSize = 12.sp,
@@ -512,20 +543,23 @@ fun FillerSoundScreen(
                         modifier = Modifier
                             .padding(end = 4.dp)
                             .clickable {
+                                // Si scan en cours → on empêche de relancer
+                                if (isDjScanning) {
+                                    Toast.makeText(context, "Scan DJ en cours… patiente 🙂", Toast.LENGTH_SHORT).show()
+                                    return@clickable
+                                }
+
                                 folderPickSlotIndex = index
 
                                 val djRoot = DjFolderPrefs.get(context)
                                 val djCache = DjIndexCache.load(context).orEmpty()
-                                val needScan =
-                                    djRoot == null ||
-                                            djCache.isEmpty() ||
-                                            !DjFolderPrefs.isScanned(context)
+                                val needScan = (djRoot == null) || djCache.isEmpty() || !DjFolderPrefs.isScanned(context)
 
                                 if (needScan) {
-                                    // 👉 premier passage : autoriser + scanner le dossier DJ
+                                    // 1ère fois (ou cache vide) : autoriser + scanner
                                     pickDjFolderLauncher.launch(null)
                                 } else {
-                                    // 👉 DJ déjà prêt : on ouvre le picker interne
+                                    // DJ prêt : ouvrir le picker
                                     showFolderPicker = true
                                 }
                             }
@@ -559,53 +593,61 @@ fun FillerSoundScreen(
     }
 
     // ───────────────────────────────────────────────
-    //  PICKER DOSSIER (explorateur depuis index Bibliothèque)
+    //  PICKER DOSSIER (SAF direct, affiche toujours les sous-dossiers)
     // ───────────────────────────────────────────────
+    // ───────────────────────────────────────────────
+//  PICKER DOSSIER (SAF direct, navigation DocumentFile)
+// ───────────────────────────────────────────────
     if (showFolderPicker) {
 
-        // ✅ index DJ (pas bibliothèque)
-        val djIndexAll = DjIndexCache.load(context).orEmpty()
+        val djRootTree = normalizeToTreeUri(DjFolderPrefs.get(context))
 
-        // ✅ racine DJ
-        val djRoot = DjFolderPrefs.get(context)
+        // DocumentFile racine (DJ)
+        val rootDoc: DocumentFile? = remember(showFolderPicker, djRootTree) {
+            djRootTree?.let { DocumentFile.fromTreeUri(context, it) }
+        }
+        LaunchedEffect(rootDoc) {
+            android.util.Log.e("DJ_PICKER", "djRootTree=$djRootTree")
+            android.util.Log.e("DJ_PICKER", "rootDoc=${rootDoc?.uri} name=${rootDoc?.name}")
+            android.util.Log.e("DJ_PICKER", "childrenCount=${rootDoc?.listFiles()?.size ?: -1}")
+        }
+        // Navigation: on garde des DocumentFile (PAS des Uri)
+        var pickerDoc by remember(showFolderPicker, rootDoc) { mutableStateOf<DocumentFile?>(rootDoc) }
+        var pickerStack by remember(showFolderPicker, rootDoc) { mutableStateOf<List<DocumentFile>>(emptyList()) }
 
-        // état navigation dans le picker
-        var pickerFolderUri by remember(showFolderPicker, djRoot) { mutableStateOf<Uri?>(djRoot) }
-        var pickerStack by remember(showFolderPicker, djRoot) { mutableStateOf<List<Uri>>(emptyList()) }
-
-        // enfants du dossier courant (uniquement dossiers)
-        val pickerEntries = remember(djIndexAll, pickerFolderUri) {
-            val cur = pickerFolderUri
-            if (cur == null) emptyList()
-            else {
-                DjIndexCache.childrenOf(djIndexAll, cur)
-                    .filter { it.isDirectory }
-                    .filter { it.name.isNotBlank() }
-                    .filter { !it.name.startsWith(".") }
-            }
+        // Sous-dossiers du dossier courant
+        val pickerEntries: List<DocumentFile> = remember(pickerDoc) {
+            val cur = pickerDoc ?: return@remember emptyList()
+            cur.listFiles()
+                .filter { it.isDirectory }
+                .filter { !it.name.isNullOrBlank() }
+                .filter { !(it.name ?: "").startsWith(".") }
+                .sortedBy { (it.name ?: "").lowercase() }
         }
 
         AlertDialog(
             onDismissRequest = {
                 showFolderPicker = false
                 folderPickSlotIndex = null
-                pickerFolderUri = djRoot
+                pickerDoc = rootDoc
                 pickerStack = emptyList()
             },
             title = { Text("Choisir un dossier (dans DJ)", color = onBg) },
             text = {
-                if (djRoot == null) {
+                if (djRootTree == null || rootDoc == null) {
                     Text(
-                        "Dossier DJ non choisi.\nAppuie sur 📁 puis choisis le dossier DJ (SPL_Music/DJ).",
-                        color = sub, fontSize = 12.sp
-                    )
-                } else if (djIndexAll.isEmpty()) {
-                    Text(
-                        "Cache DJ vide.\nScanne d’abord le dossier DJ.",
+                        "Dossier DJ non choisi (ou permission manquante).\nAppuie sur 📁 puis choisis le dossier DJ (SPL_Music/DJ).",
                         color = sub, fontSize = 12.sp
                     )
                 } else {
                     Column(Modifier.verticalScroll(rememberScrollState())) {
+
+                        // Debug rapide (tu peux virer après)
+                        Text(
+                            text = "Dossier courant : ${pickerDoc?.name ?: "(racine)"}",
+                            color = sub,
+                            fontSize = 11.sp
+                        )
 
                         if (pickerStack.isNotEmpty()) {
                             Text(
@@ -617,9 +659,9 @@ fun FillerSoundScreen(
                                     .padding(vertical = 8.dp)
                                     .clickable {
                                         val newStack = pickerStack.dropLast(1)
-                                        val parent = newStack.lastOrNull() ?: djRoot
+                                        val parent = newStack.lastOrNull() ?: rootDoc
                                         pickerStack = newStack
-                                        pickerFolderUri = parent
+                                        pickerDoc = parent
                                     }
                             )
                         }
@@ -633,9 +675,13 @@ fun FillerSoundScreen(
                                 .padding(vertical = 8.dp)
                                 .clickable {
                                     val idx = folderPickSlotIndex
-                                    val chosen = pickerFolderUri
-                                    if (idx != null && chosen != null && idx in slots.indices) {
-                                        val newSlot = slots[idx].copy(folderUri = chosen)
+                                    val chosenDoc = pickerDoc
+                                    if (idx != null && chosenDoc != null && idx in slots.indices) {
+
+                                        // ✅ on stocke l'URI du DocumentFile choisi
+                                        val chosenUri = chosenDoc.uri
+
+                                        val newSlot = slots[idx].copy(folderUri = chosenUri)
                                         slots[idx] = newSlot
                                         AmbiancePrefs.saveSlot(context, newSlot)
                                         selectedIndex = idx
@@ -649,7 +695,7 @@ fun FillerSoundScreen(
 
                                     showFolderPicker = false
                                     folderPickSlotIndex = null
-                                    pickerFolderUri = djRoot
+                                    pickerDoc = rootDoc
                                     pickerStack = emptyList()
                                 }
                         )
@@ -659,18 +705,18 @@ fun FillerSoundScreen(
                         if (pickerEntries.isEmpty()) {
                             Text("Aucun sous-dossier ici.", color = sub, fontSize = 12.sp)
                         } else {
-                            pickerEntries.forEach { e ->
+                            pickerEntries.forEach { f ->
+                                val name = f.name ?: "Sans nom"
                                 Text(
-                                    text = "📁 ${e.name}",
+                                    text = "📁 $name",
                                     color = onBg,
                                     fontSize = 12.sp,
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .padding(vertical = 6.dp)
                                         .clickable {
-                                            val next = Uri.parse(e.uriString)
-                                            pickerFolderUri?.let { pickerStack = pickerStack + it }
-                                            pickerFolderUri = next
+                                            pickerDoc?.let { pickerStack = pickerStack + it }
+                                            pickerDoc = f
                                         }
                                 )
                             }
@@ -682,7 +728,7 @@ fun FillerSoundScreen(
                 TextButton(onClick = {
                     showFolderPicker = false
                     folderPickSlotIndex = null
-                    pickerFolderUri = djRoot
+                    pickerDoc = rootDoc
                     pickerStack = emptyList()
                 }) { Text("Fermer", color = onBg) }
             },
@@ -728,11 +774,8 @@ fun FillerSoundScreen(
             containerColor = Color(0xFF222222)
         )
     }
-
-    // ───────────────────────────────────────────────
-
-
 }
+
 
 /* ─────────────────────────────────────────────
    Stockage des 5 ambiances (nom + dossier)

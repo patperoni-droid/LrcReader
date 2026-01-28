@@ -1,6 +1,8 @@
 package com.patrick.lrcreader.ui
 
-
+import com.patrick.lrcreader.core.DjScanState
+import android.widget.Toast
+import kotlinx.coroutines.Dispatchers
 import com.patrick.lrcreader.core.BackupFolderPrefs
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -75,6 +77,39 @@ fun DjScreen(
     // ✅ pour lancer des traitements lourds hors UI
     val scope = rememberCoroutineScope()
 
+    fun cachedToDjEntry(e: DjIndexCache.Entry): DjEntry {
+        return DjEntry(
+            uri = Uri.parse(e.uriString),
+            name = e.name,
+            isDirectory = e.isDirectory
+        )
+    }
+
+    fun refreshFromIndex() {
+        val root = browserVm.rootFolderUri
+        val cur = browserVm.currentFolderUri ?: root
+
+        if (root == null) {
+            entries = emptyList()
+            allAudioEntries = emptyList()
+            return
+        }
+
+        // 📁 contenu du dossier courant
+        entries = if (cur == null) {
+            emptyList()
+        } else {
+            val children = DjIndexCache.childrenOf(indexAll, cur)
+            children.map { cachedToDjEntry(it) }
+        }
+
+        // 🎵 index global audio : instantané (filtre en mémoire)
+        allAudioEntries = indexAll
+            .asSequence()
+            .filter { !it.isDirectory }
+            .map { cachedToDjEntry(it) }
+            .toList()
+    }
     val pickDjFolderLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree(),
         onResult = { uri ->
@@ -96,50 +131,33 @@ fun DjScreen(
             // 3) scanner en arrière-plan (sinon écran noir / crash)
             scope.launch {
                 isLoading = true
+                DjScanState.start()
                 try {
-                    val newDjIndex = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    val newDjIndex = withContext(Dispatchers.IO) {
                         buildDjFullIndex(context, uri)
                     }
 
                     DjIndexCache.save(context, newDjIndex)
+                    DjFolderPrefs.setScanned(context, true)
+
                     indexAll = newDjIndex
+                    refreshFromIndex()
 
-                    // refresh UI à partir de l’index LOCAL (pas indexAll qui peut être "en retard")
-                    val root = browserVm.rootFolderUri
-                    val cur = browserVm.currentFolderUri ?: root
+                    Toast.makeText(
+                        context,
+                        "Scan DJ terminé (${newDjIndex.size} entrées)",
+                        Toast.LENGTH_SHORT
+                    ).show()
 
-                    if (root == null) {
-                        entries = emptyList()
-                        allAudioEntries = emptyList()
-                    } else {
-                        entries = if (cur == null) {
-                            emptyList()
-                        } else {
-                            val children = DjIndexCache.childrenOf(newDjIndex, cur)
-                            children.map { e ->
-                                DjEntry(
-                                    uri = Uri.parse(e.uriString),
-                                    name = e.name,
-                                    isDirectory = e.isDirectory
-                                )
-                            }
-                        }
-
-                        allAudioEntries = newDjIndex
-                            .asSequence()
-                            .filter { !it.isDirectory }
-                            .map { e ->
-                                DjEntry(
-                                    uri = Uri.parse(e.uriString),
-                                    name = e.name,
-                                    isDirectory = e.isDirectory
-                                )
-                            }
-                            .toList()
-                    }
                 } catch (t: Throwable) {
-                    android.util.Log.e("DJ", "Pick/Scan DJ folder crash: ${t.javaClass.simpleName}: ${t.message}", t)
+                    android.util.Log.e(
+                        "DJ",
+                        "Pick/Scan DJ folder crash: ${t.javaClass.simpleName}: ${t.message}",
+                        t
+                    )
+                    Toast.makeText(context, "Erreur pendant le scan DJ", Toast.LENGTH_SHORT).show()
                 } finally {
+                    DjScanState.stop()
                     isLoading = false
                 }
             }
@@ -211,76 +229,44 @@ fun DjScreen(
         label = "pulse"
     )
 
-    fun cachedToDjEntry(e: DjIndexCache.Entry): DjEntry {
-        return DjEntry(
-            uri = Uri.parse(e.uriString),
-            name = e.name,
-            isDirectory = e.isDirectory
-        )
-    }
 
-    fun refreshFromIndex() {
-        val root = browserVm.rootFolderUri
-        val cur = browserVm.currentFolderUri ?: root
 
-        if (root == null) {
-            entries = emptyList()
-            allAudioEntries = emptyList()
-            return
-        }
-
-        // 📁 contenu du dossier courant
-        entries = if (cur == null) {
-            emptyList()
-        } else {
-            val children = DjIndexCache.childrenOf(indexAll, cur)
-            children.map { cachedToDjEntry(it) }
-        }
-
-        // 🎵 index global audio : instantané (filtre en mémoire)
-        allAudioEntries = indexAll
-            .asSequence()
-            .filter { !it.isDirectory }
-            .map { cachedToDjEntry(it) }
-            .toList()
-    }
 
     // -------------------------- 1er chargement ---------------------------
     LaunchedEffect(Unit) {
         isLoading = true
         try {
-            val djRoot = DjFolderPrefs.get(context)
+            val rootUri = DjFolderPrefs.get(context)
 
-            if (browserVm.rootFolderUri == null) {
-                browserVm.setRoot(djRoot)
-            }
-            if (browserVm.currentFolderUri == null) {
-                browserVm.setCurrent(browserVm.rootFolderUri)
-            }
+            // VM navigation : root + current
+            if (browserVm.rootFolderUri == null) browserVm.setRoot(rootUri)
+            if (browserVm.currentFolderUri == null) browserVm.setCurrent(browserVm.rootFolderUri)
 
+            // Charge l'index cache
             indexAll = DjIndexCache.load(context) ?: emptyList()
-            // ✅ si on a un dossier DJ mais pas d'index => on scanne automatiquement 1 fois
-            if (indexAll.isEmpty()) {
-                val djRoot = DjFolderPrefs.get(context)
-                if (djRoot != null) {
-                    isLoading = true
-                    try {
-                        val newDjIndex = withContext(kotlinx.coroutines.Dispatchers.IO) {
-                            buildDjFullIndex(context, djRoot)
-                        }
-                        DjIndexCache.save(context, newDjIndex)
-                        indexAll = newDjIndex
 
-                        // important : mettre à jour le browser VM aussi
-                        if (browserVm.rootFolderUri == null) browserVm.setRoot(djRoot)
-                        if (browserVm.currentFolderUri == null) browserVm.setCurrent(djRoot)
-                    } catch (t: Throwable) {
-                        android.util.Log.e("DJ", "Auto-scan DJ failed: ${t.message}", t)
-                    } finally {
-                        isLoading = false
+            // ✅ Auto-scan 1 seule fois si index vide ET root défini ET pas déjà scanné
+            val needAutoScan = (rootUri != null) && indexAll.isEmpty() && !DjFolderPrefs.isScanned(context)
+            if (needAutoScan) {
+                DjScanState.start()
+                try {
+                    val newDjIndex = withContext(Dispatchers.IO) {
+                        buildDjFullIndex(context, rootUri)
                     }
+                    DjIndexCache.save(context, newDjIndex)
+                    DjFolderPrefs.setScanned(context, true)
+                    indexAll = newDjIndex
+                } catch (t: Throwable) {
+                    android.util.Log.e(
+                        "DJ",
+                        "Auto-scan DJ failed: ${t.javaClass.simpleName}: ${t.message}",
+                        t
+                    )
+                } finally {
+                    DjScanState.stop()
                 }
             }
+
             refreshFromIndex()
         } finally {
             isLoading = false
@@ -417,26 +403,49 @@ fun DjScreen(
                         text = { Text("Scanner / rafraîchir le dossier DJ") },
                         onClick = {
                             menuOpen = false
-                            isLoading = true
-                            try {
-                                val djRoot = DjFolderPrefs.get(context)
 
-                                browserVm.setRoot(djRoot)
-                                if (browserVm.currentFolderUri == null) {
-                                    browserVm.setCurrent(browserVm.rootFolderUri)
-                                }
+                            val djRoot = DjFolderPrefs.get(context)
+                            browserVm.setRoot(djRoot)
+                            if (browserVm.currentFolderUri == null) {
+                                browserVm.setCurrent(browserVm.rootFolderUri)
+                            }
 
-                                if (djRoot == null) {
-                                    indexAll = emptyList()
-                                    refreshFromIndex()
-                                } else {
-                                    val newDjIndex = buildDjFullIndex(context, djRoot)
+                            if (djRoot == null) {
+                                indexAll = emptyList()
+                                refreshFromIndex()
+                                return@DropdownMenuItem
+                            }
+
+                            scope.launch {
+                                isLoading = true
+                                DjScanState.start()
+                                try {
+                                    val newDjIndex = withContext(Dispatchers.IO) {
+                                        buildDjFullIndex(context, djRoot)
+                                    }
+
                                     DjIndexCache.save(context, newDjIndex)
+                                    DjFolderPrefs.setScanned(context, true)
+
                                     indexAll = newDjIndex
                                     refreshFromIndex()
+
+                                    Toast.makeText(
+                                        context,
+                                        "Scan DJ terminé (${newDjIndex.size} entrées)",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                } catch (t: Throwable) {
+                                    android.util.Log.e(
+                                        "DJ",
+                                        "Rescan DJ failed: ${t.javaClass.simpleName}: ${t.message}",
+                                        t
+                                    )
+                                    Toast.makeText(context, "Erreur pendant le scan DJ", Toast.LENGTH_SHORT).show()
+                                } finally {
+                                    DjScanState.stop()
+                                    isLoading = false
                                 }
-                            } finally {
-                                isLoading = false
                             }
                         }
                     )
