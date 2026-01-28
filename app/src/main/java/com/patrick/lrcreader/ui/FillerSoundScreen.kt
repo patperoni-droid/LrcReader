@@ -116,7 +116,13 @@ fun FillerSoundScreen(
             fillerName = libraryRoot.lastPathSegment ?: "Music"
         }
     }
-
+    fun canOpenTree(u: Uri?): Boolean {
+        val tree = normalizeToTreeUri(u) ?: return false
+        return runCatching {
+            val doc = DocumentFile.fromTreeUri(context, tree)
+            doc != null && doc.exists() && doc.canRead()
+        }.getOrDefault(false)
+    }
     // mapping courbe : curseur “doux” en bas
     fun uiToRealVolume(u: Float): Float {
         val clamped = u.coerceIn(0f, 1f)
@@ -173,7 +179,8 @@ fun FillerSoundScreen(
     // Picker
     var showFolderPicker by remember { mutableStateOf(false) }
     var folderPickSlotIndex by remember { mutableStateOf<Int?>(null) }
-
+    var showDjInfoDialog by remember { mutableStateOf(false) }
+    var pendingSlotIndex by remember { mutableStateOf<Int?>(null) }
     // Dialog de renommage
     var slotToRenameIndex by remember { mutableStateOf<Int?>(null) }
     var renameText by remember { mutableStateOf("") }
@@ -543,23 +550,22 @@ fun FillerSoundScreen(
                         modifier = Modifier
                             .padding(end = 4.dp)
                             .clickable {
-                                // Si scan en cours → on empêche de relancer
                                 if (isDjScanning) {
                                     Toast.makeText(context, "Scan DJ en cours… patiente 🙂", Toast.LENGTH_SHORT).show()
                                     return@clickable
                                 }
 
-                                folderPickSlotIndex = index
+                                pendingSlotIndex = index
 
                                 val djRoot = DjFolderPrefs.get(context)
                                 val djCache = DjIndexCache.load(context).orEmpty()
                                 val needScan = (djRoot == null) || djCache.isEmpty() || !DjFolderPrefs.isScanned(context)
 
                                 if (needScan) {
-                                    // 1ère fois (ou cache vide) : autoriser + scanner
-                                    pickDjFolderLauncher.launch(null)
+                                    // On affiche un message clair au lieu de lancer direct le picker
+                                    showDjInfoDialog = true
                                 } else {
-                                    // DJ prêt : ouvrir le picker
+                                    folderPickSlotIndex = index
                                     showFolderPicker = true
                                 }
                             }
@@ -591,7 +597,34 @@ fun FillerSoundScreen(
 
         Spacer(Modifier.height(8.dp))
     }
-
+    if (showDjInfoDialog) {
+        AlertDialog(
+            onDismissRequest = { showDjInfoDialog = false },
+            title = { Text("Ambiances : dossier obligatoire", color = onBg) },
+            text = {
+                Text(
+                    "Pour que les ambiances fonctionnent, elles doivent être placées dans le dossier :\n\nSPL_Music / DJ",
+                    color = sub,
+                    fontSize = 12.sp
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDjInfoDialog = false
+                    folderPickSlotIndex = pendingSlotIndex
+                    // Lance le SAF pour choisir le dossier DJ (comme l’écran DJ)
+                    pickDjFolderLauncher.launch(null)
+                }) { Text("Choisir le dossier DJ", color = onBg) }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showDjInfoDialog = false
+                    pendingSlotIndex = null
+                }) { Text("Annuler", color = sub) }
+            },
+            containerColor = Color(0xFF222222)
+        )
+    }
     // ───────────────────────────────────────────────
     //  PICKER DOSSIER (SAF direct, affiche toujours les sous-dossiers)
     // ───────────────────────────────────────────────
