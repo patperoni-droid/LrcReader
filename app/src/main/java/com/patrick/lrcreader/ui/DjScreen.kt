@@ -1,5 +1,7 @@
 package com.patrick.lrcreader.ui
 
+import androidx.compose.ui.res.stringResource
+import com.patrick.lrcreader.exo.R
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -33,6 +35,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.documentfile.provider.DocumentFile
@@ -114,7 +117,13 @@ fun DjScreen(
     // ✅ 1 seule source de vérité pour lancer un scan DJ depuis n'importe où
     fun launchDjScan(djRoot: Uri, showToast: Boolean) {
         if (DjScanState.isScanning.value) {
-            if (showToast) Toast.makeText(context, "Scan DJ déjà en cours…", Toast.LENGTH_SHORT).show()
+            if (showToast) {
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.dj_scan_already_running),
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
             return
         }
 
@@ -134,13 +143,19 @@ fun DjScreen(
                 if (showToast) {
                     Toast.makeText(
                         context,
-                        "Scan DJ terminé (${newDjIndex.size} entrées)",
+                        context.getString(R.string.dj_scan_done, newDjIndex.size),
                         Toast.LENGTH_SHORT
                     ).show()
                 }
             } catch (t: Throwable) {
                 android.util.Log.e("DJ", "Scan DJ failed: ${t.message}", t)
-                if (showToast) Toast.makeText(context, "Erreur pendant le scan DJ", Toast.LENGTH_SHORT).show()
+                if (showToast) {
+                    Toast.makeText(
+                        context,
+                        context.getString(R.string.dj_scan_error),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
             } finally {
                 DjScanState.stop()
                 isLoading = false
@@ -166,7 +181,7 @@ fun DjScreen(
             browserVm.setRoot(uri)
             browserVm.setCurrent(uri)
 
-            // 3) scanner en arrière-plan
+            // 3) scanner
             launchDjScan(uri, showToast = false)
         }
     )
@@ -305,7 +320,7 @@ fun DjScreen(
                     }) {
                         Icon(
                             imageVector = Icons.Filled.ArrowBack,
-                            contentDescription = "Retour",
+                            contentDescription = stringResource(R.string.dj_cd_back),
                             tint = onBg
                         )
                     }
@@ -318,7 +333,7 @@ fun DjScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        "DJ",
+                        text = stringResource(R.string.dj_title),
                         color = Color.White,
                         fontSize = 20.sp
                     )
@@ -327,8 +342,8 @@ fun DjScreen(
 
                     val shownUri = browserVm.currentFolderUri ?: browserVm.rootFolderUri
                     Text(
-                        text = shownUri?.let { DocumentFile.fromTreeUri(context, it)?.name ?: "…" }
-                            ?: "Aucun dossier DJ choisi",
+                        text = shownUri?.let { DocumentFile.fromTreeUri(context, it)?.name ?: stringResource(R.string.common_ellipsis) }
+                            ?: stringResource(R.string.dj_no_folder_selected),
                         color = Color.Gray,
                         fontSize = 12.sp,
                         maxLines = 1
@@ -344,7 +359,7 @@ fun DjScreen(
                 ) {
                     Icon(
                         imageVector = Icons.Filled.Search,
-                        contentDescription = "Rechercher",
+                        contentDescription = stringResource(R.string.dj_cd_search),
                         tint = if (isSearchOpen) accentGo else onBg
                     )
                 }
@@ -353,7 +368,7 @@ fun DjScreen(
                 IconButton(onClick = { menuOpen = true }) {
                     Icon(
                         imageVector = Icons.Filled.MoreVert,
-                        contentDescription = "Options",
+                        contentDescription = stringResource(R.string.dj_cd_options),
                         tint = onBg
                     )
                 }
@@ -364,7 +379,7 @@ fun DjScreen(
                 ) {
 
                     DropdownMenuItem(
-                        text = { Text("Choisir dossier DJ…") },
+                        text = { Text(stringResource(R.string.dj_menu_choose_folder)) },
                         onClick = {
                             menuOpen = false
                             pickDjFolderLauncher.launch(null)
@@ -372,7 +387,7 @@ fun DjScreen(
                     )
 
                     DropdownMenuItem(
-                        text = { Text("Scanner / rafraîchir le dossier DJ") },
+                        text = { Text(stringResource(R.string.dj_menu_scan_refresh)) },
                         onClick = {
                             menuOpen = false
 
@@ -395,7 +410,7 @@ fun DjScreen(
                     Divider()
 
                     DropdownMenuItem(
-                        text = { Text("Importer des musiques (→ backingtracks)") },
+                        text = { Text(stringResource(R.string.dj_menu_import_music)) },
                         onClick = {
                             menuOpen = false
                             pickAudioFilesLauncher.launch(
@@ -426,7 +441,7 @@ fun DjScreen(
                     ),
                     placeholder = {
                         Text(
-                            "Recherche (tous dossiers DJ)…",
+                            text = stringResource(R.string.dj_search_placeholder),
                             fontSize = 12.sp,
                             color = Color(0x77FFFFFF)
                         )
@@ -570,7 +585,7 @@ fun DjScreen(
                     ) {
                         Icon(
                             imageVector = Icons.Filled.Stop,
-                            contentDescription = "Stop DJ",
+                            contentDescription = stringResource(R.string.dj_cd_stop),
                             tint = Color.White,
                             modifier = Modifier.size(22.dp)
                         )
@@ -648,7 +663,7 @@ fun DjScreen(
             if (browserVm.rootFolderUri == null) {
                 Spacer(Modifier.height(10.dp))
                 Text(
-                    "⚠️ Menu ⋮ → “Scanner / rafraîchir le dossier DJ” (1 fois). Ensuite DJ sera instantané.",
+                    text = stringResource(R.string.dj_hint_first_scan),
                     color = sub,
                     fontSize = 12.sp
                 )
@@ -664,7 +679,7 @@ fun DjScreen(
                         color = onBg
                     )
                     Spacer(Modifier.width(8.dp))
-                    Text("Chargement…", color = sub, fontSize = 12.sp)
+                    Text(stringResource(R.string.common_loading), color = sub, fontSize = 12.sp)
                 }
             }
         }

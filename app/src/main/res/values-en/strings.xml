@@ -1,5 +1,29 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- DJ -->
+    <string name="dj_title">DJ</string>
+    <string name="dj_no_folder_selected">No DJ folder selected</string>
+
+    <string name="dj_cd_back">Back</string>
+    <string name="dj_cd_search">Search</string>
+    <string name="dj_cd_options">Options</string>
+    <string name="dj_cd_stop">Stop DJ</string>
+
+    <string name="dj_menu_choose_folder">Choose DJ folder…</string>
+    <string name="dj_menu_scan_refresh">Scan / refresh DJ folder</string>
+    <string name="dj_menu_import_music">Import music (→ backingtracks)</string>
+
+    <string name="dj_search_placeholder">Search (all DJ folders)…</string>
+
+    <string name="dj_scan_already_running">DJ scan already running…</string>
+    <string name="dj_scan_done">DJ scan complete (%1$d entries)</string>
+    <string name="dj_scan_error">Error during DJ scan</string>
+
+    <string name="dj_hint_first_scan">⚠️ Menu ⋮ → “Scan / refresh DJ folder” (once). After that, DJ is instant.</string>
+
+    <!-- Common -->
+    <string name="common_loading">Loading…</string>
+    <string name="common_ellipsis">…</string>
 
     <!-- Mixer / Console -->
     <string name="mixer_app_title">Stage Music Player</string>

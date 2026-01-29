@@ -1,6 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
+    <!-- DJ -->
+    <string name="dj_title">DJ</string>
+    <string name="dj_no_folder_selected">Aucun dossier DJ choisi</string>
+
+    <string name="dj_cd_back">Retour</string>
+    <string name="dj_cd_search">Rechercher</string>
+    <string name="dj_cd_options">Options</string>
+    <string name="dj_cd_stop">Stop DJ</string>
+
+    <string name="dj_menu_choose_folder">Choisir dossier DJ…</string>
+    <string name="dj_menu_scan_refresh">Scanner / rafraîchir le dossier DJ</string>
+    <string name="dj_menu_import_music">Importer des musiques (→ backingtracks)</string>
+
+    <string name="dj_search_placeholder">Recherche (tous dossiers DJ)…</string>
+
+    <string name="dj_scan_already_running">Scan DJ déjà en cours…</string>
+    <string name="dj_scan_done">Scan DJ terminé (%1$d entrées)</string>
+    <string name="dj_scan_error">Erreur pendant le scan DJ</string>
+
+    <string name="dj_hint_first_scan">⚠️ Menu ⋮ → “Scanner / rafraîchir le dossier DJ” (1 fois). Ensuite DJ sera instantané.</string>
+
+    <!-- Communs -->
+    <string name="common_loading">Chargement…</string>
+    <string name="common_ellipsis">…</string>
     <!-- Mixer / Console -->
     <string name="mixer_app_title">Stage Music Player</string>
     <string name="mixer_app_title_labo">🧪 LABO - Stage Music Player</string>
@@ -66,5 +90,6 @@
     <string name="common_ok">OK</string>
     <string name="common_cancel">Annuler</string>
     <string name="common_close">Fermer</string>
+
 
 </resources>
