@@ -78,7 +78,7 @@ fun LibraryHeader(
             )
 
             DropdownMenuItem(
-                text = { Text("Importer des musiques (→ BackingTracks)") },
+                text = { Text("Importer des musiques") },
                 enabled = hasRoot,
                 onClick = { actionsExpanded = false; onImportBackingTracks() }
             )

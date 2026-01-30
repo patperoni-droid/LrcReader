@@ -703,9 +703,23 @@ fun FillerSoundScreen(
                                 .clickable {
                                     val idx = folderPickSlotIndex
                                     val chosenDoc = pickerDoc
+
                                     if (idx != null && chosenDoc != null && idx in slots.indices) {
-                                        val chosenUri = chosenDoc.uri
-                                        val newSlot = slots[idx].copy(folderUri = chosenUri)
+
+                                        // ✅ IMPORTANT : on stocke un TREE URI (pas un document URI),
+                                        // sinon plus tard DocumentFile.fromTreeUri(...) / lecture peuvent foirer
+                                        val chosenTreeUri = normalizeToTreeUri(chosenDoc.uri) ?: chosenDoc.uri
+
+                                        // ✅ Bonus sécurité : on tente de persister aussi sur le sous-dossier choisi
+                                        try {
+                                            context.contentResolver.takePersistableUriPermission(
+                                                chosenTreeUri,
+                                                Intent.FLAG_GRANT_READ_URI_PERMISSION
+                                            )
+                                        } catch (_: Exception) {
+                                        }
+
+                                        val newSlot = slots[idx].copy(folderUri = chosenTreeUri)
                                         slots[idx] = newSlot
                                         AmbiancePrefs.saveSlot(context, newSlot)
                                         selectedIndex = idx

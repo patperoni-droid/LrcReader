@@ -149,18 +149,30 @@ object FillerSoundManager {
         stopNow()
 
         val mp = MediaPlayer()
-        mp.setDataSource(context, uri)
-        mp.isLooping = true
+        try {
+            mp.setDataSource(context, uri)
+            mp.isLooping = true
 
-        mp.setOnPreparedListener { prepared ->
-            prepared.setVolume(currentVolume, currentVolume)
-            prepared.start()
+            mp.setOnErrorListener { _, what, extra ->
+                android.util.Log.e("FillerSoundManager", "MediaPlayer error what=$what extra=$extra uri=$uri")
+                Toast.makeText(context, "Fond sonore : erreur de lecture (fichier ou droits).", Toast.LENGTH_SHORT).show()
+                true
+            }
+
+            // ✅ synchrone
+            mp.prepare()
+            mp.setVolume(currentVolume, currentVolume)
+            mp.start()
+
+            player = mp
+            folderPlaylist = emptyList()
+            currentFolderUri = null
+        } catch (t: Throwable) {
+            android.util.Log.e("FillerSoundManager", "startFromSingleFile failed uri=$uri : ${t.message}", t)
+            try { mp.release() } catch (_: Exception) {}
+            Toast.makeText(context, "Impossible de lire le fond sonore (autorisation ?).", Toast.LENGTH_SHORT).show()
+            fadeOutAndStop(0)
         }
-        mp.prepareAsync()
-
-        player = mp
-        folderPlaylist = emptyList()
-        currentFolderUri = null
     }
 
     private fun isAudioName(name: String): Boolean {
@@ -172,14 +184,26 @@ object FillerSoundManager {
      * - si on reçoit un TREE Uri → converti en DOCUMENT Uri racine
      * - si c'est déjà un DOCUMENT Uri → retourne tel quel
      */
+    /**
+     * ✅ Normalise un Uri en DOCUMENT Uri.
+     * - si on reçoit un TREE Uri → converti en DOCUMENT Uri racine du tree
+     * - si on reçoit déjà un DOCUMENT Uri (même s'il contient /tree/.../document/...) → on le garde tel quel
+     */
+    /**
+     * ✅ Normalise un Uri en DOCUMENT Uri (API 23 compatible).
+     *
+     * Règles :
+     * - TREE pur :  content://.../tree/xxx
+     * - DOCUMENT :  content://.../tree/xxx/document/yyy  → on ne touche PAS
+     */
     private fun normalizeToDocumentUri(context: Context, anyUri: Uri): Uri? {
         return runCatching {
-            val seg = anyUri.pathSegments ?: emptyList()
+            val path = anyUri.path ?: return anyUri
 
-            // ✅ Compatible API 23 : un TREE Uri a typiquement "tree" comme 1er segment
-            val isTreeLike = seg.isNotEmpty() && seg[0] == "tree"
+            val isTreeOnly =
+                path.contains("/tree/") && !path.contains("/document/")
 
-            if (isTreeLike) {
+            if (isTreeOnly) {
                 val treeId = DocumentsContract.getTreeDocumentId(anyUri)
                 DocumentsContract.buildDocumentUriUsingTree(anyUri, treeId)
             } else {
@@ -298,20 +322,35 @@ object FillerSoundManager {
         stopNext()
 
         val mp = MediaPlayer()
-        mp.setDataSource(context, uri)
-        mp.isLooping = false
-        mp.setOnCompletionListener { playNextInFolder(context) }
+        try {
+            mp.setDataSource(context, uri)
+            mp.isLooping = false
 
-        mp.setOnPreparedListener { prepared ->
-            prepared.setVolume(currentVolume, currentVolume)
-            prepared.start()
+            mp.setOnCompletionListener { playNextInFolder(context) }
+
+            mp.setOnErrorListener { _, what, extra ->
+                android.util.Log.e("FillerSoundManager", "MediaPlayer error what=$what extra=$extra uri=$uri")
+                Toast.makeText(context, "Fond sonore : erreur de lecture (fichier ou droits).", Toast.LENGTH_SHORT).show()
+                true
+            }
+
+            // ✅ IMPORTANT : synchrone -> démarre immédiatement, isPlaying() devient vrai
+            mp.prepare()
+            mp.setVolume(currentVolume, currentVolume)
+            mp.start()
+
+            stopCurrentOnly()
+            player = mp
+        } catch (t: Throwable) {
+            android.util.Log.e("FillerSoundManager", "setDataSource/prepare failed uri=$uri : ${t.message}", t)
+            try { mp.release() } catch (_: Exception) {}
+            Toast.makeText(context, "Impossible de lire ce fichier (autorisation ?).", Toast.LENGTH_SHORT).show()
+            fadeOutAndStop(0)
         }
-        mp.prepareAsync()
-
-        stopCurrentOnly()
-        player = mp
     }
 
+    // ✅ Fonction manquante (ou sortie de l’objet par une accolade mal placée)
+// On la remet ici DANS l’objet, comme ça l’appel compile et l’enchaînement refonctionne.
     private fun playNextInFolder(context: Context) {
         if (folderPlaylist.isEmpty()) { stopNow(); return }
 
@@ -320,6 +359,7 @@ object FillerSoundManager {
         val oldPlayer = player ?: return
 
         stopNext()
+
         try {
             val newPlayer = MediaPlayer()
             newPlayer.setDataSource(context, nextUri)
@@ -341,17 +381,20 @@ object FillerSoundManager {
                     newPlayer.setVolume(volIn, volIn)
                     delay(stepTime)
                 }
+
                 try { oldPlayer.stop() } catch (_: Exception) {}
                 oldPlayer.release()
+
                 player = newPlayer
                 nextPlayer = null
+
                 newPlayer.setOnCompletionListener { playNextInFolder(context) }
             }
         } catch (e: Exception) {
             e.printStackTrace()
+            Toast.makeText(context, "Fond sonore : impossible d’enchaîner le morceau suivant.", Toast.LENGTH_SHORT).show()
         }
     }
-
     fun setVolume(volume: Float) {
         val v = volume.coerceIn(0f, 1f)
         currentVolume = v
