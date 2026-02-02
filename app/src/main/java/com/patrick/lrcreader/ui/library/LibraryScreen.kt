@@ -1,20 +1,9 @@
 package com.patrick.lrcreader.ui.library
 
-import com.patrick.lrcreader.core.ImportAudioManager
-import android.provider.DocumentsContract
-import com.patrick.lrcreader.core.DjFolderPrefs
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.width
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.zIndex
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import android.provider.DocumentsContract
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -26,14 +15,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.documentfile.provider.DocumentFile
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import com.patrick.lrcreader.core.BackupFolderPrefs
+import com.patrick.lrcreader.core.DjFolderPrefs
+import com.patrick.lrcreader.core.ImportAudioManager
 import com.patrick.lrcreader.core.LibraryIndexCache
 import com.patrick.lrcreader.core.PlaylistRepository
+import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.ui.LibraryEntry
 import com.patrick.lrcreader.ui.LibraryFolderCache
 import com.patrick.lrcreader.ui.clearPersistedUris
@@ -46,45 +41,52 @@ fun LibraryScreen(
     modifier: Modifier = Modifier,
     onPlayFromLibrary: (String) -> Unit
 ) {
-// palette analogique commune
     val context = LocalContext.current
+    val focusManager = LocalFocusManager.current
+
+    // Palette analogique commune
     val titleColor = Color(0xFFFFF8E1)
     val subtitleColor = Color(0xFFB0BEC5)
     val cardBg = Color(0xFF181818)
     val rowBorder = Color(0x33FFFFFF)
     val accent = Color(0xFFFFC107)
-    val setupTree = remember { BackupFolderPrefs.getSetupTreeUri(context) }
-    val libRoot = remember { BackupFolderPrefs.getLibraryRootUri(context) }
+
     val scope = rememberCoroutineScope()
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
-    val focusManager = LocalFocusManager.current
 
+    // Strings (pré-calculés, utilisables partout, y compris dans les callbacks)
+    val sScanning = stringResource(R.string.library_scanning)
+    val sMoving = stringResource(R.string.library_moving)
+    val sImporting = stringResource(R.string.library_importing_music)
+    val sDeleting = stringResource(R.string.library_deleting)
+    val sRenaming = stringResource(R.string.library_renaming)
+    val sLoading = stringResource(R.string.common_loading)
+    val sSearch = stringResource(R.string.common_search_placeholder)
+    val sNoFolderHint = stringResource(R.string.library_no_folder_hint)
+    val sNoFolderSelected = stringResource(R.string.library_no_folder_selected)
+    val sDjExcludedReason = stringResource(R.string.library_dj_excluded_reason)
 
+    // State
     var showLrcEditor by remember { mutableStateOf(false) }
     var lrcEditorUri by remember { mutableStateOf<Uri?>(null) }
     var lrcEditorName by remember { mutableStateOf("") }
     var lrcEditorText by remember { mutableStateOf("") }
-    val initialFolder = remember { BackupFolderPrefs.getLibraryRootUri(context) }
 
+    val initialFolder = remember { BackupFolderPrefs.getLibraryRootUri(context) }
     var currentFolderUri by remember { mutableStateOf<Uri?>(initialFolder) }
     var folderStack by remember { mutableStateOf<List<Uri>>(emptyList()) }
     var entries by remember { mutableStateOf<List<LibraryEntry>>(emptyList()) }
     var selectedSongs by remember { mutableStateOf<Set<Uri>>(emptySet()) }
 
-
-
     var isLoading by remember { mutableStateOf(false) }
     var loadingStartedAt by remember { mutableStateOf(0L) }
-
     var moveProgress by remember { mutableStateOf<Float?>(null) }
     var moveLabel by remember { mutableStateOf<String?>(null) }
 
     var indexAll by remember { mutableStateOf<List<LibraryIndexCache.CachedEntry>>(emptyList()) }
-    var importTargetFolderUri by remember { mutableStateOf<Uri?>(null) } // ✅ dossier où importer
-    // ------------------------------------------------------------
+    var importTargetFolderUri by remember { mutableStateOf<Uri?>(null) }
 
     // ✅ Injection DJ : visible mais désactivé
-    // ------------------------------------------------------------
     fun buildEntriesForFolder(folderUri: Uri): List<LibraryEntry> {
         val fromIndex = LibraryIndexCache.childrenOf(indexAll, folderUri).map { e ->
             LibraryEntry(
@@ -93,6 +95,7 @@ fun LibraryScreen(
                 isDirectory = e.isDirectory
             )
         }.toMutableList()
+
         if (fromIndex.isEmpty()) {
             val folderDoc =
                 DocumentFile.fromTreeUri(context, folderUri)
@@ -106,9 +109,9 @@ fun LibraryScreen(
                     isDirectory = f.isDirectory
                 )
             }
-
             fromIndex.addAll(real)
         }
+
         val folderDoc =
             DocumentFile.fromTreeUri(context, folderUri)
                 ?: DocumentFile.fromSingleUri(context, folderUri)
@@ -125,7 +128,7 @@ fun LibraryScreen(
                         name = djDoc.name ?: "DJ",
                         isDirectory = true,
                         disabled = true,
-                        disabledReason = "Exclu de la bibliothèque (utilisé en mode DJ)"
+                        disabledReason = sDjExcludedReason
                     )
                 )
             }
@@ -136,7 +139,8 @@ fun LibraryScreen(
                 .thenBy { it.name.lowercase() }
         )
     }
-// dialogs state
+
+    // dialogs state
     var showAssignDialog by remember { mutableStateOf(false) }
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var pendingDeleteUri by remember { mutableStateOf<Uri?>(null) }
@@ -149,7 +153,7 @@ fun LibraryScreen(
     var renameTarget by remember { mutableStateOf<LibraryEntry?>(null) }
     var renameText by remember { mutableStateOf("") }
 
-// search
+    // search
     var searchQuery by remember { mutableStateOf("") }
     val globalAudioEntries = remember(indexAll) {
         indexAll.filter { !it.isDirectory }.map {
@@ -163,9 +167,7 @@ fun LibraryScreen(
 
     val bottomBarHeight = 56.dp
 
-// --------------------------------------------------------------------
-// ✅ QUICK PLAY (sans ouvrir le lecteur)
-// --------------------------------------------------------------------
+    // ✅ QUICK PLAY (sans ouvrir le lecteur)
     val quickPlayer = remember { ExoPlayer.Builder(context).build() }
     var quickNowUri by remember { mutableStateOf<Uri?>(null) }
     var quickIsPlaying by remember { mutableStateOf(false) }
@@ -204,6 +206,7 @@ fun LibraryScreen(
             Log.e("LibraryQuickPlay", "Erreur quick play", e)
         }
     }
+
     fun readTextFromUri(uri: Uri): String? {
         return runCatching {
             context.contentResolver.openInputStream(uri)
@@ -220,6 +223,7 @@ fun LibraryScreen(
             true
         }.getOrElse { false }
     }
+
     fun stopQuickPlay() {
         try {
             if (quickPlayer.isPlaying) quickPlayer.pause()
@@ -227,30 +231,7 @@ fun LibraryScreen(
         }
         quickIsPlaying = false
     }
-// --------------------------------------------------------------------
-fun isPlayableMediaUri(uri: Uri): Boolean {
-    val mime = runCatching { context.contentResolver.getType(uri) }.getOrNull()
-    if (mime != null) return mime.startsWith("audio/") || mime.startsWith("video/")
 
-    val name = runCatching {
-        DocumentFile.fromSingleUri(context, uri)?.name
-            ?: DocumentFile.fromTreeUri(context, uri)?.name
-    }.getOrNull()?.lowercase()
-
-    return name?.let {
-        it.endsWith(".mp3") || it.endsWith(".wav") || it.endsWith(".m4a") || it.endsWith(".aac") ||
-                it.endsWith(".flac") || it.endsWith(".ogg") ||
-                it.endsWith(".mp4") || it.endsWith(".mkv") || it.endsWith(".webm") || it.endsWith(".mov") || it.endsWith(".avi")
-    } ?: false
-}
-
-    fun fileExtOf(uri: Uri): String {
-        val name = runCatching {
-            DocumentFile.fromSingleUri(context, uri)?.name
-                ?: DocumentFile.fromTreeUri(context, uri)?.name
-        }.getOrNull() ?: return ""
-        return name.substringAfterLast('.', "").lowercase()
-    }
     fun startLoading(label: String, determinate: Boolean) {
         loadingStartedAt = System.currentTimeMillis()
         isLoading = true
@@ -267,28 +248,25 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
         moveLabel = null
     }
 
-// ---------- SAF launchers ----------
+    // ---------- SAF launchers ----------
     val pickRootFolderLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree(),
         onResult = { uri ->
             if (uri == null) return@rememberLauncherForActivityResult
 
             scope.launch {
-                startLoading("Analyse de la bibliothèque…", determinate = false)
+                startLoading(sScanning, determinate = false)
                 try {
-                    // 1) Permission persistée sur le dossier choisi par l’utilisateur
                     persistTreePermIfPossible(context, uri)
 
-// ⭐ Important : on mémorise aussi le dossier “base” choisi au setup
                     BackupFolderPrefs.saveSetupTreeUri(context, uri)
 
-// 2) Dossier choisi = parent (ex : Documents)
                     val baseTree = DocumentFile.fromTreeUri(context, uri) ?: return@launch
 
-// 3) Créer / retrouver SPL_Music (NE PAS DUPLIQUER)
                     val splRoot =
-                        baseTree.listFiles().firstOrNull { it.isDirectory && it.name.equals("SPL_Music", ignoreCase = true) }
-                            ?: baseTree.createDirectory("SPL_Music")
+                        baseTree.listFiles().firstOrNull {
+                            it.isDirectory && it.name.equals("SPL_Music", ignoreCase = true)
+                        } ?: baseTree.createDirectory("SPL_Music")
 
                     if (splRoot == null || !splRoot.isDirectory) return@launch
 
@@ -305,10 +283,12 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
                         val wanted = (listOf(expectedName) + aliases).map { norm(it) }
 
                         val parentUri = parent.uri
-                        val parentDocId = runCatching { DocumentsContract.getDocumentId(parentUri) }.getOrNull()
-                            ?: return parent.findFile(expectedName) ?: parent.createDirectory(expectedName)
+                        val parentDocId =
+                            runCatching { DocumentsContract.getDocumentId(parentUri) }.getOrNull()
+                                ?: return parent.findFile(expectedName) ?: parent.createDirectory(expectedName)
 
-                        val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(parentUri, parentDocId)
+                        val childrenUri =
+                            DocumentsContract.buildChildDocumentsUriUsingTree(parentUri, parentDocId)
 
                         val cr = context.contentResolver
                         cr.query(
@@ -335,7 +315,8 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
 
                                 if (wanted.any { w -> n == w || n.startsWith(w) }) {
                                     val childDocId = c.getString(idCol)
-                                    val childUri = DocumentsContract.buildDocumentUriUsingTree(parentUri, childDocId)
+                                    val childUri =
+                                        DocumentsContract.buildDocumentUriUsingTree(parentUri, childDocId)
                                     return DocumentFile.fromSingleUri(context, childUri)
                                 }
                             }
@@ -344,8 +325,7 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
                         return parent.createDirectory(expectedName)
                     }
 
-// 4) Sous-dossiers standards (NE PAS DUPLIQUER)
-                    val backingDir = ensureDirSmart(
+                    ensureDirSmart(
                         context = context,
                         parent = splRoot,
                         expectedName = "BackingTracks",
@@ -358,19 +338,16 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
                         expectedName = "DJ"
                     )
 
-// 5) ✅ LA LIGNE CLÉ : bibliothèque = SPL_Music (TREE URI)
                     val splTreeUri = toTreeUri(splRoot.uri)
                     BackupFolderPrefs.saveLibraryRootUri(context, splTreeUri)
-                    Log.d("LibDebug", "SAVE rootUri=$splTreeUri")
+
                     currentFolderUri = splTreeUri
                     folderStack = emptyList()
 
-// 6) DJ = SPL_Music/DJ
                     if (djDir != null) {
                         DjFolderPrefs.save(context, toTreeUri(djDir.uri))
                     }
 
-// 7) Scan IMMÉDIAT de SPL_Music
                     libraryRescanAll(
                         context = context,
                         root = splTreeUri,
@@ -379,7 +356,6 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
                         onEntries = { entries = it }
                     )
 
-// 8) Injection DJ grisé
                     entries = buildEntriesForFolder(splTreeUri)
 
                 } finally {
@@ -387,7 +363,6 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
                 }
             }
         }
-
     )
 
     val moveToFolderLauncher = rememberLauncherForActivityResult(
@@ -396,7 +371,7 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
             val srcUri = pendingMoveUri
             if (destUri != null && srcUri != null) {
                 scope.launch {
-                    startLoading("Déplacement…", determinate = true)
+                    startLoading(sMoving, determinate = true)
                     try {
                         persistTreePermIfPossible(context, destUri)
 
@@ -436,35 +411,34 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
             }
         }
     )
-// ---------- Import audio (BackingTracks) ----------
+
     val importAudioLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenMultipleDocuments()
     ) { pickedUris ->
         if (pickedUris.isNullOrEmpty()) return@rememberLauncherForActivityResult
 
         scope.launch {
-            startLoading("Import des musiques…", determinate = false)
+            startLoading(sImporting, determinate = false)
             try {
                 val splRoot = BackupFolderPrefs.getLibraryRootUri(context) ?: return@launch
                 val baseTree = BackupFolderPrefs.getSetupTreeUri(context) ?: splRoot
 
                 val rawDest = importTargetFolderUri ?: currentFolderUri ?: splRoot
-                val destDoc = DocumentFile.fromTreeUri(context, rawDest) ?: DocumentFile.fromSingleUri(context, rawDest)
+                val destDoc =
+                    DocumentFile.fromTreeUri(context, rawDest) ?: DocumentFile.fromSingleUri(context, rawDest)
                 val destFolder = if (destDoc != null && destDoc.isDirectory) rawDest else splRoot
 
-                // (optionnel mais safe) : tente de persister la permission sur le dossier courant
                 persistTreePermIfPossible(context, destFolder)
 
                 ImportAudioManager.importAudioFiles(
                     context = context,
-                    appRootTreeUri = baseTree,        // juste pour passer la vérif "rootParent"
+                    appRootTreeUri = baseTree,
                     sourceUris = pickedUris,
-                    destFolderName = "BackingTracks", // ignoré si destFolderUri != null
+                    destFolderName = "BackingTracks",
                     overwriteIfExists = false,
-                    destFolderUri = destFolder        // ✅ IMPORT ICI
+                    destFolderUri = destFolder
                 )
 
-                // Rescan SPL_Music, mais on reste affiché dans le dossier courant
                 libraryRescanAll(
                     context = context,
                     root = splRoot,
@@ -477,16 +451,16 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
                 entries = buildEntriesForFolder(destFolder)
 
             } finally {
-                importTargetFolderUri = null   // ✅ reset
+                importTargetFolderUri = null
                 stopLoadingNice()
             }
         }
     }
-// ---------- initial load ----------
+
+    // ---------- initial load ----------
     LaunchedEffect(Unit) {
         var root = BackupFolderPrefs.getLibraryRootUri(context)
-        Log.d("LibDebug", "LOAD_INITIAL rootUri=$root indexSize=${indexAll.size}")
-        // ✅ si root pointe sur BackingTracks / un sous-dossier → on remonte sur SPL_Music
+
         if (root != null) {
             val fixed = normalizeToSplMusicDocUri(context, root)
             if (fixed != root) {
@@ -497,12 +471,10 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
 
         currentFolderUri = root
 
-        // 2) Charger l’index existant
         indexAll = LibraryIndexCache.load(context) ?: emptyList()
 
-        // 3) Si on a un root mais pas d’index → rescan automatique
         if (root != null && indexAll.isEmpty()) {
-            startLoading("Analyse de la bibliothèque…", determinate = false)
+            startLoading(sScanning, determinate = false)
             try {
                 libraryRescanAll(
                     context = context,
@@ -515,17 +487,15 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
                 stopLoadingNice()
             }
         } else {
-            // 4) Index déjà là → affichage direct
             entries = root?.let { buildEntriesForFolder(it) } ?: emptyList()
         }
     }
-// 🔁 Auto-refresh de la bibliothèque quand un fichier (.lrc / midi / json) est créé
 
-// ---------- UI ----------
+    // ---------- UI ----------
     val currentFolderName = currentFolderUri?.let { u ->
         val doc = DocumentFile.fromTreeUri(context, u) ?: DocumentFile.fromSingleUri(context, u)
         doc?.name ?: "SPL_Music"
-    } ?: "Aucun dossier sélectionné"
+    } ?: sNoFolderSelected
 
     val isSetupDone = BackupFolderPrefs.getSetupTreeUri(context) != null
     if (!isSetupDone) {
@@ -535,17 +505,13 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
                 subtitleColor = subtitleColor,
                 accent = accent,
                 onSetupDone = {
-                    // après setup, on relance un load simple
                     currentFolderUri = BackupFolderPrefs.getLibraryRootUri(context)
                 },
                 onImportNow = {
-                    // déclenche ton import (ton launcher existe déjà)
                     importTargetFolderUri = BackupFolderPrefs.getLibraryRootUri(context)
                     importAudioLauncher.launch(arrayOf("audio/*"))
                 },
-                onImportLater = {
-                    // rien à faire
-                }
+                onImportLater = { }
             )
         }
         return
@@ -562,15 +528,13 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
 
                 onBack = {
                     scope.launch {
-                        startLoading("Chargement…", determinate = false)
+                        startLoading(sLoading, determinate = false)
                         try {
                             val newStack = folderStack.dropLast(1)
                             val parentUri = newStack.lastOrNull() ?: BackupFolderPrefs.getLibraryRootUri(context)
                             currentFolderUri = parentUri
 
-                            entries = parentUri?.let { uri ->
-                                buildEntriesForFolder(uri)
-                            } ?: emptyList()
+                            entries = parentUri?.let { uri -> buildEntriesForFolder(uri) } ?: emptyList()
 
                             folderStack = newStack
                             selectedSongs = emptySet()
@@ -584,7 +548,7 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
 
                 onRescan = {
                     scope.launch {
-                        startLoading("Analyse de la bibliothèque…", determinate = false)
+                        startLoading(sScanning, determinate = false)
                         try {
                             val root = BackupFolderPrefs.getLibraryRootUri(context) ?: return@launch
                             val folderToShow = currentFolderUri ?: root
@@ -597,7 +561,6 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
                                 onEntries = { entries = it }
                             )
 
-                            // rebuild (avec DJ grisé)
                             currentFolderUri?.let { folder ->
                                 entries = buildEntriesForFolder(folder)
                             }
@@ -622,18 +585,17 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
                 },
 
                 onImportBackingTracks = {
-                    importTargetFolderUri = currentFolderUri // ✅ on importe dans le dossier où tu es
+                    importTargetFolderUri = currentFolderUri
                     importAudioLauncher.launch(arrayOf("audio/*"))
                 }
             )
 
             Spacer(Modifier.height(10.dp))
-
             Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
 
                 if (currentFolderUri == null) {
                     Text(
-                        "Aucun dossier pour l’instant.\nChoisis ton dossier Music avec tes MP3 / WAV.",
+                        text = sNoFolderHint,
                         color = subtitleColor,
                         fontSize = 13.sp
                     )
@@ -645,7 +607,7 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
                             value = searchQuery,
                             onValueChange = { searchQuery = it },
                             modifier = Modifier.fillMaxWidth(0.85f).heightIn(min = 44.dp),
-                            placeholder = { Text("Rechercher…") },
+                            placeholder = { Text(sSearch) },
                             singleLine = true
                         )
 
@@ -665,7 +627,6 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
                             },
 
                             onOpenFolder = { entry ->
-                                // 🔒 DJ = visible mais non ouvrable
                                 if (entry.disabled) return@LibraryList
                                 scope.launch {
                                     isLoading = true
@@ -676,7 +637,6 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
                                         currentFolderUri = entry.uri
 
                                         entries = buildEntriesForFolder(entry.uri)
-                                      
 
                                         searchQuery = ""
                                         selectedSongs = emptySet()
@@ -687,23 +647,20 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
                                 }
                             },
 
-                            // 🔥 OUVERTURE DU LECTEUR AUDIO
                             onOpenPlayer = { uri ->
                                 stopQuickPlay()
                                 onPlayFromLibrary(uri.toString())
                             },
 
-                            // ▶️ QUICK PLAY
                             onQuickPlay = { uri ->
                                 quickPlayToggle(uri)
                             },
 
-                            // 📦 IMPORT JSON
                             onImportBackupJson = { uri ->
                                 Log.d("BackupImport", "Import demandé pour $uri")
-                                // TODO: on recâble ton vrai import après
+                                // TODO: recâbler ton vrai import
                             },
-                            // ✏️ OUVRIR ÉDITEUR LRC  ← ← ← ICI LE NOUVEAU CALLBACK
+
                             onOpenLrcEditor = { lrcUri ->
                                 stopQuickPlay()
 
@@ -722,12 +679,12 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
                                 selectedSongs = setOf(uri)
                                 showAssignDialog = true
                             },
+
                             onMoveOne = { uri ->
                                 pendingMoveUri = uri
 
                                 val root = BackupFolderPrefs.getLibraryRootUri(context)
                                 if (root == null) {
-                                    // pas de dossier bibliothèque => pas de navigateur de déplacement
                                     showMoveBrowser = false
                                     return@LibraryList
                                 }
@@ -736,10 +693,12 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
                                 moveBrowserStack = emptyList()
                                 showMoveBrowser = true
                             },
+
                             onRenameOne = { entry ->
                                 renameTarget = entry
                                 renameText = entry.name
                             },
+
                             onDeleteOne = { uri ->
                                 pendingDeleteUri = uri
                                 showDeleteConfirmDialog = true
@@ -752,7 +711,7 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .align(androidx.compose.ui.Alignment.BottomCenter)
-                                .zIndex(20f) // optionnel mais conseillé
+                                .zIndex(20f)
                         ) {
                             LibraryBottomBar(
                                 bottomBarHeight = bottomBarHeight,
@@ -787,12 +746,12 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
                 },
                 onConfirmDelete = { target ->
                     scope.launch {
-                        startLoading("Suppression…", determinate = false)
+                        startLoading(sDeleting, determinate = false)
                         try {
                             val ok = libraryDeleteFile(context, target)
                             if (ok) {
                                 selectedSongs = selectedSongs - target
-                                val folderUri = currentFolderUri ?:BackupFolderPrefs.getLibraryRootUri(context)
+                                val folderUri = currentFolderUri ?: BackupFolderPrefs.getLibraryRootUri(context)
                                 if (folderUri != null) {
                                     libraryRefreshCurrentFolderOnly(context, folderUri) { entries = it }
                                 }
@@ -834,7 +793,7 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
                         }
 
                     renameTarget = null
-                    startLoading("Renommage…", determinate = false)
+                    startLoading(sRenaming, determinate = false)
 
                     scope.launch {
                         try {
@@ -849,9 +808,7 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
                                 oldUri = target.uri,
                                 oldName = oldName,
                                 newNameFinal = newNameFinal
-                            )
-
-                            if (newUriAfterRename == null) return@launch
+                            ) ?: return@launch
 
                             indexAll = indexAll.map { ce ->
                                 if (ce.uriString == target.uri.toString()) ce.copy(name = newNameFinal) else ce
@@ -859,14 +816,14 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
                             LibraryIndexCache.save(context, indexAll)
 
                             PlaylistRepository.clearCustomTitleEverywhere(target.uri.toString())
-
                             persistTreePermIfPossible(context, newUriAfterRename)
 
                             if (newUriAfterRename != target.uri) {
                                 PlaylistRepository.clearCustomTitleEverywhere(newUriAfterRename.toString())
 
                                 entries = entries.map { e ->
-                                    if (e.uri == target.uri) e.copy(uri = newUriAfterRename, name = newNameFinal) else e
+                                    if (e.uri == target.uri) e.copy(uri = newUriAfterRename, name = newNameFinal)
+                                    else e
                                 }
 
                                 indexAll = indexAll.map { ce ->
@@ -889,6 +846,7 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
                                     if (e.uri == target.uri) e.copy(name = newNameFinal) else e
                                 }
                             }
+
                         } finally {
                             isLoading = false
                             moveProgress = null
@@ -925,7 +883,7 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
                     showMoveBrowser = false
 
                     scope.launch {
-                        startLoading("Déplacement…", determinate = true)
+                        startLoading(sMoving, determinate = true)
                         try {
                             val result = libraryMoveOneFile(
                                 context = context,
@@ -964,15 +922,12 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
                     moveToFolderLauncher.launch(null)
                 }
             )
-            // ----------------------------
 
             // ---------------- LRC EDITOR DIALOG ----------------
             if (showLrcEditor) {
                 androidx.compose.ui.window.Dialog(
                     onDismissRequest = { showLrcEditor = false },
-                    properties = androidx.compose.ui.window.DialogProperties(
-                        usePlatformDefaultWidth = false
-                    )
+                    properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
                 ) {
                     androidx.compose.material3.Surface(
                         modifier = Modifier
@@ -987,7 +942,7 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
                                 .padding(16.dp)
                         ) {
                             androidx.compose.material3.Text(
-                                text = "Édition : $lrcEditorName",
+                                text = stringResource(R.string.library_lrc_editing_title, lrcEditorName),
                                 modifier = Modifier.padding(bottom = 12.dp)
                             )
 
@@ -1008,7 +963,7 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
                             ) {
                                 androidx.compose.material3.TextButton(
                                     onClick = { showLrcEditor = false }
-                                ) { androidx.compose.material3.Text("Annuler") }
+                                ) { androidx.compose.material3.Text(stringResource(R.string.common_cancel)) }
 
                                 Spacer(Modifier.width(8.dp))
 
@@ -1017,9 +972,9 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
                                         val uri = lrcEditorUri ?: return@TextButton
                                         val ok = writeTextToUri(uri, lrcEditorText)
                                         if (ok) showLrcEditor = false
-                                        else android.util.Log.e("LRC", "Échec écriture sur $uri")
+                                        else Log.e("LRC", "Échec écriture sur $uri")
                                     }
-                                ) { androidx.compose.material3.Text("Enregistrer") }
+                                ) { androidx.compose.material3.Text(stringResource(R.string.common_save)) }
                             }
                         }
                     }
@@ -1028,32 +983,31 @@ fun isPlayableMediaUri(uri: Uri): Boolean {
         }
     }
 }
+
+// ------------------------------------------------------------
+// Helpers
+// ------------------------------------------------------------
 private fun toTreeUri(docUri: Uri): Uri {
     val authority = docUri.authority ?: return docUri
     val docId = runCatching { DocumentsContract.getDocumentId(docUri) }.getOrNull() ?: return docUri
-    // docId = "primary:Documents/SPL_Music" → c’est aussi un treeId valide
     return DocumentsContract.buildTreeDocumentUri(authority, docId)
 }
+
 private fun normalizeToSplMusicDocUri(
     context: android.content.Context,
     anyTreeOrDocUri: Uri
 ): Uri {
-
     val setupTree = BackupFolderPrefs.getSetupTreeUri(context) ?: return anyTreeOrDocUri
-    val authority = setupTree.authority ?: return anyTreeOrDocUri
 
-    // On récupère un id exploitable
     val id = runCatching { DocumentsContract.getTreeDocumentId(anyTreeOrDocUri) }.getOrNull()
         ?: runCatching { DocumentsContract.getDocumentId(anyTreeOrDocUri) }.getOrNull()
         ?: return anyTreeOrDocUri
 
-    // Ex: primary:Documents/SPL_Music/BackingTracks (5)
     val parts = id.split('/')
     val idx = parts.indexOfFirst { it.equals("SPL_Music", ignoreCase = true) }
     if (idx < 0) return anyTreeOrDocUri
 
-    val splId = parts.take(idx + 1).joinToString("/") // => primary:Documents/SPL_Music
+    val splId = parts.take(idx + 1).joinToString("/")
 
-    // ⚠️ IMPORTANT : on renvoie une *DocumentUri sous le treeUri setup* (hérite de la permission)
     return DocumentsContract.buildDocumentUriUsingTree(setupTree, splId)
 }

@@ -91,5 +91,35 @@
     <string name="common_cancel">Annuler</string>
     <string name="common_close">Fermer</string>
 
+    <string name="quickplaylists_select">Sélectionne une playlist</string>
+    <string name="quickplaylists_empty">Aucune playlist.\nCrée ta première playlist.</string>
 
+    <string name="tab_home">Accueil</string>
+    <string name="tab_playlists">Playlists</string>
+    <string name="tab_player">Lecteur</string>
+    <string name="tab_filler">Fond</string>
+    <string name="tab_dj">DJ</string>
+    <string name="tab_search">Recherche</string>
+    <string name="tab_more">Plus</string>
+    <string name="tab_library">Bibliothèque</string>
+    <string name="tab_all_playlists">Toutes</string>
+    <string name="tab_tuner">Accordeur</string>
+
+    <!-- Library -->
+    <string name="library_scanning">Analyse de la bibliothèque…</string>
+    <string name="library_moving">Déplacement…</string>
+    <string name="library_importing_music">Import des musiques…</string>
+    <string name="library_deleting">Suppression…</string>
+    <string name="library_renaming">Renommage…</string>
+
+    <string name="library_dj_excluded_reason">Exclu de la bibliothèque (utilisé en mode DJ)</string>
+
+    <string name="library_no_folder_hint">Aucun dossier pour l’instant.\nChoisis ton dossier Music avec tes MP3 / WAV.</string>
+    <string name="library_no_folder_selected">Aucun dossier sélectionné</string>
+
+    <string name="common_search_placeholder">Rechercher…</string>
+
+    <string name="library_lrc_editing_title">Édition : %1$s</string>
+
+    <string name="common_save">Enregistrer</string>
 </resources>

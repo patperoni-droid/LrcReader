@@ -1,5 +1,11 @@
 package com.patrick.lrcreader.ui
 
+
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTag
+import androidx.compose.ui.platform.testTag
+import com.patrick.lrcreader.exo.R
+import androidx.compose.ui.res.stringResource
 import android.net.Uri
 import androidx.documentfile.provider.DocumentFile
 import com.patrick.lrcreader.core.LibraryIndexCache
@@ -44,6 +50,8 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.core.FillerSoundManager
@@ -180,6 +188,8 @@ fun QuickPlaylistsScreen(
                         color = Color(0x33FFFFFF),
                         shape = RoundedCornerShape(18.dp)
                     )
+                    .semantics { testTag = "quickplaylists_header" }
+
                     .padding(horizontal = 10.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
@@ -194,6 +204,7 @@ fun QuickPlaylistsScreen(
                             color = Color.White.copy(alpha = 0.25f),
                             shape = RoundedCornerShape(14.dp)
                         )
+                        .semantics { testTag = "quickplaylists_header" }
                         .clickable { showMenu = true }
                         .padding(horizontal = 14.dp, vertical = 6.dp)
                 ) {
@@ -203,12 +214,13 @@ fun QuickPlaylistsScreen(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
-                            text = internalSelected ?: "Sélectionne une playlist",
+                            text = internalSelected ?: stringResource(R.string.quickplaylists_select),
                             color = Color(0xFFFFF3E0),
                             fontSize = 18.sp,
                             maxLines = 1,
                             modifier = Modifier.weight(1f)
                         )
+
                         Icon(
                             imageVector = Icons.Filled.ArrowDropDown,
                             contentDescription = "Choisir une playlist",
@@ -309,7 +321,7 @@ fun QuickPlaylistsScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            "Aucune playlist.\nVa dans “Toutes” pour en créer.",
+                            text = stringResource(R.string.quickplaylists_empty),
                             color = Color(0xFFB0BEC5),
                             fontSize = 13.sp
                         )

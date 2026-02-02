@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+
     <!-- DJ -->
     <string name="dj_title">DJ</string>
     <string name="dj_no_folder_selected">No DJ folder selected</string>
@@ -43,7 +44,6 @@
 
     <string name="mixer_channel_dj">DJ</string>
     <string name="mixer_channel_dj_subtitle">DJ Bus</string>
-
 
     <!-- Filler / Background sound -->
     <string name="filler_none_selected">No sound selected</string>
@@ -96,4 +96,36 @@
     <string name="common_cancel">Cancel</string>
     <string name="common_close">Close</string>
 
+    <!-- Quick playlists -->
+    <string name="quickplaylists_select">Select a playlist</string>
+    <string name="quickplaylists_empty">No playlist.\nCreate your first playlist.</string>
+
+    <string name="tab_home">Home</string>
+    <string name="tab_playlists">Playlists</string>
+    <string name="tab_player">Player</string>
+    <string name="tab_filler">Ambience</string>
+    <string name="tab_dj">DJ</string>
+    <string name="tab_search">Search</string>
+    <string name="tab_more">More</string>
+    <string name="tab_library">Library</string>
+    <string name="tab_all_playlists">All</string>
+    <string name="tab_tuner">Tuner</string>
+
+    <!-- Library -->
+    <string name="library_scanning">Scanning library…</string>
+    <string name="library_moving">Moving…</string>
+    <string name="library_importing_music">Importing music…</string>
+    <string name="library_deleting">Deleting…</string>
+    <string name="library_renaming">Renaming…</string>
+
+    <string name="library_dj_excluded_reason">Excluded from Library (used in DJ mode)</string>
+
+    <string name="library_no_folder_hint">No folder yet.\nChoose your Music folder with your MP3 / WAV files.</string>
+    <string name="library_no_folder_selected">No folder selected</string>
+
+    <string name="common_search_placeholder">Search…</string>
+
+    <string name="library_lrc_editing_title">Editing: %1$s</string>
+
+    <string name="common_save">Save</string>
 </resources>

@@ -1,7 +1,5 @@
 package com.patrick.lrcreader.ui
 
-import androidx.compose.ui.res.stringResource
-import com.patrick.lrcreader.exo.R
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -46,6 +44,7 @@ import com.patrick.lrcreader.core.DjIndexCache
 import com.patrick.lrcreader.core.DjScanState
 import com.patrick.lrcreader.core.PlaybackCoordinator
 import com.patrick.lrcreader.core.dj.DjEngine
+import com.patrick.lrcreader.exo.R
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext

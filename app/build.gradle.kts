@@ -33,6 +33,7 @@ android {
 
         versionCode = 1
         versionName = "1.0.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
@@ -79,10 +80,9 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.ui:ui-tooling-preview")
     debugImplementation("androidx.compose.ui:ui-tooling")
+    implementation("androidx.compose.animation:animation")
 
-    // ✅ Paquet d’icônes Material étendu :
-    //    contient beaucoup d’icônes supplémentaires (par exemple Headset, Search, etc.)
-    //    Utile si tu veux changer l’icône DJ par un casque audio.
+    // Icônes Material étendu
     implementation("androidx.compose.material:material-icons-extended")
 
     // Activité Compose
@@ -92,17 +92,32 @@ dependencies {
     implementation("androidx.documentfile:documentfile:1.0.1")
 
     // Media3 – ExoPlayer et modules associés
-    //  une seule version pour éviter les conflits
     val media3 = "1.6.1"
     implementation("androidx.media3:media3-exoplayer:$media3")
     implementation("androidx.media3:media3-extractor:$media3")
     implementation("androidx.media3:media3-ui:$media3")
     implementation("androidx.media3:media3-common:$media3")
-    implementation("androidx.compose.animation:animation")
-    // ViewModel pour Jetpack Compose (nécessaire pour viewModel())
+
+    // ViewModel Compose
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
-    // WorkManager (pour AutoBackupWorker)
+
+    // WorkManager
     implementation("androidx.work:work-runtime-ktx:2.9.0")
+
+    // ─────────────────────────────
+    // ✅ TESTS
+    // ─────────────────────────────
+
+    // Unit tests (src/test)
+    testImplementation("junit:junit:4.13.2")
+
+    // Instrumented tests (src/androidTest)
+    androidTestImplementation("androidx.test.ext:junit:1.1.5")
+    androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
+
+    // Compose UI tests (androidTest)
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
 }
 
 
