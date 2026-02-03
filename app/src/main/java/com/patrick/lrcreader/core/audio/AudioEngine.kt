@@ -200,6 +200,7 @@ object AudioEngine {
         // met à jour le callback à chaque appel (MainActivity peut changer)
         onNaturalEndCallback = onNaturalEnd
 
+        // ✅ IMPORTANT : on garantit l'existence de "p" (sinon Unresolved reference)
         val p = exoPlayer ?: ExoPlayer.Builder(appCtx).build().also { player ->
             val l = EmbeddedLyricsListener()
             player.addListener(l)
@@ -212,8 +213,6 @@ object AudioEngine {
         pendingTrackGainDb?.let { trackGainLinear = dbToLinearAttenuation(it.coerceIn(-12, 0)) }
         fadeMultiplier = 1f
         applyFinalVolume()
-
-
 
         // Ajout du listener de fin UNE SEULE FOIS
         if (!endedListenerAdded) {

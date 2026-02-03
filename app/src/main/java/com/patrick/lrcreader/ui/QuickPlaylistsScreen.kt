@@ -92,7 +92,10 @@ fun QuickPlaylistsScreen(
     }
 
     val songs = remember { mutableStateListOf<String>() }
-
+    // ✅ Snapshot "ordre d'origine" (pour le bouton Réinitialiser)
+    // - On le fixe au premier chargement d'une playlist
+    // - Et on le met à jour quand TU réordonnes à la main (drag)
+    val originalOrderByPlaylist = remember { mutableStateMapOf<String, List<String>>() }
     var currentListColor by remember { mutableStateOf(Color.White) } // ✅ plus de couleur "globale" de playlist
 
     var showMenu by remember { mutableStateOf(false) }
@@ -135,10 +138,15 @@ fun QuickPlaylistsScreen(
         songs.clear()
         val pl = internalSelected
         if (pl != null) {
-            songs.addAll(PlaylistRepository.getSongsFor(pl))
+            val loaded = PlaylistRepository.getSongsFor(pl)
+            songs.addAll(loaded)
+
+            // ✅ Si on n'a pas encore d'ordre "d'origine" pour cette playlist, on le mémorise
+            if (originalOrderByPlaylist[pl].isNullOrEmpty()) {
+                originalOrderByPlaylist[pl] = loaded.toList()
+            }
+
             currentListColor = Color.White
-            // ✅ on ne pousse plus de couleur playlist vers le lecteur
-            // onPlaylistColorChange(currentListColor)
         }
     }
 
@@ -147,10 +155,15 @@ fun QuickPlaylistsScreen(
         if (selectedPlaylist != null) {
             internalSelected = selectedPlaylist
             songs.clear()
-            songs.addAll(PlaylistRepository.getSongsFor(selectedPlaylist))
+            val loaded = PlaylistRepository.getSongsFor(selectedPlaylist)
+            songs.addAll(loaded)
+
+            // ✅ Init ordre d'origine si absent
+            if (originalOrderByPlaylist[selectedPlaylist].isNullOrEmpty()) {
+                originalOrderByPlaylist[selectedPlaylist] = loaded.toList()
+            }
+
             currentListColor = Color.White
-            // ✅ on ne pousse plus de couleur playlist vers le lecteur
-            // onPlaylistColorChange(currentListColor)
         }
     }
 
@@ -284,10 +297,20 @@ fun QuickPlaylistsScreen(
                         IconButton(
                             onClick = {
                                 val pl = internalSelected ?: return@IconButton
+
+                                // 1) on efface le statut "joué"
                                 PlaylistRepository.resetPlayedFor(pl)
-                                // ⚠️ on NE nettoie PAS les "à revoir"
+
+                                // 2) ✅ on restaure l'ordre d'origine (persistant)
+                                val original = loadOriginalOrder(context, pl)
+                                    ?: PlaylistRepository.getSongsFor(pl)
+
+                                PlaylistRepository.updatePlayListOrder(pl, original)
+
+                                // 3) UI
                                 songs.clear()
-                                songs.addAll(PlaylistRepository.getSongsFor(pl))
+                                songs.addAll(original)
+
                                 onSelectedPlaylistChange(pl)
                             }
                         ) {
@@ -433,6 +456,9 @@ fun QuickPlaylistsScreen(
                                                             pl,
                                                             songs.toList()
                                                         )
+                                                        // ✅ Si tu réordonnes à la main, ce nouvel ordre devient
+                                                        // le nouvel "ordre d'origine" (persistant)
+                                                        overwriteOriginalOrder(context, pl, songs.toList())
                                                     }
                                                 },
                                                 onDragCancel = {
@@ -481,7 +507,10 @@ fun QuickPlaylistsScreen(
                                         .weight(1f)
                                         .clickable {
                                             val pl = internalSelected ?: return@clickable
-
+                                            // ✅ IMPORTANT : on capture l'ordre "d'origine" AVANT que le système
+                                            // ne pousse une chanson jouée en bas.
+                                            // Persistant => ça survit au redémarrage.
+                                            saveOriginalOrderIfMissing(context, pl, songs.toList())
                                             // ✅ On arme le suivi "10s de lecture réelle"
                                             PlaylistRepository.setNowPlaying(pl, uriString)
 
@@ -949,6 +978,38 @@ private fun loadPlaylistColor(context: Context, playlist: String): Color? {
 
 // prefs couleur par TITRE
 private const val SONG_COLOR_PREF = "song_color_pref"
+// ─────────────────────────────────────────────
+// ✅ Sauvegarde ordre "d'origine" d'une playlist (persistant)
+// ─────────────────────────────────────────────
+private const val PLAYLIST_ORIGINAL_ORDER_PREF = "playlist_original_order_pref"
+
+private fun originalOrderKey(playlist: String): String = "orig|$playlist"
+
+private fun saveOriginalOrderIfMissing(context: Context, playlist: String, order: List<String>) {
+    val prefs = context.getSharedPreferences(PLAYLIST_ORIGINAL_ORDER_PREF, Context.MODE_PRIVATE)
+    val key = originalOrderKey(playlist)
+    if (prefs.contains(key)) return
+
+    val json = org.json.JSONArray().apply { order.forEach { put(it) } }.toString()
+    prefs.edit().putString(key, json).apply()
+}
+
+private fun overwriteOriginalOrder(context: Context, playlist: String, order: List<String>) {
+    val prefs = context.getSharedPreferences(PLAYLIST_ORIGINAL_ORDER_PREF, Context.MODE_PRIVATE)
+    val key = originalOrderKey(playlist)
+    val json = org.json.JSONArray().apply { order.forEach { put(it) } }.toString()
+    prefs.edit().putString(key, json).apply()
+}
+
+private fun loadOriginalOrder(context: Context, playlist: String): List<String>? {
+    val prefs = context.getSharedPreferences(PLAYLIST_ORIGINAL_ORDER_PREF, Context.MODE_PRIVATE)
+    val key = originalOrderKey(playlist)
+    val json = prefs.getString(key, null) ?: return null
+    return runCatching {
+        val arr = org.json.JSONArray(json)
+        List(arr.length()) { idx -> arr.getString(idx) }
+    }.getOrNull()
+}
 
 private fun songColorKey(playlist: String, uri: String): String = "$playlist|$uri"
 
