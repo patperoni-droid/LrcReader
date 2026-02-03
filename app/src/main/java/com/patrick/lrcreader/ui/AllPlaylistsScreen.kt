@@ -1,5 +1,8 @@
 package com.patrick.lrcreader.ui
 
+import android.content.Context
+import android.media.MediaMetadataRetriever
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -23,7 +26,10 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -31,10 +37,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.core.PlaylistRepository
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @Composable
 fun AllPlaylistsScreen(
@@ -44,6 +53,12 @@ fun AllPlaylistsScreen(
     // écoute les changements du repo
     val version by PlaylistRepository.version
     val playlists = remember(version) { PlaylistRepository.getPlaylists() }
+
+    val context = LocalContext.current
+
+    // ✅ cache durée par titre (uriString -> durée ms)
+    // => évite de relire 200 fois les mêmes mp3 (super important)
+    val durationCache = remember { mutableStateMapOf<String, Long>() }
 
     // dialog création
     var showCreateDialog by remember { mutableStateOf(false) }
@@ -142,6 +157,9 @@ fun AllPlaylistsScreen(
                     items(playlists) { name ->
                         PlaylistRow(
                             name = name,
+                            repoVersion = version,
+                            context = context,
+                            durationCache = durationCache,
                             onClick = { onPlaylistClick(name) },
                             onRename = {
                                 renameTarget = name
@@ -259,18 +277,58 @@ fun AllPlaylistsScreen(
 @Composable
 private fun PlaylistRow(
     name: String,
+    repoVersion: Int,
+    context: Context,
+    durationCache: MutableMap<String, Long>,
     onClick: () -> Unit,
     onRename: () -> Unit,
     onDelete: () -> Unit
 ) {
     var menuOpen by remember { mutableStateOf(false) }
 
+    // ✅ durée calculée (ms)
+    var totalMs by remember { mutableLongStateOf(-1L) } // -1 = loading
+    var titleCount by remember { mutableStateOf(0) }    // pour le mode pro
+
+    LaunchedEffect(name, repoVersion) {
+        totalMs = -1L
+
+        val songs = PlaylistRepository.getSongsFor(name)
+        titleCount = songs.size // on affiche "X titres" (prompteur inclus)
+
+        val sum = withContext(Dispatchers.IO) {
+            var acc = 0L
+            for (uriString in songs) {
+                // prompteur => durée 0
+                if (uriString.startsWith("prompter://")) continue
+
+                val cached = durationCache[uriString]
+                val d = if (cached != null) {
+                    cached
+                } else {
+                    val dur = getAudioDurationMs(context, uriString) ?: 0L
+                    durationCache[uriString] = dur
+                    dur
+                }
+                acc += d
+            }
+            acc
+        }
+
+        totalMs = sum
+    }
+
     val cardColor = Color(0xFF1B1B1B)
     val borderColor = Color(0x33FFFFFF)
 
+    // ✅ MODE PRO : "18 titres • 42:18"
+    val proLine = when {
+        totalMs < 0 -> "${titleCount} titres • …"
+        else -> "${titleCount} titres • ${formatDuration(totalMs)}"
+    }
+
     Card(
-        modifier = Modifier
-            .fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = cardColor),
         shape = RoundedCornerShape(14.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
@@ -298,7 +356,7 @@ private fun PlaylistRow(
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = "Playlist live",
+                    text = proLine,
                     color = Color(0xFFB0BEC5),
                     fontSize = 11.sp
                 )
@@ -334,5 +392,32 @@ private fun PlaylistRow(
                 }
             }
         }
+    }
+}
+
+// ─────────────────────────────────────────────
+// Helpers durée audio (SAFE + IO)
+// ─────────────────────────────────────────────
+
+private fun getAudioDurationMs(context: Context, uriString: String): Long? {
+    return runCatching {
+        val uri = Uri.parse(uriString)
+        val mmr = MediaMetadataRetriever()
+        mmr.setDataSource(context, uri)
+        val durStr = mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+        mmr.release()
+        durStr?.toLongOrNull()
+    }.getOrNull()
+}
+
+private fun formatDuration(ms: Long): String {
+    val totalSec = (ms / 1000L).toInt()
+    val h = totalSec / 3600
+    val m = (totalSec % 3600) / 60
+    val s = totalSec % 60
+    return if (h > 0) {
+        "%d:%02d:%02d".format(h, m, s)
+    } else {
+        "%d:%02d".format(m, s)
     }
 }

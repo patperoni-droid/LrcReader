@@ -1,9 +1,10 @@
 package com.patrick.lrcreader.ui
 
 
+import android.media.MediaMetadataRetriever
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
-import androidx.compose.ui.platform.testTag
 import com.patrick.lrcreader.exo.R
 import androidx.compose.ui.res.stringResource
 import android.net.Uri
@@ -11,7 +12,6 @@ import androidx.documentfile.provider.DocumentFile
 import com.patrick.lrcreader.core.LibraryIndexCache
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.imePadding
@@ -50,8 +50,6 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.core.FillerSoundManager
@@ -95,6 +93,9 @@ fun QuickPlaylistsScreen(
     // ✅ Snapshot "ordre d'origine" (pour le bouton Réinitialiser)
     // - On le fixe au premier chargement d'une playlist
     // - Et on le met à jour quand TU réordonnes à la main (drag)
+    // ✅ Durée playlist (cache par titre) + affichage mini dans le header
+    val durationCache = remember { mutableStateMapOf<String, Long>() } // uriString -> ms
+    var playlistTotalMs by remember { mutableStateOf(-1L) } // -1 = loading
     val originalOrderByPlaylist = remember { mutableStateMapOf<String, List<String>>() }
     var currentListColor by remember { mutableStateOf(Color.White) } // ✅ plus de couleur "globale" de playlist
 
@@ -147,6 +148,23 @@ fun QuickPlaylistsScreen(
             }
 
             currentListColor = Color.White
+
+            // ✅ calc durée totale (async) — prompter ignoré
+            playlistTotalMs = -1L
+            val listSnapshot = loaded.toList()
+            playlistTotalMs = withContext(Dispatchers.IO) {
+                var acc = 0L
+                for (u in listSnapshot) {
+                    if (u.startsWith("prompter://")) continue
+                    val cached = durationCache[u]
+                    val d = cached
+                        ?: (getAudioDurationMsQP(context, u) ?: 0L).also {
+                            durationCache[u] = it
+                        }
+                    acc += d
+                }
+                acc
+            }
         }
     }
 
@@ -164,6 +182,23 @@ fun QuickPlaylistsScreen(
             }
 
             currentListColor = Color.White
+
+            // ✅ calc durée totale (async) — prompter ignoré
+            playlistTotalMs = -1L
+            val listSnapshot = loaded.toList()
+            playlistTotalMs = withContext(Dispatchers.IO) {
+                var acc = 0L
+                for (u in listSnapshot) {
+                    if (u.startsWith("prompter://")) continue
+                    val cached = durationCache[u]
+                    val d = cached
+                        ?: (getAudioDurationMsQP(context, u) ?: 0L).also {
+                            durationCache[u] = it
+                        }
+                    acc += d
+                }
+                acc
+            }
         }
     }
 
@@ -232,6 +267,19 @@ fun QuickPlaylistsScreen(
                             fontSize = 18.sp,
                             maxLines = 1,
                             modifier = Modifier.weight(1f)
+                        )
+
+                        // ✅ durée totale playlist (petit affichage)
+                        val durText = when {
+                            playlistTotalMs < 0L -> "…"
+                            else -> formatDuration(playlistTotalMs)
+                        }
+
+                        Text(
+                            text = durText,
+                            color = Color(0xFFB0BEC5),
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(start = 8.dp, end = 6.dp)
                         )
 
                         Icon(
@@ -1086,6 +1134,27 @@ private fun renameAudioFileUsingLibraryCache(
 
     return finalUriString to newNameFinal
 }
+// ✅ Helpers durée audio (AU NIVEAU FICHIER)
+private fun getAudioDurationMsQP(context: Context, uriString: String): Long? {
+    return runCatching {
+        val uri = Uri.parse(uriString)
+        val mmr = MediaMetadataRetriever()
+        mmr.setDataSource(context, uri)
+        val durStr = mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+        mmr.release()
+        durStr?.toLongOrNull()
+    }.getOrNull()
+}
+
+private fun formatDuration(ms: Long): String {
+    val totalSec = (ms / 1000L).toInt()
+    val h = totalSec / 3600
+    val m = (totalSec % 3600) / 60
+    val s = totalSec % 60
+    return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%d:%02d".format(m, s)
+}
+
+// ✅ Bus simple pour forcer le refresh des notes dans Compose
 object NotesEventBus {
     private val listeners = mutableListOf<() -> Unit>()
 
