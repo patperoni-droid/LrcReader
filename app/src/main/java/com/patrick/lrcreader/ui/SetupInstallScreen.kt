@@ -21,6 +21,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.documentfile.provider.DocumentFile
 import com.patrick.lrcreader.core.BackupFolderPrefs
 import com.patrick.lrcreader.core.DjFolderPrefs
+import android.widget.Toast
 
 @Composable
 fun SetupInstallScreen(
@@ -39,21 +40,23 @@ fun SetupInstallScreen(
     ) { uri: Uri? ->
         if (uri == null) return@rememberLauncherForActivityResult
 
-        // 1) On force Documents (stabilité)
-        val docId = runCatching { DocumentsContract.getTreeDocumentId(uri) }.getOrNull() ?: ""
-        val looksLikeDocuments =
-            docId.contains(":Documents", ignoreCase = true) || docId.contains("/Documents", ignoreCase = true)
-
-        if (!looksLikeDocuments) {
-            android.util.Log.w("Setup", "Pas Documents: $docId")
-            return@rememberLauncherForActivityResult
-        }
-
-        // 2) Permission persistée + prefs setup
+        // ✅ IMPORTANT : ne JAMAIS bloquer ici, sinon impasse sur certains téléphones
+        // On persiste, on configure, puis on affiche un warning si ce n'est pas Documents.
         persistTreePermIfPossible(context, uri)
         BackupFolderPrefs.saveSetupTreeUri(context, uri)
 
-        // 3) Create/find SPL_Music sous Documents
+        // ⚠️ Garde-fou "soft" : avertir si ce n'est pas Documents (mais on continue)
+        val isDocs = BackupFolderPrefs.isSetupTreeInDocuments(uri)
+        if (!isDocs) {
+            Toast.makeText(
+                context,
+                "⚠️ Ton téléphone n’a pas permis d’ouvrir Documents. " +
+                        "On continue quand même. (Conseillé : Documents / SPL_Music)",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+
+        // 3) Create/find SPL_Music sous le dossier choisi (quel qu’il soit)
         val baseTree = DocumentFile.fromTreeUri(context, uri) ?: return@rememberLauncherForActivityResult
 
         val splRoot =
@@ -256,4 +259,7 @@ private fun splToTreeUri(docUri: Uri): Uri {
 }
 
 private fun documentsInitialUri(): Uri =
-    Uri.parse("content://com.android.externalstorage.documents/document/primary:Documents")
+    DocumentsContract.buildTreeDocumentUri(
+        "com.android.externalstorage.documents",
+        "primary:Documents"
+    )

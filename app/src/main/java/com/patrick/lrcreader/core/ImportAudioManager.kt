@@ -1,5 +1,6 @@
 package com.patrick.lrcreader.core
 
+import android.provider.DocumentsContract
 import android.content.Context
 import android.database.Cursor
 import android.net.Uri
@@ -243,6 +244,33 @@ object ImportAudioManager {
             i++
         }
     }
+    /**
+     * ✅ Test robuste : est-ce que l'utilisateur a choisi "Documents" (SAF) ?
+     *
+     * On utilise le docId du TreeUri (ex: "primary:Documents" ou "primary:Documents/MonDossier").
+     * Ça marche mieux que (DocumentFile.name) qui peut être traduit / différent selon les marques.
+     */
+    fun isTreeInDocuments(uri: Uri): Boolean {
+        return try {
+            val docId = DocumentsContract.getTreeDocumentId(uri) ?: return false
+            // Exemples courants :
+            // - primary:Documents
+            // - primary:Documents/SPL_Music
+            // - home:Documents (selon OEM)
+            docId.contains(":Documents", ignoreCase = true)
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    /**
+     * Message UX simple pour expliquer quoi faire.
+     * (À afficher dans un Dialog/Toast côté UI quand le dossier n'est pas Documents)
+     */
+    fun documentsGuardMessage(): String =
+        "⚠️ Pour que l’appli fonctionne correctement, choisis le dossier \"Documents\".\n\n" +
+                "Astuce : si ton téléphone te bloque sur \"Téléchargements\", ferme et relance la sélection, " +
+                "ou utilise le menu ☰ / Parcourir pour remonter."
 
     private fun guessDisplayName(context: Context, uri: Uri): String? {
         // 1) DocumentFile (souvent OK)

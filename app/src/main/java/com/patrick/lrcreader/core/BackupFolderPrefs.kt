@@ -3,6 +3,7 @@ package com.patrick.lrcreader.core
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.provider.DocumentsContract
 
 /**
  * Stocke le dossier choisi via OpenDocumentTree.
@@ -107,6 +108,19 @@ object BackupFolderPrefs {
             p.uri == tree && p.isReadPermission && p.isWritePermission
         }
     }
+    /**
+     * ✅ Test robuste : est-ce que le TreeUri est dans "Documents" ?
+     * On se base sur le TreeDocumentId (ex: "primary:Documents" ou "primary:Documents/...")
+     * Beaucoup plus fiable que DocumentFile.name (qui peut varier selon ROM/langue).
+     */
+    fun isSetupTreeInDocuments(treeUri: Uri): Boolean {
+        return try {
+            val docId = DocumentsContract.getTreeDocumentId(treeUri) ?: return false
+            docId.contains(":Documents", ignoreCase = true)
+        } catch (_: Exception) {
+            false
+        }
+    }
     // --------------------------------------------------------------------
 
     fun clear(context: Context) {
@@ -135,4 +149,5 @@ object BackupFolderPrefs {
             .clear()
             .apply()
     }
+
 }

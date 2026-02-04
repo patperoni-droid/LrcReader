@@ -40,6 +40,16 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.pow
 
+private fun defaultDocumentsTreeUriOrNull(): Uri? {
+    // ⚠️ Sur la majorité des Android, l’autorité “externalstorage” existe.
+    // Sur certains modèles, ce hint peut être ignoré, mais il ne casse rien.
+    return runCatching {
+        DocumentsContract.buildTreeDocumentUri(
+            "com.android.externalstorage.documents",
+            "primary:Documents"
+        )
+    }.getOrNull()
+}
 @Composable
 fun FillerSoundScreen(
     context: Context,
@@ -175,6 +185,9 @@ fun FillerSoundScreen(
     // ─────────────────────────────────────────────────────────────
     //  1) Autorisation + scan DJ (1ère fois)
     // ─────────────────────────────────────────────────────────────
+    // ✅ Hint d’ouverture : essayer d’ouvrir directement dans "Documents"
+    // (Android peut l’ignorer selon le téléphone, mais quand il l’accepte ça évite le piège "Téléchargements")
+    val initialDocumentsUri = remember { defaultDocumentsTreeUriOrNull() }
     val pickDjFolderLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree(),
         onResult = { picked ->
@@ -607,7 +620,7 @@ fun FillerSoundScreen(
                 TextButton(onClick = {
                     showDjInfoDialog = false
                     folderPickSlotIndex = pendingSlotIndex
-                    pickDjFolderLauncher.launch(null)
+                    pickDjFolderLauncher.launch(initialDocumentsUri)
                 }) { Text(stringResource(R.string.filler_choose_dj), color = onBg) }
             },
             dismissButton = {
