@@ -1,5 +1,6 @@
 package com.patrick.lrcreader.ui.library
 
+import android.content.Intent
 import android.net.Uri
 import android.provider.DocumentsContract
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -12,7 +13,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -21,7 +21,8 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.documentfile.provider.DocumentFile
 import com.patrick.lrcreader.core.BackupFolderPrefs
 import com.patrick.lrcreader.core.DjFolderPrefs
-import android.widget.Toast
+import com.patrick.lrcreader.core.InternalStoragePaths
+import com.patrick.lrcreader.core.StorageModePrefs
 
 @Composable
 fun SetupInstallScreen(
@@ -32,38 +33,33 @@ fun SetupInstallScreen(
     onImportNow: (() -> Unit)? = null,
     onImportLater: (() -> Unit)? = null
 ) {
-    val context = LocalContext.current
+    val context = androidx.compose.ui.platform.LocalContext.current
+
     var showImportPrompt by remember { mutableStateOf(false) }
 
-    val pickDocumentsLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocumentTree()
-    ) { uri: Uri? ->
-        if (uri == null) return@rememberLauncherForActivityResult
+    // ✅ Anti-boucle vieux téléphones (Téléchargements)
+    var showBadFolderDialog by remember { mutableStateOf(false) }
+    var pendingBadUri by remember { mutableStateOf<Uri?>(null) }
 
-        // ✅ IMPORTANT : ne JAMAIS bloquer ici, sinon impasse sur certains téléphones
-        // On persiste, on configure, puis on affiche un warning si ce n'est pas Documents.
+    // --------------------------------------------
+    // Handler : configure SPL_Music sous le dossier choisi (SAF normal)
+    // --------------------------------------------
+    fun handlePickedUri(uri: Uri) {
+        // 1) Persist permissions
         persistTreePermIfPossible(context, uri)
+
+        // 2) Save setup tree
         BackupFolderPrefs.saveSetupTreeUri(context, uri)
 
-        // ⚠️ Garde-fou "soft" : avertir si ce n'est pas Documents (mais on continue)
-        val isDocs = BackupFolderPrefs.isSetupTreeInDocuments(uri)
-        if (!isDocs) {
-            Toast.makeText(
-                context,
-                "⚠️ Ton téléphone n’a pas permis d’ouvrir Documents. " +
-                        "On continue quand même. (Conseillé : Documents / SPL_Music)",
-                Toast.LENGTH_LONG
-            ).show()
-        }
-
-        // 3) Create/find SPL_Music sous le dossier choisi (quel qu’il soit)
-        val baseTree = DocumentFile.fromTreeUri(context, uri) ?: return@rememberLauncherForActivityResult
+        // 3) Create/find SPL_Music sous le dossier choisi
+        val baseTree = DocumentFile.fromTreeUri(context, uri) ?: return
 
         val splRoot =
-            baseTree.listFiles().firstOrNull { it.isDirectory && it.name.equals("SPL_Music", ignoreCase = true) }
-                ?: baseTree.createDirectory("SPL_Music")
+            baseTree.listFiles().firstOrNull {
+                it.isDirectory && it.name.equals("SPL_Music", ignoreCase = true)
+            } ?: baseTree.createDirectory("SPL_Music")
 
-        if (splRoot == null || !splRoot.isDirectory) return@rememberLauncherForActivityResult
+        if (splRoot == null || !splRoot.isDirectory) return
 
         // 4) Create/find sous-dossiers sans doublons
         fun ensureDirSmart(
@@ -100,6 +96,27 @@ fun SetupInstallScreen(
         showImportPrompt = true
     }
 
+    // --------------------------------------------
+    // Picker robuste : Intent ACTION_OPEN_DOCUMENT_TREE + EXTRA_INITIAL_URI
+    // --------------------------------------------
+    val pickDocumentsLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val uri = result.data?.data
+        if (result.resultCode != android.app.Activity.RESULT_OK || uri == null) return@rememberLauncherForActivityResult
+
+        // ⚠️ Téléchargements = piège sur certains vieux téléphones
+        if (uri.authority == "com.android.providers.downloads.documents") {
+            pendingBadUri = uri
+            showBadFolderDialog = true
+            return@rememberLauncherForActivityResult
+        }
+
+        // ✅ Mode normal (SAF)
+        StorageModePrefs.set(context, StorageModePrefs.Mode.SAF)
+        handlePickedUri(uri)
+    }
+
     // -------------------- ÉCRAN 1 --------------------
     Box(
         modifier = Modifier
@@ -126,9 +143,30 @@ fun SetupInstallScreen(
 
             Spacer(Modifier.height(26.dp))
 
-            // Bouton SPL style : accent + noir
             Button(
-                onClick = { pickDocumentsLauncher.launch(documentsInitialUri()) },
+                onClick = {
+                    val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+                        addFlags(
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                                    Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+                                    Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION or
+                                    Intent.FLAG_GRANT_PREFIX_URI_PERMISSION
+                        )
+
+                        // ✅ EXTRA_INITIAL_URI (DocumentUri) pointe vers Documents
+                        val initial = runCatching {
+                            DocumentsContract.buildDocumentUri(
+                                "com.android.externalstorage.documents",
+                                "primary:Documents"
+                            )
+                        }.getOrNull()
+
+                        if (initial != null) {
+                            putExtra(DocumentsContract.EXTRA_INITIAL_URI, initial)
+                        }
+                    }
+                    pickDocumentsLauncher.launch(intent)
+                },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp),
@@ -152,6 +190,51 @@ fun SetupInstallScreen(
         }
     }
 
+    // -------------------- DIALOG "TÉLÉCHARGEMENTS" -> FALLBACK INTERNE --------------------
+    if (showBadFolderDialog) {
+        AlertDialog(
+            onDismissRequest = { /* bloqué volontairement */ },
+            title = { Text("Ton téléphone bloque sur Téléchargements") },
+            text = {
+                Text(
+                    "Ce téléphone ne te laisse pas remonter vers Documents.\n\n" +
+                            "✅ Solution : passer en mode interne (fiable sur vieux téléphones).\n" +
+                            "➡️ Aucun impact sur ton téléphone principal."
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showBadFolderDialog = false
+
+                        // ✅ OPTION B = MODE INTERNE (robuste sur vieux téléphones)
+                        StorageModePrefs.set(context, StorageModePrefs.Mode.INTERNAL)
+
+                        val rootDir = InternalStoragePaths.ensureSplRoot(context)
+                        val rootUri = Uri.fromFile(rootDir)
+
+                        // ✅ IMPORTANT : marquer l’installation OK (sinon boucle)
+                        BackupFolderPrefs.saveSetupTreeUri(context, rootUri)
+                        BackupFolderPrefs.saveLibraryRootUri(context, rootUri)
+
+                        pendingBadUri = null
+
+                        // ✅ passer à l’étape 2
+                        showImportPrompt = true
+                    }
+                ) { Text("Continuer (mode interne)") }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showBadFolderDialog = false
+                        pendingBadUri = null
+                    }
+                ) { Text("Réessayer") }
+            }
+        )
+    }
+
     // -------------------- ÉCRAN 2 (DIALOG PRO) --------------------
     if (showImportPrompt && onImportNow != null && onImportLater != null) {
         Dialog(
@@ -172,7 +255,7 @@ fun SetupInstallScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 20.dp)
-                        .widthIn(max = 520.dp), // ✅ rendu pro tablette
+                        .widthIn(max = 520.dp),
                     shape = RoundedCornerShape(18.dp),
                     color = Color(0xFF0F0F0F),
                     tonalElevation = 2.dp
@@ -203,7 +286,6 @@ fun SetupInstallScreen(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            // Bouton secondaire SPL : sombre + contour accent
                             OutlinedButton(
                                 onClick = {
                                     showImportPrompt = false
@@ -214,17 +296,10 @@ fun SetupInstallScreen(
                                     .weight(1f)
                                     .height(48.dp),
                                 shape = RoundedCornerShape(14.dp),
-                                colors = ButtonDefaults.outlinedButtonColors(
-                                    contentColor = Color.White
-                                ),
-                                border = ButtonDefaults.outlinedButtonBorder.copy(
-                                    width = 1.dp
-                                )
-                            ) {
-                                Text("Plus tard")
-                            }
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                                border = ButtonDefaults.outlinedButtonBorder.copy(width = 1.dp)
+                            ) { Text("Plus tard") }
 
-                            // Bouton principal SPL : accent
                             Button(
                                 onClick = {
                                     showImportPrompt = false
@@ -239,9 +314,7 @@ fun SetupInstallScreen(
                                     containerColor = Color.White,
                                     contentColor = Color.Black
                                 )
-                            ) {
-                                Text("Importer")
-                            }
+                            ) { Text("Importer") }
                         }
                     }
                 }
@@ -257,9 +330,3 @@ private fun splToTreeUri(docUri: Uri): Uri {
     val docId = runCatching { DocumentsContract.getDocumentId(docUri) }.getOrNull() ?: return docUri
     return DocumentsContract.buildTreeDocumentUri(authority, docId)
 }
-
-private fun documentsInitialUri(): Uri =
-    DocumentsContract.buildTreeDocumentUri(
-        "com.android.externalstorage.documents",
-        "primary:Documents"
-    )

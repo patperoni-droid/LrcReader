@@ -2,6 +2,11 @@
 
 package com.patrick.lrcreader.exo
 
+
+import android.database.Cursor
+import android.provider.OpenableColumns
+import java.io.File
+import java.io.FileOutputStream
 import com.patrick.lrcreader.ui.library.SetupInstallScreen
 import android.net.Uri
 import android.provider.DocumentsContract
@@ -74,30 +79,14 @@ class MainActivity : ComponentActivity() {
 // ✅ MIDI : init tôt (une seule fois)
         MidiOutput.init(applicationContext)
         android.util.Log.d("MainActivity", "MIDI init demandé dès onCreate")
-        val savedBackupsUri = BackupFolderPrefs.get(this)
-        if (savedBackupsUri != null) {
 
-            // ✅ Si on a encore la permission persistée, OK
-            val hasPerm = contentResolver.persistedUriPermissions.any { p ->
-                p.uri == savedBackupsUri && p.isReadPermission
-            }
-
-            if (hasPerm) {
-                // ✅ Pour ta lib : on garde ton mécanisme, mais on doit viser la racine SPL_Music.
-                // Backups = .../SPL_Music/Backups
-                // Root   = .../SPL_Music
-                // Donc on remonte d’un niveau via DocumentFile.
-                val backupsDir = DocumentFile.fromTreeUri(this, savedBackupsUri)
-                val splRoot = backupsDir?.parentFile
-
-                if (splRoot != null) {
-                    LibrarySnapshot.rootFolderUri = splRoot.uri
-                    val cached = LibraryIndexCache.load(this)
-                    if (!cached.isNullOrEmpty()) {
-                        LibrarySnapshot.entries = cached.map { it.uriString }
-                        LibrarySnapshot.isReady = true
-                    }
-                }
+        val root = BackupFolderPrefs.getLibraryRootUri(this)
+        if (root != null) {
+            val cached = LibraryIndexCache.load(this)
+            if (!cached.isNullOrEmpty()) {
+                LibrarySnapshot.rootFolderUri = root
+                LibrarySnapshot.entries = cached.map { it.uriString }
+                LibrarySnapshot.isReady = true
             }
         }
         // ✅ Auto backup : planifie le worker à chaque démarrage (WorkManager gère le "unique")
@@ -129,15 +118,83 @@ class MainActivity : ComponentActivity() {
                 val scope = rememberCoroutineScope()
 // On ne se base PAS uniquement sur l'URI (Android peut restaurer),
 // on se base sur un flag explicite "setup_done".
-                val isSetupDone = remember(setupTick) { BackupFolderPrefs.isDone(ctx) }
-                val hasSetupPerm = remember(setupTick) { BackupFolderPrefs.hasValidSetupTreePermission(ctx) }
+                val savedRoot = remember(setupTick) { BackupFolderPrefs.getLibraryRootUri(ctx) }
+                val isInternalMode = remember(savedRoot, setupTick) {
+                    // Mode interne = root en file:// (fallback vieux tel)
+                    savedRoot != null && savedRoot.scheme == "file"
+                }
+
+                val isSetupDone = remember(setupTick, isInternalMode) {
+                    BackupFolderPrefs.isDone(ctx) || isInternalMode
+                }
+
+// ✅ IMPORTANT : en mode interne, on ne demande PAS de permission SAF
+                val hasSetupPerm = remember(setupTick, isInternalMode) {
+                    if (isInternalMode) true else BackupFolderPrefs.hasValidSetupTreePermission(ctx)
+                }
 
                 val shouldShowSetup = forceSetup || !isSetupDone || !hasSetupPerm
+
+                android.util.Log.d(
+                    "SETUP_GATE",
+                    "savedRoot=$savedRoot internal=$isInternalMode isDone=${BackupFolderPrefs.isDone(ctx)} hasPerm=$hasSetupPerm shouldShow=$shouldShowSetup"
+                )
                 val pickAudioFilesLauncher = rememberLauncherForActivityResult(
                     contract = ActivityResultContracts.OpenMultipleDocuments()
                 ) { uris ->
                     if (uris.isNullOrEmpty()) return@rememberLauncherForActivityResult
+                    // ✅ MODE INTERNE : on copie les fichiers choisis dans le dossier interne
+                    val savedRootNow = BackupFolderPrefs.getLibraryRootUri(ctx)
+                    val internalModeNow = savedRootNow != null && savedRootNow.scheme == "file"
 
+                    if (internalModeNow) {
+                        scope.launch {
+                            isImporting = true
+                            try {
+                                val rootFile = File(savedRootNow!!.path!!)
+                                val audioDir = File(rootFile, "BackingTracks/audio").apply { mkdirs() }
+
+                                fun displayNameOf(uri: Uri): String {
+                                    val cr = ctx.contentResolver
+                                    var name = uri.lastPathSegment ?: "audio_${System.currentTimeMillis()}.mp3"
+                                    val c: Cursor? = cr.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+                                    c?.use {
+                                        if (it.moveToFirst()) {
+                                            val idx = it.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                                            if (idx >= 0) name = it.getString(idx)
+                                        }
+                                    }
+                                    return name
+                                }
+
+                                withContext(Dispatchers.IO) {
+                                    uris.forEach { u ->
+                                        val fileName = displayNameOf(u)
+                                        val dest = File(audioDir, fileName)
+
+                                        ctx.contentResolver.openInputStream(u)?.use { input ->
+                                            FileOutputStream(dest).use { out ->
+                                                input.copyTo(out)
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // ✅ Refresh : si tu veux, tu peux juste dire "refreshKey++" plus tard
+                                // Ici on force le setup ok
+                                BackupFolderPrefs.setDone(ctx, true)
+                                forceSetup = false
+                                setupTick++
+
+                                android.util.Log.d("IMPORT_INTERNAL", "Copied ${uris.size} files to ${audioDir.absolutePath}")
+                            } catch (e: Exception) {
+                                android.util.Log.e("IMPORT_INTERNAL", "Crash import internal", e)
+                            } finally {
+                                isImporting = false
+                            }
+                        }
+                        return@rememberLauncherForActivityResult
+                    }
                     val setupTree = BackupFolderPrefs.getSetupTreeUri(ctx) ?: run {
                         android.util.Log.e("IMPORT", "setupTreeUri manquant")
                         return@rememberLauncherForActivityResult

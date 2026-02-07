@@ -165,7 +165,7 @@ fun PlayerScreen(
     var editingLines by remember(currentTrackUri) { mutableStateOf<List<LrcLine>>(emptyList()) }
     var currentEditTab by remember { mutableStateOf(0) }
 
-    // 🔁 reload paroles (priorité : SYLT -> cache interne -> USLT)
+    // 🔁 reload paroles (priorité : SYLT -> EDIT (LrcStorage) -> SIDECAR -> USLT)
     LaunchedEffect(currentTrackUri) {
         if (currentTrackUri == null) {
             onParsedLinesChange(emptyList())
@@ -177,6 +177,7 @@ fun PlayerScreen(
         val trackUri = runCatching { Uri.parse(currentTrackUri) }.getOrNull()
         Log.d("LrcDebug", "TRACK uriString=$currentTrackUri")
         Log.d("LrcDebug", "TRACK uriParsed=$trackUri scheme=${trackUri?.scheme} authority=${trackUri?.authority}")
+
         // 1) SYLT (synchronisé) -> LRC
         val syltLrcText: String? = if (trackUri != null) {
             runCatching { readSyltAsLrcFromUri(context, trackUri) }.getOrNull()
@@ -189,24 +190,10 @@ fun PlayerScreen(
             editingLines = parsed
             return@LaunchedEffect
         }
-        // 1.b) Fallback : chercher un .lrc "à côté" du MP3 (même nom)
-// - si SAF tree => readSidecarLrcNearTrack
-// - si MediaStore/file => lire le .lrc via chemin fichier
-        val sidecarLrcText: String? = if (trackUri != null) {
-            runCatching { readSidecarLrcSmart(context, trackUri) }.getOrNull()
-        } else null
 
-        Log.d("LrcDebug", "SIDECAR found=${!sidecarLrcText.isNullOrBlank()}")
-
-        if (!sidecarLrcText.isNullOrBlank()) {
-            val parsed = parseLrc(sidecarLrcText)
-            onParsedLinesChange(parsed)
-            rawLyricsText = parsed.joinToString("\n") { it.text }
-            editingLines = parsed
-            return@LaunchedEffect
-        }
-        // 2) Cache interne (notre app)
+        // 2) ✅ PRIORITÉ : paroles éditées (LrcStorage)
         val stored = LrcStorage.loadForTrack(context, currentTrackUri)
+        Log.d("LrcDebug", "STORED found=${!stored.isNullOrBlank()}")
         if (!stored.isNullOrBlank()) {
             val parsed = parseLrc(stored)
             onParsedLinesChange(parsed)
@@ -215,7 +202,21 @@ fun PlayerScreen(
             return@LaunchedEffect
         }
 
-        // 3) USLT (non synchronisé)
+        // 3) Sidecar .lrc (voisin du MP3 / SAF / MediaStore)
+        val sidecarLrcText: String? = if (trackUri != null) {
+            runCatching { readSidecarLrcSmart(context, trackUri) }.getOrNull()
+        } else null
+
+        Log.d("LrcDebug", "SIDECAR found=${!sidecarLrcText.isNullOrBlank()}")
+        if (!sidecarLrcText.isNullOrBlank()) {
+            val parsed = parseLrc(sidecarLrcText)
+            onParsedLinesChange(parsed)
+            rawLyricsText = parsed.joinToString("\n") { it.text }
+            editingLines = parsed
+            return@LaunchedEffect
+        }
+
+        // 4) USLT (non synchronisé)
         val usltText: String? = if (trackUri != null) {
             runCatching { readUsltFromUri(context, trackUri) }.getOrNull()
         } else null
@@ -758,7 +759,9 @@ private fun readSidecarLrcNearTrack(context: android.content.Context, trackUri: 
 
     val parentDocId = docId.substring(0, slash)
     val fileName = docId.substring(slash + 1)
-    val baseName = fileName.substringBeforeLast('.', fileName)
+    val baseName = fileName.substringBeforeLast('.', fileName).trim()
+
+    if (baseName.isBlank()) return null
 
     // On cherche un .lrc avec le même nom de base
     val targetLrcName = "$baseName.lrc"
@@ -794,12 +797,15 @@ private fun readSidecarLrcNearTrack(context: android.content.Context, trackUri: 
         }
     }
 
-    return null
+    // 🔥 NOUVEAU fallback : si le .lrc n’est pas "à côté", on tente SPL_Music/BackingTracks/lyrics
+    return readLrcFromSplLyricsByBaseName(context, baseName)
 }
+
 private fun readSidecarLrcSmart(context: android.content.Context, trackUri: Uri): String? {
     // 1) Si c’est un SAF tree (DocumentsContract) : on utilise la méthode SAF
     val isDoc = runCatching { DocumentsContract.isDocumentUri(context, trackUri) }.getOrDefault(false)
     if (isDoc) {
+        // readSidecarLrcNearTrack inclut maintenant le fallback SPL_Music/lyrics
         return readSidecarLrcNearTrack(context, trackUri)
     }
 
@@ -807,7 +813,8 @@ private fun readSidecarLrcSmart(context: android.content.Context, trackUri: Uri)
     if (trackUri.scheme == "content" && trackUri.authority == MediaStore.AUTHORITY) {
         val path = queryMediaStoreDataPath(context, trackUri)
         if (!path.isNullOrBlank()) {
-            return readSidecarFromFilePath(path)
+            // readSidecarFromFilePath inclut maintenant le fallback SPL_Music/lyrics
+            return readSidecarFromFilePath(context, path)
         }
         return null
     }
@@ -815,21 +822,61 @@ private fun readSidecarLrcSmart(context: android.content.Context, trackUri: Uri)
     // 3) Si c’est file://... : chemin direct
     if (trackUri.scheme == "file") {
         val path = trackUri.path
-        if (!path.isNullOrBlank()) return readSidecarFromFilePath(path)
+        if (!path.isNullOrBlank()) return readSidecarFromFilePath(context, path)
     }
 
     return null
 }
 
-private fun readSidecarFromFilePath(mp3Path: String): String? {
+/**
+ * Ancien comportement : chercher "<base>.lrc" dans le même dossier que l’audio.
+ * 🔥 NOUVEAU : si pas trouvé, on tente SPL_Music/BackingTracks/lyrics et /Lyrics.
+ */
+private fun readSidecarFromFilePath(context: android.content.Context, mp3Path: String): String? {
     val mp3File = File(mp3Path)
     if (!mp3File.exists()) return null
 
-    val base = mp3File.nameWithoutExtension
-    val lrcFile = File(mp3File.parentFile, "$base.lrc")
-    if (!lrcFile.exists() || !lrcFile.isFile) return null
+    val base = mp3File.nameWithoutExtension.trim()
+    if (base.isBlank()) return null
 
-    return runCatching { lrcFile.readText(Charsets.UTF_8) }.getOrNull()
+    val lrcFile = File(mp3File.parentFile, "$base.lrc")
+    if (lrcFile.exists() && lrcFile.isFile) {
+        return runCatching { lrcFile.readText(Charsets.UTF_8) }.getOrNull()
+    }
+
+    // 🔥 fallback SPL_Music/BackingTracks/lyrics
+    return readLrcFromSplLyricsByBaseName(context, base)
+}
+
+/**
+ * 🔥 NOUVEAU : lecture .lrc dans
+ * /Android/data/<package>/files/SPL_Music/BackingTracks/lyrics/<base>.lrc
+ * + fallback /Lyrics (différence de casse)
+ *
+ * But : vieux téléphone => tu stockes les .lrc séparés dans BackingTracks/lyrics.
+ * Aucun impact sur le téléphone concert si ce dossier n’existe pas.
+ */
+private fun readLrcFromSplLyricsByBaseName(
+    context: android.content.Context,
+    baseName: String
+): String? {
+    val b = baseName.trim()
+    if (b.isBlank()) return null
+
+    val root = File(context.getExternalFilesDir(null), "SPL_Music")
+    val backingTracks = File(root, "BackingTracks")
+
+    val candidates = listOf(
+        File(File(backingTracks, "lyrics"), "$b.lrc"),
+        File(File(backingTracks, "Lyrics"), "$b.lrc")
+    )
+
+    for (f in candidates) {
+        if (f.exists() && f.isFile) {
+            return runCatching { f.readText(Charsets.UTF_8) }.getOrNull()
+        }
+    }
+    return null
 }
 
 private fun queryMediaStoreDataPath(context: android.content.Context, uri: Uri): String? {

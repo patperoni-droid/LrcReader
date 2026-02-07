@@ -35,6 +35,9 @@ import com.patrick.lrcreader.ui.clearPersistedUris
 import com.patrick.lrcreader.ui.theme.DarkBlueGradientBackground
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import com.patrick.lrcreader.core.InternalStoragePaths
+import com.patrick.lrcreader.core.StorageModePrefs
+import java.io.File
 
 @Composable
 fun LibraryScreen(
@@ -87,7 +90,65 @@ fun LibraryScreen(
     var importTargetFolderUri by remember { mutableStateOf<Uri?>(null) }
 
     // ✅ Injection DJ : visible mais désactivé
+    // ✅ Injection DJ : visible mais désactivé
+    fun buildInternalIndex(rootDir: File): List<LibraryIndexCache.CachedEntry> {
+        val out = mutableListOf<LibraryIndexCache.CachedEntry>()
+
+        fun walk(dir: File, parentUri: String?) {
+            val children = dir.listFiles()?.toList().orEmpty()
+            children.forEach { f ->
+                val uriStr = Uri.fromFile(f).toString()
+                out += LibraryIndexCache.CachedEntry(
+                    uriString = uriStr,
+                    name = f.name,
+                    isDirectory = f.isDirectory,
+                    parentUriString = parentUri
+                )
+                if (f.isDirectory) walk(f, uriStr)
+            }
+        }
+
+        // root lui-même (optionnel mais pratique)
+        val rootUriStr = Uri.fromFile(rootDir).toString()
+        out += LibraryIndexCache.CachedEntry(
+            uriString = rootUriStr,
+            name = rootDir.name.ifBlank { "SPL_Music" },
+            isDirectory = true,
+            parentUriString = null
+        )
+
+        walk(rootDir, rootUriStr)
+
+        return out
+    }
     fun buildEntriesForFolder(folderUri: Uri): List<LibraryEntry> {
+
+        // ✅ MODE INTERNE : listing via File()
+        if (folderUri.scheme == "file") {
+            val dir = File(folderUri.path ?: return emptyList())
+            val children = dir.listFiles()?.toList().orEmpty()
+
+            val items = children.map { f ->
+                LibraryEntry(
+                    uri = Uri.fromFile(f),
+                    name = f.name,
+                    isDirectory = f.isDirectory
+                )
+            }
+
+            val withDjDisabled = items.map { e ->
+                if (e.isDirectory && e.name.equals("DJ", ignoreCase = true)) {
+                    e.copy(disabled = true, disabledReason = sDjExcludedReason)
+                } else e
+            }
+
+            return withDjDisabled.sortedWith(
+                compareByDescending<LibraryEntry> { it.isDirectory }
+                    .thenBy { it.name.lowercase() }
+            )
+        }
+
+        // ✅ MODE SAF : index + fallback DocumentFile
         val fromIndex = LibraryIndexCache.childrenOf(indexAll, folderUri).map { e ->
             LibraryEntry(
                 uri = Uri.parse(e.uriString),
@@ -142,8 +203,11 @@ fun LibraryScreen(
 
     // dialogs state
     var showAssignDialog by remember { mutableStateOf(false) }
+
+    // ✅ delete with optional LRC
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var pendingDeleteUri by remember { mutableStateOf<Uri?>(null) }
+    var pendingDeleteLrcUri by remember { mutableStateOf<Uri?>(null) }
 
     var pendingMoveUri by remember { mutableStateOf<Uri?>(null) }
     var showMoveBrowser by remember { mutableStateOf(false) }
@@ -230,6 +294,27 @@ fun LibraryScreen(
         } catch (_: Exception) {
         }
         quickIsPlaying = false
+    }
+
+    // --------------------------------------------
+    // Helper: retrouve le .lrc associé à un audio
+    // (même dossier + même nom de base + .lrc)
+    // --------------------------------------------
+    fun findAssociatedLrcUri(audioUri: Uri): Uri? {
+        val audio = indexAll.firstOrNull { it.uriString == audioUri.toString() } ?: return null
+        if (audio.isDirectory) return null
+
+        val parent = audio.parentUriString ?: return null
+        val base = audio.name.substringBeforeLast('.', audio.name)
+        val wantedName = "$base.lrc"
+
+        val lrc = indexAll.firstOrNull {
+            !it.isDirectory &&
+                    it.parentUriString == parent &&
+                    it.name.equals(wantedName, ignoreCase = true)
+        } ?: return null
+
+        return Uri.parse(lrc.uriString)
     }
 
     fun startLoading(label: String, determinate: Boolean) {
@@ -420,7 +505,43 @@ fun LibraryScreen(
         scope.launch {
             startLoading(sImporting, determinate = false)
             try {
-                val splRoot = BackupFolderPrefs.getLibraryRootUri(context) ?: return@launch
+                val rootUri = BackupFolderPrefs.getLibraryRootUri(context) ?: return@launch
+
+                // ✅ MODE INTERNE : on copie dans /files/SPL_Music/BackingTracks
+                // ✅ MODE INTERNE : on copie dans /files/SPL_Music/BackingTracks/Audio
+                if (rootUri.scheme == "file") {
+                    val rootDir = File(rootUri.path ?: return@launch)
+
+                    val backingRoot = File(rootDir, "BackingTracks").apply { mkdirs() }
+                    val audioDir = File(backingRoot, "Audio").apply { mkdirs() }  // ✅ le vrai dossier audio
+
+                    pickedUris.forEach { src ->
+                        val name = runCatching {
+                            DocumentFile.fromSingleUri(context, src)?.name
+                        }.getOrNull() ?: ("import_" + System.currentTimeMillis() + ".mp3")
+
+                        val dest = File(audioDir, name)
+
+                        runCatching {
+                            context.contentResolver.openInputStream(src)?.use { input ->
+                                dest.outputStream().use { output ->
+                                    input.copyTo(output)
+                                }
+                            }
+                        }.onFailure { e ->
+                            Log.e("IMPORT_INTERNAL", "Erreur copie $src -> $dest", e)
+                        }
+                    }
+
+                    // refresh UI
+                    val audioFolderUri = Uri.fromFile(audioDir)
+                    currentFolderUri = audioFolderUri
+                    entries = buildEntriesForFolder(audioFolderUri)
+                    return@launch
+                }
+
+                // ✅ MODE SAF : comportement actuel
+                val splRoot = rootUri
                 val baseTree = BackupFolderPrefs.getSetupTreeUri(context) ?: splRoot
 
                 val rawDest = importTargetFolderUri ?: currentFolderUri ?: splRoot
@@ -458,9 +579,33 @@ fun LibraryScreen(
     }
 
     // ---------- initial load ----------
+    // ---------- initial load ----------
     LaunchedEffect(Unit) {
         var root = BackupFolderPrefs.getLibraryRootUri(context)
+        Log.e("ROOT_DEBUG", "StorageMode=" + StorageModePrefs.get(context))
+        Log.e("ROOT_DEBUG", "LibraryRoot=" + BackupFolderPrefs.getLibraryRootUri(context))
+        Log.e("ROOT_DEBUG", "SetupTree=" + BackupFolderPrefs.getSetupTreeUri(context))
+        // ✅ Mode B : si INTERNAL, on force root sur /files/SPL_Music
+        if (StorageModePrefs.get(context) == StorageModePrefs.Mode.INTERNAL) {
+            val internalRoot = InternalStoragePaths.ensureSplRoot(context)
+            root = Uri.fromFile(internalRoot)
+            BackupFolderPrefs.saveLibraryRootUri(context, root)
+        }
 
+        // ✅ Mode interne : pas de SAF, pas d'index SAF
+        if (root != null && root.scheme == "file") {
+            currentFolderUri = root
+
+            val rootDir = File(root.path ?: return@LaunchedEffect)
+            val newIndex = buildInternalIndex(rootDir)
+            LibraryIndexCache.save(context, newIndex)
+            indexAll = newIndex
+
+            entries = buildEntriesForFolder(root)
+            return@LaunchedEffect
+        }
+
+        // ✅ Normalisation SAF uniquement
         if (root != null) {
             val fixed = normalizeToSplMusicDocUri(context, root)
             if (fixed != root) {
@@ -493,11 +638,39 @@ fun LibraryScreen(
 
     // ---------- UI ----------
     val currentFolderName = currentFolderUri?.let { u ->
-        val doc = DocumentFile.fromTreeUri(context, u) ?: DocumentFile.fromSingleUri(context, u)
-        doc?.name ?: "SPL_Music"
+        if (u.scheme == "file") {
+            java.io.File(u.path ?: "").name.ifBlank { "SPL_Music" }
+        } else {
+            val doc = DocumentFile.fromTreeUri(context, u) ?: DocumentFile.fromSingleUri(context, u)
+            doc?.name ?: "SPL_Music"
+        }
     } ?: sNoFolderSelected
+    // ✅ DEBUG SAF : voir ce que l'appli croit être le dossier courant
+    LaunchedEffect(currentFolderUri) {
+        val u = currentFolderUri ?: return@LaunchedEffect
+        Log.d("LIB_SAF", "currentFolderUri=$u")
+        Log.d("LIB_SAF", "savedRootUri=${BackupFolderPrefs.getLibraryRootUri(context)}")
 
-    val isSetupDone = BackupFolderPrefs.getSetupTreeUri(context) != null
+        if (u.scheme == "file") {
+            val f = File(u.path ?: "")
+            Log.d("LIB_FILE", "exists=${f.exists()} isDir=${f.isDirectory} name=${f.name} children=${f.listFiles()?.size}")
+            return@LaunchedEffect
+        }
+
+        val treeDoc = DocumentFile.fromTreeUri(context, u)
+        val singleDoc = DocumentFile.fromSingleUri(context, u)
+
+        Log.d("LIB_SAF", "fromTreeUri exists=${treeDoc?.exists()} isDir=${treeDoc?.isDirectory} name=${treeDoc?.name}")
+        Log.d("LIB_SAF", "fromSingleUri exists=${singleDoc?.exists()} isDir=${singleDoc?.isDirectory} name=${singleDoc?.name}")
+
+        val listTree = runCatching { treeDoc?.listFiles()?.size }.getOrNull()
+        val listSingle = runCatching { singleDoc?.listFiles()?.size }.getOrNull()
+        Log.d("LIB_SAF", "listFiles(tree)=$listTree  listFiles(single)=$listSingle")
+    }
+    val isSetupDone = when (StorageModePrefs.get(context)) {
+        StorageModePrefs.Mode.INTERNAL -> true
+        else -> BackupFolderPrefs.getSetupTreeUri(context) != null
+    }
     if (!isSetupDone) {
         DarkBlueGradientBackground {
             SetupInstallScreen(
@@ -505,7 +678,9 @@ fun LibraryScreen(
                 subtitleColor = subtitleColor,
                 accent = accent,
                 onSetupDone = {
-                    currentFolderUri = BackupFolderPrefs.getLibraryRootUri(context)
+                    val root = BackupFolderPrefs.getLibraryRootUri(context)
+                    currentFolderUri = root
+                    if (root != null) entries = buildEntriesForFolder(root)
                 },
                 onImportNow = {
                     importTargetFolderUri = BackupFolderPrefs.getLibraryRootUri(context)
@@ -547,7 +722,27 @@ fun LibraryScreen(
                 onPickRoot = { pickRootFolderLauncher.launch(null) },
 
                 onRescan = {
+
                     scope.launch {
+                        val rootNow = BackupFolderPrefs.getLibraryRootUri(context)
+                        if (rootNow != null && rootNow.scheme == "file") {
+                            startLoading(sScanning, determinate = false)
+                            try {
+                                val rootDir = File(rootNow.path ?: return@launch)
+                                val newIndex = buildInternalIndex(rootDir)
+
+                                LibraryIndexCache.save(context, newIndex)
+                                indexAll = newIndex
+
+                                val folder = currentFolderUri ?: rootNow
+                                entries = buildEntriesForFolder(folder)
+
+                                Log.d("RESCAN_INTERNAL", "Index rebuilt: ${newIndex.size} entries")
+                            } finally {
+                                stopLoadingNice()
+                            }
+                            return@launch
+                        }
                         startLoading(sScanning, determinate = false)
                         try {
                             val root = BackupFolderPrefs.getLibraryRootUri(context) ?: return@launch
@@ -576,7 +771,7 @@ fun LibraryScreen(
                     clearPersistedUris(context)
                     BackupFolderPrefs.clear(context)
                     LibraryIndexCache.clear(context)
-
+                    StorageModePrefs.set(context, StorageModePrefs.Mode.SAF)
                     currentFolderUri = null
                     entries = emptyList()
                     selectedSongs = emptySet()
@@ -701,6 +896,7 @@ fun LibraryScreen(
 
                             onDeleteOne = { uri ->
                                 pendingDeleteUri = uri
+                                pendingDeleteLrcUri = findAssociatedLrcUri(uri)
                                 showDeleteConfirmDialog = true
                             }
                         )
@@ -736,34 +932,104 @@ fun LibraryScreen(
                     selectedSongs = emptySet()
                 }
             )
+            // ✅ Nouveau dialog suppression : audio seul OU audio + .lrc
+            if (showDeleteConfirmDialog && pendingDeleteUri != null) {
+                val targetAudio = pendingDeleteUri!!
+                val targetLrc = pendingDeleteLrcUri
 
-            DeleteConfirmDialog(
-                show = showDeleteConfirmDialog,
-                pendingDeleteUri = pendingDeleteUri,
-                onCancel = {
-                    showDeleteConfirmDialog = false
-                    pendingDeleteUri = null
-                },
-                onConfirmDelete = { target ->
-                    scope.launch {
-                        startLoading(sDeleting, determinate = false)
-                        try {
-                            val ok = libraryDeleteFile(context, target)
-                            if (ok) {
-                                selectedSongs = selectedSongs - target
-                                val folderUri = currentFolderUri ?: BackupFolderPrefs.getLibraryRootUri(context)
-                                if (folderUri != null) {
-                                    libraryRefreshCurrentFolderOnly(context, folderUri) { entries = it }
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = {
+                        showDeleteConfirmDialog = false
+                        pendingDeleteUri = null
+                        pendingDeleteLrcUri = null
+                    },
+                    title = { androidx.compose.material3.Text("Supprimer le backing track") },
+                    text = {
+                        Column {
+                            androidx.compose.material3.Text("Voulez-vous supprimer ce fichier audio ?")
+                            if (targetLrc != null) {
+                                Spacer(Modifier.height(8.dp))
+                                androidx.compose.material3.Text(
+                                    "Un fichier de paroles (.lrc) associé a été trouvé.\nSouhaitez-vous aussi le supprimer ?",
+                                    color = Color.Gray
+                                )
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        Column {
+                            // Bouton 1 : audio + lrc (si dispo)
+                            if (targetLrc != null) {
+                                androidx.compose.material3.TextButton(
+                                    onClick = {
+                                        scope.launch {
+                                            startLoading(sDeleting, determinate = false)
+                                            try {
+                                                val okAudio = libraryDeleteFile(context, targetAudio)
+                                                val okLrc = libraryDeleteFile(context, targetLrc)
+
+                                                if (okAudio) selectedSongs = selectedSongs - targetAudio
+                                                if (okLrc) selectedSongs = selectedSongs - targetLrc
+
+                                                val folderUri =
+                                                    currentFolderUri ?: BackupFolderPrefs.getLibraryRootUri(context)
+                                                if (folderUri != null) {
+                                                    libraryRefreshCurrentFolderOnly(context, folderUri) { entries = it }
+                                                }
+                                            } finally {
+                                                showDeleteConfirmDialog = false
+                                                pendingDeleteUri = null
+                                                pendingDeleteLrcUri = null
+                                                stopLoadingNice()
+                                            }
+                                        }
+                                    }
+                                ) {
+                                    androidx.compose.material3.Text("Supprimer audio + .lrc")
                                 }
                             }
-                        } finally {
-                            showDeleteConfirmDialog = false
-                            pendingDeleteUri = null
-                            stopLoadingNice()
+
+                            // Bouton 2 : audio seul
+                            androidx.compose.material3.TextButton(
+                                onClick = {
+                                    scope.launch {
+                                        startLoading(sDeleting, determinate = false)
+                                        try {
+                                            val ok = libraryDeleteFile(context, targetAudio)
+                                            if (ok) {
+                                                selectedSongs = selectedSongs - targetAudio
+                                                val folderUri =
+                                                    currentFolderUri ?: BackupFolderPrefs.getLibraryRootUri(context)
+                                                if (folderUri != null) {
+                                                    libraryRefreshCurrentFolderOnly(context, folderUri) { entries = it }
+                                                }
+                                            }
+                                        } finally {
+                                            showDeleteConfirmDialog = false
+                                            pendingDeleteUri = null
+                                            pendingDeleteLrcUri = null
+                                            stopLoadingNice()
+                                        }
+                                    }
+                                }
+                            ) {
+                                androidx.compose.material3.Text("Supprimer audio uniquement")
+                            }
+                        }
+                    },
+                    dismissButton = {
+                        androidx.compose.material3.TextButton(
+                            onClick = {
+                                showDeleteConfirmDialog = false
+                                pendingDeleteUri = null
+                                pendingDeleteLrcUri = null
+                            }
+                        ) {
+                            androidx.compose.material3.Text("Annuler")
                         }
                     }
-                }
-            )
+                )
+            }
 
             RenameDialog(
                 show = renameTarget != null,
@@ -997,6 +1263,9 @@ private fun normalizeToSplMusicDocUri(
     context: android.content.Context,
     anyTreeOrDocUri: Uri
 ): Uri {
+    // ✅ Mode interne : ne jamais appeler DocumentsContract
+    if (anyTreeOrDocUri.scheme == "file") return anyTreeOrDocUri
+
     val setupTree = BackupFolderPrefs.getSetupTreeUri(context) ?: return anyTreeOrDocUri
 
     val id = runCatching { DocumentsContract.getTreeDocumentId(anyTreeOrDocUri) }.getOrNull()
@@ -1009,5 +1278,6 @@ private fun normalizeToSplMusicDocUri(
 
     val splId = parts.take(idx + 1).joinToString("/")
 
-    return DocumentsContract.buildDocumentUriUsingTree(setupTree, splId)
+    val authority = setupTree.authority ?: return anyTreeOrDocUri
+    return DocumentsContract.buildTreeDocumentUri(authority, splId)
 }

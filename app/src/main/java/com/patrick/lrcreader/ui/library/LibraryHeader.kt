@@ -10,10 +10,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.documentfile.provider.DocumentFile
-import androidx.compose.ui.platform.LocalContext
+import java.io.File
 
 @Composable
 fun LibraryHeader(
@@ -32,9 +33,12 @@ fun LibraryHeader(
     var actionsExpanded by remember { mutableStateOf(false) }
 
     val folderName = remember(currentFolderUri) {
-        currentFolderUri?.let {
-            (DocumentFile.fromTreeUri(context, it)
-                ?: DocumentFile.fromSingleUri(context, it))?.name
+        currentFolderUri?.let { u ->
+            when (u.scheme) {
+                "file" -> File(u.path ?: "").name.ifBlank { "SPL_Music" }
+                else -> (DocumentFile.fromTreeUri(context, u)
+                    ?: DocumentFile.fromSingleUri(context, u))?.name ?: "SPL_Music"
+            }
         } ?: "Aucun dossier sélectionné"
     }
 
@@ -70,6 +74,16 @@ fun LibraryHeader(
             onDismissRequest = { actionsExpanded = false }
         ) {
 
+            // ✅ LE TRUC QUI MANQUAIT : choisir (ou rechanger) le dossier racine
+            DropdownMenuItem(
+                text = { Text("Choisir un dossier") },
+                onClick = {
+                    actionsExpanded = false
+                    onPickRoot()
+                }
+            )
+
+            HorizontalDivider()
 
             DropdownMenuItem(
                 text = { Text("Rescan bibliothèque") },
@@ -91,163 +105,3 @@ fun LibraryHeader(
         }
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

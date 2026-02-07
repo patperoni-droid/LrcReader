@@ -1,6 +1,6 @@
 package com.patrick.lrcreader.ui
 
-import androidx.compose.foundation.border
+import com.patrick.lrcreader.core.LibraryIndexCache
 import android.content.Context
 import android.net.Uri
 import android.widget.Toast
@@ -8,6 +8,7 @@ import android.widget.Toast.LENGTH_SHORT
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -28,6 +29,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.IosShare
 import androidx.compose.material.icons.filled.UploadFile
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
@@ -36,6 +38,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -47,18 +50,21 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.patrick.lrcreader.core.BackupFolderPrefs
 import com.patrick.lrcreader.core.BackupManager
+import com.patrick.lrcreader.core.SplFolders
 import com.patrick.lrcreader.getDisplayName
 import com.patrick.lrcreader.nowString
 import com.patrick.lrcreader.saveJsonToUri
 import com.patrick.lrcreader.shareJson
 import com.patrick.lrcreader.ui.theme.DarkBlueGradientBackground
+import java.io.File
 
 /**
  * BackupScreen (UI simplifié)
- * - Pas de "dossier persistant" : Android rouvre naturellement le dernier dossier utilisé.
  * - Export : CreateDocument()
  * - Import : OpenDocument()
+ * + ✅ INTERNAL : export/import direct dans SPL_Music/Backups (sans picker Android)
  */
 @Composable
 fun BackupScreen(
@@ -70,6 +76,46 @@ fun BackupScreen(
     var lastImportFile by remember { mutableStateOf<String?>(null) }
     var lastImportTime by remember { mutableStateOf<String?>(null) }
     var lastImportSummary by remember { mutableStateOf<String?>(null) }
+
+    // ✅ Détecte le mode INTERNAL via le root "file://"
+    val rootUri = remember { BackupFolderPrefs.getLibraryRootUri(context) }
+    val isInternalMode = rootUri?.scheme == "file"
+
+    // ✅ Liste des backups internes (SPL_Music/Backups)
+    var internalBackupFiles by remember { mutableStateOf<List<File>>(emptyList()) }
+    var showInternalImportDialog by remember { mutableStateOf(false) }
+
+    fun refreshInternalBackups() {
+        if (!isInternalMode) return
+        val dir = SplFolders.backupsDirFile(context)
+        val list = dir.listFiles()
+            ?.filter { it.isFile && it.name.endsWith(".json", ignoreCase = true) }
+            ?.sortedByDescending { it.lastModified() }
+            .orEmpty()
+        internalBackupFiles = list
+    }
+
+    fun importBackupJsonText(json: String, fileLabel: String) {
+        try {
+            BackupManager.importState(context, json) {
+
+                // ✅ Très bien : ça force la bibliothèque à se reconstruire après import
+                com.patrick.lrcreader.core.LibraryIndexCache.clear(context)
+
+                // ✅ Ici on utilise le label qu’on a reçu (plus de "uri" fantôme)
+                lastImportFile = fileLabel
+                lastImportTime = nowString()
+                lastImportSummary = "Import réussi"
+                onAfterImport()
+            }
+        } catch (e: Exception) {
+            lastImportSummary = "Échec de l’import (${e.message ?: "erreur inconnue"})"
+        }
+    }
+    // ✅ refresh auto en INTERNAL
+    LaunchedEffect(isInternalMode) {
+        if (isInternalMode) refreshInternalBackups()
+    }
 
     // nom de fichier export
     var backupFileName by remember { mutableStateOf("lrc_backup.json") }
@@ -95,14 +141,20 @@ fun BackupScreen(
                 val json = context.contentResolver.openInputStream(uri)
                     ?.bufferedReader()
                     ?.use { it.readText() }
-
                 if (!json.isNullOrBlank()) {
+
+                    // 🔁 FORCER un re-scan logique avant import
+                    LibraryIndexCache.clear(context)
+                    LibraryIndexCache.load(context)
+
+                    // 📥 Import du backup avec URIs réparées
                     BackupManager.importState(context, json) {
                         lastImportFile = getDisplayName(context, uri)
                         lastImportTime = nowString()
-                        lastImportSummary = "Import réussi"
+                        lastImportSummary = "Import réussi (liens audio recalculés)"
                         onAfterImport()
                     }
+
                 } else {
                     lastImportSummary = "Fichier vide ou illisible"
                 }
@@ -140,7 +192,7 @@ fun BackupScreen(
                 )
                 .verticalScroll(rememberScrollState())
         ) {
-            // Header minimal (tu voulais enlever le gros titre : ok)
+            // Header minimal
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
@@ -175,6 +227,39 @@ fun BackupScreen(
 
                 Spacer(Modifier.height(10.dp))
 
+                // ✅ INTERNAL export direct vers /SPL_Music/Backups
+                if (isInternalMode) {
+                    FilledTonalButton(
+                        onClick = {
+                            val json = BackupManager.exportState(context, null, emptyList())
+                            val trimmed = backupFileName.trim().ifEmpty { "lrc_backup" }
+                            val finalName =
+                                if (trimmed.endsWith(".json", ignoreCase = true)) trimmed else "$trimmed.json"
+
+                            val dir = SplFolders.backupsDirFile(context)
+                            val target = File(dir, finalName)
+
+                            runCatching {
+                                target.writeText(json, Charsets.UTF_8)
+                                Toast.makeText(context, "Backup écrit dans Backups internes", LENGTH_SHORT).show()
+                                refreshInternalBackups()
+                            }.onFailure {
+                                Toast.makeText(context, "Impossible d’écrire le backup", LENGTH_SHORT).show()
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.filledTonalButtonColors(
+                            containerColor = Color(0xFF2A3A2A),
+                            contentColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(999.dp)
+                    ) {
+                        Text("Exporter vers Backups internes", fontSize = 12.sp)
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+                }
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -189,7 +274,6 @@ fun BackupScreen(
                                 if (trimmed.endsWith(".json", ignoreCase = true)) trimmed
                                 else "$trimmed.json"
 
-                            // Android va s’ouvrir sur le dernier dossier utilisé ✅
                             saveLauncher.launch(finalName)
                         },
                         modifier = Modifier.weight(1f),
@@ -241,9 +325,28 @@ fun BackupScreen(
                 card = card,
                 border = cardBorder
             ) {
+                // ✅ INTERNAL import direct depuis /SPL_Music/Backups
+                if (isInternalMode) {
+                    FilledTonalButton(
+                        onClick = {
+                            refreshInternalBackups()
+                            showInternalImportDialog = true
+                        },
+                        colors = ButtonDefaults.filledTonalButtonColors(
+                            containerColor = Color(0xFF2A3A2A),
+                            contentColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(999.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Importer depuis Backups internes", fontSize = 12.sp)
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+                }
+
                 FilledTonalButton(
                     onClick = {
-                        // Android va s’ouvrir sur le dernier dossier utilisé ✅
                         fileLauncher.launch(arrayOf("application/json"))
                     },
                     colors = ButtonDefaults.filledTonalButtonColors(
@@ -283,6 +386,51 @@ fun BackupScreen(
 
             Spacer(Modifier.height(24.dp))
         }
+    }
+
+    // ✅ Dialog import INTERNAL
+    if (showInternalImportDialog) {
+        AlertDialog(
+            onDismissRequest = { showInternalImportDialog = false },
+            title = { Text("Backups internes") },
+            text = {
+                Column(Modifier.fillMaxWidth()) {
+                    if (internalBackupFiles.isEmpty()) {
+                        Text("Aucun .json trouvé dans SPL_Music/Backups", color = sub, fontSize = 12.sp)
+                    } else {
+                        internalBackupFiles.take(12).forEach { f ->
+                            TextButton(
+                                onClick = {
+                                    val json = runCatching { f.readText(Charsets.UTF_8) }.getOrNull()
+                                    if (!json.isNullOrBlank()) {
+                                        importBackupJsonText(json, f.name)
+                                        showInternalImportDialog = false
+                                    } else {
+                                        lastImportSummary = "Fichier vide ou illisible"
+                                        // on laisse le dialog ouvert pour en choisir un autre
+                                    }
+                                }
+                            ) {
+                                Text(f.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+
+                        if (internalBackupFiles.size > 12) {
+                            Text(
+                                "(${internalBackupFiles.size} fichiers) — j’affiche les 12 plus récents.",
+                                color = sub,
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showInternalImportDialog = false }) {
+                    Text("Fermer")
+                }
+            }
+        )
     }
 }
 
