@@ -19,29 +19,7 @@ object LrcStorage {
     fun loadForTrack(context: Context, trackUriString: String): String? {
         if (trackUriString.isBlank()) return null
 
-        // 1) SAF configuré (on conserve l'ancien comportement hashé)
-        val safDir = getConfiguredSafDir(context)
-        if (safDir != null) {
-            Log.i(TAG, "mode SAF load dir=${safDir.uri}")
-            // d'abord cache interne (rapide)
-            loadFromInternalCache(context, trackUriString)?.let { txt ->
-                if (txt.isNotBlank()) {
-                    Log.d(TAG, "mode SAF load hit INTERNAL_CACHE")
-                    return txt
-                }
-            }
-            // puis dossier SAF (hash)
-            loadFromConfiguredFolder(context, trackUriString)?.let { txt ->
-                if (txt.isNotBlank()) {
-                    Log.d(TAG, "mode SAF load hit CONFIGURED")
-                    return txt
-                }
-            }
-            Log.d(TAG, "mode SAF load miss")
-            return null
-        }
-
-        // 2) Mode interne SPL : BackingTracks/Lyrics/<base>.lrc puis /lyrics
+        // ✅ 1) MODE INTERNE SPL EN PRIORITÉ (BackingTracks/Lyrics)
         if (isInternalSplMode(context)) {
             Log.i(TAG, "mode INTERNAL SPL load root=${getInternalSplRoot(context).absolutePath}")
 
@@ -64,6 +42,29 @@ object LrcStorage {
             return null
         }
 
+        // ✅ 2) SAF seulement si on n'est PAS en mode interne
+        val safDir = getConfiguredSafDir(context)
+        if (safDir != null) {
+            Log.i(TAG, "mode SAF load dir=${safDir.uri}")
+
+            loadFromInternalCache(context, trackUriString)?.let { txt ->
+                if (txt.isNotBlank()) {
+                    Log.d(TAG, "mode SAF load hit INTERNAL_CACHE")
+                    return txt
+                }
+            }
+
+            loadFromConfiguredFolder(context, trackUriString)?.let { txt ->
+                if (txt.isNotBlank()) {
+                    Log.d(TAG, "mode SAF load hit CONFIGURED")
+                    return txt
+                }
+            }
+
+            Log.d(TAG, "mode SAF load miss")
+            return null
+        }
+
         // 3) Mode inconnu : fallback cache interne
         loadFromInternalCache(context, trackUriString)?.let { txt ->
             if (txt.isNotBlank()) {
@@ -77,23 +78,29 @@ object LrcStorage {
     }
 
     fun saveForTrack(context: Context, trackUriString: String, lines: List<LrcLine>) {
+        Log.e(
+            "DEBUG_ROOT_URI",
+            "BackupFolderPrefs rootUri = ${BackupFolderPrefs.getLibraryRootUri(context)}"
+        )
         if (trackUriString.isBlank()) return
         val text = linesToLrcText(lines)
 
+        // ✅ 1) MODE INTERNE SPL EN PRIORITÉ : écrit dans BackingTracks/Lyrics/<base>.lrc
+        if (isInternalSplMode(context)) {
+            Log.i(TAG, "mode INTERNAL SPL save root=${getInternalSplRoot(context).absolutePath}")
+            val okFile = saveToInternalSplFolder(context, trackUriString, text)
+            val okInternal = saveToInternalCache(context, trackUriString, text)
+            Log.i(TAG, "mode INTERNAL SPL save file=$okFile internalCache=$okInternal len=${text.length}")
+            return
+        }
+
+        // ✅ 2) SAF si pas interne
         val safDir = getConfiguredSafDir(context)
         if (safDir != null) {
             Log.i(TAG, "mode SAF save dir=${safDir.uri}")
             val okInternal = saveToInternalCache(context, trackUriString, text)
             val okConfigured = saveToConfiguredFolder(context, trackUriString, text)
             Log.i(TAG, "mode SAF save internalCache=$okInternal configured=$okConfigured len=${text.length}")
-            return
-        }
-
-        if (isInternalSplMode(context)) {
-            Log.i(TAG, "mode INTERNAL SPL save root=${getInternalSplRoot(context).absolutePath}")
-            val okFile = saveToInternalSplFolder(context, trackUriString, text)
-            val okInternal = saveToInternalCache(context, trackUriString, text)
-            Log.i(TAG, "mode INTERNAL SPL save file=$okFile internalCache=$okInternal len=${text.length}")
             return
         }
 
@@ -172,14 +179,10 @@ object LrcStorage {
     // ------------------------------------------------------------
 
     private fun isInternalSplMode(context: Context): Boolean {
+        // Si l'utilisateur a choisi une racine SAF (content://), alors ce n'est PAS du mode interne
         val rootUri = BackupFolderPrefs.getLibraryRootUri(context)
-        if (rootUri?.scheme == "file") return true
-
-        // Si tu utilises le stockage interne app SPL_Music, on le considère comme mode interne
-        val defaultRoot = File(context.getExternalFilesDir(null), "SPL_Music")
-        return defaultRoot.exists() || defaultRoot.mkdirs()
+        return rootUri == null || rootUri.scheme == "file"
     }
-
     private fun getInternalSplRoot(context: Context): File {
         val rootUri = BackupFolderPrefs.getLibraryRootUri(context)
         val fromPrefs = if (rootUri?.scheme == "file" && !rootUri.path.isNullOrBlank()) {

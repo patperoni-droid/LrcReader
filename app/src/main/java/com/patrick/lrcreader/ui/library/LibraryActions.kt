@@ -10,6 +10,7 @@ import com.patrick.lrcreader.core.BackupFolderPrefs
 import com.patrick.lrcreader.core.LibraryIndexCache
 import com.patrick.lrcreader.core.PlaylistRepair
 import com.patrick.lrcreader.core.PlaylistRepository
+import com.patrick.lrcreader.core.SafeFileOps
 import com.patrick.lrcreader.ui.LibraryEntry
 import com.patrick.lrcreader.ui.MoveResult
 import com.patrick.lrcreader.ui.asTreeDocumentUri
@@ -209,18 +210,22 @@ suspend fun libraryRenameFileDeviceSafe(
     newNameFinal: String
 ): Uri? = withContext(Dispatchers.IO) {
 
-    val parentDoc = DocumentFile.fromTreeUri(context, folderUri) ?: return@withContext null
-    val fileDoc = parentDoc.findFile(oldName) ?: return@withContext null
-
-    val renamedOk = try {
-        fileDoc.renameTo(newNameFinal)
-    } catch (e: Exception) {
-        Log.e("LibraryRename", "renameTo failed: ${e.javaClass.simpleName}: ${e.message}")
-        false
-    }
+    val renamedOk = SafeFileOps.rename(
+        context = context,
+        uriString = oldUri.toString(),
+        newDisplayName = newNameFinal,
+        parentTreeUri = folderUri // ✅ c’est LA clé
+    )
     if (!renamedOk) return@withContext null
 
-    parentDoc.findFile(newNameFinal)?.uri
+    if (oldUri.scheme == "file") {
+        val oldFile = java.io.File(oldUri.path ?: return@withContext null)
+        val newFile = java.io.File(oldFile.parentFile ?: return@withContext null, newNameFinal)
+        return@withContext if (newFile.exists()) Uri.fromFile(newFile) else null
+    }
+
+    val parentDoc = DocumentFile.fromTreeUri(context, folderUri)
+    parentDoc?.findFile(newNameFinal)?.uri
         ?: findUriByNameInFolder(context, folderUri, newNameFinal)
 }
 
