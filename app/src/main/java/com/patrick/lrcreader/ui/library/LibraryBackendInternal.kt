@@ -1,0 +1,244 @@
+package com.patrick.lrcreader.ui.library
+
+import android.content.Context
+import android.database.Cursor
+import android.net.Uri
+import android.os.Handler
+import android.provider.OpenableColumns
+import android.util.Log
+import com.patrick.lrcreader.core.BackupFolderPrefs
+import com.patrick.lrcreader.core.BackupFolderPrefsInternal
+import com.patrick.lrcreader.core.InternalStoragePaths
+import com.patrick.lrcreader.core.LibraryIndexCache
+import com.patrick.lrcreader.ui.LibraryEntry
+import com.patrick.lrcreader.ui.MoveResult
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.io.File
+
+class LibraryBackendInternal(
+    private val context: Context
+) : LibraryBackend {
+    private val tag = "LIB_INTERNAL"
+
+    override fun getRootUri(): Uri {
+        val saved = BackupFolderPrefsInternal.getLibraryRootUri(context)
+            ?: BackupFolderPrefs.getLibraryRootUri(context)
+        if (saved != null && saved.scheme == "file") return saved
+
+        val root = Uri.fromFile(InternalStoragePaths.ensureSplRoot(context))
+        BackupFolderPrefsInternal.saveLibraryRootUri(context, root)
+        BackupFolderPrefs.saveLibraryRootUri(context, root)
+        return root
+    }
+
+    override fun ensureBaseFolders() {
+        val rootDir = File(getRootUri().path ?: return)
+        Log.i(tag, "ROOT path=${rootDir.absolutePath}")
+
+        val backingTracks = File(rootDir, "BackingTracks")
+        val backups = File(rootDir, "Backups")
+        val dj = File(rootDir, "DJ")
+        val exports = File(rootDir, "exports")
+        val imports = File(rootDir, "imports")
+
+        val audio = File(backingTracks, "Audio")
+        val lyrics = File(backingTracks, "Lyrics")
+        val midi = File(backingTracks, "Midi")
+        val videos = File(backingTracks, "Videos")
+
+        ensureDirWithLog(rootDir, "SPL_Music")
+        ensureDirWithLog(backingTracks, "BackingTracks")
+        ensureDirWithLog(backups, "Backups")
+        ensureDirWithLog(dj, "DJ")
+        ensureDirWithLog(exports, "exports")
+        ensureDirWithLog(imports, "imports")
+
+        ensureDirWithLog(audio, "BackingTracks/Audio")
+        ensureDirWithLog(lyrics, "BackingTracks/Lyrics")
+        ensureDirWithLog(midi, "BackingTracks/Midi")
+        ensureDirWithLog(videos, "BackingTracks/Videos")
+
+        Log.i(tag, "LIST root=${names(rootDir)}")
+        Log.i(tag, "LIST BackingTracks=${names(backingTracks)}")
+        Log.i(tag, "LIST Audio=${names(audio)}")
+        Log.i(tag, "LIST Lyrics=${names(lyrics)}")
+    }
+
+    override fun chooseInitialFolder(root: Uri, indexAll: List<LibraryIndexCache.CachedEntry>): Uri {
+        val rootDir = File(root.path ?: return root)
+        val backingDir = File(rootDir, "BackingTracks").apply { mkdirs() }
+        val audioDir = File(backingDir, "Audio").apply { mkdirs() }
+        val audioCount = audioDir.listFiles()?.size ?: 0
+        return if (audioCount > 0) Uri.fromFile(audioDir) else Uri.fromFile(backingDir)
+    }
+
+    override fun loadIndex(): List<LibraryIndexCache.CachedEntry> {
+        return LibraryIndexCache.load(context).orEmpty()
+    }
+
+    override fun saveIndex(index: List<LibraryIndexCache.CachedEntry>) {
+        LibraryIndexCache.save(context, index)
+    }
+
+    override suspend fun scanAll(
+        root: Uri,
+        folderToShow: Uri,
+        onIndexAll: (List<LibraryIndexCache.CachedEntry>) -> Unit,
+        onEntries: (List<LibraryEntry>) -> Unit
+    ) {
+        val rootDir = File(root.path ?: return)
+        val index = withContext(Dispatchers.IO) { buildInternalIndex(rootDir) }
+        saveIndex(index)
+        onIndexAll(index)
+        onEntries(listFolder(folderToShow, index, djExcludedReason = "Exclu de la bibliothèque (utilisé en mode DJ)"))
+    }
+
+    override fun listFolder(
+        folderUri: Uri,
+        indexAll: List<LibraryIndexCache.CachedEntry>,
+        djExcludedReason: String
+    ): List<LibraryEntry> {
+        if (folderUri.scheme != "file") return emptyList()
+        val dir = File(folderUri.path ?: return emptyList())
+        val children = dir.listFiles()?.toList().orEmpty()
+
+        return children
+            .map { f ->
+                LibraryEntry(
+                    uri = Uri.fromFile(f),
+                    name = f.name,
+                    isDirectory = f.isDirectory
+                )
+            }
+            .map { e ->
+                if (e.isDirectory && e.name.equals("DJ", ignoreCase = true)) {
+                    e.copy(disabled = true, disabledReason = djExcludedReason)
+                } else e
+            }
+            .sortedWith(compareByDescending<LibraryEntry> { it.isDirectory }.thenBy { it.name.lowercase() })
+    }
+
+    override suspend fun importAudio(
+        pickedUris: List<Uri>,
+        destFolderUri: Uri?,
+        currentFolderUri: Uri?
+    ): Uri? = withContext(Dispatchers.IO) {
+        val rootDir = File(getRootUri().path ?: return@withContext null)
+        val backingRoot = File(rootDir, "BackingTracks").apply { mkdirs() }
+        val audioDir = File(backingRoot, "Audio").apply { mkdirs() }
+
+        pickedUris.forEach { src ->
+            val name = queryDisplayName(src) ?: "import_${System.currentTimeMillis()}.mp3"
+            val dest = File(audioDir, name)
+            runCatching {
+                context.contentResolver.openInputStream(src)?.use { input ->
+                    dest.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                }
+            }
+        }
+
+        Uri.fromFile(audioDir)
+    }
+
+    override suspend fun rename(
+        folderUri: Uri,
+        oldUri: Uri,
+        oldName: String,
+        newNameFinal: String
+    ): Uri? = withContext(Dispatchers.IO) {
+        if (oldUri.scheme != "file") return@withContext null
+        val oldFile = File(oldUri.path ?: return@withContext null)
+        val newFile = File(oldFile.parentFile ?: return@withContext null, newNameFinal)
+        if (!oldFile.exists()) return@withContext null
+        if (!oldFile.renameTo(newFile)) return@withContext null
+        Uri.fromFile(newFile)
+    }
+
+    override suspend fun move(
+        mainHandler: Handler,
+        srcUri: Uri,
+        destUri: Uri,
+        indexAll: List<LibraryIndexCache.CachedEntry>,
+        onProgress: (Float?, String?) -> Unit
+    ): MoveResult = withContext(Dispatchers.IO) {
+        if (srcUri.scheme != "file" || destUri.scheme != "file") return@withContext MoveResult(false)
+        val srcFile = File(srcUri.path ?: return@withContext MoveResult(false))
+        val destDir = File(destUri.path ?: return@withContext MoveResult(false))
+        if (!srcFile.exists() || !destDir.exists() || !destDir.isDirectory) return@withContext MoveResult(false)
+
+        mainHandler.post { onProgress(null, "Déplacement…") }
+
+        val out = File(destDir, srcFile.name)
+        if (srcFile.renameTo(out)) {
+            return@withContext MoveResult(ok = true, newUri = Uri.fromFile(out))
+        }
+
+        runCatching {
+            srcFile.inputStream().use { input ->
+                out.outputStream().use { output -> input.copyTo(output) }
+            }
+            srcFile.delete()
+        }.fold(
+            onSuccess = { MoveResult(ok = true, newUri = Uri.fromFile(out)) },
+            onFailure = { MoveResult(ok = false) }
+        )
+    }
+
+    override suspend fun delete(target: Uri): Boolean = withContext(Dispatchers.IO) {
+        if (target.scheme != "file") return@withContext false
+        val f = File(target.path ?: return@withContext false)
+        f.exists() && f.delete()
+    }
+
+    private fun buildInternalIndex(rootDir: File): List<LibraryIndexCache.CachedEntry> {
+        val out = mutableListOf<LibraryIndexCache.CachedEntry>()
+
+        fun walk(dir: File, parentUri: String?) {
+            val children = dir.listFiles()?.toList().orEmpty()
+            children.forEach { f ->
+                val uriStr = Uri.fromFile(f).toString()
+                out += LibraryIndexCache.CachedEntry(
+                    uriString = uriStr,
+                    name = f.name,
+                    isDirectory = f.isDirectory,
+                    parentUriString = parentUri
+                )
+                if (f.isDirectory) walk(f, uriStr)
+            }
+        }
+
+        val rootUriStr = Uri.fromFile(rootDir).toString()
+        out += LibraryIndexCache.CachedEntry(
+            uriString = rootUriStr,
+            name = rootDir.name.ifBlank { "SPL_Music" },
+            isDirectory = true,
+            parentUriString = null
+        )
+
+        walk(rootDir, rootUriStr)
+        return out
+    }
+
+    private fun queryDisplayName(uri: Uri): String? {
+        return runCatching {
+            context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+                ?.use { c: Cursor ->
+                    val idx = c.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                    if (idx >= 0 && c.moveToFirst()) c.getString(idx) else null
+                }
+        }.getOrNull()
+    }
+
+    private fun ensureDirWithLog(dir: File, label: String) {
+        val created = dir.mkdirs()
+        val ok = dir.exists() && dir.isDirectory
+        Log.i(tag, "MKDIR $label path=${dir.absolutePath} created=$created ok=$ok")
+    }
+
+    private fun names(dir: File): String {
+        return dir.listFiles()?.joinToString(prefix = "[", postfix = "]") { it.name } ?: "null"
+    }
+}

@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.provider.DocumentsContract
+import androidx.documentfile.provider.DocumentFile
 
 /**
  * Stocke le dossier choisi via OpenDocumentTree.
@@ -102,10 +103,57 @@ object BackupFolderPrefs {
             p.uri == lib && p.isReadPermission
         }
     }
+    /**
+     * ✅ SAF : on considère un root "utilisable" seulement si :
+     * - on a une permission persistée (au moins READ)
+     * - et DocumentFile peut être résolu (tree ou single)
+     */
+    fun isLibraryRootUsable(context: Context, rootUri: Uri?): Boolean {
+        if (rootUri == null) return false
+
+        // 1) Permission persistée (au moins READ)
+        val hasReadPersisted = context.contentResolver.persistedUriPermissions.any { p ->
+            p.uri == rootUri && p.isReadPermission
+        }
+        if (!hasReadPersisted) return false
+
+        // 2) Root résolvable
+        val doc = DocumentFile.fromTreeUri(context, rootUri) ?: DocumentFile.fromSingleUri(context, rootUri)
+        if (doc == null) return false
+
+        // 3) Doit être un dossier (root)
+        if (!doc.isDirectory) return false
+
+        return true
+    }
+    /**
+     * ✅ Normalise une Uri en "treeUri" stable (authority + treeDocId).
+     * Beaucoup de providers SAF donnent des Uri différentes (tree vs doc) même pour le même dossier.
+     */
+    private fun normalizeAsTreeUri(uri: Uri): Uri? {
+        val authority = uri.authority ?: return null
+
+        val treeId = runCatching { DocumentsContract.getTreeDocumentId(uri) }.getOrNull()
+            ?: runCatching { DocumentsContract.getDocumentId(uri) }.getOrNull()
+            ?: return null
+
+        return DocumentsContract.buildTreeDocumentUri(authority, treeId)
+    }
+
+    /**
+     * ✅ Setup SAF valide si on a AU MOINS la permission READ persistée
+     * sur la même cible (comparaison sur treeUri normalisée).
+     *
+     * (Ancien comportement trop strict: match URI exact + READ+WRITE => boucle setup)
+     */
     fun hasValidSetupTreePermission(context: Context): Boolean {
-        val tree = getSetupTreeUri(context) ?: return false
+        val saved = getSetupTreeUri(context) ?: return false
+
+        val savedNorm = normalizeAsTreeUri(saved) ?: saved
+
         return context.contentResolver.persistedUriPermissions.any { p ->
-            p.uri == tree && p.isReadPermission && p.isWritePermission
+            val pNorm = normalizeAsTreeUri(p.uri) ?: p.uri
+            (pNorm == savedNorm) && p.isReadPermission
         }
     }
     /**

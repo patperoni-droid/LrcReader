@@ -24,6 +24,8 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import com.patrick.lrcreader.core.BackupFolderPrefs
+import com.patrick.lrcreader.core.BackupFolderPrefsInternal
+import com.patrick.lrcreader.core.BackupFolderPrefsSaf
 import com.patrick.lrcreader.core.DjFolderPrefs
 import com.patrick.lrcreader.core.ImportAudioManager
 import com.patrick.lrcreader.core.LibraryIndexCache
@@ -35,7 +37,6 @@ import com.patrick.lrcreader.ui.clearPersistedUris
 import com.patrick.lrcreader.ui.theme.DarkBlueGradientBackground
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import com.patrick.lrcreader.core.InternalStoragePaths
 import com.patrick.lrcreader.core.StorageModePrefs
 import java.io.File
 
@@ -45,6 +46,7 @@ fun LibraryScreen(
     onPlayFromLibrary: (String) -> Unit
 ) {
     val context = LocalContext.current
+    Log.e("SIG_LIB", "SIG#0 TOP composable 2026-02-08 18:00 Z")
     val focusManager = LocalFocusManager.current
 
     // Palette analogique commune
@@ -75,7 +77,22 @@ fun LibraryScreen(
     var lrcEditorName by remember { mutableStateOf("") }
     var lrcEditorText by remember { mutableStateOf("") }
 
-    val initialFolder = remember { BackupFolderPrefs.getLibraryRootUri(context) }
+    val storageMode = StorageModePrefs.get(context)
+
+    val backend: LibraryBackend = remember(storageMode) {
+        when (storageMode) {
+            StorageModePrefs.Mode.INTERNAL -> LibraryBackendInternal(context)
+            StorageModePrefs.Mode.SAF -> LibraryBackendSaf(context)
+            else -> {
+                Log.e("SIG_LIB", "StorageMode inconnu=$storageMode -> fallback SAF")
+                LibraryBackendSaf(context)
+            }
+        }
+    }
+
+    Log.e("SIG_LIB", "BOOT storageMode=$storageMode backend=${backend.javaClass.simpleName}")
+
+    val initialFolder = remember(storageMode) { backend.getRootUri() }
     var currentFolderUri by remember { mutableStateOf<Uri?>(initialFolder) }
     var folderStack by remember { mutableStateOf<List<Uri>>(emptyList()) }
     var entries by remember { mutableStateOf<List<LibraryEntry>>(emptyList()) }
@@ -89,115 +106,11 @@ fun LibraryScreen(
     var indexAll by remember { mutableStateOf<List<LibraryIndexCache.CachedEntry>>(emptyList()) }
     var importTargetFolderUri by remember { mutableStateOf<Uri?>(null) }
 
-    // ✅ Injection DJ : visible mais désactivé
-    // ✅ Injection DJ : visible mais désactivé
-    fun buildInternalIndex(rootDir: File): List<LibraryIndexCache.CachedEntry> {
-        val out = mutableListOf<LibraryIndexCache.CachedEntry>()
-
-        fun walk(dir: File, parentUri: String?) {
-            val children = dir.listFiles()?.toList().orEmpty()
-            children.forEach { f ->
-                val uriStr = Uri.fromFile(f).toString()
-                out += LibraryIndexCache.CachedEntry(
-                    uriString = uriStr,
-                    name = f.name,
-                    isDirectory = f.isDirectory,
-                    parentUriString = parentUri
-                )
-                if (f.isDirectory) walk(f, uriStr)
-            }
-        }
-
-        // root lui-même (optionnel mais pratique)
-        val rootUriStr = Uri.fromFile(rootDir).toString()
-        out += LibraryIndexCache.CachedEntry(
-            uriString = rootUriStr,
-            name = rootDir.name.ifBlank { "SPL_Music" },
-            isDirectory = true,
-            parentUriString = null
-        )
-
-        walk(rootDir, rootUriStr)
-
-        return out
-    }
     fun buildEntriesForFolder(folderUri: Uri): List<LibraryEntry> {
-
-        // ✅ MODE INTERNE : listing via File()
-        if (folderUri.scheme == "file") {
-            val dir = File(folderUri.path ?: return emptyList())
-            val children = dir.listFiles()?.toList().orEmpty()
-
-            val items = children.map { f ->
-                LibraryEntry(
-                    uri = Uri.fromFile(f),
-                    name = f.name,
-                    isDirectory = f.isDirectory
-                )
-            }
-
-            val withDjDisabled = items.map { e ->
-                if (e.isDirectory && e.name.equals("DJ", ignoreCase = true)) {
-                    e.copy(disabled = true, disabledReason = sDjExcludedReason)
-                } else e
-            }
-
-            return withDjDisabled.sortedWith(
-                compareByDescending<LibraryEntry> { it.isDirectory }
-                    .thenBy { it.name.lowercase() }
-            )
-        }
-
-        // ✅ MODE SAF : index + fallback DocumentFile
-        val fromIndex = LibraryIndexCache.childrenOf(indexAll, folderUri).map { e ->
-            LibraryEntry(
-                uri = Uri.parse(e.uriString),
-                name = e.name,
-                isDirectory = e.isDirectory
-            )
-        }.toMutableList()
-
-        if (fromIndex.isEmpty()) {
-            val folderDoc =
-                DocumentFile.fromTreeUri(context, folderUri)
-                    ?: DocumentFile.fromSingleUri(context, folderUri)
-
-            val real = folderDoc?.listFiles().orEmpty().mapNotNull { f ->
-                val n = f.name ?: return@mapNotNull null
-                LibraryEntry(
-                    uri = f.uri,
-                    name = n,
-                    isDirectory = f.isDirectory
-                )
-            }
-            fromIndex.addAll(real)
-        }
-
-        val folderDoc =
-            DocumentFile.fromTreeUri(context, folderUri)
-                ?: DocumentFile.fromSingleUri(context, folderUri)
-
-        val djDoc = folderDoc?.listFiles()
-            ?.firstOrNull { it.isDirectory && it.name.equals("DJ", ignoreCase = true) }
-
-        if (djDoc != null) {
-            val already = fromIndex.any { it.isDirectory && it.name.equals("DJ", ignoreCase = true) }
-            if (!already) {
-                fromIndex.add(
-                    LibraryEntry(
-                        uri = djDoc.uri,
-                        name = djDoc.name ?: "DJ",
-                        isDirectory = true,
-                        disabled = true,
-                        disabledReason = sDjExcludedReason
-                    )
-                )
-            }
-        }
-
-        return fromIndex.sortedWith(
-            compareByDescending<LibraryEntry> { it.isDirectory }
-                .thenBy { it.name.lowercase() }
+        return backend.listFolder(
+            folderUri = folderUri,
+            indexAll = indexAll,
+            djExcludedReason = sDjExcludedReason
         )
     }
 
@@ -338,13 +251,15 @@ fun LibraryScreen(
         contract = ActivityResultContracts.OpenDocumentTree(),
         onResult = { uri ->
             if (uri == null) return@rememberLauncherForActivityResult
-
+// ✅ Si l'utilisateur passe par le picker SAF, on est forcément en mode SAF.
+            StorageModePrefs.set(context, StorageModePrefs.Mode.SAF)
             scope.launch {
                 startLoading(sScanning, determinate = false)
                 try {
                     persistTreePermIfPossible(context, uri)
 
                     BackupFolderPrefs.saveSetupTreeUri(context, uri)
+                    BackupFolderPrefsSaf.saveSetupTreeUri(context, uri)
 
                     val baseTree = DocumentFile.fromTreeUri(context, uri) ?: return@launch
 
@@ -422,26 +337,33 @@ fun LibraryScreen(
                         parent = splRoot,
                         expectedName = "DJ"
                     )
+// ✅ IMPORTANT : on garde l'URI "document" renvoyée par DocumentFile.
+// Les treeUri "fabriqués" peuvent donner exists=false / listFiles=0.
+                    // --- SPL_Music (docUri) ---
+                    val splDocUri: Uri = splRoot.uri
 
-                    val splTreeUri = toTreeUri(splRoot.uri)
-                    BackupFolderPrefs.saveLibraryRootUri(context, splTreeUri)
+// Permission persistée sur le tree choisi (uri du picker)
+                    persistTreePermIfPossible(context, uri)
+                    BackupFolderPrefs.saveLibraryRootUri(context, splDocUri)
+                    BackupFolderPrefsSaf.saveLibraryRootUri(context, splDocUri)
 
-                    currentFolderUri = splTreeUri
+                    currentFolderUri = splDocUri
                     folderStack = emptyList()
 
                     if (djDir != null) {
-                        DjFolderPrefs.save(context, toTreeUri(djDir.uri))
+                        DjFolderPrefs.save(context, djDir.uri)
                     }
 
+// --- rescan ---
                     libraryRescanAll(
                         context = context,
-                        root = splTreeUri,
-                        folderToShow = splTreeUri,
+                        root = splDocUri,
+                        folderToShow = splDocUri,
                         onIndexAll = { indexAll = it },
                         onEntries = { entries = it }
                     )
 
-                    entries = buildEntriesForFolder(splTreeUri)
+                    entries = buildEntriesForFolder(splDocUri)
 
                 } finally {
                     stopLoadingNice()
@@ -460,8 +382,7 @@ fun LibraryScreen(
                     try {
                         persistTreePermIfPossible(context, destUri)
 
-                        val result = libraryMoveOneFile(
-                            context = context,
+                        val result = backend.move(
                             mainHandler = mainHandler,
                             srcUri = srcUri,
                             destUri = destUri,
@@ -474,18 +395,16 @@ fun LibraryScreen(
 
                         libraryLogMove(result)
 
-                        libraryApplyMoveResult(
-                            context = context,
-                            src = srcUri,
-                            dest = destUri,
-                            result = result,
-                            entries = entries,
-                            indexAll = indexAll,
-                            onEntries = { entries = it },
-                            onIndexAll = { indexAll = it },
-                            onProgress = { p, label -> moveProgress = p; moveLabel = label },
-                            refreshFolderUri = currentFolderUri ?: destUri
-                        )
+                        val root = backend.getRootUri()
+                        val refreshFolder = currentFolderUri ?: destUri
+                        if (root != null) {
+                            backend.scanAll(
+                                root = root,
+                                folderToShow = refreshFolder,
+                                onIndexAll = { indexAll = it },
+                                onEntries = { entries = it }
+                            )
+                        }
                     } finally {
                         pendingMoveUri = null
                         stopLoadingNice()
@@ -505,71 +424,22 @@ fun LibraryScreen(
         scope.launch {
             startLoading(sImporting, determinate = false)
             try {
-                val rootUri = BackupFolderPrefs.getLibraryRootUri(context) ?: return@launch
+                val rootUri = backend.getRootUri() ?: return@launch
+                val folderToShow = backend.importAudio(
+                    pickedUris = pickedUris,
+                    destFolderUri = importTargetFolderUri,
+                    currentFolderUri = currentFolderUri
+                ) ?: return@launch
 
-                // ✅ MODE INTERNE : on copie dans /files/SPL_Music/BackingTracks
-                // ✅ MODE INTERNE : on copie dans /files/SPL_Music/BackingTracks/Audio
-                if (rootUri.scheme == "file") {
-                    val rootDir = File(rootUri.path ?: return@launch)
-
-                    val backingRoot = File(rootDir, "BackingTracks").apply { mkdirs() }
-                    val audioDir = File(backingRoot, "Audio").apply { mkdirs() }  // ✅ le vrai dossier audio
-
-                    pickedUris.forEach { src ->
-                        val name = runCatching {
-                            DocumentFile.fromSingleUri(context, src)?.name
-                        }.getOrNull() ?: ("import_" + System.currentTimeMillis() + ".mp3")
-
-                        val dest = File(audioDir, name)
-
-                        runCatching {
-                            context.contentResolver.openInputStream(src)?.use { input ->
-                                dest.outputStream().use { output ->
-                                    input.copyTo(output)
-                                }
-                            }
-                        }.onFailure { e ->
-                            Log.e("IMPORT_INTERNAL", "Erreur copie $src -> $dest", e)
-                        }
-                    }
-
-                    // refresh UI
-                    val audioFolderUri = Uri.fromFile(audioDir)
-                    currentFolderUri = audioFolderUri
-                    entries = buildEntriesForFolder(audioFolderUri)
-                    return@launch
-                }
-
-                // ✅ MODE SAF : comportement actuel
-                val splRoot = rootUri
-                val baseTree = BackupFolderPrefs.getSetupTreeUri(context) ?: splRoot
-
-                val rawDest = importTargetFolderUri ?: currentFolderUri ?: splRoot
-                val destDoc =
-                    DocumentFile.fromTreeUri(context, rawDest) ?: DocumentFile.fromSingleUri(context, rawDest)
-                val destFolder = if (destDoc != null && destDoc.isDirectory) rawDest else splRoot
-
-                persistTreePermIfPossible(context, destFolder)
-
-                ImportAudioManager.importAudioFiles(
-                    context = context,
-                    appRootTreeUri = baseTree,
-                    sourceUris = pickedUris,
-                    destFolderName = "BackingTracks",
-                    overwriteIfExists = false,
-                    destFolderUri = destFolder
-                )
-
-                libraryRescanAll(
-                    context = context,
-                    root = splRoot,
-                    folderToShow = destFolder,
+                backend.scanAll(
+                    root = rootUri,
+                    folderToShow = folderToShow,
                     onIndexAll = { indexAll = it },
                     onEntries = { entries = it }
                 )
 
-                currentFolderUri = destFolder
-                entries = buildEntriesForFolder(destFolder)
+                currentFolderUri = folderToShow
+                entries = buildEntriesForFolder(folderToShow)
 
             } finally {
                 importTargetFolderUri = null
@@ -579,62 +449,47 @@ fun LibraryScreen(
     }
 
     // ---------- initial load ----------
-    // ---------- initial load ----------
+    Log.e("SIG_LIB", "SIG#1 JUST BEFORE LaunchedEffect 2026-02-08 18:00 Z")
     LaunchedEffect(Unit) {
-        var root = BackupFolderPrefs.getLibraryRootUri(context)
-        Log.e("ROOT_DEBUG", "StorageMode=" + StorageModePrefs.get(context))
-        Log.e("ROOT_DEBUG", "LibraryRoot=" + BackupFolderPrefs.getLibraryRootUri(context))
-        Log.e("ROOT_DEBUG", "SetupTree=" + BackupFolderPrefs.getSetupTreeUri(context))
-        // ✅ Mode B : si INTERNAL, on force root sur /files/SPL_Music
-        if (StorageModePrefs.get(context) == StorageModePrefs.Mode.INTERNAL) {
-            val internalRoot = InternalStoragePaths.ensureSplRoot(context)
-            root = Uri.fromFile(internalRoot)
-            BackupFolderPrefs.saveLibraryRootUri(context, root)
-        }
+        Log.e("SIG_LIB", "SIG#2 ENTER LaunchedEffect(Unit)")
+        try {
+            backend.ensureBaseFolders()
+            val root = backend.getRootUri()
 
-        // ✅ Mode interne : pas de SAF, pas d'index SAF
-        if (root != null && root.scheme == "file") {
-            currentFolderUri = root
-
-            val rootDir = File(root.path ?: return@LaunchedEffect)
-            val newIndex = buildInternalIndex(rootDir)
-            LibraryIndexCache.save(context, newIndex)
-            indexAll = newIndex
-
-            entries = buildEntriesForFolder(root)
-            return@LaunchedEffect
-        }
-
-        // ✅ Normalisation SAF uniquement
-        if (root != null) {
-            val fixed = normalizeToSplMusicDocUri(context, root)
-            if (fixed != root) {
-                BackupFolderPrefs.saveLibraryRootUri(context, fixed)
-                root = fixed
+            if (root == null) {
+                currentFolderUri = null
+                entries = emptyList()
+                return@LaunchedEffect
             }
-        }
 
-        currentFolderUri = root
+            indexAll = backend.loadIndex()
+            val folderToShow = backend.chooseInitialFolder(root, indexAll)
+            currentFolderUri = folderToShow
 
-        indexAll = LibraryIndexCache.load(context) ?: emptyList()
-
-        if (root != null && indexAll.isEmpty()) {
-            startLoading(sScanning, determinate = false)
-            try {
-                libraryRescanAll(
-                    context = context,
-                    root = root,
-                    folderToShow = root,
-                    onIndexAll = { indexAll = it },
-                    onEntries = { entries = it }
-                )
-            } finally {
-                stopLoadingNice()
+            if (indexAll.isEmpty()) {
+                startLoading(sScanning, determinate = false)
+                try {
+                    backend.scanAll(
+                        root = root,
+                        folderToShow = folderToShow,
+                        onIndexAll = { indexAll = it },
+                        onEntries = { entries = it }
+                    )
+                } finally {
+                    stopLoadingNice()
+                }
+            } else {
+                entries = buildEntriesForFolder(folderToShow)
             }
-        } else {
-            entries = root?.let { buildEntriesForFolder(it) } ?: emptyList()
+        } catch (t: Throwable) {
+            Log.e("SIG_LIB", "LaunchedEffect CRASH", t)
         }
     }
+
+// ⚠️ IMPORTANT : on supprime la normalisation DocumentsContract "string-based"
+// car elle peut fabriquer un treeUri non exploitable selon le provider.
+
+
 
     // ---------- UI ----------
     val currentFolderName = currentFolderUri?.let { u ->
@@ -669,7 +524,12 @@ fun LibraryScreen(
     }
     val isSetupDone = when (StorageModePrefs.get(context)) {
         StorageModePrefs.Mode.INTERNAL -> true
-        else -> BackupFolderPrefs.getSetupTreeUri(context) != null
+        else -> {
+            // ✅ SAF : on considère le setup OK dès que la permission du "setup tree" est valide.
+            // Le libraryRootUri (SPL_Music) peut être une URI différente et ne pas matcher persistedUriPermissions à l'identique,
+            // ce qui créait une boucle.
+            BackupFolderPrefs.hasValidSetupTreePermission(context)
+        }
     }
     if (!isSetupDone) {
         DarkBlueGradientBackground {
@@ -678,12 +538,12 @@ fun LibraryScreen(
                 subtitleColor = subtitleColor,
                 accent = accent,
                 onSetupDone = {
-                    val root = BackupFolderPrefs.getLibraryRootUri(context)
+                    val root = backend.getRootUri()
                     currentFolderUri = root
                     if (root != null) entries = buildEntriesForFolder(root)
                 },
                 onImportNow = {
-                    importTargetFolderUri = BackupFolderPrefs.getLibraryRootUri(context)
+                    importTargetFolderUri = backend.getRootUri()
                     importAudioLauncher.launch(arrayOf("audio/*"))
                 },
                 onImportLater = { }
@@ -706,7 +566,7 @@ fun LibraryScreen(
                         startLoading(sLoading, determinate = false)
                         try {
                             val newStack = folderStack.dropLast(1)
-                            val parentUri = newStack.lastOrNull() ?: BackupFolderPrefs.getLibraryRootUri(context)
+                            val parentUri = newStack.lastOrNull() ?: backend.getRootUri()
                             currentFolderUri = parentUri
 
                             entries = parentUri?.let { uri -> buildEntriesForFolder(uri) } ?: emptyList()
@@ -724,33 +584,12 @@ fun LibraryScreen(
                 onRescan = {
 
                     scope.launch {
-                        val rootNow = BackupFolderPrefs.getLibraryRootUri(context)
-                        if (rootNow != null && rootNow.scheme == "file") {
-                            startLoading(sScanning, determinate = false)
-                            try {
-                                val rootDir = File(rootNow.path ?: return@launch)
-                                val newIndex = buildInternalIndex(rootDir)
-
-                                LibraryIndexCache.save(context, newIndex)
-                                indexAll = newIndex
-
-                                val folder = currentFolderUri ?: rootNow
-                                entries = buildEntriesForFolder(folder)
-
-                                Log.d("RESCAN_INTERNAL", "Index rebuilt: ${newIndex.size} entries")
-                            } finally {
-                                stopLoadingNice()
-                            }
-                            return@launch
-                        }
+                        val rootNow = backend.getRootUri() ?: return@launch
                         startLoading(sScanning, determinate = false)
                         try {
-                            val root = BackupFolderPrefs.getLibraryRootUri(context) ?: return@launch
-                            val folderToShow = currentFolderUri ?: root
-
-                            libraryRescanAll(
-                                context = context,
-                                root = root,
+                            val folderToShow = currentFolderUri ?: rootNow
+                            backend.scanAll(
+                                root = rootNow,
                                 folderToShow = folderToShow,
                                 onIndexAll = { indexAll = it },
                                 onEntries = { entries = it }
@@ -770,6 +609,8 @@ fun LibraryScreen(
 
                     clearPersistedUris(context)
                     BackupFolderPrefs.clear(context)
+                    BackupFolderPrefsInternal.clear(context)
+                    BackupFolderPrefsSaf.clear(context)
                     LibraryIndexCache.clear(context)
                     StorageModePrefs.set(context, StorageModePrefs.Mode.SAF)
                     currentFolderUri = null
@@ -878,7 +719,7 @@ fun LibraryScreen(
                             onMoveOne = { uri ->
                                 pendingMoveUri = uri
 
-                                val root = BackupFolderPrefs.getLibraryRootUri(context)
+                                val root = backend.getRootUri()
                                 if (root == null) {
                                     showMoveBrowser = false
                                     return@LibraryList
@@ -965,16 +806,21 @@ fun LibraryScreen(
                                         scope.launch {
                                             startLoading(sDeleting, determinate = false)
                                             try {
-                                                val okAudio = libraryDeleteFile(context, targetAudio)
-                                                val okLrc = libraryDeleteFile(context, targetLrc)
+                                                val okAudio = backend.delete(targetAudio)
+                                                val okLrc = backend.delete(targetLrc)
 
                                                 if (okAudio) selectedSongs = selectedSongs - targetAudio
                                                 if (okLrc) selectedSongs = selectedSongs - targetLrc
 
-                                                val folderUri =
-                                                    currentFolderUri ?: BackupFolderPrefs.getLibraryRootUri(context)
-                                                if (folderUri != null) {
-                                                    libraryRefreshCurrentFolderOnly(context, folderUri) { entries = it }
+                                                val root = backend.getRootUri()
+                                                val folderUri = currentFolderUri ?: root
+                                                if (root != null && folderUri != null) {
+                                                    backend.scanAll(
+                                                        root = root,
+                                                        folderToShow = folderUri,
+                                                        onIndexAll = { indexAll = it },
+                                                        onEntries = { entries = it }
+                                                    )
                                                 }
                                             } finally {
                                                 showDeleteConfirmDialog = false
@@ -995,13 +841,18 @@ fun LibraryScreen(
                                     scope.launch {
                                         startLoading(sDeleting, determinate = false)
                                         try {
-                                            val ok = libraryDeleteFile(context, targetAudio)
+                                            val ok = backend.delete(targetAudio)
                                             if (ok) {
                                                 selectedSongs = selectedSongs - targetAudio
-                                                val folderUri =
-                                                    currentFolderUri ?: BackupFolderPrefs.getLibraryRootUri(context)
-                                                if (folderUri != null) {
-                                                    libraryRefreshCurrentFolderOnly(context, folderUri) { entries = it }
+                                                val root = backend.getRootUri()
+                                                val folderUri = currentFolderUri ?: root
+                                                if (root != null && folderUri != null) {
+                                                    backend.scanAll(
+                                                        root = root,
+                                                        folderToShow = folderUri,
+                                                        onIndexAll = { indexAll = it },
+                                                        onEntries = { entries = it }
+                                                    )
                                                 }
                                             }
                                         } finally {
@@ -1068,36 +919,20 @@ fun LibraryScreen(
                             val newNameFinal =
                                 if (ext.isNotEmpty() && !newBase.contains(".")) "$newBase.$ext" else newBase
 
-                            val newUriAfterRename = libraryRenameFileDeviceSafe(
-                                context = context,
+                            val newUriAfterRename = backend.rename(
                                 folderUri = folderUri,
                                 oldUri = target.uri,
                                 oldName = oldName,
                                 newNameFinal = newNameFinal
                             ) ?: return@launch
 
-                            indexAll = indexAll.map { ce ->
-                                if (ce.uriString == target.uri.toString()) ce.copy(name = newNameFinal) else ce
-                            }
-                            LibraryIndexCache.save(context, indexAll)
-
                             PlaylistRepository.clearCustomTitleEverywhere(target.uri.toString())
-                            persistTreePermIfPossible(context, newUriAfterRename)
+                            if (newUriAfterRename.scheme != "file") {
+                                persistTreePermIfPossible(context, newUriAfterRename)
+                            }
 
                             if (newUriAfterRename != target.uri) {
                                 PlaylistRepository.clearCustomTitleEverywhere(newUriAfterRename.toString())
-
-                                entries = entries.map { e ->
-                                    if (e.uri == target.uri) e.copy(uri = newUriAfterRename, name = newNameFinal)
-                                    else e
-                                }
-
-                                indexAll = indexAll.map { ce ->
-                                    if (ce.uriString == target.uri.toString()) {
-                                        ce.copy(uriString = newUriAfterRename.toString(), name = newNameFinal)
-                                    } else ce
-                                }
-                                LibraryIndexCache.save(context, indexAll)
 
                                 PlaylistRepository.replaceSongUriEverywhere(
                                     oldUri = target.uri.toString(),
@@ -1107,10 +942,16 @@ fun LibraryScreen(
                                 if (selectedSongs.contains(target.uri)) {
                                     selectedSongs = (selectedSongs - target.uri) + newUriAfterRename
                                 }
-                            } else {
-                                entries = entries.map { e ->
-                                    if (e.uri == target.uri) e.copy(name = newNameFinal) else e
-                                }
+                            }
+
+                            val root = backend.getRootUri()
+                            if (root != null) {
+                                backend.scanAll(
+                                    root = root,
+                                    folderToShow = folderUri,
+                                    onIndexAll = { indexAll = it },
+                                    onEntries = { entries = it }
+                                )
                             }
 
                         } finally {
@@ -1125,24 +966,24 @@ fun LibraryScreen(
             MoveBrowserDialog(
                 show = showMoveBrowser && pendingMoveUri != null,
                 indexAll = indexAll,
-                root = BackupFolderPrefs.getLibraryRootUri(context),
+                root = backend.getRootUri(),
                 moveBrowserFolder = moveBrowserFolder,
                 moveBrowserStack = moveBrowserStack,
                 onGoUp = {
-                    val root = BackupFolderPrefs.getLibraryRootUri(context)
+                    val root = backend.getRootUri()
                     val newStack = moveBrowserStack.dropLast(1)
                     val parent = newStack.lastOrNull() ?: root
                     moveBrowserStack = newStack
                     moveBrowserFolder = parent
                 },
                 onEnterFolder = { folderUri ->
-                    val root = BackupFolderPrefs.getLibraryRootUri(context)
+                    val root = backend.getRootUri()
                     val from = moveBrowserFolder ?: root ?: folderUri
                     moveBrowserStack = moveBrowserStack + from
                     moveBrowserFolder = folderUri
                 },
                 onMoveHere = {
-                    val rootTree = BackupFolderPrefs.getLibraryRootUri(context) ?: return@MoveBrowserDialog
+                    val rootTree = backend.getRootUri() ?: return@MoveBrowserDialog
                     val dest = moveBrowserFolder ?: rootTree
                     val src = pendingMoveUri ?: return@MoveBrowserDialog
 
@@ -1151,8 +992,7 @@ fun LibraryScreen(
                     scope.launch {
                         startLoading(sMoving, determinate = true)
                         try {
-                            val result = libraryMoveOneFile(
-                                context = context,
+                            val result = backend.move(
                                 mainHandler = mainHandler,
                                 srcUri = src,
                                 destUri = dest,
@@ -1160,18 +1000,14 @@ fun LibraryScreen(
                                 onProgress = { p, label -> moveProgress = p; moveLabel = label }
                             )
 
-                            libraryApplyMoveResult(
-                                context = context,
-                                src = src,
-                                dest = dest,
-                                result = result,
-                                entries = entries,
-                                indexAll = indexAll,
-                                onEntries = { entries = it },
-                                onIndexAll = { indexAll = it },
-                                onProgress = { p, label -> moveProgress = p; moveLabel = label },
-                                refreshFolderUri = currentFolderUri ?: dest
-                            )
+                            if (result.ok) {
+                                backend.scanAll(
+                                    root = rootTree,
+                                    folderToShow = currentFolderUri ?: dest,
+                                    onIndexAll = { indexAll = it },
+                                    onEntries = { entries = it }
+                                )
+                            }
                         } finally {
                             pendingMoveUri = null
                             showMoveBrowser = false
