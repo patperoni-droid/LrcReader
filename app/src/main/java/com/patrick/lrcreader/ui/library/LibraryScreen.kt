@@ -83,10 +83,7 @@ fun LibraryScreen(
         when (storageMode) {
             StorageModePrefs.Mode.INTERNAL -> LibraryBackendInternal(context)
             StorageModePrefs.Mode.SAF -> LibraryBackendSaf(context)
-            else -> {
-                Log.e("SIG_LIB", "StorageMode inconnu=$storageMode -> fallback SAF")
-                LibraryBackendSaf(context)
-            }
+            else -> LibraryBackendSaf(context) // sécurité si un jour il y a une 3e valeur / null / migration
         }
     }
 
