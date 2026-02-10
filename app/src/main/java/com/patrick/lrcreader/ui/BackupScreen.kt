@@ -1,6 +1,5 @@
 package com.patrick.lrcreader.ui
 
-import com.patrick.lrcreader.core.LibraryIndexCache
 import android.content.Context
 import android.net.Uri
 import android.widget.Toast
@@ -42,6 +41,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,12 +52,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.core.BackupFolderPrefs
 import com.patrick.lrcreader.core.BackupManager
+import com.patrick.lrcreader.core.LibraryIndexCache
 import com.patrick.lrcreader.core.SplFolders
 import com.patrick.lrcreader.getDisplayName
 import com.patrick.lrcreader.nowString
 import com.patrick.lrcreader.saveJsonToUri
 import com.patrick.lrcreader.shareJson
 import com.patrick.lrcreader.ui.theme.DarkBlueGradientBackground
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
@@ -72,10 +76,15 @@ fun BackupScreen(
     onAfterImport: () -> Unit = {},
     onBack: () -> Unit
 ) {
+    val scope = rememberCoroutineScope()
+
     // État dernier import
     var lastImportFile by remember { mutableStateOf<String?>(null) }
     var lastImportTime by remember { mutableStateOf<String?>(null) }
     var lastImportSummary by remember { mutableStateOf<String?>(null) }
+
+    // ✅ Loading import (évite sensation "rien ne se passe")
+    var isImporting by remember { mutableStateOf(false) }
 
     // ✅ Détecte le mode INTERNAL via le root "file://"
     val rootUri = remember { BackupFolderPrefs.getLibraryRootUri(context) }
@@ -96,22 +105,30 @@ fun BackupScreen(
     }
 
     fun importBackupJsonText(json: String, fileLabel: String) {
-        try {
-            BackupManager.importState(context, json) {
+        // ✅ IMPORTANT: on ne bloque pas l'UI
+        scope.launch {
+            isImporting = true
+            try {
+                withContext(Dispatchers.IO) {
+                    BackupManager.importState(context, json) {
+                        // ✅ force la bibliothèque à se reconstruire après import
+                        LibraryIndexCache.clear(context)
+                    }
+                }
 
-                // ✅ Très bien : ça force la bibliothèque à se reconstruire après import
-                com.patrick.lrcreader.core.LibraryIndexCache.clear(context)
-
-                // ✅ Ici on utilise le label qu’on a reçu (plus de "uri" fantôme)
                 lastImportFile = fileLabel
                 lastImportTime = nowString()
                 lastImportSummary = "Import réussi"
                 onAfterImport()
+
+            } catch (e: Exception) {
+                lastImportSummary = "Échec de l’import (${e.message ?: "erreur inconnue"})"
+            } finally {
+                isImporting = false
             }
-        } catch (e: Exception) {
-            lastImportSummary = "Échec de l’import (${e.message ?: "erreur inconnue"})"
         }
     }
+
     // ✅ refresh auto en INTERNAL
     LaunchedEffect(isInternalMode) {
         if (isInternalMode) refreshInternalBackups()
@@ -132,34 +149,44 @@ fun BackupScreen(
     val danger = Color(0xFFFF8A80)
     val ok = Color(0xFF6CFF9C)
 
-    // IMPORT via picker système
+    // IMPORT via picker système (✅ non-bloquant)
     val fileLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
-        if (uri != null) {
+        if (uri == null) return@rememberLauncherForActivityResult
+
+        scope.launch {
+            isImporting = true
             try {
-                val json = context.contentResolver.openInputStream(uri)
-                    ?.bufferedReader()
-                    ?.use { it.readText() }
-                if (!json.isNullOrBlank()) {
-
-                    // 🔁 FORCER un re-scan logique avant import
-                    LibraryIndexCache.clear(context)
-                    LibraryIndexCache.load(context)
-
-                    // 📥 Import du backup avec URIs réparées
-                    BackupManager.importState(context, json) {
-                        lastImportFile = getDisplayName(context, uri)
-                        lastImportTime = nowString()
-                        lastImportSummary = "Import réussi (liens audio recalculés)"
-                        onAfterImport()
-                    }
-
-                } else {
-                    lastImportSummary = "Fichier vide ou illisible"
+                // 1) Lire le fichier en IO
+                val json = withContext(Dispatchers.IO) {
+                    context.contentResolver.openInputStream(uri)
+                        ?.bufferedReader(Charsets.UTF_8)
+                        ?.use { it.readText() }
                 }
+
+                if (json.isNullOrBlank()) {
+                    lastImportSummary = "Fichier vide ou illisible"
+                    return@launch
+                }
+
+                // 2) Import en IO
+                withContext(Dispatchers.IO) {
+                    BackupManager.importState(context, json) {
+                        LibraryIndexCache.clear(context)
+                    }
+                }
+
+                // 3) UI update
+                lastImportFile = getDisplayName(context, uri)
+                lastImportTime = nowString()
+                lastImportSummary = "Import réussi"
+                onAfterImport()
+
             } catch (e: Exception) {
                 lastImportSummary = "Échec de l’import (${e.message ?: "erreur inconnue"})"
+            } finally {
+                isImporting = false
             }
         }
     }
@@ -364,6 +391,11 @@ fun BackupScreen(
                 Spacer(Modifier.height(10.dp))
                 HorizontalDivider(color = cardBorder)
                 Spacer(Modifier.height(10.dp))
+
+                if (isImporting) {
+                    Text("Import en cours…", color = accent, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.height(8.dp))
+                }
 
                 Text("Dernier import", color = sub, fontSize = 11.sp)
 
