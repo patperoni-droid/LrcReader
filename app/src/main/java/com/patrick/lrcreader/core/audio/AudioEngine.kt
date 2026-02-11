@@ -1,7 +1,10 @@
 package com.patrick.lrcreader.core.audio
 
 import android.content.Context
+import android.util.Log
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
+import androidx.media3.common.TrackSelectionParameters
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import com.patrick.lrcreader.core.FillerSoundManager
@@ -10,15 +13,53 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 import kotlin.math.pow
 
 @UnstableApi
 object AudioEngine {
 
+    // -----------------------------
+    // Time-stretch mode (sécurité)
+    // -----------------------------
+    enum class TimeStretchMode { EXO, HQ }
+
+    // ✅ Par défaut : comportement actuel (sécurisé, rien ne change tant que tu n'actives pas HQ)
+    @Volatile private var timeStretchMode: TimeStretchMode = TimeStretchMode.EXO
+
+    // Dernières valeurs demandées (communes aux 2 modes)
+    @Volatile private var currentSpeed: Float = 1f
+    @Volatile private var currentPitchRatio: Float = 1f
+
+    /**
+     * ✅ API SAFE : change le mode sans casser le reste.
+     * Pour l'instant HQ n'est pas branché => ça reste en EXO même si tu forces HQ.
+     */
+    fun setTimeStretchMode(mode: TimeStretchMode, reason: String = "") {
+        val effective = when (mode) {
+            TimeStretchMode.EXO -> TimeStretchMode.EXO
+            TimeStretchMode.HQ -> {
+                // ⚠️ HQ pas encore implémenté (SoundTouch viendra après).
+                // Sécurité : on ne casse rien, on log et on reste en EXO.
+                Log.w("AUDIO_TS", "HQ demandé mais non disponible => fallback EXO (reason=$reason)")
+                TimeStretchMode.EXO
+            }
+        }
+        timeStretchMode = effective
+        Log.d("AUDIO_TS", "setTimeStretchMode($reason) requested=$mode effective=$effective")
+
+        // ré-applique les paramètres existants dans le mode effectif
+        applySpeedPitchNow(reason = "modeSwitch:$reason")
+    }
+
+    fun getTimeStretchMode(): TimeStretchMode = timeStretchMode
+
+    // -----------------------------
+    // Player / listeners
+    // -----------------------------
     private var exoPlayer: ExoPlayer? = null
     private var embeddedLyricsListener: EmbeddedLyricsListener? = null
 
-    // ✅ callback remplaçable (évite le piège du "capturé une seule fois")
     private var onNaturalEndCallback: (() -> Unit)? = null
     private var endedListenerAdded = false
 
@@ -29,11 +70,18 @@ object AudioEngine {
     private val audioScope = CoroutineScope(Dispatchers.Main.immediate)
 
     // -----------------------------
+    // SPEED / PITCH anti-rafale (évite reconfig en continu)
+    // -----------------------------
+    private var speedPitchJob: Job? = null
+    private var pendingSpeed: Float = 1f
+    private var pendingPitch: Float = 1f
+
+    // -----------------------------
     // Mix propre : TrackGain × PlayerBus × Fade
     // -----------------------------
-    private var trackGainLinear: Float = 1f          // gain par titre (0..1)
-    private var playerBusLevel: Float = 1f           // bus principal lecteur (0..1)
-    private var fadeMultiplier: Float = 1f           // multiplicateur temporaire de fade (0..1)
+    private var trackGainLinear: Float = 1f
+    private var playerBusLevel: Float = 1f
+    private var fadeMultiplier: Float = 1f
 
     // Valeurs en attente si le player n'est pas prêt
     private var pendingTrackGainDb: Int? = null
@@ -42,10 +90,7 @@ object AudioEngine {
     // -----------------------------
     // Conversions / Applis volume
     // -----------------------------
-
     private fun dbToLinearAttenuation(db: Int): Float {
-        // db négatif -> amplitude, ex: -6 dB ~ 0.501
-        // IMPORTANT : on ne booste jamais (>0 dB interdit ici)
         if (db >= 0) return 1f
         return (10f.pow(db / 20f)).coerceIn(0f, 1f)
     }
@@ -53,64 +98,38 @@ object AudioEngine {
     private fun applyFinalVolume() {
         val p = exoPlayer ?: return
 
-        val v = (trackGainLinear * playerBusLevel * fadeMultiplier)
-            .coerceIn(0f, 1f)
-
+        val v = (trackGainLinear * playerBusLevel * fadeMultiplier).coerceIn(0f, 1f)
         p.volume = v
 
-        android.util.Log.d(
-            "BUS",
-            "applyFinalVolume exo.volume=$v track=$trackGainLinear bus=$playerBusLevel fade=$fadeMultiplier"
-        )
+        Log.d("BUS", "applyFinalVolume exo.volume=$v track=$trackGainLinear bus=$playerBusLevel fade=$fadeMultiplier")
     }
 
-    /** 🔁 À appeler quand Exo remet le volume à sa sauce (prepare / setMediaItem / etc.) */
-    fun reapplyMixNow() {
-        applyFinalVolume()
-    }
+    fun reapplyMixNow() = applyFinalVolume()
+
     fun debugVolumeTag(tag: String) {
         val p = exoPlayer ?: return
-        android.util.Log.d("BUS", "$tag exo.volume=${p.volume} track=$trackGainLinear bus=$playerBusLevel fade=$fadeMultiplier")
+        Log.d("BUS", "$tag exo.volume=${p.volume} track=$trackGainLinear bus=$playerBusLevel fade=$fadeMultiplier")
     }
 
-    // ✅ Pour le crossfade : on fade via le mix, pas en écrivant exoPlayer.volume ailleurs
     fun setFadeMultiplier(value: Float) {
         fadeMultiplier = value.coerceIn(0f, 1f)
         applyFinalVolume()
     }
-    // -----------------------------
-    // BUS PRINCIPAL LECTEUR
-    // -----------------------------
 
-    /**
-     * 🎚️ Bus principal du lecteur (0..1).
-     * À appeler depuis GlobalMixScreen (slider "Player").
-     */
     fun setPlayerBusLevel(level: Float) {
         val safe = level.coerceIn(0f, 1f)
 
         if (exoPlayer == null) {
             pendingPlayerBus = safe
-            android.util.Log.d("BUS", "setPlayerBusLevel PENDING=$safe (exoPlayer=null)")
+            Log.d("BUS", "setPlayerBusLevel PENDING=$safe (exoPlayer=null)")
             return
         }
 
         playerBusLevel = safe
-        android.util.Log.d("BUS", "setPlayerBusLevel ACTIVE=$safe (exoPlayer!=null)")
-
+        Log.d("BUS", "setPlayerBusLevel ACTIVE=$safe (exoPlayer!=null)")
         applyFinalVolume()
     }
 
-    // -----------------------------
-    // NIVEAU DU TITRE (gain par piste)
-    // -----------------------------
-
-    /**
-     * ✅ À appeler quand tu changes le slider "Niveau du titre"
-     * Règle MUSICIENNE :
-     * - on autorise uniquement [-12 dB .. 0 dB]
-     * - aucun boost, donc pas de saturation/compression dégueu
-     */
     fun applyTrackGainDb(gainDb: Int) {
         val p = exoPlayer
         val safeDb = gainDb.coerceIn(-12, 0)
@@ -122,18 +141,81 @@ object AudioEngine {
 
         trackGainLinear = dbToLinearAttenuation(safeDb)
         applyFinalVolume()
-
         pendingTrackGainDb = null
     }
 
     // -----------------------------
-    // FADE OUT (propre, sans casser le mix)
+    // SPEED / PITCH (API publique)
     // -----------------------------
+    fun setSpeedPitch(speed: Float, pitch: Float, reason: String = "") {
+        val p = exoPlayer ?: run {
+            Log.w("AUDIO_PATH", "setSpeedPitch ignored (exoPlayer=null) reason=$reason")
+            // On mémorise quand même, pour appliquer au prochain getPlayer()
+            currentSpeed = speed.coerceIn(0.5f, 2.0f)
+            currentPitchRatio = pitch.coerceIn(0.5f, 2.0f)
+            return
+        }
 
-    private fun exoFadeOutThen(
-        durationMs: Long = 600L,
-        endAction: (ExoPlayer) -> Unit
+        val s = speed.coerceIn(0.5f, 2.0f)
+        val pi = pitch.coerceIn(0.5f, 2.0f)
+
+        // Mémorise la "vérité" des paramètres (communs aux modes)
+        currentSpeed = s
+        currentPitchRatio = pi
+
+        // Anti-rafale : on coalesce
+        pendingSpeed = s
+        pendingPitch = pi
+
+        speedPitchJob?.cancel()
+        speedPitchJob = audioScope.launch {
+            delay(60L)
+
+            val finalS = pendingSpeed
+            val finalP = pendingPitch
+
+            // Evite de spammer si identique
+            val before = p.playbackParameters
+            val sameSpeed = abs(before.speed - finalS) < 0.0005f
+            val samePitch = abs(before.pitch - finalP) < 0.0005f
+            if (sameSpeed && samePitch) return@launch
+
+            applySpeedPitchNow(finalS, finalP, reason = reason)
+        }
+    }
+
+    // -----------------------------
+    // SPEED / PITCH (impl interne, selon mode)
+    // -----------------------------
+    private fun applySpeedPitchNow(
+        speed: Float = currentSpeed,
+        pitch: Float = currentPitchRatio,
+        reason: String = ""
     ) {
+        val p = exoPlayer ?: return
+
+        val s = speed.coerceIn(0.5f, 2.0f)
+        val pi = pitch.coerceIn(0.5f, 2.0f)
+
+        when (timeStretchMode) {
+            TimeStretchMode.EXO -> {
+                val before = p.playbackParameters
+                p.playbackParameters = PlaybackParameters(s, pi)
+                val after = p.playbackParameters
+                Log.d("AUDIO_TS", "apply(EXO,$reason) before=$before after=$after")
+            }
+            TimeStretchMode.HQ -> {
+                // ⚠️ Pas encore branché => on ne fait rien ici.
+                // La sécurité est gérée par setTimeStretchMode() qui ne laisse pas passer HQ tant qu'il n'existe pas.
+                Log.w("AUDIO_TS", "apply(HQ,$reason) called but HQ not available -> should not happen")
+            }
+        }
+    }
+
+    // -----------------------------
+    // FADE OUT
+    // -----------------------------
+    private fun exoFadeOutThen(durationMs: Long = 600L, endAction: (ExoPlayer) -> Unit) {
         val p = exoPlayer ?: return
 
         fadeJob?.cancel()
@@ -142,7 +224,6 @@ object AudioEngine {
             val startFade = fadeMultiplier.coerceIn(0f, 1f)
             val stepDelay = (durationMs / steps).coerceAtLeast(1L)
 
-            // Descente progressive du multiplicateur de fade
             for (i in 1..steps) {
                 val t = i.toFloat() / steps.toFloat()
                 fadeMultiplier = (startFade * (1f - t)).coerceIn(0f, 1f)
@@ -152,36 +233,22 @@ object AudioEngine {
 
             endAction(p)
 
-            // Restore fade pour la lecture suivante
             fadeMultiplier = 1f
             applyFinalVolume()
         }
     }
 
-    /**
-     * ✅ PAUSE DOUX (fade-out)
-     * IMPORTANT: nom conservé pour que ton UI ne change pas.
-     */
     fun pause(durationMs: Long = 600L) {
-        exoFadeOutThen(durationMs) { player ->
-            player.pause()
-        }
+        exoFadeOutThen(durationMs) { it.pause() }
     }
 
-    /**
-     * ✅ STOP DOUX (fade-out -> pause -> retour au début)
-     * IMPORTANT: nom conservé pour que ton UI ne change pas.
-     */
     fun stop(durationMs: Long = 600L) {
-        exoFadeOutThen(durationMs) { player ->
-            player.pause()
-            player.seekTo(0)
+        exoFadeOutThen(durationMs) {
+            it.pause()
+            it.seekTo(0)
         }
     }
 
-    /**
-     * Stop "sec" (debug / cas spécial)
-     */
     fun stopImmediate() {
         fadeJob?.cancel()
         fadeMultiplier = 1f
@@ -193,28 +260,47 @@ object AudioEngine {
     // -----------------------------
     // EXOPLAYER (singleton)
     // -----------------------------
-
     fun getPlayer(context: Context, onNaturalEnd: () -> Unit): ExoPlayer {
         val appCtx = context.applicationContext
-
-        // met à jour le callback à chaque appel (MainActivity peut changer)
         onNaturalEndCallback = onNaturalEnd
 
-        // ✅ IMPORTANT : on garantit l'existence de "p" (sinon Unresolved reference)
-        val p = exoPlayer ?: ExoPlayer.Builder(appCtx).build().also { player ->
-            val l = EmbeddedLyricsListener()
-            player.addListener(l)
-            embeddedLyricsListener = l
-            exoPlayer = player
+        val p = exoPlayer ?: run {
+            val renderersFactory = androidx.media3.exoplayer.DefaultRenderersFactory(appCtx)
+                .setEnableAudioFloatOutput(false)
+                .setEnableAudioTrackPlaybackParams(false)
+
+            ExoPlayer.Builder(appCtx, renderersFactory)
+                .build()
+                .also { player ->
+                    val l = EmbeddedLyricsListener()
+                    player.addListener(l)
+                    embeddedLyricsListener = l
+                    exoPlayer = player
+                }
         }
 
-        // Appliquer les valeurs en attente (gain/ bus) + volume final
+        // Offload désactivé
+        p.trackSelectionParameters =
+            p.trackSelectionParameters
+                .buildUpon()
+                .setAudioOffloadPreferences(
+                    TrackSelectionParameters.AudioOffloadPreferences.Builder()
+                        .setAudioOffloadMode(
+                            TrackSelectionParameters.AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_DISABLED
+                        )
+                        .build()
+                )
+                .build()
+
+        // Appliquer mix + paramètres mémorisés
         pendingPlayerBus?.let { playerBusLevel = it.coerceIn(0f, 1f) }
         pendingTrackGainDb?.let { trackGainLinear = dbToLinearAttenuation(it.coerceIn(-12, 0)) }
         fadeMultiplier = 1f
         applyFinalVolume()
 
-        // Ajout du listener de fin UNE SEULE FOIS
+        // ✅ Réapplique speed/pitch (une fois) au moment où le player est prêt
+        applySpeedPitchNow(reason = "getPlayerInit")
+
         if (!endedListenerAdded) {
             endedListenerAdded = true
             p.addListener(object : Player.Listener {
@@ -238,6 +324,9 @@ object AudioEngine {
     fun release() {
         fadeJob?.cancel()
         fadeJob = null
+
+        speedPitchJob?.cancel()
+        speedPitchJob = null
 
         pendingTrackGainDb = null
         pendingPlayerBus = null

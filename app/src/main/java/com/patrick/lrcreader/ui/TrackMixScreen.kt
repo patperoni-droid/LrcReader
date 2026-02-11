@@ -1,29 +1,17 @@
 package com.patrick.lrcreader.ui
 
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
-import androidx.compose.runtime.*
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.rotate
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import kotlin.math.PI
-import kotlin.math.cos
-import kotlin.math.sin
-
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
@@ -31,13 +19,23 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
-
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.core.TrackEqEngine
 import com.patrick.lrcreader.core.TrackEqPrefs
 import com.patrick.lrcreader.core.TrackEqSettings
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlin.math.PI
+import kotlin.math.cos
 import kotlin.math.roundToInt
+import kotlin.math.sin
 
 @Composable
 fun TrackMixScreen(
@@ -60,30 +58,21 @@ fun TrackMixScreen(
 
     val minDb = -12
     val maxDb = 0
-    val defaultDb = -5 // ✅ voulu par toi
 
     val minTempo = 0.8f
     val maxTempo = 1.2f
     val minSemi = -6
     val maxSemi = 6
 
-    /**
-     * ✅ FIX IMPORTANT :
-     * - On NE considère plus "0" comme une valeur spéciale.
-     *   0 dB est une vraie valeur (et c’est ton maxDb).
-     * - La source de vérité = currentTrackGainDb (déjà chargé depuis prefs dans MainActivity).
-     */
     var displayGainDb by remember(currentTrackUri) {
         mutableIntStateOf(currentTrackGainDb.coerceIn(minDb, maxDb))
     }
 
-    // Resync UI quand on change de titre OU quand le parent change la valeur
     LaunchedEffect(currentTrackUri, currentTrackGainDb) {
         val clamped = currentTrackGainDb.coerceIn(minDb, maxDb)
         displayGainDb = clamped
     }
 
-    // mapping slider 0..1 pour le fader gain
     var gain01 by remember(displayGainDb) {
         mutableFloatStateOf(
             ((displayGainDb - minDb).toFloat() / (maxDb - minDb)).coerceIn(0f, 1f)
@@ -105,6 +94,29 @@ fun TrackMixScreen(
         tempoApplyJob = scope.launch {
             delay(90)
             onTempoChange(tempoPending)
+        }
+    }
+
+    // ✅ Anti-craquement PITCH : idem SPEED
+    var pitchApplyJob by remember { mutableStateOf<Job?>(null) }
+    var pitchPending by remember { mutableIntStateOf(pitchSemi) }
+
+    fun schedulePitchApply(newSemi: Int) {
+        pitchPending = newSemi
+        pitchApplyJob?.cancel()
+        pitchApplyJob = scope.launch {
+            delay(90)
+            onPitchSemiChange(pitchPending)
+        }
+    }
+
+    LaunchedEffect(tempo) { tempoPending = tempo }
+    LaunchedEffect(pitchSemi) { pitchPending = pitchSemi }
+
+    DisposableEffect(currentTrackUri) {
+        onDispose {
+            tempoApplyJob?.cancel()
+            pitchApplyJob?.cancel()
         }
     }
 
@@ -152,9 +164,16 @@ fun TrackMixScreen(
             .pointerInput(Unit) { detectTapGestures { /* consume */ } }
             .padding(horizontal = 14.dp, vertical = 10.dp)
     ) {
+
+        // ✅ Toggle debug EXO/HQ (overlay, n'empiète pas sur l'UI)
+        TimeStretchDebugToggle(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(10.dp)
+        )
+
         Column(Modifier.fillMaxSize()) {
 
-            // ── Bandeau "console"
             ConsoleHeader(
                 title = "TRACK CONSOLE",
                 subtitle = currentTrackUri?.takeLast(26) ?: "Aucun titre",
@@ -163,7 +182,6 @@ fun TrackMixScreen(
 
             Spacer(Modifier.height(10.dp))
 
-            // ── Plate principale (gain + knobs + vu)
             PlateCard(plate = plate, bevel = bevel) {
                 Row(
                     Modifier
@@ -172,7 +190,6 @@ fun TrackMixScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.Top
                 ) {
-                    // FADER GAIN (gros, analog)
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("LEVEL", color = textSub, fontSize = 11.sp, letterSpacing = 2.sp)
                         Text(
@@ -194,11 +211,8 @@ fun TrackMixScreen(
                                     .toInt()
                                     .coerceIn(minDb, maxDb)
                                 displayGainDb = newDb
-
-                                // ✅ On applique + on sauvegarde via le parent (TrackVolumePrefs etc.)
                                 onTrackGainChange(newDb)
                             },
-                            // ✅ commit optionnel (utile si plus tard tu veux "save only on release")
                             onCommit = { v ->
                                 val finalDb = (minDb + v * (maxDb - minDb))
                                     .toInt()
@@ -213,7 +227,6 @@ fun TrackMixScreen(
                         Text("ANTI-CLIP", color = Color(0xFF9AA6AF), fontSize = 10.sp)
                     }
 
-                    // Knobs TEMPO / PITCH
                     Column(
                         modifier = Modifier.padding(horizontal = 10.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
@@ -224,7 +237,7 @@ fun TrackMixScreen(
                         AnalogKnob(
                             value01 = tempo01,
                             accent = Color(0xFF80CBC4),
-                            label = String.format("x%.2f", tempo),
+                            label = String.format("x%.2f", tempoPending),
                             onChange = { v ->
                                 tempo01 = v
                                 val newTempo = (minTempo + v * (maxTempo - minTempo))
@@ -235,13 +248,16 @@ fun TrackMixScreen(
                                 tempoApplyJob?.cancel()
                                 val finalTempo = (minTempo + v * (maxTempo - minTempo))
                                     .coerceIn(minTempo, maxTempo)
+                                tempoPending = finalTempo
                                 onTempoChange(finalTempo)
                             }
                         )
 
                         TextButton(onClick = {
+                            tempoApplyJob?.cancel()
+                            tempoPending = 1f
                             onTempoChange(1f)
-                            tempo01 = ((1f - minTempo) / (maxTempo - minTempo))
+                            tempo01 = ((1f - minTempo) / (maxTempo - minTempo)).coerceIn(0f, 1f)
                         }) {
                             Text("Reset 1.00x", color = Color(0xFF80CBC4), fontSize = 11.sp)
                         }
@@ -254,25 +270,34 @@ fun TrackMixScreen(
                         AnalogKnob(
                             value01 = pitch01,
                             accent = Color(0xFFCE93D8),
-                            label = "${if (pitchSemi >= 0) "+$pitchSemi" else pitchSemi} st",
+                            label = "${if (pitchPending >= 0) "+$pitchPending" else pitchPending} st",
                             onChange = { v ->
                                 pitch01 = v
                                 val semi = (minSemi + v * (maxSemi - minSemi))
                                     .roundToInt()
                                     .coerceIn(minSemi, maxSemi)
-                                onPitchSemiChange(semi)
+                                schedulePitchApply(semi)
+                            },
+                            onCommit = { v ->
+                                pitchApplyJob?.cancel()
+                                val finalSemi = (minSemi + v * (maxSemi - minSemi))
+                                    .roundToInt()
+                                    .coerceIn(minSemi, maxSemi)
+                                pitchPending = finalSemi
+                                onPitchSemiChange(finalSemi)
                             }
                         )
 
                         TextButton(onClick = {
+                            pitchApplyJob?.cancel()
+                            pitchPending = 0
                             onPitchSemiChange(0)
-                            pitch01 = ((0 - minSemi).toFloat() / (maxSemi - minSemi))
+                            pitch01 = ((0 - minSemi).toFloat() / (maxSemi - minSemi)).coerceIn(0f, 1f)
                         }) {
                             Text("Reset 0", color = Color(0xFFCE93D8), fontSize = 11.sp)
                         }
                     }
 
-                    // VU (simple, décoratif mais utile)
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("VU", color = textSub, fontSize = 11.sp, letterSpacing = 2.sp)
                         Spacer(Modifier.height(10.dp))
@@ -297,7 +322,6 @@ fun TrackMixScreen(
 
             Spacer(Modifier.height(12.dp))
 
-            // ── EQ Plate
             PlateCard(plate = plate, bevel = bevel) {
                 Column(Modifier.padding(12.dp)) {
                     Row(
@@ -326,7 +350,6 @@ fun TrackMixScreen(
 
             Spacer(Modifier.weight(1f))
 
-            // ── Zone retour (style “soft label”)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -391,8 +414,6 @@ private fun PlateCard(
     }
 }
 
-/* ─────────── VU meter ─────────── */
-
 @Composable
 private fun VuMeter(
     value01: Float,
@@ -450,8 +471,6 @@ private fun VuMeter(
     }
 }
 
-/* ─────────── Analog Fader (gain) ─────────── */
-
 @Composable
 private fun AnalogFader(
     value01: Float,
@@ -460,7 +479,7 @@ private fun AnalogFader(
     knobColor: Color,
     height: androidx.compose.ui.unit.Dp,
     onChange: (Float) -> Unit,
-    onCommit: (Float) -> Unit = {}, // ✅ FIX : optionnel (sinon “rouge”)
+    onCommit: (Float) -> Unit = {},
     labelMin: String,
     labelMax: String
 ) {
@@ -571,8 +590,6 @@ private fun AnalogFader(
     }
 }
 
-/* ─────────── Analog Knob ─────────── */
-
 @Composable
 private fun AnalogKnob(
     value01: Float,
@@ -669,8 +686,6 @@ private fun AnalogKnob(
         Text("drag ↑↓", color = Color(0xFF9AA6AF), fontSize = 10.sp)
     }
 }
-
-/* ─────────── EQ FADER (look analog) ─────────── */
 
 @Composable
 private fun EqAnalogFader(
