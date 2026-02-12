@@ -362,11 +362,6 @@ fun TrackMixScreen(
             }
         }
 
-        TimeStretchDebugToggle(
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(10.dp)
-        )
     }
 }
 
