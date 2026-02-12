@@ -1,4 +1,6 @@
+@file:OptIn(androidx.media3.common.util.UnstableApi::class)
 package com.patrick.lrcreader.ui
+
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -164,14 +166,7 @@ fun TrackMixScreen(
             .pointerInput(Unit) { detectTapGestures { /* consume */ } }
             .padding(horizontal = 14.dp, vertical = 10.dp)
     ) {
-
-        // ✅ Toggle debug EXO/HQ (overlay, n'empiète pas sur l'UI)
-        TimeStretchDebugToggle(
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(10.dp)
-        )
-
+        // ✅ IMPORTANT : le toggle doit être DECLARE APRES la Column pour être AU-DESSUS (overlay)
         Column(Modifier.fillMaxSize()) {
 
             ConsoleHeader(
@@ -366,6 +361,12 @@ fun TrackMixScreen(
                 )
             }
         }
+
+        TimeStretchDebugToggle(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(10.dp)
+        )
     }
 }
 

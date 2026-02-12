@@ -42,7 +42,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import com.patrick.lrcreader.core.*
 import com.patrick.lrcreader.core.audio.AudioEngine
@@ -91,6 +90,7 @@ class MainActivity : ComponentActivity() {
         }
         // ✅ Auto backup : planifie le worker à chaque démarrage (WorkManager gère le "unique")
         AutoBackupScheduler.ensureScheduled(this)
+
 
 // ✅ Auto restore "propre" : si un backup existe, et seulement une fois
         run {
@@ -388,7 +388,18 @@ class MainActivity : ComponentActivity() {
                     val safeSpeed = speed.coerceIn(0.5f, 2.0f)
                     val semiClamped = pitchSemi.coerceIn(-6, 6)
                     val pitchFactor = 2f.pow(semiClamped / 12f)
-                    exoPlayer.playbackParameters = PlaybackParameters(safeSpeed, pitchFactor)
+
+                    android.util.Log.d(
+                        "AUDIO_TS",
+                        "apply(REQ,MainActivity.applyTempoAndPitchToPlayer) " +
+                                "inSpeed=$speed inSemi=$pitchSemi => safeSpeed=$safeSpeed semi=$semiClamped pitchFactor=$pitchFactor"
+                    )
+
+                    AudioEngine.setSpeedPitch(
+                        speed = safeSpeed,
+                        pitch = pitchFactor,
+                        reason = "MainActivity.applyTempoAndPitchToPlayer"
+                    )
                 }
 
                 val playWithCrossfade: (String, String?) -> Unit = { uriString, playlistName ->
