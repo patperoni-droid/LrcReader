@@ -48,6 +48,7 @@ import com.patrick.lrcreader.core.audio.AudioEngine
 import com.patrick.lrcreader.core.dj.DjEngine
 import com.patrick.lrcreader.core.exoCrossfadePlay
 import com.patrick.lrcreader.core.lyrics.LyricsResolver
+import com.patrick.lrcreader.core.config.MidiCuesConfigStore
 import com.patrick.lrcreader.core.config.NotesConfigStore
 import com.patrick.lrcreader.core.config.TrackSettingsStore
 import com.patrick.lrcreader.ui.*
@@ -92,6 +93,7 @@ class MainActivity : ComponentActivity() {
 
             runCatching { TrackSettingsStore.ensureInitialized(this) }
             runCatching { NotesConfigStore.ensureInitialized(this) }
+            runCatching { MidiCuesConfigStore.ensureInitialized(this) }
         }
         // ✅ Auto backup : planifie le worker à chaque démarrage (WorkManager gère le "unique")
         AutoBackupScheduler.ensureScheduled(this)
@@ -145,6 +147,7 @@ class MainActivity : ComponentActivity() {
                     if (savedRoot != null && canUseStorage) {
                         runCatching { TrackSettingsStore.ensureInitialized(ctx) }
                         runCatching { NotesConfigStore.ensureInitialized(ctx) }
+                        runCatching { MidiCuesConfigStore.ensureInitialized(ctx) }
                     }
                 }
 
