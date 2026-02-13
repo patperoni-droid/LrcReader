@@ -103,11 +103,29 @@ fun LibraryScreen(
     var indexAll by remember { mutableStateOf<List<LibraryIndexCache.CachedEntry>>(emptyList()) }
     var importTargetFolderUri by remember { mutableStateOf<Uri?>(null) }
 
-    fun buildEntriesForFolder(folderUri: Uri): List<LibraryEntry> {
-        return backend.listFolder(
+    fun buildEntriesForFolder(folderUri: Uri, useCache: Boolean = true): List<LibraryEntry> {
+        if (useCache) {
+            LibraryFolderCache.get(folderUri)?.let { return it }
+        }
+        val fresh = backend.listFolder(
             folderUri = folderUri,
             indexAll = indexAll,
             djExcludedReason = sDjExcludedReason
+        )
+        LibraryFolderCache.put(folderUri, fresh)
+        return fresh
+    }
+
+    suspend fun runGlobalScan(root: Uri, folderToShow: Uri) {
+        LibraryFolderCache.clear()
+        backend.scanAll(
+            root = root,
+            folderToShow = folderToShow,
+            onIndexAll = { indexAll = it },
+            onEntries = {
+                entries = it
+                LibraryFolderCache.put(folderToShow, it)
+            }
         )
     }
 
@@ -352,15 +370,10 @@ fun LibraryScreen(
                     }
 
 // --- rescan ---
-                    libraryRescanAll(
-                        context = context,
+                    runGlobalScan(
                         root = splDocUri,
-                        folderToShow = splDocUri,
-                        onIndexAll = { indexAll = it },
-                        onEntries = { entries = it }
+                        folderToShow = splDocUri
                     )
-
-                    entries = buildEntriesForFolder(splDocUri)
 
                 } finally {
                     stopLoadingNice()
@@ -394,14 +407,7 @@ fun LibraryScreen(
 
                         val root = backend.getRootUri()
                         val refreshFolder = currentFolderUri ?: destUri
-                        if (root != null) {
-                            backend.scanAll(
-                                root = root,
-                                folderToShow = refreshFolder,
-                                onIndexAll = { indexAll = it },
-                                onEntries = { entries = it }
-                            )
-                        }
+                        if (root != null) runGlobalScan(root = root, folderToShow = refreshFolder)
                     } finally {
                         pendingMoveUri = null
                         stopLoadingNice()
@@ -428,11 +434,9 @@ fun LibraryScreen(
                     currentFolderUri = currentFolderUri
                 ) ?: return@launch
 
-                backend.scanAll(
+                runGlobalScan(
                     root = rootUri,
-                    folderToShow = folderToShow,
-                    onIndexAll = { indexAll = it },
-                    onEntries = { entries = it }
+                    folderToShow = folderToShow
                 )
 
                 currentFolderUri = folderToShow
@@ -466,11 +470,9 @@ fun LibraryScreen(
             if (indexAll.isEmpty()) {
                 startLoading(sScanning, determinate = false)
                 try {
-                    backend.scanAll(
+                    runGlobalScan(
                         root = root,
-                        folderToShow = folderToShow,
-                        onIndexAll = { indexAll = it },
-                        onEntries = { entries = it }
+                        folderToShow = folderToShow
                     )
                 } finally {
                     stopLoadingNice()
@@ -559,21 +561,12 @@ fun LibraryScreen(
                 canGoBack = folderStack.isNotEmpty(),
 
                 onBack = {
-                    scope.launch {
-                        startLoading(sLoading, determinate = false)
-                        try {
-                            val newStack = folderStack.dropLast(1)
-                            val parentUri = newStack.lastOrNull() ?: backend.getRootUri()
-                            currentFolderUri = parentUri
-
-                            entries = parentUri?.let { uri -> buildEntriesForFolder(uri) } ?: emptyList()
-
-                            folderStack = newStack
-                            selectedSongs = emptySet()
-                        } finally {
-                            stopLoadingNice()
-                        }
-                    }
+                    val newStack = folderStack.dropLast(1)
+                    val parentUri = newStack.lastOrNull() ?: backend.getRootUri()
+                    currentFolderUri = parentUri
+                    entries = parentUri?.let { uri -> buildEntriesForFolder(uri) } ?: emptyList()
+                    folderStack = newStack
+                    selectedSongs = emptySet()
                 },
 
                 onPickRoot = { pickRootFolderLauncher.launch(null) },
@@ -585,11 +578,9 @@ fun LibraryScreen(
                         startLoading(sScanning, determinate = false)
                         try {
                             val folderToShow = currentFolderUri ?: rootNow
-                            backend.scanAll(
+                            runGlobalScan(
                                 root = rootNow,
-                                folderToShow = folderToShow,
-                                onIndexAll = { indexAll = it },
-                                onEntries = { entries = it }
+                                folderToShow = folderToShow
                             )
 
                             currentFolderUri?.let { folder ->
@@ -661,23 +652,11 @@ fun LibraryScreen(
 
                             onOpenFolder = { entry ->
                                 if (entry.disabled) return@LibraryList
-                                scope.launch {
-                                    isLoading = true
-                                    moveProgress = null
-                                    moveLabel = null
-                                    try {
-                                        currentFolderUri?.let { folderStack = folderStack + it }
-                                        currentFolderUri = entry.uri
-
-                                        entries = buildEntriesForFolder(entry.uri)
-
-                                        searchQuery = ""
-                                        selectedSongs = emptySet()
-                                    } finally {
-                                        delay(150)
-                                        isLoading = false
-                                    }
-                                }
+                                currentFolderUri?.let { folderStack = folderStack + it }
+                                currentFolderUri = entry.uri
+                                entries = buildEntriesForFolder(entry.uri)
+                                searchQuery = ""
+                                selectedSongs = emptySet()
                             },
 
                             onOpenPlayer = { uri ->
@@ -812,12 +791,7 @@ fun LibraryScreen(
                                                 val root = backend.getRootUri()
                                                 val folderUri = currentFolderUri ?: root
                                                 if (root != null && folderUri != null) {
-                                                    backend.scanAll(
-                                                        root = root,
-                                                        folderToShow = folderUri,
-                                                        onIndexAll = { indexAll = it },
-                                                        onEntries = { entries = it }
-                                                    )
+                                                    runGlobalScan(root = root, folderToShow = folderUri)
                                                 }
                                             } finally {
                                                 showDeleteConfirmDialog = false
@@ -844,12 +818,7 @@ fun LibraryScreen(
                                                 val root = backend.getRootUri()
                                                 val folderUri = currentFolderUri ?: root
                                                 if (root != null && folderUri != null) {
-                                                    backend.scanAll(
-                                                        root = root,
-                                                        folderToShow = folderUri,
-                                                        onIndexAll = { indexAll = it },
-                                                        onEntries = { entries = it }
-                                                    )
+                                                    runGlobalScan(root = root, folderToShow = folderUri)
                                                 }
                                             }
                                         } finally {
@@ -951,12 +920,7 @@ fun LibraryScreen(
 
                             val root = backend.getRootUri()
                             if (root != null) {
-                                backend.scanAll(
-                                    root = root,
-                                    folderToShow = folderUri,
-                                    onIndexAll = { indexAll = it },
-                                    onEntries = { entries = it }
-                                )
+                                runGlobalScan(root = root, folderToShow = folderUri)
                             }
 
                         } finally {
@@ -1006,11 +970,9 @@ fun LibraryScreen(
                             )
 
                             if (result.ok) {
-                                backend.scanAll(
+                                runGlobalScan(
                                     root = rootTree,
-                                    folderToShow = currentFolderUri ?: dest,
-                                    onIndexAll = { indexAll = it },
-                                    onEntries = { entries = it }
+                                    folderToShow = currentFolderUri ?: dest
                                 )
                             }
                         } finally {
