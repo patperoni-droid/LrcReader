@@ -861,8 +861,16 @@ fun LibraryScreen(
                                     }
                                 }
                             ) {
-                                androidx.compose.material3.Text("Supprimer audio uniquement")
+                                androidx.compose.material3.Text("Voulez-vous supprimer ce fichier audio ?")
                             }
+
+                            // ✅ Petit rappel (toujours affiché, même si pas de .lrc détecté)
+                            Spacer(Modifier.height(6.dp))
+                            androidx.compose.material3.Text(
+                                text = "Astuce : si des paroles existent, pense à supprimer aussi le fichier dans le dossier \"Lyrics\".",
+                                color = Color.Gray,
+                                fontSize = 12.sp
+                            )
                         }
                     },
                     dismissButton = {
