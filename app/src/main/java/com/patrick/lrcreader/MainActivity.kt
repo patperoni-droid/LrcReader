@@ -20,9 +20,13 @@ import androidx.compose.material3.Button
 import androidx.documentfile.provider.DocumentFile
 import com.patrick.lrcreader.core.MidiOutput
 import android.os.Bundle
+import android.os.Looper
+import android.os.SystemClock
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.core.view.WindowCompat
+import androidx.lifecycle.lifecycleScope
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
@@ -50,9 +54,11 @@ import com.patrick.lrcreader.core.exoCrossfadePlay
 import com.patrick.lrcreader.core.lyrics.LyricsResolver
 import com.patrick.lrcreader.core.config.MidiCuesConfigStore
 import com.patrick.lrcreader.core.config.NotesConfigStore
+import com.patrick.lrcreader.core.config.PlaylistStateStore
 import com.patrick.lrcreader.core.config.TrackSettingsStore
 import com.patrick.lrcreader.ui.*
 import com.patrick.lrcreader.ui.library.LibraryScreen
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.pow
 
 class MainActivity : ComponentActivity() {
@@ -61,6 +67,8 @@ class MainActivity : ComponentActivity() {
         private const val DEFAULT_TRACK_GAIN_DB = -5
         private const val MIN_TRACK_DB = -12
         private const val MAX_TRACK_DB = 0
+        private val AUTO_RESTORE_BG_STARTED = AtomicBoolean(false)
+        private val BACKUP_RESTORE_BG_STARTED = AtomicBoolean(false)
 
 
     }
@@ -68,48 +76,70 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        val t0 = SystemClock.elapsedRealtime()
+        fun mark(step: String) {
+            val elapsed = SystemClock.elapsedRealtime() - t0
+            val thread = Thread.currentThread().name
+            val isMain = Looper.getMainLooper().thread == Thread.currentThread()
+            Log.d("BOOTSTEP", "$step +${elapsed}ms (thread=$thread main=$isMain)")
+        }
+
+        mark("onCreate:start")
+        mark("WindowCompat.setDecorFitsSystemWindows:before")
         WindowCompat.setDecorFitsSystemWindows(window, false)
-        AutoRestore.restoreIfNeeded(this)
+        mark("WindowCompat.setDecorFitsSystemWindows:after")
+
+        mark("AutoRestore.restoreIfNeeded:deferred")
+
+        mark("MidiOutput.init#1:before")
         MidiOutput.init(applicationContext)
+        mark("MidiOutput.init#1:after")
+
+        mark("CueMidiStore.init:before")
         CueMidiStore.init(applicationContext)
+        mark("CueMidiStore.init:after")
+
+        mark("SessionPrefs.getTab/getQuick/getOpened:before")
         val initialTabKey = SessionPrefs.getTab(this)
         val initialQuickPlaylist = SessionPrefs.getQuickPlaylist(this)
         val initialOpenedPlaylist = SessionPrefs.getOpenedPlaylist(this)
+        mark("SessionPrefs.getTab/getQuick/getOpened:after")
 
+        mark("DjEngine.init:before")
         DjEngine.init(this)
+        mark("DjEngine.init:after")
 
 // ✅ MIDI : init tôt (une seule fois)
+        mark("MidiOutput.init#2:before")
         MidiOutput.init(applicationContext)
+        mark("MidiOutput.init#2:after")
         android.util.Log.d("MainActivity", "MIDI init demandé dès onCreate")
 
+        mark("BackupFolderPrefs.getLibraryRootUri:before")
         val root = BackupFolderPrefs.getLibraryRootUri(this)
+        mark("BackupFolderPrefs.getLibraryRootUri:after root=$root")
         if (root != null) {
+            mark("LibraryIndexCache.load(onCreate):before")
             val cached = LibraryIndexCache.load(this)
+            mark("LibraryIndexCache.load(onCreate):after size=${cached?.size ?: 0}")
             if (!cached.isNullOrEmpty()) {
                 LibrarySnapshot.rootFolderUri = root
                 LibrarySnapshot.entries = cached.map { it.uriString }
                 LibrarySnapshot.isReady = true
             }
-
-            runCatching { TrackSettingsStore.ensureInitialized(this) }
-            runCatching { NotesConfigStore.ensureInitialized(this) }
-            runCatching { MidiCuesConfigStore.ensureInitialized(this) }
         }
         // ✅ Auto backup : planifie le worker à chaque démarrage (WorkManager gère le "unique")
+        mark("AutoBackupScheduler.ensureScheduled:before")
         AutoBackupScheduler.ensureScheduled(this)
+        mark("AutoBackupScheduler.ensureScheduled:after")
 
 
-// ✅ Auto restore "propre" : si un backup existe, et seulement une fois
-        run {
-            val already = BackupRestorePrefs.wasRestoredOnce(this)
-            if (!already) {
-                val restored = BackupManager.autoRestoreFromDefaultBackupFile(this)
-                if (restored) {
-                    BackupRestorePrefs.setRestoredOnce(this, true)
-                }
-            }
-        }
+        mark("BackupManager.autoRestoreFromDefaultBackupFile:deferred")
+        mark("setContent:before")
         setContent {
+            LaunchedEffect(Unit) {
+                mark("setContent:entered")
+            }
             val scheme = darkColorScheme(
                 primary = Color(0xFFFFC107),
                 onPrimary = Color.Black
@@ -125,7 +155,12 @@ class MainActivity : ComponentActivity() {
                 val scope = rememberCoroutineScope()
 // On ne se base PAS uniquement sur l'URI (Android peut restaurer),
 // on se base sur un flag explicite "setup_done".
-                val savedRoot = remember(setupTick) { BackupFolderPrefs.getLibraryRootUri(ctx) }
+                val savedRoot = remember(setupTick) {
+                    mark("compose.BackupFolderPrefs.getLibraryRootUri:before")
+                    val uri = BackupFolderPrefs.getLibraryRootUri(ctx)
+                    mark("compose.BackupFolderPrefs.getLibraryRootUri:after uri=$uri")
+                    uri
+                }
                 val isInternalMode = remember(savedRoot, setupTick) {
                     // Mode interne = root en file:// (fallback vieux tel)
                     savedRoot != null && savedRoot.scheme == "file"
@@ -141,14 +176,38 @@ class MainActivity : ComponentActivity() {
                 }
 
                 val shouldShowSetup = forceSetup || !isSetupDone || !hasSetupPerm
+                var configInitDoneForRoot by remember { mutableStateOf<String?>(null) }
 
                 LaunchedEffect(savedRoot, hasSetupPerm, isInternalMode) {
                     val canUseStorage = isInternalMode || hasSetupPerm
-                    if (savedRoot != null && canUseStorage) {
-                        runCatching { TrackSettingsStore.ensureInitialized(ctx) }
-                        runCatching { NotesConfigStore.ensureInitialized(ctx) }
-                        runCatching { MidiCuesConfigStore.ensureInitialized(ctx) }
+                    val rootKey = savedRoot?.toString()
+                    mark(
+                        "compose.ensureInitialized.effect:start savedRoot=$savedRoot canUseStorage=$canUseStorage doneFor=$configInitDoneForRoot"
+                    )
+
+                    if (savedRoot == null || !canUseStorage) {
+                        mark("compose.ensureInitialized.effect:skip noStorage")
+                        return@LaunchedEffect
                     }
+
+                    if (configInitDoneForRoot == rootKey) {
+                        mark("compose.ensureInitialized.effect:skip alreadyDone root=$rootKey")
+                        return@LaunchedEffect
+                    }
+
+                    withContext(Dispatchers.IO) {
+                        mark("compose.ensureInitialized.io:start root=$rootKey")
+                        val trackInitOk = runCatching { TrackSettingsStore.ensureInitialized(ctx) }.getOrDefault(false)
+                        val notesInitOk = runCatching { NotesConfigStore.ensureInitialized(ctx) }.getOrDefault(false)
+                        val midiInitOk = runCatching { MidiCuesConfigStore.ensureInitialized(ctx) }.getOrDefault(false)
+                        val playlistInitOk = runCatching { PlaylistStateStore.ensureInitialized(ctx) }.getOrDefault(false)
+                        mark(
+                            "compose.ensureInitialized.io:end root=$rootKey track=$trackInitOk notes=$notesInitOk midi=$midiInitOk playlist=$playlistInitOk"
+                        )
+                    }
+
+                    configInitDoneForRoot = rootKey
+                    mark("compose.ensureInitialized.effect:end root=$rootKey")
                 }
 
                 android.util.Log.d(
@@ -316,9 +375,19 @@ class MainActivity : ComponentActivity() {
 
 
 
-                val exoPlayer = remember { AudioEngine.getPlayer(ctx) {} }
+                val exoPlayer = remember {
+                    mark("compose.AudioEngine.getPlayer:before")
+                    val player = AudioEngine.getPlayer(ctx) {}
+                    mark("compose.AudioEngine.getPlayer:after")
+                    player
+                }
 
-                val embeddedLyricsListener = remember { AudioEngine.getLyricsListener() }
+                val embeddedLyricsListener = remember {
+                    mark("compose.AudioEngine.getLyricsListener:before")
+                    val listener = AudioEngine.getLyricsListener()
+                    mark("compose.AudioEngine.getLyricsListener:after")
+                    listener
+                }
                 DisposableEffect(exoPlayer, embeddedLyricsListener) {
                     exoPlayer.addListener(embeddedLyricsListener)
                     onDispose { exoPlayer.removeListener(embeddedLyricsListener) }
@@ -364,9 +433,16 @@ class MainActivity : ComponentActivity() {
                 var searchMode by remember { mutableStateOf(SearchMode.PLAYER) }
 
                 // ✅ Index pour SearchScreen
-                var indexAll by remember { mutableStateOf(LibraryIndexCache.load(ctx) ?: emptyList()) }
+                var indexAll by remember {
+                    mark("compose.LibraryIndexCache.load(initial):before")
+                    val loaded = LibraryIndexCache.load(ctx) ?: emptyList()
+                    mark("compose.LibraryIndexCache.load(initial):after size=${loaded.size}")
+                    mutableStateOf(loaded)
+                }
                 LaunchedEffect(refreshKey) {
+                    mark("compose.LibraryIndexCache.load(refresh):before refreshKey=$refreshKey")
                     indexAll = LibraryIndexCache.load(ctx) ?: emptyList()
+                    mark("compose.LibraryIndexCache.load(refresh):after size=${indexAll.size}")
                 }
 
                 val onEnded = rememberUpdatedState {
@@ -934,6 +1010,62 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
+        }
+        mark("setContent:after")
+
+        if (AUTO_RESTORE_BG_STARTED.compareAndSet(false, true)) {
+            mark("AutoRestore.bg.launch:scheduled")
+            lifecycleScope.launch {
+                mark("AutoRestore.bg.launch:start")
+                withContext(Dispatchers.IO) {
+                    mark("AutoRestore.restoreIfNeeded.bg:before")
+                    runCatching { AutoRestore.restoreIfNeeded(this@MainActivity) }
+                        .onFailure { Log.e("BOOTSTEP", "AutoRestore.restoreIfNeeded.bg failed", it) }
+                    mark("AutoRestore.restoreIfNeeded.bg:after")
+                }
+                mark("AutoRestore.bg.launch:end")
+            }
+        } else {
+            mark("AutoRestore.bg.launch:skip alreadyStarted")
+        }
+
+        if (BACKUP_RESTORE_BG_STARTED.compareAndSet(false, true)) {
+            mark("BackupRestore.bg.launch:scheduled")
+            lifecycleScope.launch {
+                mark("BackupRestore.bg.launch:start")
+                withContext(Dispatchers.IO) {
+                    mark("BackupRestorePrefs.wasRestoredOnce.bg:before")
+                    val already = runCatching {
+                        BackupRestorePrefs.wasRestoredOnce(this@MainActivity)
+                    }.onFailure {
+                        Log.e("BOOTSTEP", "BackupRestorePrefs.wasRestoredOnce.bg failed", it)
+                    }.getOrDefault(true)
+                    mark("BackupRestorePrefs.wasRestoredOnce.bg:after already=$already")
+
+                    if (!already) {
+                        mark("BackupManager.autoRestoreFromDefaultBackupFile.bg:before")
+                        val restored = runCatching {
+                            BackupManager.autoRestoreFromDefaultBackupFile(this@MainActivity)
+                        }.onFailure {
+                            Log.e("BOOTSTEP", "BackupManager.autoRestoreFromDefaultBackupFile.bg failed", it)
+                        }.getOrDefault(false)
+                        mark("BackupManager.autoRestoreFromDefaultBackupFile.bg:after restored=$restored")
+
+                        if (restored) {
+                            mark("BackupRestorePrefs.setRestoredOnce.bg:before")
+                            runCatching {
+                                BackupRestorePrefs.setRestoredOnce(this@MainActivity, true)
+                            }.onFailure {
+                                Log.e("BOOTSTEP", "BackupRestorePrefs.setRestoredOnce.bg failed", it)
+                            }
+                            mark("BackupRestorePrefs.setRestoredOnce.bg:after")
+                        }
+                    }
+                }
+                mark("BackupRestore.bg.launch:end")
+            }
+        } else {
+            mark("BackupRestore.bg.launch:skip alreadyStarted")
         }
     }
     override fun onStop() {

@@ -56,6 +56,7 @@ import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.core.NotesRepository
 import com.patrick.lrcreader.core.PlaylistRepository
 import com.patrick.lrcreader.core.TextSongRepository
+import com.patrick.lrcreader.core.config.PlaylistStateStore
 import com.patrick.lrcreader.core.config.TrackSettingsStore
 import java.net.URLDecoder
 
@@ -140,12 +141,18 @@ fun QuickPlaylistsScreen(
         songs.clear()
         val pl = internalSelected
         if (pl != null) {
+            val raw = PlaylistRepository.getAllSongsRaw(pl)
+            val restoredManual = loadManualOrder(context, pl, raw)
+            if (restoredManual != null && restoredManual != raw) {
+                PlaylistRepository.updatePlayListOrder(pl, restoredManual)
+            }
+
             val loaded = PlaylistRepository.getSongsFor(pl)
             songs.addAll(loaded)
 
             // ✅ Si on n'a pas encore d'ordre "d'origine" pour cette playlist, on le mémorise
             if (originalOrderByPlaylist[pl].isNullOrEmpty()) {
-                originalOrderByPlaylist[pl] = loaded.toList()
+                originalOrderByPlaylist[pl] = loadOriginalOrder(context, pl) ?: loaded.toList()
             }
 
             currentListColor = Color.White
@@ -174,12 +181,17 @@ fun QuickPlaylistsScreen(
         if (selectedPlaylist != null) {
             internalSelected = selectedPlaylist
             songs.clear()
+            val raw = PlaylistRepository.getAllSongsRaw(selectedPlaylist)
+            val restoredManual = loadManualOrder(context, selectedPlaylist, raw)
+            if (restoredManual != null && restoredManual != raw) {
+                PlaylistRepository.updatePlayListOrder(selectedPlaylist, restoredManual)
+            }
             val loaded = PlaylistRepository.getSongsFor(selectedPlaylist)
             songs.addAll(loaded)
 
             // ✅ Init ordre d'origine si absent
             if (originalOrderByPlaylist[selectedPlaylist].isNullOrEmpty()) {
-                originalOrderByPlaylist[selectedPlaylist] = loaded.toList()
+                originalOrderByPlaylist[selectedPlaylist] = loadOriginalOrder(context, selectedPlaylist) ?: loaded.toList()
             }
 
             currentListColor = Color.White
@@ -355,6 +367,7 @@ fun QuickPlaylistsScreen(
                                     ?: PlaylistRepository.getSongsFor(pl)
 
                                 PlaylistRepository.updatePlayListOrder(pl, original)
+                                saveManualOrder(context, pl, original)
 
                                 // 3) UI
                                 songs.clear()
@@ -505,6 +518,7 @@ fun QuickPlaylistsScreen(
                                                             pl,
                                                             songs.toList()
                                                         )
+                                                        saveManualOrder(context, pl, songs.toList())
                                                         // ✅ Si tu réordonnes à la main, ce nouvel ordre devient
                                                         // le nouvel "ordre d'origine" (persistant)
                                                         overwriteOriginalOrder(context, pl, songs.toList())
@@ -1036,7 +1050,36 @@ private const val PLAYLIST_ORIGINAL_ORDER_PREF = "playlist_original_order_pref"
 
 private fun originalOrderKey(playlist: String): String = "orig|$playlist"
 
+private fun saveManualOrder(context: Context, playlist: String, order: List<String>) {
+    runCatching {
+        PlaylistStateStore.saveManualOrder(
+            context = context,
+            playlistName = playlist,
+            manualOrderUris = order
+        )
+    }
+}
+
+private fun loadManualOrder(context: Context, playlist: String, currentOrder: List<String>): List<String>? {
+    if (currentOrder.isEmpty()) return null
+    return runCatching {
+        PlaylistStateStore.loadManualOrder(
+            context = context,
+            playlistName = playlist,
+            currentOrderUris = currentOrder
+        )
+    }.getOrNull()
+}
+
 private fun saveOriginalOrderIfMissing(context: Context, playlist: String, order: List<String>) {
+    runCatching {
+        PlaylistStateStore.saveOriginalOrderIfMissing(
+            context = context,
+            playlistName = playlist,
+            originalOrderUris = order
+        )
+    }
+
     val prefs = context.getSharedPreferences(PLAYLIST_ORIGINAL_ORDER_PREF, Context.MODE_PRIVATE)
     val key = originalOrderKey(playlist)
     if (prefs.contains(key)) return
@@ -1046,6 +1089,14 @@ private fun saveOriginalOrderIfMissing(context: Context, playlist: String, order
 }
 
 private fun overwriteOriginalOrder(context: Context, playlist: String, order: List<String>) {
+    runCatching {
+        PlaylistStateStore.saveOriginalOrder(
+            context = context,
+            playlistName = playlist,
+            originalOrderUris = order
+        )
+    }
+
     val prefs = context.getSharedPreferences(PLAYLIST_ORIGINAL_ORDER_PREF, Context.MODE_PRIVATE)
     val key = originalOrderKey(playlist)
     val json = org.json.JSONArray().apply { order.forEach { put(it) } }.toString()
@@ -1053,6 +1104,16 @@ private fun overwriteOriginalOrder(context: Context, playlist: String, order: Li
 }
 
 private fun loadOriginalOrder(context: Context, playlist: String): List<String>? {
+    val currentRaw = PlaylistRepository.getAllSongsRaw(playlist)
+    val fromJson = runCatching {
+        PlaylistStateStore.loadOriginalOrder(
+            context = context,
+            playlistName = playlist,
+            currentOrderUris = currentRaw
+        )
+    }.getOrNull()
+    if (!fromJson.isNullOrEmpty()) return fromJson
+
     val prefs = context.getSharedPreferences(PLAYLIST_ORIGINAL_ORDER_PREF, Context.MODE_PRIVATE)
     val key = originalOrderKey(playlist)
     val json = prefs.getString(key, null) ?: return null
