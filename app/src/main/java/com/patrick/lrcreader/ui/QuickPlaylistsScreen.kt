@@ -56,6 +56,7 @@ import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.core.NotesRepository
 import com.patrick.lrcreader.core.PlaylistRepository
 import com.patrick.lrcreader.core.TextSongRepository
+import com.patrick.lrcreader.core.config.TrackSettingsStore
 import java.net.URLDecoder
 
 /**
@@ -542,18 +543,16 @@ fun QuickPlaylistsScreen(
                                 )
                                 val isPrompter = uriString.startsWith("prompter://")
                                 val prefix = if (isPrompter) "📝 " else ""
+                                val normalTitleColor = when {
+                                    isToReview -> Color(0xFFFF6F6F) // rouge = a revoir
+                                    isPlayed -> Color(0xFF8D8D8D)
+                                    else -> Color.White
+                                }
+                                val titleColor = customSongColor
+                                    ?: if (isCurrentPlaying) Color(0xFFFFFDE7) else normalTitleColor
                                 Text(
                                     text = (prefix + displayName).uppercase(),
-                                    color = customSongColor
-                                        ?: if (isCurrentPlaying) {
-                                            Color(0xFFFFFDE7)
-                                        } else {
-                                            when {
-                                                isToReview -> Color(0xFFFF6F6F) // rouge = à revoir
-                                                isPlayed -> Color(0xFF8D8D8D)
-                                                else -> Color.White
-                                            }
-                                        },
+                                    color = titleColor,
                                     fontSize = 14.sp,
                                     modifier = Modifier
                                         .weight(1f)
@@ -1066,6 +1065,15 @@ private fun loadOriginalOrder(context: Context, playlist: String): List<String>?
 private fun songColorKey(playlist: String, uri: String): String = "$playlist|$uri"
 
 private fun saveSongColor(context: Context, playlist: String, uri: String, color: Color) {
+    runCatching {
+        TrackSettingsStore.saveTitleColorArgbByUri(
+            context = context,
+            playlistName = playlist,
+            uriString = uri,
+            colorArgb = color.toArgb()
+        )
+    }
+
     val prefs = context.getSharedPreferences(SONG_COLOR_PREF, Context.MODE_PRIVATE)
     prefs.edit()
         .putInt(songColorKey(playlist, uri), color.toArgb())
@@ -1073,6 +1081,15 @@ private fun saveSongColor(context: Context, playlist: String, uri: String, color
 }
 
 private fun loadSongColor(context: Context, playlist: String, uri: String): Color? {
+    val fromJson = runCatching {
+        TrackSettingsStore.getTitleColorArgbByUri(
+            context = context,
+            playlistName = playlist,
+            uriString = uri
+        )
+    }.getOrNull()
+    if (fromJson != null) return Color(fromJson)
+
     val prefs = context.getSharedPreferences(SONG_COLOR_PREF, Context.MODE_PRIVATE)
     val key = songColorKey(playlist, uri)
     return if (prefs.contains(key)) {
@@ -1081,6 +1098,14 @@ private fun loadSongColor(context: Context, playlist: String, uri: String): Colo
 }
 
 private fun clearSongColor(context: Context, playlist: String, uri: String) {
+    runCatching {
+        TrackSettingsStore.clearTitleColorByUri(
+            context = context,
+            playlistName = playlist,
+            uriString = uri
+        )
+    }
+
     val prefs = context.getSharedPreferences(SONG_COLOR_PREF, Context.MODE_PRIVATE)
     prefs.edit()
         .remove(songColorKey(playlist, uri))
@@ -1170,4 +1195,3 @@ object NotesEventBus {
         listeners.forEach { it.invoke() }
     }
 }
-

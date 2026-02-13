@@ -48,6 +48,8 @@ import com.patrick.lrcreader.core.audio.AudioEngine
 import com.patrick.lrcreader.core.dj.DjEngine
 import com.patrick.lrcreader.core.exoCrossfadePlay
 import com.patrick.lrcreader.core.lyrics.LyricsResolver
+import com.patrick.lrcreader.core.config.NotesConfigStore
+import com.patrick.lrcreader.core.config.TrackSettingsStore
 import com.patrick.lrcreader.ui.*
 import com.patrick.lrcreader.ui.library.LibraryScreen
 import kotlin.math.pow
@@ -87,6 +89,9 @@ class MainActivity : ComponentActivity() {
                 LibrarySnapshot.entries = cached.map { it.uriString }
                 LibrarySnapshot.isReady = true
             }
+
+            runCatching { TrackSettingsStore.ensureInitialized(this) }
+            runCatching { NotesConfigStore.ensureInitialized(this) }
         }
         // ✅ Auto backup : planifie le worker à chaque démarrage (WorkManager gère le "unique")
         AutoBackupScheduler.ensureScheduled(this)
@@ -134,6 +139,14 @@ class MainActivity : ComponentActivity() {
                 }
 
                 val shouldShowSetup = forceSetup || !isSetupDone || !hasSetupPerm
+
+                LaunchedEffect(savedRoot, hasSetupPerm, isInternalMode) {
+                    val canUseStorage = isInternalMode || hasSetupPerm
+                    if (savedRoot != null && canUseStorage) {
+                        runCatching { TrackSettingsStore.ensureInitialized(ctx) }
+                        runCatching { NotesConfigStore.ensureInitialized(ctx) }
+                    }
+                }
 
                 android.util.Log.d(
                     "SETUP_GATE",

@@ -1,6 +1,8 @@
 package com.patrick.lrcreader.core
 
 import android.content.Context
+import android.util.Log
+import com.patrick.lrcreader.core.config.TrackSettingsStore
 
 data class TrackEqSettings(
     val low: Float,
@@ -11,8 +13,12 @@ data class TrackEqSettings(
 object TrackEqPrefs {
     private const val PREF_NAME = "track_eq_prefs"
     private const val KEY_PREFIX = "eq_"
+    private const val TAG = "TrackEqPrefs"
 
     fun load(context: Context, uri: String): TrackEqSettings? {
+        val fromJson = TrackSettingsStore.getEqByUri(context, uri)
+        if (fromJson != null) return fromJson
+
         val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
         val raw = prefs.getString(KEY_PREFIX + uri, null) ?: return null
         val parts = raw.split(";")
@@ -26,6 +32,11 @@ object TrackEqPrefs {
     }
 
     fun save(context: Context, uri: String, settings: TrackEqSettings) {
+        val jsonOk = TrackSettingsStore.saveEqByUri(context, uri, settings)
+        if (!jsonOk) {
+            Log.w(TAG, "save: JSON write skipped/failed, fallback prefs only")
+        }
+
         val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
         prefs.edit()
             .putString(
