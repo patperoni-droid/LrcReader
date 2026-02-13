@@ -75,16 +75,18 @@ class LibraryBackendSaf(
     }
 
     override fun chooseInitialFolder(root: Uri, indexAll: List<LibraryIndexCache.CachedEntry>): Uri {
-        val rootDoc = DocumentFile.fromTreeUri(context, root) ?: DocumentFile.fromSingleUri(context, root)
-            ?: return root
+        val setupTree = BackupFolderPrefsSaf.getSetupTreeUri(context)
+            ?: BackupFolderPrefs.getSetupTreeUri(context)
 
-        val backing = findDirIgnoreCase(rootDoc, listOf("BackingTracks", "backingtracks", "backingtrack"))
-            ?: return root
+        if (isUsableLibraryRoot(root, setupTree)) {
+            return root
+        }
 
-        val audio = findDirIgnoreCase(backing, listOf("Audio", "audio"))
-        val audioCount = audio?.listFiles()?.size ?: 0
+        if (setupTree != null && isUsableSetupTree(setupTree)) {
+            return setupTree
+        }
 
-        return if (audio != null && audioCount > 0) audio.uri else backing.uri
+        return root
     }
 
     override fun loadIndex(): List<LibraryIndexCache.CachedEntry> {
@@ -252,6 +254,60 @@ class LibraryBackendSaf(
         return parent.listFiles().firstOrNull { child ->
             child.isDirectory && normalizeName(child.name) in wanted
         }
+    }
+
+    private fun isReadableDirectory(uri: Uri?): Boolean {
+        if (uri == null) return false
+        val doc = DocumentFile.fromTreeUri(context, uri) ?: DocumentFile.fromSingleUri(context, uri)
+        return doc?.exists() == true && doc.isDirectory
+    }
+
+    private fun isUsableLibraryRoot(rootUri: Uri?, setupTree: Uri?): Boolean {
+        if (!isReadableDirectory(rootUri)) return false
+        val uri = rootUri ?: return false
+        return hasReadAccess(uri, setupTree)
+    }
+
+    private fun isUsableSetupTree(setupTree: Uri): Boolean {
+        if (!isReadableDirectory(setupTree)) return false
+        return BackupFolderPrefs.hasValidSetupTreePermission(context)
+    }
+
+    private fun hasReadAccess(uri: Uri, setupTree: Uri?): Boolean {
+        val targetNorm = normalizeAsTreeUri(uri) ?: uri
+        val hasDirectPersisted = context.contentResolver.persistedUriPermissions.any { p ->
+            if (!p.isReadPermission) return@any false
+            val permNorm = normalizeAsTreeUri(p.uri) ?: p.uri
+            permNorm == targetNorm
+        }
+        if (hasDirectPersisted) return true
+
+        if (!BackupFolderPrefs.hasValidSetupTreePermission(context)) return false
+        return isInsideTree(uri, setupTree)
+    }
+
+    private fun isInsideTree(candidate: Uri, treeUri: Uri?): Boolean {
+        if (treeUri == null) return false
+        if (candidate.authority != treeUri.authority) return false
+
+        val treeDocId = runCatching { DocumentsContract.getTreeDocumentId(treeUri) }.getOrNull()
+            ?: runCatching { DocumentsContract.getDocumentId(treeUri) }.getOrNull()
+            ?: return false
+
+        val candidateDocId = runCatching { DocumentsContract.getTreeDocumentId(candidate) }.getOrNull()
+            ?: runCatching { DocumentsContract.getDocumentId(candidate) }.getOrNull()
+            ?: return false
+
+        return candidateDocId.equals(treeDocId, ignoreCase = true) ||
+                candidateDocId.startsWith("$treeDocId/", ignoreCase = true)
+    }
+
+    private fun normalizeAsTreeUri(uri: Uri): Uri? {
+        val authority = uri.authority ?: return null
+        val treeId = runCatching { DocumentsContract.getTreeDocumentId(uri) }.getOrNull()
+            ?: runCatching { DocumentsContract.getDocumentId(uri) }.getOrNull()
+            ?: return null
+        return DocumentsContract.buildTreeDocumentUri(authority, treeId)
     }
 
     private fun normalizeName(name: String?): String {
