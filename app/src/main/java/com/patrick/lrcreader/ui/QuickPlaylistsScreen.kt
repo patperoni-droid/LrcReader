@@ -544,12 +544,16 @@ fun QuickPlaylistsScreen(
                                 val prefix = if (isPrompter) "📝 " else ""
                                 Text(
                                     text = (prefix + displayName).uppercase(),
-                                    color = when {
-                                        isToReview -> Color(0xFFFF6F6F)      // rouge = à revoir
-                                        isCurrentPlaying -> Color(0xFFFFFDE7)
-                                        isPlayed -> Color(0xFF8D8D8D)
-                                        else -> (customSongColor ?: Color.White) // ✅ blanc par défaut, mais on garde la couleur par titre
-                                    },
+                                    color = customSongColor
+                                        ?: if (isCurrentPlaying) {
+                                            Color(0xFFFFFDE7)
+                                        } else {
+                                            when {
+                                                isToReview -> Color(0xFFFF6F6F) // rouge = à revoir
+                                                isPlayed -> Color(0xFF8D8D8D)
+                                                else -> Color.White
+                                            }
+                                        },
                                     fontSize = 14.sp,
                                     modifier = Modifier
                                         .weight(1f)
@@ -1166,5 +1170,4 @@ object NotesEventBus {
         listeners.forEach { it.invoke() }
     }
 }
-
 
