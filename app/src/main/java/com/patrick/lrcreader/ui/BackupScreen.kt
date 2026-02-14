@@ -1,7 +1,9 @@
 package com.patrick.lrcreader.ui
 
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
+import android.provider.DocumentsContract
 import android.widget.Toast
 import android.widget.Toast.LENGTH_SHORT
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -50,6 +52,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.documentfile.provider.DocumentFile
 import com.patrick.lrcreader.core.BackupFolderPrefs
 import com.patrick.lrcreader.core.BackupManager
 import com.patrick.lrcreader.core.LibraryIndexCache
@@ -70,6 +73,13 @@ import java.io.File
  * - Import : OpenDocument()
  * + ✅ INTERNAL : export/import direct dans SPL_Music/Backups (sans picker Android)
  */
+private fun resolveBackupsInitialUri(context: Context): Uri? {
+    val root = BackupFolderPrefs.getLibraryRootUri(context) ?: return null
+    val rootDoc = DocumentFile.fromTreeUri(context, root) ?: return root
+    val backups = rootDoc.findFile("Backups") ?: rootDoc.findFile("backups")
+    return (backups?.takeIf { it.isDirectory }?.uri) ?: root
+}
+
 @Composable
 fun BackupScreen(
     context: Context,
@@ -151,7 +161,15 @@ fun BackupScreen(
 
     // IMPORT via picker système (✅ non-bloquant)
     val fileLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
+        contract = object : ActivityResultContracts.OpenDocument() {
+            override fun createIntent(context: Context, input: Array<String>): Intent {
+                val intent = super.createIntent(context, input)
+                resolveBackupsInitialUri(context)?.let { initial ->
+                    intent.putExtra(DocumentsContract.EXTRA_INITIAL_URI, initial)
+                }
+                return intent
+            }
+        }
     ) { uri: Uri? ->
         if (uri == null) return@rememberLauncherForActivityResult
 
