@@ -1,4 +1,4 @@
-@file:OptIn(androidx.media3.common.util.UnstableApi::class)
+@file:OptIn(androidx.media3.common.util.UnstableApi::class, kotlinx.coroutines.FlowPreview::class)
 
 package com.patrick.lrcreader.exo
 
@@ -58,10 +58,19 @@ import com.patrick.lrcreader.core.config.PlaylistStateStore
 import com.patrick.lrcreader.core.config.TrackSettingsStore
 import com.patrick.lrcreader.ui.*
 import com.patrick.lrcreader.ui.library.LibraryScreen
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.pow
 
 class MainActivity : ComponentActivity() {
+    private data class SessionSnapshot(
+        val tabKey: String,
+        val quickPlaylist: String?,
+        val openedPlaylist: String?,
+        val currentPlayingUri: String?,
+        val currentPlayingPlaylist: String?
+    )
 
     companion object {
         private const val DEFAULT_TRACK_GAIN_DB = -5
@@ -69,8 +78,35 @@ class MainActivity : ComponentActivity() {
         private const val MAX_TRACK_DB = 0
         private val AUTO_RESTORE_BG_STARTED = AtomicBoolean(false)
         private val BACKUP_RESTORE_BG_STARTED = AtomicBoolean(false)
+        private val DEFERRED_BOOTSTRAP_STARTED = AtomicBoolean(false)
 
 
+    }
+
+    @Volatile
+    private var latestSessionSnapshot = SessionSnapshot(
+        tabKey = TAB_HOME,
+        quickPlaylist = null,
+        openedPlaylist = null,
+        currentPlayingUri = null,
+        currentPlayingPlaylist = null
+    )
+
+    private fun persistSession(reason: String, snapshot: SessionSnapshot = latestSessionSnapshot) {
+        val safeTab = snapshot.tabKey.ifBlank { TAB_HOME }
+        val safeUri = snapshot.currentPlayingUri?.takeIf { it.isNotBlank() }
+        val safePlaylist = snapshot.currentPlayingPlaylist?.takeIf { it.isNotBlank() }
+            ?: snapshot.quickPlaylist?.takeIf { it.isNotBlank() }
+
+        Log.d(
+            "BOOTSTEP",
+            "SessionPersist:before reason=$reason tab=$safeTab quick=${snapshot.quickPlaylist} opened=${snapshot.openedPlaylist} uri=$safeUri playlist=$safePlaylist"
+        )
+        SessionPrefs.saveTab(this, safeTab)
+        SessionPrefs.saveQuickPlaylist(this, snapshot.quickPlaylist)
+        SessionPrefs.saveOpenedPlaylist(this, snapshot.openedPlaylist)
+        SessionPrefs.saveLastSession(this, safeUri, safePlaylist)
+        Log.d("BOOTSTEP", "SessionPersist:after reason=$reason")
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -91,29 +127,24 @@ class MainActivity : ComponentActivity() {
 
         mark("AutoRestore.restoreIfNeeded:deferred")
 
-        mark("MidiOutput.init#1:before")
-        MidiOutput.init(applicationContext)
-        mark("MidiOutput.init#1:after")
-
-        mark("CueMidiStore.init:before")
-        CueMidiStore.init(applicationContext)
-        mark("CueMidiStore.init:after")
+        mark("MidiOutput.init:deferred")
+        mark("CueMidiStore.init:deferred")
 
         mark("SessionPrefs.getTab/getQuick/getOpened:before")
         val initialTabKey = SessionPrefs.getTab(this)
         val initialQuickPlaylist = SessionPrefs.getQuickPlaylist(this)
         val initialOpenedPlaylist = SessionPrefs.getOpenedPlaylist(this)
+        val (initialLastTrackUri, initialLastPlaylist) = SessionPrefs.getLastSession(this)
         mark("SessionPrefs.getTab/getQuick/getOpened:after")
+        latestSessionSnapshot = SessionSnapshot(
+            tabKey = initialTabKey ?: TAB_HOME,
+            quickPlaylist = initialQuickPlaylist,
+            openedPlaylist = initialOpenedPlaylist,
+            currentPlayingUri = initialLastTrackUri,
+            currentPlayingPlaylist = initialLastPlaylist
+        )
 
-        mark("DjEngine.init:before")
-        DjEngine.init(this)
-        mark("DjEngine.init:after")
-
-// ✅ MIDI : init tôt (une seule fois)
-        mark("MidiOutput.init#2:before")
-        MidiOutput.init(applicationContext)
-        mark("MidiOutput.init#2:after")
-        android.util.Log.d("MainActivity", "MIDI init demandé dès onCreate")
+        mark("DjEngine.init:deferred/lazy (DjScreen)")
 
         mark("BackupFolderPrefs.getLibraryRootUri:before")
         val root = BackupFolderPrefs.getLibraryRootUri(this)
@@ -398,11 +429,20 @@ class MainActivity : ComponentActivity() {
                 }
 
                 var closeMixSignal by remember { mutableIntStateOf(0) }
+                var sessionRestored by remember { mutableStateOf(false) }
+                val hasSessionToRestore = remember(initialTabKey, initialQuickPlaylist, initialOpenedPlaylist, initialLastTrackUri) {
+                    !initialTabKey.isNullOrBlank() ||
+                            !initialQuickPlaylist.isNullOrBlank() ||
+                            !initialOpenedPlaylist.isNullOrBlank() ||
+                            !initialLastTrackUri.isNullOrBlank()
+                }
+                var isRestoringSession by remember { mutableStateOf(hasSessionToRestore) }
 
                 var selectedQuickPlaylist by rememberSaveable { mutableStateOf<String?>(initialQuickPlaylist) }
                 var openedPlaylist by rememberSaveable { mutableStateOf<String?>(initialOpenedPlaylist) }
 
                 var currentPlayingUri by remember { mutableStateOf<String?>(null) }
+                var currentPlayingPlaylist by rememberSaveable { mutableStateOf<String?>(initialLastPlaylist) }
                 var isPlaying by remember { mutableStateOf(false) }
                 var parsedLines by remember { mutableStateOf<List<LrcLine>>(emptyList()) }
 
@@ -433,15 +473,20 @@ class MainActivity : ComponentActivity() {
                 var searchMode by remember { mutableStateOf(SearchMode.PLAYER) }
 
                 // ✅ Index pour SearchScreen
-                var indexAll by remember {
+                var indexAll by remember { mutableStateOf<List<LibraryIndexCache.CachedEntry>>(emptyList()) }
+                LaunchedEffect(Unit) {
                     mark("compose.LibraryIndexCache.load(initial):before")
-                    val loaded = LibraryIndexCache.load(ctx) ?: emptyList()
+                    val loaded = withContext(Dispatchers.IO) {
+                        LibraryIndexCache.load(ctx) ?: emptyList()
+                    }
+                    indexAll = loaded
                     mark("compose.LibraryIndexCache.load(initial):after size=${loaded.size}")
-                    mutableStateOf(loaded)
                 }
                 LaunchedEffect(refreshKey) {
                     mark("compose.LibraryIndexCache.load(refresh):before refreshKey=$refreshKey")
-                    indexAll = LibraryIndexCache.load(ctx) ?: emptyList()
+                    indexAll = withContext(Dispatchers.IO) {
+                        LibraryIndexCache.load(ctx) ?: emptyList()
+                    }
                     mark("compose.LibraryIndexCache.load(refresh):after size=${indexAll.size}")
                 }
 
@@ -498,6 +543,7 @@ class MainActivity : ComponentActivity() {
 
                     PlaybackCoordinator.onPlayerStart()
                     currentPlayingUri = uriString
+                    currentPlayingPlaylist = playlistName
                     embeddedLyricsListener.reset()
 
                     SessionPrefs.saveLastSession(ctx, uriString, playlistName)
@@ -572,12 +618,47 @@ class MainActivity : ComponentActivity() {
                 }
 
                 LaunchedEffect(Unit) {
-                    val (lastUri, _) = SessionPrefs.getLastSession(ctx)
+                    mark("SessionRestore PhaseA:start hasSession=$hasSessionToRestore")
+                    if (hasSessionToRestore) {
+                        initialTabKey?.let { selectedTab = tabFromKey(it) }
+                        openedPlaylist = initialOpenedPlaylist
+                        selectedQuickPlaylist = initialQuickPlaylist ?: initialLastPlaylist
+                        isRestoringSession = true
+                    } else {
+                        isRestoringSession = false
+                    }
+                    mark(
+                        "SessionRestore PhaseA:end tab=${tabKeyOf(selectedTab)} quick=$selectedQuickPlaylist opened=$openedPlaylist restoring=$isRestoringSession"
+                    )
+                }
+
+                val canUseStorage = isInternalMode || hasSetupPerm
+                val rootKey = savedRoot?.toString()
+                val playlistsReady = rootKey != null && configInitDoneForRoot == rootKey
+
+                LaunchedEffect(canUseStorage, playlistsReady, rootKey, sessionRestored) {
+                    if (sessionRestored) return@LaunchedEffect
+
+                    mark("SessionRestore PhaseB:start canUseStorage=$canUseStorage playlistsReady=$playlistsReady root=$rootKey")
+                    if (!canUseStorage || !playlistsReady) return@LaunchedEffect
+
+                    val restoredTabKey = SessionPrefs.getTab(ctx)
+                    val restoredQuickPlaylist = SessionPrefs.getQuickPlaylist(ctx)
+                    val restoredOpenedPlaylist = SessionPrefs.getOpenedPlaylist(ctx)
+                    val (lastUri, lastPlaylist) = SessionPrefs.getLastSession(ctx)
+
+                    restoredTabKey?.let { selectedTab = tabFromKey(it) }
+                    selectedQuickPlaylist = restoredQuickPlaylist ?: lastPlaylist
+                    openedPlaylist = restoredOpenedPlaylist
+
                     if (!lastUri.isNullOrBlank()) {
                         currentPlayingUri = lastUri
+                        currentPlayingPlaylist = lastPlaylist
 
-                        val overrideOk = LrcStorage.loadForTrack(ctx, lastUri)?.takeIf { it.isNotBlank() }
-                        parsedLines = if (overrideOk != null) parseLrc(overrideOk) else emptyList()
+                        val overrideText = withContext(Dispatchers.IO) {
+                            LrcStorage.loadForTrack(ctx, lastUri)?.takeIf { it.isNotBlank() }
+                        }
+                        parsedLines = if (overrideText != null) parseLrc(overrideText) else emptyList()
 
                         // IMPORTANT:
                         // -5 dB est la valeur par défaut volontaire (headroom).
@@ -590,6 +671,40 @@ class MainActivity : ComponentActivity() {
                         currentTrackTempo = TrackTempoPrefs.getTempo(ctx, lastUri) ?: 1f
                         currentTrackPitchSemi = TrackPitchPrefs.getSemi(ctx, lastUri) ?: 0
                     }
+
+                    sessionRestored = true
+                    isRestoringSession = false
+                    mark(
+                        "SessionRestore PhaseB:end tab=$restoredTabKey quick=$restoredQuickPlaylist opened=$restoredOpenedPlaylist hasLastUri=${!lastUri.isNullOrBlank()} restoring=$isRestoringSession"
+                    )
+                }
+
+                SideEffect {
+                    latestSessionSnapshot = SessionSnapshot(
+                        tabKey = tabKeyOf(selectedTab),
+                        quickPlaylist = selectedQuickPlaylist,
+                        openedPlaylist = openedPlaylist,
+                        currentPlayingUri = currentPlayingUri,
+                        currentPlayingPlaylist = currentPlayingPlaylist
+                    )
+                }
+
+                LaunchedEffect(Unit) {
+                    snapshotFlow {
+                        SessionSnapshot(
+                            tabKey = tabKeyOf(selectedTab),
+                            quickPlaylist = selectedQuickPlaylist,
+                            openedPlaylist = openedPlaylist,
+                            currentPlayingUri = currentPlayingUri,
+                            currentPlayingPlaylist = currentPlayingPlaylist
+                        )
+                    }
+                        .distinctUntilChanged()
+                        .debounce(300)
+                        .collect { snapshot ->
+                            latestSessionSnapshot = snapshot
+                            persistSession(reason = "snapshotFlow", snapshot = snapshot)
+                        }
                 }
 
                 DisposableEffect(Unit) {
@@ -808,8 +923,12 @@ class MainActivity : ComponentActivity() {
                                         }
                                     },
                                     refreshKey = refreshKey,
+                                    libraryLoadedSignal = indexAll.size,
+                                    playlistsReady = playlistsReady,
                                     currentPlayingUri = currentPlayingUri,
                                     selectedPlaylist = selectedQuickPlaylist,
+                                    openedPlaylist = openedPlaylist,
+                                    isRestoringSession = isRestoringSession,
                                     onSelectedPlaylistChange = { name ->
                                         selectedQuickPlaylist = name
                                         SessionPrefs.saveQuickPlaylist(ctx, name)
@@ -1013,6 +1132,28 @@ class MainActivity : ComponentActivity() {
         }
         mark("setContent:after")
 
+        if (DEFERRED_BOOTSTRAP_STARTED.compareAndSet(false, true)) {
+            mark("DeferredBootstrap.launch:scheduled")
+            lifecycleScope.launch {
+                mark("DeferredBootstrap.launch:start")
+                withContext(Dispatchers.Default) {
+                    mark("CueMidiStore.init.deferred:before")
+                    runCatching { CueMidiStore.init(applicationContext) }
+                        .onFailure { Log.e("BOOTSTEP", "CueMidiStore.init.deferred failed", it) }
+                    mark("CueMidiStore.init.deferred:after")
+                }
+                withContext(Dispatchers.Default) {
+                    mark("MidiOutput.init.deferred:before")
+                    runCatching { MidiOutput.init(applicationContext) }
+                        .onFailure { Log.e("BOOTSTEP", "MidiOutput.init.deferred failed", it) }
+                    mark("MidiOutput.init.deferred:after")
+                }
+                mark("DeferredBootstrap.launch:end")
+            }
+        } else {
+            mark("DeferredBootstrap.launch:skip alreadyStarted")
+        }
+
         if (AUTO_RESTORE_BG_STARTED.compareAndSet(false, true)) {
             mark("AutoRestore.bg.launch:scheduled")
             lifecycleScope.launch {
@@ -1070,7 +1211,13 @@ class MainActivity : ComponentActivity() {
     }
     override fun onStop() {
         super.onStop()
+        persistSession(reason = "onStop")
         BackupManager.autoSaveToDefaultBackupFile(this)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        persistSession(reason = "onPause")
     }
 
 }

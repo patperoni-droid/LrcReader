@@ -2,6 +2,8 @@ package com.patrick.lrcreader.ui
 
 
 import android.media.MediaMetadataRetriever
+import android.os.SystemClock
+import android.util.Log
 import kotlinx.coroutines.withContext
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
@@ -34,6 +36,7 @@ import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -58,6 +61,7 @@ import com.patrick.lrcreader.core.PlaylistRepository
 import com.patrick.lrcreader.core.TextSongRepository
 import com.patrick.lrcreader.core.config.PlaylistStateStore
 import com.patrick.lrcreader.core.config.TrackSettingsStore
+import kotlinx.coroutines.yield
 import java.net.URLDecoder
 
 /**
@@ -68,8 +72,12 @@ fun QuickPlaylistsScreen(
     modifier: Modifier = Modifier,
     onPlaySong: (String, String, Color) -> Unit,
     refreshKey: Int,
+    libraryLoadedSignal: Int = 0,
+    playlistsReady: Boolean = true,
     currentPlayingUri: String? = null,
     selectedPlaylist: String? = null,
+    openedPlaylist: String? = null,
+    isRestoringSession: Boolean = false,
     onSelectedPlaylistChange: (String?) -> Unit = {},
     onPlaylistColorChange: (Color) -> Unit = {},
     onRequestShowPlayer: () -> Unit = {},
@@ -128,6 +136,17 @@ fun QuickPlaylistsScreen(
 
     // 🔸 version des couleurs par titre : on incrémente pour forcer recompose après un choix
     var songColorsVersion by remember { mutableStateOf(0) }
+    var previousSongsSize by remember { mutableIntStateOf(0) }
+    val portableStampByPlaylist = remember { mutableStateMapOf<String, String>() }
+    var quickEnterAtMs by remember { mutableLongStateOf(0L) }
+
+    LaunchedEffect(Unit) {
+        quickEnterAtMs = SystemClock.elapsedRealtime()
+        Log.d(
+            "BOOTSTEP",
+            "QuickPlaylists.enter nowMs=$quickEnterAtMs selected=$selectedPlaylist opened=$openedPlaylist"
+        )
+    }
 
     // Abonnement aux changements de notes
     LaunchedEffect(Unit) {
@@ -137,22 +156,67 @@ fun QuickPlaylistsScreen(
     }
 
     // recharge quand playlist ou notes changent
-    LaunchedEffect(internalSelected, refreshKey, notesVersion, repoVersion) {
-        songs.clear()
+    LaunchedEffect(internalSelected, refreshKey, notesVersion, repoVersion, libraryLoadedSignal, playlistsReady) {
         val pl = internalSelected
+        Log.d(
+            "BOOTSTEP",
+            "QuickPlaylists.enter openedPlaylist=$pl selectedPlaylist=$selectedPlaylist reason=internalSelected"
+        )
         if (pl != null) {
             val raw = PlaylistRepository.getAllSongsRaw(pl)
-            val restoredManual = loadManualOrder(context, pl, raw)
-            if (restoredManual != null && restoredManual != raw) {
-                PlaylistRepository.updatePlayListOrder(pl, restoredManual)
+            if (!playlistsReady) {
+                songs.clear()
+                songs.addAll(raw)
+                Log.d(
+                    "BOOTSTEP",
+                    "QuickPlaylists.wait playlistsReady=false playlist=$pl rawSize=${raw.size} keepFallback=true"
+                )
+                return@LaunchedEffect
             }
 
+            songs.clear()
+            // ✅ fallback immédiat sans dépendance LibraryIndexCache
+            songs.addAll(raw)
+            if (raw.isNotEmpty()) yield()
+
+            val portableStamp = "$refreshKey|$repoVersion|$libraryLoadedSignal|${raw.hashCode()}"
+            if (portableStampByPlaylist[pl] != portableStamp) {
+                val portableStart = SystemClock.elapsedRealtime()
+                val restoredManual = withContext(Dispatchers.Default) {
+                    loadManualOrder(context, pl, raw)
+                }
+                var portableApplied = false
+                if (restoredManual != null && restoredManual != raw) {
+                    PlaylistRepository.updatePlayListOrder(pl, restoredManual)
+                    portableApplied = true
+                }
+                portableStampByPlaylist[pl] = portableStamp
+                Log.d(
+                    "BOOTSTEP",
+                    "QuickPlaylists.applyPortableOrder playlist=$pl applied=$portableApplied ms=${SystemClock.elapsedRealtime() - portableStart} rawSize=${raw.size}"
+                )
+            }
+
+            val getSongsStart = SystemClock.elapsedRealtime()
+            Log.d("BOOTSTEP", "QuickPlaylists.getSongsFor:before playlist=$pl")
             val loaded = PlaylistRepository.getSongsFor(pl)
-            songs.addAll(loaded)
+            Log.d(
+                "BOOTSTEP",
+                "QuickPlaylists.getSongsFor:after playlist=$pl size=${loaded.size} ms=${SystemClock.elapsedRealtime() - getSongsStart}"
+            )
+            if (loaded.isNotEmpty()) {
+                songs.clear()
+                songs.addAll(loaded)
+            } else {
+                Log.d("BOOTSTEP", "QuickPlaylists.getSongsFor:empty playlist=$pl -> keep RAW fallback")
+            }
 
             // ✅ Si on n'a pas encore d'ordre "d'origine" pour cette playlist, on le mémorise
             if (originalOrderByPlaylist[pl].isNullOrEmpty()) {
-                originalOrderByPlaylist[pl] = loadOriginalOrder(context, pl) ?: loaded.toList()
+                val originalLoaded = withContext(Dispatchers.Default) {
+                    loadOriginalOrder(context, pl)
+                }
+                originalOrderByPlaylist[pl] = originalLoaded ?: loaded.toList()
             }
 
             currentListColor = Color.White
@@ -177,58 +241,70 @@ fun QuickPlaylistsScreen(
     }
 
     // si le parent force une playlist
-    LaunchedEffect(selectedPlaylist, repoVersion) {
-        if (selectedPlaylist != null) {
-            internalSelected = selectedPlaylist
+    LaunchedEffect(selectedPlaylist, openedPlaylist) {
+        val targetPlaylist = selectedPlaylist ?: openedPlaylist
+        if (targetPlaylist != null) {
+            if (targetPlaylist == internalSelected && songs.isNotEmpty()) {
+                Log.d("BOOTSTEP", "QuickPlaylists.parentTarget:skip duplicate target=$targetPlaylist size=${songs.size}")
+                return@LaunchedEffect
+            }
+            Log.d(
+                "BOOTSTEP",
+                "QuickPlaylists.enter openedPlaylist=$openedPlaylist selectedPlaylist=$selectedPlaylist reason=parentTarget target=$targetPlaylist"
+            )
+            internalSelected = targetPlaylist
             songs.clear()
-            val raw = PlaylistRepository.getAllSongsRaw(selectedPlaylist)
-            val restoredManual = loadManualOrder(context, selectedPlaylist, raw)
-            if (restoredManual != null && restoredManual != raw) {
-                PlaylistRepository.updatePlayListOrder(selectedPlaylist, restoredManual)
-            }
-            val loaded = PlaylistRepository.getSongsFor(selectedPlaylist)
-            songs.addAll(loaded)
-
-            // ✅ Init ordre d'origine si absent
-            if (originalOrderByPlaylist[selectedPlaylist].isNullOrEmpty()) {
-                originalOrderByPlaylist[selectedPlaylist] = loadOriginalOrder(context, selectedPlaylist) ?: loaded.toList()
-            }
-
-            currentListColor = Color.White
-
-            // ✅ calc durée totale (async) — prompter ignoré
-            playlistTotalMs = -1L
-            val listSnapshot = loaded.toList()
-            playlistTotalMs = withContext(Dispatchers.IO) {
-                var acc = 0L
-                for (u in listSnapshot) {
-                    if (u.startsWith("prompter://")) continue
-                    val cached = durationCache[u]
-                    val d = cached
-                        ?: (getAudioDurationMsQP(context, u) ?: 0L).also {
-                            durationCache[u] = it
-                        }
-                    acc += d
-                }
-                acc
-            }
+            val raw = PlaylistRepository.getAllSongsRaw(targetPlaylist)
+            songs.addAll(raw)
+            Log.d(
+                "BOOTSTEP",
+                "QuickPlaylists.parentTarget:fallbackApplied playlist=$targetPlaylist rawSize=${raw.size}"
+            )
         }
     }
 
     // si la liste de playlists change
-    LaunchedEffect(playlists) {
+    LaunchedEffect(playlists, playlistsReady) {
         if (internalSelected !in playlists) {
             val first = playlists.firstOrNull()
             internalSelected = first
             songs.clear()
             if (first != null) {
+                if (!playlistsReady) {
+                    val raw = PlaylistRepository.getAllSongsRaw(first)
+                    songs.addAll(raw)
+                    Log.d(
+                        "BOOTSTEP",
+                        "QuickPlaylists.wait playlistsReady=false playlist=$first rawSize=${raw.size} reason=playlistsChanged"
+                    )
+                    onSelectedPlaylistChange(first)
+                    return@LaunchedEffect
+                }
+                val getSongsStart = SystemClock.elapsedRealtime()
+                Log.d("BOOTSTEP", "QuickPlaylists.getSongsFor:before playlist=$first reason=playlistsChanged")
                 songs.addAll(PlaylistRepository.getSongsFor(first))
+                Log.d(
+                    "BOOTSTEP",
+                    "QuickPlaylists.getSongsFor:after playlist=$first size=${songs.size} ms=${SystemClock.elapsedRealtime() - getSongsStart} reason=playlistsChanged"
+                )
                 currentListColor = Color.White
                 onSelectedPlaylistChange(first)
                 // ✅ on ne pousse plus de couleur playlist vers le lecteur
                 // onPlaylistColorChange(currentListColor)
             }
         }
+    }
+
+    LaunchedEffect(songs.size) {
+        if (previousSongsSize == 0 && songs.size > 0) {
+            val now = SystemClock.elapsedRealtime()
+            val delta = if (quickEnterAtMs > 0L) now - quickEnterAtMs else -1L
+            Log.d(
+                "BOOTSTEP",
+                "QuickPlaylists:firstSongsShown nowMs=$now deltaFromEnterMs=$delta playlist=$internalSelected opened=$openedPlaylist size=${songs.size}"
+            )
+        }
+        previousSongsSize = songs.size
     }
 
     val menuBg = Color(0xFF1B1B1B)
@@ -390,6 +466,30 @@ fun QuickPlaylistsScreen(
             }
 
             Spacer(Modifier.height(12.dp))
+
+            if (!internalSelected.isNullOrBlank() && songs.isEmpty() && (isRestoringSession || !playlistsReady)) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0x22111111), RoundedCornerShape(12.dp))
+                        .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(12.dp))
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(14.dp),
+                        strokeWidth = 2.dp,
+                        color = Color(0xFFFFC107)
+                    )
+                    Text(
+                        text = if (!playlistsReady) "Chargement des playlists..." else "Restauration de la session...",
+                        color = Color(0xFFB0BEC5),
+                        fontSize = 12.sp
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+            }
 
             // ─── CADRE "RACK" POUR LA LISTE ─────────────────────
             Box(

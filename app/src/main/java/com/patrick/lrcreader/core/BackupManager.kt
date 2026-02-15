@@ -20,6 +20,7 @@ import java.net.URLDecoder
 object BackupManager {
 
     private const val IMPORT_LOG_TAG = "BACKUP_IMPORT"
+    private const val BOOT_TAG = "BOOTSTEP"
 
     data class LastPlayed(
         val uri: String,
@@ -525,21 +526,47 @@ object BackupManager {
     /**
      * Renvoie le DocumentFile dossier de backup :
      * 1) dossier choisi par l'utilisateur via BackupFolderPrefs
-     * 2) fallback : SplFolders.backupsDir(context)
+     * 2) fallback : libraryRootUri/Backups
+     * 3) fallback : SplFolders.backupsDir(context)
      */
-    private fun getBackupDir(context: Context): DocumentFile? {
-        val folderUri = BackupFolderPrefs.get(context) ?: return SplFolders.backupsDir(context)
+    private fun resolveBackupDirFromLibraryRoot(context: Context): DocumentFile? {
+        val root = BackupFolderPrefs.getLibraryRootUri(context) ?: return null
+        if (root.scheme == "file") return null
 
-        // ✅ MODE INTERNE : pas de DocumentFile / pas de SAF
-        if (folderUri.scheme == "file") {
-            return null
+        val rootDoc = DocumentFile.fromTreeUri(context, root)
+            ?: DocumentFile.fromSingleUri(context, root)
+            ?: return null
+
+        val backups = rootDoc.findFile("Backups")
+            ?: rootDoc.findFile("backups")
+
+        return backups?.takeIf { it.isDirectory } ?: rootDoc.takeIf { it.isDirectory }
+    }
+
+    private fun getBackupDir(context: Context): DocumentFile? {
+        val folderUri = BackupFolderPrefs.get(context)
+        if (folderUri != null) {
+            // ✅ MODE INTERNE : pas de DocumentFile / pas de SAF
+            if (folderUri.scheme == "file") {
+                return null
+            }
+
+            // ✅ MODE SAF
+            val tree = DocumentFile.fromTreeUri(context, folderUri)
+            if (tree != null && tree.canWrite()) return tree
+
+            Log.d(BOOT_TAG, "BackupManager.getBackupDir fallbackFromFolderUri folderUri=$folderUri")
         }
 
-        // ✅ MODE SAF
-        val tree = DocumentFile.fromTreeUri(context, folderUri)
-        if (tree != null && tree.canWrite()) return tree
+        val fromRoot = resolveBackupDirFromLibraryRoot(context)
+        if (fromRoot != null && fromRoot.canWrite()) {
+            Log.d(BOOT_TAG, "BackupManager.getBackupDir resolvedFromLibraryRoot uri=${fromRoot.uri}")
+            return fromRoot
+        }
 
-        return SplFolders.backupsDir(context)
+        val splFallback = SplFolders.backupsDir(context)
+        Log.d(BOOT_TAG, "BackupManager.getBackupDir resolvedFromSplFolders uri=${splFallback?.uri}")
+        return splFallback
     }
 
     private fun getBackupDirFile(context: Context): File {
