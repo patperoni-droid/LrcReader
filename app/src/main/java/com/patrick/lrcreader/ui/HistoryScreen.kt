@@ -203,8 +203,8 @@ private fun HistoryEventRow(
     val titleColor = if (isDj) djBlue else Color(0xFFF5F5F5)
     val metaColor = if (isDj) djBlue else Color(0xFFCFD8DC)
 
-    val displayTitle = stripAudioExtension(
-        event.title.ifBlank { HistoryRepository.UNTITLED_FALLBACK }
+    val displayTitle = normalizeDisplayTitle(
+        stripAudioExtension(event.title.ifBlank { HistoryRepository.UNTITLED_FALLBACK })
     )
     val metadata = buildList {
         event.artist?.takeIf { it.isNotBlank() }?.let { add(it) }
@@ -248,6 +248,18 @@ private fun stripAudioExtension(name: String): String {
     } else {
         name
     }
+}
+
+private fun normalizeDisplayTitle(name: String): String {
+    val hasLetter = name.any { it.isLetter() }
+    if (!hasLetter) return name
+
+    val lower = name.lowercase()
+    val firstLetterIndex = lower.indexOfFirst { it.isLetter() }
+    if (firstLetterIndex < 0) return name
+
+    val firstUpper = lower[firstLetterIndex].titlecaseChar().toString()
+    return lower.replaceRange(firstLetterIndex, firstLetterIndex + 1, firstUpper)
 }
 
 private fun formatTimestamp(timestamp: Long): String {
