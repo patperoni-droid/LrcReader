@@ -51,6 +51,8 @@ import com.patrick.lrcreader.core.*
 import com.patrick.lrcreader.core.audio.AudioEngine
 import com.patrick.lrcreader.core.dj.DjEngine
 import com.patrick.lrcreader.core.exoCrossfadePlay
+import com.patrick.lrcreader.core.history.HistoryRepository
+import com.patrick.lrcreader.core.history.PlaySource
 import com.patrick.lrcreader.core.lyrics.LyricsResolver
 import com.patrick.lrcreader.core.config.MidiCuesConfigStore
 import com.patrick.lrcreader.core.config.NotesConfigStore
@@ -489,6 +491,7 @@ class MainActivity : ComponentActivity() {
                     }
                     mark("compose.LibraryIndexCache.load(refresh):after size=${indexAll.size}")
                 }
+                val historyRepository = remember(ctx) { HistoryRepository.getInstance(ctx) }
 
                 val onEnded = rememberUpdatedState {
                     isPlaying = false
@@ -540,6 +543,9 @@ class MainActivity : ComponentActivity() {
                 }
 
                 val playWithCrossfade: (String, String?) -> Unit = { uriString, playlistName ->
+                    val backingTitle = indexAll.firstOrNull { it.uriString == uriString }?.name
+                        ?: Uri.parse(uriString).lastPathSegment
+                        ?: HistoryRepository.UNTITLED_FALLBACK
 
                     PlaybackCoordinator.onPlayerStart()
                     currentPlayingUri = uriString
@@ -582,6 +588,16 @@ class MainActivity : ComponentActivity() {
 
                                 AudioEngine.applyTrackGainDb(currentTrackGainDb)
                                 applyTempoAndPitchToPlayer(currentTrackTempo, currentTrackPitchSemi)
+                                scope.launch(Dispatchers.IO) {
+                                    runCatching {
+                                        historyRepository.logPlay(
+                                            source = PlaySource.BACKING,
+                                            title = backingTitle,
+                                            artist = null,
+                                            uri = uriString
+                                        )
+                                    }
+                                }
                             },
                             onError = {
                                 isPlaying = false

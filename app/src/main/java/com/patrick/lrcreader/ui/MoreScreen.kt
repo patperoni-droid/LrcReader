@@ -46,35 +46,50 @@ fun MoreScreen(
     onOpenTuner: () -> Unit = {}     // callback pour l'accordeur
 ) {
     var current by remember { mutableStateOf(MoreSection.Root) }
+    fun navigate(route: String) {
+        current = MoreSection.entries.firstOrNull { it.route == route } ?: MoreSection.Root
+    }
 
     when (current) {
         MoreSection.Root -> MoreRootScreen(
             modifier = modifier,
-            onOpenBackup = { current = MoreSection.Backup },
-            onOpenFiller = { current = MoreSection.Filler },
-            onOpenEdit = { current = MoreSection.Edit },
+            onOpenBackup = { navigate("backup") },
+            onOpenFiller = { navigate("filler") },
+            onOpenEdit = { navigate("edit") },
+            onOpenHistory = { navigate("history") },
             onOpenTuner = onOpenTuner
         )
 
         MoreSection.Backup -> BackupScreen(
             context = context,
             onAfterImport = onAfterImport,
-            onBack = { current = MoreSection.Root }
+            onBack = { navigate("root") }
         )
 
         MoreSection.Filler -> FillerSoundScreen(
             context = context,
-            onBack = { current = MoreSection.Root }
+            onBack = { navigate("root") }
         )
 
         MoreSection.Edit -> EditSoundScreen(
             context = context,
-            onBack = { current = MoreSection.Root }
+            onBack = { navigate("root") }
+        )
+
+        MoreSection.History -> HistoryScreen(
+            context = context,
+            onBack = { navigate("root") }
         )
     }
 }
 
-private enum class MoreSection { Root, Backup, Filler, Edit }
+private enum class MoreSection(val route: String) {
+    Root("root"),
+    Backup("backup"),
+    Filler("filler"),
+    Edit("edit"),
+    History("history")
+}
 
 /* ─────────────────────────────
    Menu principal – style rack analogique
@@ -86,6 +101,7 @@ private fun MoreRootScreen(
     onOpenBackup: () -> Unit,
     onOpenFiller: () -> Unit,
     onOpenEdit: () -> Unit,
+    onOpenHistory: () -> Unit,
     onOpenTuner: () -> Unit
 ) {
     val context = LocalContext.current
@@ -172,6 +188,7 @@ private fun MoreRootScreen(
                     SettingsItem("🎧  Fond sonore", onClick = onOpenFiller)
                     SettingsItem("💾  Sauvegarde / Restauration", onClick = onOpenBackup)
                     SettingsItem("🛠  Édition de titre", onClick = onOpenEdit)
+                    SettingsItem("🕘  Historique", onClick = onOpenHistory)
 
                     HorizontalDivider(color = Color(0xFF262626))
 

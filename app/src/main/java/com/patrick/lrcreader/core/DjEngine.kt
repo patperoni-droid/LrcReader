@@ -5,6 +5,8 @@ import android.media.MediaPlayer
 import android.net.Uri
 import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.core.PlaybackCoordinator
+import com.patrick.lrcreader.core.history.HistoryRepository
+import com.patrick.lrcreader.core.history.PlaySource
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -92,6 +94,7 @@ object DjEngine {
     private const val AUTO_FADE_DURATION_MS = 1_500
     private var autoMixTriggeredForUri: String? = null
     private var autoMixJob: Job? = null
+    private var historyRepository: HistoryRepository? = null
     fun init(context: Context) {
         if (!::appContext.isInitialized) {
             appContext = context.applicationContext
@@ -102,6 +105,26 @@ object DjEngine {
     private fun ensureContext() {
         if (!::appContext.isInitialized) {
             error("DjEngine.init(context) doit être appelé au démarrage.")
+        }
+    }
+
+    private fun historyRepo(): HistoryRepository {
+        return historyRepository ?: HistoryRepository.getInstance(appContext).also {
+            historyRepository = it
+        }
+    }
+
+    private fun logDjPlay(title: String, uri: String, artist: String? = null) {
+        val safeTitle = title.ifBlank { HistoryRepository.UNTITLED_FALLBACK }
+        scope.launch(Dispatchers.IO) {
+            runCatching {
+                historyRepo().logPlay(
+                    source = PlaySource.DJ,
+                    title = safeTitle,
+                    artist = artist,
+                    uri = uri
+                )
+            }
         }
     }
 
@@ -238,6 +261,7 @@ object DjEngine {
                     currentDurationMs = p.duration
                     p.setVolume(1f, 1f)
                     p.start()
+                    logDjPlay(displayName, uriString)
 
                     deckATitle = displayName
                     deckAUri = uriString
@@ -350,6 +374,7 @@ object DjEngine {
 
             p.seekTo(0)
             p.start()
+            logDjPlay(nextTitle, nextUri)
 
             activeSlot = 1
             playingUri = nextUri
@@ -372,6 +397,7 @@ object DjEngine {
 
             p.seekTo(0)
             p.start()
+            logDjPlay(nextTitle, nextUri)
 
             activeSlot = 2
             playingUri = nextUri
@@ -494,6 +520,7 @@ object DjEngine {
 
             if (!playerB.isPlaying) {
                 try { playerB.seekTo(0); playerB.start() } catch (_: Exception) {}
+                deckBUri?.let { uri -> logDjPlay(deckBTitle, uri) }
             }
 
             val stepMs = 50
@@ -533,6 +560,7 @@ object DjEngine {
 
             if (!playerA.isPlaying) {
                 try { playerA.seekTo(0); playerA.start() } catch (_: Exception) {}
+                deckAUri?.let { uri -> logDjPlay(deckATitle, uri) }
             }
 
             val stepMs = 50
