@@ -43,7 +43,10 @@ import com.patrick.lrcreader.core.history.HistoryEvent
 import com.patrick.lrcreader.core.history.HistoryRepository
 import com.patrick.lrcreader.core.history.PlaySource
 import java.text.DateFormat
+import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
+import java.util.Locale
 import kotlinx.coroutines.launch
 
 private const val HISTORY_UI_PREFS = "history_ui_prefs"
@@ -171,18 +174,35 @@ fun HistoryScreen(
                 )
             }
         } else {
+            val groupedEvents = remember(events) {
+                events.groupBy { event ->
+                    dayStartMillis(event.timestamp)
+                }.toSortedMap(compareByDescending { it })
+            }
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(3.dp)
             ) {
-                items(
-                    items = events,
-                    key = { it.id }
-                ) { event ->
-                    HistoryEventRow(
-                        event = event,
-                        showDateTime = showDateTime
-                    )
+                groupedEvents.forEach { (dayStartMs, dayEvents) ->
+                    item(key = "day_header_$dayStartMs") {
+                        Text(
+                            text = formatDayHeader(dayStartMs),
+                            color = Color(0xFFCFD8DC),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Normal,
+                            modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+                        )
+                    }
+
+                    items(
+                        items = dayEvents,
+                        key = { it.id }
+                    ) { event ->
+                        HistoryEventRow(
+                            event = event,
+                            showDateTime = showDateTime
+                        )
+                    }
                 }
             }
         }
@@ -264,4 +284,22 @@ private fun normalizeDisplayTitle(name: String): String {
 
 private fun formatTimestamp(timestamp: Long): String {
     return DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(timestamp))
+}
+
+private fun dayStartMillis(timestamp: Long): Long {
+    val calendar = Calendar.getInstance()
+    calendar.timeInMillis = timestamp
+    calendar.set(Calendar.HOUR_OF_DAY, 0)
+    calendar.set(Calendar.MINUTE, 0)
+    calendar.set(Calendar.SECOND, 0)
+    calendar.set(Calendar.MILLISECOND, 0)
+    return calendar.timeInMillis
+}
+
+private fun formatDayHeader(dayStartMillis: Long): String {
+    val raw = SimpleDateFormat("EEEE d MMMM yyyy", Locale.getDefault())
+        .format(Date(dayStartMillis))
+    return raw.replaceFirstChar { ch ->
+        if (ch.isLowerCase()) ch.titlecase(Locale.getDefault()) else ch.toString()
+    }
 }
