@@ -3,13 +3,14 @@ package com.patrick.lrcreader.ui
 import android.content.Context
 import android.media.MediaPlayer
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 
 // ⭐ IMPORTS FOUNDATION
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -55,16 +56,25 @@ fun EditSoundScreen(
 
     var mediaPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
     var isPlaying by remember { mutableStateOf(false) }
+    val mainHandler = remember { Handler(Looper.getMainLooper()) }
+    var stopAtOutRunnable by remember { mutableStateOf<Runnable?>(null) }
+
+    fun cancelScheduledStop() {
+        stopAtOutRunnable?.let { mainHandler.removeCallbacks(it) }
+        stopAtOutRunnable = null
+    }
 
     val audioPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
         if (uri != null) {
+            cancelScheduledStop()
             mediaPlayer?.release()
             mediaPlayer = null
 
             pickedUri = uri
-            pickedName = uri.lastPathSegment ?: "son"
+            val rawName = uri.lastPathSegment ?: "son"
+            pickedName = Uri.decode(rawName).substringAfterLast('/').ifBlank { "son" }
 
             try {
                 val mp = MediaPlayer()
@@ -92,6 +102,7 @@ fun EditSoundScreen(
 
     DisposableEffect(Unit) {
         onDispose {
+            cancelScheduledStop()
             mediaPlayer?.release()
         }
     }
@@ -120,37 +131,6 @@ fun EditSoundScreen(
 
             Text("Édition de titre", color = onBg, fontSize = 18.sp)
             Spacer(Modifier.height(10.dp))
-
-
-            // ─────────────────────────
-            // 1. Choix du fichier audio
-            // ─────────────────────────
-            Card(colors = CardDefaults.cardColors(containerColor = card)) {
-                Column(Modifier.padding(12.dp)) {
-
-                    Text("1. Choisir un fichier audio", color = onBg, fontSize = 14.sp)
-                    Spacer(Modifier.height(6.dp))
-
-                    FilledTonalButton(onClick = { audioPicker.launch("audio/*") }) {
-                        Text("Choisir un fichier…", fontSize = 12.sp)
-                    }
-
-                    Spacer(Modifier.height(6.dp))
-                    Text("Fichier : $pickedName", color = sub, fontSize = 12.sp)
-
-                    if (durationMs > 0) {
-                        Text(
-                            text = "Durée : ${formatMsEditSound(durationMs)}",
-                            color = sub,
-                            fontSize = 12.sp
-                        )
-                    }
-                }
-            }
-
-            Spacer(Modifier.height(12.dp))
-
-
             // ───────────────────────────────
             // 2. Réglage des points IN / OUT
             // ───────────────────────────────
@@ -158,6 +138,33 @@ fun EditSoundScreen(
                 Column(Modifier.padding(12.dp)) {
 
                     Text("2. Points d’entrée / sortie", color = onBg, fontSize = 14.sp)
+                    Spacer(Modifier.height(8.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        FilledTonalButton(onClick = { audioPicker.launch("audio/*") }) {
+                            Text(
+                                if (pickedUri == null) "Choisir un fichier…"
+                                else "Changer de fichier…",
+                                fontSize = 12.sp
+                            )
+                        }
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Fichier : $pickedName", color = sub, fontSize = 12.sp)
+                            if (durationMs > 0) {
+                                Text(
+                                    text = "Durée : ${formatMsEditSound(durationMs)}",
+                                    color = sub,
+                                    fontSize = 12.sp
+                                )
+                            }
+                        }
+                    }
+
                     Spacer(Modifier.height(8.dp))
 
                     if (durationMs <= 0) {
@@ -233,39 +240,75 @@ fun EditSoundScreen(
                             FilledTonalButton(
                                 onClick = {
                                     val mp = mediaPlayer ?: return@FilledTonalButton
+                                    if (endMs <= startMs) {
+                                        Toast.makeText(
+                                            context,
+                                            "Point de sortie invalide",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                        return@FilledTonalButton
+                                    }
                                     try {
-                                        mp.seekTo(startMs)
+                                        cancelScheduledStop()
+                                        val targetStart = startMs
+                                        val targetEnd = endMs
+                                        val stopDelayMs = (targetEnd - targetStart).coerceAtLeast(0)
+                                        mp.seekTo(targetStart)
                                         mp.start()
                                         isPlaying = true
+
+                                        val stopRunnable = Runnable {
+                                            try {
+                                                mp.pause()
+                                                mp.seekTo(targetEnd)
+                                            } catch (_: Exception) {}
+                                            isPlaying = false
+                                        }
+                                        stopAtOutRunnable = stopRunnable
+                                        mainHandler.postDelayed(stopRunnable, stopDelayMs.toLong())
                                     } catch (e: Exception) {
                                         e.printStackTrace()
                                     }
                                 },
                                 enabled = mediaPlayer != null
                             ) {
-                                Text("▶️ Lire le segment", fontSize = 12.sp)
+                                Text("Début", fontSize = 12.sp)
                             }
 
                             FilledTonalButton(
                                 onClick = {
                                     val mp = mediaPlayer ?: return@FilledTonalButton
                                     val previewStart =
-                                        (endMs - 10_000).coerceAtLeast(startMs)
+                                        (endMs - 10_000).coerceAtLeast(startMs).coerceAtLeast(0)
                                     try {
+                                        cancelScheduledStop()
+                                        val targetEnd = endMs
+                                        val stopDelayMs = (targetEnd - previewStart).coerceAtLeast(0)
                                         mp.seekTo(previewStart)
                                         mp.start()
                                         isPlaying = true
+
+                                        val stopRunnable = Runnable {
+                                            try {
+                                                mp.pause()
+                                                mp.seekTo(targetEnd)
+                                            } catch (_: Exception) {}
+                                            isPlaying = false
+                                        }
+                                        stopAtOutRunnable = stopRunnable
+                                        mainHandler.postDelayed(stopRunnable, stopDelayMs.toLong())
                                     } catch (e: Exception) {
                                         e.printStackTrace()
                                     }
                                 },
                                 enabled = mediaPlayer != null
                             ) {
-                                Text("▶️ Écouter fin (10s)", fontSize = 12.sp)
+                                Text("Fin", fontSize = 12.sp)
                             }
 
                             TextButton(
                                 onClick = {
+                                    cancelScheduledStop()
                                     mediaPlayer?.pause()
                                     isPlaying = false
                                 },

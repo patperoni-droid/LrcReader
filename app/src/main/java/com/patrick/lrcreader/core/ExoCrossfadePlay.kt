@@ -14,6 +14,7 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import com.patrick.lrcreader.core.audio.AudioEngine
 import com.patrick.lrcreader.core.audio.EmbeddedLyricsListener
+import com.patrick.lrcreader.core.config.TrackSettingsPathResolver
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -21,8 +22,16 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 
 private var lastEndListener: Player.Listener? = null
+private const val EDIT_CLIP_TAG = "EDIT_CLIP"
+
+private data class EditClipMatch(
+    val info: EditSoundPrefs.EditInfo,
+    val matchedKey: String,
+    val source: String
+)
 
 fun exoCrossfadePlay(
     context: Context,
@@ -108,8 +117,51 @@ fun exoCrossfadePlay(
             PlaylistRepository.replaceSongUriEverywhere(oldUri = uriString, newUri = playableUriString)
         }
 
-        exoPlayer.setMediaItem(MediaItem.fromUri(playableUriString))
+        val clipMatch = resolveEditClipMatch(
+            context = context,
+            playableUriString = playableUriString,
+            originalUriString = uriString
+        )
+        val editInfo = clipMatch?.info
+        Log.d(
+            EDIT_CLIP_TAG,
+            "lookup original=$uriString playable=$playableUriString " +
+                    "found=${editInfo != null} source=${clipMatch?.source} key=${clipMatch?.matchedKey} " +
+                    "start=${editInfo?.startMs} end=${editInfo?.endMs}"
+        )
+
+        val safeStartMs = editInfo?.startMs?.coerceAtLeast(0)?.toLong()
+        val safeEndMs = if (safeStartMs != null) {
+            clipMatch?.info?.endMs?.toLong()?.takeIf { it > safeStartMs }
+        } else {
+            null
+        }
+        val isClipped = safeStartMs != null
+
+        val clippedMediaItem = if (safeStartMs != null) {
+            MediaItem.Builder()
+                .setUri(playableUriString)
+                .setClippingConfiguration(
+                    MediaItem.ClippingConfiguration.Builder()
+                        .setStartPositionMs(safeStartMs)
+                        .apply {
+                            if (safeEndMs != null) setEndPositionMs(safeEndMs)
+                        }
+                        .build()
+                )
+                .build()
+        } else {
+            MediaItem.fromUri(playableUriString)
+        }
+
+        Log.d(
+            EDIT_CLIP_TAG,
+            "mediaItem clipped=$isClipped startMs=$safeStartMs endMs=$safeEndMs uri=$playableUriString"
+        )
+        exoPlayer.setMediaItem(clippedMediaItem)
+        Log.d(EDIT_CLIP_TAG, "setMediaItem done token=$playToken")
         exoPlayer.prepare()
+        Log.d(EDIT_CLIP_TAG, "prepare done token=$playToken")
 
         AudioEngine.reapplyMixNow()
         AudioEngine.debugVolumeTag("after prepare")
@@ -122,6 +174,105 @@ fun exoCrossfadePlay(
         if (getCurrentToken() != playToken) return@launch
         onLyricsLoaded(lyrics)
     }
+}
+
+private fun resolveEditClipMatch(
+    context: Context,
+    playableUriString: String,
+    originalUriString: String
+): EditClipMatch? {
+    val allEdits = EditSoundPrefs.getAll(context)
+    if (allEdits.isEmpty()) return null
+
+    val candidates = buildEditKeyCandidates(playableUriString, originalUriString)
+    candidates.forEach { candidate ->
+        val direct = allEdits[candidate]
+        if (direct != null) return EditClipMatch(direct, candidate, "direct_key")
+    }
+
+    val candidateRelativePaths = candidates
+        .mapNotNull { runCatching { TrackSettingsPathResolver.resolveRelativeTrackPath(context, it) }.getOrNull() }
+        .toSet()
+
+    if (candidateRelativePaths.isNotEmpty()) {
+        allEdits.forEach { (storedKey, info) ->
+            val storedRel = runCatching {
+                TrackSettingsPathResolver.resolveRelativeTrackPath(context, storedKey)
+            }.getOrNull()
+            if (storedRel != null && storedRel in candidateRelativePaths) {
+                return EditClipMatch(info, storedKey, "relative_track_path")
+            }
+        }
+    }
+
+    val candidateNames = candidates
+        .mapNotNull { extractTrackFileNameForMatch(it) }
+        .toSet()
+    if (candidateNames.isNotEmpty()) {
+        val nameMatches = allEdits.entries.filter { entry ->
+            extractTrackFileNameForMatch(entry.key) in candidateNames
+        }
+        if (nameMatches.size == 1) {
+            val matched = nameMatches.first()
+            return EditClipMatch(matched.value, matched.key, "filename_unique")
+        }
+    }
+
+    return null
+}
+
+private fun buildEditKeyCandidates(playableUriString: String, originalUriString: String): Set<String> {
+    val out = LinkedHashSet<String>()
+
+    fun addCandidate(raw: String?) {
+        val value = raw?.trim().orEmpty()
+        if (value.isNotEmpty()) out.add(value)
+    }
+
+    fun addFileVariants(path: String?) {
+        val filePath = path?.trim().orEmpty()
+        if (filePath.isEmpty()) return
+        addCandidate(filePath)
+        addCandidate(Uri.fromFile(File(filePath)).toString())
+    }
+
+    fun deriveVariants(raw: String) {
+        val parsed = runCatching { Uri.parse(raw) }.getOrNull() ?: return
+        addCandidate(parsed.toString())
+        if (parsed.scheme == "file") {
+            addFileVariants(parsed.path)
+        } else if (parsed.scheme.isNullOrBlank() && raw.startsWith("/")) {
+            addFileVariants(raw)
+        }
+    }
+
+    addCandidate(playableUriString)
+    addCandidate(originalUriString)
+    addCandidate(Uri.decode(playableUriString))
+    addCandidate(Uri.decode(originalUriString))
+
+    val snapshot = out.toList()
+    snapshot.forEach { deriveVariants(it) }
+
+    return out
+}
+
+private fun extractTrackFileNameForMatch(uriOrPath: String): String? {
+    val raw = uriOrPath.trim()
+    if (raw.isBlank()) return null
+
+    val fromDocId = runCatching {
+        DocumentsContract.getDocumentId(Uri.parse(raw)).substringAfterLast('/')
+    }.getOrNull()
+
+    val fromPathSegment = runCatching {
+        Uri.parse(raw).lastPathSegment
+    }.getOrNull()
+
+    val fromFilePath = if (raw.startsWith("/")) File(raw).name else null
+
+    val candidate = fromDocId ?: fromPathSegment ?: fromFilePath ?: return null
+    return candidate.trim().lowercase().takeIf { it.isNotBlank() }
 }
 
 private fun resolvePlayableUriString(context: Context, uriString: String): String? {
