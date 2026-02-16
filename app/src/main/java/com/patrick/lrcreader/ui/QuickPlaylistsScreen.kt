@@ -47,6 +47,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
@@ -600,10 +601,11 @@ fun QuickPlaylistsScreen(
                                 Icon(
                                     imageVector = Icons.Filled.DragHandle,
                                     contentDescription = "Déplacer",
-                                    tint = Color.White,
+                                    tint = if (isPlayed) Color(0xFF9E9E9E) else Color.White,
                                     modifier = Modifier
                                         .size(34.dp)
                                         .padding(end = 6.dp)
+                                        .alpha(if (isPlayed) 0.6f else 1f)
                                         .pointerInput(songs.size) {
                                             detectDragGesturesAfterLongPress(
                                                 onDragStart = {
@@ -657,19 +659,24 @@ fun QuickPlaylistsScreen(
                                 )
                                 val isPrompter = uriString.startsWith("prompter://")
                                 val prefix = if (isPrompter) "📝 " else ""
+                                val playedTextColor = Color(0xFF9E9E9E)
                                 val normalTitleColor = when {
                                     isToReview -> Color(0xFFFF6F6F) // rouge = a revoir
-                                    isPlayed -> Color(0xFF8D8D8D)
                                     else -> Color.White
                                 }
-                                val titleColor = customSongColor
-                                    ?: if (isCurrentPlaying) Color(0xFFFFFDE7) else normalTitleColor
+                                val titleColor = when {
+                                    isPlayed -> playedTextColor
+                                    isCurrentPlaying -> Color(0xFFFFFDE7)
+                                    customSongColor != null -> customSongColor
+                                    else -> normalTitleColor
+                                }
                                 Text(
                                     text = (prefix + displayName).uppercase(),
                                     color = titleColor,
                                     fontSize = 14.sp,
                                     modifier = Modifier
                                         .weight(1f)
+                                        .alpha(if (isPlayed) 0.6f else 1f)
                                         .clickable {
                                             val pl = internalSelected ?: return@clickable
                                             // ✅ IMPORTANT : on capture l'ordre "d'origine" AVANT que le système
@@ -698,16 +705,17 @@ fun QuickPlaylistsScreen(
                                             .size(32.dp)
                                             .border(
                                                 width = 1.dp,
-                                                color = if (isPlayed) Color.Gray else currentListColor,
+                                                color = if (isPlayed) playedTextColor else currentListColor,
                                                 shape = RoundedCornerShape(8.dp)
                                             )
+                                            .alpha(if (isPlayed) 0.6f else 1f)
                                             .clickable { menuOpen = true },
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Icon(
                                             imageVector = Icons.Filled.MoreVert,
                                             contentDescription = "Options",
-                                            tint = if (isPlayed) Color.Gray else currentListColor,
+                                            tint = if (isPlayed) playedTextColor else currentListColor,
                                             modifier = Modifier.size(18.dp)
                                         )
                                     }
