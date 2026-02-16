@@ -460,6 +460,15 @@ class MainActivity : ComponentActivity() {
                 var currentTrackPitchSemi by remember { mutableStateOf(0) }
                 var isMoreMenuOpen by remember { mutableStateOf(false) }
                 var openNotesSignal by remember { mutableStateOf(0) }
+                var openPrompterSignal by remember { mutableIntStateOf(0) }
+                var chainQueue by remember { mutableStateOf<List<String>>(emptyList()) }
+                var chainIndex by remember { mutableIntStateOf(-1) }
+                var isChaining by remember { mutableStateOf(false) }
+                var chainPlaylist by remember { mutableStateOf<String?>(null) }
+                var backingEndedSignal by remember { mutableIntStateOf(0) }
+                val nextChainedUri = remember(isChaining, chainIndex, chainQueue) {
+                    if (!isChaining) null else chainQueue.getOrNull(chainIndex + 1)
+                }
                 var isGlobalMixOpen by remember { mutableStateOf(false) }
                 var playerMasterLevel by remember { mutableStateOf(1f) }
                 var djMasterLevel by remember { mutableStateOf(1f) }
@@ -496,6 +505,7 @@ class MainActivity : ComponentActivity() {
                 val onEnded = rememberUpdatedState {
                     isPlaying = false
                     PlaybackCoordinator.onPlayerStop()
+                    backingEndedSignal++
                 }
 
                 DisposableEffect(exoPlayer) {
@@ -523,6 +533,13 @@ class MainActivity : ComponentActivity() {
                 }
 
                 fun clampTrackDb(db: Int): Int = db.coerceIn(MIN_TRACK_DB, MAX_TRACK_DB)
+
+                fun stopChainPlayback() {
+                    isChaining = false
+                    chainQueue = emptyList()
+                    chainIndex = -1
+                    chainPlaylist = null
+                }
 
                 fun applyTempoAndPitchToPlayer(speed: Float, pitchSemi: Int) {
                     val safeSpeed = speed.coerceIn(0.5f, 2.0f)
@@ -617,6 +634,34 @@ class MainActivity : ComponentActivity() {
 
                     selectedTab = BottomTab.Player
                     SessionPrefs.saveTab(ctx, TAB_PLAYER)
+                }
+
+                fun playChainFrom(startIndex: Int): Boolean {
+                    if (!isChaining) return false
+                    var idx = startIndex
+                    while (idx in chainQueue.indices) {
+                        when (val target = PlaybackRouter.resolve(chainQueue[idx], chainPlaylist)) {
+                            is PlaybackRouter.Target.Audio -> {
+                                chainIndex = idx
+                                playWithCrossfade(target.uri, target.playlist)
+                                currentPlayingUri = target.uri
+                                selectedQuickPlaylist = target.playlist
+                                target.playlist?.let { SessionPrefs.saveQuickPlaylist(ctx, it) }
+                                currentLyricsColor = Color.White
+                                return true
+                            }
+                            is PlaybackRouter.Target.Prompter -> idx++
+                            is PlaybackRouter.Target.Unknown -> idx++
+                        }
+                    }
+                    return false
+                }
+
+                LaunchedEffect(backingEndedSignal) {
+                    if (backingEndedSignal <= 0 || !isChaining) return@LaunchedEffect
+                    if (!playChainFrom(chainIndex + 1)) {
+                        stopChainPlayback()
+                    }
                 }
 
                 // ✅ helper : lancer depuis recherche en mode DJ
@@ -913,6 +958,7 @@ class MainActivity : ComponentActivity() {
                                 is BottomTab.QuickPlaylists -> QuickPlaylistsScreen(
                                     modifier = contentModifier,
                                     onPlaySong = { uri, playlistName, color ->
+                                        stopChainPlayback()
 
                                         when (val target = PlaybackRouter.resolve(uri, playlistName)) {
 
@@ -938,9 +984,20 @@ class MainActivity : ComponentActivity() {
                                             }
                                         }
                                     },
+                                    onPlayFromHere = { visibleQueue, startIndex, playlistName ->
+                                        chainQueue = visibleQueue
+                                        chainIndex = -1
+                                        chainPlaylist = playlistName
+                                        isChaining = true
+                                        if (!playChainFrom(startIndex)) {
+                                            stopChainPlayback()
+                                        }
+                                    },
                                     refreshKey = refreshKey,
+                                    openPrompterSignal = openPrompterSignal,
                                     libraryLoadedSignal = indexAll.size,
                                     playlistsReady = playlistsReady,
+                                    nextChainedUri = nextChainedUri,
                                     currentPlayingUri = currentPlayingUri,
                                     selectedPlaylist = selectedQuickPlaylist,
                                     openedPlaylist = openedPlaylist,
@@ -950,6 +1007,7 @@ class MainActivity : ComponentActivity() {
                                         SessionPrefs.saveQuickPlaylist(ctx, name)
                                     },
                                     onPlaylistColorChange = { _ -> currentLyricsColor = Color.White },
+                                    onConsumeOpenPrompterSignal = { openPrompterSignal = 0 },
                                     onRequestShowPlayer = {
                                         selectedTab = BottomTab.Player
                                         SessionPrefs.saveTab(ctx, TAB_PLAYER)
@@ -959,6 +1017,7 @@ class MainActivity : ComponentActivity() {
                                 is BottomTab.Library -> LibraryScreen(
                                     modifier = contentModifier,
                                     onPlayFromLibrary = { uriString ->
+                                        stopChainPlayback()
                                         playWithCrossfade(uriString, null)
                                         currentPlayingUri = uriString
                                         currentLyricsColor = Color.White
@@ -1019,6 +1078,7 @@ class MainActivity : ComponentActivity() {
                                 onPlay = { uriString ->
                                     when (searchMode) {
                                         SearchMode.PLAYER -> {
+                                            stopChainPlayback()
                                             playWithCrossfade(uriString, null)
                                             currentPlayingUri = uriString
                                             selectedTab = BottomTab.Player
@@ -1031,6 +1091,7 @@ class MainActivity : ComponentActivity() {
 
                                         SearchMode.PLAYLIST -> {
                                             // ✅ comme PLAYER : on lance et on bascule sur le lecteur
+                                            stopChainPlayback()
                                             playWithCrossfade(uriString, null)
                                             currentPlayingUri = uriString
                                             currentLyricsColor = Color(0xFFE040FB)
@@ -1090,6 +1151,21 @@ class MainActivity : ComponentActivity() {
                                 isMoreMenuOpen = false
                                 selectedTab = BottomTab.AllPlaylists
                                 SessionPrefs.saveTab(ctx, TAB_ALL)
+                                // ✅ si on est sur “Fond sonore” (overlay), il faut le fermer sinon on reste bloqué dessus
+                                isFillerSettingsOpen = false
+                                isGlobalMixOpen = false
+                                isSearchOpen = false
+                                textPrompterId = null
+                                isMixerPreviewOpen = false
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("📝 Prompteur") },
+                            onClick = {
+                                isMoreMenuOpen = false
+                                selectedTab = BottomTab.QuickPlaylists
+                                SessionPrefs.saveTab(ctx, TAB_QUICK)
+                                openPrompterSignal++
                                 // ✅ si on est sur “Fond sonore” (overlay), il faut le fermer sinon on reste bloqué dessus
                                 isFillerSettingsOpen = false
                                 isGlobalMixOpen = false

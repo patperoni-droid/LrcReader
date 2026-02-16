@@ -30,7 +30,6 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.MoreVert
@@ -72,15 +71,19 @@ import java.net.URLDecoder
 fun QuickPlaylistsScreen(
     modifier: Modifier = Modifier,
     onPlaySong: (String, String, Color) -> Unit,
+    onPlayFromHere: (List<String>, Int, String) -> Unit = { _, _, _ -> },
     refreshKey: Int,
+    openPrompterSignal: Int = 0,
     libraryLoadedSignal: Int = 0,
     playlistsReady: Boolean = true,
+    nextChainedUri: String? = null,
     currentPlayingUri: String? = null,
     selectedPlaylist: String? = null,
     openedPlaylist: String? = null,
     isRestoringSession: Boolean = false,
     onSelectedPlaylistChange: (String?) -> Unit = {},
     onPlaylistColorChange: (Color) -> Unit = {},
+    onConsumeOpenPrompterSignal: () -> Unit = {},
     onRequestShowPlayer: () -> Unit = {},
     indexAll: List<LibraryIndexCache.CachedEntry> = emptyList() // ✅ propre + default
 ) {
@@ -153,6 +156,15 @@ fun QuickPlaylistsScreen(
     LaunchedEffect(Unit) {
         NotesEventBus.subscribe {
             notesVersion++
+        }
+    }
+
+    LaunchedEffect(openPrompterSignal) {
+        if (openPrompterSignal > 0 && internalSelected != null) {
+            newTextTitle = ""
+            newTextContent = ""
+            showCreateTextDialog = true
+            onConsumeOpenPrompterSignal()
         }
     }
 
@@ -411,25 +423,6 @@ fun QuickPlaylistsScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.padding(start = 6.dp)
                 ) {
-                    // ➕ création titre texte (ancienne méthode)
-                    IconButton(
-                        onClick = {
-                            if (internalSelected != null) {
-                                newTextTitle = ""
-                                newTextContent = ""
-                                showCreateTextDialog = true
-                            }
-                        }
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Add,
-                            contentDescription = "Titre texte",
-                            tint = Color(0xFF81C784)
-                        )
-                    }
-
-
-
                     // reset (NE TOUCHE PAS aux "à revoir", seulement "joué")
                     if (internalSelected != null) {
                         IconButton(
@@ -574,6 +567,7 @@ fun QuickPlaylistsScreen(
 
                             val isCurrentPlaying = currentPlayingUri == uriString
                             val isDraggingThis = draggingUri == uriString
+                            val isNext = nextChainedUri != null && uriString == nextChainedUri
 
                             Row(
                                 modifier = Modifier
@@ -583,6 +577,8 @@ fun QuickPlaylistsScreen(
                                     .background(
                                         color = if (isDraggingThis)
                                             Color(0x33FFFFFF)
+                                        else if (isNext)
+                                            Color(0x22FFFFFF)
                                         else
                                             Color(0xFF181818),
                                         shape = RoundedCornerShape(12.dp)
@@ -591,6 +587,8 @@ fun QuickPlaylistsScreen(
                                         width = 1.dp,
                                         color = if (isCurrentPlaying)
                                             Color.White.copy(alpha = 0.8f)
+                                        else if (isNext)
+                                            Color(0x66FFD54F)
                                         else
                                             Color(0x33FFFFFF),
                                         shape = RoundedCornerShape(12.dp)
@@ -696,6 +694,25 @@ fun QuickPlaylistsScreen(
                                         }
                                 )
 
+                                if (isNext) {
+                                    Box(
+                                        modifier = Modifier
+                                            .padding(end = 6.dp)
+                                            .background(
+                                                color = Color(0xFFFDD835),
+                                                shape = RoundedCornerShape(999.dp)
+                                            )
+                                            .padding(horizontal = 7.dp, vertical = 2.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = "NEXT",
+                                            color = Color(0xFF111111),
+                                            fontSize = 10.sp
+                                        )
+                                    }
+                                }
+
                                 // menu 3 points
                                 Box {
                                     var menuOpen by remember { mutableStateOf(false) }
@@ -725,6 +742,25 @@ fun QuickPlaylistsScreen(
                                         onDismissRequest = { menuOpen = false },
                                         modifier = Modifier.background(Color(0xFF1E1E1E))
                                     ) {
+                                        DropdownMenuItem(
+                                            text = {
+                                                Text(
+                                                    "▶ Play",
+                                                    color = Color.White
+                                                )
+                                            },
+                                            onClick = {
+                                                val pl = internalSelected
+                                                if (pl != null) {
+                                                    val visibleQueue = songs.toList()
+                                                    val startIndex = visibleQueue.indexOf(uriString)
+                                                    if (startIndex >= 0) {
+                                                        onPlayFromHere(visibleQueue, startIndex, pl)
+                                                    }
+                                                }
+                                                menuOpen = false
+                                            }
+                                        )
                                         DropdownMenuItem(
                                             text = {
                                                 Text(
