@@ -57,6 +57,7 @@ fun MoreScreen(
             onOpenFiller = { navigate("filler") },
             onOpenEdit = { navigate("edit") },
             onOpenHistory = { navigate("history") },
+            onOpenWaveformPreview = { navigate("waveform_preview") },
             onOpenTuner = onOpenTuner
         )
 
@@ -80,6 +81,11 @@ fun MoreScreen(
             context = context,
             onBack = { navigate("root") }
         )
+
+        MoreSection.WaveformPreview -> WaveformPreviewScreen(
+            modifier = modifier,
+            onBack = { navigate("root") }
+        )
     }
 }
 
@@ -88,7 +94,8 @@ private enum class MoreSection(val route: String) {
     Backup("backup"),
     Filler("filler"),
     Edit("edit"),
-    History("history")
+    History("history"),
+    WaveformPreview("waveform_preview")
 }
 
 /* ─────────────────────────────
@@ -102,6 +109,7 @@ private fun MoreRootScreen(
     onOpenFiller: () -> Unit,
     onOpenEdit: () -> Unit,
     onOpenHistory: () -> Unit,
+    onOpenWaveformPreview: () -> Unit,
     onOpenTuner: () -> Unit
 ) {
     val context = LocalContext.current
@@ -194,7 +202,7 @@ private fun MoreRootScreen(
 
                     // Bloc interface / audio
                     SettingsHeader("Audio & Interface")
-                    SettingsItem("🎨  Interface", onClick = {})
+                    SettingsItem("🎨  Interface", onClick = onOpenWaveformPreview)
                     SettingsItem("🔊  Audio", onClick = {})
 
                     // Accordeur, dans le bloc Audio
