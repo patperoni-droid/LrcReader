@@ -45,6 +45,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.Alignment
@@ -64,9 +65,15 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import com.patrick.lrcreader.core.EditSoundPrefs
+import com.patrick.lrcreader.core.WaveformSessionPrefs
 import com.patrick.lrcreader.core.waveform.WaveformExtractor
+import com.patrick.lrcreader.core.waveform.WaveformPeaksCache
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.hypot
@@ -86,7 +93,9 @@ private enum class DragTarget {
 @Composable
 fun WaveformPreviewScreen(
     modifier: Modifier = Modifier,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    initialUri: Uri? = null,
+    initialName: String? = null
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -108,21 +117,45 @@ fun WaveformPreviewScreen(
     var playheadMs by remember { mutableIntStateOf(0) }
     var stepMs by remember { mutableIntStateOf(50) }
     var isPlayingWave by remember { mutableStateOf(false) }
+    var restoredScrollPx by remember { mutableStateOf<Int?>(null) }
+    var lastInitialUri by remember { mutableStateOf<String?>(null) }
 
-    val openAudioLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
-    ) { uri ->
-        if (uri == null) return@rememberLauncherForActivityResult
+    fun loadAudioUri(uri: Uri, displayNameHint: String? = null, requestPersistable: Boolean) {
+        val uriString = uri.toString()
+        val restoreSameUriSession = WaveformSessionPrefs.loadUri(context) == uriString
+        val restoredZoom = if (restoreSameUriSession) {
+            WaveformSessionPrefs.loadZoom(context).coerceIn(ZOOM_MIN, ZOOM_MAX)
+        } else {
+            ZOOM_MIN
+        }
+        val restoredPlayhead = if (restoreSameUriSession) {
+            WaveformSessionPrefs.loadPlayhead(context).coerceAtLeast(0)
+        } else {
+            0
+        }
+        val restoredScroll = if (restoreSameUriSession) {
+            WaveformSessionPrefs.loadScroll(context).coerceAtLeast(0)
+        } else {
+            0
+        }
 
-        runCatching {
-            context.contentResolver.takePersistableUriPermission(
-                uri,
-                Intent.FLAG_GRANT_READ_URI_PERMISSION
-            )
+        if (requestPersistable) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            }
         }
 
         selectedUri = uri
-        selectedName = queryDisplayName(context, uri)
+        selectedName = displayNameHint?.takeIf { it.isNotBlank() } ?: queryDisplayName(context, uri)
+        zoom = restoredZoom
+        restoredScrollPx = restoredScroll
+        WaveformSessionPrefs.saveUri(context, uriString)
+        WaveformSessionPrefs.saveTitle(context, selectedName)
+        WaveformSessionPrefs.saveZoom(context, zoom)
+
         peaks = emptyList()
         hasError = false
         isLoading = true
@@ -143,11 +176,19 @@ fun WaveformPreviewScreen(
         analysisJob = scope.launch {
             val result = runCatching {
                 val localDurationMs = queryDurationMs(context, uri)
-                WaveformExtractor.extractNormalizedPeaks(
+                val waveformPeaks = WaveformPeaksCache.getOrCompute(
                     context = context,
                     uri = uri,
-                    targetPoints = 20_000
-                ) to localDurationMs
+                    targetPoints = 20_000,
+                    durationMs = localDurationMs
+                ) {
+                    WaveformExtractor.extractNormalizedPeaks(
+                        context = context,
+                        uri = uri,
+                        targetPoints = 20_000
+                    )
+                }
+                waveformPeaks to localDurationMs
             }
 
             if (result.isSuccess) {
@@ -155,7 +196,8 @@ fun WaveformPreviewScreen(
                 peaks = newPeaks
                 durationMs = newDurationMs.coerceAtLeast(0)
                 if (durationMs > 0) {
-                    playheadMs = playheadMs.coerceIn(0, durationMs)
+                    playheadMs = restoredPlayhead.coerceIn(0, durationMs)
+                    WaveformSessionPrefs.savePlayhead(context, playheadMs)
                     val saved = EditSoundPrefs.get(context, uri)
                     val (safeIn, safeOut) = normalizeInOut(
                         inMs = saved?.startMs ?: 0,
@@ -178,6 +220,13 @@ fun WaveformPreviewScreen(
         }
     }
 
+    val openAudioLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        loadAudioUri(uri = uri, displayNameHint = null, requestPersistable = true)
+    }
+
     DisposableEffect(Unit) {
         onDispose {
             analysisJob?.cancel()
@@ -190,6 +239,7 @@ fun WaveformPreviewScreen(
                 if (state == Player.STATE_ENDED) {
                     isPlayingWave = false
                     playheadMs = durationMs.coerceAtLeast(0)
+                    WaveformSessionPrefs.savePlayhead(context, playheadMs)
                 }
             }
         }
@@ -210,10 +260,30 @@ fun WaveformPreviewScreen(
         }
     }
 
+    LaunchedEffect(initialUri, initialName) {
+        val uri = initialUri ?: return@LaunchedEffect
+        val key = uri.toString()
+        if (key == lastInitialUri) return@LaunchedEffect
+        lastInitialUri = key
+        loadAudioUri(uri = uri, displayNameHint = initialName, requestPersistable = false)
+    }
+
+    LaunchedEffect(initialUri, selectedUri) {
+        if (initialUri != null || selectedUri != null) return@LaunchedEffect
+        val savedUriString = WaveformSessionPrefs.loadUri(context) ?: return@LaunchedEffect
+        val savedUri = runCatching { Uri.parse(savedUriString) }.getOrNull() ?: return@LaunchedEffect
+        loadAudioUri(
+            uri = savedUri,
+            displayNameHint = WaveformSessionPrefs.loadTitle(context),
+            requestPersistable = false
+        )
+    }
+
     fun nudgePlayhead(deltaMs: Int) {
         if (durationMs <= 0) return
         val newPos = (playheadMs + deltaMs).coerceIn(0, durationMs)
         playheadMs = newPos
+        WaveformSessionPrefs.savePlayhead(context, newPos)
         exoPlayer.seekTo(newPos.toLong())
         if (isPlayingWave) exoPlayer.play()
     }
@@ -310,6 +380,7 @@ fun WaveformPreviewScreen(
                             onTapTimeMs = { tapTimeMs ->
                                 val safeTap = tapTimeMs.coerceIn(0, durationMs.coerceAtLeast(0))
                                 playheadMs = safeTap
+                                WaveformSessionPrefs.savePlayhead(context, safeTap)
                                 exoPlayer.seekTo(safeTap.toLong())
                                 if (isPlayingWave) {
                                     exoPlayer.play()
@@ -376,6 +447,11 @@ fun WaveformPreviewScreen(
                                 inMs = newIn
                                 outMs = newOut
                             },
+                            restoredScrollPx = restoredScrollPx,
+                            scrollRestoreKey = selectedUri?.toString(),
+                            onScrollChanged = { px ->
+                                WaveformSessionPrefs.saveScroll(context, px)
+                            },
                             modifier = Modifier.fillMaxSize()
                         )
                     }
@@ -395,11 +471,17 @@ fun WaveformPreviewScreen(
                 Slider(
                     modifier = Modifier.weight(1f),
                     value = zoom,
-                    onValueChange = { zoom = it },
+                    onValueChange = {
+                        zoom = it
+                        WaveformSessionPrefs.saveZoom(context, it)
+                    },
                     valueRange = ZOOM_MIN..ZOOM_MAX
                 )
                 TextButton(
-                    onClick = { zoom = ZOOM_MIN },
+                    onClick = {
+                        zoom = ZOOM_MIN
+                        WaveformSessionPrefs.saveZoom(context, ZOOM_MIN)
+                    },
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
                 ) {
                     Text("Reset", fontSize = 11.sp)
@@ -502,6 +584,7 @@ fun WaveformPreviewScreen(
                         val target = if (durationMs > 0 && inMs > 0) inMs else 0
                         val safeTarget = target.coerceIn(0, durationMs.coerceAtLeast(0))
                         playheadMs = safeTarget
+                        WaveformSessionPrefs.savePlayhead(context, safeTarget)
                         exoPlayer.seekTo(safeTarget.toLong())
                         if (isPlayingWave) {
                             exoPlayer.playWhenReady = true
@@ -524,10 +607,12 @@ fun WaveformPreviewScreen(
                             exoPlayer.pause()
                             val current = exoPlayer.currentPosition.coerceAtLeast(0L).toInt()
                             playheadMs = current.coerceIn(0, durationMs)
+                            WaveformSessionPrefs.savePlayhead(context, playheadMs)
                             isPlayingWave = false
                         } else {
                             val safePlayhead = playheadMs.coerceIn(0, durationMs)
                             playheadMs = safePlayhead
+                            WaveformSessionPrefs.savePlayhead(context, safePlayhead)
                             exoPlayer.seekTo(safePlayhead.toLong())
                             exoPlayer.playWhenReady = true
                             exoPlayer.play()
@@ -546,6 +631,7 @@ fun WaveformPreviewScreen(
                         exoPlayer.playWhenReady = false
                         val current = exoPlayer.currentPosition.coerceAtLeast(0L).toInt()
                         playheadMs = if (durationMs > 0) current.coerceIn(0, durationMs) else current
+                        WaveformSessionPrefs.savePlayhead(context, playheadMs)
                         isPlayingWave = false
                     },
                     enabled = selectedUri != null && durationMs > 0,
@@ -577,6 +663,7 @@ fun WaveformPreviewScreen(
 }
 
 @Composable
+@OptIn(FlowPreview::class)
 private fun WaveformCanvas(
     peaks: List<Float>,
     zoom: Float,
@@ -591,6 +678,9 @@ private fun WaveformCanvas(
     onSetInFromPlayhead: () -> Unit,
     onSwipeLeftSetIn: () -> Unit,
     onSwipeRightSetOut: () -> Unit,
+    restoredScrollPx: Int?,
+    scrollRestoreKey: String?,
+    onScrollChanged: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val scrollState = rememberScrollState()
@@ -598,6 +688,7 @@ private fun WaveformCanvas(
     var lastTapUptimeMs by remember { mutableStateOf(0L) }
     var lastTapAbsX by remember { mutableStateOf(Float.NaN) }
     var isDraggingHandle by remember { mutableStateOf(false) }
+    var appliedScrollRestoreKey by remember { mutableStateOf<String?>(null) }
 
     BoxWithConstraints(modifier = modifier) {
         val viewportWidthPx = with(density) { maxWidth.toPx() }
@@ -607,6 +698,22 @@ private fun WaveformCanvas(
         val swipeThresholdPx = with(density) { 28.dp.toPx() }
 
         val maxScrollPx = (canvasWidthPx - viewportWidthPx).coerceAtLeast(0f)
+
+        LaunchedEffect(scrollRestoreKey, restoredScrollPx, maxScrollPx, zoom, playheadMs, durationMs) {
+            val key = scrollRestoreKey ?: return@LaunchedEffect
+            val savedScroll = restoredScrollPx ?: return@LaunchedEffect
+            if (appliedScrollRestoreKey == key) return@LaunchedEffect
+            val clamped = savedScroll.coerceIn(0, maxScrollPx.roundToInt())
+            scrollState.scrollTo(clamped)
+            appliedScrollRestoreKey = key
+        }
+
+        LaunchedEffect(scrollState) {
+            snapshotFlow { scrollState.value }
+                .distinctUntilChanged()
+                .debounce(120)
+                .collect { onScrollChanged(it) }
+        }
 
         LaunchedEffect(zoom, durationMs) {
             if (durationMs <= 0 || viewportWidthPx <= 0f) return@LaunchedEffect
