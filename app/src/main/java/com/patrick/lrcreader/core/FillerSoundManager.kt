@@ -4,6 +4,7 @@ import android.content.Context
 import android.media.MediaPlayer
 import android.net.Uri
 import android.provider.DocumentsContract
+import android.util.Log
 import android.widget.Toast
 import androidx.documentfile.provider.DocumentFile
 import kotlinx.coroutines.CoroutineScope
@@ -14,6 +15,7 @@ import kotlinx.coroutines.launch
 import kotlin.random.Random
 
 object FillerSoundManager {
+    private const val METER_TAG = "METER"
 
     private var player: MediaPlayer? = null
     private var nextPlayer: MediaPlayer? = null
@@ -143,7 +145,52 @@ object FillerSoundManager {
         try { startFromFolderIndex(context, folderIndex) } catch (_: Exception) {}
     }
 
-    fun isPlaying(): Boolean = player?.isPlaying == true
+    fun isPlaying(): Boolean {
+        val mainPlaying = safeIsPlaying(player, "player")
+        val nextPlaying = safeIsPlaying(nextPlayer, "nextPlayer")
+        return mainPlaying || nextPlaying
+    }
+
+    fun getAudioSessionIds(): List<Int> {
+        val playerId = safeSessionId(player, "player")
+        val nextId = safeSessionId(nextPlayer, "nextPlayer")
+        return listOf(playerId, nextId).filter { it > 0 }.distinct()
+    }
+
+    private fun safeIsPlaying(mp: MediaPlayer?, label: String): Boolean {
+        return runCatching { mp?.isPlaying == true }
+            .getOrElse {
+                Log.w(METER_TAG, "FILLER isPlaying($label) failed: ${it.message}")
+                false
+            }
+    }
+
+    private fun safeSessionId(mp: MediaPlayer?, label: String): Int {
+        return runCatching { mp?.audioSessionId ?: 0 }
+            .getOrElse {
+                Log.w(METER_TAG, "FILLER audioSessionId($label) failed: ${it.message}")
+                0
+            }
+    }
+
+    private fun logMeterState(reason: String) {
+        val pPlaying = safeIsPlaying(player, "player")
+        val nPlaying = safeIsPlaying(nextPlayer, "nextPlayer")
+        val pSession = safeSessionId(player, "player")
+        val nSession = safeSessionId(nextPlayer, "nextPlayer")
+        val anyPlaying = pPlaying || nPlaying
+        val session = listOf(pSession, nSession).firstOrNull { it > 0 }
+        Log.d(
+            METER_TAG,
+            "FILLER $reason isPlayingPlayer=$pPlaying isPlayingNext=$nPlaying sessionPlayer=$pSession sessionNext=$nSession"
+        )
+        if (anyPlaying) {
+            Log.d(
+                METER_TAG,
+                "PLAY_START engine=FillerSoundManager sessionId=$session isPlaying=$anyPlaying reason=$reason"
+            )
+        }
+    }
 
     private fun startFromSingleFile(context: Context, uri: Uri) {
         stopNow()
@@ -163,6 +210,7 @@ object FillerSoundManager {
             mp.prepare()
             mp.setVolume(currentVolume, currentVolume)
             mp.start()
+            logMeterState("start single file")
 
             player = mp
             folderPlaylist = emptyList()
@@ -338,6 +386,7 @@ object FillerSoundManager {
             mp.prepare()
             mp.setVolume(currentVolume, currentVolume)
             mp.start()
+            logMeterState("start folder index")
 
             stopCurrentOnly()
             player = mp
@@ -368,6 +417,7 @@ object FillerSoundManager {
             newPlayer.setVolume(0f, 0f)
             newPlayer.start()
             nextPlayer = newPlayer
+            logMeterState("crossfade next start")
 
             fadeJob?.cancel()
             fadeJob = CoroutineScope(Dispatchers.Main).launch {

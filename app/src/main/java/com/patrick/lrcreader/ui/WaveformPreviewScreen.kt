@@ -8,6 +8,7 @@ import android.media.MediaFormat
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.provider.OpenableColumns
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -235,6 +236,16 @@ fun WaveformPreviewScreen(
 
     DisposableEffect(exoPlayer) {
         val listener = object : Player.Listener {
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                if (isPlaying) {
+                    val session = runCatching { exoPlayer.audioSessionId }.getOrDefault(0)
+                    Log.d(
+                        "METER",
+                        "PLAY_START engine=Other.WaveformPreview sessionId=$session isPlaying=$isPlaying"
+                    )
+                }
+            }
+
             override fun onPlaybackStateChanged(state: Int) {
                 if (state == Player.STATE_ENDED) {
                     isPlayingWave = false

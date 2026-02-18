@@ -168,6 +168,13 @@ fun LibraryScreen(
         val listener = object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 quickIsPlaying = isPlaying
+                if (isPlaying) {
+                    val session = runCatching { quickPlayer.audioSessionId }.getOrDefault(0)
+                    Log.d(
+                        "METER",
+                        "PLAY_START engine=Other.LibraryQuickPlayer sessionId=$session isPlaying=$isPlaying"
+                    )
+                }
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {

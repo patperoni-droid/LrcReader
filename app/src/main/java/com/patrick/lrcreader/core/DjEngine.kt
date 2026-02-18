@@ -3,6 +3,7 @@ package com.patrick.lrcreader.core.dj
 import android.content.Context
 import android.media.MediaPlayer
 import android.net.Uri
+import android.util.Log
 import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.core.PlaybackCoordinator
 import com.patrick.lrcreader.core.history.HistoryRepository
@@ -41,6 +42,7 @@ data class DjUiState(
  * Moteur DJ global.
  */
 object DjEngine {
+    private const val METER_TAG = "METER"
 
     private lateinit var appContext: Context
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -144,6 +146,41 @@ object DjEngine {
             masterLevel = masterLevel,
             queue = queueInternal.toList()
         )
+    }
+
+    private fun safeIsPlaying(player: MediaPlayer?, deck: String): Boolean {
+        return runCatching { player?.isPlaying == true }
+            .getOrElse {
+                Log.w(METER_TAG, "DJ isPlaying($deck) failed: ${it.message}")
+                false
+            }
+    }
+
+    private fun safeSessionId(player: MediaPlayer?, deck: String): Int {
+        return runCatching { player?.audioSessionId ?: 0 }
+            .getOrElse {
+                Log.w(METER_TAG, "DJ audioSessionId($deck) failed: ${it.message}")
+                0
+            }
+    }
+
+    private fun logMeterState(reason: String) {
+        val aPlaying = safeIsPlaying(mpA, "A")
+        val bPlaying = safeIsPlaying(mpB, "B")
+        val aSession = safeSessionId(mpA, "A")
+        val bSession = safeSessionId(mpB, "B")
+        val anyPlaying = aPlaying || bPlaying
+        val session = listOf(aSession, bSession).firstOrNull { it > 0 }
+        Log.d(
+            METER_TAG,
+            "DJ $reason isPlayingA=$aPlaying isPlayingB=$bPlaying sessionA=$aSession sessionB=$bSession activeSlot=$activeSlot"
+        )
+        if (anyPlaying) {
+            Log.d(
+                METER_TAG,
+                "PLAY_START engine=DjEngine sessionId=$session isPlaying=$anyPlaying reason=$reason"
+            )
+        }
     }
 
     fun setQueueAutoPlay(enabled: Boolean) {
@@ -261,6 +298,7 @@ object DjEngine {
                     currentDurationMs = p.duration
                     p.setVolume(1f, 1f)
                     p.start()
+                    logMeterState("start slot=A")
                     logDjPlay(displayName, uriString)
 
                     deckATitle = displayName
@@ -374,6 +412,7 @@ object DjEngine {
 
             p.seekTo(0)
             p.start()
+            logMeterState("queue start slot=A")
             logDjPlay(nextTitle, nextUri)
 
             activeSlot = 1
@@ -397,6 +436,7 @@ object DjEngine {
 
             p.seekTo(0)
             p.start()
+            logMeterState("queue start slot=B")
             logDjPlay(nextTitle, nextUri)
 
             activeSlot = 2
@@ -492,6 +532,22 @@ object DjEngine {
         pushState()
     }
 
+    fun getAudioSessionIds(): List<Int> {
+        val aId = safeSessionId(mpA, "A")
+        val bId = safeSessionId(mpB, "B")
+        return listOf(aId, bId).filter { it > 0 }.distinct()
+    }
+
+    fun isPlaying(): Boolean {
+        val aPlaying = safeIsPlaying(mpA, "A")
+        val bPlaying = safeIsPlaying(mpB, "B")
+        val playing = aPlaying || bPlaying
+        if (!playing && activeSlot != 0 && playingUri != null) {
+            Log.d(METER_TAG, "DJ isPlaying=false but activeSlot=$activeSlot uri=$playingUri")
+        }
+        return playing
+    }
+
     private fun applyCrossfaderInternal(level: Float) {
         val baseA = 1f - crossfadePos
         val baseB = crossfadePos
@@ -520,6 +576,7 @@ object DjEngine {
 
             if (!playerB.isPlaying) {
                 try { playerB.seekTo(0); playerB.start() } catch (_: Exception) {}
+                logMeterState("crossfade auto start slot=B")
                 deckBUri?.let { uri -> logDjPlay(deckBTitle, uri) }
             }
 
@@ -560,6 +617,7 @@ object DjEngine {
 
             if (!playerA.isPlaying) {
                 try { playerA.seekTo(0); playerA.start() } catch (_: Exception) {}
+                logMeterState("crossfade auto start slot=A")
                 deckAUri?.let { uri -> logDjPlay(deckATitle, uri) }
             }
 

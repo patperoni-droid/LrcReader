@@ -3,6 +3,7 @@ package com.patrick.lrcreader.core
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.SystemClock
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import android.util.Log
@@ -21,6 +22,11 @@ object BackupManager {
 
     private const val IMPORT_LOG_TAG = "BACKUP_IMPORT"
     private const val BOOT_TAG = "BOOTSTEP"
+
+    private fun titleFromUri(uriString: String): String {
+        val parsed = runCatching { Uri.parse(uriString) }.getOrNull()
+        return parsed?.lastPathSegment?.substringAfterLast('/')?.ifBlank { uriString } ?: uriString
+    }
 
     data class LastPlayed(
         val uri: String,
@@ -296,7 +302,7 @@ object BackupManager {
 
     private fun mapUriIfNeeded(
         context: Context,
-        localByName: Map<String, String>,
+        localByNameProvider: () -> Map<String, String>,
         oldUri: String,
         backupName: String? = null,
         stats: UriFixStats? = null
@@ -325,8 +331,10 @@ object BackupManager {
             }
         }
 
+        var localByName: Map<String, String>? = null
         for (candidate in candidates) {
-            val resolved = localByName[normalizeName(candidate)]
+            if (localByName == null) localByName = localByNameProvider()
+            val resolved = localByName!![normalizeName(candidate)]
             if (!resolved.isNullOrBlank() && uriExists(context, resolved)) {
                 stats?.remapped = (stats.remapped + 1)
                 Log.d(IMPORT_LOG_TAG, "URI remapped old=$oldUri new=$resolved by=$candidate")
@@ -345,11 +353,32 @@ object BackupManager {
         json: String,
         onLastPlayed: (LastPlayed?) -> Unit = {}
     ) {
-        val root = JSONObject(json)
+        val importStartMs = SystemClock.elapsedRealtime()
+        var stepStartMs = importStartMs
+        fun logStep(step: String) {
+            val now = SystemClock.elapsedRealtime()
+            Log.i(IMPORT_LOG_TAG, "IMPORT_JSON step=$step took=${now - stepStartMs}ms")
+            stepStartMs = now
+        }
 
-        // ✅ map locale une seule fois
-        val localByName = buildLocalMapByName(context)
+        Log.i(IMPORT_LOG_TAG, "IMPORT_JSON start bytes=${json.toByteArray(Charsets.UTF_8).size}")
+        val root = JSONObject(json)
+        logStep("parse_json")
+
         val uriStats = UriFixStats()
+        var localByName = emptyMap<String, String>()
+        var localByNameBuilt = false
+        fun localByNameProvider(): Map<String, String> {
+            if (localByNameBuilt) return localByName
+            val mapStart = SystemClock.elapsedRealtime()
+            localByName = buildLocalMapByName(context)
+            localByNameBuilt = true
+            Log.i(
+                IMPORT_LOG_TAG,
+                "IMPORT_JSON step=build_local_map took=${SystemClock.elapsedRealtime() - mapStart}ms size=${localByName.size}"
+            )
+            return localByName
+        }
 
         // 1) playlists
         val playlistsJson = root.optJSONObject("playlists")
@@ -378,7 +407,7 @@ object BackupManager {
                     }
                     val fixedUri = mapUriIfNeeded(
                         context = context,
-                        localByName = localByName,
+                        localByNameProvider = ::localByNameProvider,
                         oldUri = oldUri,
                         backupName = backupName,
                         stats = uriStats
@@ -387,6 +416,7 @@ object BackupManager {
                 }
             }
         }
+        logStep("write_playlists")
 
         // 2) played
         val playedJson = root.optJSONObject("played")
@@ -397,13 +427,15 @@ object BackupManager {
                 val arr = playedJson.getJSONArray(name)
                 for (i in 0 until arr.length()) {
                     val oldUri = arr.getString(i)
-                    val fixedUri = mapUriIfNeeded(context, localByName, oldUri, stats = uriStats)
+                    val fixedUri = mapUriIfNeeded(context, ::localByNameProvider, oldUri, stats = uriStats)
                     PlaylistRepository.markSongPlayed(name, fixedUri)
                 }
             }
         }
+        logStep("write_played")
 
         // 3) lastPlayed
+        var restoredLastPlayed: LastPlayed? = null
         val lpJson = root.optJSONObject("lastPlayed")
         if (lpJson != null) {
             val oldUri = lpJson.optString("uri", "")
@@ -412,20 +444,27 @@ object BackupManager {
             val pos = lpJson.optLong("positionMs", 0L)
 
             if (oldUri.isNotBlank()) {
-                val fixedUri = mapUriIfNeeded(context, localByName, oldUri, stats = uriStats)
-                onLastPlayed(
-                    LastPlayed(
-                        uri = fixedUri,
-                        playlistName = playlistName,
-                        positionMs = pos
-                    )
+                val fixedUri = mapUriIfNeeded(context, ::localByNameProvider, oldUri, stats = uriStats)
+                restoredLastPlayed = LastPlayed(
+                    uri = fixedUri,
+                    playlistName = playlistName,
+                    positionMs = pos
                 )
-            } else {
-                onLastPlayed(null)
             }
-        } else {
-            onLastPlayed(null)
         }
+
+        if (restoredLastPlayed != null) {
+            SessionPrefs.saveLastSession(context, restoredLastPlayed.uri, restoredLastPlayed.playlistName)
+            Log.i(
+                IMPORT_LOG_TAG,
+                "RESTORE_LAST_PLAYED applied id=${restoredLastPlayed.uri} title=${titleFromUri(restoredLastPlayed.uri)} playlist=${restoredLastPlayed.playlistName}"
+            )
+        } else {
+            SessionPrefs.clearLastSession(context)
+            Log.i(IMPORT_LOG_TAG, "RESTORE_LAST_PLAYED missing")
+        }
+        onLastPlayed(restoredLastPlayed)
+        logStep("restore_last_played")
 
         // 4) fond sonore
         val fillerJson = root.optJSONObject("fillerSound")
@@ -434,7 +473,7 @@ object BackupManager {
             val volume = fillerJson.optDouble("volume", 0.25).toFloat()
             if (uriStr.isNotBlank()) {
                 try {
-                    val fixed = mapUriIfNeeded(context, localByName, uriStr, stats = uriStats)
+                    val fixed = mapUriIfNeeded(context, ::localByNameProvider, uriStr, stats = uriStats)
                     val uri = Uri.parse(fixed)
 
                     FillerSoundPrefs.saveFillerUri(context, uri)
@@ -452,6 +491,7 @@ object BackupManager {
                 } catch (_: Exception) { }
             }
         }
+        logStep("write_filler")
 
         // 5) réglages d’édition
         val editsJson = root.optJSONObject("edits")
@@ -465,7 +505,7 @@ object BackupManager {
                 val startMs = one.optLong("startMs", 0L)
                 val endMs = one.optLong("endMs", 0L)
 
-                val fixedUriString = mapUriIfNeeded(context, localByName, oldUriString, stats = uriStats)
+                val fixedUriString = mapUriIfNeeded(context, ::localByNameProvider, oldUriString, stats = uriStats)
 
                 EditPrefs.saveEdit(
                     context,
@@ -485,6 +525,7 @@ object BackupManager {
                 }
             }
         }
+        logStep("write_edits")
 
         // 6) morceaux "à revoir"
         val reviewJson = root.optJSONObject("review")
@@ -498,11 +539,12 @@ object BackupManager {
 
                 for (i in 0 until arr.length()) {
                     val oldUri = arr.getString(i)
-                    val fixedUri = mapUriIfNeeded(context, localByName, oldUri, stats = uriStats)
+                    val fixedUri = mapUriIfNeeded(context, ::localByNameProvider, oldUri, stats = uriStats)
                     PlaylistRepository.setSongToReview(name, fixedUri, true)
                 }
             }
         }
+        logStep("write_review")
 
         // 7) couleurs de playlists
         val colorsJson = root.optJSONObject("colors")
@@ -514,10 +556,12 @@ object BackupManager {
                 PlaylistRepository.setPlaylistColor(name, colorLong)
             }
         }
+        logStep("write_colors")
+        logStep("rebuild_repo_index")
 
         Log.i(
             IMPORT_LOG_TAG,
-            "Import done. localByName=${localByName.size} kept=${uriStats.kept} remapped=${uriStats.remapped} unresolved=${uriStats.unresolved}"
+            "IMPORT_JSON done total=${SystemClock.elapsedRealtime() - importStartMs}ms localByName=${if (localByNameBuilt) localByName.size else 0} localMapBuilt=$localByNameBuilt kept=${uriStats.kept} remapped=${uriStats.remapped} unresolved=${uriStats.unresolved}"
         )
     }
 

@@ -23,6 +23,7 @@ import kotlin.math.pow
 object AudioEngine {
 
     private const val TS_TAG = "AUDIO_TS"
+    private const val METER_TAG = "METER"
 
     // -----------------------------
     // Time-stretch mode (sécurité)
@@ -62,6 +63,7 @@ object AudioEngine {
 
     private var onNaturalEndCallback: (() -> Unit)? = null
     private var endedListenerAdded = false
+    @Volatile private var lastKnownAudioSessionId: Int? = null
 
     // -----------------------------
     // Fade-out (Stop/Pause doux)
@@ -337,10 +339,20 @@ object AudioEngine {
 
         hqApplyPending = true
         applySpeedPitchNow(reason = "getPlayerInit")
+
+        captureAudioSessionIfAny(p, reason = "getPlayer")
+
         if (!endedListenerAdded) {
             endedListenerAdded = true
             p.addListener(object : Player.Listener {
                 override fun onPlaybackStateChanged(state: Int) {
+                    if (state == Player.STATE_READY) {
+                        captureAudioSessionIfAny(p, reason = "STATE_READY")
+                        Log.d(
+                            METER_TAG,
+                            "EXO STATE_READY isPlaying=${p.isPlaying} playWhenReady=${p.playWhenReady} session=${getPlayerAudioSessionIdOrNull()}"
+                        )
+                    }
                     if (state == Player.STATE_READY) {
                         retryPendingHqApply(reason = "listener:STATE_READY")
                     }
@@ -348,6 +360,27 @@ object AudioEngine {
                         onNaturalEndCallback?.invoke()
                         FillerSoundManager.startIfConfigured(appCtx)
                     }
+                }
+
+                override fun onIsPlayingChanged(isPlaying: Boolean) {
+                    captureAudioSessionIfAny(p, reason = "onIsPlayingChanged")
+                    Log.d(
+                        METER_TAG,
+                        "EXO onIsPlayingChanged isPlaying=$isPlaying session=${getPlayerAudioSessionIdOrNull()}"
+                    )
+                    if (isPlaying) {
+                        Log.d(
+                            METER_TAG,
+                            "PLAY_START engine=AudioEngine sessionId=${getPlayerAudioSessionIdOrNull()} isPlaying=$isPlaying"
+                        )
+                    }
+                }
+
+                override fun onAudioSessionIdChanged(audioSessionId: Int) {
+                    if (audioSessionId > 0) {
+                        lastKnownAudioSessionId = audioSessionId
+                    }
+                    Log.d(METER_TAG, "EXO onAudioSessionIdChanged id=$audioSessionId")
                 }
 
                 override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
@@ -362,6 +395,27 @@ object AudioEngine {
     fun getLyricsListener(): EmbeddedLyricsListener {
         return embeddedLyricsListener
             ?: error("AudioEngine not initialized. Call getPlayer(context, ...) first.")
+    }
+
+    fun getPlayerAudioSessionIdOrNull(): Int? {
+        val current = runCatching { exoPlayer?.audioSessionId ?: 0 }.getOrDefault(0)
+        if (current > 0) {
+            lastKnownAudioSessionId = current
+            return current
+        }
+        return lastKnownAudioSessionId
+    }
+
+    fun isPlayerPlaying(): Boolean {
+        return runCatching { exoPlayer?.isPlaying == true }.getOrDefault(false)
+    }
+
+    private fun captureAudioSessionIfAny(player: ExoPlayer, reason: String) {
+        val id = runCatching { player.audioSessionId }.getOrDefault(0)
+        if (id > 0) {
+            lastKnownAudioSessionId = id
+            Log.d(METER_TAG, "EXO captureAudioSession reason=$reason id=$id")
+        }
     }
 
     fun release() {
@@ -380,6 +434,7 @@ object AudioEngine {
         hqApplyPending = false
         exoPlayer?.release()
         exoPlayer = null
+        lastKnownAudioSessionId = null
         embeddedLyricsListener = null
         onNaturalEndCallback = null
         endedListenerAdded = false

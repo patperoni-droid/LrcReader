@@ -1,17 +1,21 @@
 package com.patrick.lrcreader.ui
 
-import androidx.compose.ui.res.stringResource
-import com.patrick.lrcreader.exo.R
-import com.patrick.lrcreader.exo.BuildConfig
-import androidx.compose.runtime.LaunchedEffect
-import com.patrick.lrcreader.core.PlaybackCoordinator   // pour stopPlayer et stopDj et stopFiller
-import com.patrick.lrcreader.core.FillerSoundManager    // pour fadeOutAndStop du fond sonore
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.ui.res.stringResource
+import com.patrick.lrcreader.exo.R
+import com.patrick.lrcreader.exo.BuildConfig
+import androidx.compose.runtime.LaunchedEffect
+import com.patrick.lrcreader.core.PlaybackCoordinator   // pour stopPlayer et stopDj et stopFiller
+import com.patrick.lrcreader.core.FillerSoundManager    // pour fadeOutAndStop du fond sonore
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.Orientation
@@ -32,6 +36,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -44,15 +50,17 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
+import com.patrick.lrcreader.core.MeterManager
 import com.patrick.lrcreader.core.FillerSoundPrefs
 import com.patrick.lrcreader.core.PlayerBusController
 import com.patrick.lrcreader.core.PlayerVolumePrefs
 import com.patrick.lrcreader.core.DjBusController
 import kotlinx.coroutines.launch
+import java.util.Locale
 
 /**
  * Maquette "console analogique"
@@ -103,6 +111,37 @@ fun MixerHomePreviewScreen(
 
     // DJ bus : on lit le niveau centralisé (même source que l'écran DJ)
     val djInitialUi = DjBusController.getUiLevel().coerceIn(0f, 1f)
+
+    var hasMicPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.RECORD_AUDIO
+            ) == PackageManager.PERMISSION_GRANTED
+        )
+    }
+    val micPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        hasMicPermission = granted
+    }
+
+    LaunchedEffect(Unit) {
+        if (!hasMicPermission) {
+            micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
+        MeterManager.start(context)
+    }
+
+    DisposableEffect(Unit) {
+        onDispose { MeterManager.stop() }
+    }
+
+    val playerMeter by MeterManager.playerMeter.collectAsState()
+    val fillerMeter by MeterManager.fillerMeter.collectAsState()
+    val djMeter by MeterManager.djMeter.collectAsState()
+    val useDecorativeMeters = !hasMicPermission
+    val meterDebug = "VU P:${"%.2f".format(Locale.US, playerMeter)} D:${"%.2f".format(Locale.US, djMeter)} F:${"%.2f".format(Locale.US, fillerMeter)} mic=$hasMicPermission"
 
     val backgroundBrush = Brush.verticalGradient(
         listOf(
@@ -177,6 +216,12 @@ fun MixerHomePreviewScreen(
             }
 
             Spacer(Modifier.height(12.dp))
+            Text(
+                text = meterDebug,
+                color = Color(0xFF90A4AE),
+                fontSize = 10.sp
+            )
+            Spacer(Modifier.height(6.dp))
 
             // ---- PANNEAU PRINCIPAL ----
             Card(
@@ -242,7 +287,9 @@ fun MixerHomePreviewScreen(
                                 // stop du player (nullable lambda)
                                 PlaybackCoordinator.stopPlayer?.invoke()
                             },
-                            initialLevel = lecteurInitialUi
+                            initialLevel = lecteurInitialUi,
+                            meterLevel = playerMeter,
+                            useDecorativeMeter = useDecorativeMeters
                         ) { uiLevel ->
                             // 🔊 Bus principal -> bus lecteur (prefs + MediaPlayer attaché)
                             PlayerBusController.setUiLevelFromBusUi(context, uiLevel)
@@ -259,7 +306,9 @@ fun MixerHomePreviewScreen(
                             onClick = {
                                 PlaybackCoordinator.stopFiller?.invoke()
                             },
-                            initialLevel = fondInitialUi
+                            initialLevel = fondInitialUi,
+                            meterLevel = fillerMeter,
+                            useDecorativeMeter = useDecorativeMeters
                         ) { uiLevel ->
                             try {
                                 val real = uiToRealVolume(uiLevel)
@@ -281,7 +330,9 @@ fun MixerHomePreviewScreen(
                             onClick = {
                                 PlaybackCoordinator.stopDj?.invoke()
                             },
-                            initialLevel = djInitialUi
+                            initialLevel = djInitialUi,
+                            meterLevel = djMeter,
+                            useDecorativeMeter = useDecorativeMeters
                         ) { uiLevel ->
                             DjBusController.setUiLevel(uiLevel)
                         }
@@ -336,6 +387,8 @@ private fun MixerChannelColumn(
     meterColor: Color,
     onClick: () -> Unit,
     initialLevel: Float = 0.75f,
+    meterLevel: Float = 0f,
+    useDecorativeMeter: Boolean = false,
     onLevelChange: (Float) -> Unit = {}
 ) {
 
@@ -343,10 +396,8 @@ private fun MixerChannelColumn(
 
     // IMPORTANT : lié à initialLevel pour pouvoir se resynchroniser
     var level by remember(initialLevel) { mutableFloatStateOf(initialLevel.coerceIn(0f, 1f)) }
-
-    // Animation VU
     val infinite = rememberInfiniteTransition(label)
-    val vuAnim by infinite.animateFloat(
+    val decorativeMeter by infinite.animateFloat(
         initialValue = 0.1f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
@@ -354,6 +405,8 @@ private fun MixerChannelColumn(
             repeatMode = RepeatMode.Reverse
         )
     )
+    val meter = if (useDecorativeMeter) decorativeMeter.coerceIn(0f, 1f) else meterLevel.coerceIn(0f, 1f)
+    val meterText = "%.2f".format(Locale.US, meter)
 
     Column(
         modifier = Modifier
@@ -373,6 +426,11 @@ private fun MixerChannelColumn(
             text = subtitle,
             color = Color(0xFFB0BEC5),
             fontSize = 9.sp
+        )
+        Text(
+            text = meterText,
+            color = Color(0xFF78909C),
+            fontSize = 8.sp
         )
 
         Spacer(Modifier.height(10.dp))
@@ -409,7 +467,7 @@ private fun MixerChannelColumn(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .fillMaxHeight(vuAnim.coerceIn(0f, 1f))
+                    .fillMaxHeight(meter)
                     .background(
                         Brush.verticalGradient(
                             listOf(

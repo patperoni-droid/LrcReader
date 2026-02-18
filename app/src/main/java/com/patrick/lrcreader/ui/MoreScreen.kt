@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
 import com.patrick.lrcreader.core.AutoReturnPrefs
+import com.patrick.lrcreader.core.BackupManager
 
 /* ─────────────────────────────
    Écran "Plus" (Paramètres)
@@ -42,7 +43,7 @@ import com.patrick.lrcreader.core.AutoReturnPrefs
 fun MoreScreen(
     modifier: Modifier = Modifier,
     context: Context,
-    onAfterImport: () -> Unit = {},
+    onAfterImport: (BackupManager.LastPlayed?) -> Unit = {},
     onOpenTuner: () -> Unit = {}     // callback pour l'accordeur
 ) {
     var current by remember { mutableStateOf(MoreSection.Root) }

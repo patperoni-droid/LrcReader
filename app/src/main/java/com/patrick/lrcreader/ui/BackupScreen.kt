@@ -3,7 +3,9 @@ package com.patrick.lrcreader.ui
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.SystemClock
 import android.provider.DocumentsContract
+import android.util.Log
 import android.widget.Toast
 import android.widget.Toast.LENGTH_SHORT
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -83,9 +85,10 @@ private fun resolveBackupsInitialUri(context: Context): Uri? {
 @Composable
 fun BackupScreen(
     context: Context,
-    onAfterImport: () -> Unit = {},
+    onAfterImport: (BackupManager.LastPlayed?) -> Unit = {},
     onBack: () -> Unit
 ) {
+    val importTag = "BACKUP_IMPORT"
     val scope = rememberCoroutineScope()
 
     // État dernier import
@@ -114,29 +117,38 @@ fun BackupScreen(
         internalBackupFiles = list
     }
 
-    fun importBackupJsonText(json: String, fileLabel: String) {
-        // ✅ IMPORTANT: on ne bloque pas l'UI
-        scope.launch {
-            isImporting = true
-            try {
-                withContext(Dispatchers.IO) {
-                    BackupManager.importState(context, json) {
-                        // ✅ force la bibliothèque à se reconstruire après import
-                        LibraryIndexCache.clear(context)
-                    }
-                }
-
-                lastImportFile = fileLabel
-                lastImportTime = nowString()
-                lastImportSummary = "Import réussi"
-                onAfterImport()
-
-            } catch (e: Exception) {
-                lastImportSummary = "Échec de l’import (${e.message ?: "erreur inconnue"})"
-            } finally {
-                isImporting = false
+    suspend fun importBackupJsonText(json: String, fileLabel: String, source: String) {
+        val importStart = SystemClock.elapsedRealtime()
+        var restoredLastPlayed: BackupManager.LastPlayed? = null
+        withContext(Dispatchers.IO) {
+            val ioStart = SystemClock.elapsedRealtime()
+            BackupManager.importState(context, json) {
+                restoredLastPlayed = it
+                // ✅ force la bibliothèque à se reconstruire après import
+                LibraryIndexCache.clear(context)
             }
+            Log.i(
+                importTag,
+                "IMPORT_JSON step=post_restore_steps took=${SystemClock.elapsedRealtime() - ioStart}ms source=$source file=$fileLabel"
+            )
         }
+
+        lastImportFile = fileLabel
+        lastImportTime = nowString()
+        lastImportSummary = "Import réussi"
+        onAfterImport(restoredLastPlayed)
+
+        val lp = restoredLastPlayed
+        if (lp != null) {
+            val title = Uri.parse(lp.uri).lastPathSegment?.substringAfterLast('/') ?: lp.uri
+            Log.i(importTag, "RESTORE_LAST_PLAYED applied id=${lp.uri} title=$title")
+        } else {
+            Log.i(importTag, "RESTORE_LAST_PLAYED missing")
+        }
+        Log.i(
+            importTag,
+            "IMPORT_JSON step=ui_post_restore took=${SystemClock.elapsedRealtime() - importStart}ms source=$source file=$fileLabel"
+        )
     }
 
     // ✅ refresh auto en INTERNAL
@@ -175,12 +187,32 @@ fun BackupScreen(
 
         scope.launch {
             isImporting = true
+            val importStart = SystemClock.elapsedRealtime()
             try {
-                // 1) Lire le fichier en IO
+                // 1) Lire le fichier en IO (open + bytes)
+                val bytes = withContext(Dispatchers.IO) {
+                    val openStart = SystemClock.elapsedRealtime()
+                    val input = context.contentResolver.openInputStream(uri)
+                    Log.i(
+                        importTag,
+                        "IMPORT_JSON step=open_input_stream took=${SystemClock.elapsedRealtime() - openStart}ms source=saf uri=$uri opened=${input != null}"
+                    )
+                    val readStart = SystemClock.elapsedRealtime()
+                    val data = input?.use { it.readBytes() }
+                    Log.i(
+                        importTag,
+                        "IMPORT_JSON step=read_bytes took=${SystemClock.elapsedRealtime() - readStart}ms source=saf uri=$uri bytes=${data?.size ?: 0}"
+                    )
+                    data
+                }
                 val json = withContext(Dispatchers.IO) {
-                    context.contentResolver.openInputStream(uri)
-                        ?.bufferedReader(Charsets.UTF_8)
-                        ?.use { it.readText() }
+                    val decodeStart = SystemClock.elapsedRealtime()
+                    val text = bytes?.toString(Charsets.UTF_8)
+                    Log.i(
+                        importTag,
+                        "IMPORT_JSON step=decode_utf8 took=${SystemClock.elapsedRealtime() - decodeStart}ms source=saf uri=$uri chars=${text?.length ?: 0}"
+                    )
+                    text
                 }
 
                 if (json.isNullOrBlank()) {
@@ -189,20 +221,14 @@ fun BackupScreen(
                 }
 
                 // 2) Import en IO
-                withContext(Dispatchers.IO) {
-                    BackupManager.importState(context, json) {
-                        LibraryIndexCache.clear(context)
-                    }
-                }
-
-                // 3) UI update
-                lastImportFile = getDisplayName(context, uri)
-                lastImportTime = nowString()
-                lastImportSummary = "Import réussi"
-                onAfterImport()
-
+                importBackupJsonText(json, getDisplayName(context, uri), source = "saf")
+                Log.i(
+                    importTag,
+                    "IMPORT_JSON step=total_saf took=${SystemClock.elapsedRealtime() - importStart}ms uri=$uri"
+                )
             } catch (e: Exception) {
                 lastImportSummary = "Échec de l’import (${e.message ?: "erreur inconnue"})"
+                Log.e(importTag, "IMPORT_JSON failed source=saf uri=$uri", e)
             } finally {
                 isImporting = false
             }
@@ -451,13 +477,37 @@ fun BackupScreen(
                         internalBackupFiles.take(12).forEach { f ->
                             TextButton(
                                 onClick = {
-                                    val json = runCatching { f.readText(Charsets.UTF_8) }.getOrNull()
-                                    if (!json.isNullOrBlank()) {
-                                        importBackupJsonText(json, f.name)
-                                        showInternalImportDialog = false
-                                    } else {
-                                        lastImportSummary = "Fichier vide ou illisible"
-                                        // on laisse le dialog ouvert pour en choisir un autre
+                                    scope.launch {
+                                        isImporting = true
+                                        try {
+                                            val bytes = withContext(Dispatchers.IO) {
+                                                val readStart = SystemClock.elapsedRealtime()
+                                                val data = runCatching { f.readBytes() }.getOrNull()
+                                                Log.i(
+                                                    importTag,
+                                                    "IMPORT_JSON step=read_bytes took=${SystemClock.elapsedRealtime() - readStart}ms source=internal file=${f.name} bytes=${data?.size ?: 0}"
+                                                )
+                                                data
+                                            }
+                                            val json = withContext(Dispatchers.IO) {
+                                                val decodeStart = SystemClock.elapsedRealtime()
+                                                val text = bytes?.toString(Charsets.UTF_8)
+                                                Log.i(
+                                                    importTag,
+                                                    "IMPORT_JSON step=decode_utf8 took=${SystemClock.elapsedRealtime() - decodeStart}ms source=internal file=${f.name} chars=${text?.length ?: 0}"
+                                                )
+                                                text
+                                            }
+
+                                            if (!json.isNullOrBlank()) {
+                                                showInternalImportDialog = false
+                                                importBackupJsonText(json, f.name, source = "internal")
+                                            } else {
+                                                lastImportSummary = "Fichier vide ou illisible"
+                                            }
+                                        } finally {
+                                            isImporting = false
+                                        }
                                     }
                                 }
                             ) {

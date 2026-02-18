@@ -25,13 +25,32 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 private var lastEndListener: Player.Listener? = null
+private var lastMeterListener: Player.Listener? = null
 private const val EDIT_CLIP_TAG = "EDIT_CLIP"
+private const val METER_TAG = "METER"
+@Volatile private var lastCrossfadeSessionId: Int? = null
+@Volatile private var lastCrossfadeIsPlaying: Boolean = false
 
 private data class EditClipMatch(
     val info: EditSoundPrefs.EditInfo,
     val matchedKey: String,
     val source: String
 )
+
+fun exoCrossfadeAudioSessionIdOrNull(): Int? = lastCrossfadeSessionId
+fun exoCrossfadeIsPlaying(): Boolean = lastCrossfadeIsPlaying
+
+private fun captureCrossfadeState(exoPlayer: ExoPlayer, reason: String) {
+    val session = runCatching { exoPlayer.audioSessionId }.getOrDefault(0).takeIf { it > 0 }
+    if (session != null) {
+        lastCrossfadeSessionId = session
+    }
+    lastCrossfadeIsPlaying = runCatching { exoPlayer.isPlaying }.getOrDefault(false)
+    Log.d(
+        METER_TAG,
+        "EXO_CROSSFADE_STATE reason=$reason sessionId=${lastCrossfadeSessionId} isPlaying=$lastCrossfadeIsPlaying"
+    )
+}
 
 fun exoCrossfadePlay(
     context: Context,
@@ -94,6 +113,23 @@ fun exoCrossfadePlay(
 
         lastEndListener = endListener
         exoPlayer.addListener(endListener)
+
+        lastMeterListener?.let { old -> runCatching { exoPlayer.removeListener(old) } }
+        val meterListener = object : Player.Listener {
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                lastCrossfadeIsPlaying = isPlaying
+                captureCrossfadeState(exoPlayer, reason = "onIsPlayingChanged")
+            }
+
+            override fun onAudioSessionIdChanged(audioSessionId: Int) {
+                if (audioSessionId > 0) {
+                    lastCrossfadeSessionId = audioSessionId
+                }
+                captureCrossfadeState(exoPlayer, reason = "onAudioSessionIdChanged")
+            }
+        }
+        lastMeterListener = meterListener
+        exoPlayer.addListener(meterListener)
 
         // ✅ stop réel de l'ancien titre AVANT de remettre le volume "normal"
         runCatching { exoPlayer.stop() }
@@ -161,6 +197,7 @@ fun exoCrossfadePlay(
         exoPlayer.setMediaItem(clippedMediaItem)
         Log.d(EDIT_CLIP_TAG, "setMediaItem done token=$playToken")
         exoPlayer.prepare()
+        captureCrossfadeState(exoPlayer, reason = "after_prepare")
         Log.d(EDIT_CLIP_TAG, "prepare done token=$playToken")
 
         AudioEngine.reapplyMixNow()
@@ -168,6 +205,11 @@ fun exoCrossfadePlay(
 
         PlaybackCoordinator.requestStartPlayer()
         exoPlayer.play()
+        captureCrossfadeState(exoPlayer, reason = "after_play")
+        Log.d(
+            METER_TAG,
+            "PLAY_START engine=ExoCrossfadePlay sessionId=${lastCrossfadeSessionId} isPlaying=${lastCrossfadeIsPlaying}"
+        )
         onStart()
 
         val lyrics = embeddedLyricsListener.lyrics.filterNotNull().firstOrNull()
