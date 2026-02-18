@@ -55,7 +55,6 @@ fun MoreScreen(
             modifier = modifier,
             onOpenBackup = { navigate("backup") },
             onOpenFiller = { navigate("filler") },
-            onOpenEdit = { navigate("edit") },
             onOpenHistory = { navigate("history") },
             onOpenWaveformPreview = { navigate("waveform_preview") },
             onOpenTuner = onOpenTuner
@@ -68,11 +67,6 @@ fun MoreScreen(
         )
 
         MoreSection.Filler -> FillerSoundScreen(
-            context = context,
-            onBack = { navigate("root") }
-        )
-
-        MoreSection.Edit -> EditSoundScreen(
             context = context,
             onBack = { navigate("root") }
         )
@@ -93,7 +87,6 @@ private enum class MoreSection(val route: String) {
     Root("root"),
     Backup("backup"),
     Filler("filler"),
-    Edit("edit"),
     History("history"),
     WaveformPreview("waveform_preview")
 }
@@ -107,7 +100,6 @@ private fun MoreRootScreen(
     modifier: Modifier = Modifier,
     onOpenBackup: () -> Unit,
     onOpenFiller: () -> Unit,
-    onOpenEdit: () -> Unit,
     onOpenHistory: () -> Unit,
     onOpenWaveformPreview: () -> Unit,
     onOpenTuner: () -> Unit
@@ -195,14 +187,13 @@ private fun MoreRootScreen(
                     SettingsHeader("Fonctions")
                     SettingsItem("🎧  Fond sonore", onClick = onOpenFiller)
                     SettingsItem("💾  Sauvegarde / Restauration", onClick = onOpenBackup)
-                    SettingsItem("🛠  Édition de titre", onClick = onOpenEdit)
                     SettingsItem("🕘  Historique", onClick = onOpenHistory)
 
                     HorizontalDivider(color = Color(0xFF262626))
 
                     // Bloc interface / audio
                     SettingsHeader("Audio & Interface")
-                    SettingsItem("🎨  Interface", onClick = onOpenWaveformPreview)
+                    SettingsItem("🛠  Édition", onClick = onOpenWaveformPreview)
                     SettingsItem("🔊  Audio", onClick = {})
 
                     // Accordeur, dans le bloc Audio
