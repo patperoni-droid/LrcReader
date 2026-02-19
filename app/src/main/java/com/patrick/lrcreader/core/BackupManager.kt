@@ -3,7 +3,6 @@ package com.patrick.lrcreader.core
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.os.SystemClock
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import android.util.Log
@@ -22,11 +21,6 @@ object BackupManager {
 
     private const val IMPORT_LOG_TAG = "BACKUP_IMPORT"
     private const val BOOT_TAG = "BOOTSTEP"
-
-    private fun titleFromUri(uriString: String): String {
-        val parsed = runCatching { Uri.parse(uriString) }.getOrNull()
-        return parsed?.lastPathSegment?.substringAfterLast('/')?.ifBlank { uriString } ?: uriString
-    }
 
     data class LastPlayed(
         val uri: String,
@@ -307,6 +301,14 @@ object BackupManager {
         backupName: String? = null,
         stats: UriFixStats? = null
     ): String {
+        // Fast path import: on truste les URI content:// pour éviter toute validation lourde
+        // (pas de exists(), pas de DocumentFile, pas de openFileDescriptor).
+        if (oldUri.startsWith("content://")) {
+            stats?.kept = (stats?.kept ?: 0) + 1
+            Log.d(IMPORT_LOG_TAG, "URI trusted, skipping validation")
+            return oldUri
+        }
+
         // 1) si l’uri marche déjà → on garde (téléphone concert = intouchable)
         if (oldUri.isNotBlank() && uriExists(context, oldUri)) {
             stats?.kept = (stats.kept + 1)
@@ -353,32 +355,18 @@ object BackupManager {
         json: String,
         onLastPlayed: (LastPlayed?) -> Unit = {}
     ) {
-        val importStartMs = SystemClock.elapsedRealtime()
-        var stepStartMs = importStartMs
-        fun logStep(step: String) {
-            val now = SystemClock.elapsedRealtime()
-            Log.i(IMPORT_LOG_TAG, "IMPORT_JSON step=$step took=${now - stepStartMs}ms")
-            stepStartMs = now
-        }
-
-        Log.i(IMPORT_LOG_TAG, "IMPORT_JSON start bytes=${json.toByteArray(Charsets.UTF_8).size}")
         val root = JSONObject(json)
-        logStep("parse_json")
 
-        val uriStats = UriFixStats()
-        var localByName = emptyMap<String, String>()
-        var localByNameBuilt = false
+        // map locale lazy: on ne scanne que si une URI non-content a besoin de résolution.
+        var localByName: Map<String, String>? = null
         fun localByNameProvider(): Map<String, String> {
-            if (localByNameBuilt) return localByName
-            val mapStart = SystemClock.elapsedRealtime()
-            localByName = buildLocalMapByName(context)
-            localByNameBuilt = true
-            Log.i(
-                IMPORT_LOG_TAG,
-                "IMPORT_JSON step=build_local_map took=${SystemClock.elapsedRealtime() - mapStart}ms size=${localByName.size}"
-            )
-            return localByName
+            val cached = localByName
+            if (cached != null) return cached
+            val built = buildLocalMapByName(context)
+            localByName = built
+            return built
         }
+        val uriStats = UriFixStats()
 
         // 1) playlists
         val playlistsJson = root.optJSONObject("playlists")
@@ -416,7 +404,6 @@ object BackupManager {
                 }
             }
         }
-        logStep("write_playlists")
 
         // 2) played
         val playedJson = root.optJSONObject("played")
@@ -432,10 +419,8 @@ object BackupManager {
                 }
             }
         }
-        logStep("write_played")
 
         // 3) lastPlayed
-        var restoredLastPlayed: LastPlayed? = null
         val lpJson = root.optJSONObject("lastPlayed")
         if (lpJson != null) {
             val oldUri = lpJson.optString("uri", "")
@@ -445,26 +430,19 @@ object BackupManager {
 
             if (oldUri.isNotBlank()) {
                 val fixedUri = mapUriIfNeeded(context, ::localByNameProvider, oldUri, stats = uriStats)
-                restoredLastPlayed = LastPlayed(
-                    uri = fixedUri,
-                    playlistName = playlistName,
-                    positionMs = pos
+                onLastPlayed(
+                    LastPlayed(
+                        uri = fixedUri,
+                        playlistName = playlistName,
+                        positionMs = pos
+                    )
                 )
+            } else {
+                onLastPlayed(null)
             }
-        }
-
-        if (restoredLastPlayed != null) {
-            SessionPrefs.saveLastSession(context, restoredLastPlayed.uri, restoredLastPlayed.playlistName)
-            Log.i(
-                IMPORT_LOG_TAG,
-                "RESTORE_LAST_PLAYED applied id=${restoredLastPlayed.uri} title=${titleFromUri(restoredLastPlayed.uri)} playlist=${restoredLastPlayed.playlistName}"
-            )
         } else {
-            SessionPrefs.clearLastSession(context)
-            Log.i(IMPORT_LOG_TAG, "RESTORE_LAST_PLAYED missing")
+            onLastPlayed(null)
         }
-        onLastPlayed(restoredLastPlayed)
-        logStep("restore_last_played")
 
         // 4) fond sonore
         val fillerJson = root.optJSONObject("fillerSound")
@@ -491,7 +469,6 @@ object BackupManager {
                 } catch (_: Exception) { }
             }
         }
-        logStep("write_filler")
 
         // 5) réglages d’édition
         val editsJson = root.optJSONObject("edits")
@@ -525,7 +502,6 @@ object BackupManager {
                 }
             }
         }
-        logStep("write_edits")
 
         // 6) morceaux "à revoir"
         val reviewJson = root.optJSONObject("review")
@@ -544,7 +520,6 @@ object BackupManager {
                 }
             }
         }
-        logStep("write_review")
 
         // 7) couleurs de playlists
         val colorsJson = root.optJSONObject("colors")
@@ -556,12 +531,10 @@ object BackupManager {
                 PlaylistRepository.setPlaylistColor(name, colorLong)
             }
         }
-        logStep("write_colors")
-        logStep("rebuild_repo_index")
 
         Log.i(
             IMPORT_LOG_TAG,
-            "IMPORT_JSON done total=${SystemClock.elapsedRealtime() - importStartMs}ms localByName=${if (localByNameBuilt) localByName.size else 0} localMapBuilt=$localByNameBuilt kept=${uriStats.kept} remapped=${uriStats.remapped} unresolved=${uriStats.unresolved}"
+            "Import done. localByName=${localByName?.size ?: 0} localMapBuilt=${localByName != null} kept=${uriStats.kept} remapped=${uriStats.remapped} unresolved=${uriStats.unresolved}"
         )
     }
 
