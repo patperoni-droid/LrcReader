@@ -221,7 +221,7 @@ fun BackupScreen(
                 }
 
                 // 2) Import en IO
-                importBackupJsonText(json, getDisplayName(context, uri), source = "saf")
+                importBackupJsonText(json, getDisplayName(context, uri) ?: "backup.json", source = "saf")
                 Log.i(
                     importTag,
                     "IMPORT_JSON step=total_saf took=${SystemClock.elapsedRealtime() - importStart}ms uri=$uri"
