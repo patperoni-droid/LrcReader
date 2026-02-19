@@ -6,10 +6,7 @@ import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionParameters
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.audio.AudioSink
-import androidx.media3.exoplayer.audio.DefaultAudioSink
 import com.patrick.lrcreader.core.FillerSoundManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -22,39 +19,41 @@ import kotlin.math.pow
 @UnstableApi
 object AudioEngine {
 
-    private const val TS_TAG = "AUDIO_TS"
-    private const val METER_TAG = "METER"
-
     // -----------------------------
     // Time-stretch mode (sécurité)
     // -----------------------------
     enum class TimeStretchMode { EXO, HQ }
 
-    @Volatile
-    private var timeStretchMode: TimeStretchMode = TimeStretchMode.HQ
-    @Volatile private var hqApplyPending = false
-    private val soundTouchProcessor = SoundTouchAudioProcessor()
+    // ✅ Par défaut : comportement actuel (sécurisé, rien ne change tant que tu n'actives pas HQ)
+    @Volatile private var timeStretchMode: TimeStretchMode = TimeStretchMode.EXO
 
     // Dernières valeurs demandées (communes aux 2 modes)
     @Volatile private var currentSpeed: Float = 1f
     @Volatile private var currentPitchRatio: Float = 1f
 
-    fun getTimeStretchMode(): TimeStretchMode = timeStretchMode
-
+    /**
+     * ✅ API SAFE : change le mode sans casser le reste.
+     * Pour l'instant HQ n'est pas branché => ça reste en EXO même si tu forces HQ.
+     */
     fun setTimeStretchMode(mode: TimeStretchMode, reason: String = "") {
-        // HQ ONLY (on ignore la demande EXO)
-        timeStretchMode = TimeStretchMode.HQ
+        val effective = when (mode) {
+            TimeStretchMode.EXO -> TimeStretchMode.EXO
+            TimeStretchMode.HQ -> {
+                // ⚠️ HQ pas encore implémenté (SoundTouch viendra après).
+                // Sécurité : on ne casse rien, on log et on reste en EXO.
+                Log.w("AUDIO_TS", "HQ demandé mais non disponible => fallback EXO (reason=$reason)")
+                TimeStretchMode.EXO
+            }
+        }
+        timeStretchMode = effective
+        Log.d("AUDIO_TS", "setTimeStretchMode($reason) requested=$mode effective=$effective")
 
-        // Re-demande d'application HQ (le sink peut ne pas être prêt immédiatement).
-        hqApplyPending = true
-
-        // Active le processor, pas d'init ici (format arrive plus tard via configure())
-        soundTouchProcessor.setEnabled(true)
-
-        Log.d(TS_TAG, "TS_MODE=HQ reason=$reason requested=$mode (HQ only)")
-
+        // ré-applique les paramètres existants dans le mode effectif
         applySpeedPitchNow(reason = "modeSwitch:$reason")
     }
+
+    fun getTimeStretchMode(): TimeStretchMode = timeStretchMode
+
     // -----------------------------
     // Player / listeners
     // -----------------------------
@@ -63,7 +62,6 @@ object AudioEngine {
 
     private var onNaturalEndCallback: (() -> Unit)? = null
     private var endedListenerAdded = false
-    @Volatile private var lastKnownAudioSessionId: Int? = null
 
     // -----------------------------
     // Fade-out (Stop/Pause doux)
@@ -72,7 +70,7 @@ object AudioEngine {
     private val audioScope = CoroutineScope(Dispatchers.Main.immediate)
 
     // -----------------------------
-    // SPEED / PITCH anti-rafale
+    // SPEED / PITCH anti-rafale (évite reconfig en continu)
     // -----------------------------
     private var speedPitchJob: Job? = null
     private var pendingSpeed: Float = 1f
@@ -99,8 +97,10 @@ object AudioEngine {
 
     private fun applyFinalVolume() {
         val p = exoPlayer ?: return
+
         val v = (trackGainLinear * playerBusLevel * fadeMultiplier).coerceIn(0f, 1f)
         p.volume = v
+
         Log.d("BUS", "applyFinalVolume exo.volume=$v track=$trackGainLinear bus=$playerBusLevel fade=$fadeMultiplier")
     }
 
@@ -118,11 +118,13 @@ object AudioEngine {
 
     fun setPlayerBusLevel(level: Float) {
         val safe = level.coerceIn(0f, 1f)
+
         if (exoPlayer == null) {
             pendingPlayerBus = safe
             Log.d("BUS", "setPlayerBusLevel PENDING=$safe (exoPlayer=null)")
             return
         }
+
         playerBusLevel = safe
         Log.d("BUS", "setPlayerBusLevel ACTIVE=$safe (exoPlayer!=null)")
         applyFinalVolume()
@@ -131,10 +133,12 @@ object AudioEngine {
     fun applyTrackGainDb(gainDb: Int) {
         val p = exoPlayer
         val safeDb = gainDb.coerceIn(-12, 0)
+
         if (p == null) {
             pendingTrackGainDb = safeDb
             return
         }
+
         trackGainLinear = dbToLinearAttenuation(safeDb)
         applyFinalVolume()
         pendingTrackGainDb = null
@@ -144,31 +148,44 @@ object AudioEngine {
     // SPEED / PITCH (API publique)
     // -----------------------------
     fun setSpeedPitch(speed: Float, pitch: Float, reason: String = "") {
-        val s = speed.coerceIn(0.5f, 2.0f)
-        val pi = pitch.coerceIn(0.5f, 2.0f)
-
-        // Mémorise la vérité
-        currentSpeed = s
-        currentPitchRatio = pi
-
-        // Si player pas prêt, on s'arrête là (sera appliqué à l'init)
-        if (exoPlayer == null) {
-            Log.w("AUDIO_PATH", "setSpeedPitch pending (exoPlayer=null) reason=$reason s=$s p=$pi")
+        val p = exoPlayer ?: run {
+            Log.w("AUDIO_PATH", "setSpeedPitch ignored (exoPlayer=null) reason=$reason")
+            // On mémorise quand même, pour appliquer au prochain getPlayer()
+            currentSpeed = speed.coerceIn(0.5f, 2.0f)
+            currentPitchRatio = pitch.coerceIn(0.5f, 2.0f)
             return
         }
 
-        // Anti-rafale : coalesce
+        val s = speed.coerceIn(0.5f, 2.0f)
+        val pi = pitch.coerceIn(0.5f, 2.0f)
+
+        // Mémorise la "vérité" des paramètres (communs aux modes)
+        currentSpeed = s
+        currentPitchRatio = pi
+
+        // Anti-rafale : on coalesce
         pendingSpeed = s
         pendingPitch = pi
+
         speedPitchJob?.cancel()
         speedPitchJob = audioScope.launch {
             delay(60L)
-            applySpeedPitchNow(pendingSpeed, pendingPitch, reason = reason)
+
+            val finalS = pendingSpeed
+            val finalP = pendingPitch
+
+            // Evite de spammer si identique
+            val before = p.playbackParameters
+            val sameSpeed = abs(before.speed - finalS) < 0.0005f
+            val samePitch = abs(before.pitch - finalP) < 0.0005f
+            if (sameSpeed && samePitch) return@launch
+
+            applySpeedPitchNow(finalS, finalP, reason = reason)
         }
     }
 
     // -----------------------------
-    // SPEED / PITCH (impl interne)
+    // SPEED / PITCH (impl interne, selon mode)
     // -----------------------------
     private fun applySpeedPitchNow(
         speed: Float = currentSpeed,
@@ -176,67 +193,23 @@ object AudioEngine {
         reason: String = ""
     ) {
         val p = exoPlayer ?: return
+
         val s = speed.coerceIn(0.5f, 2.0f)
         val pi = pitch.coerceIn(0.5f, 2.0f)
 
         when (timeStretchMode) {
             TimeStretchMode.EXO -> {
-                hqApplyPending = false
-                soundTouchProcessor.setEnabled(false)
-
                 val before = p.playbackParameters
-                val sameSpeed = abs(before.speed - s) < 0.0005f
-                val samePitch = abs(before.pitch - pi) < 0.0005f
-                if (!sameSpeed || !samePitch) {
-                    p.playbackParameters = PlaybackParameters(s, pi)
-                }
-                Log.d(TS_TAG, "apply(EXO,$reason) s=$s p=$pi")
+                p.playbackParameters = PlaybackParameters(s, pi)
+                val after = p.playbackParameters
+                Log.d("AUDIO_TS", "apply(EXO,$reason) before=$before after=$after")
             }
-
             TimeStretchMode.HQ -> {
-                val ok = runCatching {
-                    soundTouchProcessor.setEnabled(true)
-
-                    // IMPORTANT: en HQ, Exo doit rester strictement en 1x/1x.
-                    val before = p.playbackParameters
-                    if (abs(before.speed - 1f) > 0.0005f || abs(before.pitch - 1f) > 0.0005f) {
-                        p.playbackParameters = PlaybackParameters(1f, 1f)
-                    }
-
-                    // Mémorise la cible même si le natif n'est pas encore initialisé.
-                    soundTouchProcessor.setTempoAndPitch(s, pi)
-
-                    val initOk = soundTouchProcessor.ensureHqInit()
-                    if (!initOk) {
-                        false
-                    } else {
-                        // Re-pousse les valeurs après init pour garantir l'application immédiate.
-                        soundTouchProcessor.setTempoAndPitch(s, pi)
-                        true
-                    }
-                }.getOrElse {
-                    Log.e(TS_TAG, "HQ runtime failure reason=$reason", it)
-                    false
-                }
-
-                if (!ok) {
-                    // Cas normal en début de lecture: inputFormat pas encore configuré.
-                    // On garde HQ actif et on réessaie sur READY/tracksChanged.
-                    hqApplyPending = true
-                    Log.w(TS_TAG, "HQ_WAIT_INIT reason=$reason speed=$s pitch=$pi")
-                    return
-                }
-
-                hqApplyPending = false
-                Log.d(TS_TAG, "apply(HQ,$reason) via SoundTouch speed=$s pitchRatio=$pi")
+                // ⚠️ Pas encore branché => on ne fait rien ici.
+                // La sécurité est gérée par setTimeStretchMode() qui ne laisse pas passer HQ tant qu'il n'existe pas.
+                Log.w("AUDIO_TS", "apply(HQ,$reason) called but HQ not available -> should not happen")
             }
         }
-    }
-
-    private fun retryPendingHqApply(reason: String) {
-        if (timeStretchMode != TimeStretchMode.HQ) return
-        if (!hqApplyPending) return
-        applySpeedPitchNow(reason = reason)
     }
 
     // -----------------------------
@@ -292,19 +265,7 @@ object AudioEngine {
         onNaturalEndCallback = onNaturalEnd
 
         val p = exoPlayer ?: run {
-            val renderersFactory = object : DefaultRenderersFactory(appCtx) {
-                override fun buildAudioSink(
-                    context: Context,
-                    enableFloatOutput: Boolean,
-                    enableAudioTrackPlaybackParams: Boolean
-                ): AudioSink {
-                    return DefaultAudioSink.Builder(context)
-                        .setAudioProcessors(arrayOf(soundTouchProcessor))
-                        .setEnableFloatOutput(enableFloatOutput)
-                        .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
-                        .build()
-                }
-            }
+            val renderersFactory = androidx.media3.exoplayer.DefaultRenderersFactory(appCtx)
                 .setEnableAudioFloatOutput(false)
                 .setEnableAudioTrackPlaybackParams(false)
 
@@ -331,60 +292,23 @@ object AudioEngine {
                 )
                 .build()
 
-        // Appliquer mix
+        // Appliquer mix + paramètres mémorisés
         pendingPlayerBus?.let { playerBusLevel = it.coerceIn(0f, 1f) }
         pendingTrackGainDb?.let { trackGainLinear = dbToLinearAttenuation(it.coerceIn(-12, 0)) }
         fadeMultiplier = 1f
         applyFinalVolume()
 
-        hqApplyPending = true
+        // ✅ Réapplique speed/pitch (une fois) au moment où le player est prêt
         applySpeedPitchNow(reason = "getPlayerInit")
-
-        captureAudioSessionIfAny(p, reason = "getPlayer")
 
         if (!endedListenerAdded) {
             endedListenerAdded = true
             p.addListener(object : Player.Listener {
                 override fun onPlaybackStateChanged(state: Int) {
-                    if (state == Player.STATE_READY) {
-                        captureAudioSessionIfAny(p, reason = "STATE_READY")
-                        Log.d(
-                            METER_TAG,
-                            "EXO STATE_READY isPlaying=${p.isPlaying} playWhenReady=${p.playWhenReady} session=${getPlayerAudioSessionIdOrNull()}"
-                        )
-                    }
-                    if (state == Player.STATE_READY) {
-                        retryPendingHqApply(reason = "listener:STATE_READY")
-                    }
                     if (state == Player.STATE_ENDED) {
                         onNaturalEndCallback?.invoke()
                         FillerSoundManager.startIfConfigured(appCtx)
                     }
-                }
-
-                override fun onIsPlayingChanged(isPlaying: Boolean) {
-                    captureAudioSessionIfAny(p, reason = "onIsPlayingChanged")
-                    Log.d(
-                        METER_TAG,
-                        "EXO onIsPlayingChanged isPlaying=$isPlaying session=${getPlayerAudioSessionIdOrNull()}"
-                    )
-                    if (isPlaying) {
-                        Log.d(
-                            METER_TAG,
-                            "PLAY_START engine=AudioEngine sessionId=${getPlayerAudioSessionIdOrNull()} isPlaying=$isPlaying"
-                        )
-                    }
-                }
-
-                override fun onAudioSessionIdChanged(audioSessionId: Int) {
-                    if (audioSessionId > 0) {
-                        lastKnownAudioSessionId = audioSessionId
-                    }
-                    Log.d(METER_TAG, "EXO onAudioSessionIdChanged id=$audioSessionId")
-                }
-
-                override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
-                    retryPendingHqApply(reason = "listener:onTracksChanged")
                 }
             })
         }
@@ -397,27 +321,6 @@ object AudioEngine {
             ?: error("AudioEngine not initialized. Call getPlayer(context, ...) first.")
     }
 
-    fun getPlayerAudioSessionIdOrNull(): Int? {
-        val current = runCatching { exoPlayer?.audioSessionId ?: 0 }.getOrDefault(0)
-        if (current > 0) {
-            lastKnownAudioSessionId = current
-            return current
-        }
-        return lastKnownAudioSessionId
-    }
-
-    fun isPlayerPlaying(): Boolean {
-        return runCatching { exoPlayer?.isPlaying == true }.getOrDefault(false)
-    }
-
-    private fun captureAudioSessionIfAny(player: ExoPlayer, reason: String) {
-        val id = runCatching { player.audioSessionId }.getOrDefault(0)
-        if (id > 0) {
-            lastKnownAudioSessionId = id
-            Log.d(METER_TAG, "EXO captureAudioSession reason=$reason id=$id")
-        }
-    }
-
     fun release() {
         fadeJob?.cancel()
         fadeJob = null
@@ -428,13 +331,8 @@ object AudioEngine {
         pendingTrackGainDb = null
         pendingPlayerBus = null
 
-        runCatching { soundTouchProcessor.reset() }
-        runCatching { soundTouchProcessor.setEnabled(false) }
-
-        hqApplyPending = false
         exoPlayer?.release()
         exoPlayer = null
-        lastKnownAudioSessionId = null
         embeddedLyricsListener = null
         onNaturalEndCallback = null
         endedListenerAdded = false
