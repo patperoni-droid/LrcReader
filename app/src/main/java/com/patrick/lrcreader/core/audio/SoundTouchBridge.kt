@@ -13,6 +13,8 @@ object SoundTouchBridge {
 
     @Volatile private var loadTried = false
     @Volatile private var loadedOk = false
+    @Volatile private var availabilityChecked = false
+    @Volatile private var availabilityCached = false
 
     /**
      * Tente de charger la lib native UNE fois.
@@ -50,6 +52,8 @@ object SoundTouchBridge {
 
     // --- Natif (doit matcher soundtouch_bridge.cpp) ---
     private external fun nativeIsAvailable(): Boolean
+    private external fun nativeGetBuildFlavor(): String
+    private external fun nativeSelfTest(): Boolean
 
     external fun nativeCreate(): Long
     external fun nativeInit(handle: Long, sampleRate: Int, channels: Int): Boolean
@@ -65,13 +69,45 @@ object SoundTouchBridge {
      */
     fun isAvailable(): Boolean {
         if (!ensureLoaded()) return false
-        return try {
-            val ok = nativeIsAvailable()
-            Log.d(TAG, "HQ_NATIVE_AVAILABLE=$ok")
+        if (availabilityChecked) return availabilityCached
+
+        return synchronized(this) {
+            if (availabilityChecked) return@synchronized availabilityCached
+
+            val flavor = runCatching { nativeGetBuildFlavor() }
+                .getOrElse {
+                    Log.e(TAG, "HQ_NATIVE_CALL_FAILED nativeGetBuildFlavor()", it)
+                    "UNKNOWN"
+                }
+
+            val nativeOk = runCatching { nativeIsAvailable() }
+                .getOrElse {
+                    Log.e(TAG, "HQ_NATIVE_CALL_FAILED nativeIsAvailable()", it)
+                    false
+                }
+
+            val selfTest = if (nativeOk && flavor == "REAL") {
+                runCatching { nativeSelfTest() }
+                    .getOrElse {
+                        Log.e(TAG, "HQ_NATIVE_CALL_FAILED nativeSelfTest()", it)
+                        false
+                    }
+            } else {
+                false
+            }
+
+            Log.d(TAG, "HQ_FLAVOR=$flavor")
+            Log.d(TAG, "HQ_NATIVE_AVAILABLE=$nativeOk")
+            Log.d(TAG, "HQ_SELFTEST=$selfTest")
+
+            val ok = nativeOk && flavor == "REAL" && selfTest
+            if (!ok) {
+                Log.e(TAG, "HQ_NOT_READY flavor=$flavor native=$nativeOk selfTest=$selfTest")
+            }
+
+            availabilityCached = ok
+            availabilityChecked = true
             ok
-        } catch (t: Throwable) {
-            Log.e(TAG, "HQ_NATIVE_CALL_FAILED nativeIsAvailable()", t)
-            false
         }
     }
 

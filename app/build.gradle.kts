@@ -7,6 +7,12 @@ plugins {
     id("org.jetbrains.kotlin.kapt")
 }
 
+val enableSoundTouchNative =
+    providers.gradleProperty("enableSoundTouchNative")
+        .orNull
+        ?.toBooleanStrictOrNull()
+        ?: true
+
 android {
     namespace = "com.patrick.lrcreader.exo"
     compileSdk = 35
@@ -17,11 +23,21 @@ android {
             dimension = "mode"
             applicationIdSuffix = ".concert"
             versionNameSuffix = "-concert"
+            externalNativeBuild {
+                cmake {
+                    arguments += "-DLRC_USE_SOUNDTOUCH=0"
+                }
+            }
         }
         create("labo") {
             dimension = "mode"
             applicationIdSuffix = ".labo"
             versionNameSuffix = "-labo"
+            externalNativeBuild {
+                cmake {
+                    arguments += "-DLRC_USE_SOUNDTOUCH=${if (enableSoundTouchNative) 1 else 0}"
+                }
+            }
         }
     }
 

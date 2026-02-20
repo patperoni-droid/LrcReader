@@ -4,6 +4,9 @@ project(soundtouch_jni)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Requested from Gradle with -DLRC_USE_SOUNDTOUCH=<0|1>
+option(LRC_USE_SOUNDTOUCH "Enable real SoundTouch DSP" OFF)
+
 add_library(soundtouch_jni SHARED
         soundtouch_bridge.cpp
 )
@@ -18,6 +21,7 @@ set(SOUNDTOUCH_DIR "${CMAKE_CURRENT_SOURCE_DIR}/soundtouch")
 set(ST_HEADER "${SOUNDTOUCH_DIR}/include/SoundTouch.h")
 set(ST_SRC_DIR "${SOUNDTOUCH_DIR}/source/SoundTouch")
 set(ST_BPM_DIR "${SOUNDTOUCH_DIR}/source/BPMDetect")
+set(ST_CPU_STUB "${SOUNDTOUCH_DIR}/cpu_detect_stub.cpp")
 
 set(ST_SOURCES "")
 if (EXISTS "${ST_SRC_DIR}")
@@ -36,9 +40,24 @@ endif()
 
 message(STATUS "SoundTouch dir: ${SOUNDTOUCH_DIR}")
 message(STATUS "SoundTouch header: ${ST_HEADER}")
+message(STATUS "LRC_USE_SOUNDTOUCH requested: ${LRC_USE_SOUNDTOUCH}")
 message(STATUS "SoundTouch sources found: ${ST_SOURCES}")
 
-if (EXISTS "${ST_HEADER}" AND ST_SOURCES)
+set(SOUNDTOUCH_REAL_READY OFF)
+if (EXISTS "${ST_HEADER}" AND ST_SOURCES AND EXISTS "${ST_CPU_STUB}")
+    set(SOUNDTOUCH_REAL_READY ON)
+endif()
+
+if (LRC_USE_SOUNDTOUCH AND NOT SOUNDTOUCH_REAL_READY)
+    message(FATAL_ERROR
+            "LRC_USE_SOUNDTOUCH=1 requested but SoundTouch real sources are missing.\n"
+            "Expected:\n"
+            "  ${ST_HEADER}\n"
+            "  ${ST_SRC_DIR}/*.cpp\n"
+            "  ${ST_CPU_STUB}\n")
+endif()
+
+if (LRC_USE_SOUNDTOUCH AND SOUNDTOUCH_REAL_READY)
     message(STATUS "SoundTouch: ENABLED (LRC_USE_SOUNDTOUCH=1)")
     target_compile_definitions(soundtouch_jni PRIVATE LRC_USE_SOUNDTOUCH=1)
 
@@ -51,10 +70,10 @@ if (EXISTS "${ST_HEADER}" AND ST_SOURCES)
     # + stub CPU detect (évite l'erreur detectCPUextensions manquant)
     target_sources(soundtouch_jni PRIVATE
             ${ST_SOURCES}
-            "${SOUNDTOUCH_DIR}/cpu_detect_stub.cpp"
+            "${ST_CPU_STUB}"
     )
 else()
-    message(WARNING "SoundTouch: DISABLED (LRC_USE_SOUNDTOUCH=0) - missing header or sources")
+    message(STATUS "SoundTouch: DISABLED (LRC_USE_SOUNDTOUCH=0)")
     target_compile_definitions(soundtouch_jni PRIVATE LRC_USE_SOUNDTOUCH=0)
 endif()
 

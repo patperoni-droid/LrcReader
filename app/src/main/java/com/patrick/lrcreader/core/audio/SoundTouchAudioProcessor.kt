@@ -6,8 +6,9 @@ import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.util.UnstableApi
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.util.Locale
 import kotlin.math.abs
-import kotlin.math.log2
+import kotlin.math.ln
 
 /**
  * AudioProcessor Media3: applique SoundTouch (tempo + pitch) sur PCM 16-bit.
@@ -27,8 +28,9 @@ class SoundTouchAudioProcessor : AudioProcessor {
 
     // --- State ---
     @Volatile private var enabled = false
-    @Volatile private var requestedTempo = 1f
-    @Volatile private var requestedPitchRatio = 1f
+    @Volatile private var pendingTempoRatio = 1f
+    @Volatile private var pendingPitchSemi = 0f
+    @Volatile private var tempoPitchDirty = true
 
     private var configured = false
     private var inputFormat: AudioProcessor.AudioFormat = AudioProcessor.AudioFormat.NOT_SET
@@ -92,18 +94,26 @@ class SoundTouchAudioProcessor : AudioProcessor {
         }
 
         initializedNative = true
-
-// IMPORTANT : appliquer tempo/pitch maintenant que nativeInit est OK
-        applyTempoPitchToNative()
+        tempoPitchDirty = true
 
         Log.d(TAG, "HQ_INIT_OK (bridge available)")
         return true
     }
 
+    fun setTempoRatioAndPitchSemi(tempoRatio: Float, pitchSemi: Float) {
+        pendingTempoRatio = tempoRatio.coerceIn(0.5f, 2.0f)
+        pendingPitchSemi = pitchSemi.coerceIn(-12f, 12f)
+        tempoPitchDirty = true
+        Log.d(
+            TAG,
+            "HQ_SET tempo=${fmtTempo(pendingTempoRatio)} pitchSemi=${fmtPitchSemi(pendingPitchSemi)} ready=${isNativeReady()} dirty=$tempoPitchDirty"
+        )
+    }
+
     fun setTempoAndPitch(speed: Float, pitchRatio: Float) {
-        requestedTempo = speed.coerceIn(0.5f, 2.0f)
-        requestedPitchRatio = pitchRatio.coerceIn(0.5f, 2.0f)
-        applyTempoPitchToNative()
+        val safePitch = pitchRatio.coerceIn(0.5f, 2.0f)
+        val semi = if (abs(safePitch - 1f) < 0.00001f) 0f else 12f * (ln(safePitch) / ln(2f))
+        setTempoRatioAndPitchSemi(speed, semi)
     }
 
     // ------------------------------------------------------------
@@ -156,6 +166,8 @@ class SoundTouchAudioProcessor : AudioProcessor {
             inputBuffer.position(inputBuffer.limit())
             return
         }
+
+        applyTempoPitchIfDirty(h)
 
         val inBytes = ByteArray(inputBuffer.remaining())
         inputBuffer.get(inBytes)
@@ -219,11 +231,12 @@ class SoundTouchAudioProcessor : AudioProcessor {
         if (enabled && handle != 0L) {
             SoundTouchBridge.nativeReset(handle)
             initializedNative = false
+            tempoPitchDirty = true
 
             if (configured && inputFormat != AudioProcessor.AudioFormat.NOT_SET) {
                 val ok = SoundTouchBridge.nativeInit(handle, inputFormat.sampleRate, inputFormat.channelCount)
                 initializedNative = ok
-                if (ok) applyTempoPitchToNative()
+                if (ok) tempoPitchDirty = true
             }
         }
     }
@@ -235,6 +248,7 @@ class SoundTouchAudioProcessor : AudioProcessor {
         inputFormat = AudioProcessor.AudioFormat.NOT_SET
         outputFormat = AudioProcessor.AudioFormat.NOT_SET
         initializedNative = false
+        tempoPitchDirty = true
         releaseNative()
     }
 
@@ -242,31 +256,40 @@ class SoundTouchAudioProcessor : AudioProcessor {
     // Internals
     // ------------------------------------------------------------
 
-    private fun applyTempoPitchToNative() {
+    private fun applyTempoPitchIfDirty(h: Long) {
         if (!enabled) return
-        val h = handle
         if (h == 0L) return
         if (!initializedNative) return
+        if (!tempoPitchDirty) return
 
-        val tempo = requestedTempo
-        val pitchRatio = requestedPitchRatio
-        val semi = ratioToSemitones(pitchRatio)
+        val tempo = pendingTempoRatio
+        val semi = pendingPitchSemi
 
         val okTempo = SoundTouchBridge.nativeSetTempo(h, tempo)
         val okPitch = SoundTouchBridge.nativeSetPitchSemi(h, semi)
+        if (okTempo && okPitch) {
+            tempoPitchDirty = false
+        }
 
-        Log.d(TAG, "HQ_SET_TP speed=$tempo pitchRatio=$pitchRatio semi=$semi okTempo=$okTempo okPitch=$okPitch")
+        Log.d(
+            TAG,
+            "HQ_APPLIED tempo=${fmtTempo(tempo)} pitchSemi=${fmtPitchSemi(semi)} ready=true dirty=$tempoPitchDirty okTempo=$okTempo okPitch=$okPitch"
+        )
     }
 
-    private fun ratioToSemitones(ratio: Float): Float {
-        if (abs(ratio - 1f) < 0.00001f) return 0f
-        return 12f * log2(ratio)
+    private fun isNativeReady(): Boolean {
+        return enabled && handle != 0L && initializedNative && inputFormat != AudioProcessor.AudioFormat.NOT_SET
     }
+
+    private fun fmtTempo(value: Float): String = String.format(Locale.US, "%.2f", value)
+
+    private fun fmtPitchSemi(value: Float): String = String.format(Locale.US, "%+.1f", value)
 
     private fun releaseNative() {
         if (handle != 0L) {
             SoundTouchBridge.nativeRelease(handle)
             handle = 0L
         }
+        tempoPitchDirty = true
     }
 }

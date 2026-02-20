@@ -53,7 +53,6 @@ import com.patrick.lrcreader.core.MidiCueDispatcher
 // import com.patrick.lrcreader.core.PlaylistRepository
 import com.patrick.lrcreader.core.PlaybackCoordinator
 import com.patrick.lrcreader.core.audio.AudioEngine
-import com.patrick.lrcreader.core.audio.SoundTouchBridge
 import com.patrick.lrcreader.core.parseLrc
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -88,17 +87,6 @@ fun PlayerScreen(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
-    val hqAvailable = remember { SoundTouchBridge.isAvailable() }
-    var timeStretchMode by remember { mutableStateOf(AudioEngine.getTimeStretchMode()) }
-    val timeStretchLabel = remember(timeStretchMode, hqAvailable) {
-        when {
-            !hqAvailable -> "TS=EXO (HQ OFF)"
-            timeStretchMode == AudioEngine.TimeStretchMode.HQ -> "TS=HQ"
-            else -> "TS=EXO"
-        }
-    }
-
-
     // 📝 Notes LIVE (création depuis le lecteur)
     var showAddNoteDialog by remember { mutableStateOf(false) }
     var noteDraftText by remember { mutableStateOf("") }
@@ -118,8 +106,7 @@ fun PlayerScreen(
         AudioEngine.reapplyMixNow()
     }
     LaunchedEffect(Unit) {
-        AudioEngine.setTimeStretchMode(timeStretchMode, reason = "ui:init")
-        timeStretchMode = AudioEngine.getTimeStretchMode()
+        AudioEngine.setTimeStretchMode(AudioEngine.TimeStretchMode.HQ, reason = "ui:init:HQ_ONLY")
     }
 
     // ✅ "Niveau du titre" appliqué au moteur
@@ -459,16 +446,6 @@ fun PlayerScreen(
                                 AutoReturnPrefs.setEnabled(context, newValue)
                                 hasRequestedPlaylist = false
                             },
-                            timeStretchLabel = timeStretchLabel,
-                            onToggleTimeStretch = {
-                                val next = when (timeStretchMode) {
-                                    AudioEngine.TimeStretchMode.EXO -> AudioEngine.TimeStretchMode.HQ
-                                    AudioEngine.TimeStretchMode.HQ -> AudioEngine.TimeStretchMode.EXO
-                                }
-                                AudioEngine.setTimeStretchMode(next, reason = "ui")
-                                timeStretchMode = AudioEngine.getTimeStretchMode()
-                            },
-                            timeStretchEnabled = hqAvailable,
                             highlightColor = highlightColor,
                             onOpenMix = { showMixScreen = true },
                             onOpenEditor = {
@@ -709,9 +686,6 @@ private fun ReaderHeader(
     onToggleConcertMode: () -> Unit,
     autoReturnEnabled: Boolean,
     onToggleAutoReturn: () -> Unit,
-    timeStretchLabel: String,
-    onToggleTimeStretch: () -> Unit,
-    timeStretchEnabled: Boolean,
     highlightColor: Color,
     onOpenMix: () -> Unit,
     onOpenEditor: () -> Unit,
@@ -753,16 +727,11 @@ private fun ReaderHeader(
                 )
             }
 
-            TextButton(
-                onClick = onToggleTimeStretch,
-                enabled = timeStretchEnabled
-            ) {
-                Text(
-                    text = timeStretchLabel,
-                    color = if (timeStretchEnabled) Color(0xFFB3E5FC) else Color(0xFF90A4AE),
-                    fontSize = 10.sp
-                )
-            }
+            Text(
+                text = "TS=HQ",
+                color = Color(0xFFB3E5FC),
+                fontSize = 10.sp
+            )
 
             IconButton(onClick = onOpenMix) {
                 Icon(

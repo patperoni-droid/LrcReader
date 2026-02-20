@@ -1,5 +1,7 @@
 #include <jni.h>
 #include <android/log.h>
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <vector>
@@ -128,8 +130,98 @@ Java_com_patrick_lrcreader_core_audio_SoundTouchBridge_nativeIsAvailable(
         JNIEnv*,
         jobject
 ) {
-    // OK = "la lib répond"
+// En STUB, HQ doit être indisponible.
+#if !LRC_USE_SOUNDTOUCH
+    return JNI_FALSE;
+#else
     return JNI_TRUE;
+#endif
+}
+
+// Kotlin: private external fun nativeGetBuildFlavor(): String
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_patrick_lrcreader_core_audio_SoundTouchBridge_nativeGetBuildFlavor(
+        JNIEnv* env,
+        jobject
+) {
+#if LRC_USE_SOUNDTOUCH
+    return env->NewStringUTF("REAL");
+#else
+    return env->NewStringUTF("STUB");
+#endif
+}
+
+// Kotlin: private external fun nativeSelfTest(): Boolean
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_patrick_lrcreader_core_audio_SoundTouchBridge_nativeSelfTest(
+        JNIEnv*,
+        jobject
+) {
+#if !LRC_USE_SOUNDTOUCH
+    __android_log_print(ANDROID_LOG_WARN, kTag, "nativeSelfTest=false (STUB build)");
+    return JNI_FALSE;
+#else
+    Processor p;
+    p.sampleRate = 44100;
+    p.channels = 1;
+    p.initialized = true;
+    p.st.clear();
+    p.st.setSampleRate(static_cast<uint32_t>(p.sampleRate));
+    p.st.setChannels(static_cast<uint32_t>(p.channels));
+    p.st.setTempo(1.20f);
+    p.st.setPitchSemiTones(6.0f);
+
+    const int frames = p.sampleRate / 2; // 500 ms
+    std::vector<int16_t> in(static_cast<size_t>(frames) * static_cast<size_t>(p.channels));
+    constexpr float kPi = 3.14159265358979323846f;
+    constexpr float kTwoPi = 2.0f * kPi;
+    constexpr float kFreqHz = 440.0f;
+    constexpr float kAmp = 0.60f * 32767.0f;
+    for (int i = 0; i < frames; ++i) {
+        const float s = std::sin(kTwoPi * kFreqHz * (static_cast<float>(i) / static_cast<float>(p.sampleRate)));
+        in[static_cast<size_t>(i)] = static_cast<int16_t>(std::max(-32768.0f, std::min(32767.0f, s * kAmp)));
+    }
+
+    std::vector<soundtouch::SAMPLETYPE> stIn(in.size());
+    for (size_t i = 0; i < in.size(); ++i) {
+        stIn[i] = pcm16ToSample(in[i]);
+    }
+
+    p.st.putSamples(stIn.data(), static_cast<uint32_t>(frames));
+    p.st.flush();
+    std::vector<int16_t> out = drainOutputLimited(&p, 0);
+
+    if (out.empty()) {
+        __android_log_print(ANDROID_LOG_WARN, kTag, "nativeSelfTest=false (out empty)");
+        return JNI_FALSE;
+    }
+
+    const size_t n = std::min(in.size(), out.size());
+    double mad = 0.0;
+    for (size_t i = 0; i < n; ++i) {
+        mad += std::abs(static_cast<int>(out[i]) - static_cast<int>(in[i]));
+    }
+    const double madNorm = (n > 0) ? ((mad / static_cast<double>(n)) / 32768.0) : 0.0;
+    const double lenDeltaRatio = (in.empty())
+                                 ? 0.0
+                                 : (std::abs(static_cast<double>(out.size()) - static_cast<double>(in.size()))
+                                    / static_cast<double>(in.size()));
+
+    const bool transformed = (lenDeltaRatio > 0.02) || (madNorm > 0.005);
+
+    __android_log_print(
+            ANDROID_LOG_INFO,
+            kTag,
+            "nativeSelfTest in=%zu out=%zu lenDelta=%.5f madNorm=%.5f transformed=%d",
+            in.size(),
+            out.size(),
+            lenDeltaRatio,
+            madNorm,
+            transformed ? 1 : 0
+    );
+
+    return transformed ? JNI_TRUE : JNI_FALSE;
+#endif
 }
 
 // Kotlin: private external fun nativeCreate(): Long
@@ -172,7 +264,7 @@ Java_com_patrick_lrcreader_core_audio_SoundTouchBridge_nativeInit(
     __android_log_print(
             ANDROID_LOG_INFO,
             kTag,
-            "STUB nativeInit OK sr=%d ch=%d (SoundTouch disabled)",
+            "STUB nativeInit OK sr=%d ch=%d bytesPerSample=2 (SoundTouch disabled)",
             sampleRate,
             channels
     );
@@ -188,7 +280,7 @@ Java_com_patrick_lrcreader_core_audio_SoundTouchBridge_nativeInit(
     __android_log_print(
         ANDROID_LOG_INFO,
         kTag,
-        "SoundTouch nativeInit OK sr=%d ch=%d",
+        "SoundTouch nativeInit OK sr=%d ch=%d bytesPerSample=2",
         sampleRate,
         channels
     );

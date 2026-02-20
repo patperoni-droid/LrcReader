@@ -17,6 +17,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.abs
+import kotlin.math.ln
 import kotlin.math.pow
 
 @UnstableApi
@@ -29,25 +30,38 @@ object AudioEngine {
     // -----------------------------
     enum class TimeStretchMode { EXO, HQ }
 
-    @Volatile private var timeStretchMode: TimeStretchMode = TimeStretchMode.EXO
-    @Volatile private var hqApplyPending = false
     private val soundTouchProcessor = SoundTouchAudioProcessor()
+    @Volatile private var timeStretchMode: TimeStretchMode = initialTimeStretchMode()
+    @Volatile private var hqApplyPending = timeStretchMode == TimeStretchMode.HQ
 
     // Dernières valeurs demandées (communes aux 2 modes)
     @Volatile private var currentSpeed: Float = 1f
     @Volatile private var currentPitchRatio: Float = 1f
 
+    init {
+        soundTouchProcessor.setEnabled(timeStretchMode == TimeStretchMode.HQ)
+    }
+
+    private fun initialTimeStretchMode(): TimeStretchMode {
+        return if (SoundTouchBridge.isAvailable()) {
+            TimeStretchMode.HQ
+        } else {
+            Log.w(TS_TAG, "HQ unavailable")
+            TimeStretchMode.EXO
+        }
+    }
+
     fun setTimeStretchMode(mode: TimeStretchMode, reason: String = "") {
-        val effective = when (mode) {
-            TimeStretchMode.EXO -> TimeStretchMode.EXO
-            TimeStretchMode.HQ -> {
-                if (SoundTouchBridge.isAvailable()) {
-                    TimeStretchMode.HQ
-                } else {
-                    Log.w(TS_TAG, "HQ demandé mais indisponible -> fallback EXO")
-                    TimeStretchMode.EXO
-                }
-            }
+        val hqAvailable = SoundTouchBridge.isAvailable()
+        val effective = if (hqAvailable) {
+            TimeStretchMode.HQ
+        } else {
+            Log.w(TS_TAG, "HQ unavailable")
+            TimeStretchMode.EXO
+        }
+
+        if (effective != mode) {
+            Log.d(TS_TAG, "HQ_ONLY forced=$effective requested=$mode reason=$reason")
         }
 
         timeStretchMode = effective
@@ -180,11 +194,13 @@ object AudioEngine {
             val finalS = pendingSpeed
             val finalP = pendingPitch
 
-            // Evite de spammer si identique
-            val before = p.playbackParameters
-            val sameSpeed = abs(before.speed - finalS) < 0.0005f
-            val samePitch = abs(before.pitch - finalP) < 0.0005f
-            if (sameSpeed && samePitch) return@launch
+            if (timeStretchMode == TimeStretchMode.EXO) {
+                // Evite de spammer si identique (uniquement pertinent en EXO).
+                val before = p.playbackParameters
+                val sameSpeed = abs(before.speed - finalS) < 0.0005f
+                val samePitch = abs(before.pitch - finalP) < 0.0005f
+                if (sameSpeed && samePitch) return@launch
+            }
 
             applySpeedPitchNow(finalS, finalP, reason = reason)
         }
@@ -217,6 +233,7 @@ object AudioEngine {
                 Log.d(TS_TAG, "apply(EXO,$reason) s=$s p=$pi")
             }
             TimeStretchMode.HQ -> {
+                val pitchSemi = ratioToSemitones(pi)
                 val ok = runCatching {
                     soundTouchProcessor.setEnabled(true)
 
@@ -225,13 +242,19 @@ object AudioEngine {
                         p.playbackParameters = PlaybackParameters(1f, 1f)
                     }
 
-                    soundTouchProcessor.setTempoAndPitch(s, pi)
+                    soundTouchProcessor.setTempoRatioAndPitchSemi(
+                        tempoRatio = s,
+                        pitchSemi = pitchSemi
+                    )
 
                     val initOk = soundTouchProcessor.ensureHqInit()
                     if (!initOk) {
                         false
                     } else {
-                        soundTouchProcessor.setTempoAndPitch(s, pi)
+                        soundTouchProcessor.setTempoRatioAndPitchSemi(
+                            tempoRatio = s,
+                            pitchSemi = pitchSemi
+                        )
                         true
                     }
                 }.getOrElse {
@@ -246,9 +269,14 @@ object AudioEngine {
                 }
 
                 hqApplyPending = false
-                Log.d(TS_TAG, "apply(HQ,$reason) via SoundTouch speed=$s pitchRatio=$pi")
+                Log.d(TS_TAG, "apply(HQ,$reason) via SoundTouch tempoRatio=$s pitchSemi=$pitchSemi")
             }
         }
+    }
+
+    private fun ratioToSemitones(pitchRatio: Float): Float {
+        if (abs(pitchRatio - 1f) < 0.00001f) return 0f
+        return 12f * (ln(pitchRatio) / ln(2f))
     }
 
     private fun retryPendingHqApply(reason: String) {
