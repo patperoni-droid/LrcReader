@@ -15,6 +15,18 @@ object SoundTouchBridge {
     @Volatile private var loadedOk = false
     @Volatile private var availabilityChecked = false
     @Volatile private var availabilityCached = false
+    @Volatile private var statusFlavor = "UNKNOWN"
+    @Volatile private var statusSelfTest = false
+    @Volatile private var statusNativeAvailable = false
+    @Volatile private var statusLogged = false
+    @Volatile private var laboUnavailableLogged = false
+
+    data class HqStatus(
+        val available: Boolean,
+        val flavor: String,
+        val selfTest: Boolean,
+        val nativeAvailable: Boolean
+    )
 
     /**
      * Tente de charger la lib native UNE fois.
@@ -105,9 +117,51 @@ object SoundTouchBridge {
                 Log.e(TAG, "HQ_NOT_READY flavor=$flavor native=$nativeOk selfTest=$selfTest")
             }
 
+            statusFlavor = flavor
+            statusNativeAvailable = nativeOk
+            statusSelfTest = selfTest
             availabilityCached = ok
             availabilityChecked = true
             ok
+        }
+    }
+
+    fun getStatus(): HqStatus {
+        val available = isAvailable()
+        return HqStatus(
+            available = available,
+            flavor = statusFlavor,
+            selfTest = statusSelfTest,
+            nativeAvailable = statusNativeAvailable
+        )
+    }
+
+    fun logStatusOnce(reason: String = ""): HqStatus {
+        val status = getStatus()
+        if (!statusLogged) {
+            synchronized(this) {
+                if (!statusLogged) {
+                    Log.i(
+                        TAG,
+                        "HQ_STATUS available=${status.available} flavor=${status.flavor} selftest=${status.selfTest} reason=$reason"
+                    )
+                    statusLogged = true
+                }
+            }
+        }
+        return status
+    }
+
+    fun logLaboUnavailableOnce(reason: String = "") {
+        if (laboUnavailableLogged) return
+        synchronized(this) {
+            if (laboUnavailableLogged) return
+            val status = getStatus()
+            Log.e(
+                TAG,
+                "HQ OFF (STUB) => audio degrade, pitch/speed disabled; available=${status.available} flavor=${status.flavor} selftest=${status.selfTest} reason=$reason"
+            )
+            laboUnavailableLogged = true
         }
     }
 

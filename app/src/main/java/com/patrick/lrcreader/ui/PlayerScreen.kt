@@ -3,6 +3,7 @@ androidx.compose.foundation.ExperimentalFoundationApi::class)
 package com.patrick.lrcreader.ui
 
 import android.util.Log
+import android.widget.Toast
 import android.provider.MediaStore
 import java.io.File
 import android.provider.DocumentsContract
@@ -53,6 +54,7 @@ import com.patrick.lrcreader.core.MidiCueDispatcher
 // import com.patrick.lrcreader.core.PlaylistRepository
 import com.patrick.lrcreader.core.PlaybackCoordinator
 import com.patrick.lrcreader.core.audio.AudioEngine
+import com.patrick.lrcreader.core.audio.SoundTouchBridge
 import com.patrick.lrcreader.core.parseLrc
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -86,6 +88,11 @@ fun PlayerScreen(
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val isLaboBuild = remember(context.packageName) { context.packageName.endsWith(".labo") }
+    val hqStatus = remember { SoundTouchBridge.logStatusOnce(reason = "PlayerScreen:init") }
+    val isHqAvailable = hqStatus.available
+    val showHqOffBanner = isLaboBuild && !isHqAvailable
+    var hqToastShownAtMs by remember { mutableStateOf(0L) }
 
     // 📝 Notes LIVE (création depuis le lecteur)
     var showAddNoteDialog by remember { mutableStateOf(false) }
@@ -106,7 +113,16 @@ fun PlayerScreen(
         AudioEngine.reapplyMixNow()
     }
     LaunchedEffect(Unit) {
-        AudioEngine.setTimeStretchMode(AudioEngine.TimeStretchMode.HQ, reason = "ui:init:HQ_ONLY")
+        if (isHqAvailable) {
+            AudioEngine.setTimeStretchMode(AudioEngine.TimeStretchMode.HQ, reason = "ui:init:HQ_ONLY")
+        } else {
+            AudioEngine.setTimeStretchMode(AudioEngine.TimeStretchMode.EXO, reason = "ui:init:HQ_UNAVAILABLE")
+        }
+    }
+    LaunchedEffect(showHqOffBanner) {
+        if (showHqOffBanner) {
+            SoundTouchBridge.logLaboUnavailableOnce(reason = "PlayerScreen:laboBanner")
+        }
     }
 
     // ✅ "Niveau du titre" appliqué au moteur
@@ -433,6 +449,11 @@ fun PlayerScreen(
                             .fillMaxSize()
                             .padding(horizontal = 16.dp, vertical = 10.dp)
                     ) {
+                        if (showHqOffBanner) {
+                            HqOffBanner()
+                            Spacer(Modifier.height(8.dp))
+                        }
+
                         ReaderHeader(
                             isConcertMode = isConcertMode,
                             onToggleConcertMode = {
@@ -591,9 +612,29 @@ fun PlayerScreen(
                         AudioEngine.applyTrackGainDb(newDb)
                     },
                     tempo = tempo,
-                    onTempoChange = onTempoChange,
+                    onTempoChange = { newTempo ->
+                        if (!isHqAvailable) {
+                            val now = android.os.SystemClock.elapsedRealtime()
+                            if (now - hqToastShownAtMs > 1200L) {
+                                Toast.makeText(context, "HQ indisponible", Toast.LENGTH_SHORT).show()
+                                hqToastShownAtMs = now
+                            }
+                            return@TrackMixScreen
+                        }
+                        onTempoChange(newTempo)
+                    },
                     pitchSemi = pitchSemi,
-                    onPitchSemiChange = onPitchSemiChange,
+                    onPitchSemiChange = { newSemi ->
+                        if (!isHqAvailable) {
+                            val now = android.os.SystemClock.elapsedRealtime()
+                            if (now - hqToastShownAtMs > 1200L) {
+                                Toast.makeText(context, "HQ indisponible", Toast.LENGTH_SHORT).show()
+                                hqToastShownAtMs = now
+                            }
+                            return@TrackMixScreen
+                        }
+                        onPitchSemiChange(newSemi)
+                    },
                     currentTrackUri = currentTrackUri,
                     onClose = { showMixScreen = false }
                 )
@@ -676,6 +717,23 @@ fun PlayerScreen(
                 }
             },
             containerColor = Color(0xFF222222)
+        )
+    }
+}
+
+@Composable
+private fun HqOffBanner() {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFFB71C1C), RoundedCornerShape(10.dp))
+            .border(1.dp, Color(0xFFFFCDD2), RoundedCornerShape(10.dp))
+            .padding(horizontal = 10.dp, vertical = 8.dp)
+    ) {
+        Text(
+            text = "HQ OFF (STUB) => audio degradé, pitch/speed désactivés",
+            color = Color.White,
+            fontSize = 11.sp
         )
     }
 }
