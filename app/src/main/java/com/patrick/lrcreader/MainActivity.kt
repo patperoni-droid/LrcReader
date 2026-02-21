@@ -466,6 +466,7 @@ class MainActivity : ComponentActivity() {
                 var isChaining by remember { mutableStateOf(false) }
                 var chainPlaylist by remember { mutableStateOf<String?>(null) }
                 var backingEndedSignal by remember { mutableIntStateOf(0) }
+                val nextTrack by PlaybackCoordinator.nextTrack.collectAsState()
                 val nextChainedUri = remember(isChaining, chainIndex, chainQueue) {
                     if (!isChaining) null else chainQueue.getOrNull(chainIndex + 1)
                 }
@@ -658,7 +659,40 @@ class MainActivity : ComponentActivity() {
                 }
 
                 LaunchedEffect(backingEndedSignal) {
-                    if (backingEndedSignal <= 0 || !isChaining) return@LaunchedEffect
+                    if (backingEndedSignal <= 0) return@LaunchedEffect
+
+                    val forcedNext = PlaybackCoordinator.peekNextTrack()
+                    if (forcedNext != null) {
+                        Log.i(
+                            "NEXT",
+                            "trigger uri=${forcedNext.uri} title=${forcedNext.title} playlist=${forcedNext.playlist}"
+                        )
+                        val started = when (val target = PlaybackRouter.resolve(forcedNext.uri, forcedNext.playlist)) {
+                            is PlaybackRouter.Target.Audio -> {
+                                stopChainPlayback()
+                                playWithCrossfade(target.uri, target.playlist)
+                                currentPlayingUri = target.uri
+                                selectedQuickPlaylist = target.playlist
+                                target.playlist?.let { SessionPrefs.saveQuickPlaylist(ctx, it) }
+                                currentLyricsColor = Color.White
+                                true
+                            }
+                            is PlaybackRouter.Target.Prompter -> {
+                                Log.w("NEXT", "trigger skipped (prompter id=${target.id})")
+                                false
+                            }
+                            is PlaybackRouter.Target.Unknown -> {
+                                Log.w("NEXT", "trigger skipped (unknown uri=${forcedNext.uri})")
+                                false
+                            }
+                        }
+                        PlaybackCoordinator.clearNextTrack(
+                            reason = if (started) "triggered:naturalEnd" else "invalid:naturalEnd"
+                        )
+                        if (started) return@LaunchedEffect
+                    }
+
+                    if (!isChaining) return@LaunchedEffect
                     if (!playChainFrom(chainIndex + 1)) {
                         stopChainPlayback()
                     }
@@ -929,6 +963,7 @@ class MainActivity : ComponentActivity() {
                                     onParsedLinesChange = { parsedLines = it },
                                     highlightColor = currentLyricsColor,
                                     currentTrackUri = currentPlayingUri,
+                                    nextTrackTitle = nextTrack?.title,
                                     currentTrackGainDb = currentTrackGainDb,
                                     onTrackGainChange = { db ->
                                         val safeDb = clampTrackDb(db)
@@ -998,6 +1033,7 @@ class MainActivity : ComponentActivity() {
                                     libraryLoadedSignal = indexAll.size,
                                     playlistsReady = playlistsReady,
                                     nextChainedUri = nextChainedUri,
+                                    nextTrackUri = nextTrack?.uri,
                                     currentPlayingUri = currentPlayingUri,
                                     selectedPlaylist = selectedQuickPlaylist,
                                     openedPlaylist = openedPlaylist,
@@ -1007,6 +1043,12 @@ class MainActivity : ComponentActivity() {
                                         SessionPrefs.saveQuickPlaylist(ctx, name)
                                     },
                                     onPlaylistColorChange = { _ -> currentLyricsColor = Color.White },
+                                    onSetNextTrack = { uri, title, playlist ->
+                                        PlaybackCoordinator.setNextTrack(uri, title, playlist)
+                                    },
+                                    onClearNextTrack = {
+                                        PlaybackCoordinator.clearNextTrack(reason = "ui")
+                                    },
                                     onConsumeOpenPrompterSignal = { openPrompterSignal = 0 },
                                     onRequestShowPlayer = {
                                         selectedTab = BottomTab.Player

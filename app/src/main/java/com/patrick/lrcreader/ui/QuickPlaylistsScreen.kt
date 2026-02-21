@@ -77,12 +77,15 @@ fun QuickPlaylistsScreen(
     libraryLoadedSignal: Int = 0,
     playlistsReady: Boolean = true,
     nextChainedUri: String? = null,
+    nextTrackUri: String? = null,
     currentPlayingUri: String? = null,
     selectedPlaylist: String? = null,
     openedPlaylist: String? = null,
     isRestoringSession: Boolean = false,
     onSelectedPlaylistChange: (String?) -> Unit = {},
     onPlaylistColorChange: (Color) -> Unit = {},
+    onSetNextTrack: (uri: String, title: String, playlist: String?) -> Unit = { _, _, _ -> },
+    onClearNextTrack: () -> Unit = {},
     onConsumeOpenPrompterSignal: () -> Unit = {},
     onRequestShowPlayer: () -> Unit = {},
     indexAll: List<LibraryIndexCache.CachedEntry> = emptyList() // ✅ propre + default
@@ -567,7 +570,8 @@ fun QuickPlaylistsScreen(
 
                             val isCurrentPlaying = currentPlayingUri == uriString
                             val isDraggingThis = draggingUri == uriString
-                            val isNext = nextChainedUri != null && uriString == nextChainedUri
+                            val isChainedNext = nextChainedUri != null && uriString == nextChainedUri
+                            val isForcedNext = nextTrackUri != null && uriString == nextTrackUri
 
                             Row(
                                 modifier = Modifier
@@ -577,7 +581,9 @@ fun QuickPlaylistsScreen(
                                     .background(
                                         color = if (isDraggingThis)
                                             Color(0x33FFFFFF)
-                                        else if (isNext)
+                                        else if (isForcedNext)
+                                            Color(0x33D32F2F)
+                                        else if (isChainedNext)
                                             Color(0x22FFFFFF)
                                         else
                                             Color(0xFF181818),
@@ -587,7 +593,9 @@ fun QuickPlaylistsScreen(
                                         width = 1.dp,
                                         color = if (isCurrentPlaying)
                                             Color.White.copy(alpha = 0.8f)
-                                        else if (isNext)
+                                        else if (isForcedNext)
+                                            Color(0x99FF8A80)
+                                        else if (isChainedNext)
                                             Color(0x66FFD54F)
                                         else
                                             Color(0x33FFFFFF),
@@ -694,7 +702,24 @@ fun QuickPlaylistsScreen(
                                         }
                                 )
 
-                                if (isNext) {
+                                if (isForcedNext) {
+                                    Box(
+                                        modifier = Modifier
+                                            .padding(end = 6.dp)
+                                            .background(
+                                                color = Color(0xFFD32F2F),
+                                                shape = RoundedCornerShape(999.dp)
+                                            )
+                                            .padding(horizontal = 7.dp, vertical = 2.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = "PROCHAIN",
+                                            color = Color.White,
+                                            fontSize = 10.sp
+                                        )
+                                    }
+                                } else if (isChainedNext) {
                                     Box(
                                         modifier = Modifier
                                             .padding(end = 6.dp)
@@ -761,6 +786,26 @@ fun QuickPlaylistsScreen(
                                                 menuOpen = false
                                             }
                                         )
+                                        DropdownMenuItem(
+                                            text = { Text("Définir comme PROCHAIN", color = Color.White) },
+                                            onClick = {
+                                                onSetNextTrack(
+                                                    uriString,
+                                                    displayName,
+                                                    internalSelected
+                                                )
+                                                menuOpen = false
+                                            }
+                                        )
+                                        if (nextTrackUri != null) {
+                                            DropdownMenuItem(
+                                                text = { Text("Annuler PROCHAIN", color = Color.White) },
+                                                onClick = {
+                                                    onClearNextTrack()
+                                                    menuOpen = false
+                                                }
+                                            )
+                                        }
                                         DropdownMenuItem(
                                             text = {
                                                 Text(

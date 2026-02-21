@@ -1,5 +1,10 @@
 package com.patrick.lrcreader.core
 
+import android.util.Log
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+
 /**
  * Coordonne les 3 sources audio :
  * - Lecteur principal
@@ -12,6 +17,13 @@ package com.patrick.lrcreader.core
  */
 
 object PlaybackCoordinator {
+    private const val NEXT_TAG = "NEXT"
+
+    data class NextTrack(
+        val uri: String,
+        val title: String,
+        val playlist: String?
+    )
 
     enum class Source {
         None,
@@ -27,6 +39,8 @@ object PlaybackCoordinator {
     var stopPlayer: (() -> Unit)? = null
     var stopDj: (() -> Unit)? = null
     var stopFiller: (() -> Unit)? = null
+    private val _nextTrack = MutableStateFlow<NextTrack?>(null)
+    val nextTrack: StateFlow<NextTrack?> = _nextTrack.asStateFlow()
 
     /**
      * Utilisé par le fond sonore pour savoir si un "titre principal"
@@ -34,6 +48,29 @@ object PlaybackCoordinator {
      */
     val isMainPlaying: Boolean
         get() = currentSource == Source.Player || currentSource == Source.Dj
+
+    @Synchronized
+    fun setNextTrack(uri: String, title: String, playlist: String?) {
+        val cleanUri = uri.trim()
+        if (cleanUri.isEmpty()) return
+        val cleanTitle = title.ifBlank { cleanUri }
+        _nextTrack.value = NextTrack(
+            uri = cleanUri,
+            title = cleanTitle,
+            playlist = playlist
+        )
+        Log.i(NEXT_TAG, "set uri=$cleanUri title=$cleanTitle playlist=$playlist")
+    }
+
+    @Synchronized
+    fun clearNextTrack(reason: String = "") {
+        val previous = _nextTrack.value ?: return
+        _nextTrack.value = null
+        Log.i(NEXT_TAG, "clear uri=${previous.uri} reason=$reason")
+    }
+
+    @Synchronized
+    fun peekNextTrack(): NextTrack? = _nextTrack.value
 
     /* ---------------------------------------------------------- */
     /*  PLAYER                                                     */

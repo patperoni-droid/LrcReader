@@ -74,6 +74,7 @@ fun PlayerScreen(
     onParsedLinesChange: (List<LrcLine>) -> Unit,
     highlightColor: Color = Color(0xFFE040FB),
     currentTrackUri: String?,
+    nextTrackTitle: String? = null,
     currentTrackGainDb: Int,
     onTrackGainChange: (Int) -> Unit,
     tempo: Float,
@@ -487,6 +488,15 @@ fun PlayerScreen(
                                 showAddNoteDialog = true
                             },
                         )
+
+                        if (!nextTrackTitle.isNullOrBlank()) {
+                            Text(
+                                text = "Prochain: $nextTrackTitle",
+                                color = Color(0xFFEF9A9A),
+                                fontSize = 11.sp,
+                                modifier = Modifier.padding(start = 2.dp, top = 4.dp)
+                            )
+                        }
 
                         Spacer(Modifier.height(8.dp))
 
