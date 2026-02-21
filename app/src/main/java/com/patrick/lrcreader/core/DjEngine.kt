@@ -2,9 +2,11 @@ package com.patrick.lrcreader.core.dj
 
 import android.content.Context
 import android.media.MediaPlayer
+import android.media.audiofx.Visualizer
 import android.net.Uri
 import android.util.Log
 import com.patrick.lrcreader.core.FillerSoundManager
+import com.patrick.lrcreader.core.MeterManager
 import com.patrick.lrcreader.core.PlaybackCoordinator
 import com.patrick.lrcreader.core.history.HistoryRepository
 import com.patrick.lrcreader.core.history.PlaySource
@@ -12,6 +14,8 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlin.math.abs
+import kotlin.math.sqrt
 
 data class DjQueuedTrack(
     val uri: String,
@@ -49,6 +53,10 @@ object DjEngine {
 
     private var mpA: MediaPlayer? = null
     private var mpB: MediaPlayer? = null
+    private var djMeterVisualizerA: Visualizer? = null
+    private var djMeterVisualizerB: Visualizer? = null
+    private var djMeterSessionA: Int = 0
+    private var djMeterSessionB: Int = 0
 
     // état interne
     private var activeSlot: Int = 0
@@ -183,6 +191,97 @@ object DjEngine {
         }
     }
 
+    private fun attachDjMeterTap(slot: Int, player: MediaPlayer?) {
+        val sessionId = runCatching { player?.audioSessionId ?: 0 }.getOrElse { 0 }
+        if (sessionId <= 0) {
+            releaseDjMeterTap(slot)
+            return
+        }
+
+        val existingSession = if (slot == 1) djMeterSessionA else djMeterSessionB
+        val existingTap = if (slot == 1) djMeterVisualizerA else djMeterVisualizerB
+        if (existingTap != null && existingSession == sessionId) return
+
+        releaseDjMeterTap(slot)
+
+        val tap = runCatching {
+            Visualizer(sessionId).apply {
+                val captureSizeRange = Visualizer.getCaptureSizeRange()
+                captureSize = captureSizeRange[1]
+                setDataCaptureListener(
+                    object : Visualizer.OnDataCaptureListener {
+                        override fun onWaveFormDataCapture(
+                            visualizer: Visualizer?,
+                            waveform: ByteArray?,
+                            samplingRate: Int
+                        ) {
+                            if (waveform == null || waveform.isEmpty()) return
+                            publishDjWaveformLevels(waveform)
+                        }
+
+                        override fun onFftDataCapture(
+                            visualizer: Visualizer?,
+                            fft: ByteArray?,
+                            samplingRate: Int
+                        ) = Unit
+                    },
+                    Visualizer.getMaxCaptureRate() / 2,
+                    true,
+                    false
+                )
+                enabled = true
+            }
+        }.onFailure {
+            Log.w(METER_TAG, "DJ meter tap init failed slot=$slot: ${it.message}")
+        }.getOrNull()
+
+        if (slot == 1) {
+            djMeterVisualizerA = tap
+            djMeterSessionA = if (tap != null) sessionId else 0
+        } else {
+            djMeterVisualizerB = tap
+            djMeterSessionB = if (tap != null) sessionId else 0
+        }
+    }
+
+    private fun releaseDjMeterTap(slot: Int) {
+        val tap = if (slot == 1) djMeterVisualizerA else djMeterVisualizerB
+        if (tap != null) {
+            runCatching { tap.enabled = false }
+            runCatching { tap.release() }
+        }
+        if (slot == 1) {
+            djMeterVisualizerA = null
+            djMeterSessionA = 0
+        } else {
+            djMeterVisualizerB = null
+            djMeterSessionB = 0
+        }
+    }
+
+    private fun releaseDjMeterTaps() {
+        releaseDjMeterTap(1)
+        releaseDjMeterTap(2)
+    }
+
+    private fun publishDjWaveformLevels(waveform: ByteArray) {
+        var peak = 0f
+        var sumSq = 0.0
+        var count = 0
+
+        for (i in waveform.indices) {
+            val sample = ((waveform[i].toInt() and 0xFF) - 128) / 128f
+            val absSample = abs(sample)
+            if (absSample > peak) peak = absSample
+            sumSq += sample * sample
+            count++
+        }
+
+        if (count == 0) return
+        val rms = sqrt(sumSq / count).toFloat().coerceIn(0f, 1f)
+        MeterManager.onDjPcm(rms = rms, peak = peak.coerceIn(0f, 1f))
+    }
+
     fun setQueueAutoPlay(enabled: Boolean) {
         queueAutoPlay = enabled
         pushState()
@@ -282,6 +381,7 @@ object DjEngine {
                 PlaybackCoordinator.onDjStart()
                 runCatching { FillerSoundManager.fadeOutAndStop(400) }
 
+                releaseDjMeterTap(1)
                 mpA?.release()
                 val p = MediaPlayer()
                 mpA = p
@@ -291,6 +391,7 @@ object DjEngine {
                         p.setDataSource(appContext, Uri.parse(uriString))
                         p.prepare()
                     }
+                    attachDjMeterTap(1, p)
 
                     // ✅ important : completion listener (auto-play)
                     attachOnComplete(1, p)
@@ -325,6 +426,7 @@ object DjEngine {
 
                 if (loadIntoA) {
                     // B joue → on charge A
+                    releaseDjMeterTap(1)
                     mpA?.release()
                     val p = MediaPlayer()
                     mpA = p
@@ -333,6 +435,7 @@ object DjEngine {
                             p.setDataSource(appContext, Uri.parse(uriString))
                             p.prepare()
                         }
+                        attachDjMeterTap(1, p)
 
                         // ✅ completion listener (même si A devient active ensuite)
                         attachOnComplete(1, p)
@@ -348,6 +451,7 @@ object DjEngine {
                     }
                 } else {
                     // A joue → on charge B
+                    releaseDjMeterTap(2)
                     mpB?.release()
                     val p = MediaPlayer()
                     mpB = p
@@ -356,6 +460,7 @@ object DjEngine {
                             p.setDataSource(appContext, Uri.parse(uriString))
                             p.prepare()
                         }
+                        attachDjMeterTap(2, p)
 
                         // ✅ completion listener
                         attachOnComplete(2, p)
@@ -396,6 +501,7 @@ object DjEngine {
         val nextTitle = next.title
 
         if (nextSlot == 1) {
+            releaseDjMeterTap(1)
             mpA?.release()
             val p = MediaPlayer()
             mpA = p
@@ -404,6 +510,7 @@ object DjEngine {
                 p.setDataSource(appContext, Uri.parse(nextUri))
                 p.prepare()
             }
+            attachDjMeterTap(1, p)
             attachOnComplete(1, p)
 
             p.setVolume(0f, 0f)
@@ -420,6 +527,7 @@ object DjEngine {
             currentDurationMs = try { p.duration } catch (_: Exception) { 0 }
             animateSliderTo(0f, 200)
         } else {
+            releaseDjMeterTap(2)
             mpB?.release()
             val p = MediaPlayer()
             mpB = p
@@ -428,6 +536,7 @@ object DjEngine {
                 p.setDataSource(appContext, Uri.parse(nextUri))
                 p.prepare()
             }
+            attachDjMeterTap(2, p)
             attachOnComplete(2, p)
 
             p.setVolume(0f, 0f)
@@ -465,6 +574,7 @@ object DjEngine {
 
             if (targetSlot == 2) {
                 // charger B
+                releaseDjMeterTap(2)
                 mpB?.release()
                 val p = MediaPlayer()
                 mpB = p
@@ -472,12 +582,14 @@ object DjEngine {
                     p.setDataSource(appContext, Uri.parse(nextUri))
                     p.prepare()
                 }
+                attachDjMeterTap(2, p)
                 attachOnComplete(2, p)
                 p.setVolume(0f, 0f)
                 deckBTitle = nextTitle
                 deckBUri = nextUri
             } else {
                 // charger A
+                releaseDjMeterTap(1)
                 mpA?.release()
                 val p = MediaPlayer()
                 mpA = p
@@ -485,6 +597,7 @@ object DjEngine {
                     p.setDataSource(appContext, Uri.parse(nextUri))
                     p.prepare()
                 }
+                attachDjMeterTap(1, p)
                 attachOnComplete(1, p)
                 p.setVolume(0f, 0f)
                 deckATitle = nextTitle
@@ -594,6 +707,7 @@ object DjEngine {
             }
 
             try { playerA.stop() } catch (_: Exception) {}
+            releaseDjMeterTap(1)
             playerA.release()
             mpA = null
 
@@ -635,6 +749,7 @@ object DjEngine {
             }
 
             try { playerB.stop() } catch (_: Exception) {}
+            releaseDjMeterTap(2)
             playerB.release()
             mpB = null
 
@@ -660,6 +775,7 @@ object DjEngine {
             val localMpB = mpB
 
             if (localMpA == null && localMpB == null) {
+                releaseDjMeterTaps()
                 resetState(clearQueue = false)
                 return@launch
             }
@@ -677,6 +793,7 @@ object DjEngine {
             try { localMpA?.stop() } catch (_: Exception) {}
             try { localMpB?.stop() } catch (_: Exception) {}
 
+            releaseDjMeterTaps()
             try { localMpA?.release() } catch (_: Exception) {}
             try { localMpB?.release() } catch (_: Exception) {}
 

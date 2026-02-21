@@ -1,9 +1,5 @@
 package com.patrick.lrcreader.ui
 
-import android.Manifest
-import android.content.pm.PackageManager
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -53,7 +49,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.ContextCompat
 import com.patrick.lrcreader.core.MeterManager
 import com.patrick.lrcreader.core.FillerSoundPrefs
 import com.patrick.lrcreader.core.PlayerBusController
@@ -112,24 +107,7 @@ fun MixerHomePreviewScreen(
     // DJ bus : on lit le niveau centralisé (même source que l'écran DJ)
     val djInitialUi = DjBusController.getUiLevel().coerceIn(0f, 1f)
 
-    var hasMicPermission by remember {
-        mutableStateOf(
-            ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.RECORD_AUDIO
-            ) == PackageManager.PERMISSION_GRANTED
-        )
-    }
-    val micPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        hasMicPermission = granted
-    }
-
     LaunchedEffect(Unit) {
-        if (!hasMicPermission) {
-            micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-        }
         MeterManager.start(context)
     }
 
@@ -140,8 +118,9 @@ fun MixerHomePreviewScreen(
     val playerMeter by MeterManager.playerMeter.collectAsState()
     val fillerMeter by MeterManager.fillerMeter.collectAsState()
     val djMeter by MeterManager.djMeter.collectAsState()
-    val useDecorativeMeters = !hasMicPermission
-    val meterDebug = "VU P:${"%.2f".format(Locale.US, playerMeter)} D:${"%.2f".format(Locale.US, djMeter)} F:${"%.2f".format(Locale.US, fillerMeter)} mic=$hasMicPermission"
+    val hasFreshPcm by MeterManager.hasFreshPcm.collectAsState()
+    val useDecorativeMeters = !hasFreshPcm
+    val meterDebug = "VU P:${"%.2f".format(Locale.US, playerMeter)} D:${"%.2f".format(Locale.US, djMeter)} F:${"%.2f".format(Locale.US, fillerMeter)} fresh=$hasFreshPcm"
 
     val backgroundBrush = Brush.verticalGradient(
         listOf(

@@ -4,11 +4,13 @@ import android.util.Log
 import androidx.media3.common.C
 import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.util.UnstableApi
+import com.patrick.lrcreader.core.MeterManager
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.ln
+import kotlin.math.sqrt
 
 /**
  * AudioProcessor Media3: applique SoundTouch (tempo + pitch) sur PCM 16-bit.
@@ -22,6 +24,7 @@ class SoundTouchAudioProcessor : AudioProcessor {
     companion object {
         private const val TAG = "AUDIO_TS"
         private const val TAG_HQ = "AUDIO_TS_HQ"
+        private const val METER_SAMPLE_STRIDE = 2
         private val EMPTY_BUFFER: ByteBuffer =
             ByteBuffer.allocateDirect(0).order(ByteOrder.nativeOrder())
     }
@@ -148,6 +151,7 @@ class SoundTouchAudioProcessor : AudioProcessor {
     override fun queueInput(inputBuffer: ByteBuffer) {
         if (!inputBuffer.hasRemaining()) return
         inputEnded = false
+        publishPcmMeter(inputBuffer)
 
         val h = handle
         dbgCount++
@@ -292,4 +296,42 @@ class SoundTouchAudioProcessor : AudioProcessor {
         }
         tempoPitchDirty = true
     }
+
+    private fun publishPcmMeter(buffer: ByteBuffer) {
+        val levels = computePcm16Levels(buffer) ?: return
+        MeterManager.onMasterPcm(rms = levels.rms, peak = levels.peak)
+    }
+
+    private fun computePcm16Levels(buffer: ByteBuffer): Levels? {
+        val start = buffer.position()
+        val end = buffer.limit()
+        if (end - start < 2) return null
+
+        val view = buffer.duplicate().order(ByteOrder.LITTLE_ENDIAN)
+        var i = start
+        var peakAbs = 0
+        var sumSq = 0.0
+        var count = 0
+        val stepBytes = (METER_SAMPLE_STRIDE * 2).coerceAtLeast(2)
+
+        while (i + 1 < end) {
+            val sample = view.getShort(i).toInt()
+            val absSample = abs(sample)
+            if (absSample > peakAbs) peakAbs = absSample
+
+            val normalized = sample / 32768.0
+            sumSq += normalized * normalized
+            count++
+            i += stepBytes
+        }
+
+        if (count == 0) return null
+
+        return Levels(
+            rms = sqrt(sumSq / count).toFloat().coerceIn(0f, 1f),
+            peak = (peakAbs / 32768f).coerceIn(0f, 1f)
+        )
+    }
+
+    private data class Levels(val rms: Float, val peak: Float)
 }

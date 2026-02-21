@@ -2,6 +2,7 @@ package com.patrick.lrcreader.core
 
 import android.content.Context
 import android.media.MediaPlayer
+import android.media.audiofx.Visualizer
 import android.net.Uri
 import android.provider.DocumentsContract
 import android.util.Log
@@ -12,6 +13,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.abs
+import kotlin.math.sqrt
 import kotlin.random.Random
 
 object FillerSoundManager {
@@ -21,6 +24,8 @@ object FillerSoundManager {
     private var nextPlayer: MediaPlayer? = null
     private var fadeJob: Job? = null
     private var currentVolume: Float = DEFAULT_VOLUME
+    private var fillerMeterVisualizer: Visualizer? = null
+    private var fillerMeterSessionId: Int = 0
 
     private var folderPlaylist: List<Uri> = emptyList()
     private var folderIndex: Int = 0
@@ -213,6 +218,7 @@ object FillerSoundManager {
             logMeterState("start single file")
 
             player = mp
+            attachFillerMeterTap(mp)
             folderPlaylist = emptyList()
             currentFolderUri = null
         } catch (t: Throwable) {
@@ -390,6 +396,7 @@ object FillerSoundManager {
 
             stopCurrentOnly()
             player = mp
+            attachFillerMeterTap(mp)
         } catch (t: Throwable) {
             android.util.Log.e("FillerSoundManager", "setDataSource/prepare failed uri=$uri : ${t.message}", t)
             try { mp.release() } catch (_: Exception) {}
@@ -439,6 +446,7 @@ object FillerSoundManager {
                 nextPlayer = null
 
                 newPlayer.setOnCompletionListener { playNextInFolder(context) }
+                attachFillerMeterTap(newPlayer)
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -483,6 +491,7 @@ object FillerSoundManager {
 
     private fun stopCurrentOnly() {
         val p = player ?: return
+        releaseFillerMeterTap()
         try { p.stop() } catch (_: Exception) {}
         p.release()
         player = null
@@ -491,6 +500,7 @@ object FillerSoundManager {
     private fun stopNow() {
         fadeJob?.cancel()
         fadeJob = null
+        releaseFillerMeterTap()
         player?.let { mp ->
             try { mp.stop() } catch (_: Exception) {}
             mp.release()
@@ -505,6 +515,75 @@ object FillerSoundManager {
             mp.release()
         }
         nextPlayer = null
+    }
+
+    private fun attachFillerMeterTap(mp: MediaPlayer?) {
+        val sessionId = runCatching { mp?.audioSessionId ?: 0 }.getOrElse { 0 }
+        if (sessionId <= 0) {
+            releaseFillerMeterTap()
+            return
+        }
+        if (fillerMeterVisualizer != null && fillerMeterSessionId == sessionId) return
+
+        releaseFillerMeterTap()
+        fillerMeterVisualizer = runCatching {
+            Visualizer(sessionId).apply {
+                val captureSizeRange = Visualizer.getCaptureSizeRange()
+                captureSize = captureSizeRange[1]
+                setDataCaptureListener(
+                    object : Visualizer.OnDataCaptureListener {
+                        override fun onWaveFormDataCapture(
+                            visualizer: Visualizer?,
+                            waveform: ByteArray?,
+                            samplingRate: Int
+                        ) {
+                            if (waveform == null || waveform.isEmpty()) return
+                            publishFillerWaveformLevels(waveform)
+                        }
+
+                        override fun onFftDataCapture(
+                            visualizer: Visualizer?,
+                            fft: ByteArray?,
+                            samplingRate: Int
+                        ) = Unit
+                    },
+                    Visualizer.getMaxCaptureRate() / 2,
+                    true,
+                    false
+                )
+                enabled = true
+            }
+        }.onFailure {
+            Log.w(METER_TAG, "FILLER meter tap init failed: ${it.message}")
+        }.getOrNull()
+
+        fillerMeterSessionId = if (fillerMeterVisualizer != null) sessionId else 0
+    }
+
+    private fun releaseFillerMeterTap() {
+        val tap = fillerMeterVisualizer ?: return
+        runCatching { tap.enabled = false }
+        runCatching { tap.release() }
+        fillerMeterVisualizer = null
+        fillerMeterSessionId = 0
+    }
+
+    private fun publishFillerWaveformLevels(waveform: ByteArray) {
+        var peak = 0f
+        var sumSq = 0.0
+        var count = 0
+
+        for (i in waveform.indices) {
+            val sample = ((waveform[i].toInt() and 0xFF) - 128) / 128f
+            val absSample = abs(sample)
+            if (absSample > peak) peak = absSample
+            sumSq += sample * sample
+            count++
+        }
+
+        if (count == 0) return
+        val rms = sqrt(sumSq / count).toFloat().coerceIn(0f, 1f)
+        MeterManager.onFillerPcm(rms = rms, peak = peak.coerceIn(0f, 1f))
     }
 }
 
