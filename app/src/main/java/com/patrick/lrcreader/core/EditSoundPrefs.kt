@@ -2,6 +2,7 @@ package com.patrick.lrcreader.core
 
 import android.content.Context
 import android.net.Uri
+import android.provider.DocumentsContract
 import org.json.JSONObject
 
 /**
@@ -20,12 +21,30 @@ object EditSoundPrefs {
         val endMs: Int
     )
 
+    data class ResolvedEdit(
+        val key: String,
+        val info: EditInfo
+    )
+
+    fun trimKeyForUri(uri: Uri): String {
+        return runCatching {
+            DocumentsContract.getDocumentId(uri)
+        }.getOrElse {
+            uri.toString()
+        }
+    }
+
     /**
      * Sauvegarde un réglage pour un fichier.
      */
     fun save(context: Context, uri: Uri, startMs: Int, endMs: Int) {
         val map = getAll(context).toMutableMap()
-        map[uri.toString()] = EditInfo(startMs, endMs)
+        val key = trimKeyForUri(uri)
+        map[key] = EditInfo(startMs, endMs)
+        val legacyKey = uri.toString()
+        if (legacyKey != key) {
+            map.remove(legacyKey)
+        }
         persist(context, map)
     }
 
@@ -33,7 +52,19 @@ object EditSoundPrefs {
      * Récupère le réglage d’un fichier (ou null s’il n’y en a pas).
      */
     fun get(context: Context, uri: Uri): EditInfo? {
-        return getAll(context)[uri.toString()]
+        return resolve(context, uri)?.info
+    }
+
+    fun resolve(context: Context, uri: Uri): ResolvedEdit? {
+        val all = getAll(context)
+        val key = trimKeyForUri(uri)
+        all[key]?.let { return ResolvedEdit(key = key, info = it) }
+
+        val legacyKey = uri.toString()
+        if (legacyKey != key) {
+            all[legacyKey]?.let { return ResolvedEdit(key = legacyKey, info = it) }
+        }
+        return null
     }
 
     /**
@@ -41,7 +72,12 @@ object EditSoundPrefs {
      */
     fun clearOne(context: Context, uri: Uri) {
         val map = getAll(context).toMutableMap()
-        if (map.remove(uri.toString()) != null) {
+        var removed = false
+        val key = trimKeyForUri(uri)
+        if (map.remove(key) != null) removed = true
+        val legacyKey = uri.toString()
+        if (legacyKey != key && map.remove(legacyKey) != null) removed = true
+        if (removed) {
             persist(context, map)
         }
     }

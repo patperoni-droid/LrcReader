@@ -8,6 +8,7 @@ import android.media.MediaFormat
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.provider.OpenableColumns
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -68,6 +69,7 @@ import com.patrick.lrcreader.core.EditSoundPrefs
 import com.patrick.lrcreader.core.WaveformSessionPrefs
 import com.patrick.lrcreader.core.waveform.WaveformExtractor
 import com.patrick.lrcreader.core.waveform.WaveformPeaksCache
+import com.patrick.lrcreader.exo.BuildConfig
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -644,6 +646,13 @@ fun WaveformPreviewScreen(
                     onClick = {
                         val uri = selectedUri ?: return@TextButton
                         if (durationMs <= 0) return@TextButton
+                        if (BuildConfig.DEBUG) {
+                            val key = EditSoundPrefs.trimKeyForUri(uri)
+                            Log.d(
+                                "TRIM",
+                                "save key=$key uri=$uri entryMs=$inMs exitMs=$outMs store=EditSoundPrefs"
+                            )
+                        }
                         EditSoundPrefs.save(
                             context = context,
                             uri = uri,

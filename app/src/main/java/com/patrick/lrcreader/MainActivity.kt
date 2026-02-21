@@ -11,6 +11,8 @@ import com.patrick.lrcreader.ui.library.SetupInstallScreen
 import android.net.Uri
 import android.provider.DocumentsContract
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.patrick.lrcreader.core.ImportAudioManager
@@ -466,6 +468,8 @@ class MainActivity : ComponentActivity() {
                 var isChaining by remember { mutableStateOf(false) }
                 var chainPlaylist by remember { mutableStateOf<String?>(null) }
                 var backingEndedSignal by remember { mutableIntStateOf(0) }
+                var trimStopJob by remember { mutableStateOf<Job?>(null) }
+                var trimAppliedForThisTrack by remember { mutableStateOf(false) }
                 val nextTrack by PlaybackCoordinator.nextTrack.collectAsState()
                 val nextChainedUri = remember(isChaining, chainIndex, chainQueue) {
                     if (!isChaining) null else chainQueue.getOrNull(chainIndex + 1)
@@ -503,7 +507,94 @@ class MainActivity : ComponentActivity() {
                 }
                 val historyRepository = remember(ctx) { HistoryRepository.getInstance(ctx) }
 
+                data class TrimConfig(
+                    val key: String,
+                    val store: String,
+                    val entryMs: Long,
+                    val exitMs: Long?,
+                    val mode: String
+                )
+
+                fun cancelTrimWatcher() {
+                    trimStopJob?.cancel()
+                    trimStopJob = null
+                }
+
+                fun resolveTrimConfig(requestedUri: String, activeUri: String?): TrimConfig {
+                    val candidates = buildList {
+                        add(requestedUri)
+                        if (!activeUri.isNullOrBlank() && activeUri != requestedUri) add(activeUri)
+                    }
+
+                    val editSound = candidates.asSequence()
+                        .mapNotNull { candidate -> EditSoundPrefs.resolve(ctx, Uri.parse(candidate)) }
+                        .firstOrNull()
+                    val legacyCandidate = if (editSound == null) {
+                        candidates.asSequence()
+                            .mapNotNull { candidate ->
+                                EditPrefs.getEdit(ctx, candidate)?.let { edit -> candidate to edit }
+                            }
+                            .firstOrNull()
+                    } else {
+                        null
+                    }
+
+                    val store = when {
+                        editSound != null -> "EditSoundPrefs"
+                        legacyCandidate != null -> "EditPrefs"
+                        else -> "none"
+                    }
+                    val key = when {
+                        editSound != null -> editSound.key
+                        legacyCandidate != null -> legacyCandidate.first
+                        !activeUri.isNullOrBlank() -> runCatching {
+                            EditSoundPrefs.trimKeyForUri(Uri.parse(activeUri))
+                        }.getOrDefault(activeUri)
+                        else -> runCatching {
+                            EditSoundPrefs.trimKeyForUri(Uri.parse(requestedUri))
+                        }.getOrDefault(requestedUri)
+                    }
+                    val rawEntry = (
+                            editSound?.info?.startMs?.toLong()
+                                ?: legacyCandidate?.second?.startMs
+                                ?: 0L
+                            ).coerceAtLeast(0L)
+                    val rawExit = (
+                            editSound?.info?.endMs?.toLong()
+                                ?: legacyCandidate?.second?.endMs
+                                ?: 0L
+                            ).coerceAtLeast(0L)
+
+                    if (rawExit > 0L && rawExit <= rawEntry) {
+                        if (BuildConfig.DEBUG) {
+                            Log.d(
+                                "TRIM",
+                                "TRIM invalid => disabled key=$key uri=${activeUri ?: requestedUri} entryMs=$rawEntry exitMs=$rawExit store=$store"
+                            )
+                        }
+                        return TrimConfig(
+                            key = key,
+                            store = store,
+                            entryMs = 0L,
+                            exitMs = null,
+                            mode = "none"
+                        )
+                    }
+
+                    val entryMs = rawEntry
+                    val exitMs = rawExit.takeIf { it > 0L }
+                    val mode = if (entryMs > 0L || exitMs != null) "seek-stop" else "none"
+                    return TrimConfig(
+                        key = key,
+                        store = store,
+                        entryMs = entryMs,
+                        exitMs = exitMs,
+                        mode = mode
+                    )
+                }
+
                 val onEnded = rememberUpdatedState {
+                    cancelTrimWatcher()
                     isPlaying = false
                     PlaybackCoordinator.onPlayerStop()
                     backingEndedSignal++
@@ -520,6 +611,7 @@ class MainActivity : ComponentActivity() {
                 }
 
                 PlaybackCoordinator.stopPlayer = {
+                    cancelTrimWatcher()
                     runCatching { exoPlayer.pause() }
                     isPlaying = false
                     PlaybackCoordinator.onPlayerStop()
@@ -575,6 +667,7 @@ class MainActivity : ComponentActivity() {
 
                     val myToken = currentPlayToken + 1
                     currentPlayToken = myToken
+                    trimAppliedForThisTrack = false
 
                     currentTrackGainDb = clampTrackDb(
                         TrackVolumePrefs.getDb(ctx, uriString) ?: DEFAULT_TRACK_GAIN_DB
@@ -583,6 +676,7 @@ class MainActivity : ComponentActivity() {
                     currentTrackPitchSemi = TrackPitchPrefs.getSemi(ctx, uriString) ?: 0
 
                     val result = runCatching {
+                        cancelTrimWatcher()
                         AudioEngine.reapplyMixNow()
 
                         exoCrossfadePlay(
@@ -598,6 +692,41 @@ class MainActivity : ComponentActivity() {
                             },
                             onStart = {
                                 isPlaying = true
+                                val activeUri = exoPlayer.currentMediaItem
+                                    ?.localConfiguration
+                                    ?.uri
+                                    ?.toString()
+                                    ?: uriString
+                                val trimConfig = resolveTrimConfig(
+                                    requestedUri = uriString,
+                                    activeUri = activeUri
+                                )
+                                if (BuildConfig.DEBUG) {
+                                    Log.d(
+                                        "TRIM",
+                                        "load key=${trimConfig.key} uri=$activeUri entryMs=${trimConfig.entryMs} exitMs=${trimConfig.exitMs ?: 0L} mode=${trimConfig.mode} store=${trimConfig.store}"
+                                    )
+                                }
+                                if (!trimAppliedForThisTrack) {
+                                    if (trimConfig.entryMs > 0L) {
+                                        runCatching { exoPlayer.seekTo(trimConfig.entryMs) }
+                                    }
+                                    trimAppliedForThisTrack = true
+                                }
+                                val trimExitMs = trimConfig.exitMs
+                                if (trimConfig.mode == "seek-stop" && trimExitMs != null && trimExitMs > 0L) {
+                                    trimStopJob = scope.launch {
+                                        while (currentPlayToken == myToken) {
+                                            val positionMs = runCatching { exoPlayer.currentPosition }.getOrDefault(0L)
+                                            if (positionMs >= trimExitMs) {
+                                                runCatching { exoPlayer.pause() }
+                                                onEnded.value.invoke()
+                                                return@launch
+                                            }
+                                            delay(40L)
+                                        }
+                                    }
+                                }
 
                                 playlistName?.let { pl ->
                                     PlaylistRepository.markSongPlayed(pl, uriString)
@@ -618,6 +747,7 @@ class MainActivity : ComponentActivity() {
                                 }
                             },
                             onError = {
+                                cancelTrimWatcher()
                                 isPlaying = false
                                 PlaybackCoordinator.onPlayerStop()
                             }
@@ -625,6 +755,7 @@ class MainActivity : ComponentActivity() {
                     }
 
                     if (result.isFailure) {
+                        cancelTrimWatcher()
                         runCatching {
                             exoPlayer.stop()
                             exoPlayer.clearMediaItems()
@@ -804,6 +935,7 @@ class MainActivity : ComponentActivity() {
 
                 DisposableEffect(Unit) {
                     onDispose {
+                        cancelTrimWatcher()
                         try { TrackEqEngine.release() } catch (_: Exception) {}
                     }
                 }
