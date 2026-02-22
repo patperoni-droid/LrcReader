@@ -503,12 +503,14 @@ fun PlayerScreen(
                         Box(modifier = Modifier.weight(1f)) {
 
                             // --- PAROLES (INCHANGÉES) ---
+                            val safeLrcIndex = currentLrcIndex
+                                .coerceIn(0, (parsedLines.size - 1).coerceAtLeast(0))
                             LyricsAreaLazy(
                                 modifier = Modifier.fillMaxSize(),
                                 listState = listState,
                                 parsedLines = parsedLines,
                                 isConcertMode = isConcertMode,
-                                currentLrcIndex = currentLrcIndex,
+                                currentLrcIndex = safeLrcIndex,
                                 onLyricsBoxHeightChange = { lyricsBoxHeightPx = it },
                                 highlightColor = highlightColor,
                                 onLineClick = { index, timeMs ->
