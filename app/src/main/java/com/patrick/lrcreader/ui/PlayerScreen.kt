@@ -41,9 +41,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.media3.exoplayer.ExoPlayer
+import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.core.AutoReturnPrefs
 import com.patrick.lrcreader.core.DisplayPrefs
 import com.patrick.lrcreader.core.FillerSoundManager
@@ -94,6 +96,7 @@ fun PlayerScreen(
     val isHqAvailable = hqStatus.available
     val showHqOffBanner = isLaboBuild && !isHqAvailable
     var hqToastShownAtMs by remember { mutableStateOf(0L) }
+    val sHqUnavailable = stringResource(R.string.player_hq_unavailable)
 
     // 📝 Notes LIVE (création depuis le lecteur)
     var showAddNoteDialog by remember { mutableStateOf(false) }
@@ -491,7 +494,7 @@ fun PlayerScreen(
 
                         if (!nextTrackTitle.isNullOrBlank()) {
                             Text(
-                                text = "Prochain: $nextTrackTitle",
+                                text = stringResource(R.string.player_next_track, nextTrackTitle),
                                 color = Color(0xFFEF9A9A),
                                 fontSize = 11.sp,
                                 modifier = Modifier.padding(start = 2.dp, top = 4.dp)
@@ -551,7 +554,7 @@ fun PlayerScreen(
                                         .padding(horizontal = 14.dp, vertical = 10.dp)
                                 ) {
                                     Text(
-                                        text = "📝 ${note.text}",
+                                        text = stringResource(R.string.player_live_note_chip, note.text),
                                         color = Color(0xFFFFC107),
                                         fontSize = 15.sp
                                     )
@@ -628,7 +631,7 @@ fun PlayerScreen(
                         if (!isHqAvailable) {
                             val now = android.os.SystemClock.elapsedRealtime()
                             if (now - hqToastShownAtMs > 1200L) {
-                                Toast.makeText(context, "HQ indisponible", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, sHqUnavailable, Toast.LENGTH_SHORT).show()
                                 hqToastShownAtMs = now
                             }
                             return@TrackMixScreen
@@ -640,7 +643,7 @@ fun PlayerScreen(
                         if (!isHqAvailable) {
                             val now = android.os.SystemClock.elapsedRealtime()
                             if (now - hqToastShownAtMs > 1200L) {
-                                Toast.makeText(context, "HQ indisponible", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, sHqUnavailable, Toast.LENGTH_SHORT).show()
                                 hqToastShownAtMs = now
                             }
                             return@TrackMixScreen
@@ -666,13 +669,13 @@ fun PlayerScreen(
                 noteDraftText = ""
                 showAddNoteDialog = false
             },
-            title = { Text("Ajouter une note", color = Color.White) },
+            title = { Text(stringResource(R.string.player_add_note_title), color = Color.White) },
             text = {
                 Column {
                     OutlinedTextField(
                         value = noteDraftText,
                         onValueChange = { noteDraftText = it },
-                        label = { Text("Ex: Solo guitare — Mi mineur") },
+                        label = { Text(stringResource(R.string.player_add_note_label_hint)) },
                         singleLine = false,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -680,7 +683,10 @@ fun PlayerScreen(
                     Spacer(Modifier.height(12.dp))
 
                     Text(
-                        text = "Durée : ${noteDraftDurationMs / 1000}s",
+                        text = stringResource(
+                            R.string.player_note_duration_seconds,
+                            (noteDraftDurationMs / 1000L).toInt()
+                        ),
                         color = Color(0xFFB0BEC5),
                         fontSize = 12.sp
                     )
@@ -688,9 +694,15 @@ fun PlayerScreen(
                     Spacer(Modifier.height(8.dp))
 
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilledTonalButton(onClick = { noteDraftDurationMs = 10_000L }) { Text("10s") }
-                        FilledTonalButton(onClick = { noteDraftDurationMs = 30_000L }) { Text("30s") }
-                        FilledTonalButton(onClick = { noteDraftDurationMs = 60_000L }) { Text("60s") }
+                        FilledTonalButton(onClick = { noteDraftDurationMs = 10_000L }) {
+                            Text(stringResource(R.string.player_note_preset_10s))
+                        }
+                        FilledTonalButton(onClick = { noteDraftDurationMs = 30_000L }) {
+                            Text(stringResource(R.string.player_note_preset_30s))
+                        }
+                        FilledTonalButton(onClick = { noteDraftDurationMs = 60_000L }) {
+                            Text(stringResource(R.string.player_note_preset_60s))
+                        }
                     }
                 }
             },
@@ -714,7 +726,7 @@ fun PlayerScreen(
                     noteDraftText = ""
                     showAddNoteDialog = false
                 }) {
-                    Text("OK", color = Color(0xFFFFC107))
+                    Text(stringResource(R.string.common_ok), color = Color(0xFFFFC107))
                 }
             },
             dismissButton = {
@@ -725,7 +737,7 @@ fun PlayerScreen(
                     noteDraftText = ""
                     showAddNoteDialog = false
                 }) {
-                    Text("Annuler", color = Color(0xFFB0BEC5))
+                    Text(stringResource(R.string.common_cancel), color = Color(0xFFB0BEC5))
                 }
             },
             containerColor = Color(0xFF222222)
@@ -743,7 +755,7 @@ private fun HqOffBanner() {
             .padding(horizontal = 10.dp, vertical = 8.dp)
     ) {
         Text(
-            text = "HQ OFF (STUB) => audio degradé, pitch/speed désactivés",
+            text = stringResource(R.string.player_hq_off_banner),
             color = Color.White,
             fontSize = 11.sp
         )
@@ -782,7 +794,7 @@ private fun ReaderHeader(
             IconButton(onClick = onToggleConcertMode) {
                 Icon(
                     imageVector = Icons.Filled.Tune,
-                    contentDescription = "Changer de style",
+                    contentDescription = stringResource(R.string.player_cd_change_style),
                     tint = if (isConcertMode) highlightColor else Color(0xFFCFD8DC)
                 )
             }
@@ -791,14 +803,14 @@ private fun ReaderHeader(
 
             IconButton(onClick = onToggleAutoReturn) {
                 Text(
-                    text = "-10",
+                    text = stringResource(R.string.player_auto_return_button),
                     color = if (autoReturnEnabled) Color.White else Color(0xFF888888),
                     fontSize = 12.sp
                 )
             }
 
             Text(
-                text = "TS=HQ",
+                text = stringResource(R.string.player_hq_tag),
                 color = Color(0xFFB3E5FC),
                 fontSize = 10.sp
             )
@@ -806,7 +818,7 @@ private fun ReaderHeader(
             IconButton(onClick = onOpenMix) {
                 Icon(
                     imageVector = Icons.Filled.GraphicEq,
-                    contentDescription = "Mixage du titre",
+                    contentDescription = stringResource(R.string.player_cd_track_mix),
                     tint = Color(0xFFFFC107)
                 )
             }
@@ -814,13 +826,13 @@ private fun ReaderHeader(
             IconButton(onClick = onOpenEditor) {
                 Icon(
                     imageVector = Icons.Filled.Edit,
-                    contentDescription = "Éditer les paroles",
+                    contentDescription = stringResource(R.string.player_cd_edit_lyrics),
                     tint = Color(0xFFFFF3E0)
                 )
             }
 
             IconButton(onClick = onAddLiveNote) {
-                Text("📝", color = Color.White, fontSize = 16.sp)
+                Text(stringResource(R.string.player_add_note_icon), color = Color.White, fontSize = 16.sp)
             }
         }
     }

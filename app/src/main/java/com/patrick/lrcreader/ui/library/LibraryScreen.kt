@@ -70,6 +70,11 @@ fun LibraryScreen(
     val sNoFolderHint = stringResource(R.string.library_no_folder_hint)
     val sNoFolderSelected = stringResource(R.string.library_no_folder_selected)
     val sDjExcludedReason = stringResource(R.string.library_dj_excluded_reason)
+    val sDeleteBackingTrackTitle = stringResource(R.string.library_delete_backing_track_title)
+    val sDeleteAudioQuestion = stringResource(R.string.library_delete_audio_question)
+    val sDeleteAudioLrcFound = stringResource(R.string.library_delete_audio_lrc_found)
+    val sDeleteAudioPlusLrc = stringResource(R.string.library_delete_audio_plus_lrc)
+    val sDeleteAudioHintLyrics = stringResource(R.string.library_delete_audio_hint_lyrics)
 
     // State
     var showLrcEditor by remember { mutableStateOf(false) }
@@ -767,14 +772,14 @@ fun LibraryScreen(
                         pendingDeleteUri = null
                         pendingDeleteLrcUri = null
                     },
-                    title = { androidx.compose.material3.Text("Supprimer le backing track") },
+                    title = { androidx.compose.material3.Text(sDeleteBackingTrackTitle) },
                     text = {
                         Column {
-                            androidx.compose.material3.Text("Voulez-vous supprimer ce fichier audio ?")
+                            androidx.compose.material3.Text(sDeleteAudioQuestion)
                             if (targetLrc != null) {
                                 Spacer(Modifier.height(8.dp))
                                 androidx.compose.material3.Text(
-                                    "Un fichier de paroles (.lrc) associé a été trouvé.\nSouhaitez-vous aussi le supprimer ?",
+                                    sDeleteAudioLrcFound,
                                     color = Color.Gray
                                 )
                             }
@@ -809,7 +814,7 @@ fun LibraryScreen(
                                         }
                                     }
                                 ) {
-                                    androidx.compose.material3.Text("Supprimer audio + .lrc")
+                                    androidx.compose.material3.Text(sDeleteAudioPlusLrc)
                                 }
                             }
 
@@ -837,13 +842,13 @@ fun LibraryScreen(
                                     }
                                 }
                             ) {
-                                androidx.compose.material3.Text("Voulez-vous supprimer ce fichier audio ?")
+                                androidx.compose.material3.Text(sDeleteAudioQuestion)
                             }
 
                             // ✅ Petit rappel (toujours affiché, même si pas de .lrc détecté)
                             Spacer(Modifier.height(6.dp))
                             androidx.compose.material3.Text(
-                                text = "Astuce : si des paroles existent, pense à supprimer aussi le fichier dans le dossier \"Lyrics\".",
+                                text = sDeleteAudioHintLyrics,
                                 color = Color.Gray,
                                 fontSize = 12.sp
                             )
@@ -857,7 +862,7 @@ fun LibraryScreen(
                                 pendingDeleteLrcUri = null
                             }
                         ) {
-                            androidx.compose.material3.Text("Annuler")
+                            androidx.compose.material3.Text(stringResource(R.string.common_cancel))
                         }
                     }
                 )

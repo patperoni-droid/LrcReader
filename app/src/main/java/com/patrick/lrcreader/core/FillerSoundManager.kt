@@ -4,21 +4,25 @@ import android.content.Context
 import android.media.MediaPlayer
 import android.media.audiofx.Visualizer
 import android.net.Uri
+import android.os.SystemClock
 import android.provider.DocumentsContract
 import android.util.Log
 import android.widget.Toast
 import androidx.documentfile.provider.DocumentFile
+import com.patrick.lrcreader.exo.BuildConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.sqrt
 import kotlin.random.Random
 
 object FillerSoundManager {
     private const val METER_TAG = "METER"
+    private const val VIS_LOG_EVERY_MS = 1000L
 
     private var player: MediaPlayer? = null
     private var nextPlayer: MediaPlayer? = null
@@ -26,6 +30,8 @@ object FillerSoundManager {
     private var currentVolume: Float = DEFAULT_VOLUME
     private var fillerMeterVisualizer: Visualizer? = null
     private var fillerMeterSessionId: Int = 0
+    private var fillerVisCallbacks: Int = 0
+    private var fillerVisLastLogTs: Long = 0L
 
     private var folderPlaylist: List<Uri> = emptyList()
     private var folderIndex: Int = 0
@@ -554,18 +560,38 @@ object FillerSoundManager {
                 enabled = true
             }
         }.onFailure {
-            Log.w(METER_TAG, "FILLER meter tap init failed: ${it.message}")
+            if (BuildConfig.DEBUG) {
+                Log.w(METER_TAG, "FILLER_VIS session=$sessionId enabled=false callbacks=0 rms=0.00 peak=0.00 error=${it.message}")
+            }
         }.getOrNull()
 
         fillerMeterSessionId = if (fillerMeterVisualizer != null) sessionId else 0
+        fillerVisCallbacks = 0
+        fillerVisLastLogTs = 0L
+        if (BuildConfig.DEBUG) {
+            Log.d(
+                METER_TAG,
+                "FILLER_VIS session=$sessionId enabled=${fillerMeterVisualizer != null} callbacks=0 rms=0.00 peak=0.00"
+            )
+        }
     }
 
     private fun releaseFillerMeterTap() {
+        val session = fillerMeterSessionId
+        val callbacks = fillerVisCallbacks
         val tap = fillerMeterVisualizer ?: return
         runCatching { tap.enabled = false }
         runCatching { tap.release() }
         fillerMeterVisualizer = null
         fillerMeterSessionId = 0
+        fillerVisCallbacks = 0
+        fillerVisLastLogTs = 0L
+        if (BuildConfig.DEBUG) {
+            Log.d(
+                METER_TAG,
+                "FILLER_VIS session=$session enabled=false callbacks=$callbacks rms=0.00 peak=0.00"
+            )
+        }
     }
 
     private fun publishFillerWaveformLevels(waveform: ByteArray) {
@@ -583,8 +609,23 @@ object FillerSoundManager {
 
         if (count == 0) return
         val rms = sqrt(sumSq / count).toFloat().coerceIn(0f, 1f)
-        MeterManager.onFillerPcm(rms = rms, peak = peak.coerceIn(0f, 1f))
+        val peak01 = peak.coerceIn(0f, 1f)
+        MeterManager.onFillerPcm(rms = rms, peak = peak01)
+
+        fillerVisCallbacks++
+        if (BuildConfig.DEBUG) {
+            val now = SystemClock.elapsedRealtime()
+            if (now - fillerVisLastLogTs >= VIS_LOG_EVERY_MS) {
+                fillerVisLastLogTs = now
+                Log.d(
+                    METER_TAG,
+                    "FILLER_VIS session=$fillerMeterSessionId enabled=${fillerMeterVisualizer != null} callbacks=$fillerVisCallbacks rms=${fmtLevel(rms)} peak=${fmtLevel(peak01)}"
+                )
+            }
+        }
     }
+
+    private fun fmtLevel(value: Float): String = String.format(Locale.US, "%.2f", value)
 }
 
 private object SystemVolumeHelper {

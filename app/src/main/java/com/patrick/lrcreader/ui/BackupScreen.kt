@@ -50,6 +50,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -59,6 +60,7 @@ import com.patrick.lrcreader.core.BackupFolderPrefs
 import com.patrick.lrcreader.core.BackupManager
 import com.patrick.lrcreader.core.LibraryIndexCache
 import com.patrick.lrcreader.core.SplFolders
+import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.getDisplayName
 import com.patrick.lrcreader.nowString
 import com.patrick.lrcreader.saveJsonToUri
@@ -90,6 +92,12 @@ fun BackupScreen(
 ) {
     val importTag = "BACKUP_IMPORT"
     val scope = rememberCoroutineScope()
+    val sImportSuccess = stringResource(R.string.backup_import_success)
+    val sImportEmptyUnreadable = stringResource(R.string.backup_import_empty_unreadable)
+    val sSaveToastSuccess = stringResource(R.string.backup_save_toast_success)
+    val sSaveToastFailed = stringResource(R.string.backup_save_toast_failed)
+    val sInternalExportToastSuccess = stringResource(R.string.backup_internal_export_toast_success)
+    val sInternalExportToastFailed = stringResource(R.string.backup_internal_export_toast_failed)
 
     // État dernier import
     var lastImportFile by remember { mutableStateOf<String?>(null) }
@@ -135,7 +143,7 @@ fun BackupScreen(
 
         lastImportFile = fileLabel
         lastImportTime = nowString()
-        lastImportSummary = "Import réussi"
+        lastImportSummary = sImportSuccess
         onAfterImport(restoredLastPlayed)
 
         val lp = restoredLastPlayed
@@ -216,7 +224,7 @@ fun BackupScreen(
                 }
 
                 if (json.isNullOrBlank()) {
-                    lastImportSummary = "Fichier vide ou illisible"
+                    lastImportSummary = sImportEmptyUnreadable
                     return@launch
                 }
 
@@ -227,7 +235,8 @@ fun BackupScreen(
                     "IMPORT_JSON step=total_saf took=${SystemClock.elapsedRealtime() - importStart}ms uri=$uri"
                 )
             } catch (e: Exception) {
-                lastImportSummary = "Échec de l’import (${e.message ?: "erreur inconnue"})"
+                val detail = e.message ?: context.getString(R.string.backup_unknown_error)
+                lastImportSummary = context.getString(R.string.backup_import_failed, detail)
                 Log.e(importTag, "IMPORT_JSON failed source=saf uri=$uri", e)
             } finally {
                 isImporting = false
@@ -244,7 +253,7 @@ fun BackupScreen(
             val okSave = saveJsonToUri(context, uri, jsonToSave)
             Toast.makeText(
                 context,
-                if (okSave) "Sauvegarde enregistrée" else "Impossible d’enregistrer",
+                if (okSave) sSaveToastSuccess else sSaveToastFailed,
                 LENGTH_SHORT
             ).show()
         }
@@ -271,7 +280,7 @@ fun BackupScreen(
                 TextButton(onClick = onBack) {
                     Text("←", color = onBg, fontSize = 18.sp)
                     Spacer(Modifier.width(6.dp))
-                    Text("Retour", color = onBg, fontSize = 13.sp)
+                    Text(stringResource(R.string.backup_back), color = onBg, fontSize = 13.sp)
                 }
                 Spacer(Modifier.weight(1f))
             }
@@ -282,8 +291,8 @@ fun BackupScreen(
             //  CARTE : EXPORT
             // ─────────────────────────────────────────────────────────────
             SectionCard(
-                title = "Exporter",
-                subtitle = "Créer un fichier .json",
+                title = stringResource(R.string.backup_section_export_title),
+                subtitle = stringResource(R.string.backup_section_export_subtitle),
                 accent = accent,
                 card = card,
                 border = cardBorder
@@ -291,7 +300,7 @@ fun BackupScreen(
                 OutlinedTextField(
                     value = backupFileName,
                     onValueChange = { backupFileName = it },
-                    label = { Text("Nom du fichier", fontSize = 12.sp) },
+                    label = { Text(stringResource(R.string.backup_file_name_label), fontSize = 12.sp) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -312,10 +321,10 @@ fun BackupScreen(
 
                             runCatching {
                                 target.writeText(json, Charsets.UTF_8)
-                                Toast.makeText(context, "Backup écrit dans Backups internes", LENGTH_SHORT).show()
+                                Toast.makeText(context, sInternalExportToastSuccess, LENGTH_SHORT).show()
                                 refreshInternalBackups()
                             }.onFailure {
-                                Toast.makeText(context, "Impossible d’écrire le backup", LENGTH_SHORT).show()
+                                Toast.makeText(context, sInternalExportToastFailed, LENGTH_SHORT).show()
                             }
                         },
                         modifier = Modifier.fillMaxWidth(),
@@ -325,7 +334,7 @@ fun BackupScreen(
                         ),
                         shape = RoundedCornerShape(999.dp)
                     ) {
-                        Text("Exporter vers Backups internes", fontSize = 12.sp)
+                        Text(stringResource(R.string.backup_export_to_internal), fontSize = 12.sp)
                     }
 
                     Spacer(Modifier.height(8.dp))
@@ -356,7 +365,7 @@ fun BackupScreen(
                     ) {
                         Icon(Icons.Default.Description, contentDescription = null, tint = Color.White)
                         Spacer(Modifier.width(8.dp))
-                        Text("Enregistrer", fontSize = 12.sp)
+                        Text(stringResource(R.string.common_save), fontSize = 12.sp)
                     }
 
                     FilledTonalButton(
@@ -379,7 +388,7 @@ fun BackupScreen(
                     ) {
                         Icon(Icons.Default.IosShare, contentDescription = null, tint = Color.White)
                         Spacer(Modifier.width(8.dp))
-                        Text("Partager", fontSize = 12.sp)
+                        Text(stringResource(R.string.backup_share), fontSize = 12.sp)
                     }
                 }
             }
@@ -390,8 +399,8 @@ fun BackupScreen(
             //  CARTE : IMPORT
             // ─────────────────────────────────────────────────────────────
             SectionCard(
-                title = "Importer",
-                subtitle = "Restaurer depuis un .json",
+                title = stringResource(R.string.backup_section_import_title),
+                subtitle = stringResource(R.string.backup_section_import_subtitle),
                 accent = accent,
                 card = card,
                 border = cardBorder
@@ -410,7 +419,7 @@ fun BackupScreen(
                         shape = RoundedCornerShape(999.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("Importer depuis Backups internes", fontSize = 12.sp)
+                        Text(stringResource(R.string.backup_import_from_internal), fontSize = 12.sp)
                     }
 
                     Spacer(Modifier.height(8.dp))
@@ -429,7 +438,7 @@ fun BackupScreen(
                 ) {
                     Icon(Icons.Default.UploadFile, contentDescription = null, tint = Color.White)
                     Spacer(Modifier.width(8.dp))
-                    Text("Choisir un fichier .json", fontSize = 12.sp)
+                    Text(stringResource(R.string.backup_choose_json_file), fontSize = 12.sp)
                 }
 
                 Spacer(Modifier.height(10.dp))
@@ -437,25 +446,30 @@ fun BackupScreen(
                 Spacer(Modifier.height(10.dp))
 
                 if (isImporting) {
-                    Text("Import en cours…", color = accent, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        stringResource(R.string.backup_import_in_progress),
+                        color = accent,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
                     Spacer(Modifier.height(8.dp))
                 }
 
-                Text("Dernier import", color = sub, fontSize = 11.sp)
+                Text(stringResource(R.string.backup_last_import), color = sub, fontSize = 11.sp)
 
                 val hasAny = lastImportFile != null || lastImportTime != null || lastImportSummary != null
                 if (!hasAny) {
-                    Text("Aucun import pour l’instant.", color = sub, fontSize = 12.sp)
+                    Text(stringResource(R.string.backup_no_import_yet), color = sub, fontSize = 12.sp)
                 } else {
                     lastImportFile?.let {
-                        KeyValueRow(label = "Fichier", value = it, onBg = onBg, sub = sub)
+                        KeyValueRow(label = stringResource(R.string.backup_kv_file), value = it, onBg = onBg, sub = sub)
                     }
                     lastImportTime?.let {
-                        KeyValueRow(label = "Heure", value = it, onBg = onBg, sub = sub)
+                        KeyValueRow(label = stringResource(R.string.backup_kv_time), value = it, onBg = onBg, sub = sub)
                     }
                     lastImportSummary?.let {
-                        val c = if (it.startsWith("Import réussi")) ok else danger
-                        KeyValueRow(label = "État", value = it, onBg = c, sub = sub)
+                        val c = if (it == sImportSuccess) ok else danger
+                        KeyValueRow(label = stringResource(R.string.backup_kv_status), value = it, onBg = c, sub = sub)
                     }
                 }
             }
@@ -468,11 +482,11 @@ fun BackupScreen(
     if (showInternalImportDialog) {
         AlertDialog(
             onDismissRequest = { showInternalImportDialog = false },
-            title = { Text("Backups internes") },
+            title = { Text(stringResource(R.string.backup_internal_dialog_title)) },
             text = {
                 Column(Modifier.fillMaxWidth()) {
                     if (internalBackupFiles.isEmpty()) {
-                        Text("Aucun .json trouvé dans SPL_Music/Backups", color = sub, fontSize = 12.sp)
+                        Text(stringResource(R.string.backup_internal_no_json_found), color = sub, fontSize = 12.sp)
                     } else {
                         internalBackupFiles.take(12).forEach { f ->
                             TextButton(
@@ -503,7 +517,7 @@ fun BackupScreen(
                                                 showInternalImportDialog = false
                                                 importBackupJsonText(json, f.name, source = "internal")
                                             } else {
-                                                lastImportSummary = "Fichier vide ou illisible"
+                                                lastImportSummary = sImportEmptyUnreadable
                                             }
                                         } finally {
                                             isImporting = false
@@ -517,7 +531,7 @@ fun BackupScreen(
 
                         if (internalBackupFiles.size > 12) {
                             Text(
-                                "(${internalBackupFiles.size} fichiers) — j’affiche les 12 plus récents.",
+                                stringResource(R.string.backup_internal_files_truncated, internalBackupFiles.size),
                                 color = sub,
                                 fontSize = 11.sp
                             )
@@ -527,7 +541,7 @@ fun BackupScreen(
             },
             confirmButton = {
                 TextButton(onClick = { showInternalImportDialog = false }) {
-                    Text("Fermer")
+                    Text(stringResource(R.string.common_close))
                 }
             }
         )

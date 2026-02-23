@@ -116,10 +116,102 @@
 
     <string name="library_no_folder_hint">Aucun dossier pour l’instant.\nChoisis ton dossier Music avec tes MP3 / WAV.</string>
     <string name="library_no_folder_selected">Aucun dossier sélectionné</string>
+    <string name="library_title">Bibliothèque</string>
+    <string name="library_header_cd_back">Retour</string>
+    <string name="library_header_cd_actions">Actions</string>
+    <string name="library_header_choose_folder">Choisir un dossier</string>
+    <string name="library_header_rescan">Rescan bibliothèque</string>
+    <string name="library_header_import_music">Importer des musiques</string>
+    <string name="library_header_forget_folder">Oublier le dossier</string>
+
+    <string name="library_assign_to_playlist_title">Ajouter à une playlist</string>
+    <string name="library_assign_to_playlist_empty">Aucune playlist.\nVa dans l’onglet “Toutes” pour en créer.</string>
+
+    <string name="library_delete_file_title">Supprimer le fichier</string>
+    <string name="library_delete_file_confirm_text">Supprimer définitivement ce fichier ?</string>
+    <string name="library_delete_action">Supprimer</string>
+    <string name="library_rename_title">Renommer</string>
+    <string name="library_new_name_label">Nouveau nom</string>
+
+    <string name="library_move_browser_title">Déplacer vers…</string>
+    <string name="library_move_browser_back">⬅ Retour</string>
+    <string name="library_move_browser_here">📥 Déplacer ici</string>
+    <string name="library_move_browser_folder_entry">📁 %1$s</string>
+    <string name="library_move_browser_other_folder">Autre dossier…</string>
+
+    <string name="library_list_cd_play">Lire (bibliothèque)</string>
+    <string name="library_list_edit_lrc">Éditer ce .lrc</string>
+    <string name="library_list_import_backup">Importer ce backup</string>
+    <string name="library_list_assign_to_playlist">Attribuer à une playlist</string>
+    <string name="library_list_move_to_folder">Déplacer vers un dossier</string>
+    <string name="library_list_rename">Renommer</string>
+    <string name="library_list_delete_permanently">Supprimer définitivement</string>
+
+    <string name="library_delete_backing_track_title">Supprimer le backing track</string>
+    <string name="library_delete_audio_question">Voulez-vous supprimer ce fichier audio ?</string>
+    <string name="library_delete_audio_lrc_found">Un fichier de paroles (.lrc) associé a été trouvé.\nSouhaitez-vous aussi le supprimer ?</string>
+    <string name="library_delete_audio_plus_lrc">Supprimer audio + .lrc</string>
+    <string name="library_delete_audio_hint_lyrics">Astuce : si des paroles existent, pense à supprimer aussi le fichier dans le dossier &quot;Lyrics&quot;.</string>
 
     <string name="common_search_placeholder">Rechercher…</string>
+    <string name="search_title">Recherche</string>
+    <string name="search_hint">Tape un nom de morceau</string>
+    <string name="search_start_typing">Commence à taper…</string>
 
     <string name="library_lrc_editing_title">Édition : %1$s</string>
 
     <string name="common_save">Enregistrer</string>
+
+    <!-- Backup -->
+    <string name="backup_back">Retour</string>
+    <string name="backup_section_export_title">Exporter</string>
+    <string name="backup_section_export_subtitle">Créer un fichier .json</string>
+    <string name="backup_file_name_label">Nom du fichier</string>
+    <string name="backup_internal_export_toast_success">Backup écrit dans Backups internes</string>
+    <string name="backup_internal_export_toast_failed">Impossible d’écrire le backup</string>
+    <string name="backup_export_to_internal">Exporter vers Backups internes</string>
+    <string name="backup_share">Partager</string>
+    <string name="backup_section_import_title">Importer</string>
+    <string name="backup_section_import_subtitle">Restaurer depuis un .json</string>
+    <string name="backup_import_from_internal">Importer depuis Backups internes</string>
+    <string name="backup_choose_json_file">Choisir un fichier .json</string>
+    <string name="backup_import_in_progress">Import en cours…</string>
+    <string name="backup_last_import">Dernier import</string>
+    <string name="backup_no_import_yet">Aucun import pour l’instant.</string>
+    <string name="backup_kv_file">Fichier</string>
+    <string name="backup_kv_time">Heure</string>
+    <string name="backup_kv_status">État</string>
+    <string name="backup_internal_dialog_title">Backups internes</string>
+    <string name="backup_internal_no_json_found">Aucun .json trouvé dans SPL_Music/Backups</string>
+    <string name="backup_internal_files_truncated">(%1$d fichiers) — j’affiche les 12 plus récents.</string>
+    <string name="backup_save_toast_success">Sauvegarde enregistrée</string>
+    <string name="backup_save_toast_failed">Impossible d’enregistrer</string>
+    <string name="backup_import_success">Import réussi</string>
+    <string name="backup_import_empty_unreadable">Fichier vide ou illisible</string>
+    <string name="backup_import_failed">Échec de l’import (%1$s)</string>
+    <string name="backup_unknown_error">erreur inconnue</string>
+
+    <!-- Player / Lyrics -->
+    <string name="lyrics_none">Aucune parole</string>
+
+    <string name="player_cd_prev">Précédent</string>
+    <string name="player_cd_play_pause">Play/Pause</string>
+    <string name="player_cd_next">Suivant</string>
+    <string name="player_cd_change_style">Changer de style</string>
+    <string name="player_cd_track_mix">Mixage du titre</string>
+    <string name="player_cd_edit_lyrics">Éditer les paroles</string>
+
+    <string name="player_next_track">Prochain: %1$s</string>
+    <string name="player_live_note_chip">📝 %1$s</string>
+    <string name="player_hq_unavailable">HQ indisponible</string>
+    <string name="player_hq_off_banner">HQ OFF (STUB) =&gt; audio dégradé, pitch/speed désactivés</string>
+    <string name="player_add_note_title">Ajouter une note</string>
+    <string name="player_add_note_label_hint">Ex: Solo guitare — Mi mineur</string>
+    <string name="player_note_duration_seconds">Durée : %1$ds</string>
+    <string name="player_note_preset_10s">10s</string>
+    <string name="player_note_preset_30s">30s</string>
+    <string name="player_note_preset_60s">60s</string>
+    <string name="player_auto_return_button">-10</string>
+    <string name="player_hq_tag">TS=HQ</string>
+    <string name="player_add_note_icon">📝</string>
 </resources>

@@ -4,16 +4,19 @@ import android.content.Context
 import android.media.MediaPlayer
 import android.media.audiofx.Visualizer
 import android.net.Uri
+import android.os.SystemClock
 import android.util.Log
 import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.core.MeterManager
 import com.patrick.lrcreader.core.PlaybackCoordinator
 import com.patrick.lrcreader.core.history.HistoryRepository
 import com.patrick.lrcreader.core.history.PlaySource
+import com.patrick.lrcreader.exo.BuildConfig
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.sqrt
 
@@ -47,6 +50,7 @@ data class DjUiState(
  */
 object DjEngine {
     private const val METER_TAG = "METER"
+    private const val VIS_LOG_EVERY_MS = 1000L
 
     private lateinit var appContext: Context
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -57,6 +61,8 @@ object DjEngine {
     private var djMeterVisualizerB: Visualizer? = null
     private var djMeterSessionA: Int = 0
     private var djMeterSessionB: Int = 0
+    private var djVisCallbacks: Int = 0
+    private var djVisLastLogTs: Long = 0L
 
     // état interne
     private var activeSlot: Int = 0
@@ -216,7 +222,7 @@ object DjEngine {
                             samplingRate: Int
                         ) {
                             if (waveform == null || waveform.isEmpty()) return
-                            publishDjWaveformLevels(waveform)
+                            publishDjWaveformLevels(slot, waveform)
                         }
 
                         override fun onFftDataCapture(
@@ -232,7 +238,12 @@ object DjEngine {
                 enabled = true
             }
         }.onFailure {
-            Log.w(METER_TAG, "DJ meter tap init failed slot=$slot: ${it.message}")
+            if (BuildConfig.DEBUG) {
+                Log.w(
+                    METER_TAG,
+                    "DJ_VIS session=$sessionId enabled=false callbacks=0 rms=0.00 peak=0.00 slot=$slot error=${it.message}"
+                )
+            }
         }.getOrNull()
 
         if (slot == 1) {
@@ -242,9 +253,19 @@ object DjEngine {
             djMeterVisualizerB = tap
             djMeterSessionB = if (tap != null) sessionId else 0
         }
+        djVisCallbacks = 0
+        djVisLastLogTs = 0L
+        if (BuildConfig.DEBUG) {
+            Log.d(
+                METER_TAG,
+                "DJ_VIS session=$sessionId enabled=${tap != null} callbacks=0 rms=0.00 peak=0.00 slot=$slot"
+            )
+        }
     }
 
     private fun releaseDjMeterTap(slot: Int) {
+        val session = if (slot == 1) djMeterSessionA else djMeterSessionB
+        val callbacks = djVisCallbacks
         val tap = if (slot == 1) djMeterVisualizerA else djMeterVisualizerB
         if (tap != null) {
             runCatching { tap.enabled = false }
@@ -257,6 +278,14 @@ object DjEngine {
             djMeterVisualizerB = null
             djMeterSessionB = 0
         }
+        djVisCallbacks = 0
+        djVisLastLogTs = 0L
+        if (BuildConfig.DEBUG) {
+            Log.d(
+                METER_TAG,
+                "DJ_VIS session=$session enabled=false callbacks=$callbacks rms=0.00 peak=0.00 slot=$slot"
+            )
+        }
     }
 
     private fun releaseDjMeterTaps() {
@@ -264,7 +293,7 @@ object DjEngine {
         releaseDjMeterTap(2)
     }
 
-    private fun publishDjWaveformLevels(waveform: ByteArray) {
+    private fun publishDjWaveformLevels(slot: Int, waveform: ByteArray) {
         var peak = 0f
         var sumSq = 0.0
         var count = 0
@@ -279,8 +308,25 @@ object DjEngine {
 
         if (count == 0) return
         val rms = sqrt(sumSq / count).toFloat().coerceIn(0f, 1f)
-        MeterManager.onDjPcm(rms = rms, peak = peak.coerceIn(0f, 1f))
+        val peak01 = peak.coerceIn(0f, 1f)
+        MeterManager.onDjPcm(rms = rms, peak = peak01)
+
+        djVisCallbacks++
+        if (BuildConfig.DEBUG) {
+            val now = SystemClock.elapsedRealtime()
+            if (now - djVisLastLogTs >= VIS_LOG_EVERY_MS) {
+                djVisLastLogTs = now
+                val session = if (slot == 1) djMeterSessionA else djMeterSessionB
+                val enabled = if (slot == 1) djMeterVisualizerA != null else djMeterVisualizerB != null
+                Log.d(
+                    METER_TAG,
+                    "DJ_VIS session=$session enabled=$enabled callbacks=$djVisCallbacks rms=${fmtLevel(rms)} peak=${fmtLevel(peak01)} slot=$slot"
+                )
+            }
+        }
     }
+
+    private fun fmtLevel(value: Float): String = String.format(Locale.US, "%.2f", value)
 
     fun setQueueAutoPlay(enabled: Boolean) {
         queueAutoPlay = enabled
