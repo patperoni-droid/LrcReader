@@ -144,7 +144,7 @@ fun NotesScreen(
                                 )
                             }
                             Text(
-                                text = "Mes notes",
+                                text = stringResource(R.string.notes_title),
                                 color = Color.White,
                                 fontSize = 20.sp
                             )
@@ -167,7 +167,7 @@ fun NotesScreen(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = "Aucune note.\nAppuie sur + pour en créer une.",
+                                text = stringResource(R.string.notes_empty),
                                 color = Color.Gray,
                                 fontSize = 14.sp
                             )
@@ -200,7 +200,7 @@ fun NotesScreen(
                                                 modifier = Modifier.weight(1f)
                                             ) {
                                                 Text(
-                                                    text = if (note.title.isBlank()) "Sans titre" else note.title,
+                                                    text = if (note.title.isBlank()) stringResource(R.string.common_untitled) else note.title,
                                                     color = Color.White,
                                                     fontSize = 16.sp,
                                                     maxLines = 1,
@@ -236,7 +236,7 @@ fun NotesScreen(
                                                 ) {
                                                     // Renommer = ouvrir en édition
                                                     DropdownMenuItem(
-                                                        text = { Text("Renommer / éditer", color = Color.White) },
+                                                        text = { Text(stringResource(R.string.notes_menu_rename_edit), color = Color.White) },
                                                         onClick = {
                                                             rowMenuOpen = false
                                                             openExistingNote(note)
@@ -244,7 +244,7 @@ fun NotesScreen(
                                                     )
 
                                                     DropdownMenuItem(
-                                                        text = { Text("Attribuer à une playlist", color = Color.White) },
+                                                        text = { Text(stringResource(R.string.common_assign_to_playlist), color = Color.White) },
                                                         onClick = {
                                                             rowMenuOpen = false
 
@@ -262,7 +262,7 @@ fun NotesScreen(
                                                     )
 
                                                     DropdownMenuItem(
-                                                        text = { Text("Supprimer", color = Color(0xFFFF6F6F)) },
+                                                        text = { Text(stringResource(R.string.lyrics_editor_delete), color = Color(0xFFFF6F6F)) },
                                                         onClick = {
                                                             rowMenuOpen = false
                                                             NotesRepository.delete(context, note.id)
@@ -307,7 +307,11 @@ fun NotesScreen(
                                 )
                             }
                             Text(
-                                text = if (editingNoteId == null) "Nouvelle note" else "Modifier la note",
+                                text = if (editingNoteId == null) {
+                                    stringResource(R.string.notes_new_note_title)
+                                } else {
+                                    stringResource(R.string.notes_edit_note_title)
+                                },
                                 color = Color.White,
                                 fontSize = 18.sp
                             )
@@ -315,7 +319,7 @@ fun NotesScreen(
 
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             TextButton(onClick = { saveCurrentNote() }) {
-                                Text("Enregistrer", color = Color(0xFF81C784))
+                                Text(stringResource(R.string.common_save), color = Color(0xFF81C784))
                             }
 
                             Box {
@@ -333,7 +337,7 @@ fun NotesScreen(
                                     modifier = Modifier.background(Color(0xFF222222))
                                 ) {
                                     DropdownMenuItem(
-                                        text = { Text("Attribuer à une playlist", color = Color.White) },
+                                        text = { Text(stringResource(R.string.common_assign_to_playlist), color = Color.White) },
                                         onClick = {
                                             editMenuOpen = false
                                             if (editingNoteId != null) {
@@ -345,7 +349,7 @@ fun NotesScreen(
                                         }
                                     )
                                     DropdownMenuItem(
-                                        text = { Text("Supprimer la note", color = Color(0xFFFF6F6F)) },
+                                        text = { Text(stringResource(R.string.notes_delete_note), color = Color(0xFFFF6F6F)) },
                                         onClick = {
                                             editMenuOpen = false
                                             if (editingNoteId != null) {
@@ -363,7 +367,7 @@ fun NotesScreen(
                     OutlinedTextField(
                         value = titleText,
                         onValueChange = { titleText = it },
-                        label = { Text("Titre") },
+                        label = { Text(stringResource(R.string.common_title_label)) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -373,7 +377,7 @@ fun NotesScreen(
                     OutlinedTextField(
                         value = contentText,
                         onValueChange = { contentText = it },
-                        label = { Text("Texte") },
+                        label = { Text(stringResource(R.string.common_text_label)) },
                         modifier = Modifier
                             .fillMaxSize(),
                         minLines = 8
@@ -391,12 +395,12 @@ fun NotesScreen(
                     showAssignDialog = false
                     assignNoteId = null
                 },
-                title = { Text("Attribuer à une playlist", color = Color.White) },
+                title = { Text(stringResource(R.string.common_assign_to_playlist), color = Color.White) },
                 text = {
                     Column {
                         if (allPlaylists.isEmpty()) {
                             Text(
-                                "Aucune playlist disponible.",
+                                stringResource(R.string.notes_no_playlist_available),
                                 color = Color.Gray
                             )
                         } else {
@@ -444,7 +448,7 @@ fun NotesScreen(
                         showAssignDialog = false
                         assignNoteId = null
                     }) {
-                        Text("OK", color = Color.White)
+                        Text(stringResource(R.string.common_ok), color = Color.White)
                     }
                 },
                 dismissButton = {
@@ -452,7 +456,7 @@ fun NotesScreen(
                         showAssignDialog = false
                         assignNoteId = null
                     }) {
-                        Text("Annuler", color = Color.Gray)
+                        Text(stringResource(R.string.common_cancel), color = Color.Gray)
                     }
                 },
                 containerColor = Color(0xFF222222)

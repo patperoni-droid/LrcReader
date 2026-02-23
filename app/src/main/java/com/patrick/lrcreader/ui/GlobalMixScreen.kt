@@ -10,11 +10,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.ui.theme.DarkBlueGradientBackground
 import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.core.FillerSoundPrefs
+import com.patrick.lrcreader.exo.R
 import kotlin.math.cbrt
 import com.patrick.lrcreader.core.PlayerBusController
 
@@ -81,19 +83,19 @@ fun GlobalMixScreen(
         ) {
             // HEADER
             TextButton(onClick = onBack) {
-                Text("← Retour", color = onBg)
+                Text(stringResource(R.string.common_back_arrow), color = onBg)
             }
 
             Spacer(Modifier.height(6.dp))
 
             Text(
-                text = "Mixage général",
+                text = stringResource(R.string.global_mix_title),
                 color = onBg,
                 fontSize = 20.sp
             )
 
             Text(
-                text = "Réglage des niveaux : Lecteur, DJ, Fond sonore.",
+                text = stringResource(R.string.global_mix_subtitle),
                 color = sub,
                 fontSize = 12.sp
             )
@@ -110,8 +112,8 @@ fun GlobalMixScreen(
             ) {
                 // --- FADER LECTEUR ---
                 MixFader(
-                    title = "Lecteur (playback)",
-                    subtitle = "Paroles + playback principal",
+                    title = stringResource(R.string.global_mix_player_title),
+                    subtitle = stringResource(R.string.global_mix_player_subtitle),
                     value = uiPlayerVolume,
                     onValueChange = { v ->
                         val ui = v.coerceIn(0f, 1f)
@@ -125,8 +127,8 @@ fun GlobalMixScreen(
 
                 // --- FADER DJ (lié au niveau DJ global) ---
                 MixFader(
-                    title = "Mode DJ",
-                    subtitle = "Crossfade, playlists DJ",
+                    title = stringResource(R.string.global_mix_dj_title),
+                    subtitle = stringResource(R.string.global_mix_dj_subtitle),
                     value = uiDjVolume,
                     onValueChange = { v ->
                         val ui = v.coerceIn(0f, 1f)
@@ -140,8 +142,8 @@ fun GlobalMixScreen(
 
                 // --- FADER FOND SONORE (lié au FillerSoundManager) ---
                 MixFader(
-                    title = "Fond sonore",
-                    subtitle = "Nappe entre les morceaux",
+                    title = stringResource(R.string.global_mix_filler_title),
+                    subtitle = stringResource(R.string.global_mix_filler_subtitle),
                     value = uiFillerVolume,
                     onValueChange = { v ->
                         val ui = v.coerceIn(0f, 1f)
@@ -160,7 +162,7 @@ fun GlobalMixScreen(
             Spacer(Modifier.height(16.dp))
 
             Text(
-                text = "Astuce : commence vers 70–80% partout, puis ajuste en live.",
+                text = stringResource(R.string.global_mix_tip),
                 color = sub,
                 fontSize = 11.sp
             )

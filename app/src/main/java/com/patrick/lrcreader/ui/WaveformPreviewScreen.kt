@@ -57,6 +57,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -70,6 +71,7 @@ import com.patrick.lrcreader.core.WaveformSessionPrefs
 import com.patrick.lrcreader.core.waveform.WaveformExtractor
 import com.patrick.lrcreader.core.waveform.WaveformPeaksCache
 import com.patrick.lrcreader.exo.BuildConfig
+import com.patrick.lrcreader.exo.R
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -308,11 +310,11 @@ fun WaveformPreviewScreen(
                 onClick = onBack,
                 contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
             ) {
-                Text("← Retour", color = Color(0xFFF1F1F1), fontSize = 12.sp)
+                Text(stringResource(R.string.common_back_arrow), color = Color(0xFFF1F1F1), fontSize = 12.sp)
             }
 
             Text(
-                text = "Waveform",
+                text = stringResource(R.string.waveform_title),
                 color = Color(0xFFF5F5F5),
                 fontSize = 18.sp,
                 fontWeight = FontWeight.SemiBold
@@ -322,11 +324,11 @@ fun WaveformPreviewScreen(
                 onClick = { openAudioLauncher.launch(arrayOf("audio/*")) },
                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
             ) {
-                Text("Choisir un fichier…", fontSize = 12.sp)
+                Text(stringResource(R.string.waveform_choose_file), fontSize = 12.sp)
             }
 
             Text(
-                text = if (selectedName.isBlank()) "Aucun fichier" else selectedName,
+                text = if (selectedName.isBlank()) stringResource(R.string.waveform_no_file_selected) else selectedName,
                 color = Color(0xFFBFC4C8),
                 fontSize = 12.sp,
                 maxLines = 1,
@@ -345,7 +347,7 @@ fun WaveformPreviewScreen(
             ) {
                 when {
                     selectedUri == null -> {
-                        CenterText("Choisis un titre")
+                        CenterText(stringResource(R.string.waveform_choose_track))
                     }
 
                     isLoading -> {
@@ -356,7 +358,7 @@ fun WaveformPreviewScreen(
                         ) {
                             CircularProgressIndicator()
                             Text(
-                                text = "Analyse…",
+                                text = stringResource(R.string.waveform_analyzing),
                                 color = Color(0xFFE9EEF3),
                                 fontSize = 12.sp
                             )
@@ -364,11 +366,11 @@ fun WaveformPreviewScreen(
                     }
 
                     hasError -> {
-                        CenterText("Impossible de générer la waveform")
+                        CenterText(stringResource(R.string.waveform_generate_error))
                     }
 
                     peaks.isEmpty() -> {
-                        CenterText("Aucune donnée de waveform")
+                        CenterText(stringResource(R.string.waveform_no_data))
                     }
 
                     else -> {
@@ -461,7 +463,7 @@ fun WaveformPreviewScreen(
             }
 
             Text(
-                text = "Zoom x${"%.1f".format(zoom)}",
+                text = stringResource(R.string.waveform_zoom_value, zoom),
                 color = Color(0xFFB9C2C8),
                 fontSize = 11.sp
             )
@@ -486,12 +488,17 @@ fun WaveformPreviewScreen(
                     },
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
                 ) {
-                    Text("Reset", fontSize = 11.sp)
+                    Text(stringResource(R.string.common_reset), fontSize = 11.sp)
                 }
             }
 
             Text(
-                text = "IN ${formatWaveformMs(inMs)}  •  OUT ${formatWaveformMs(outMs)}  •  CURSOR ${formatWaveformMs(playheadMs)}",
+                text = stringResource(
+                    R.string.waveform_in_out_cursor_status,
+                    formatWaveformMs(inMs),
+                    formatWaveformMs(outMs),
+                    formatWaveformMs(playheadMs)
+                ),
                 color = Color(0xFFD5D8DC),
                 fontSize = 12.sp
             )
@@ -523,7 +530,7 @@ fun WaveformPreviewScreen(
                     enabled = controlsEnabled,
                     contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
                 ) {
-                    Text("Step ${stepMs}ms", fontSize = 11.sp)
+                    Text(stringResource(R.string.waveform_step_ms, stepMs), fontSize = 11.sp)
                 }
 
                 TextButton(
@@ -554,7 +561,7 @@ fun WaveformPreviewScreen(
                     enabled = selectedUri != null && durationMs > 0,
                     contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
                 ) {
-                    Text("IN = CURSOR", fontSize = 12.sp)
+                    Text(stringResource(R.string.waveform_in_cursor), fontSize = 12.sp)
                 }
 
                 TextButton(
@@ -572,7 +579,7 @@ fun WaveformPreviewScreen(
                     enabled = selectedUri != null && durationMs > 0,
                     contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
                 ) {
-                    Text("OUT = CURSOR", fontSize = 12.sp)
+                    Text(stringResource(R.string.waveform_out_cursor), fontSize = 12.sp)
                 }
             }
 
@@ -624,7 +631,7 @@ fun WaveformPreviewScreen(
                     enabled = selectedUri != null && durationMs > 0,
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                 ) {
-                    Text("▶ Play", fontSize = 12.sp)
+                    Text(stringResource(R.string.waveform_play), fontSize = 12.sp)
                 }
 
                 TextButton(
@@ -639,7 +646,7 @@ fun WaveformPreviewScreen(
                     enabled = selectedUri != null && durationMs > 0,
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                 ) {
-                    Text("⏹ Stop", fontSize = 12.sp)
+                    Text(stringResource(R.string.waveform_stop), fontSize = 12.sp)
                 }
 
                 TextButton(
@@ -664,7 +671,7 @@ fun WaveformPreviewScreen(
                     enabled = selectedUri != null && durationMs > 0,
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                 ) {
-                    Text("Save", fontSize = 12.sp)
+                    Text(stringResource(R.string.common_save), fontSize = 12.sp)
                 }
             }
         }

@@ -6,8 +6,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import com.patrick.lrcreader.core.CueMidi
 import com.patrick.lrcreader.core.CueMidiStore
+import com.patrick.lrcreader.exo.R
 
 @Composable
 fun CueMidiEditorPopup(
@@ -24,19 +26,19 @@ fun CueMidiEditorPopup(
 
     AlertDialog(
         onDismissRequest = onClose,
-        title = { Text("CUE MIDI (ligne ${lineIndex + 1})", color = Color.White) },
+        title = { Text(stringResource(R.string.cue_midi_dialog_title, lineIndex + 1), color = Color.White) },
         text = {
             androidx.compose.foundation.layout.Column {
                 OutlinedTextField(
                     value = channelText,
                     onValueChange = { channelText = it },
-                    label = { Text("Canal (1–16)") },
+                    label = { Text(stringResource(R.string.cue_midi_channel_label)) },
                     singleLine = true
                 )
                 OutlinedTextField(
                     value = programText,
                     onValueChange = { programText = it },
-                    label = { Text("Program Change (1–128)") },
+                    label = { Text(stringResource(R.string.cue_midi_program_change_label)) },
                     singleLine = true
                 )
             }
@@ -52,7 +54,7 @@ fun CueMidiEditorPopup(
                 )
                 onClose()
             }) {
-                Text("OK", color = Color(0xFF80CBC4))
+                Text(stringResource(R.string.common_ok), color = Color(0xFF80CBC4))
             }
         },
         dismissButton = {
@@ -60,7 +62,7 @@ fun CueMidiEditorPopup(
                 CueMidiStore.deleteCue(trackUri, lineIndex)
                 onClose()
             }) {
-                Text("Supprimer", color = Color(0xFFFF8A80))
+                Text(stringResource(R.string.lyrics_editor_delete), color = Color(0xFFFF8A80))
             }
         },
         containerColor = Color(0xFF222222)

@@ -39,9 +39,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.core.dj.DjQueuedTrack
+import com.patrick.lrcreader.exo.R
 
 /* -------------------------------------------------------------------------- */
 /*  Carte principale : volume, platines, crossfader, GO, STOP                 */
@@ -99,7 +101,7 @@ fun DjMainCard(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = "BUS DJ / MIX AUTO",
+                    text = stringResource(R.string.dj_bus_mix_auto),
                     color = Color(0xFFFFECB3),
                     fontSize = 13.sp,
                     letterSpacing = 2.sp
@@ -153,7 +155,7 @@ fun DjMainCard(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
-                    Text("X-Fade", color = subColor, fontSize = 10.sp)
+                    Text(stringResource(R.string.dj_crossfade), color = subColor, fontSize = 10.sp)
                     Slider(
                         value = crossfadePos,
                         onValueChange = onCrossfadeChange,
@@ -174,7 +176,7 @@ fun DjMainCard(
                             disabledContentColor = Color(0xFF222222)
                         ),
                         shape = RoundedCornerShape(12.dp)
-                    ) { Text("GO", fontSize = 12.sp) }
+                    ) { Text(stringResource(R.string.dj_go), fontSize = 12.sp) }
                 }
 
                 // Deck B
@@ -252,14 +254,18 @@ fun DjQueuePanel(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = if (isOpen) "File d’attente" else "File d’attente (${queue.size})",
+                    text = if (isOpen) {
+                        stringResource(R.string.dj_queue_title)
+                    } else {
+                        stringResource(R.string.dj_queue_title_count, queue.size)
+                    },
                     color = Color.White,
                     fontSize = 14.sp,
                     modifier = Modifier.weight(1f)
                 )
 
                 Text(
-                    text = "Auto",
+                    text = stringResource(R.string.dj_queue_auto),
                     color = Color.White.copy(alpha = 0.75f),
                     fontSize = 12.sp
                 )
@@ -381,7 +387,7 @@ fun DjFolderBrowser(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    "Choisis un dossier pour tes titres DJ.",
+                    stringResource(R.string.dj_choose_folder_for_tracks),
                     color = subColor
                 )
             }

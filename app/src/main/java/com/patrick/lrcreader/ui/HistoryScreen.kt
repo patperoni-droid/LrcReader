@@ -1,6 +1,7 @@
 package com.patrick.lrcreader.ui
 
 import android.content.Context
+import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -59,10 +60,10 @@ private val KNOWN_AUDIO_EXTENSIONS = setOf(
     "aiff", "aif", "alac", "amr", "3gp", "mp4", "m4b", "m4p", "webm"
 )
 
-private enum class HistoryFilter(val label: String, val source: PlaySource?) {
-    ALL("Tout", null),
-    BACKING("Backing", PlaySource.BACKING),
-    DJ("DJ", PlaySource.DJ)
+private enum class HistoryFilter(@StringRes val labelRes: Int, val source: PlaySource?) {
+    ALL(R.string.history_filter_all, null),
+    BACKING(R.string.history_filter_backing, PlaySource.BACKING),
+    DJ(R.string.history_filter_dj, PlaySource.DJ)
 }
 
 @Composable
@@ -111,7 +112,7 @@ fun HistoryScreen(
                 )
             }
             Text(
-                text = "Historique",
+                text = stringResource(R.string.history_title),
                 color = Color(0xFFF5F5F5),
                 fontSize = 20.sp,
                 fontWeight = FontWeight.SemiBold,
@@ -120,7 +121,7 @@ fun HistoryScreen(
             TextButton(
                 onClick = { scope.launch { repo.clearAll() } }
             ) {
-                Text("Vider")
+                Text(stringResource(R.string.history_clear))
             }
         }
 
@@ -134,7 +135,7 @@ fun HistoryScreen(
                 FilterChip(
                     selected = selectedFilter == filter,
                     onClick = { selectedFilter = filter },
-                    label = { Text(filter.label) }
+                    label = { Text(stringResource(filter.labelRes)) }
                 )
             }
         }
@@ -145,7 +146,7 @@ fun HistoryScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "Date/heure",
+                text = stringResource(R.string.history_date_time),
                 color = Color(0xFFCFD8DC),
                 fontSize = 13.sp,
                 modifier = Modifier.weight(1f)
@@ -170,7 +171,7 @@ fun HistoryScreen(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = "Aucun événement",
+                    text = stringResource(R.string.history_empty),
                     color = Color(0xFFB0BEC5),
                     style = MaterialTheme.typography.bodyLarge
                 )

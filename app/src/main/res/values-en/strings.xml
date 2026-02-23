@@ -274,4 +274,121 @@
     <string name="common_cd_choose_playlist">Choose a playlist</string>
     <string name="common_cd_reset">Reset</string>
     <string name="common_cd_move">Move</string>
+
+    <!-- Common visible labels -->
+    <string name="common_back_arrow">← Back</string>
+    <string name="common_reset">Reset</string>
+    <string name="common_rename">Rename</string>
+    <string name="common_erase">Delete</string>
+    <string name="common_assign_to_playlist">Assign to a playlist</string>
+    <string name="common_title_label">Title</string>
+    <string name="common_text_label">Text</string>
+    <string name="common_untitled">Untitled</string>
+
+    <!-- CUE MIDI -->
+    <string name="cue_midi_dialog_title">CUE MIDI (line %1$d)</string>
+    <string name="cue_midi_channel_label">Channel (1–16)</string>
+    <string name="cue_midi_program_change_label">Program Change (1–128)</string>
+
+    <!-- Waveform preview -->
+    <string name="waveform_title">Waveform</string>
+    <string name="waveform_choose_file">Choose a file…</string>
+    <string name="waveform_no_file_selected">No file</string>
+    <string name="waveform_choose_track">Choose a track</string>
+    <string name="waveform_analyzing">Analyzing…</string>
+    <string name="waveform_generate_error">Unable to generate waveform</string>
+    <string name="waveform_no_data">No waveform data</string>
+    <string name="waveform_zoom_value">Zoom x%1$.1f</string>
+    <string name="waveform_in_out_cursor_status">IN %1$s  •  OUT %2$s  •  CURSOR %3$s</string>
+    <string name="waveform_step_ms">Step %1$dms</string>
+    <string name="waveform_in_cursor">IN = CURSOR</string>
+    <string name="waveform_out_cursor">OUT = CURSOR</string>
+    <string name="waveform_play">▶ Play</string>
+    <string name="waveform_stop">⏹ Stop</string>
+
+    <!-- All playlists -->
+    <string name="all_playlists_header_title">PLAYLISTS</string>
+    <string name="all_playlists_header_subtitle">Your playlists</string>
+    <string name="all_playlists_new_playlist_button">New playlist</string>
+    <string name="all_playlists_empty">No playlist yet.</string>
+    <string name="all_playlists_create_title">New playlist</string>
+    <string name="all_playlists_name_label">Playlist name</string>
+    <string name="all_playlists_rename_title">Rename playlist</string>
+    <string name="all_playlists_delete_title">Delete playlist</string>
+    <string name="all_playlists_delete_confirm">Permanently delete “%1$s”?</string>
+    <string name="all_playlists_meta_loading">%1$d tracks • …</string>
+    <string name="all_playlists_meta_ready">%1$d tracks • %2$s</string>
+
+    <!-- Notes -->
+    <string name="notes_title">My notes</string>
+    <string name="notes_empty">No note.\nTap + to create one.</string>
+    <string name="notes_menu_rename_edit">Rename / edit</string>
+    <string name="notes_new_note_title">New note</string>
+    <string name="notes_edit_note_title">Edit note</string>
+    <string name="notes_delete_note">Delete note</string>
+    <string name="notes_no_playlist_available">No playlist available.</string>
+
+    <!-- Quick playlists -->
+    <string name="quickplaylists_loading_playlists">Loading playlists...</string>
+    <string name="quickplaylists_restoring_session">Restoring session...</string>
+    <string name="quickplaylists_text_fallback_title">(Text)</string>
+    <string name="quickplaylists_badge_next_forced">NEXT</string>
+    <string name="quickplaylists_badge_next">NEXT</string>
+    <string name="quickplaylists_menu_play">▶ Play</string>
+    <string name="quickplaylists_menu_set_next">Set as NEXT</string>
+    <string name="quickplaylists_menu_cancel_next">Cancel NEXT</string>
+    <string name="quickplaylists_menu_remove_from_playlist">Remove from playlist</string>
+    <string name="quickplaylists_menu_title_color">Title color</string>
+    <string name="quickplaylists_edit_prompter_title">Edit prompter ✅ TEST 2026</string>
+    <string name="quickplaylists_new_prompter_title">New title (prompter 2026 )</string>
+    <string name="quickplaylists_prompter_text_label">Prompter text</string>
+
+    <!-- History -->
+    <string name="history_title">History</string>
+    <string name="history_clear">Clear</string>
+    <string name="history_filter_all">All</string>
+    <string name="history_filter_backing">Backing</string>
+    <string name="history_filter_dj">DJ</string>
+    <string name="history_date_time">Date/time</string>
+    <string name="history_empty">No events</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_midi_bluetooth_section">MIDI / Bluetooth</string>
+    <string name="settings_test_bluetooth_midi">🎹 Test Bluetooth MIDI</string>
+
+    <!-- Global mix -->
+    <string name="global_mix_title">Global mix</string>
+    <string name="global_mix_subtitle">Adjust levels: Player, DJ, Background sound.</string>
+    <string name="global_mix_player_title">Player (playback)</string>
+    <string name="global_mix_player_subtitle">Lyrics + main playback</string>
+    <string name="global_mix_dj_title">DJ mode</string>
+    <string name="global_mix_dj_subtitle">Crossfade, DJ playlists</string>
+    <string name="global_mix_filler_title">Background sound</string>
+    <string name="global_mix_filler_subtitle">Pad between songs</string>
+    <string name="global_mix_tip">Tip: start around 70–80% everywhere, then adjust live.</string>
+
+    <!-- Track mix (console labels kept in English) -->
+    <string name="track_mix_console_title">TRACK CONSOLE</string>
+    <string name="track_mix_no_track">No track</string>
+    <string name="track_mix_level">LEVEL</string>
+    <string name="track_mix_anti_clip">ANTI-CLIP</string>
+    <string name="track_mix_speed">SPEED</string>
+    <string name="track_mix_reset_speed">Reset 1.00x</string>
+    <string name="track_mix_pitch">PITCH</string>
+    <string name="track_mix_reset_pitch">Reset 0</string>
+    <string name="track_mix_vu">VU</string>
+    <string name="track_mix_keep_it_clean">KEEP IT CLEAN</string>
+    <string name="track_mix_equalizer">EQUALIZER</string>
+    <string name="track_mix_three_bands">3 BANDS</string>
+    <string name="track_mix_drag_hint">drag ↑↓</string>
+    <string name="track_mix_eq_low">LOW</string>
+    <string name="track_mix_eq_mid">MID</string>
+    <string name="track_mix_eq_high">HIGH</string>
+    <string name="track_mix_touch_to_return">TOUCH HERE TO RETURN</string>
+
+    <!-- Library components -->
+    <string name="library_bottom_assign">Assign</string>
+    <string name="library_bottom_clear_selection">Deselect.</string>
+    <string name="library_copying">Copying…</string>
 </resources>

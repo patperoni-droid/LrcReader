@@ -13,10 +13,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import com.patrick.lrcreader.exo.R
 import kotlin.math.roundToInt
 
 @Composable
@@ -43,7 +45,7 @@ fun LibraryHeader(
         }
 
         Column(modifier = Modifier.weight(1f)) {
-            Text("Bibliothèque", color = titleColor, fontSize = 20.sp)
+            Text(stringResource(R.string.library_title), color = titleColor, fontSize = 20.sp)
             Text(currentFolderName, color = subtitleColor, fontSize = 11.sp)
         }
 
@@ -56,15 +58,15 @@ fun LibraryHeader(
             onDismissRequest = { onActionsExpanded(false) }
         ) {
             DropdownMenuItem(
-                text = { Text("Choisir dossier Music") },
+                text = { Text(stringResource(R.string.library_header_choose_folder)) },
                 onClick = { onActionsExpanded(false); onPickRoot() }
             )
             DropdownMenuItem(
-                text = { Text("Rescan bibliothèque") },
+                text = { Text(stringResource(R.string.library_header_rescan)) },
                 onClick = { onActionsExpanded(false); onRescan() }
             )
             DropdownMenuItem(
-                text = { Text("Oublier le dossier") },
+                text = { Text(stringResource(R.string.library_header_forget_folder)) },
                 onClick = { onActionsExpanded(false); onForgetRoot() }
             )
         }
@@ -98,9 +100,9 @@ fun LibraryBottomBar(
 
         Spacer(Modifier.weight(1f))
 
-        TextButton(onClick = onAssign) { Text("Attribuer", color = Color.White) }
+        TextButton(onClick = onAssign) { Text(stringResource(R.string.library_bottom_assign), color = Color.White) }
         Spacer(Modifier.width(8.dp))
-        TextButton(onClick = onClear) { Text("Désélect.", color = Color(0xFFB0B0B0)) }
+        TextButton(onClick = onClear) { Text(stringResource(R.string.library_bottom_clear_selection), color = Color(0xFFB0B0B0)) }
     }
 }
 
@@ -127,7 +129,7 @@ fun LibraryLoadingOverlay(
                 )
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    moveLabel ?: "Déplacement…",
+                    moveLabel ?: stringResource(R.string.library_moving),
                     color = Color.White.copy(alpha = 0.8f),
                     fontSize = 16.sp
                 )
@@ -139,7 +141,7 @@ fun LibraryLoadingOverlay(
                 Spacer(Modifier.height(12.dp))
                 val pct = (p.coerceIn(0f, 1f) * 100f).roundToInt()
                 Text(
-                    (moveLabel ?: "Copie…") + " $pct%",
+                    (moveLabel ?: stringResource(R.string.library_copying)) + " $pct%",
                     color = Color.White.copy(alpha = 0.9f),
                     fontSize = 16.sp
                 )
