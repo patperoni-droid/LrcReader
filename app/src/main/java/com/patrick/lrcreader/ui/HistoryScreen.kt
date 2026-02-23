@@ -34,6 +34,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontWeight
@@ -42,6 +43,7 @@ import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.core.history.HistoryEvent
 import com.patrick.lrcreader.core.history.HistoryRepository
 import com.patrick.lrcreader.core.history.PlaySource
+import com.patrick.lrcreader.exo.R
 import java.text.DateFormat
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -104,7 +106,7 @@ fun HistoryScreen(
             IconButton(onClick = onBack) {
                 Icon(
                     imageVector = Icons.Filled.ArrowBack,
-                    contentDescription = "Retour",
+                    contentDescription = stringResource(R.string.common_cd_back),
                     tint = Color(0xFFF5F5F5)
                 )
             }

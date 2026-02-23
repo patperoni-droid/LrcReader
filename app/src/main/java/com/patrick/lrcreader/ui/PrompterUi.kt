@@ -19,8 +19,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.patrick.lrcreader.exo.R
 import kotlinx.coroutines.delay
 
 // ─────────────────────────────────────────────────────────────
@@ -102,7 +104,7 @@ fun PrompterControls(
             IconButton(onClick = onTogglePlay) {
                 Icon(
                     imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                    contentDescription = "Play/Pause",
+                    contentDescription = stringResource(R.string.player_cd_play_pause),
                     tint = iconColor
                 )
             }
@@ -145,7 +147,7 @@ fun PrompterHeader(
         IconButton(onClick = onClose) {
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = "Retour",
+                contentDescription = stringResource(R.string.common_cd_back),
                 tint = color
             )
         }

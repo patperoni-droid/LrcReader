@@ -38,10 +38,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.core.PlaylistRepository
+import com.patrick.lrcreader.exo.R
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -366,7 +368,7 @@ private fun PlaylistRow(
                 IconButton(onClick = { menuOpen = true }) {
                     Icon(
                         imageVector = Icons.Filled.MoreVert,
-                        contentDescription = "Options",
+                        contentDescription = stringResource(R.string.common_cd_options),
                         tint = Color(0xFFFFF8E1)
                     )
                 }

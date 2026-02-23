@@ -18,8 +18,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.patrick.lrcreader.exo.R
 
 @Composable
 fun PrompterTransportBar(
@@ -51,7 +53,7 @@ fun PrompterTransportBar(
             ) {
                 Icon(
                     imageVector = Icons.Filled.SkipPrevious,
-                    contentDescription = "Précédent",
+                    contentDescription = stringResource(R.string.player_cd_prev),
                     tint = if (onPrev != null) accent else Color(0xFF666666)
                 )
             }
@@ -60,7 +62,7 @@ fun PrompterTransportBar(
             IconButton(onClick = onToggleRun) {
                 Icon(
                     imageVector = if (isRunning) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                    contentDescription = "Play/Pause",
+                    contentDescription = stringResource(R.string.player_cd_play_pause),
                     tint = accent,
                     modifier = Modifier.size(34.dp)
                 )
@@ -73,7 +75,7 @@ fun PrompterTransportBar(
             ) {
                 Icon(
                     imageVector = Icons.Filled.SkipNext,
-                    contentDescription = "Suivant",
+                    contentDescription = stringResource(R.string.player_cd_next),
                     tint = if (onNext != null) accent else Color(0xFF666666)
                 )
             }

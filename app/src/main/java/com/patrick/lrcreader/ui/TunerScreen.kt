@@ -36,12 +36,14 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.patrick.lrcreader.core.TunerEngine
+import com.patrick.lrcreader.exo.R
 import kotlinx.coroutines.delay
 import kotlin.math.abs
 import kotlin.math.max
@@ -94,7 +96,7 @@ fun TunerScreen(
                 IconButton(onClick = onClose) {
                     Icon(
                         imageVector = Icons.Filled.ArrowBack,
-                        contentDescription = "Retour",
+                        contentDescription = stringResource(R.string.common_cd_back),
                         tint = TunerUi.TextMain
                     )
                 }

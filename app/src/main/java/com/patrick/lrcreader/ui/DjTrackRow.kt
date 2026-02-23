@@ -17,9 +17,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.shape.RoundedCornerShape
+import com.patrick.lrcreader.exo.R
 
 /**
  * Ligne de titre DJ avec :
@@ -62,7 +64,7 @@ fun DjTrackRow(
         ) {
             Icon(
                 imageVector = Icons.Default.Add,
-                contentDescription = "Mettre en attente",
+                contentDescription = stringResource(R.string.common_cd_enqueue),
                 tint = Color(0xFFFFF8E1).copy(alpha = 0.85f),
                 modifier = Modifier.size(18.dp)
             )

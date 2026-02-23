@@ -389,7 +389,7 @@ fun QuickPlaylistsScreen(
 
                         Icon(
                             imageVector = Icons.Filled.ArrowDropDown,
-                            contentDescription = "Choisir une playlist",
+                            contentDescription = stringResource(R.string.common_cd_choose_playlist),
                             tint = Color(0xFFFFC107)
                         )
                     }
@@ -451,7 +451,7 @@ fun QuickPlaylistsScreen(
                         ) {
                             Icon(
                                 imageVector = Icons.Filled.Refresh,
-                                contentDescription = "Réinitialiser",
+                                contentDescription = stringResource(R.string.common_cd_reset),
                                 tint = Color(0xFFFFB74D)
                             )
                         }
@@ -606,7 +606,7 @@ fun QuickPlaylistsScreen(
                             ) {
                                 Icon(
                                     imageVector = Icons.Filled.DragHandle,
-                                    contentDescription = "Déplacer",
+                                    contentDescription = stringResource(R.string.common_cd_move),
                                     tint = if (isPlayed) Color(0xFF9E9E9E) else Color.White,
                                     modifier = Modifier
                                         .size(34.dp)
@@ -756,7 +756,7 @@ fun QuickPlaylistsScreen(
                                     ) {
                                         Icon(
                                             imageVector = Icons.Filled.MoreVert,
-                                            contentDescription = "Options",
+                                            contentDescription = stringResource(R.string.common_cd_options),
                                             tint = if (isPlayed) playedTextColor else currentListColor,
                                             modifier = Modifier.size(18.dp)
                                         )
