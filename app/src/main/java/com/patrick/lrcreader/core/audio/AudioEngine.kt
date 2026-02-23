@@ -10,6 +10,7 @@ import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
+import com.patrick.lrcreader.exo.BuildConfig
 import com.patrick.lrcreader.core.FillerSoundManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -24,6 +25,7 @@ import kotlin.math.pow
 object AudioEngine {
 
     private const val TS_TAG = "AUDIO_TS"
+    private const val PLAYER_SMOKE_TAG = "PLAYER_SMOKE"
 
     // -----------------------------
     // Time-stretch mode (sécurité)
@@ -82,6 +84,8 @@ object AudioEngine {
 
     private var onNaturalEndCallback: (() -> Unit)? = null
     private var endedListenerAdded = false
+    private var smokeLastPlaybackState: Int = Player.STATE_IDLE
+    private var smokeLastIsPlaying: Boolean = false
 
     // -----------------------------
     // Fade-out (Stop/Pause doux)
@@ -361,6 +365,9 @@ object AudioEngine {
                     player.addListener(l)
                     embeddedLyricsListener = l
                     exoPlayer = player
+                    if (BuildConfig.DEBUG) {
+                        Log.d(PLAYER_SMOKE_TAG, "BOOT")
+                    }
                 }
         }
 
@@ -390,6 +397,13 @@ object AudioEngine {
             endedListenerAdded = true
             p.addListener(object : Player.Listener {
                 override fun onPlaybackStateChanged(state: Int) {
+                    if (BuildConfig.DEBUG &&
+                        state == Player.STATE_READY &&
+                        smokeLastPlaybackState != Player.STATE_READY
+                    ) {
+                        Log.d(PLAYER_SMOKE_TAG, "READY")
+                    }
+                    smokeLastPlaybackState = state
                     if (state == Player.STATE_READY) {
                         retryPendingHqApply(reason = "listener:STATE_READY")
                     }
@@ -397,6 +411,13 @@ object AudioEngine {
                         onNaturalEndCallback?.invoke()
                         FillerSoundManager.startIfConfigured(appCtx)
                     }
+                }
+
+                override fun onIsPlayingChanged(isPlaying: Boolean) {
+                    if (BuildConfig.DEBUG && isPlaying && !smokeLastIsPlaying) {
+                        Log.d(PLAYER_SMOKE_TAG, "PLAYING")
+                    }
+                    smokeLastIsPlaying = isPlaying
                 }
 
                 override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
@@ -432,5 +453,7 @@ object AudioEngine {
         embeddedLyricsListener = null
         onNaturalEndCallback = null
         endedListenerAdded = false
+        smokeLastPlaybackState = Player.STATE_IDLE
+        smokeLastIsPlaying = false
     }
 }

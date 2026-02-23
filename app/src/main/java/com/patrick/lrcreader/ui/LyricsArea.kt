@@ -12,12 +12,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.core.LrcLine
 import kotlin.math.abs
 
@@ -39,7 +41,7 @@ fun LyricsAreaLazy(
     ) {
         if (parsedLines.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("Aucune parole", color = Color.Gray)
+                Text(stringResource(R.string.lyrics_none), color = Color.Gray)
             }
             return
         }

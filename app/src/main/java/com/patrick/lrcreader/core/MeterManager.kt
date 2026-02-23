@@ -53,11 +53,17 @@ object MeterManager {
     private val _playerMeter = MutableStateFlow(0f)
     private val _fillerMeter = MutableStateFlow(0f)
     private val _djMeter = MutableStateFlow(0f)
+    private val _hasFreshPlayerPcm = MutableStateFlow(false)
+    private val _hasFreshFillerPcm = MutableStateFlow(false)
+    private val _hasFreshDjPcm = MutableStateFlow(false)
     private val _hasFreshPcm = MutableStateFlow(false)
 
     val playerMeter: StateFlow<Float> = _playerMeter.asStateFlow()
     val fillerMeter: StateFlow<Float> = _fillerMeter.asStateFlow()
     val djMeter: StateFlow<Float> = _djMeter.asStateFlow()
+    val hasFreshPlayerPcm: StateFlow<Boolean> = _hasFreshPlayerPcm.asStateFlow()
+    val hasFreshFillerPcm: StateFlow<Boolean> = _hasFreshFillerPcm.asStateFlow()
+    val hasFreshDjPcm: StateFlow<Boolean> = _hasFreshDjPcm.asStateFlow()
     val hasFreshPcm: StateFlow<Boolean> = _hasFreshPcm.asStateFlow()
 
     fun onMasterPcm(rms: Float, peak: Float) {
@@ -107,9 +113,14 @@ object MeterManager {
                     0f
                 }
 
-                _hasFreshPcm.value = hasFreshTap(now, playerPcmTs) ||
-                    hasFreshTap(now, fillerPcmTs) ||
-                    hasFreshTap(now, djPcmTs)
+                val playerFresh = hasFreshTap(now, playerPcmTs)
+                val fillerFresh = hasFreshTap(now, fillerPcmTs)
+                val djFresh = hasFreshTap(now, djPcmTs)
+
+                _hasFreshPlayerPcm.value = playerFresh
+                _hasFreshFillerPcm.value = fillerFresh
+                _hasFreshDjPcm.value = djFresh
+                _hasFreshPcm.value = playerFresh || fillerFresh || djFresh
 
                 _playerMeter.value = smooth(_playerMeter.value, pTarget)
                 _fillerMeter.value = smooth(_fillerMeter.value, fTarget)
@@ -127,6 +138,9 @@ object MeterManager {
         _playerMeter.value = 0f
         _fillerMeter.value = 0f
         _djMeter.value = 0f
+        _hasFreshPlayerPcm.value = false
+        _hasFreshFillerPcm.value = false
+        _hasFreshDjPcm.value = false
         _hasFreshPcm.value = false
         playerPcmRms = 0f
         playerPcmPeak = 0f
@@ -173,7 +187,8 @@ object MeterManager {
                 "targets p=${fmt(pTarget)} d=${fmt(dTarget)} f=${fmt(fTarget)} " +
                 "pcmP rms=${fmt(playerPcmRms)} peak=${fmt(playerPcmPeak)} " +
                 "pcmD rms=${fmt(djPcmRms)} peak=${fmt(djPcmPeak)} " +
-                "pcmF rms=${fmt(fillerPcmRms)} peak=${fmt(fillerPcmPeak)} fresh=${_hasFreshPcm.value}"
+                "pcmF rms=${fmt(fillerPcmRms)} peak=${fmt(fillerPcmPeak)} " +
+                "fresh p=${_hasFreshPlayerPcm.value} d=${_hasFreshDjPcm.value} f=${_hasFreshFillerPcm.value}"
         )
     }
 

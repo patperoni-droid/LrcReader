@@ -118,9 +118,10 @@ fun MixerHomePreviewScreen(
     val playerMeter by MeterManager.playerMeter.collectAsState()
     val fillerMeter by MeterManager.fillerMeter.collectAsState()
     val djMeter by MeterManager.djMeter.collectAsState()
-    val hasFreshPcm by MeterManager.hasFreshPcm.collectAsState()
-    val useDecorativeMeters = !hasFreshPcm
-    val meterDebug = "VU P:${"%.2f".format(Locale.US, playerMeter)} D:${"%.2f".format(Locale.US, djMeter)} F:${"%.2f".format(Locale.US, fillerMeter)} fresh=$hasFreshPcm"
+    val hasFreshPlayerPcm by MeterManager.hasFreshPlayerPcm.collectAsState()
+    val hasFreshFillerPcm by MeterManager.hasFreshFillerPcm.collectAsState()
+    val hasFreshDjPcm by MeterManager.hasFreshDjPcm.collectAsState()
+    val meterDebug = "VU P:${"%.2f".format(Locale.US, playerMeter)} D:${"%.2f".format(Locale.US, djMeter)} F:${"%.2f".format(Locale.US, fillerMeter)} fresh[p=$hasFreshPlayerPcm,d=$hasFreshDjPcm,f=$hasFreshFillerPcm]"
 
     val backgroundBrush = Brush.verticalGradient(
         listOf(
@@ -268,7 +269,7 @@ fun MixerHomePreviewScreen(
                             },
                             initialLevel = lecteurInitialUi,
                             meterLevel = playerMeter,
-                            useDecorativeMeter = useDecorativeMeters
+                            useDecorativeMeter = !hasFreshPlayerPcm
                         ) { uiLevel ->
                             // 🔊 Bus principal -> bus lecteur (prefs + MediaPlayer attaché)
                             PlayerBusController.setUiLevelFromBusUi(context, uiLevel)
@@ -287,7 +288,7 @@ fun MixerHomePreviewScreen(
                             },
                             initialLevel = fondInitialUi,
                             meterLevel = fillerMeter,
-                            useDecorativeMeter = useDecorativeMeters
+                            useDecorativeMeter = !hasFreshFillerPcm
                         ) { uiLevel ->
                             try {
                                 val real = uiToRealVolume(uiLevel)
@@ -311,7 +312,7 @@ fun MixerHomePreviewScreen(
                             },
                             initialLevel = djInitialUi,
                             meterLevel = djMeter,
-                            useDecorativeMeter = useDecorativeMeters
+                            useDecorativeMeter = !hasFreshDjPcm
                         ) { uiLevel ->
                             DjBusController.setUiLevel(uiLevel)
                         }

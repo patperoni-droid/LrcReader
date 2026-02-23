@@ -18,10 +18,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.core.LibraryIndexCache
+import com.patrick.lrcreader.exo.R
 
 @Composable
 fun SearchScreen(
@@ -77,8 +79,8 @@ fun SearchScreen(
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = Color.White)
             }
             Column(Modifier.weight(1f)) {
-                Text("Recherche", color = titleColor, fontSize = 20.sp)
-                Text("Tape un nom de morceau", color = subtitleColor, fontSize = 11.sp)
+                Text(stringResource(R.string.search_title), color = titleColor, fontSize = 20.sp)
+                Text(stringResource(R.string.search_hint), color = subtitleColor, fontSize = 11.sp)
             }
         }
 
@@ -88,14 +90,14 @@ fun SearchScreen(
             value = q,
             onValueChange = { q = it },
             modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text("Rechercher…") },
+            placeholder = { Text(stringResource(R.string.common_search_placeholder)) },
             singleLine = true
         )
 
         Spacer(Modifier.height(10.dp))
 
         if (q.isBlank()) {
-            Text("Commence à taper…", color = subtitleColor)
+            Text(stringResource(R.string.search_start_typing), color = subtitleColor)
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),

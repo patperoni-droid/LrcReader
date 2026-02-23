@@ -23,9 +23,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.ui.LibraryEntry
 
 private fun isPlayableByName(name: String): Boolean {
@@ -186,7 +188,7 @@ fun LibraryList(
                     ) {
                         Icon(
                             imageVector = Icons.Default.PlayArrow,
-                            contentDescription = "Lire (bibliothèque)",
+                            contentDescription = stringResource(R.string.library_list_cd_play),
                             tint = if (canPlay) accent else Color.White.copy(alpha = 0.25f),
                             modifier = Modifier.size(26.dp)
                         )
@@ -202,7 +204,9 @@ fun LibraryList(
                             // ✅ uniquement pour les .lrc
                             if (isLrc) {
                                 DropdownMenuItem(
-                                    text = { Text("Éditer ce .lrc", color = Color.White) },
+                                    text = {
+                                        Text(stringResource(R.string.library_list_edit_lrc), color = Color.White)
+                                    },
                                     onClick = { menuOpen = false; onOpenLrcEditor(uri) }
                                 )
                             }
@@ -210,25 +214,36 @@ fun LibraryList(
                             // ✅ uniquement pour les .json
                             if (isJson) {
                                 DropdownMenuItem(
-                                    text = { Text("Importer ce backup", color = Color.White) },
+                                    text = {
+                                        Text(stringResource(R.string.library_list_import_backup), color = Color.White)
+                                    },
                                     onClick = { menuOpen = false; onImportBackupJson(uri) }
                                 )
                             }
 
                             DropdownMenuItem(
-                                text = { Text("Attribuer à une playlist", color = Color.White) },
+                                text = {
+                                    Text(stringResource(R.string.library_list_assign_to_playlist), color = Color.White)
+                                },
                                 onClick = { menuOpen = false; onAssignOne(uri) }
                             )
                             DropdownMenuItem(
-                                text = { Text("Déplacer vers un dossier", color = Color.White) },
+                                text = {
+                                    Text(stringResource(R.string.library_list_move_to_folder), color = Color.White)
+                                },
                                 onClick = { menuOpen = false; onMoveOne(uri) }
                             )
                             DropdownMenuItem(
-                                text = { Text("Renommer", color = Color.White) },
+                                text = { Text(stringResource(R.string.library_list_rename), color = Color.White) },
                                 onClick = { menuOpen = false; onRenameOne(entry) }
                             )
                             DropdownMenuItem(
-                                text = { Text("Supprimer définitivement", color = Color(0xFFFF6464)) },
+                                text = {
+                                    Text(
+                                        stringResource(R.string.library_list_delete_permanently),
+                                        color = Color(0xFFFF6464)
+                                    )
+                                },
                                 onClick = { menuOpen = false; onDeleteOne(uri) }
                             )
                         }

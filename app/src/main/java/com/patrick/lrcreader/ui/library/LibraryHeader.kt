@@ -11,9 +11,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.documentfile.provider.DocumentFile
+import com.patrick.lrcreader.exo.R
 import java.io.File
 
 @Composable
@@ -31,15 +33,16 @@ fun LibraryHeader(
 ) {
     val context = LocalContext.current
     var actionsExpanded by remember { mutableStateOf(false) }
+    val sNoFolderSelected = stringResource(R.string.library_no_folder_selected)
 
-    val folderName = remember(currentFolderUri) {
+    val folderName = remember(currentFolderUri, sNoFolderSelected) {
         currentFolderUri?.let { u ->
             when (u.scheme) {
                 "file" -> File(u.path ?: "").name.ifBlank { "SPL_Music" }
                 else -> (DocumentFile.fromTreeUri(context, u)
                     ?: DocumentFile.fromSingleUri(context, u))?.name ?: "SPL_Music"
             }
-        } ?: "Aucun dossier sélectionné"
+        } ?: sNoFolderSelected
     }
 
     val hasRoot = currentFolderUri != null
@@ -54,19 +57,23 @@ fun LibraryHeader(
             IconButton(onClick = onBack) {
                 Icon(
                     Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Retour",
+                    contentDescription = stringResource(R.string.library_header_cd_back),
                     tint = Color.White
                 )
             }
         }
 
         Column(modifier = Modifier.weight(1f)) {
-            Text("Bibliothèque", color = titleColor, fontSize = 20.sp)
+            Text(stringResource(R.string.library_title), color = titleColor, fontSize = 20.sp)
             Text(folderName, color = subtitleColor, fontSize = 11.sp)
         }
 
         IconButton(onClick = { actionsExpanded = true }) {
-            Icon(Icons.Default.MoreVert, contentDescription = "Actions", tint = Color.White)
+            Icon(
+                Icons.Default.MoreVert,
+                contentDescription = stringResource(R.string.library_header_cd_actions),
+                tint = Color.White
+            )
         }
 
         DropdownMenu(
@@ -76,7 +83,7 @@ fun LibraryHeader(
 
             // ✅ LE TRUC QUI MANQUAIT : choisir (ou rechanger) le dossier racine
             DropdownMenuItem(
-                text = { Text("Choisir un dossier") },
+                text = { Text(stringResource(R.string.library_header_choose_folder)) },
                 onClick = {
                     actionsExpanded = false
                     onPickRoot()
@@ -86,19 +93,19 @@ fun LibraryHeader(
             HorizontalDivider()
 
             DropdownMenuItem(
-                text = { Text("Rescan bibliothèque") },
+                text = { Text(stringResource(R.string.library_header_rescan)) },
                 enabled = hasRoot,
                 onClick = { actionsExpanded = false; onRescan() }
             )
 
             DropdownMenuItem(
-                text = { Text("Importer des musiques") },
+                text = { Text(stringResource(R.string.library_header_import_music)) },
                 enabled = hasRoot,
                 onClick = { actionsExpanded = false; onImportBackingTracks() }
             )
 
             DropdownMenuItem(
-                text = { Text("Oublier le dossier") },
+                text = { Text(stringResource(R.string.library_header_forget_folder)) },
                 enabled = hasRoot,
                 onClick = { actionsExpanded = false; onForget() }
             )

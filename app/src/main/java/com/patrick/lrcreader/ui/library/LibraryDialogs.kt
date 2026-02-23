@@ -16,9 +16,11 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.patrick.lrcreader.core.LibraryIndexCache
 import com.patrick.lrcreader.core.PlaylistRepository
+import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.ui.LibraryEntry
 
 @Composable
@@ -33,10 +35,10 @@ fun AssignDialog(
     val playlists = PlaylistRepository.getPlaylists()
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Ajouter à une playlist", color = Color.White) },
+        title = { Text(stringResource(R.string.library_assign_to_playlist_title), color = Color.White) },
         text = {
             if (playlists.isEmpty()) {
-                Text("Aucune playlist.\nVa dans l’onglet “Toutes” pour en créer.", color = Color.Gray)
+                Text(stringResource(R.string.library_assign_to_playlist_empty), color = Color.Gray)
             } else {
                 Column {
                     playlists.forEach { plName ->
@@ -57,7 +59,9 @@ fun AssignDialog(
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Fermer", color = Color.White) } },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_close), color = Color.White) }
+        },
         containerColor = Color(0xFF222222)
     )
 }
@@ -73,15 +77,15 @@ fun DeleteConfirmDialog(
 
     AlertDialog(
         onDismissRequest = onCancel,
-        title = { Text("Supprimer le fichier", color = Color.White) },
-        text = { Text("Supprimer définitivement ce fichier ?", color = Color.White) },
+        title = { Text(stringResource(R.string.library_delete_file_title), color = Color.White) },
+        text = { Text(stringResource(R.string.library_delete_file_confirm_text), color = Color.White) },
         confirmButton = {
             TextButton(onClick = { onConfirmDelete(pendingDeleteUri) }) {
-                Text("Supprimer", color = Color(0xFFFF6464))
+                Text(stringResource(R.string.library_delete_action), color = Color(0xFFFF6464))
             }
         },
         dismissButton = {
-            TextButton(onClick = onCancel) { Text("Annuler", color = Color(0xFFB0BEC5)) }
+            TextButton(onClick = onCancel) { Text(stringResource(R.string.common_cancel), color = Color(0xFFB0BEC5)) }
         },
         containerColor = Color(0xFF222222)
     )
@@ -100,20 +104,22 @@ fun RenameDialog(
 
     AlertDialog(
         onDismissRequest = onCancel,
-        title = { Text("Renommer", color = Color.White) },
+        title = { Text(stringResource(R.string.library_rename_title), color = Color.White) },
         text = {
             OutlinedTextField(
                 value = renameText,
                 onValueChange = onRenameText,
-                label = { Text("Nouveau nom", color = Color.LightGray) },
+                label = { Text(stringResource(R.string.library_new_name_label), color = Color.LightGray) },
                 singleLine = true
             )
         },
         confirmButton = {
-            TextButton(enabled = enabled, onClick = onConfirm) { Text("OK", color = Color.White) }
+            TextButton(enabled = enabled, onClick = onConfirm) {
+                Text(stringResource(R.string.common_ok), color = Color.White)
+            }
         },
         dismissButton = {
-            TextButton(onClick = onCancel) { Text("Annuler", color = Color(0xFFB0BEC5)) }
+            TextButton(onClick = onCancel) { Text(stringResource(R.string.common_cancel), color = Color(0xFFB0BEC5)) }
         },
         containerColor = Color(0xFF222222)
     )
@@ -146,12 +152,12 @@ fun MoveBrowserDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Déplacer vers…", color = Color.White) },
+        title = { Text(stringResource(R.string.library_move_browser_title), color = Color.White) },
         text = {
             Column {
                 if (moveBrowserStack.isNotEmpty()) {
                     Text(
-                        "⬅ Retour",
+                        stringResource(R.string.library_move_browser_back),
                         color = Color(0xFFB0BEC5),
                         modifier = Modifier
                             .fillMaxWidth()
@@ -161,7 +167,7 @@ fun MoveBrowserDialog(
                 }
 
                 Text(
-                    "📥 Déplacer ici",
+                    stringResource(R.string.library_move_browser_here),
                     color = Color(0xFFFFC107),
                     modifier = Modifier
                         .fillMaxWidth()
@@ -174,7 +180,7 @@ fun MoveBrowserDialog(
                 LazyColumn {
                     items(destFolders, key = { it.uri.toString() }) { folder ->
                         Text(
-                            text = "📁 ${folder.name}",
+                            text = stringResource(R.string.library_move_browser_folder_entry, folder.name),
                             color = Color.White,
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -187,7 +193,9 @@ fun MoveBrowserDialog(
         },
         confirmButton = {},
         dismissButton = {
-            TextButton(onClick = onOtherFolder) { Text("Autre dossier…", color = Color.Gray) }
+            TextButton(onClick = onOtherFolder) {
+                Text(stringResource(R.string.library_move_browser_other_folder), color = Color.Gray)
+            }
         },
         containerColor = Color(0xFF222222)
     )

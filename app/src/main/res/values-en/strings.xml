@@ -122,10 +122,102 @@
 
     <string name="library_no_folder_hint">No folder yet.\nChoose your Music folder with your MP3 / WAV files.</string>
     <string name="library_no_folder_selected">No folder selected</string>
+    <string name="library_title">Library</string>
+    <string name="library_header_cd_back">Back</string>
+    <string name="library_header_cd_actions">Actions</string>
+    <string name="library_header_choose_folder">Choose a folder</string>
+    <string name="library_header_rescan">Rescan library</string>
+    <string name="library_header_import_music">Import music</string>
+    <string name="library_header_forget_folder">Forget folder</string>
+
+    <string name="library_assign_to_playlist_title">Add to a playlist</string>
+    <string name="library_assign_to_playlist_empty">No playlist.\nGo to the “All” tab to create one.</string>
+
+    <string name="library_delete_file_title">Delete file</string>
+    <string name="library_delete_file_confirm_text">Delete this file permanently?</string>
+    <string name="library_delete_action">Delete</string>
+    <string name="library_rename_title">Rename</string>
+    <string name="library_new_name_label">New name</string>
+
+    <string name="library_move_browser_title">Move to…</string>
+    <string name="library_move_browser_back">⬅ Back</string>
+    <string name="library_move_browser_here">📥 Move here</string>
+    <string name="library_move_browser_folder_entry">📁 %1$s</string>
+    <string name="library_move_browser_other_folder">Other folder…</string>
+
+    <string name="library_list_cd_play">Play (library)</string>
+    <string name="library_list_edit_lrc">Edit this .lrc</string>
+    <string name="library_list_import_backup">Import this backup</string>
+    <string name="library_list_assign_to_playlist">Assign to a playlist</string>
+    <string name="library_list_move_to_folder">Move to a folder</string>
+    <string name="library_list_rename">Rename</string>
+    <string name="library_list_delete_permanently">Delete permanently</string>
+
+    <string name="library_delete_backing_track_title">Delete backing track</string>
+    <string name="library_delete_audio_question">Do you want to delete this audio file?</string>
+    <string name="library_delete_audio_lrc_found">An associated lyrics file (.lrc) was found.\nDo you also want to delete it?</string>
+    <string name="library_delete_audio_plus_lrc">Delete audio + .lrc</string>
+    <string name="library_delete_audio_hint_lyrics">Tip: if lyrics exist, remember to also delete the file in the &quot;Lyrics&quot; folder.</string>
 
     <string name="common_search_placeholder">Search…</string>
+    <string name="search_title">Search</string>
+    <string name="search_hint">Type a track name</string>
+    <string name="search_start_typing">Start typing…</string>
 
     <string name="library_lrc_editing_title">Editing: %1$s</string>
 
     <string name="common_save">Save</string>
+
+    <!-- Backup -->
+    <string name="backup_back">Back</string>
+    <string name="backup_section_export_title">Export</string>
+    <string name="backup_section_export_subtitle">Create a .json file</string>
+    <string name="backup_file_name_label">File name</string>
+    <string name="backup_internal_export_toast_success">Backup written to internal Backups</string>
+    <string name="backup_internal_export_toast_failed">Unable to write backup</string>
+    <string name="backup_export_to_internal">Export to internal Backups</string>
+    <string name="backup_share">Share</string>
+    <string name="backup_section_import_title">Import</string>
+    <string name="backup_section_import_subtitle">Restore from a .json</string>
+    <string name="backup_import_from_internal">Import from internal Backups</string>
+    <string name="backup_choose_json_file">Choose a .json file</string>
+    <string name="backup_import_in_progress">Import in progress…</string>
+    <string name="backup_last_import">Last import</string>
+    <string name="backup_no_import_yet">No import yet.</string>
+    <string name="backup_kv_file">File</string>
+    <string name="backup_kv_time">Time</string>
+    <string name="backup_kv_status">Status</string>
+    <string name="backup_internal_dialog_title">Internal Backups</string>
+    <string name="backup_internal_no_json_found">No .json found in SPL_Music/Backups</string>
+    <string name="backup_internal_files_truncated">(%1$d files) — showing the 12 most recent.</string>
+    <string name="backup_save_toast_success">Backup saved</string>
+    <string name="backup_save_toast_failed">Unable to save</string>
+    <string name="backup_import_success">Import successful</string>
+    <string name="backup_import_empty_unreadable">Empty or unreadable file</string>
+    <string name="backup_import_failed">Import failed (%1$s)</string>
+    <string name="backup_unknown_error">unknown error</string>
+
+    <!-- Player / Lyrics -->
+    <string name="lyrics_none">No lyrics</string>
+
+    <string name="player_cd_prev">Previous</string>
+    <string name="player_cd_play_pause">Play/Pause</string>
+    <string name="player_cd_next">Next</string>
+    <string name="player_cd_change_style">Change style</string>
+    <string name="player_cd_track_mix">Track mix</string>
+    <string name="player_cd_edit_lyrics">Edit lyrics</string>
+
+    <string name="player_next_track">Next: %1$s</string>
+    <string name="player_live_note_chip">📝 %1$s</string>
+    <string name="player_hq_unavailable">HQ unavailable</string>
+    <string name="player_hq_off_banner">HQ OFF (STUB) =&gt; degraded audio, pitch/speed disabled</string>
+    <string name="player_add_note_title">Add note</string>
+    <string name="player_add_note_label_hint">E.g.: Guitar solo — E minor</string>
+    <string name="player_note_duration_seconds">Duration: %1$ds</string>
+    <string name="player_note_preset_10s">10s</string>
+    <string name="player_note_preset_30s">30s</string>
+    <string name="player_note_preset_60s">60s</string>
+    <string name="player_auto_return_button">-10</string>
+    <string name="player_hq_tag">TS=HQ</string>
+    <string name="player_add_note_icon">📝</string>
 </resources>
