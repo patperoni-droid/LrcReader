@@ -13,6 +13,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -23,6 +24,7 @@ import com.patrick.lrcreader.core.BackupFolderPrefs
 import com.patrick.lrcreader.core.DjFolderPrefs
 import com.patrick.lrcreader.core.InternalStoragePaths
 import com.patrick.lrcreader.core.StorageModePrefs
+import com.patrick.lrcreader.exo.R
 
 @Composable
 fun SetupInstallScreen(
@@ -129,12 +131,12 @@ fun SetupInstallScreen(
             modifier = Modifier.fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text("Installation", color = titleColor, fontSize = 26.sp)
+            Text(stringResource(R.string.setup_title), color = titleColor, fontSize = 26.sp)
 
             Spacer(Modifier.height(10.dp))
 
             Text(
-                "SPL va créer et utiliser ce dossier :\nDocuments / SPL_Music",
+                stringResource(R.string.setup_documents_folder_explainer),
                 color = subtitleColor,
                 fontSize = 14.sp,
                 lineHeight = 18.sp,
@@ -176,13 +178,13 @@ fun SetupInstallScreen(
                     contentColor = Color.White
                 )
             ) {
-                Text("Autoriser Documents", fontSize = 16.sp)
+                Text(stringResource(R.string.setup_allow_documents), fontSize = 16.sp)
             }
 
             Spacer(Modifier.height(10.dp))
 
             Text(
-                "Tu gardes le contrôle : SPL ne touche qu’à son dossier.",
+                stringResource(R.string.setup_control_hint),
                 color = Color(0xFF6F7A80),
                 fontSize = 12.sp,
                 textAlign = TextAlign.Center
@@ -194,12 +196,10 @@ fun SetupInstallScreen(
     if (showBadFolderDialog) {
         AlertDialog(
             onDismissRequest = { /* bloqué volontairement */ },
-            title = { Text("Ton téléphone bloque sur Téléchargements") },
+            title = { Text(stringResource(R.string.setup_downloads_blocked_title)) },
             text = {
                 Text(
-                    "Ce téléphone ne te laisse pas remonter vers Documents.\n\n" +
-                            "✅ Solution : passer en mode interne (fiable sur vieux téléphones).\n" +
-                            "➡️ Aucun impact sur ton téléphone principal."
+                    stringResource(R.string.setup_downloads_blocked_message)
                 )
             },
             confirmButton = {
@@ -222,7 +222,7 @@ fun SetupInstallScreen(
                         // ✅ passer à l’étape 2
                         showImportPrompt = true
                     }
-                ) { Text("Continuer (mode interne)") }
+                ) { Text(stringResource(R.string.setup_continue_internal_mode)) }
             },
             dismissButton = {
                 TextButton(
@@ -230,7 +230,7 @@ fun SetupInstallScreen(
                         showBadFolderDialog = false
                         pendingBadUri = null
                     }
-                ) { Text("Réessayer") }
+                ) { Text(stringResource(R.string.setup_retry)) }
             }
         )
     }
@@ -265,7 +265,7 @@ fun SetupInstallScreen(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            "Importer des musiques ?",
+                            stringResource(R.string.setup_import_prompt_title),
                             color = titleColor,
                             fontSize = 18.sp,
                             textAlign = TextAlign.Center
@@ -274,7 +274,7 @@ fun SetupInstallScreen(
                         Spacer(Modifier.height(10.dp))
 
                         Text(
-                            "Tu peux importer maintenant, ou le faire plus tard depuis la bibliothèque.",
+                            stringResource(R.string.setup_import_prompt_subtitle),
                             color = subtitleColor,
                             fontSize = 13.sp,
                             textAlign = TextAlign.Center
@@ -298,7 +298,7 @@ fun SetupInstallScreen(
                                 shape = RoundedCornerShape(14.dp),
                                 colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
                                 border = ButtonDefaults.outlinedButtonBorder.copy(width = 1.dp)
-                            ) { Text("Plus tard") }
+                            ) { Text(stringResource(R.string.setup_import_later)) }
 
                             Button(
                                 onClick = {
@@ -314,7 +314,7 @@ fun SetupInstallScreen(
                                     containerColor = Color.White,
                                     contentColor = Color.Black
                                 )
-                            ) { Text("Importer") }
+                            ) { Text(stringResource(R.string.setup_import_now)) }
                         }
                     }
                 }

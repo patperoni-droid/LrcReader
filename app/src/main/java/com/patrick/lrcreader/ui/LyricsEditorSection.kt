@@ -29,12 +29,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.core.CueMidiStore
 import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.core.LrcCleaner
 import com.patrick.lrcreader.core.LrcLine
+import com.patrick.lrcreader.exo.R
 import kotlinx.coroutines.launch
 
 // ─────────────────────────────
@@ -141,7 +143,7 @@ fun LyricsEditorSection(
                     Tab(
                         selected = currentEditTab == 0,
                         onClick = { onCurrentEditTabChange(0) },
-                        text = { Text("Paroles") }
+                        text = { Text(stringResource(R.string.lyrics_editor_tab_lyrics)) }
                     )
                     Tab(
                         selected = currentEditTab == 1,
@@ -166,7 +168,7 @@ fun LyricsEditorSection(
                             onEditingLinesChange(newEditing)
                             onCurrentEditTabChange(1)
                         },
-                        text = { Text("Synchro") }
+                        text = { Text(stringResource(R.string.lyrics_editor_tab_sync)) }
                     )
                 }
             }
@@ -177,7 +179,7 @@ fun LyricsEditorSection(
             ) {
                 Icon(
                     imageVector = Icons.Filled.Check,
-                    contentDescription = "Enregistrer les paroles",
+                    contentDescription = stringResource(R.string.lyrics_editor_cd_save_lyrics),
                     tint = Color(0xFF80CBC4)
                 )
             }
@@ -205,7 +207,7 @@ fun LyricsEditorSection(
                         ),
                         label = {
                             Text(
-                                "Paroles (une ligne par phrase)",
+                                stringResource(R.string.lyrics_editor_input_label),
                                 color = Color.LightGray
                             )
                         }
@@ -242,7 +244,7 @@ fun LyricsEditorSection(
                         ) {
                             Icon(
                                 imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                                contentDescription = "Play/Pause synchro",
+                                contentDescription = stringResource(R.string.lyrics_editor_cd_sync_play_pause),
                                 tint = Color.White
                             )
                         }
@@ -252,7 +254,7 @@ fun LyricsEditorSection(
                         ) {
                             Icon(
                                 imageVector = Icons.Filled.SkipPrevious,
-                                contentDescription = "Revenir début",
+                                contentDescription = stringResource(R.string.lyrics_editor_cd_back_to_start),
                                 tint = Color.White
                             )
                         }
@@ -276,7 +278,7 @@ fun LyricsEditorSection(
                             onClick = { onEditingLinesChange(editingLines.map { it.copy(timeMs = 0L) }) }
                         ) {
                             Text(
-                                text = "Reset TAGs",
+                                text = stringResource(R.string.lyrics_editor_reset_tags),
                                 color = Color(0xFFFF8A80),
                                 fontSize = 11.sp
                             )
@@ -296,7 +298,7 @@ fun LyricsEditorSection(
                         if (editingLines.isEmpty()) {
                             item {
                                 Text(
-                                    "Ajoute d’abord des paroles dans l’onglet Simple.",
+                                    stringResource(R.string.lyrics_editor_empty_sync_hint),
                                     color = Color.Gray,
                                     modifier = Modifier.padding(16.dp)
                                 )
@@ -347,7 +349,7 @@ fun LyricsEditorSection(
                                                 }
                                             }
                                         ) {
-                                            Text("TAG", color = Color(0xFF80CBC4), fontSize = 12.sp)
+                                            Text(stringResource(R.string.lyrics_editor_tag_button), color = Color(0xFF80CBC4), fontSize = 12.sp)
                                         }
                                         Text(timeLabel, color = Color(0xFFB0BEC5), fontSize = 10.sp)
                                     }
@@ -391,7 +393,7 @@ fun LyricsEditorSection(
                                     ) {
                                         Icon(
                                             imageVector = Icons.Filled.PlayArrow,
-                                            contentDescription = "Lire depuis cette phrase",
+                                            contentDescription = stringResource(R.string.lyrics_editor_cd_play_from_line),
                                             tint = if (line.timeMs > 0L) Color.White else Color.DarkGray
                                         )
                                     }
@@ -406,11 +408,11 @@ fun LyricsEditorSection(
 
                         AlertDialog(
                             onDismissRequest = { lineMenuIndex = null },
-                            title = { Text(text = "Ligne ${idx + 1}", color = Color.White) },
+                            title = { Text(text = stringResource(R.string.lyrics_editor_line_dialog_title, idx + 1), color = Color.White) },
                             text = {
                                 Column(Modifier.fillMaxWidth()) {
                                     Text(
-                                        text = "Modifier le texte ou supprimer la phrase.",
+                                        text = stringResource(R.string.lyrics_editor_line_dialog_message),
                                         color = Color(0xFFB0BEC5),
                                         fontSize = 13.sp
                                     )
@@ -418,7 +420,7 @@ fun LyricsEditorSection(
                                     OutlinedTextField(
                                         value = lineMenuText,
                                         onValueChange = { lineMenuText = it },
-                                        label = { Text("Texte de la phrase") },
+                                        label = { Text(stringResource(R.string.lyrics_editor_line_text_label)) },
                                         singleLine = false,
                                         textStyle = androidx.compose.ui.text.TextStyle(
                                             color = Color.White,
@@ -437,7 +439,7 @@ fun LyricsEditorSection(
                                         }
                                         lineMenuIndex = null
                                     }
-                                ) { Text("Modifier", color = Color(0xFF80CBC4)) }
+                                ) { Text(stringResource(R.string.lyrics_editor_edit), color = Color(0xFF80CBC4)) }
                             },
                             dismissButton = {
                                 Row {
@@ -455,10 +457,10 @@ fun LyricsEditorSection(
 
                                             lineMenuIndex = null
                                         }
-                                    ) { Text("Supprimer", color = Color(0xFFFF8A80)) }
+                                    ) { Text(stringResource(R.string.lyrics_editor_delete), color = Color(0xFFFF8A80)) }
 
                                     TextButton(onClick = { lineMenuIndex = null }) {
-                                        Text("Annuler", color = Color.LightGray)
+                                        Text(stringResource(R.string.lyrics_editor_cancel), color = Color.LightGray)
                                     }
                                 }
                             }

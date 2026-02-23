@@ -268,4 +268,121 @@
     <string name="common_cd_choose_playlist">Choisir une playlist</string>
     <string name="common_cd_reset">Réinitialiser</string>
     <string name="common_cd_move">Déplacer</string>
+
+    <!-- Common visible labels -->
+    <string name="common_back_arrow">← Retour</string>
+    <string name="common_reset">Réinitialiser</string>
+    <string name="common_rename">Renommer</string>
+    <string name="common_erase">Effacer</string>
+    <string name="common_assign_to_playlist">Attribuer à une playlist</string>
+    <string name="common_title_label">Titre</string>
+    <string name="common_text_label">Texte</string>
+    <string name="common_untitled">Sans titre</string>
+
+    <!-- CUE MIDI -->
+    <string name="cue_midi_dialog_title">CUE MIDI (ligne %1$d)</string>
+    <string name="cue_midi_channel_label">Canal (1–16)</string>
+    <string name="cue_midi_program_change_label">Program Change (1–128)</string>
+
+    <!-- Waveform preview -->
+    <string name="waveform_title">Waveform</string>
+    <string name="waveform_choose_file">Choisir un fichier…</string>
+    <string name="waveform_no_file_selected">Aucun fichier</string>
+    <string name="waveform_choose_track">Choisis un titre</string>
+    <string name="waveform_analyzing">Analyse…</string>
+    <string name="waveform_generate_error">Impossible de générer la waveform</string>
+    <string name="waveform_no_data">Aucune donnée de waveform</string>
+    <string name="waveform_zoom_value">Zoom x%1$.1f</string>
+    <string name="waveform_in_out_cursor_status">IN %1$s  •  OUT %2$s  •  CURSOR %3$s</string>
+    <string name="waveform_step_ms">Step %1$dms</string>
+    <string name="waveform_in_cursor">IN = CURSOR</string>
+    <string name="waveform_out_cursor">OUT = CURSOR</string>
+    <string name="waveform_play">▶ Play</string>
+    <string name="waveform_stop">⏹ Stop</string>
+
+    <!-- All playlists -->
+    <string name="all_playlists_header_title">PLAYLISTS</string>
+    <string name="all_playlists_header_subtitle">Vos listes de lecture</string>
+    <string name="all_playlists_new_playlist_button">Nouvelle liste de lecture</string>
+    <string name="all_playlists_empty">Aucune liste pour l’instant.</string>
+    <string name="all_playlists_create_title">Nouvelle liste</string>
+    <string name="all_playlists_name_label">Nom de la liste</string>
+    <string name="all_playlists_rename_title">Renommer la liste</string>
+    <string name="all_playlists_delete_title">Supprimer la liste</string>
+    <string name="all_playlists_delete_confirm">Supprimer définitivement « %1$s » ?</string>
+    <string name="all_playlists_meta_loading">%1$d titres • …</string>
+    <string name="all_playlists_meta_ready">%1$d titres • %2$s</string>
+
+    <!-- Notes -->
+    <string name="notes_title">Mes notes</string>
+    <string name="notes_empty">Aucune note.\nAppuie sur + pour en créer une.</string>
+    <string name="notes_menu_rename_edit">Renommer / éditer</string>
+    <string name="notes_new_note_title">Nouvelle note</string>
+    <string name="notes_edit_note_title">Modifier la note</string>
+    <string name="notes_delete_note">Supprimer la note</string>
+    <string name="notes_no_playlist_available">Aucune playlist disponible.</string>
+
+    <!-- Quick playlists -->
+    <string name="quickplaylists_loading_playlists">Chargement des playlists...</string>
+    <string name="quickplaylists_restoring_session">Restauration de la session...</string>
+    <string name="quickplaylists_text_fallback_title">(Texte)</string>
+    <string name="quickplaylists_badge_next_forced">PROCHAIN</string>
+    <string name="quickplaylists_badge_next">NEXT</string>
+    <string name="quickplaylists_menu_play">▶ Play</string>
+    <string name="quickplaylists_menu_set_next">Définir comme PROCHAIN</string>
+    <string name="quickplaylists_menu_cancel_next">Annuler PROCHAIN</string>
+    <string name="quickplaylists_menu_remove_from_playlist">Retirer de la liste</string>
+    <string name="quickplaylists_menu_title_color">Couleur du titre</string>
+    <string name="quickplaylists_edit_prompter_title">Éditer le prompteur ✅ TEST 2026</string>
+    <string name="quickplaylists_new_prompter_title">Nouveau titre (prompteur 2026 )</string>
+    <string name="quickplaylists_prompter_text_label">Texte du prompteur</string>
+
+    <!-- History -->
+    <string name="history_title">Historique</string>
+    <string name="history_clear">Vider</string>
+    <string name="history_filter_all">Tout</string>
+    <string name="history_filter_backing">Backing</string>
+    <string name="history_filter_dj">DJ</string>
+    <string name="history_date_time">Date/heure</string>
+    <string name="history_empty">Aucun événement</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Paramètres</string>
+    <string name="settings_midi_bluetooth_section">MIDI / Bluetooth</string>
+    <string name="settings_test_bluetooth_midi">🎹 Test Bluetooth MIDI</string>
+
+    <!-- Global mix -->
+    <string name="global_mix_title">Mixage général</string>
+    <string name="global_mix_subtitle">Réglage des niveaux : Lecteur, DJ, Fond sonore.</string>
+    <string name="global_mix_player_title">Lecteur (playback)</string>
+    <string name="global_mix_player_subtitle">Paroles + playback principal</string>
+    <string name="global_mix_dj_title">Mode DJ</string>
+    <string name="global_mix_dj_subtitle">Crossfade, playlists DJ</string>
+    <string name="global_mix_filler_title">Fond sonore</string>
+    <string name="global_mix_filler_subtitle">Nappe entre les morceaux</string>
+    <string name="global_mix_tip">Astuce : commence vers 70–80% partout, puis ajuste en live.</string>
+
+    <!-- Track mix (console labels kept in English) -->
+    <string name="track_mix_console_title">TRACK CONSOLE</string>
+    <string name="track_mix_no_track">Aucun titre</string>
+    <string name="track_mix_level">LEVEL</string>
+    <string name="track_mix_anti_clip">ANTI-CLIP</string>
+    <string name="track_mix_speed">SPEED</string>
+    <string name="track_mix_reset_speed">Reset 1.00x</string>
+    <string name="track_mix_pitch">PITCH</string>
+    <string name="track_mix_reset_pitch">Reset 0</string>
+    <string name="track_mix_vu">VU</string>
+    <string name="track_mix_keep_it_clean">KEEP IT CLEAN</string>
+    <string name="track_mix_equalizer">EQUALIZER</string>
+    <string name="track_mix_three_bands">3 BANDS</string>
+    <string name="track_mix_drag_hint">drag ↑↓</string>
+    <string name="track_mix_eq_low">LOW</string>
+    <string name="track_mix_eq_mid">MID</string>
+    <string name="track_mix_eq_high">HIGH</string>
+    <string name="track_mix_touch_to_return">TOUCH HERE TO RETURN</string>
+
+    <!-- Library components -->
+    <string name="library_bottom_assign">Attribuer</string>
+    <string name="library_bottom_clear_selection">Désélect.</string>
+    <string name="library_copying">Copie…</string>
 </resources>

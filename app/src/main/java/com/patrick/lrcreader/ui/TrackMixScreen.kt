@@ -25,12 +25,14 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.core.TrackEqEngine
 import com.patrick.lrcreader.core.TrackEqPrefs
 import com.patrick.lrcreader.core.TrackEqSettings
+import com.patrick.lrcreader.exo.R
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -170,8 +172,8 @@ fun TrackMixScreen(
         Column(Modifier.fillMaxSize()) {
 
             ConsoleHeader(
-                title = "TRACK CONSOLE",
-                subtitle = currentTrackUri?.takeLast(26) ?: "Aucun titre",
+                title = stringResource(R.string.track_mix_console_title),
+                subtitle = currentTrackUri?.takeLast(26) ?: stringResource(R.string.track_mix_no_track),
                 accent = amber
             )
 
@@ -186,7 +188,7 @@ fun TrackMixScreen(
                     verticalAlignment = Alignment.Top
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("LEVEL", color = textSub, fontSize = 11.sp, letterSpacing = 2.sp)
+                        Text(stringResource(R.string.track_mix_level), color = textSub, fontSize = 11.sp, letterSpacing = 2.sp)
                         Text(
                             text = "${if (displayGainDb >= 0) "+$displayGainDb" else displayGainDb} dB",
                             color = textMain,
@@ -219,14 +221,14 @@ fun TrackMixScreen(
                             labelMax = "$maxDb"
                         )
                         Spacer(Modifier.height(6.dp))
-                        Text("ANTI-CLIP", color = Color(0xFF9AA6AF), fontSize = 10.sp)
+                        Text(stringResource(R.string.track_mix_anti_clip), color = Color(0xFF9AA6AF), fontSize = 10.sp)
                     }
 
                     Column(
                         modifier = Modifier.padding(horizontal = 10.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Text("SPEED", color = textSub, fontSize = 11.sp, letterSpacing = 2.sp)
+                        Text(stringResource(R.string.track_mix_speed), color = textSub, fontSize = 11.sp, letterSpacing = 2.sp)
                         Spacer(Modifier.height(6.dp))
 
                         AnalogKnob(
@@ -254,12 +256,12 @@ fun TrackMixScreen(
                             onTempoChange(1f)
                             tempo01 = ((1f - minTempo) / (maxTempo - minTempo)).coerceIn(0f, 1f)
                         }) {
-                            Text("Reset 1.00x", color = Color(0xFF80CBC4), fontSize = 11.sp)
+                            Text(stringResource(R.string.track_mix_reset_speed), color = Color(0xFF80CBC4), fontSize = 11.sp)
                         }
 
                         Spacer(Modifier.height(10.dp))
 
-                        Text("PITCH", color = textSub, fontSize = 11.sp, letterSpacing = 2.sp)
+                        Text(stringResource(R.string.track_mix_pitch), color = textSub, fontSize = 11.sp, letterSpacing = 2.sp)
                         Spacer(Modifier.height(6.dp))
 
                         AnalogKnob(
@@ -289,12 +291,12 @@ fun TrackMixScreen(
                             onPitchSemiChange(0)
                             pitch01 = ((0 - minSemi).toFloat() / (maxSemi - minSemi)).coerceIn(0f, 1f)
                         }) {
-                            Text("Reset 0", color = Color(0xFFCE93D8), fontSize = 11.sp)
+                            Text(stringResource(R.string.track_mix_reset_pitch), color = Color(0xFFCE93D8), fontSize = 11.sp)
                         }
                     }
 
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("VU", color = textSub, fontSize = 11.sp, letterSpacing = 2.sp)
+                        Text(stringResource(R.string.track_mix_vu), color = textSub, fontSize = 11.sp, letterSpacing = 2.sp)
                         Spacer(Modifier.height(10.dp))
 
                         val vu01 = ((displayGainDb - minDb).toFloat() / (maxDb - minDb))
@@ -310,7 +312,7 @@ fun TrackMixScreen(
                         )
 
                         Spacer(Modifier.height(8.dp))
-                        Text("KEEP IT CLEAN", color = Color(0xFF8FA0AA), fontSize = 10.sp)
+                        Text(stringResource(R.string.track_mix_keep_it_clean), color = Color(0xFF8FA0AA), fontSize = 10.sp)
                     }
                 }
             }
@@ -324,8 +326,8 @@ fun TrackMixScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("EQUALIZER", color = textMain, fontSize = 12.sp, letterSpacing = 2.sp)
-                        Text("3 BANDS", color = textSub, fontSize = 11.sp)
+                        Text(stringResource(R.string.track_mix_equalizer), color = textMain, fontSize = 12.sp, letterSpacing = 2.sp)
+                        Text(stringResource(R.string.track_mix_three_bands), color = textSub, fontSize = 11.sp)
                     }
 
                     Spacer(Modifier.height(10.dp))
@@ -336,9 +338,9 @@ fun TrackMixScreen(
                             .height(240.dp),
                         horizontalArrangement = Arrangement.SpaceEvenly
                     ) {
-                        EqAnalogFader("LOW", lowGain, { lowGain = it; applyAndSaveEq() }, Color(0xFF4CAF50))
-                        EqAnalogFader("MID", midGain, { midGain = it; applyAndSaveEq() }, amber)
-                        EqAnalogFader("HIGH", highGain, { highGain = it; applyAndSaveEq() }, Color(0xFF42A5F5))
+                        EqAnalogFader(stringResource(R.string.track_mix_eq_low), lowGain, { lowGain = it; applyAndSaveEq() }, Color(0xFF4CAF50))
+                        EqAnalogFader(stringResource(R.string.track_mix_eq_mid), midGain, { midGain = it; applyAndSaveEq() }, amber)
+                        EqAnalogFader(stringResource(R.string.track_mix_eq_high), highGain, { highGain = it; applyAndSaveEq() }, Color(0xFF42A5F5))
                     }
                 }
             }
@@ -354,7 +356,7 @@ fun TrackMixScreen(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = "TOUCH HERE TO RETURN",
+                    text = stringResource(R.string.track_mix_touch_to_return),
                     color = Color(0x66FFFFFF),
                     fontSize = 11.sp,
                     letterSpacing = 2.sp
@@ -679,7 +681,7 @@ private fun AnalogKnob(
 
         Spacer(Modifier.height(6.dp))
         Text(label, color = Color(0xFFEFE8DA), fontSize = 12.sp)
-        Text("drag ↑↓", color = Color(0xFF9AA6AF), fontSize = 10.sp)
+        Text(stringResource(R.string.track_mix_drag_hint), color = Color(0xFF9AA6AF), fontSize = 10.sp)
     }
 }
 

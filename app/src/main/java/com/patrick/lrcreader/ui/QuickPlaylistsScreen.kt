@@ -480,7 +480,11 @@ fun QuickPlaylistsScreen(
                         color = Color(0xFFFFC107)
                     )
                     Text(
-                        text = if (!playlistsReady) "Chargement des playlists..." else "Restauration de la session...",
+                        text = if (!playlistsReady) {
+                            stringResource(R.string.quickplaylists_loading_playlists)
+                        } else {
+                            stringResource(R.string.quickplaylists_restoring_session)
+                        },
                         color = Color(0xFFB0BEC5),
                         fontSize = 12.sp
                     )
@@ -541,7 +545,7 @@ fun QuickPlaylistsScreen(
                                 if (numericId != null) {
                                     // 👉 NOTE : titre lu dans NotesRepository
                                     val note = NotesRepository.get(context, numericId)
-                                    note?.title?.takeIf { it.isNotBlank() } ?: "(Texte)"
+                                    note?.title?.takeIf { it.isNotBlank() } ?: stringResource(R.string.quickplaylists_text_fallback_title)
                                 } else {
                                     // 👉 ancien système TextSongRepository (id non numérique)
                                     val textSong = TextSongRepository.get(context, idPart)
@@ -714,7 +718,7 @@ fun QuickPlaylistsScreen(
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Text(
-                                            text = "PROCHAIN",
+                                            text = stringResource(R.string.quickplaylists_badge_next_forced),
                                             color = Color.White,
                                             fontSize = 10.sp
                                         )
@@ -731,7 +735,7 @@ fun QuickPlaylistsScreen(
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Text(
-                                            text = "NEXT",
+                                            text = stringResource(R.string.quickplaylists_badge_next),
                                             color = Color(0xFF111111),
                                             fontSize = 10.sp
                                         )
@@ -770,7 +774,7 @@ fun QuickPlaylistsScreen(
                                         DropdownMenuItem(
                                             text = {
                                                 Text(
-                                                    "▶ Play",
+                                                    stringResource(R.string.quickplaylists_menu_play),
                                                     color = Color.White
                                                 )
                                             },
@@ -787,7 +791,7 @@ fun QuickPlaylistsScreen(
                                             }
                                         )
                                         DropdownMenuItem(
-                                            text = { Text("Définir comme PROCHAIN", color = Color.White) },
+                                            text = { Text(stringResource(R.string.quickplaylists_menu_set_next), color = Color.White) },
                                             onClick = {
                                                 onSetNextTrack(
                                                     uriString,
@@ -799,7 +803,7 @@ fun QuickPlaylistsScreen(
                                         )
                                         if (nextTrackUri != null) {
                                             DropdownMenuItem(
-                                                text = { Text("Annuler PROCHAIN", color = Color.White) },
+                                                text = { Text(stringResource(R.string.quickplaylists_menu_cancel_next), color = Color.White) },
                                                 onClick = {
                                                     onClearNextTrack()
                                                     menuOpen = false
@@ -809,7 +813,7 @@ fun QuickPlaylistsScreen(
                                         DropdownMenuItem(
                                             text = {
                                                 Text(
-                                                    "Retirer de la liste",
+                                                    stringResource(R.string.quickplaylists_menu_remove_from_playlist),
                                                     color = Color.White
                                                 )
                                             },
@@ -826,7 +830,7 @@ fun QuickPlaylistsScreen(
                                             }
                                         )
                                         DropdownMenuItem(
-                                            text = { Text("Renommer", color = Color.White) },
+                                            text = { Text(stringResource(R.string.common_rename), color = Color.White) },
                                             onClick = {
                                                 renameTarget = uriString
                                                 renameText = displayName
@@ -836,7 +840,7 @@ fun QuickPlaylistsScreen(
                                         // ✅ Éditer texte prompteur (uniquement si c'est un "prompter://")
                                         if (uriString.startsWith("prompter://")) {
                                             DropdownMenuItem(
-                                                text = { Text( "Éditer le prompteur ✅ TEST 2026", color = Color.White) },
+                                                text = { Text(stringResource(R.string.quickplaylists_edit_prompter_title), color = Color.White) },
                                                 onClick = {
                                                     val idPart = uriString.removePrefix("prompter://")
                                                     val numericId = idPart.toLongOrNull()
@@ -859,7 +863,7 @@ fun QuickPlaylistsScreen(
                                         }
                                         // 🎨 Couleur du titre (palette)
                                         DropdownMenuItem(
-                                            text = { Text("Couleur du titre", color = Color.White) },
+                                            text = { Text(stringResource(R.string.quickplaylists_menu_title_color), color = Color.White) },
                                             onClick = { /* pas d'action, palette dessous */ }
                                         )
 
@@ -928,7 +932,7 @@ fun QuickPlaylistsScreen(
     if (renameTarget != null && internalSelected != null) {
         AlertDialog(
             onDismissRequest = { renameTarget = null },
-            title = { Text("Renommer", color = Color.White) },
+            title = { Text(stringResource(R.string.common_rename), color = Color.White) },
             text = {
                 OutlinedTextField(
                     value = renameText,
@@ -1010,12 +1014,12 @@ fun QuickPlaylistsScreen(
                         }
                     }
                 ) {
-                    Text("OK", color = Color.White)
+                    Text(stringResource(R.string.common_ok), color = Color.White)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { renameTarget = null }) {
-                    Text("Annuler", color = Color.White)
+                    Text(stringResource(R.string.common_cancel), color = Color.White)
                 }
             },
             containerColor = Color(0xFF222222)
@@ -1026,20 +1030,20 @@ fun QuickPlaylistsScreen(
     if (showCreateTextDialog && internalSelected != null) {
         AlertDialog(
             onDismissRequest = { showCreateTextDialog = false },
-            title = { Text("Nouveau titre (prompteur 2026 )", color = Color.White) },
+            title = { Text(stringResource(R.string.quickplaylists_new_prompter_title), color = Color.White) },
             text = {
                 Column {
                     OutlinedTextField(
                         value = newTextTitle,
                         onValueChange = { newTextTitle = it },
-                        label = { Text("Titre") },
+                        label = { Text(stringResource(R.string.common_title_label)) },
                         singleLine = true
                     )
                     Spacer(Modifier.height(8.dp))
                     OutlinedTextField(
                         value = newTextContent,
                         onValueChange = { newTextContent = it },
-                        label = { Text("Texte du prompteur") },
+                        label = { Text(stringResource(R.string.quickplaylists_prompter_text_label)) },
                         minLines = 5
                     )
                 }
@@ -1059,12 +1063,12 @@ fun QuickPlaylistsScreen(
 
                     showCreateTextDialog = false
                 }) {
-                    Text("OK", color = Color.White)
+                    Text(stringResource(R.string.common_ok), color = Color.White)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showCreateTextDialog = false }) {
-                    Text("Annuler", color = Color.White)
+                    Text(stringResource(R.string.common_cancel), color = Color.White)
                 }
             },
             containerColor = Color(0xFF222222)
@@ -1095,7 +1099,7 @@ fun QuickPlaylistsScreen(
                     .padding(16.dp)
             ) {
                 Text(
-                    "Éditer le prompteur ✅ TEST 2026",
+                    stringResource(R.string.quickplaylists_edit_prompter_title),
                     color = Color.White,
                     fontSize = 18.sp
                 )
@@ -1105,7 +1109,7 @@ fun QuickPlaylistsScreen(
                 OutlinedTextField(
                     value = editTextTitle,
                     onValueChange = { editTextTitle = it },
-                    label = { Text("Titre") },
+                    label = { Text(stringResource(R.string.common_title_label)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -1122,7 +1126,7 @@ fun QuickPlaylistsScreen(
                     OutlinedTextField(
                         value = editTextContent,
                         onValueChange = { editTextContent = it },
-                        label = { Text("Texte du prompteur") },
+                        label = { Text(stringResource(R.string.quickplaylists_prompter_text_label)) },
                         modifier = Modifier
                             .fillMaxWidth()
                             .heightIn(min = 260.dp),
@@ -1143,7 +1147,7 @@ fun QuickPlaylistsScreen(
                             editTargetUri = null
                         }
                     ) {
-                        Text("Annuler", color = Color(0xFFB0BEC5))
+                        Text(stringResource(R.string.common_cancel), color = Color(0xFFB0BEC5))
                     }
 
                     Spacer(Modifier.width(8.dp))
@@ -1189,7 +1193,7 @@ fun QuickPlaylistsScreen(
                             editTargetUri = null
                         }
                     ) {
-                        Text("Enregistrer", color = Color.White)
+                        Text(stringResource(R.string.common_save), color = Color.White)
                     }
                 }
             }

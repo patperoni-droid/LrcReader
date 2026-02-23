@@ -96,13 +96,13 @@ fun AllPlaylistsScreen(
         ) {
             // ---------- HEADER ----------
             Text(
-                text = "PLAYLISTS",
+                text = stringResource(R.string.all_playlists_header_title),
                 color = accent,
                 fontSize = 18.sp,
                 letterSpacing = 3.sp
             )
             Text(
-                text = "Vos listes de lecture",
+                text = stringResource(R.string.all_playlists_header_subtitle),
                 color = sub,
                 fontSize = 12.sp
             )
@@ -137,7 +137,7 @@ fun AllPlaylistsScreen(
                 )
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    "Nouvelle liste de lecture",
+                    stringResource(R.string.all_playlists_new_playlist_button),
                     color = onBg,
                     fontSize = 14.sp
                 )
@@ -147,7 +147,7 @@ fun AllPlaylistsScreen(
 
             if (playlists.isEmpty()) {
                 Text(
-                    text = "Aucune liste pour l’instant.",
+                    text = stringResource(R.string.all_playlists_empty),
                     color = sub,
                     fontSize = 13.sp
                 )
@@ -180,12 +180,12 @@ fun AllPlaylistsScreen(
         if (showCreateDialog) {
             AlertDialog(
                 onDismissRequest = { showCreateDialog = false },
-                title = { Text("Nouvelle liste", color = onBg) },
+                title = { Text(stringResource(R.string.all_playlists_create_title), color = onBg) },
                 text = {
                     OutlinedTextField(
                         value = newName,
                         onValueChange = { newName = it },
-                        label = { Text("Nom de la liste") },
+                        label = { Text(stringResource(R.string.all_playlists_name_label)) },
                         singleLine = true
                     )
                 },
@@ -198,12 +198,12 @@ fun AllPlaylistsScreen(
                         }
                         showCreateDialog = false
                     }) {
-                        Text("OK", color = onBg)
+                        Text(stringResource(R.string.common_ok), color = onBg)
                     }
                 },
                 dismissButton = {
                     TextButton(onClick = { showCreateDialog = false }) {
-                        Text("Annuler", color = sub)
+                        Text(stringResource(R.string.common_cancel), color = sub)
                     }
                 },
                 containerColor = Color(0xFF222222)
@@ -214,12 +214,12 @@ fun AllPlaylistsScreen(
         if (renameTarget != null) {
             AlertDialog(
                 onDismissRequest = { renameTarget = null },
-                title = { Text("Renommer la liste", color = onBg) },
+                title = { Text(stringResource(R.string.all_playlists_rename_title), color = onBg) },
                 text = {
                     OutlinedTextField(
                         value = renameText,
                         onValueChange = { renameText = it },
-                        label = { Text("Nouveau nom") },
+                        label = { Text(stringResource(R.string.library_new_name_label)) },
                         singleLine = true
                     )
                 },
@@ -232,12 +232,12 @@ fun AllPlaylistsScreen(
                         }
                         // si le nom existe déjà, on ne ferme pas → l’utilisateur corrige
                     }) {
-                        Text("OK", color = onBg)
+                        Text(stringResource(R.string.common_ok), color = onBg)
                     }
                 },
                 dismissButton = {
                     TextButton(onClick = { renameTarget = null }) {
-                        Text("Annuler", color = sub)
+                        Text(stringResource(R.string.common_cancel), color = sub)
                     }
                 },
                 containerColor = Color(0xFF222222)
@@ -248,10 +248,10 @@ fun AllPlaylistsScreen(
         if (deleteTarget != null) {
             AlertDialog(
                 onDismissRequest = { deleteTarget = null },
-                title = { Text("Supprimer la liste", color = onBg) },
+                title = { Text(stringResource(R.string.all_playlists_delete_title), color = onBg) },
                 text = {
                     Text(
-                        text = "Supprimer définitivement « ${deleteTarget} » ?",
+                        text = stringResource(R.string.all_playlists_delete_confirm, deleteTarget ?: ""),
                         color = onBg,
                         fontSize = 14.sp
                     )
@@ -262,12 +262,12 @@ fun AllPlaylistsScreen(
                         PlaylistRepository.deletePlaylist(target)
                         deleteTarget = null
                     }) {
-                        Text("Effacer", color = Color(0xFFFF8A80))
+                        Text(stringResource(R.string.common_erase), color = Color(0xFFFF8A80))
                     }
                 },
                 dismissButton = {
                     TextButton(onClick = { deleteTarget = null }) {
-                        Text("Annuler", color = sub)
+                        Text(stringResource(R.string.common_cancel), color = sub)
                     }
                 },
                 containerColor = Color(0xFF222222)
@@ -325,8 +325,8 @@ private fun PlaylistRow(
 
     // ✅ MODE PRO : "18 titres • 42:18"
     val proLine = when {
-        totalMs < 0 -> "${titleCount} titres • …"
-        else -> "${titleCount} titres • ${formatDuration(totalMs)}"
+        totalMs < 0 -> stringResource(R.string.all_playlists_meta_loading, titleCount)
+        else -> stringResource(R.string.all_playlists_meta_ready, titleCount, formatDuration(totalMs))
     }
 
     Card(
@@ -378,14 +378,14 @@ private fun PlaylistRow(
                     modifier = Modifier.background(Color(0xFF1E1E1E))
                 ) {
                     DropdownMenuItem(
-                        text = { Text("Renommer", color = Color.White) },
+                        text = { Text(stringResource(R.string.common_rename), color = Color.White) },
                         onClick = {
                             menuOpen = false
                             onRename()
                         }
                     )
                     DropdownMenuItem(
-                        text = { Text("Effacer", color = Color(0xFFFF8A80)) },
+                        text = { Text(stringResource(R.string.common_erase), color = Color(0xFFFF8A80)) },
                         onClick = {
                             menuOpen = false
                             onDelete()
