@@ -100,7 +100,7 @@ wait_for_log() {
   start=$(date +%s)
 
   while true; do
-    if adb_s logcat -d -v brief -s PLAYER_SMOKE | grep -q "$pattern"; then
+    if adb_s logcat -d -v brief -s PLAYER_SMOKE | grep -Fq "$pattern"; then
       return 0
     fi
 
@@ -112,7 +112,6 @@ wait_for_log() {
     sleep 0.5
   done
 }
-
 echo "[3/6] Wait BOOT (30s)"
 if ! wait_for_log "BOOT" 30; then
   echo "❌ BOOT not seen" >&2
