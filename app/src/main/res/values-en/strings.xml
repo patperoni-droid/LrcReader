@@ -220,4 +220,58 @@
     <string name="player_auto_return_button">-10</string>
     <string name="player_hq_tag">TS=HQ</string>
     <string name="player_add_note_icon">📝</string>
+
+    <!-- Setup install -->
+    <string name="setup_title">Installation</string>
+    <string name="setup_documents_folder_explainer">SPL will create and use this folder:\nDocuments / SPL_Music</string>
+    <string name="setup_allow_documents">Allow Documents</string>
+    <string name="setup_control_hint">You stay in control: SPL only touches its own folder.</string>
+    <string name="setup_downloads_blocked_title">Your phone blocks Downloads</string>
+    <string name="setup_downloads_blocked_message">This phone does not let you go back up to Documents.\n\n✅ Solution: switch to internal mode (reliable on older phones).\n➡️ No impact on your main phone.</string>
+    <string name="setup_continue_internal_mode">Continue (internal mode)</string>
+    <string name="setup_retry">Try again</string>
+    <string name="setup_import_prompt_title">Import music?</string>
+    <string name="setup_import_prompt_subtitle">You can import now, or do it later from the library.</string>
+    <string name="setup_import_later">Later</string>
+    <string name="setup_import_now">Import</string>
+
+    <!-- DJ UI sections -->
+    <string name="dj_bus_mix_auto">DJ BUS / AUTO MIX</string>
+    <string name="dj_crossfade">X-Fade</string>
+    <string name="dj_go">GO</string>
+    <string name="dj_queue_title">Queue</string>
+    <string name="dj_queue_title_count">Queue (%1$d)</string>
+    <string name="dj_queue_auto">Auto</string>
+    <string name="dj_choose_folder_for_tracks">Choose a folder for your DJ tracks.</string>
+
+    <!-- Lyrics editor section -->
+    <string name="lyrics_editor_tab_lyrics">Lyrics</string>
+    <string name="lyrics_editor_tab_sync">Sync</string>
+    <string name="lyrics_editor_cd_save_lyrics">Save lyrics</string>
+    <string name="lyrics_editor_input_label">Lyrics (one line per phrase)</string>
+    <string name="lyrics_editor_cd_sync_play_pause">Sync play/pause</string>
+    <string name="lyrics_editor_cd_back_to_start">Back to start</string>
+    <string name="lyrics_editor_reset_tags">Reset tags</string>
+    <string name="lyrics_editor_empty_sync_hint">Add lyrics first in the Simple tab.</string>
+    <string name="lyrics_editor_tag_button">TAG</string>
+    <string name="lyrics_editor_cd_play_from_line">Play from this line</string>
+    <string name="lyrics_editor_line_dialog_title">Line %1$d</string>
+    <string name="lyrics_editor_line_dialog_message">Edit the text or delete the phrase.</string>
+    <string name="lyrics_editor_line_text_label">Phrase text</string>
+    <string name="lyrics_editor_edit">Edit</string>
+    <string name="lyrics_editor_delete">Delete</string>
+    <string name="lyrics_editor_cancel">Cancel</string>
+
+    <!-- Common content descriptions -->
+    <string name="common_cd_back">Back</string>
+    <string name="common_cd_close">Close</string>
+    <string name="common_cd_close_editor">Close editor</string>
+    <string name="common_cd_options">Options</string>
+    <string name="common_cd_toggle_slider">Open / close slider</string>
+    <string name="common_cd_enqueue">Add to queue</string>
+    <string name="common_cd_new_note">New note</string>
+    <string name="common_cd_note_options">Note options</string>
+    <string name="common_cd_choose_playlist">Choose a playlist</string>
+    <string name="common_cd_reset">Reset</string>
+    <string name="common_cd_move">Move</string>
 </resources>

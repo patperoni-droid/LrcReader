@@ -19,6 +19,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
+import com.patrick.lrcreader.exo.R
 
 
 @Composable
@@ -39,7 +41,7 @@ fun PrompterTransportBarAudioLike(
         IconButton(onClick = onPrev) {
             Icon(
                 imageVector = Icons.Filled.SkipPrevious,
-                contentDescription = "Précédent",
+                contentDescription = stringResource(R.string.player_cd_prev),
                 tint = Color.White,
                 modifier = Modifier.size(48.dp)
             )
@@ -48,7 +50,7 @@ fun PrompterTransportBarAudioLike(
         IconButton(onClick = onPlayPause) {
             Icon(
                 imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                contentDescription = "Play/Pause",
+                contentDescription = stringResource(R.string.player_cd_play_pause),
                 tint = Color.White,
                 modifier = Modifier.size(64.dp)
             )
@@ -57,7 +59,7 @@ fun PrompterTransportBarAudioLike(
         IconButton(onClick = onNext) {
             Icon(
                 imageVector = Icons.Filled.SkipNext,
-                contentDescription = "Suivant",
+                contentDescription = stringResource(R.string.player_cd_next),
                 tint = Color.White,
                 modifier = Modifier.size(48.dp)
             )

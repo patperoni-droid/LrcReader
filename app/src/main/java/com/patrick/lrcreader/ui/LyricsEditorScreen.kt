@@ -15,9 +15,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.patrick.lrcreader.exo.R
 
 @Composable
 fun LyricsEditorScreen(
@@ -46,7 +48,7 @@ fun LyricsEditorScreen(
             IconButton(onClick = onClose) {
                 Icon(
                     imageVector = Icons.Default.ArrowBack,
-                    contentDescription = "Fermer l’édition",
+                    contentDescription = stringResource(R.string.common_cd_close_editor),
                     tint = Color.White
                 )
             }

@@ -25,11 +25,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.core.NotesRepository
 import com.patrick.lrcreader.core.PlaylistRepository
+import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.ui.theme.DarkBlueGradientBackground
 
 private enum class NotesUiMode {
@@ -137,7 +139,7 @@ fun NotesScreen(
                             IconButton(onClick = onClose) {
                                 Icon(
                                     imageVector = Icons.Filled.Close,
-                                    contentDescription = "Fermer",
+                                    contentDescription = stringResource(R.string.common_cd_close),
                                     tint = Color.White
                                 )
                             }
@@ -151,7 +153,7 @@ fun NotesScreen(
                         IconButton(onClick = { openNewNote() }) {
                             Icon(
                                 imageVector = Icons.Filled.Add,
-                                contentDescription = "Nouvelle note",
+                                contentDescription = stringResource(R.string.common_cd_new_note),
                                 tint = Color(0xFF81C784)
                             )
                         }
@@ -222,7 +224,7 @@ fun NotesScreen(
                                                 ) {
                                                     Icon(
                                                         imageVector = Icons.Filled.MoreVert,
-                                                        contentDescription = "Options note",
+                                                        contentDescription = stringResource(R.string.common_cd_note_options),
                                                         tint = Color.White
                                                     )
                                                 }
@@ -300,7 +302,7 @@ fun NotesScreen(
                             }) {
                                 Icon(
                                     imageVector = Icons.Filled.ArrowBack,
-                                    contentDescription = "Retour",
+                                    contentDescription = stringResource(R.string.common_cd_back),
                                     tint = Color.White
                                 )
                             }
@@ -320,7 +322,7 @@ fun NotesScreen(
                                 IconButton(onClick = { editMenuOpen = true }) {
                                     Icon(
                                         imageVector = Icons.Filled.MoreVert,
-                                        contentDescription = "Menu note",
+                                        contentDescription = stringResource(R.string.common_cd_note_options),
                                         tint = Color.White
                                     )
                                 }

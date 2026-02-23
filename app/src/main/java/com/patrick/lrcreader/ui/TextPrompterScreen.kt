@@ -27,12 +27,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.patrick.lrcreader.core.NotesRepository
 import com.patrick.lrcreader.core.TextPrompterPrefs
 import com.patrick.lrcreader.core.TextSongRepository
+import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.ui.theme.DarkBlueGradientBackground
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -373,7 +375,7 @@ fun TextPrompterScreen(
                             Icons.Filled.KeyboardArrowRight
                         else
                             Icons.Filled.KeyboardArrowLeft,
-                        contentDescription = "Ouvrir / Fermer slider"
+                        contentDescription = stringResource(R.string.common_cd_toggle_slider)
                     )
                 }
             }
