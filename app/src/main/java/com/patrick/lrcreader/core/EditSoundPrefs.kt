@@ -3,6 +3,8 @@ package com.patrick.lrcreader.core
 import android.content.Context
 import android.net.Uri
 import android.provider.DocumentsContract
+import android.util.Log
+import com.patrick.lrcreader.core.config.ConfigJsonAtomicFileIo
 import org.json.JSONObject
 
 /**
@@ -13,8 +15,13 @@ import org.json.JSONObject
  */
 object EditSoundPrefs {
 
+    private const val TAG = "EditSoundPrefs"
     private const val PREFS_NAME = "edit_sound_prefs"
     private const val KEY_JSON = "edits_json"
+    private const val CONFIG_FILE_NAME = "trim_settings.json"
+    private const val JSON_SCHEMA_VERSION = 1
+    private const val JSON_KEY_SCHEMA_VERSION = "schemaVersion"
+    private const val JSON_KEY_EDITS = "edits"
 
     data class EditInfo(
         val startMs: Int,
@@ -25,6 +32,15 @@ object EditSoundPrefs {
         val key: String,
         val info: EditInfo
     )
+
+    fun ensureInitialized(context: Context): Boolean {
+        return ConfigJsonAtomicFileIo.ensureInitialized(
+            context = context,
+            fileName = CONFIG_FILE_NAME,
+            defaultRawJson = emptyConfigJson(),
+            tag = TAG
+        )
+    }
 
     fun trimKeyForUri(uri: Uri): String {
         return runCatching {
@@ -45,7 +61,8 @@ object EditSoundPrefs {
         if (legacyKey != key) {
             map.remove(legacyKey)
         }
-        persist(context, map)
+        persistPrefs(context, map)
+        persistJson(context, map)
     }
 
     /**
@@ -78,7 +95,8 @@ object EditSoundPrefs {
         val legacyKey = uri.toString()
         if (legacyKey != key && map.remove(legacyKey) != null) removed = true
         if (removed) {
-            persist(context, map)
+            persistPrefs(context, map)
+            persistJson(context, map)
         }
     }
 
@@ -87,6 +105,18 @@ object EditSoundPrefs {
      * (pratique pour la sauvegarde globale).
      */
     fun getAll(context: Context): Map<String, EditInfo> {
+        val fromJson = readJsonAll(context)
+        val fromPrefs = readPrefsAll(context)
+        if (fromJson.isEmpty()) return fromPrefs
+        if (fromPrefs.isEmpty()) return fromJson
+
+        val merged = LinkedHashMap<String, EditInfo>(fromPrefs.size + fromJson.size)
+        merged.putAll(fromPrefs)
+        merged.putAll(fromJson)
+        return merged
+    }
+
+    private fun readPrefsAll(context: Context): Map<String, EditInfo> {
         val sp = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val raw = sp.getString(KEY_JSON, null) ?: return emptyMap()
         return try {
@@ -108,7 +138,7 @@ object EditSoundPrefs {
 
     // ───────────────── interne ─────────────────
 
-    private fun persist(context: Context, map: Map<String, EditInfo>) {
+    private fun persistPrefs(context: Context, map: Map<String, EditInfo>) {
         val root = JSONObject()
         map.forEach { (uriStr, info) ->
             val o = JSONObject()
@@ -120,5 +150,70 @@ object EditSoundPrefs {
             .edit()
             .putString(KEY_JSON, root.toString())
             .apply()
+    }
+
+    private fun readJsonAll(context: Context): Map<String, EditInfo> {
+        val raw = ConfigJsonAtomicFileIo.readRaw(
+            context = context,
+            fileName = CONFIG_FILE_NAME,
+            tag = TAG,
+            defaultRawJson = emptyConfigJson()
+        ) ?: return emptyMap()
+
+        return try {
+            val root = JSONObject(raw)
+            val edits = root.optJSONObject(JSON_KEY_EDITS) ?: root
+            val out = linkedMapOf<String, EditInfo>()
+            val keys = edits.keys()
+            while (keys.hasNext()) {
+                val k = keys.next()
+                if (k == JSON_KEY_SCHEMA_VERSION) continue
+                val obj = edits.optJSONObject(k) ?: continue
+                out[k] = EditInfo(
+                    startMs = obj.optInt("startMs", 0),
+                    endMs = obj.optInt("endMs", 0)
+                )
+            }
+            out
+        } catch (t: Throwable) {
+            Log.w(TAG, "readJsonAll parse failed", t)
+            emptyMap()
+        }
+    }
+
+    private fun persistJson(context: Context, map: Map<String, EditInfo>) {
+        val edits = JSONObject()
+        map.forEach { (key, info) ->
+            edits.put(
+                key,
+                JSONObject().apply {
+                    put("startMs", info.startMs)
+                    put("endMs", info.endMs)
+                }
+            )
+        }
+
+        val root = JSONObject().apply {
+            put(JSON_KEY_SCHEMA_VERSION, JSON_SCHEMA_VERSION)
+            put(JSON_KEY_EDITS, edits)
+        }
+
+        val ok = ConfigJsonAtomicFileIo.writeRawAtomic(
+            context = context,
+            fileName = CONFIG_FILE_NAME,
+            rawJson = root.toString(2),
+            tag = TAG,
+            defaultRawJson = emptyConfigJson()
+        )
+        if (!ok) {
+            Log.w(TAG, "persistJson skipped/failed file=$CONFIG_FILE_NAME")
+        }
+    }
+
+    private fun emptyConfigJson(): String {
+        return JSONObject()
+            .put(JSON_KEY_SCHEMA_VERSION, JSON_SCHEMA_VERSION)
+            .put(JSON_KEY_EDITS, JSONObject())
+            .toString(2)
     }
 }
