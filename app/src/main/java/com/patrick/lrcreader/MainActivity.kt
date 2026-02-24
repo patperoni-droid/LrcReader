@@ -25,8 +25,8 @@ import android.os.Bundle
 import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.compose.foundation.background
@@ -68,7 +68,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.pow
 
-class MainActivity : ComponentActivity() {
+class MainActivity : AppCompatActivity() {
     private data class SessionSnapshot(
         val tabKey: String,
         val quickPlaylist: String?,
