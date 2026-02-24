@@ -25,6 +25,7 @@
     <!-- Common -->
     <string name="common_loading">Loading…</string>
     <string name="common_ellipsis">…</string>
+    <string name="common_percent_value">%1$d %%</string>
 
     <!-- Mixer / Console -->
     <string name="mixer_app_title">Stage Music Player</string>

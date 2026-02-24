@@ -20,6 +20,7 @@ import com.patrick.lrcreader.exo.R
 import kotlin.math.cbrt
 import com.patrick.lrcreader.core.PlayerBusController
 
+
 /**
  * Écran de mixage global :
  * - 3 faders : Lecteur, DJ, Fond sonore.
@@ -197,6 +198,6 @@ private fun MixFader(
         )
 
         val percent = (value * 100).toInt()
-        Text("$percent %", color = onBg, fontSize = 11.sp)
+        Text(stringResource(R.string.common_percent_value, percent), color = onBg, fontSize = 11.sp)
     }
 }
