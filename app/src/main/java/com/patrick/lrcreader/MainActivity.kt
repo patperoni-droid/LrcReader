@@ -232,12 +232,14 @@ class MainActivity : ComponentActivity() {
 
                     withContext(Dispatchers.IO) {
                         mark("compose.ensureInitialized.io:start root=$rootKey")
+                        val sessionInitOk = runCatching { SessionPrefs.ensureInitialized(ctx) }.getOrDefault(false)
+                        val trimInitOk = runCatching { EditSoundPrefs.ensureInitialized(ctx) }.getOrDefault(false)
                         val trackInitOk = runCatching { TrackSettingsStore.ensureInitialized(ctx) }.getOrDefault(false)
                         val notesInitOk = runCatching { NotesConfigStore.ensureInitialized(ctx) }.getOrDefault(false)
                         val midiInitOk = runCatching { MidiCuesConfigStore.ensureInitialized(ctx) }.getOrDefault(false)
                         val playlistInitOk = runCatching { PlaylistStateStore.ensureInitialized(ctx) }.getOrDefault(false)
                         mark(
-                            "compose.ensureInitialized.io:end root=$rootKey track=$trackInitOk notes=$notesInitOk midi=$midiInitOk playlist=$playlistInitOk"
+                            "compose.ensureInitialized.io:end root=$rootKey session=$sessionInitOk trim=$trimInitOk track=$trackInitOk notes=$notesInitOk midi=$midiInitOk playlist=$playlistInitOk"
                         )
                     }
 
