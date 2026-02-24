@@ -1,0 +1,405 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- DJ -->
+    <string name="dj_title">DJ</string>
+    <string name="dj_no_folder_selected">No hay carpeta DJ seleccionada</string>
+
+    <string name="dj_cd_back">Atrás</string>
+    <string name="dj_cd_search">Buscar</string>
+    <string name="dj_cd_options">Opciones</string>
+    <string name="dj_cd_stop">Detener DJ</string>
+
+    <string name="dj_menu_choose_folder">Elegir carpeta DJ…</string>
+    <string name="dj_menu_scan_refresh">Escanear / actualizar carpeta DJ</string>
+    <string name="dj_menu_import_music">Importar música (→ backingtracks)</string>
+
+    <string name="dj_search_placeholder">Buscar (todas las carpetas DJ)…</string>
+
+    <string name="dj_scan_already_running">El escaneo DJ ya está en curso…</string>
+    <string name="dj_scan_done">Escaneo DJ completado (%1$d entradas)</string>
+    <string name="dj_scan_error">Error durante el escaneo DJ</string>
+
+    <string name="dj_hint_first_scan">⚠️ Menú ⋮ → “Escanear / actualizar carpeta DJ” (una vez). Después de eso, DJ es instantáneo.</string>
+
+    <!-- Common -->
+    <string name="common_loading">Cargando…</string>
+    <string name="common_ellipsis">…</string>
+    <string name="common_percent_value">%1$d %%</string>
+
+    <!-- Mixer / Console -->
+    <string name="mixer_app_title">Stage Music Player</string>
+    <string name="mixer_app_title_labo">🧪 LABO - Stage Music Player</string>
+    <string name="mixer_console_studio">Consola de estudio</string>
+
+    <string name="mixer_cd_back">Atrás</string>
+    <string name="mixer_cd_tuner">Afinador</string>
+
+    <string name="mixer_bus_main">BUS PRINCIPAL</string>
+
+    <string name="mixer_channel_player">REPRODUCTOR</string>
+    <string name="mixer_channel_player_subtitle">Listas de reproducción</string>
+
+    <string name="mixer_channel_fond">AMBIENTE</string>
+    <string name="mixer_channel_fond_subtitle">Fondo</string>
+
+    <string name="mixer_channel_dj">DJ</string>
+    <string name="mixer_channel_dj_subtitle">Bus DJ</string>
+
+    <!-- Filler / Background sound -->
+    <string name="filler_none_selected">No hay sonido seleccionado</string>
+    <string name="filler_default_music_name">Música</string>
+
+    <string name="filler_bus_title">BUS DE FONDO</string>
+
+    <string name="filler_enable">Activar sonido de fondo</string>
+    <string name="filler_volume">Volumen</string>
+    <string name="filler_percent">%1$d %%</string>
+
+    <string name="filler_scan_dj_running">Escaneo DJ en curso…</string>
+    <string name="filler_scan_dj_long">Escaneo DJ en curso… (puede tardar 1–2 min)</string>
+    <string name="filler_scan_dj_wait_end">Escaneo DJ en curso… (espera a que termine, si no, todo se ve vacío)</string>
+    <string name="filler_starting">Iniciando ambiente…</string>
+
+    <string name="filler_dj_scan_error">Error durante el escaneo DJ</string>
+    <string name="filler_dj_scan_wait">Escaneo DJ en curso… por favor espera 🙂</string>
+
+    <string name="filler_prev">Anterior</string>
+    <string name="filler_next">Siguiente</string>
+    <string name="filler_play_pause">Reproducir / Pausar</string>
+
+    <string name="filler_library_missing">⚠️ Ve a Biblioteca → “Elegir carpeta de música” (una vez).</string>
+
+    <string name="filler_quick_ambiences">Ambientes rápidos</string>
+
+    <string name="filler_folder_linked">Carpeta vinculada a "%1$s"</string>
+
+    <string name="filler_dj_required_title">Ambientes: carpeta requerida</string>
+    <string name="filler_dj_required_text">Para que los ambientes funcionen, deben estar dentro de:\n\nSPL_Music / DJ</string>
+    <string name="filler_choose_dj">Elegir carpeta DJ</string>
+
+    <string name="filler_picker_title">Elegir una carpeta (dentro de DJ)</string>
+    <string name="filler_dj_missing">Carpeta DJ no seleccionada (o falta permiso).\nToca 📁 y luego elige la carpeta DJ (SPL_Music/DJ).</string>
+
+    <string name="filler_current_folder">Carpeta actual: %1$s</string>
+    <string name="filler_back">⬅️ Atrás</string>
+    <string name="filler_choose_this">✅ Seleccionar esta carpeta</string>
+    <string name="filler_no_subfolder">No hay subcarpetas aquí.</string>
+    <string name="filler_no_name">Sin nombre</string>
+
+    <string name="filler_rename_title">Renombrar ambiente</string>
+    <string name="filler_rename_label">Nombre del ambiente</string>
+
+    <string name="ambiance_default">Ambiente %1$d</string>
+
+    <!-- Common -->
+    <string name="common_ok">Aceptar</string>
+    <string name="common_cancel">Cancelar</string>
+    <string name="common_close">Cerrar</string>
+
+    <!-- Quick playlists -->
+    <string name="quickplaylists_select">Selecciona una lista de reproducción</string>
+    <string name="quickplaylists_empty">No hay listas de reproducción.\nCrea tu primera lista.</string>
+
+    <string name="tab_home">Inicio</string>
+    <string name="tab_playlists">Listas</string>
+    <string name="tab_player">Reproductor</string>
+    <string name="tab_filler">Ambiente</string>
+    <string name="tab_dj">DJ</string>
+    <string name="tab_search">Buscar</string>
+    <string name="tab_more">Más</string>
+    <string name="tab_library">Biblioteca</string>
+    <string name="tab_all_playlists">Todo</string>
+    <string name="tab_tuner">Afinador</string>
+
+    <!-- Library -->
+    <string name="library_scanning">Escaneando biblioteca…</string>
+    <string name="library_moving">Moviendo…</string>
+    <string name="library_importing_music">Importando música…</string>
+    <string name="library_deleting">Eliminando…</string>
+    <string name="library_renaming">Renombrando…</string>
+
+    <string name="library_dj_excluded_reason">Excluido de la biblioteca (usado en modo DJ)</string>
+
+    <string name="library_no_folder_hint">Aún no hay carpeta.\nElige tu carpeta de música con tus archivos MP3 / WAV.</string>
+    <string name="library_no_folder_selected">No hay carpeta seleccionada</string>
+    <string name="library_title">Biblioteca</string>
+    <string name="library_header_cd_back">Atrás</string>
+    <string name="library_header_cd_actions">Acciones</string>
+    <string name="library_header_choose_folder">Elegir una carpeta</string>
+    <string name="library_header_rescan">Volver a escanear biblioteca</string>
+    <string name="library_header_import_music">Importar música</string>
+    <string name="library_header_forget_folder">Olvidar carpeta</string>
+
+    <string name="library_assign_to_playlist_title">Agregar a una lista de reproducción</string>
+    <string name="library_assign_to_playlist_empty">No hay listas de reproducción.\nVe a la pestaña “Todo” para crear una.</string>
+
+    <string name="library_delete_file_title">Eliminar archivo</string>
+    <string name="library_delete_file_confirm_text">¿Eliminar este archivo permanentemente?</string>
+    <string name="library_delete_action">Eliminar</string>
+    <string name="library_rename_title">Renombrar</string>
+    <string name="library_new_name_label">Nuevo nombre</string>
+
+    <string name="library_move_browser_title">Mover a…</string>
+    <string name="library_move_browser_back">⬅ Atrás</string>
+    <string name="library_move_browser_here">📥 Mover aquí</string>
+    <string name="library_move_browser_folder_entry">📁 %1$s</string>
+    <string name="library_move_browser_other_folder">Otra carpeta…</string>
+
+    <string name="library_list_cd_play">Reproducir (biblioteca)</string>
+    <string name="library_list_edit_lrc">Editar este .lrc</string>
+    <string name="library_list_import_backup">Importar este respaldo</string>
+    <string name="library_list_assign_to_playlist">Asignar a una lista de reproducción</string>
+    <string name="library_list_move_to_folder">Mover a una carpeta</string>
+    <string name="library_list_rename">Renombrar</string>
+    <string name="library_list_delete_permanently">Eliminar permanentemente</string>
+
+    <string name="library_delete_backing_track_title">Eliminar pista de acompañamiento</string>
+    <string name="library_delete_audio_question">¿Quieres eliminar este archivo de audio?</string>
+    <string name="library_delete_audio_lrc_found">Se encontró un archivo de letras asociado (.lrc).\n¿También quieres eliminarlo?</string>
+    <string name="library_delete_audio_plus_lrc">Eliminar audio + .lrc</string>
+    <string name="library_delete_audio_hint_lyrics">Consejo: si existen letras, recuerda eliminar también el archivo en la carpeta &quot;Lyrics&quot;.</string>
+
+    <string name="common_search_placeholder">Buscar…</string>
+    <string name="search_title">Buscar</string>
+    <string name="search_hint">Escribe el nombre de una pista</string>
+    <string name="search_start_typing">Empieza a escribir…</string>
+
+    <string name="library_lrc_editing_title">Editando: %1$s</string>
+
+    <string name="common_save">Guardar</string>
+
+    <!-- Backup -->
+    <string name="backup_back">Atrás</string>
+    <string name="backup_section_export_title">Exportar</string>
+    <string name="backup_section_export_subtitle">Crear un archivo .json</string>
+    <string name="backup_file_name_label">Nombre del archivo</string>
+    <string name="backup_internal_export_toast_success">Respaldo guardado en Backups internos</string>
+    <string name="backup_internal_export_toast_failed">No se pudo guardar el respaldo</string>
+    <string name="backup_export_to_internal">Exportar a Backups internos</string>
+    <string name="backup_share">Compartir</string>
+    <string name="backup_section_import_title">Importar</string>
+    <string name="backup_section_import_subtitle">Restaurar desde un .json</string>
+    <string name="backup_import_from_internal">Importar desde Backups internos</string>
+    <string name="backup_choose_json_file">Elegir un archivo .json</string>
+    <string name="backup_import_in_progress">Importación en curso…</string>
+    <string name="backup_last_import">Última importación</string>
+    <string name="backup_no_import_yet">Aún no hay importaciones.</string>
+    <string name="backup_kv_file">Archivo</string>
+    <string name="backup_kv_time">Hora</string>
+    <string name="backup_kv_status">Estado</string>
+    <string name="backup_internal_dialog_title">Backups internos</string>
+    <string name="backup_internal_no_json_found">No se encontraron .json en SPL_Music/Backups</string>
+    <string name="backup_internal_files_truncated">(%1$d archivos) — mostrando los 12 más recientes.</string>
+    <string name="backup_save_toast_success">Respaldo guardado</string>
+    <string name="backup_save_toast_failed">No se pudo guardar</string>
+    <string name="backup_import_success">Importación exitosa</string>
+    <string name="backup_import_empty_unreadable">Archivo vacío o ilegible</string>
+    <string name="backup_import_failed">La importación falló (%1$s)</string>
+    <string name="backup_unknown_error">error desconocido</string>
+
+    <!-- Player / Lyrics -->
+    <string name="lyrics_none">Sin letras</string>
+
+    <string name="player_cd_prev">Anterior</string>
+    <string name="player_cd_play_pause">Reproducir/Pausar</string>
+    <string name="player_cd_next">Siguiente</string>
+    <string name="player_cd_change_style">Cambiar estilo</string>
+    <string name="player_cd_track_mix">Mezcla de pista</string>
+    <string name="player_cd_edit_lyrics">Editar letras</string>
+
+    <string name="player_next_track">Siguiente: %1$s</string>
+    <string name="player_live_note_chip">📝 %1$s</string>
+    <string name="player_hq_unavailable">HQ no disponible</string>
+    <string name="player_hq_off_banner">HQ OFF (STUB) =&gt; audio degradado, tono/velocidad desactivados</string>
+    <string name="player_add_note_title">Agregar nota</string>
+    <string name="player_add_note_label_hint">Ej.: Solo de guitarra — Mi menor</string>
+    <string name="player_note_duration_seconds">Duración: %1$ds</string>
+    <string name="player_note_preset_10s">10s</string>
+    <string name="player_note_preset_30s">30s</string>
+    <string name="player_note_preset_60s">60s</string>
+    <string name="player_auto_return_button">-10</string>
+    <string name="player_hq_tag">TS=HQ</string>
+    <string name="player_add_note_icon">📝</string>
+
+    <!-- Setup install -->
+    <string name="setup_title">Instalación</string>
+    <string name="setup_documents_folder_explainer">SPL creará y usará esta carpeta:\nDocuments / SPL_Music</string>
+    <string name="setup_allow_documents">Permitir Documents</string>
+    <string name="setup_control_hint">Tienes el control: SPL solo usa su propia carpeta.</string>
+    <string name="setup_downloads_blocked_title">Tu teléfono bloquea Downloads</string>
+    <string name="setup_downloads_blocked_message">Este teléfono no te permite volver a subir hasta Documents.\n\n✅ Solución: cambia al modo interno (confiable en teléfonos antiguos).\n➡️ Sin impacto en tu teléfono principal.</string>
+    <string name="setup_continue_internal_mode">Continuar (modo interno)</string>
+    <string name="setup_retry">Intentar de nuevo</string>
+    <string name="setup_import_prompt_title">¿Importar música?</string>
+    <string name="setup_import_prompt_subtitle">Puedes importar ahora o hacerlo después desde la biblioteca.</string>
+    <string name="setup_import_later">Después</string>
+    <string name="setup_import_now">Importar</string>
+
+    <!-- DJ UI sections -->
+    <string name="dj_bus_mix_auto">DJ BUS / AUTO MIX</string>
+    <string name="dj_crossfade">X-Fade</string>
+    <string name="dj_go">GO</string>
+    <string name="dj_queue_title">Cola</string>
+    <string name="dj_queue_title_count">Cola (%1$d)</string>
+    <string name="dj_queue_auto">Auto</string>
+    <string name="dj_choose_folder_for_tracks">Elige una carpeta para tus pistas DJ.</string>
+
+    <!-- Lyrics editor section -->
+    <string name="lyrics_editor_tab_lyrics">Letras</string>
+    <string name="lyrics_editor_tab_sync">Sync</string>
+    <string name="lyrics_editor_cd_save_lyrics">Guardar letras</string>
+    <string name="lyrics_editor_input_label">Letras (una línea por frase)</string>
+    <string name="lyrics_editor_cd_sync_play_pause">Sync reproducir/pausar</string>
+    <string name="lyrics_editor_cd_back_to_start">Volver al inicio</string>
+    <string name="lyrics_editor_reset_tags">Restablecer marcas</string>
+    <string name="lyrics_editor_empty_sync_hint">Primero agrega letras en la pestaña Simple.</string>
+    <string name="lyrics_editor_tag_button">TAG</string>
+    <string name="lyrics_editor_cd_play_from_line">Reproducir desde esta línea</string>
+    <string name="lyrics_editor_line_dialog_title">Línea %1$d</string>
+    <string name="lyrics_editor_line_dialog_message">Edita el texto o elimina la frase.</string>
+    <string name="lyrics_editor_line_text_label">Texto de la frase</string>
+    <string name="lyrics_editor_edit">Editar</string>
+    <string name="lyrics_editor_delete">Eliminar</string>
+    <string name="lyrics_editor_cancel">Cancelar</string>
+
+    <!-- Common content descriptions -->
+    <string name="common_cd_back">Atrás</string>
+    <string name="common_cd_close">Cerrar</string>
+    <string name="common_cd_close_editor">Cerrar editor</string>
+    <string name="common_cd_options">Opciones</string>
+    <string name="common_cd_toggle_slider">Abrir / cerrar deslizador</string>
+    <string name="common_cd_enqueue">Agregar a la cola</string>
+    <string name="common_cd_new_note">Nueva nota</string>
+    <string name="common_cd_note_options">Opciones de nota</string>
+    <string name="common_cd_choose_playlist">Elegir una lista de reproducción</string>
+    <string name="common_cd_reset">Reiniciar</string>
+    <string name="common_cd_move">Mover</string>
+
+    <!-- Common visible labels -->
+    <string name="common_back_arrow">← Atrás</string>
+    <string name="common_reset">Reiniciar</string>
+    <string name="common_rename">Renombrar</string>
+    <string name="common_erase">Eliminar</string>
+    <string name="common_assign_to_playlist">Asignar a una lista de reproducción</string>
+    <string name="common_title_label">Título</string>
+    <string name="common_text_label">Texto</string>
+    <string name="common_untitled">Sin título</string>
+
+    <!-- CUE MIDI -->
+    <string name="cue_midi_dialog_title">CUE MIDI (línea %1$d)</string>
+    <string name="cue_midi_channel_label">Canal (1–16)</string>
+    <string name="cue_midi_program_change_label">Cambio de programa (1–128)</string>
+
+    <!-- Waveform preview -->
+    <string name="waveform_title">Forma de onda</string>
+    <string name="waveform_choose_file">Elegir un archivo…</string>
+    <string name="waveform_no_file_selected">Ningún archivo</string>
+    <string name="waveform_choose_track">Elegir una pista</string>
+    <string name="waveform_analyzing">Analizando…</string>
+    <string name="waveform_generate_error">No se pudo generar la forma de onda</string>
+    <string name="waveform_no_data">No hay datos de forma de onda</string>
+    <string name="waveform_zoom_value">Zoom x%1$.1f</string>
+    <string name="waveform_in_out_cursor_status">IN %1$s  •  OUT %2$s  •  CURSOR %3$s</string>
+    <string name="waveform_step_ms">Paso %1$dms</string>
+    <string name="waveform_in_cursor">IN = CURSOR</string>
+    <string name="waveform_out_cursor">OUT = CURSOR</string>
+    <string name="waveform_play">▶ Reproducir</string>
+    <string name="waveform_stop">⏹ Detener</string>
+
+    <!-- All playlists -->
+    <string name="all_playlists_header_title">LISTAS DE REPRODUCCIÓN</string>
+    <string name="all_playlists_header_subtitle">Tus listas de reproducción</string>
+    <string name="all_playlists_new_playlist_button">Nueva lista de reproducción</string>
+    <string name="all_playlists_empty">Aún no hay listas de reproducción.</string>
+    <string name="all_playlists_create_title">Nueva lista de reproducción</string>
+    <string name="all_playlists_name_label">Nombre de la lista de reproducción</string>
+    <string name="all_playlists_rename_title">Renombrar lista de reproducción</string>
+    <string name="all_playlists_delete_title">Eliminar lista de reproducción</string>
+    <string name="all_playlists_delete_confirm">¿Eliminar permanentemente “%1$s”?</string>
+    <string name="all_playlists_meta_loading">%1$d pistas • …</string>
+    <string name="all_playlists_meta_ready">%1$d pistas • %2$s</string>
+
+    <!-- Notes -->
+    <string name="notes_title">Mis notas</string>
+    <string name="notes_empty">No hay notas.\nToca + para crear una.</string>
+    <string name="notes_menu_rename_edit">Renombrar / editar</string>
+    <string name="notes_new_note_title">Nueva nota</string>
+    <string name="notes_edit_note_title">Editar nota</string>
+    <string name="notes_delete_note">Eliminar nota</string>
+    <string name="notes_no_playlist_available">No hay listas de reproducción disponibles.</string>
+
+    <!-- Quick playlists -->
+    <string name="quickplaylists_loading_playlists">Cargando listas...</string>
+    <string name="quickplaylists_restoring_session">Restaurando sesión...</string>
+    <string name="quickplaylists_text_fallback_title">(Texto)</string>
+    <string name="quickplaylists_badge_next_forced">SIGUIENTE</string>
+    <string name="quickplaylists_badge_next">SIGUIENTE</string>
+    <string name="quickplaylists_menu_play">▶ Reproducir</string>
+    <string name="quickplaylists_menu_set_next">Marcar como SIGUIENTE</string>
+    <string name="quickplaylists_menu_cancel_next">Cancelar SIGUIENTE</string>
+    <string name="quickplaylists_menu_remove_from_playlist">Quitar de la lista de reproducción</string>
+    <string name="quickplaylists_menu_title_color">Color del título</string>
+    <string name="quickplaylists_edit_prompter_title">Editar prompter ✅ TEST 2026</string>
+    <string name="quickplaylists_new_prompter_title">Nuevo título (prompter 2026 )</string>
+    <string name="quickplaylists_prompter_text_label">Texto del prompter</string>
+
+    <!-- History -->
+    <string name="history_title">Historial</string>
+    <string name="history_clear">Borrar</string>
+    <string name="history_filter_all">Todo</string>
+    <string name="history_filter_backing">Backing</string>
+    <string name="history_filter_dj">DJ</string>
+    <string name="history_date_time">Fecha/hora</string>
+    <string name="history_empty">Sin eventos</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Ajustes</string>
+    <string name="settings_midi_bluetooth_section">MIDI / Bluetooth</string>
+    <string name="settings_test_bluetooth_midi">🎹 Probar Bluetooth MIDI</string>
+
+    <!-- Global mix -->
+    <string name="global_mix_title">Mezcla global</string>
+    <string name="global_mix_subtitle">Ajusta niveles: Reproductor, DJ, sonido de fondo.</string>
+    <string name="global_mix_player_title">Reproductor (reproducción)</string>
+    <string name="global_mix_player_subtitle">Letras + reproducción principal</string>
+    <string name="global_mix_dj_title">Modo DJ</string>
+    <string name="global_mix_dj_subtitle">Crossfade, listas DJ</string>
+    <string name="global_mix_filler_title">Sonido de fondo</string>
+    <string name="global_mix_filler_subtitle">Ambiente entre canciones</string>
+    <string name="global_mix_tip">Consejo: empieza alrededor de 70–80% en todo y luego ajusta en vivo.</string>
+
+    <!-- Track mix (console labels kept in English) -->
+    <string name="track_mix_console_title">TRACK CONSOLE</string>
+    <string name="track_mix_no_track">No track</string>
+    <string name="track_mix_level">LEVEL</string>
+    <string name="track_mix_anti_clip">ANTI-CLIP</string>
+    <string name="track_mix_speed">SPEED</string>
+    <string name="track_mix_reset_speed">Reset 1.00x</string>
+    <string name="track_mix_pitch">PITCH</string>
+    <string name="track_mix_reset_pitch">Reset 0</string>
+    <string name="track_mix_vu">VU</string>
+    <string name="track_mix_keep_it_clean">KEEP IT CLEAN</string>
+    <string name="track_mix_equalizer">EQUALIZER</string>
+    <string name="track_mix_three_bands">3 BANDS</string>
+    <string name="track_mix_drag_hint">drag ↑↓</string>
+    <string name="track_mix_eq_low">LOW</string>
+    <string name="track_mix_eq_mid">MID</string>
+    <string name="track_mix_eq_high">HIGH</string>
+    <string name="track_mix_touch_to_return">TOUCH HERE TO RETURN</string>
+
+    <!-- Library components -->
+    <string name="library_bottom_assign">Asignar</string>
+    <string name="library_bottom_clear_selection">Deseleccionar.</string>
+    <string name="library_copying">Copiando…</string>
+
+    <!-- MainActivity -->
+    <string name="debug_reset_setup">DEBUG: reiniciar configuración</string>
+    <string name="main_unknown_screen">Pantalla desconocida</string>
+    <string name="main_menu_notes">Bloc de notas</string>
+    <string name="main_menu_library">Biblioteca</string>
+    <string name="main_menu_playlists">Listas de reproducción</string>
+    <string name="main_menu_prompter">📝 Prompter</string>
+    <string name="main_menu_more">Ajustes / Más</string>
+    <string name="main_menu_tuner">Afinador</string>
+</resources>

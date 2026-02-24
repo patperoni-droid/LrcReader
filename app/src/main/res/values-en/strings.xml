@@ -392,4 +392,14 @@
     <string name="library_bottom_assign">Assign</string>
     <string name="library_bottom_clear_selection">Deselect.</string>
     <string name="library_copying">Copying…</string>
+
+    <!-- MainActivity -->
+    <string name="debug_reset_setup">DEBUG: reset setup</string>
+    <string name="main_unknown_screen">Unknown screen</string>
+    <string name="main_menu_notes">Notepad</string>
+    <string name="main_menu_library">Library</string>
+    <string name="main_menu_playlists">Playlists</string>
+    <string name="main_menu_prompter">📝 Prompter</string>
+    <string name="main_menu_more">Settings / More</string>
+    <string name="main_menu_tuner">Tuner</string>
 </resources>

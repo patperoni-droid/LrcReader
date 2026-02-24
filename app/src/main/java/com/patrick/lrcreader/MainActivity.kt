@@ -47,6 +47,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.Player
 import com.patrick.lrcreader.core.*
@@ -234,12 +235,13 @@ class MainActivity : ComponentActivity() {
                         mark("compose.ensureInitialized.io:start root=$rootKey")
                         val sessionInitOk = runCatching { SessionPrefs.ensureInitialized(ctx) }.getOrDefault(false)
                         val trimInitOk = runCatching { EditSoundPrefs.ensureInitialized(ctx) }.getOrDefault(false)
+                        val textSongsInitOk = runCatching { TextSongRepository.ensureInitialized(ctx) }.getOrDefault(false)
                         val trackInitOk = runCatching { TrackSettingsStore.ensureInitialized(ctx) }.getOrDefault(false)
                         val notesInitOk = runCatching { NotesConfigStore.ensureInitialized(ctx) }.getOrDefault(false)
                         val midiInitOk = runCatching { MidiCuesConfigStore.ensureInitialized(ctx) }.getOrDefault(false)
                         val playlistInitOk = runCatching { PlaylistStateStore.ensureInitialized(ctx) }.getOrDefault(false)
                         mark(
-                            "compose.ensureInitialized.io:end root=$rootKey session=$sessionInitOk trim=$trimInitOk track=$trackInitOk notes=$notesInitOk midi=$midiInitOk playlist=$playlistInitOk"
+                            "compose.ensureInitialized.io:end root=$rootKey session=$sessionInitOk trim=$trimInitOk textSongs=$textSongsInitOk track=$trackInitOk notes=$notesInitOk midi=$midiInitOk playlist=$playlistInitOk"
                         )
                     }
 
@@ -394,16 +396,13 @@ class MainActivity : ComponentActivity() {
                     )
 
                     // ✅ DEBUG : reset setup (optionnel) — tu peux le garder
-                    val isDebug = remember {
-                        (ctx.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
-                    }
-                    if (isDebug) {
+                    if (BuildConfig.DEBUG) {
                         Button(onClick = {
                             BackupFolderPrefs.clearAll(ctx)
                             BackupRestorePrefs.clear(ctx)
                             forceSetup = true
                             setupTick++
-                        }) { Text("DEBUG : reset setup") }
+                        }) { Text(stringResource(R.string.debug_reset_setup)) }
                     }
 
                     return@MaterialTheme
@@ -1234,7 +1233,7 @@ class MainActivity : ComponentActivity() {
                                     modifier = contentModifier.fillMaxSize(),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    Text("Écran inconnu", color = Color.White)
+                                    Text(stringResource(R.string.main_unknown_screen), color = Color.White)
                                 }
                             }
                         }
@@ -1295,7 +1294,7 @@ class MainActivity : ComponentActivity() {
 
                     ) {
                         DropdownMenuItem(
-                            text = { Text("Bloc Notes") },
+                            text = { Text(stringResource(R.string.main_menu_notes)) },
                             onClick = {
                                 isMoreMenuOpen = false
                                 isNotesOpen = true
@@ -1308,7 +1307,7 @@ class MainActivity : ComponentActivity() {
                             }
                         )
                         DropdownMenuItem(
-                            text = { Text("Bibliothèque") },
+                            text = { Text(stringResource(R.string.main_menu_library)) },
                             onClick = {
                                 isMoreMenuOpen = false
                                 selectedTab = BottomTab.Library
@@ -1322,7 +1321,7 @@ class MainActivity : ComponentActivity() {
                             }
                         )
                         DropdownMenuItem(
-                            text = { Text("playlists") },
+                            text = { Text(stringResource(R.string.main_menu_playlists)) },
                             onClick = {
                                 isMoreMenuOpen = false
                                 selectedTab = BottomTab.AllPlaylists
@@ -1336,7 +1335,7 @@ class MainActivity : ComponentActivity() {
                             }
                         )
                         DropdownMenuItem(
-                            text = { Text("📝 Prompteur") },
+                            text = { Text(stringResource(R.string.main_menu_prompter)) },
                             onClick = {
                                 isMoreMenuOpen = false
                                 selectedTab = BottomTab.QuickPlaylists
@@ -1351,7 +1350,7 @@ class MainActivity : ComponentActivity() {
                             }
                         )
                         DropdownMenuItem(
-                            text = { Text("Paramètres / Plus") },
+                            text = { Text(stringResource(R.string.main_menu_more)) },
                             onClick = {
                                 isMoreMenuOpen = false
                                 selectedTab = BottomTab.More
@@ -1365,7 +1364,7 @@ class MainActivity : ComponentActivity() {
                             }
                         )
                         DropdownMenuItem(
-                            text = { Text("Accordeur") },
+                            text = { Text(stringResource(R.string.main_menu_tuner)) },
                             onClick = {
                                 isMoreMenuOpen = false
                                 selectedTab = BottomTab.Tuner
