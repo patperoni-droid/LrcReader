@@ -352,10 +352,29 @@
     <string name="settings_midi_bluetooth_section">MIDI / Bluetooth</string>
     <string name="settings_test_bluetooth_midi">🎹 Test Bluetooth MIDI</string>
     <string name="settings_language">Langue de l’application</string>
+    <string name="settings_language_subtitle">Actuel : %1$s</string>
+    <string name="settings_language_auto">Automatique</string>
+    <string name="settings_language_fr">Français</string>
+    <string name="settings_language_en">English</string>
+    <string name="settings_language_es">Español</string>
     <string name="language_system">Automatique (système)</string>
     <string name="language_french">Français</string>
     <string name="language_english">English</string>
     <string name="language_spanish">Español</string>
+    <string name="more_section_functions">Fonctions</string>
+    <string name="more_section_audio_interface">Audio &amp; Interface</string>
+    <string name="more_section_advanced">Avancé</string>
+    <string name="more_item_filler">🎧  Fond sonore</string>
+    <string name="more_item_backup_restore">💾  Sauvegarde / Restauration</string>
+    <string name="more_item_history">🕘  Historique</string>
+    <string name="more_item_editing">🛠  Édition</string>
+    <string name="more_item_audio">🔊  Audio</string>
+    <string name="more_item_language">🌐  Langue</string>
+    <string name="more_item_tuner">🎸  Accordeur</string>
+    <string name="more_item_advanced">⚙️  Avancé</string>
+    <string name="more_item_test_bluetooth_midi">📶  Test Bluetooth MIDI</string>
+    <string name="more_auto_return_playlist">Retour auto vers la playlist (10 s avant la fin)</string>
+    <string name="more_footer_signature">Live in Pocket · LrcReader_EXO</string>
 
     <!-- Global mix -->
     <string name="global_mix_title">Mixage général</string>
