@@ -115,6 +115,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        AppLanguagePrefs.applySavedLanguage(this)
         super.onCreate(savedInstanceState)
 
         val t0 = SystemClock.elapsedRealtime()

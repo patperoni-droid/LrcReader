@@ -357,6 +357,11 @@
     <string name="settings_title">Ajustes</string>
     <string name="settings_midi_bluetooth_section">MIDI / Bluetooth</string>
     <string name="settings_test_bluetooth_midi">🎹 Probar Bluetooth MIDI</string>
+    <string name="settings_language">Idioma de la aplicación</string>
+    <string name="language_system">Automático (sistema)</string>
+    <string name="language_french">Français</string>
+    <string name="language_english">English</string>
+    <string name="language_spanish">Español</string>
 
     <!-- Global mix -->
     <string name="global_mix_title">Mezcla global</string>
