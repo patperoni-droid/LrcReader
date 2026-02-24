@@ -358,10 +358,29 @@
     <string name="settings_midi_bluetooth_section">MIDI / Bluetooth</string>
     <string name="settings_test_bluetooth_midi">🎹 Test Bluetooth MIDI</string>
     <string name="settings_language">App language</string>
+    <string name="settings_language_subtitle">Current: %1$s</string>
+    <string name="settings_language_auto">Automatic</string>
+    <string name="settings_language_fr">Français</string>
+    <string name="settings_language_en">English</string>
+    <string name="settings_language_es">Español</string>
     <string name="language_system">System default</string>
     <string name="language_french">Français</string>
     <string name="language_english">English</string>
     <string name="language_spanish">Español</string>
+    <string name="more_section_functions">Functions</string>
+    <string name="more_section_audio_interface">Audio &amp; Interface</string>
+    <string name="more_section_advanced">Advanced</string>
+    <string name="more_item_filler">🎧  Background sound</string>
+    <string name="more_item_backup_restore">💾  Backup / Restore</string>
+    <string name="more_item_history">🕘  History</string>
+    <string name="more_item_editing">🛠  Editing</string>
+    <string name="more_item_audio">🔊  Audio</string>
+    <string name="more_item_language">🌐  Language</string>
+    <string name="more_item_tuner">🎸  Tuner</string>
+    <string name="more_item_advanced">⚙️  Advanced</string>
+    <string name="more_item_test_bluetooth_midi">📶  Test Bluetooth MIDI</string>
+    <string name="more_auto_return_playlist">Auto return to playlist (10 s before end)</string>
+    <string name="more_footer_signature">Live in Pocket · LrcReader_EXO</string>
 
     <!-- Global mix -->
     <string name="global_mix_title">Global mix</string>
