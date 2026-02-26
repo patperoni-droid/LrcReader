@@ -102,57 +102,33 @@ internal object NotesConfigAtomicIo {
         val bytes = rawJson.toByteArray(Charsets.UTF_8)
 
         return runCatching {
-            val tmpName = "notes.tmp.${System.currentTimeMillis()}"
-            val tmp = dir.createFile(FILE_MIME, tmpName)
-            if (tmp == null) {
-                Log.e(TAG, "writeSafAtomic: createFile tmp failed dir=${dir.uri}")
+            val target = findFileIgnoreCase(dir, FILE_NAME) ?: dir.createFile(FILE_MIME, FILE_NAME)
+            if (target == null) {
+                Log.e(TAG, "writeSafAtomic: createFile final failed dir=${dir.uri}")
                 return false
             }
-
-            val writeOk = runCatching {
-                context.contentResolver.openOutputStream(tmp.uri, "w")?.use { out ->
-                    out.write(bytes)
-                    out.flush()
-                } != null
-            }.getOrElse {
-                Log.e(TAG, "writeSafAtomic: write tmp failed uri=${tmp.uri}", it)
-                false
+            val ok = writeSafDirect(context, target, bytes)
+            if (!ok) {
+                Log.d(TAG, "writeSafAtomic: direct write failed dir=${dir.uri} file=$FILE_NAME uri=${target.uri}")
             }
-
-            if (!writeOk) {
-                runCatching { tmp.delete() }
-                return false
-            }
-
-            val target = findFileIgnoreCase(dir, FILE_NAME)
-            var backupRenamed = false
-
-            if (target != null) {
-                findFileIgnoreCase(dir, "$FILE_NAME.bak")?.delete()
-                backupRenamed = runCatching {
-                    target.renameTo("$FILE_NAME.bak")
-                }.getOrDefault(false)
-            }
-
-            val renamed = runCatching { tmp.renameTo(FILE_NAME) }.getOrDefault(false)
-            if (renamed) {
-                if (backupRenamed) {
-                    findFileIgnoreCase(dir, "$FILE_NAME.bak")?.delete()
-                }
-                return true
-            }
-
-            Log.e(TAG, "writeSafAtomic: tmp->rename failed dir=${dir.uri}")
-            runCatching { tmp.delete() }
-
-            if (backupRenamed) {
-                val bakDoc = findFileIgnoreCase(dir, "$FILE_NAME.bak")
-                runCatching { bakDoc?.renameTo(FILE_NAME) }
-            }
-
-            false
+            ok
         }.getOrElse {
             Log.e(TAG, "writeSafAtomic exception", it)
+            false
+        }
+    }
+
+    private fun writeSafDirect(context: Context, target: DocumentFile, bytes: ByteArray): Boolean {
+        return runCatching {
+            (
+                context.contentResolver.openOutputStream(target.uri, "wt")
+                    ?: context.contentResolver.openOutputStream(target.uri, "w")
+                )?.use { out ->
+                out.write(bytes)
+                out.flush()
+            } != null
+        }.getOrElse {
+            Log.e(TAG, "writeSafDirect: write failed uri=${target.uri}", it)
             false
         }
     }
