@@ -119,6 +119,54 @@ object SessionPrefs {
         writeJsonState(context, mutate(current))
     }
 
+    fun saveSessionSnapshot(
+        context: Context,
+        tab: String?,
+        quickPlaylist: String?,
+        openedPlaylist: String?,
+        lastTrackUri: String?,
+        lastPlaylistName: String?
+    ) {
+        runCatching {
+            val normalizedTab = tab?.takeIf { it.isNotBlank() }
+            val normalizedQuick = quickPlaylist?.takeIf { it.isNotBlank() }
+            val normalizedOpened = openedPlaylist?.takeIf { it.isNotBlank() }
+            val normalizedTrackUri = lastTrackUri?.takeIf { it.isNotBlank() }
+            val normalizedPlaylistName = lastPlaylistName?.takeIf { it.isNotBlank() }
+
+            prefs(context)
+                .edit()
+                .putString(KEY_TAB, normalizedTab)
+                .putString(KEY_QUICK_PLAYLIST, normalizedQuick)
+                .putString(KEY_OPENED_PLAYLIST, normalizedOpened)
+                .putString(KEY_LAST_TRACK_URI, normalizedTrackUri)
+                .putString(KEY_LAST_PLAYLIST_NAME, normalizedPlaylistName)
+                .apply()
+
+            writeJsonState(
+                context = context,
+                state = JsonSessionState(
+                    tab = normalizedTab,
+                    quickPlaylist = normalizedQuick,
+                    openedPlaylist = normalizedOpened,
+                    lastTrackUri = normalizedTrackUri,
+                    lastPlaylistName = normalizedPlaylistName
+                )
+            )
+
+            Log.d(
+                TAG,
+                "SessionPrefs.saveSnapshot tab=$normalizedTab quick=$normalizedQuick opened=$normalizedOpened uri=$normalizedTrackUri playlist=$normalizedPlaylistName"
+            )
+        }.onFailure {
+            Log.e(
+                TAG,
+                "SessionPrefs.saveSnapshot failed tab=$tab quick=$quickPlaylist opened=$openedPlaylist uri=$lastTrackUri playlist=$lastPlaylistName",
+                it
+            )
+        }
+    }
+
     // -------- Onglet courant --------
 
     fun saveTab(context: Context, tabName: String) {
