@@ -1,6 +1,7 @@
 package com.patrick.lrcreader.core.config
 
 import android.content.Context
+import android.os.SystemClock
 import android.util.Log
 import androidx.documentfile.provider.DocumentFile
 import com.patrick.lrcreader.core.BackupFolderPrefs
@@ -10,6 +11,10 @@ internal object ConfigJsonAtomicFileIo {
 
     private const val CONFIG_DIR_NAME = "Config"
     private const val FILE_MIME = "application/json"
+    private const val SESSION_FILE_SINGULAR = "session_state.json"
+    private const val SESSION_FILE_PLURAL = "session_states.json"
+    @Volatile
+    private var lastSafRenameFallbackLogMs = 0L
 
     fun ensureInitialized(
         context: Context,
@@ -39,7 +44,7 @@ internal object ConfigJsonAtomicFileIo {
             }.getOrNull()
 
             is Storage.SafStorage -> {
-                val target = findFileIgnoreCase(storage.configDir, fileName) ?: return null
+                val target = findConfigFileForName(storage.configDir, fileName) ?: return null
                 runCatching {
                     context.contentResolver.openInputStream(target.uri)
                         ?.bufferedReader(Charsets.UTF_8)
@@ -116,58 +121,97 @@ internal object ConfigJsonAtomicFileIo {
         tag: String
     ): Boolean {
         val bytes = rawJson.toByteArray(Charsets.UTF_8)
-        val tmpPrefix = fileName.substringBeforeLast('.', fileName)
 
         return runCatching {
-            val tmp = dir.createFile(FILE_MIME, "$tmpPrefix.tmp.${System.currentTimeMillis()}")
-            if (tmp == null) {
-                Log.e(tag, "writeSafAtomic: createFile tmp failed dir=${dir.uri}")
-                return false
-            }
-
-            val writeOk = runCatching {
-                context.contentResolver.openOutputStream(tmp.uri, "w")?.use { out ->
-                    out.write(bytes)
-                    out.flush()
-                } != null
-            }.getOrElse {
-                Log.e(tag, "writeSafAtomic: write tmp failed uri=${tmp.uri}", it)
-                false
-            }
-
-            if (!writeOk) {
-                runCatching { tmp.delete() }
-                return false
-            }
-
-            val target = findFileIgnoreCase(dir, fileName)
-            var backupRenamed = false
-            if (target != null) {
-                findFileIgnoreCase(dir, "$fileName.bak")?.delete()
-                backupRenamed = runCatching { target.renameTo("$fileName.bak") }.getOrDefault(false)
-            }
-
-            val renamed = runCatching { tmp.renameTo(fileName) }.getOrDefault(false)
-            if (renamed) {
-                if (backupRenamed) {
-                    findFileIgnoreCase(dir, "$fileName.bak")?.delete()
+            // 1) Reuse existing file if present
+            val existingTarget = findConfigFileForName(dir, fileName)
+            if (existingTarget != null && existingTarget.isFile) {
+                val ok = writeSafDirect(context, existingTarget, bytes, tag)
+                if (!ok) {
+                    Log.d(tag, "writeSafAtomic: direct overwrite failed file=$fileName uri=${existingTarget.uri}")
                 }
-                return true
+                return ok
             }
 
-            Log.e(tag, "writeSafAtomic: tmp->rename failed dir=${dir.uri}")
-            runCatching { tmp.delete() }
-
-            if (backupRenamed) {
-                val bakDoc = findFileIgnoreCase(dir, "$fileName.bak")
-                runCatching { bakDoc?.renameTo(fileName) }
+            // 2) Create the FINAL file directly (no tmp, no rename)
+            val created = dir.createFile(FILE_MIME, fileName)
+            if (created == null) {
+                Log.e(tag, "writeSafAtomic: createFile final failed dir=${dir.uri} file=$fileName")
+                return false
             }
 
-            false
+            // 3) Write directly to final
+            val ok = writeSafDirect(context, created, bytes, tag)
+            if (!ok) {
+                Log.d(tag, "writeSafAtomic: direct write failed file=$fileName uri=${created.uri}")
+            }
+            ok
         }.getOrElse {
-            Log.e(tag, "writeSafAtomic exception", it)
+            Log.e(tag, "writeSafAtomic exception file=$fileName", it)
             false
         }
+    }
+
+    private fun writeSafDirect(
+        context: Context,
+        target: DocumentFile,
+        bytes: ByteArray,
+        tag: String
+    ): Boolean {
+        return runCatching {
+            val wrote = (
+                context.contentResolver.openOutputStream(target.uri, "wt")
+                    ?: context.contentResolver.openOutputStream(target.uri, "w")
+                )?.use { out ->
+                out.write(bytes)
+                out.flush()
+            } != null
+            wrote
+        }.getOrElse {
+            Log.e(tag, "writeSafDirect: write failed uri=${target.uri}", it)
+            false
+        }
+    }
+
+    private fun isSessionStateFamilyFile(fileName: String): Boolean {
+        val lower = fileName.lowercase()
+        return lower == SESSION_FILE_SINGULAR || lower == SESSION_FILE_PLURAL
+    }
+
+    private fun findConfigFileForName(parent: DocumentFile, fileName: String): DocumentFile? {
+        val files = runCatching { parent.listFiles().toList() }.getOrDefault(emptyList())
+            .filter { it.isFile }
+        if (files.isEmpty()) return null
+
+        if (isSessionStateFamilyFile(fileName)) {
+            val sessionMatches = files.filter { doc ->
+                val lower = (doc.name ?: "").lowercase()
+                lower == SESSION_FILE_SINGULAR || lower == SESSION_FILE_PLURAL
+            }
+            if (sessionMatches.isNotEmpty()) return pickNewestDocument(sessionMatches)
+        }
+
+        val exactMatches = files.filter { doc ->
+            (doc.name ?: "").equals(fileName, ignoreCase = true)
+        }
+        return pickNewestDocument(exactMatches)
+    }
+
+    private fun pickNewestDocument(candidates: List<DocumentFile>): DocumentFile? {
+        if (candidates.isEmpty()) return null
+        return candidates.maxWithOrNull(compareBy<DocumentFile>({ safeLastModified(it) }, { it.uri.toString() }))
+    }
+
+    private fun safeLastModified(doc: DocumentFile): Long {
+        return runCatching { doc.lastModified() }.getOrDefault(0L)
+    }
+
+    private fun shouldLogSafRenameFallback(): Boolean {
+        val now = SystemClock.elapsedRealtime()
+        val last = lastSafRenameFallbackLogMs
+        if (now - last < 30_000L) return false
+        lastSafRenameFallbackLogMs = now
+        return true
     }
 
     private fun ensureFileInitialized(
@@ -200,7 +244,7 @@ internal object ConfigJsonAtomicFileIo {
         defaultRawJson: String,
         tag: String
     ): Boolean {
-        val existing = findFileIgnoreCase(configDir, fileName)
+        val existing = findConfigFileForName(configDir, fileName)
         if (existing != null && existing.isFile) return true
 
         val created = configDir.createFile(FILE_MIME, fileName)
