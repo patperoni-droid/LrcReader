@@ -12,6 +12,7 @@ import android.net.Uri
 import android.provider.DocumentsContract
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -23,6 +24,7 @@ import androidx.documentfile.provider.DocumentFile
 import com.patrick.lrcreader.core.MidiOutput
 import android.os.Bundle
 import android.os.Looper
+import android.os.StrictMode
 import android.os.SystemClock
 import android.util.Log
 import androidx.activity.compose.setContent
@@ -96,27 +98,72 @@ class MainActivity : AppCompatActivity() {
         currentPlayingUri = null,
         currentPlayingPlaylist = null
     )
+    @Volatile
+    private var lastPersistedSessionSnapshot: SessionSnapshot? = null
+    private var sessionSaveJob: Job? = null
 
     private fun persistSession(reason: String, snapshot: SessionSnapshot = latestSessionSnapshot) {
         val safeTab = snapshot.tabKey.ifBlank { TAB_HOME }
         val safeUri = snapshot.currentPlayingUri?.takeIf { it.isNotBlank() }
         val safePlaylist = snapshot.currentPlayingPlaylist?.takeIf { it.isNotBlank() }
             ?: snapshot.quickPlaylist?.takeIf { it.isNotBlank() }
+        val normalizedSnapshot = SessionSnapshot(
+            tabKey = safeTab,
+            quickPlaylist = snapshot.quickPlaylist?.takeIf { it.isNotBlank() },
+            openedPlaylist = snapshot.openedPlaylist?.takeIf { it.isNotBlank() },
+            currentPlayingUri = safeUri,
+            currentPlayingPlaylist = safePlaylist
+        )
+
+        if (lastPersistedSessionSnapshot == normalizedSnapshot && (sessionSaveJob?.isActive != true)) {
+            Log.d("BOOTSTEP", "SessionPersist:skip unchanged reason=$reason")
+            return
+        }
 
         Log.d(
             "BOOTSTEP",
             "SessionPersist:before reason=$reason tab=$safeTab quick=${snapshot.quickPlaylist} opened=${snapshot.openedPlaylist} uri=$safeUri playlist=$safePlaylist"
         )
-        SessionPrefs.saveTab(this, safeTab)
-        SessionPrefs.saveQuickPlaylist(this, snapshot.quickPlaylist)
-        SessionPrefs.saveOpenedPlaylist(this, snapshot.openedPlaylist)
-        SessionPrefs.saveLastSession(this, safeUri, safePlaylist)
-        Log.d("BOOTSTEP", "SessionPersist:after reason=$reason")
+        sessionSaveJob?.cancel()
+        sessionSaveJob = lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val tStart = SystemClock.elapsedRealtime()
+                SessionPrefs.saveSessionSnapshot(
+                    context = this@MainActivity,
+                    tab = normalizedSnapshot.tabKey,
+                    quickPlaylist = normalizedSnapshot.quickPlaylist,
+                    openedPlaylist = normalizedSnapshot.openedPlaylist,
+                    lastTrackUri = normalizedSnapshot.currentPlayingUri,
+                    lastPlaylistName = normalizedSnapshot.currentPlayingPlaylist
+                )
+                lastPersistedSessionSnapshot = normalizedSnapshot
+                if (BuildConfig.DEBUG) {
+                    Log.d(
+                        "PERF_SESSION",
+                        "persistSession reason=$reason ms=${SystemClock.elapsedRealtime() - tStart} tab=${normalizedSnapshot.tabKey}"
+                    )
+                }
+                Log.d("BOOTSTEP", "SessionPersist:after reason=$reason")
+            } catch (_: CancellationException) {
+                Log.d("BOOTSTEP", "SessionPersist:cancelled reason=$reason")
+            }
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         AppLanguagePrefs.applySavedLanguage(this)
         super.onCreate(savedInstanceState)
+        if (BuildConfig.DEBUG) {
+            StrictMode.setThreadPolicy(
+                StrictMode.ThreadPolicy.Builder()
+                    .detectDiskReads()
+                    .detectDiskWrites()
+                    .detectNetwork()
+                    .detectCustomSlowCalls()
+                    .penaltyLog()
+                    .build()
+            )
+        }
 
         val t0 = SystemClock.elapsedRealtime()
         fun mark(step: String) {
@@ -453,6 +500,9 @@ class MainActivity : AppCompatActivity() {
                 var parsedLines by remember { mutableStateOf<List<LrcLine>>(emptyList()) }
 
                 var currentPlayToken by remember { mutableStateOf(0L) }
+                var playlistTapPlayJob by remember { mutableStateOf<Job?>(null) }
+                var playlistSessionWriteJob by remember { mutableStateOf<Job?>(null) }
+                var lastPlaylistTapStartedAtMs by remember { mutableStateOf(0L) }
                 var currentTrackGainDb by remember { mutableStateOf(DEFAULT_TRACK_GAIN_DB) }
                 var currentLyricsColor by remember { mutableStateOf(Color.White) }
                 var refreshKey by remember { mutableStateOf(0) }
@@ -654,7 +704,34 @@ class MainActivity : AppCompatActivity() {
                     )
                 }
 
-                val playWithCrossfade: (String, String?) -> Unit = { uriString, playlistName ->
+                fun persistCurrentUiSession(reason: String, tabOverride: BottomTab? = null) {
+                    val tab = tabOverride ?: selectedTab
+                    latestSessionSnapshot = SessionSnapshot(
+                        tabKey = tabKeyOf(tab),
+                        quickPlaylist = selectedQuickPlaylist,
+                        openedPlaylist = openedPlaylist,
+                        currentPlayingUri = currentPlayingUri,
+                        currentPlayingPlaylist = currentPlayingPlaylist
+                    )
+                    persistSession(reason = reason)
+                }
+
+                fun setTabAndPersist(tab: BottomTab, reason: String) {
+                    selectedTab = tab
+                    persistCurrentUiSession(reason = reason, tabOverride = tab)
+                }
+
+                fun setQuickPlaylistAndPersist(name: String?, reason: String) {
+                    selectedQuickPlaylist = name
+                    persistCurrentUiSession(reason = reason)
+                }
+
+                fun setOpenedPlaylistAndPersist(name: String?, reason: String) {
+                    openedPlaylist = name
+                    persistCurrentUiSession(reason = reason)
+                }
+
+                suspend fun playWithCrossfadeInternal(uriString: String, playlistName: String?) {
                     val backingTitle = indexAll.firstOrNull { it.uriString == uriString }?.name
                         ?: Uri.parse(uriString).lastPathSegment
                         ?: HistoryRepository.UNTITLED_FALLBACK
@@ -664,19 +741,32 @@ class MainActivity : AppCompatActivity() {
                     currentPlayingPlaylist = playlistName
                     embeddedLyricsListener.reset()
 
-                    SessionPrefs.saveLastSession(ctx, uriString, playlistName)
+                    playlistSessionWriteJob?.cancel()
+                    playlistSessionWriteJob = scope.launch(Dispatchers.IO) {
+                        try {
+                            SessionPrefs.saveLastSession(ctx, uriString, playlistName)
+                        } catch (_: CancellationException) {
+                            // coalesced on rapid taps
+                        }
+                    }
                     runCatching { FillerSoundManager.fadeOutAndStop(400) }
 
                     val myToken = currentPlayToken + 1
                     currentPlayToken = myToken
                     trimAppliedForThisTrack = false
 
-                    currentTrackGainDb = clampTrackDb(
-                        TrackVolumePrefs.getDb(ctx, uriString) ?: DEFAULT_TRACK_GAIN_DB
-                    )
-                    currentTrackTempo = TrackTempoPrefs.getTempo(ctx, uriString) ?: 1f
-                    currentTrackPitchSemi = TrackPitchPrefs.getSemi(ctx, uriString) ?: 0
+                    val (loadedTrackGainDb, loadedTempo, loadedPitchSemi) = withContext(Dispatchers.IO) {
+                        Triple(
+                            clampTrackDb(TrackVolumePrefs.getDb(ctx, uriString) ?: DEFAULT_TRACK_GAIN_DB),
+                            TrackTempoPrefs.getTempo(ctx, uriString) ?: 1f,
+                            TrackPitchPrefs.getSemi(ctx, uriString) ?: 0
+                        )
+                    }
+                    currentTrackGainDb = loadedTrackGainDb
+                    currentTrackTempo = loadedTempo
+                    currentTrackPitchSemi = loadedPitchSemi
 
+                    var lyricsResolveSeq = 0
                     val result = runCatching {
                         cancelTrimWatcher()
                         AudioEngine.reapplyMixNow()
@@ -690,7 +780,23 @@ class MainActivity : AppCompatActivity() {
                             playToken = myToken,
                             getCurrentToken = { currentPlayToken },
                             onLyricsLoaded = { embeddedOrNull ->
-                                parsedLines = LyricsResolver.resolveLyrics(ctx, uriString, embeddedOrNull)
+                                lyricsResolveSeq += 1
+                                val seq = lyricsResolveSeq
+                                scope.launch {
+                                    val tLyrics = SystemClock.elapsedRealtime()
+                                    val resolved = withContext(Dispatchers.IO) {
+                                        LyricsResolver.resolveLyrics(ctx, uriString, embeddedOrNull)
+                                    }
+                                    if (currentPlayToken != myToken) return@launch
+                                    if (seq != lyricsResolveSeq) return@launch
+                                    parsedLines = resolved
+                                    if (BuildConfig.DEBUG) {
+                                        Log.d(
+                                            "PERF_LYRICS",
+                                            "resolveLyrics ms=${SystemClock.elapsedRealtime() - tLyrics} uri=$uriString embedded=${embeddedOrNull != null}"
+                                        )
+                                    }
+                                }
                             },
                             onStart = {
                                 isPlaying = true
@@ -767,7 +873,20 @@ class MainActivity : AppCompatActivity() {
                     }
 
                     selectedTab = BottomTab.Player
-                    SessionPrefs.saveTab(ctx, TAB_PLAYER)
+                    latestSessionSnapshot = SessionSnapshot(
+                        tabKey = TAB_PLAYER,
+                        quickPlaylist = selectedQuickPlaylist,
+                        openedPlaylist = openedPlaylist,
+                        currentPlayingUri = currentPlayingUri,
+                        currentPlayingPlaylist = currentPlayingPlaylist
+                    )
+                    persistSession(reason = "playStart")
+                }
+
+                val playWithCrossfade: (String, String?) -> Unit = { uriString, playlistName ->
+                    scope.launch {
+                        playWithCrossfadeInternal(uriString, playlistName)
+                    }
                 }
 
                 fun playChainFrom(startIndex: Int): Boolean {
@@ -779,8 +898,7 @@ class MainActivity : AppCompatActivity() {
                                 chainIndex = idx
                                 playWithCrossfade(target.uri, target.playlist)
                                 currentPlayingUri = target.uri
-                                selectedQuickPlaylist = target.playlist
-                                target.playlist?.let { SessionPrefs.saveQuickPlaylist(ctx, it) }
+                                setQuickPlaylistAndPersist(target.playlist, reason = "chainPlay")
                                 currentLyricsColor = Color.White
                                 return true
                             }
@@ -805,8 +923,7 @@ class MainActivity : AppCompatActivity() {
                                 stopChainPlayback()
                                 playWithCrossfade(target.uri, target.playlist)
                                 currentPlayingUri = target.uri
-                                selectedQuickPlaylist = target.playlist
-                                target.playlist?.let { SessionPrefs.saveQuickPlaylist(ctx, it) }
+                                setQuickPlaylistAndPersist(target.playlist, reason = "nextTrackTrigger")
                                 currentLyricsColor = Color.White
                                 true
                             }
@@ -841,8 +958,7 @@ class MainActivity : AppCompatActivity() {
                     PlaybackCoordinator.onDjStart()
                     DjEngine.selectTrackFromList(uriString, name)
 
-                    selectedTab = BottomTab.Dj
-                    SessionPrefs.saveTab(ctx, TAB_DJ)
+                    setTabAndPersist(BottomTab.Dj, reason = "searchDjPlay")
                 }
 
                 LaunchedEffect(Unit) {
@@ -964,8 +1080,7 @@ class MainActivity : AppCompatActivity() {
                                 if (tab is BottomTab.Filler) {
                                     isFillerSettingsOpen = true
                                 } else {
-                                    selectedTab = tab
-                                    SessionPrefs.saveTab(ctx, tabKeyOf(tab))
+                                    setTabAndPersist(tab, reason = "bottomTabSelect")
                                 }
                             },
                             onSearchClick = {
@@ -1015,8 +1130,7 @@ class MainActivity : AppCompatActivity() {
                             onBack = {},
                             onOpenPlayer = {
                                 isMixerPreviewOpen = false
-                                selectedTab = BottomTab.Player
-                                SessionPrefs.saveTab(ctx, TAB_PLAYER)
+                                setTabAndPersist(BottomTab.Player, reason = "mixerPreviewOpenPlayer")
                             },
                             onOpenFondSonore = {
                                 isMixerPreviewOpen = false
@@ -1024,13 +1138,11 @@ class MainActivity : AppCompatActivity() {
                             },
                             onOpenDj = {
                                 isMixerPreviewOpen = false
-                                selectedTab = BottomTab.Dj
-                                SessionPrefs.saveTab(ctx, TAB_DJ)
+                                setTabAndPersist(BottomTab.Dj, reason = "mixerPreviewOpenDj")
                             },
                             onOpenTuner = {
                                 isMixerPreviewOpen = false
-                                selectedTab = BottomTab.Tuner
-                                SessionPrefs.saveTab(ctx, TAB_TUNER)
+                                setTabAndPersist(BottomTab.Tuner, reason = "mixerPreviewOpenTuner")
                             }
                         )
                     } else if (isFillerSettingsOpen) {
@@ -1070,17 +1182,14 @@ class MainActivity : AppCompatActivity() {
                                     modifier = contentModifier,
                                     onBack = {},
                                     onOpenPlayer = {
-                                        selectedTab = BottomTab.Player
-                                        SessionPrefs.saveTab(ctx, TAB_PLAYER)
+                                        setTabAndPersist(BottomTab.Player, reason = "homeOpenPlayer")
                                     },
                                     onOpenFondSonore = { isFillerSettingsOpen = true },
                                     onOpenDj = {
-                                        selectedTab = BottomTab.Dj
-                                        SessionPrefs.saveTab(ctx, TAB_DJ)
+                                        setTabAndPersist(BottomTab.Dj, reason = "homeOpenDj")
                                     },
                                     onOpenTuner = {
-                                        selectedTab = BottomTab.Tuner
-                                        SessionPrefs.saveTab(ctx, TAB_TUNER)
+                                        setTabAndPersist(BottomTab.Tuner, reason = "homeOpenTuner")
                                     }
                                 )
 
@@ -1137,15 +1246,27 @@ class MainActivity : AppCompatActivity() {
                                             }
 
                                             is PlaybackRouter.Target.Audio -> {
-                                                playWithCrossfade(target.uri, target.playlist)
+                                                playlistTapPlayJob?.cancel()
+                                                playlistTapPlayJob = scope.launch {
+                                                    val now = SystemClock.uptimeMillis()
+                                                    val waitMs = (lastPlaylistTapStartedAtMs + 250L) - now
+                                                    if (waitMs > 0L) delay(waitMs)
+                                                    lastPlaylistTapStartedAtMs = SystemClock.uptimeMillis()
+                                                    playWithCrossfadeInternal(target.uri, target.playlist)
+                                                }
                                                 currentPlayingUri = target.uri
 
                                                 selectedQuickPlaylist = target.playlist
-                                                target.playlist?.let { SessionPrefs.saveQuickPlaylist(ctx, it) }
-
                                                 currentLyricsColor = color
                                                 selectedTab = BottomTab.Player
-                                                SessionPrefs.saveTab(ctx, TAB_PLAYER)
+                                                latestSessionSnapshot = SessionSnapshot(
+                                                    tabKey = TAB_PLAYER,
+                                                    quickPlaylist = target.playlist ?: selectedQuickPlaylist,
+                                                    openedPlaylist = openedPlaylist,
+                                                    currentPlayingUri = target.uri,
+                                                    currentPlayingPlaylist = target.playlist
+                                                )
+                                                persistSession(reason = "quickPlayTap")
                                             }
 
                                             is PlaybackRouter.Target.Unknown -> {
@@ -1173,8 +1294,7 @@ class MainActivity : AppCompatActivity() {
                                     openedPlaylist = openedPlaylist,
                                     isRestoringSession = isRestoringSession,
                                     onSelectedPlaylistChange = { name ->
-                                        selectedQuickPlaylist = name
-                                        SessionPrefs.saveQuickPlaylist(ctx, name)
+                                        setQuickPlaylistAndPersist(name, reason = "quickPlaylistSelect")
                                     },
                                     onPlaylistColorChange = { _ -> currentLyricsColor = Color.White },
                                     onSetNextTrack = { uri, title, playlist ->
@@ -1185,8 +1305,7 @@ class MainActivity : AppCompatActivity() {
                                     },
                                     onConsumeOpenPrompterSignal = { openPrompterSignal = 0 },
                                     onRequestShowPlayer = {
-                                        selectedTab = BottomTab.Player
-                                        SessionPrefs.saveTab(ctx, TAB_PLAYER)
+                                        setTabAndPersist(BottomTab.Player, reason = "quickPlaylistShowPlayer")
                                     }
                                 )
 
@@ -1197,16 +1316,14 @@ class MainActivity : AppCompatActivity() {
                                         playWithCrossfade(uriString, null)
                                         currentPlayingUri = uriString
                                         currentLyricsColor = Color.White
-                                        selectedTab = BottomTab.Player
-                                        SessionPrefs.saveTab(ctx, TAB_PLAYER)
+                                        setTabAndPersist(BottomTab.Player, reason = "libraryPlay")
                                     }
                                 )
 
                                 is BottomTab.AllPlaylists -> AllPlaylistsScreen(
                                     modifier = contentModifier,
                                     onPlaylistClick = { name ->
-                                        openedPlaylist = name
-                                        SessionPrefs.saveOpenedPlaylist(ctx, name)
+                                        setOpenedPlaylistAndPersist(name, reason = "allPlaylistsOpen")
                                     }
                                 )
 
@@ -1217,16 +1334,14 @@ class MainActivity : AppCompatActivity() {
                                     context = ctx,
                                     onAfterImport = { refreshKey++ },
                                     onOpenTuner = {
-                                        selectedTab = BottomTab.Tuner
-                                        SessionPrefs.saveTab(ctx, TAB_TUNER)
+                                        setTabAndPersist(BottomTab.Tuner, reason = "moreOpenTuner")
                                     }
                                 )
 
                                 is BottomTab.Tuner -> TunerScreen(
                                     modifier = contentModifier,
                                     onClose = {
-                                        selectedTab = BottomTab.Home
-                                        SessionPrefs.saveTab(ctx, TAB_HOME)
+                                        setTabAndPersist(BottomTab.Home, reason = "tunerClose")
                                     }
                                 )
 
@@ -1257,8 +1372,7 @@ class MainActivity : AppCompatActivity() {
                                             stopChainPlayback()
                                             playWithCrossfade(uriString, null)
                                             currentPlayingUri = uriString
-                                            selectedTab = BottomTab.Player
-                                            SessionPrefs.saveTab(ctx, TAB_PLAYER)
+                                            setTabAndPersist(BottomTab.Player, reason = "searchPlayPlayer")
                                         }
 
                                         SearchMode.DJ -> {
@@ -1271,8 +1385,7 @@ class MainActivity : AppCompatActivity() {
                                             playWithCrossfade(uriString, null)
                                             currentPlayingUri = uriString
                                             currentLyricsColor = Color(0xFFE040FB)
-                                            selectedTab = BottomTab.Player
-                                            SessionPrefs.saveTab(ctx, TAB_PLAYER)
+                                            setTabAndPersist(BottomTab.Player, reason = "searchPlayPlaylist")
                                         }
                                     }
                                     isSearchOpen = false
@@ -1311,8 +1424,7 @@ class MainActivity : AppCompatActivity() {
                             text = { Text(stringResource(R.string.main_menu_library)) },
                             onClick = {
                                 isMoreMenuOpen = false
-                                selectedTab = BottomTab.Library
-                                SessionPrefs.saveTab(ctx, TAB_LIBRARY)
+                                setTabAndPersist(BottomTab.Library, reason = "menuLibrary")
                                 // ✅ si on est sur “Fond sonore” (overlay), il faut le fermer sinon on reste bloqué dessus
                                 isFillerSettingsOpen = false
                                 isGlobalMixOpen = false
@@ -1325,8 +1437,7 @@ class MainActivity : AppCompatActivity() {
                             text = { Text(stringResource(R.string.main_menu_playlists)) },
                             onClick = {
                                 isMoreMenuOpen = false
-                                selectedTab = BottomTab.AllPlaylists
-                                SessionPrefs.saveTab(ctx, TAB_ALL)
+                                setTabAndPersist(BottomTab.AllPlaylists, reason = "menuAllPlaylists")
                                 // ✅ si on est sur “Fond sonore” (overlay), il faut le fermer sinon on reste bloqué dessus
                                 isFillerSettingsOpen = false
                                 isGlobalMixOpen = false
@@ -1339,8 +1450,7 @@ class MainActivity : AppCompatActivity() {
                             text = { Text(stringResource(R.string.main_menu_prompter)) },
                             onClick = {
                                 isMoreMenuOpen = false
-                                selectedTab = BottomTab.QuickPlaylists
-                                SessionPrefs.saveTab(ctx, TAB_QUICK)
+                                setTabAndPersist(BottomTab.QuickPlaylists, reason = "menuQuickPlaylists")
                                 openPrompterSignal++
                                 // ✅ si on est sur “Fond sonore” (overlay), il faut le fermer sinon on reste bloqué dessus
                                 isFillerSettingsOpen = false
@@ -1354,8 +1464,7 @@ class MainActivity : AppCompatActivity() {
                             text = { Text(stringResource(R.string.main_menu_more)) },
                             onClick = {
                                 isMoreMenuOpen = false
-                                selectedTab = BottomTab.More
-                                SessionPrefs.saveTab(ctx, TAB_MORE)
+                                setTabAndPersist(BottomTab.More, reason = "menuMore")
                                 // ✅ si on est sur “Fond sonore” (overlay), il faut le fermer sinon on reste bloqué dessus
                                 isFillerSettingsOpen = false
                                 isGlobalMixOpen = false
@@ -1368,8 +1477,7 @@ class MainActivity : AppCompatActivity() {
                             text = { Text(stringResource(R.string.main_menu_tuner)) },
                             onClick = {
                                 isMoreMenuOpen = false
-                                selectedTab = BottomTab.Tuner
-                                SessionPrefs.saveTab(ctx, TAB_TUNER)
+                                setTabAndPersist(BottomTab.Tuner, reason = "menuTuner")
                                 // ✅ si on est sur “Fond sonore” (overlay), il faut le fermer sinon on reste bloqué dessus
                                 isFillerSettingsOpen = false
                                 isGlobalMixOpen = false

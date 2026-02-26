@@ -477,6 +477,10 @@ fun LibraryScreen(
 
             indexAll = backend.loadIndex()
             val folderToShow = backend.chooseInitialFolder(root, indexAll)
+            Log.i(
+                "LIB_SCAN_DIAG",
+                "mount root=$root indexSize=${indexAll.size} willFullScan=${indexAll.isEmpty()} folderToShow=$folderToShow"
+            )
             currentFolderUri = folderToShow
 
             if (indexAll.isEmpty()) {

@@ -2,6 +2,7 @@ package com.patrick.lrcreader.core
 
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import org.json.JSONArray
@@ -89,7 +90,8 @@ object LibraryIndexCache {
                 )
             }
             out
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Log.e("LIB_SCAN_DIAG", "indexLoadParseFail deletedCache=true file=${f.absolutePath}", e)
             try { f.delete() } catch (_: Exception) {}
             null
         }

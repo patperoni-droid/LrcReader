@@ -10,6 +10,7 @@ import com.patrick.lrcreader.core.BackupFolderPrefs
 import com.patrick.lrcreader.core.BackupFolderPrefsSaf
 import com.patrick.lrcreader.core.ImportAudioManager
 import com.patrick.lrcreader.core.LibraryIndexCache
+import com.patrick.lrcreader.exo.BuildConfig
 import com.patrick.lrcreader.ui.LibraryEntry
 import com.patrick.lrcreader.ui.MoveResult
 
@@ -18,6 +19,11 @@ class LibraryBackendSaf(
 ) : LibraryBackend {
 
     private val tag = "LIB_SAF"
+
+    companion object {
+        @Volatile
+        private var baseFoldersEnsured = false
+    }
 
     override fun getRootUri(): Uri? {
         val saved = BackupFolderPrefsSaf.getLibraryRootUri(context)
@@ -38,6 +44,11 @@ class LibraryBackendSaf(
     }
 
     override fun ensureBaseFolders() {
+        if (baseFoldersEnsured) {
+            Log.d(tag, "ensureBaseFolders: skip (already ensured)")
+            return
+        }
+
         val rootUri = getRootUri() ?: run {
             Log.w(tag, "ensureBaseFolders: rootUri=null")
             return
@@ -49,6 +60,7 @@ class LibraryBackendSaf(
             return
         }
 
+        baseFoldersEnsured = true
         Log.i(tag, "ensureBaseFolders root=${rootDoc.uri}")
 
         val backingTracks = ensureDirSmart(rootDoc, "BackingTracks", aliases = listOf("backingtracks", "backingtrack"))
@@ -57,7 +69,6 @@ class LibraryBackendSaf(
         val exports = ensureDirSmart(rootDoc, "exports", aliases = listOf("Exports"))
         val imports = ensureDirSmart(rootDoc, "imports", aliases = listOf("Imports"))
 
-        Log.i(tag, "root children=${rootDoc.listFiles().size} names=${rootDoc.listFiles().joinToString { it.name.orEmpty() }}")
         Log.i(tag, "root dirs backingTracks=${backingTracks?.uri} backups=${backups?.uri} dj=${dj?.uri} exports=${exports?.uri} imports=${imports?.uri}")
 
         if (backingTracks != null && backingTracks.isDirectory) {
@@ -66,8 +77,11 @@ class LibraryBackendSaf(
             val midi = ensureDirSmart(backingTracks, "Midi", aliases = listOf("midi"))
             val videos = ensureDirSmart(backingTracks, "Videos", aliases = listOf("videos"))
 
-            Log.i(tag, "BackingTracks children=${backingTracks.listFiles().size} names=${backingTracks.listFiles().joinToString { it.name.orEmpty() }}")
             Log.i(tag, "BackingTracks dirs audio=${audio?.uri} lyrics=${lyrics?.uri} midi=${midi?.uri} videos=${videos?.uri}")
+        }
+
+        if (BuildConfig.DEBUG) {
+            Log.d(tag, "ensureBaseFolders: done root=${rootDoc.uri}")
         }
 
         BackupFolderPrefsSaf.saveLibraryRootUri(context, rootDoc.uri)
