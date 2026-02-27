@@ -184,10 +184,27 @@ fun PlayerScreen(
 
     var rawLyricsText by remember(currentTrackUri) { mutableStateOf("") }
     var editingLines by remember(currentTrackUri) { mutableStateOf<List<LrcLine>>(emptyList()) }
+    var editingLinesDirty by remember(currentTrackUri) { mutableStateOf(false) }
     var currentEditTab by remember { mutableStateOf(0) }
+    val inlineLrcTimeTagRegex = remember { Regex("""\[(\d{1,2}):(\d{1,2})(?:\.(\d{1,3}))?]""") }
+
+    fun plainLyricsText(lines: List<LrcLine>): String =
+        lines.joinToString("\n") { line -> line.text.replace(inlineLrcTimeTagRegex, "").trim() }
+
+    fun seedEditingLinesIfBetter(lines: List<LrcLine>) {
+        if (editingLinesDirty) return
+        val currentHasTags = editingLines.any { it.timeMs > 0L }
+        val incomingHasTags = lines.any { it.timeMs > 0L }
+
+        val shouldSeed = editingLines.isEmpty() || (!currentHasTags && incomingHasTags)
+        if (shouldSeed) {
+            editingLines = lines
+        }
+    }
 
     // 🔁 reload paroles (priorité : SYLT -> EDIT (LrcStorage) -> SIDECAR -> USLT)
     LaunchedEffect(currentTrackUri) {
+        if (isEditingLyrics) return@LaunchedEffect
         if (currentTrackUri == null) {
             onParsedLinesChange(emptyList())
             rawLyricsText = ""
@@ -208,7 +225,7 @@ fun PlayerScreen(
             val parsed = parseLrc(syltLrcText)
             onParsedLinesChange(parsed)
             rawLyricsText = parsed.joinToString("\n") { it.text }
-            editingLines = parsed
+            seedEditingLinesIfBetter(parsed)
             return@LaunchedEffect
         }
 
@@ -219,7 +236,7 @@ fun PlayerScreen(
             val parsed = parseLrc(stored)
             onParsedLinesChange(parsed)
             rawLyricsText = parsed.joinToString("\n") { it.text }
-            editingLines = parsed
+            seedEditingLinesIfBetter(parsed)
             return@LaunchedEffect
         }
 
@@ -233,7 +250,7 @@ fun PlayerScreen(
             val parsed = parseLrc(sidecarLrcText)
             onParsedLinesChange(parsed)
             rawLyricsText = parsed.joinToString("\n") { it.text }
-            editingLines = parsed
+            seedEditingLinesIfBetter(parsed)
             return@LaunchedEffect
         }
 
@@ -252,13 +269,13 @@ fun PlayerScreen(
 
             onParsedLinesChange(lines)
             rawLyricsText = lines.joinToString("\n") { it.text }
-            editingLines = lines
+            seedEditingLinesIfBetter(lines)
             return@LaunchedEffect
         }
 
         onParsedLinesChange(emptyList())
         rawLyricsText = ""
-        editingLines = emptyList()
+        seedEditingLinesIfBetter(emptyList())
     }
 
     fun centerCurrentLineLazy(state: LazyListState) {
@@ -409,7 +426,10 @@ fun PlayerScreen(
                 rawLyricsText = rawLyricsText,
                 onRawLyricsTextChange = { rawLyricsText = it },
                 editingLines = editingLines,
-                onEditingLinesChange = { editingLines = it },
+                onEditingLinesChange = {
+                    editingLines = it
+                    editingLinesDirty = true
+                },
                 currentEditTab = currentEditTab,
                 onCurrentEditTabChange = { currentEditTab = it },
 
@@ -474,12 +494,16 @@ fun PlayerScreen(
                             highlightColor = highlightColor,
                             onOpenMix = { showMixScreen = true },
                             onOpenEditor = {
-                                if (parsedLines.isNotEmpty()) {
-                                    rawLyricsText = parsedLines.joinToString("\n") { it.text }
-                                    editingLines = parsedLines
+                                if (editingLines.isNotEmpty()) {
+                                    rawLyricsText = plainLyricsText(editingLines)
                                 } else {
-                                    rawLyricsText = ""
-                                    editingLines = emptyList()
+                                    if (parsedLines.isNotEmpty()) {
+                                        rawLyricsText = plainLyricsText(parsedLines)
+                                        editingLines = parsedLines
+                                    } else {
+                                        rawLyricsText = ""
+                                        editingLines = emptyList()
+                                    }
                                 }
                                 currentEditTab = 0
                                 isEditingLyrics = true

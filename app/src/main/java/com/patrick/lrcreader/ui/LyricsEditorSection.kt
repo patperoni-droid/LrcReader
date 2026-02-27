@@ -36,8 +36,12 @@ import com.patrick.lrcreader.core.CueMidiStore
 import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.core.LrcCleaner
 import com.patrick.lrcreader.core.LrcLine
+import com.patrick.lrcreader.exo.BuildConfig
 import com.patrick.lrcreader.exo.R
 import kotlinx.coroutines.launch
+
+private val INLINE_LRC_TIME_TAG_REGEX =
+    Regex("""\[(\d{1,2}):(\d{1,2})(?:\.(\d{1,3}))?]""")
 
 // ─────────────────────────────
 //  ÉDITEUR DE PAROLES
@@ -78,12 +82,14 @@ fun LyricsEditorSection(
     var lineMenuIndex by remember { mutableStateOf<Int?>(null) }
     var lineMenuText by remember { mutableStateOf("") }
 
+    fun rawToPlainLines(raw: String): List<String> =
+        raw.lines()
+            .map { line -> line.trim().replace(INLINE_LRC_TIME_TAG_REGEX, "").trim() }
+            .filter { it.isNotEmpty() }
+
     // 🔹 Enregistrer
     fun handleSave() {
-        val simpleLines = rawLyricsText
-            .lines()
-            .map { it.trim() }
-            .filter { it.isNotEmpty() }
+        val simpleLines = rawToPlainLines(rawLyricsText)
 
         if (simpleLines.isEmpty()) {
             onEditingLinesChange(emptyList())
@@ -148,24 +154,6 @@ fun LyricsEditorSection(
                     Tab(
                         selected = currentEditTab == 1,
                         onClick = {
-                            val simpleLines = rawLyricsText
-                                .lines()
-                                .map { it.trim() }
-                                .filter { it.isNotEmpty() }
-
-                            val newEditing: List<LrcLine> =
-                                if (simpleLines.isEmpty()) {
-                                    emptyList()
-                                } else if (editingLines.isEmpty()) {
-                                    simpleLines.map { txt -> LrcLine(timeMs = 0L, text = txt) }
-                                } else {
-                                    mergeLyricsWithOldTimings(
-                                        newLines = simpleLines,
-                                        oldLines = editingLines
-                                    )
-                                }
-
-                            onEditingLinesChange(newEditing)
                             onCurrentEditTabChange(1)
                         },
                         text = { Text(stringResource(R.string.lyrics_editor_tab_sync)) }
@@ -436,6 +424,8 @@ fun LyricsEditorSection(
                                         if (idx in list.indices) {
                                             list[idx] = list[idx].copy(text = lineMenuText.trim())
                                             onEditingLinesChange(list)
+                                        } else if (BuildConfig.DEBUG) {
+                                            Log.w("LrcDebug", "EDIT_LINE_SKIPPED invalidIndex idx=$idx size=${list.size}")
                                         }
                                         lineMenuIndex = null
                                     }
@@ -449,6 +439,8 @@ fun LyricsEditorSection(
                                             if (idx in list.indices) {
                                                 list.removeAt(idx)
                                                 onEditingLinesChange(list)
+                                            } else if (BuildConfig.DEBUG) {
+                                                Log.w("LrcDebug", "DELETE_LINE_SKIPPED invalidIndex idx=$idx size=${list.size}")
                                             }
 
                                             if (currentTrackUri != null) {
