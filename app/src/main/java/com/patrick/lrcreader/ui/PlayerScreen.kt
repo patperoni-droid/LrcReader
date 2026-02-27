@@ -73,6 +73,7 @@ fun PlayerScreen(
     isPlaying: Boolean,
     onIsPlayingChange: (Boolean) -> Unit,
     parsedLines: List<LrcLine>,
+    lyricsLoading: Boolean,
     onParsedLinesChange: (List<LrcLine>) -> Unit,
     highlightColor: Color = Color(0xFFE040FB),
     currentTrackUri: String?,
@@ -260,16 +261,10 @@ fun PlayerScreen(
         } else null
 
         if (!usltText.isNullOrBlank()) {
-            val lines = usltText
-                .replace("\r\n", "\n")
-                .split("\n")
-                .map { it.trimEnd() }
-                .filter { it.isNotBlank() }
-                .map { LrcLine(timeMs = 0L, text = it) }
-
-            onParsedLinesChange(lines)
-            rawLyricsText = lines.joinToString("\n") { it.text }
-            seedEditingLinesIfBetter(lines)
+            val parsed = parseLrc(usltText)
+            onParsedLinesChange(parsed)
+            rawLyricsText = parsed.joinToString("\n") { it.text }
+            seedEditingLinesIfBetter(parsed)
             return@LaunchedEffect
         }
 
@@ -536,6 +531,8 @@ fun PlayerScreen(
                                 modifier = Modifier.fillMaxSize(),
                                 listState = listState,
                                 parsedLines = parsedLines,
+                                currentTrackUri = currentTrackUri,
+                                lyricsLoading = lyricsLoading,
                                 isConcertMode = isConcertMode,
                                 currentLrcIndex = safeLrcIndex,
                                 onLyricsBoxHeightChange = { lyricsBoxHeightPx = it },

@@ -498,6 +498,7 @@ class MainActivity : AppCompatActivity() {
                 var currentPlayingPlaylist by rememberSaveable { mutableStateOf<String?>(initialLastPlaylist) }
                 var isPlaying by remember { mutableStateOf(false) }
                 var parsedLines by remember { mutableStateOf<List<LrcLine>>(emptyList()) }
+                var lyricsLoading by remember { mutableStateOf(false) }
 
                 var currentPlayToken by remember { mutableStateOf(0L) }
                 var playlistTapPlayJob by remember { mutableStateOf<Job?>(null) }
@@ -737,6 +738,8 @@ class MainActivity : AppCompatActivity() {
                         ?: HistoryRepository.UNTITLED_FALLBACK
 
                     PlaybackCoordinator.onPlayerStart()
+                    lyricsLoading = true
+                    parsedLines = emptyList()
                     currentPlayingUri = uriString
                     currentPlayingPlaylist = playlistName
                     embeddedLyricsListener.reset()
@@ -780,21 +783,28 @@ class MainActivity : AppCompatActivity() {
                             playToken = myToken,
                             getCurrentToken = { currentPlayToken },
                             onLyricsLoaded = { embeddedOrNull ->
-                                lyricsResolveSeq += 1
-                                val seq = lyricsResolveSeq
-                                scope.launch {
-                                    val tLyrics = SystemClock.elapsedRealtime()
-                                    val resolved = withContext(Dispatchers.IO) {
-                                        LyricsResolver.resolveLyrics(ctx, uriString, embeddedOrNull)
-                                    }
-                                    if (currentPlayToken != myToken) return@launch
-                                    if (seq != lyricsResolveSeq) return@launch
-                                    parsedLines = resolved
-                                    if (BuildConfig.DEBUG) {
-                                        Log.d(
-                                            "PERF_LYRICS",
-                                            "resolveLyrics ms=${SystemClock.elapsedRealtime() - tLyrics} uri=$uriString embedded=${embeddedOrNull != null}"
-                                        )
+                                if (embeddedOrNull == null) {
+                                    // Résolution terminée côté embedded : pas de paroles embarquées.
+                                    // Ne pas toucher parsedLines ici (déjà cleared au track change).
+                                    lyricsLoading = false
+                                } else {
+                                    lyricsResolveSeq += 1
+                                    val seq = lyricsResolveSeq
+                                    scope.launch {
+                                        val tLyrics = SystemClock.elapsedRealtime()
+                                        val resolved = withContext(Dispatchers.IO) {
+                                            LyricsResolver.resolveLyrics(ctx, uriString, embeddedOrNull)
+                                        }
+                                        if (currentPlayToken != myToken) return@launch
+                                        if (seq != lyricsResolveSeq) return@launch
+                                        parsedLines = resolved
+                                        lyricsLoading = false
+                                        if (BuildConfig.DEBUG) {
+                                            Log.d(
+                                                "PERF_LYRICS",
+                                                "resolveLyrics ms=${SystemClock.elapsedRealtime() - tLyrics} uri=$uriString embedded=${embeddedOrNull != null}"
+                                            )
+                                        }
                                     }
                                 }
                             },
@@ -1203,6 +1213,7 @@ class MainActivity : AppCompatActivity() {
                                         if (shouldPlay) exoPlayer.play() else exoPlayer.pause()
                                     },
                                     parsedLines = parsedLines,
+                                    lyricsLoading = lyricsLoading,
                                     onParsedLinesChange = { parsedLines = it },
                                     highlightColor = currentLyricsColor,
                                     currentTrackUri = currentPlayingUri,
@@ -1254,6 +1265,8 @@ class MainActivity : AppCompatActivity() {
                                                     lastPlaylistTapStartedAtMs = SystemClock.uptimeMillis()
                                                     playWithCrossfadeInternal(target.uri, target.playlist)
                                                 }
+                                                lyricsLoading = true
+                                                parsedLines = emptyList()
                                                 currentPlayingUri = target.uri
 
                                                 selectedQuickPlaylist = target.playlist
