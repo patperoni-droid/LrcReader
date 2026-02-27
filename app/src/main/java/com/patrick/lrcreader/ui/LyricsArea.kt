@@ -28,6 +28,8 @@ fun LyricsAreaLazy(
     modifier: Modifier = Modifier,
     listState: LazyListState,
     parsedLines: List<LrcLine>,
+    currentTrackUri: String?,
+    lyricsLoading: Boolean,
     isConcertMode: Boolean,
     currentLrcIndex: Int,
     onLyricsBoxHeightChange: (Int) -> Unit,
@@ -41,7 +43,12 @@ fun LyricsAreaLazy(
     ) {
         if (parsedLines.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(stringResource(R.string.lyrics_none), color = Color.Gray)
+                val message = when {
+                    currentTrackUri == null -> stringResource(R.string.lyrics_none)
+                    lyricsLoading -> "Chargement..."
+                    else -> stringResource(R.string.lyrics_none)
+                }
+                Text(message, color = Color.Gray)
             }
             return
         }
