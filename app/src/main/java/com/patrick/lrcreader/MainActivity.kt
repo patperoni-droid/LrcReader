@@ -287,6 +287,7 @@ class MainActivity : AppCompatActivity() {
                         val sessionInitOk = runCatching { SessionPrefs.ensureInitialized(ctx) }.getOrDefault(false)
                         val trimInitOk = runCatching { EditSoundPrefs.ensureInitialized(ctx) }.getOrDefault(false)
                         runCatching { EditSoundPrefs.warmCache(ctx) }
+                        runCatching { FillerSoundPrefs.warmCache(ctx) }
                         val textSongsInitOk = runCatching { TextSongRepository.ensureInitialized(ctx) }.getOrDefault(false)
                         val trackInitOk = runCatching { TrackSettingsStore.ensureInitialized(ctx) }.getOrDefault(false)
                         val notesInitOk = runCatching { NotesConfigStore.ensureInitialized(ctx) }.getOrDefault(false)
