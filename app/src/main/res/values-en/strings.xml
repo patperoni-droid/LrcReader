@@ -304,8 +304,6 @@
     <string name="waveform_step_ms">Step %1$dms</string>
     <string name="waveform_in_cursor">IN = CURSOR</string>
     <string name="waveform_out_cursor">OUT = CURSOR</string>
-    <string name="waveform_play">▶ Play</string>
-    <string name="waveform_stop">⏹ Stop</string>
 
     <!-- All playlists -->
     <string name="all_playlists_header_title">PLAYLISTS</string>
