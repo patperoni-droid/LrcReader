@@ -32,7 +32,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
@@ -203,9 +209,10 @@ fun WaveformPreviewScreen(
                     playheadMs = restoredPlayhead.coerceIn(0, durationMs)
                     WaveformSessionPrefs.savePlayhead(context, playheadMs)
                     val saved = EditSoundPrefs.get(context, uri)
+                    val savedOutMs = saved?.endMs?.takeIf { it > 0 } ?: durationMs
                     val (safeIn, safeOut) = normalizeInOut(
                         inMs = saved?.startMs ?: 0,
-                        outMs = saved?.endMs ?: durationMs,
+                        outMs = savedOutMs,
                         durationMs = durationMs
                     )
                     inMs = safeIn
@@ -303,7 +310,9 @@ fun WaveformPreviewScreen(
             .padding(10.dp)
     ) {
         Column(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             TextButton(
@@ -469,7 +478,7 @@ fun WaveformPreviewScreen(
             )
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Slider(
@@ -492,30 +501,23 @@ fun WaveformPreviewScreen(
                 }
             }
 
-            Text(
-                text = stringResource(
-                    R.string.waveform_in_out_cursor_status,
-                    formatWaveformMs(inMs),
-                    formatWaveformMs(outMs),
-                    formatWaveformMs(playheadMs)
-                ),
-                color = Color(0xFFD5D8DC),
-                fontSize = 12.sp
-            )
-
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 val controlsEnabled = selectedUri != null && durationMs > 0
-                TextButton(
+                IconButton(
                     onClick = { nudgePlayhead(-stepMs) },
-                    enabled = controlsEnabled,
-                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+                    enabled = controlsEnabled
                 ) {
-                    Text("◀︎", fontSize = 12.sp)
+                    Icon(
+                        imageVector = Icons.Default.KeyboardArrowLeft,
+                        contentDescription = null
+                    )
                 }
+
+                Spacer(modifier = Modifier.width(8.dp))
 
                 TextButton(
                     onClick = {
@@ -527,27 +529,32 @@ fun WaveformPreviewScreen(
                             else -> 10
                         }
                     },
-                    enabled = controlsEnabled,
-                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+                    enabled = controlsEnabled
                 ) {
-                    Text(stringResource(R.string.waveform_step_ms, stepMs), fontSize = 11.sp)
+                    Text(
+                        text = "Step ${stepMs}ms",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
                 }
 
-                TextButton(
+                Spacer(modifier = Modifier.width(8.dp))
+
+                IconButton(
                     onClick = { nudgePlayhead(stepMs) },
-                    enabled = controlsEnabled,
-                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+                    enabled = controlsEnabled
                 ) {
-                    Text("▶︎", fontSize = 12.sp)
+                    Icon(
+                        imageVector = Icons.Default.KeyboardArrowRight,
+                        contentDescription = null
+                    )
                 }
             }
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 TextButton(
-                    modifier = Modifier.weight(1f),
                     onClick = {
                         if (selectedUri == null || durationMs <= 0) return@TextButton
                         val (newIn, newOut) = normalizeInOut(
@@ -561,11 +568,10 @@ fun WaveformPreviewScreen(
                     enabled = selectedUri != null && durationMs > 0,
                     contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
                 ) {
-                    Text(stringResource(R.string.waveform_in_cursor), fontSize = 12.sp)
+                    Text("IN ${formatWaveformMs(inMs)}", fontSize = 12.sp)
                 }
 
                 TextButton(
-                    modifier = Modifier.weight(1f),
                     onClick = {
                         if (selectedUri == null || durationMs <= 0) return@TextButton
                         val (newIn, newOut) = normalizeInOut(
@@ -579,99 +585,132 @@ fun WaveformPreviewScreen(
                     enabled = selectedUri != null && durationMs > 0,
                     contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
                 ) {
-                    Text(stringResource(R.string.waveform_out_cursor), fontSize = 12.sp)
+                    Text("OUT ${formatWaveformMs(outMs)}", fontSize = 12.sp)
                 }
             }
 
-            Row(
+            Column(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                TextButton(
-                    onClick = {
-                        if (selectedUri == null || durationMs <= 0) return@TextButton
-                        val target = if (durationMs > 0 && inMs > 0) inMs else 0
-                        val safeTarget = target.coerceIn(0, durationMs.coerceAtLeast(0))
-                        playheadMs = safeTarget
-                        WaveformSessionPrefs.savePlayhead(context, safeTarget)
-                        exoPlayer.seekTo(safeTarget.toLong())
-                        if (isPlayingWave) {
-                            exoPlayer.playWhenReady = true
-                            exoPlayer.play()
-                        } else {
+                val controlsEnabled = selectedUri != null && durationMs > 0
+                val hasOutTrim = controlsEnabled && outMs in 1 until durationMs
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(
+                        onClick = {
+                            if (selectedUri == null || durationMs <= 0) return@TextButton
+                            val target = if (durationMs > 0 && inMs > 0) inMs else 0
+                            val safeTarget = target.coerceIn(0, durationMs.coerceAtLeast(0))
+                            playheadMs = safeTarget
+                            WaveformSessionPrefs.savePlayhead(context, safeTarget)
+                            exoPlayer.seekTo(safeTarget.toLong())
+                            if (isPlayingWave) {
+                                exoPlayer.playWhenReady = true
+                                exoPlayer.play()
+                            } else {
+                                exoPlayer.pause()
+                                exoPlayer.playWhenReady = false
+                            }
+                        },
+                        enabled = selectedUri != null && durationMs > 0,
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text("⏮", fontSize = 12.sp)
+                    }
+
+                    TextButton(
+                        onClick = {
+                            if (selectedUri == null || durationMs <= 0) return@TextButton
+                            if (isPlayingWave) {
+                                exoPlayer.pause()
+                                val current = exoPlayer.currentPosition.coerceAtLeast(0L).toInt()
+                                playheadMs = current.coerceIn(0, durationMs)
+                                WaveformSessionPrefs.savePlayhead(context, playheadMs)
+                                isPlayingWave = false
+                            } else {
+                                val safePlayhead = playheadMs.coerceIn(0, durationMs)
+                                playheadMs = safePlayhead
+                                WaveformSessionPrefs.savePlayhead(context, safePlayhead)
+                                exoPlayer.seekTo(safePlayhead.toLong())
+                                exoPlayer.playWhenReady = true
+                                exoPlayer.play()
+                                isPlayingWave = true
+                            }
+                        },
+                        enabled = selectedUri != null && durationMs > 0,
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text(stringResource(R.string.waveform_play), fontSize = 12.sp)
+                    }
+
+                    TextButton(
+                        onClick = {
                             exoPlayer.pause()
                             exoPlayer.playWhenReady = false
-                        }
-                    },
-                    enabled = selectedUri != null && durationMs > 0,
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                ) {
-                    Text("⏮", fontSize = 12.sp)
-                }
-
-                TextButton(
-                    onClick = {
-                        if (selectedUri == null || durationMs <= 0) return@TextButton
-                        if (isPlayingWave) {
-                            exoPlayer.pause()
                             val current = exoPlayer.currentPosition.coerceAtLeast(0L).toInt()
-                            playheadMs = current.coerceIn(0, durationMs)
+                            playheadMs = if (durationMs > 0) current.coerceIn(0, durationMs) else current
                             WaveformSessionPrefs.savePlayhead(context, playheadMs)
                             isPlayingWave = false
-                        } else {
-                            val safePlayhead = playheadMs.coerceIn(0, durationMs)
-                            playheadMs = safePlayhead
-                            WaveformSessionPrefs.savePlayhead(context, safePlayhead)
-                            exoPlayer.seekTo(safePlayhead.toLong())
-                            exoPlayer.playWhenReady = true
-                            exoPlayer.play()
-                            isPlayingWave = true
-                        }
-                    },
-                    enabled = selectedUri != null && durationMs > 0,
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                ) {
-                    Text(stringResource(R.string.waveform_play), fontSize = 12.sp)
+                        },
+                        enabled = selectedUri != null && durationMs > 0,
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text(stringResource(R.string.waveform_stop), fontSize = 12.sp)
+                    }
                 }
 
-                TextButton(
-                    onClick = {
-                        exoPlayer.pause()
-                        exoPlayer.playWhenReady = false
-                        val current = exoPlayer.currentPosition.coerceAtLeast(0L).toInt()
-                        playheadMs = if (durationMs > 0) current.coerceIn(0, durationMs) else current
-                        WaveformSessionPrefs.savePlayhead(context, playheadMs)
-                        isPlayingWave = false
-                    },
-                    enabled = selectedUri != null && durationMs > 0,
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text(stringResource(R.string.waveform_stop), fontSize = 12.sp)
-                }
-
-                TextButton(
-                    onClick = {
-                        val uri = selectedUri ?: return@TextButton
-                        if (durationMs <= 0) return@TextButton
-                        if (BuildConfig.DEBUG) {
-                            val key = EditSoundPrefs.trimKeyForUri(uri)
-                            Log.d(
-                                "TRIM",
-                                "save key=$key uri=$uri entryMs=$inMs exitMs=$outMs store=EditSoundPrefs"
+                    TextButton(
+                        onClick = {
+                            val uri = selectedUri ?: return@TextButton
+                            if (durationMs <= 0) return@TextButton
+                            outMs = durationMs
+                            EditSoundPrefs.save(
+                                context = context,
+                                uri = uri,
+                                startMs = inMs,
+                                endMs = 0
                             )
-                        }
-                        EditSoundPrefs.save(
-                            context = context,
-                            uri = uri,
-                            startMs = inMs,
-                            endMs = outMs
-                        )
-                        Toast.makeText(context, "Réglages enregistrés ✅", Toast.LENGTH_SHORT).show()
-                    },
-                    enabled = selectedUri != null && durationMs > 0,
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                ) {
-                    Text(stringResource(R.string.common_save), fontSize = 12.sp)
+                            Toast.makeText(context, "Point de sortie supprimé ✅", Toast.LENGTH_SHORT).show()
+                        },
+                        enabled = hasOutTrim,
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text("Reset fin", fontSize = 12.sp)
+                    }
+
+                    TextButton(
+                        onClick = {
+                            val uri = selectedUri ?: return@TextButton
+                            if (durationMs <= 0) return@TextButton
+                            if (BuildConfig.DEBUG) {
+                                val key = EditSoundPrefs.trimKeyForUri(uri)
+                                Log.d(
+                                    "TRIM",
+                                    "save key=$key uri=$uri entryMs=$inMs exitMs=$outMs store=EditSoundPrefs"
+                                )
+                            }
+                            EditSoundPrefs.save(
+                                context = context,
+                                uri = uri,
+                                startMs = inMs,
+                                endMs = outMs
+                            )
+                            Toast.makeText(context, "Réglages enregistrés ✅", Toast.LENGTH_SHORT).show()
+                        },
+                        enabled = selectedUri != null && durationMs > 0,
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text(stringResource(R.string.common_save), fontSize = 12.sp)
+                    }
                 }
             }
         }

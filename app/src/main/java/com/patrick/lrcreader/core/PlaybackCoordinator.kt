@@ -1,6 +1,7 @@
 package com.patrick.lrcreader.core
 
 import android.util.Log
+import com.patrick.lrcreader.exo.BuildConfig
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -64,6 +65,9 @@ object PlaybackCoordinator {
 
     @Synchronized
     fun clearNextTrack(reason: String = "") {
+        if (BuildConfig.DEBUG && reason == "ui") {
+            Log.w("NEXT", "clearNextTrack reason=ui", Throwable("UI clear stacktrace"))
+        }
         val previous = _nextTrack.value ?: return
         _nextTrack.value = null
         Log.i(NEXT_TAG, "clear uri=${previous.uri} reason=$reason")
