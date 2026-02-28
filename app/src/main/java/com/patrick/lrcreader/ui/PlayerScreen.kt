@@ -466,6 +466,9 @@ fun PlayerScreen(
                             )
                         }
                     }
+                },
+                onImportedLinesApplied = { imported ->
+                    onParsedLinesChange(imported)
                 }
             )
         } else {
