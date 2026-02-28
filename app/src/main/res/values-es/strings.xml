@@ -304,8 +304,6 @@
     <string name="waveform_step_ms">Paso %1$dms</string>
     <string name="waveform_in_cursor">IN = CURSOR</string>
     <string name="waveform_out_cursor">OUT = CURSOR</string>
-    <string name="waveform_play">▶ Reproducir</string>
-    <string name="waveform_stop">⏹ Detener</string>
 
     <!-- All playlists -->
     <string name="all_playlists_header_title">LISTAS DE REPRODUCCIÓN</string>

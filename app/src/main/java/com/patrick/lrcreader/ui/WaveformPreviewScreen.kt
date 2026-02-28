@@ -532,7 +532,7 @@ fun WaveformPreviewScreen(
                     enabled = controlsEnabled
                 ) {
                     Text(
-                        text = "Step ${stepMs}ms",
+                        text = "${stringResource(R.string.waveform_step)} ${stepMs}ms",
                         style = MaterialTheme.typography.bodyMedium
                     )
                 }
@@ -568,7 +568,7 @@ fun WaveformPreviewScreen(
                     enabled = selectedUri != null && durationMs > 0,
                     contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
                 ) {
-                    Text("IN ${formatWaveformMs(inMs)}", fontSize = 12.sp)
+                    Text("${stringResource(R.string.waveform_in_prefix)} ${formatWaveformMs(inMs)}", fontSize = 12.sp)
                 }
 
                 TextButton(
@@ -585,7 +585,7 @@ fun WaveformPreviewScreen(
                     enabled = selectedUri != null && durationMs > 0,
                     contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
                 ) {
-                    Text("OUT ${formatWaveformMs(outMs)}", fontSize = 12.sp)
+                    Text("${stringResource(R.string.waveform_out_prefix)} ${formatWaveformMs(outMs)}", fontSize = 12.sp)
                 }
             }
 
@@ -684,7 +684,7 @@ fun WaveformPreviewScreen(
                         enabled = hasOutTrim,
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                     ) {
-                        Text("Reset fin", fontSize = 12.sp)
+                        Text(stringResource(R.string.waveform_clear_out), fontSize = 12.sp)
                     }
 
                     TextButton(
@@ -709,7 +709,7 @@ fun WaveformPreviewScreen(
                         enabled = selectedUri != null && durationMs > 0,
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                     ) {
-                        Text(stringResource(R.string.common_save), fontSize = 12.sp)
+                        Text(stringResource(R.string.waveform_save), fontSize = 12.sp)
                     }
                 }
             }
