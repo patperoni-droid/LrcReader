@@ -2,14 +2,18 @@ package com.patrick.lrcreader.core
 
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 
 object FillerSoundPrefs {
 
+    private const val TAG = "FillerSoundPrefs"
     private const val PREFS_NAME = "filler_sound_prefs"
     private const val KEY_URI = "filler_uri"
     private const val KEY_FOLDER_URI = "filler_folder_uri"
     private const val KEY_VOLUME = "filler_volume"  // 0f..1f
     private const val KEY_ENABLED = "filler_enabled" // NEW
+    @Volatile
+    private var cachedEnabled: Boolean? = null
 
     // ---------- fichier unique ----------
     fun saveFillerUri(context: Context, uri: Uri) {
@@ -66,9 +70,18 @@ object FillerSoundPrefs {
 
     // ---------- enabled (ON/OFF) ----------
     /** Par défaut: activé (comportement actuel) */
-    fun isEnabled(context: Context): Boolean {
-        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    // Appeler depuis Dispatchers.IO (lit disque).
+    fun warmCache(context: Context): Boolean {
+        val enabled = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .getBoolean(KEY_ENABLED, true)
+        cachedEnabled = enabled
+        Log.d(TAG, "warmCache enabled=$enabled")
+        return enabled
+    }
+
+    /** Ne lit pas le disque: utilise le cache mémoire, sinon fallback par défaut. */
+    fun isEnabled(context: Context): Boolean {
+        return cachedEnabled ?: true
     }
 
     fun setEnabled(context: Context, enabled: Boolean) {
@@ -76,5 +89,6 @@ object FillerSoundPrefs {
             .edit()
             .putBoolean(KEY_ENABLED, enabled)
             .apply()
+        cachedEnabled = enabled
     }
 }
