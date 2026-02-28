@@ -24,6 +24,12 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.GraphicEq
@@ -38,6 +44,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -58,8 +65,10 @@ import com.patrick.lrcreader.core.PlaybackCoordinator
 import com.patrick.lrcreader.core.audio.AudioEngine
 import com.patrick.lrcreader.core.audio.SoundTouchBridge
 import com.patrick.lrcreader.core.parseLrc
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -219,7 +228,9 @@ fun PlayerScreen(
 
         // 1) SYLT (synchronisé) -> LRC
         val syltLrcText: String? = if (trackUri != null) {
-            runCatching { readSyltAsLrcFromUri(context, trackUri) }.getOrNull()
+            withContext(Dispatchers.IO) {
+                runCatching { readSyltAsLrcFromUri(context, trackUri) }.getOrNull()
+            }
         } else null
 
         if (!syltLrcText.isNullOrBlank()) {
@@ -231,7 +242,9 @@ fun PlayerScreen(
         }
 
         // 2) ✅ PRIORITÉ : paroles éditées (LrcStorage)
-        val stored = LrcStorage.loadForTrack(context, currentTrackUri)
+        val stored = withContext(Dispatchers.IO) {
+            LrcStorage.loadForTrack(context, currentTrackUri)
+        }
         Log.d("LrcDebug", "STORED found=${!stored.isNullOrBlank()}")
         if (!stored.isNullOrBlank()) {
             val parsed = parseLrc(stored)
@@ -243,7 +256,9 @@ fun PlayerScreen(
 
         // 3) Sidecar .lrc (voisin du MP3 / SAF / MediaStore)
         val sidecarLrcText: String? = if (trackUri != null) {
-            runCatching { readSidecarLrcSmart(context, trackUri) }.getOrNull()
+            withContext(Dispatchers.IO) {
+                runCatching { readSidecarLrcSmart(context, trackUri) }.getOrNull()
+            }
         } else null
 
         Log.d("LrcDebug", "SIDECAR found=${!sidecarLrcText.isNullOrBlank()}")
@@ -257,7 +272,9 @@ fun PlayerScreen(
 
         // 4) USLT (non synchronisé)
         val usltText: String? = if (trackUri != null) {
-            runCatching { readUsltFromUri(context, trackUri) }.getOrNull()
+            withContext(Dispatchers.IO) {
+                runCatching { readUsltFromUri(context, trackUri) }.getOrNull()
+            }
         } else null
 
         if (!usltText.isNullOrBlank()) {
@@ -512,11 +529,26 @@ fun PlayerScreen(
                         )
 
                         if (!nextTrackTitle.isNullOrBlank()) {
+                            val blinkTransition = rememberInfiniteTransition(label = "nextTrackBlink")
+                            val blinkAlpha by blinkTransition.animateFloat(
+                                initialValue = 1f,
+                                targetValue = 0.35f,
+                                animationSpec = infiniteRepeatable(
+                                    animation = tween(
+                                        durationMillis = 300,
+                                        easing = FastOutSlowInEasing
+                                    ),
+                                    repeatMode = RepeatMode.Reverse
+                                ),
+                                label = "nextTrackBlinkAlpha"
+                            )
                             Text(
                                 text = stringResource(R.string.player_next_track, nextTrackTitle),
                                 color = Color(0xFFEF9A9A),
                                 fontSize = 11.sp,
-                                modifier = Modifier.padding(start = 2.dp, top = 4.dp)
+                                modifier = Modifier
+                                    .padding(start = 2.dp, top = 4.dp)
+                                    .alpha(blinkAlpha)
                             )
                         }
 

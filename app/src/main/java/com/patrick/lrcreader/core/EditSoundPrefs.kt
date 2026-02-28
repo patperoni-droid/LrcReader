@@ -22,6 +22,9 @@ object EditSoundPrefs {
     private const val JSON_SCHEMA_VERSION = 1
     private const val JSON_KEY_SCHEMA_VERSION = "schemaVersion"
     private const val JSON_KEY_EDITS = "edits"
+    private val cacheLock = Any()
+    @Volatile
+    private var cachedEdits: Map<String, EditInfo>? = null
 
     data class EditInfo(
         val startMs: Int,
@@ -40,6 +43,16 @@ object EditSoundPrefs {
             defaultRawJson = emptyConfigJson(),
             tag = TAG
         )
+    }
+
+    // Appeler depuis un contexte IO si possible (lit JSON + SharedPreferences).
+    fun warmCache(context: Context): Map<String, EditInfo> {
+        val loaded = loadAllFromStorage(context)
+        val snapshot = LinkedHashMap(loaded)
+        synchronized(cacheLock) {
+            cachedEdits = snapshot
+        }
+        return snapshot
     }
 
     fun trimKeyForUri(uri: Uri): String {
@@ -63,6 +76,7 @@ object EditSoundPrefs {
         }
         persistPrefs(context, map)
         persistJson(context, map)
+        updateCache(map)
     }
 
     /**
@@ -74,6 +88,15 @@ object EditSoundPrefs {
 
     fun resolve(context: Context, uri: Uri): ResolvedEdit? {
         val all = getAll(context)
+        return resolveFromMap(all, uri)
+    }
+
+    fun resolveCached(uri: Uri): ResolvedEdit? {
+        val all = synchronized(cacheLock) { cachedEdits } ?: return null
+        return resolveFromMap(all, uri)
+    }
+
+    private fun resolveFromMap(all: Map<String, EditInfo>, uri: Uri): ResolvedEdit? {
         val key = trimKeyForUri(uri)
         all[key]?.let { return ResolvedEdit(key = key, info = it) }
 
@@ -97,6 +120,7 @@ object EditSoundPrefs {
         if (removed) {
             persistPrefs(context, map)
             persistJson(context, map)
+            updateCache(map)
         }
     }
 
@@ -105,6 +129,11 @@ object EditSoundPrefs {
      * (pratique pour la sauvegarde globale).
      */
     fun getAll(context: Context): Map<String, EditInfo> {
+        synchronized(cacheLock) { cachedEdits }?.let { return it }
+        return warmCache(context)
+    }
+
+    private fun loadAllFromStorage(context: Context): Map<String, EditInfo> {
         val fromJson = readJsonAll(context)
         val fromPrefs = readPrefsAll(context)
         if (fromJson.isEmpty()) return fromPrefs
@@ -114,6 +143,12 @@ object EditSoundPrefs {
         merged.putAll(fromPrefs)
         merged.putAll(fromJson)
         return merged
+    }
+
+    private fun updateCache(map: Map<String, EditInfo>) {
+        synchronized(cacheLock) {
+            cachedEdits = LinkedHashMap(map)
+        }
     }
 
     private fun readPrefsAll(context: Context): Map<String, EditInfo> {

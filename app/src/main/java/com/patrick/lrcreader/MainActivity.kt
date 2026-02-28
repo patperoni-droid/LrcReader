@@ -51,6 +51,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.media3.common.C
 import androidx.media3.common.Player
 import com.patrick.lrcreader.core.*
 import com.patrick.lrcreader.core.audio.AudioEngine
@@ -261,6 +262,7 @@ class MainActivity : AppCompatActivity() {
 
                 val shouldShowSetup = forceSetup || !isSetupDone || !hasSetupPerm
                 var configInitDoneForRoot by remember { mutableStateOf<String?>(null) }
+                var legacyTrimByUri by remember { mutableStateOf<Map<String, EditPrefs.EditData>>(emptyMap()) }
 
                 LaunchedEffect(savedRoot, hasSetupPerm, isInternalMode) {
                     val canUseStorage = isInternalMode || hasSetupPerm
@@ -279,20 +281,24 @@ class MainActivity : AppCompatActivity() {
                         return@LaunchedEffect
                     }
 
+                    var loadedLegacyTrimByUri: Map<String, EditPrefs.EditData> = emptyMap()
                     withContext(Dispatchers.IO) {
                         mark("compose.ensureInitialized.io:start root=$rootKey")
                         val sessionInitOk = runCatching { SessionPrefs.ensureInitialized(ctx) }.getOrDefault(false)
                         val trimInitOk = runCatching { EditSoundPrefs.ensureInitialized(ctx) }.getOrDefault(false)
+                        runCatching { EditSoundPrefs.warmCache(ctx) }
                         val textSongsInitOk = runCatching { TextSongRepository.ensureInitialized(ctx) }.getOrDefault(false)
                         val trackInitOk = runCatching { TrackSettingsStore.ensureInitialized(ctx) }.getOrDefault(false)
                         val notesInitOk = runCatching { NotesConfigStore.ensureInitialized(ctx) }.getOrDefault(false)
                         val midiInitOk = runCatching { MidiCuesConfigStore.ensureInitialized(ctx) }.getOrDefault(false)
                         val playlistInitOk = runCatching { PlaylistStateStore.ensureInitialized(ctx) }.getOrDefault(false)
+                        loadedLegacyTrimByUri = runCatching { EditPrefs.getAllEdits(ctx) }.getOrDefault(emptyMap())
                         mark(
                             "compose.ensureInitialized.io:end root=$rootKey session=$sessionInitOk trim=$trimInitOk textSongs=$textSongsInitOk track=$trackInitOk notes=$notesInitOk midi=$midiInitOk playlist=$playlistInitOk"
                         )
                     }
 
+                    legacyTrimByUri = loadedLegacyTrimByUri
                     configInitDoneForRoot = rootKey
                     mark("compose.ensureInitialized.effect:end root=$rootKey")
                 }
@@ -580,12 +586,12 @@ class MainActivity : AppCompatActivity() {
                     }
 
                     val editSound = candidates.asSequence()
-                        .mapNotNull { candidate -> EditSoundPrefs.resolve(ctx, Uri.parse(candidate)) }
+                        .mapNotNull { candidate -> EditSoundPrefs.resolveCached(Uri.parse(candidate)) }
                         .firstOrNull()
                     val legacyCandidate = if (editSound == null) {
                         candidates.asSequence()
                             .mapNotNull { candidate ->
-                                EditPrefs.getEdit(ctx, candidate)?.let { edit -> candidate to edit }
+                                legacyTrimByUri[candidate]?.let { edit -> candidate to edit }
                             }
                             .firstOrNull()
                     } else {
@@ -866,8 +872,35 @@ class MainActivity : AppCompatActivity() {
                             },
                             onError = {
                                 cancelTrimWatcher()
-                                isPlaying = false
-                                PlaybackCoordinator.onPlayerStop()
+                                val nextArmed = PlaybackCoordinator.peekNextTrack() != null
+                                val durMs = runCatching { exoPlayer.duration }.getOrDefault(C.TIME_UNSET)
+                                val posMs = runCatching { exoPlayer.currentPosition }.getOrDefault(0L)
+                                val nearEnd =
+                                    durMs > 0L &&
+                                    durMs != C.TIME_UNSET &&
+                                    posMs >= (durMs - 1500L).coerceAtLeast(0L)
+                                val treatAsEnded = nextArmed && nearEnd
+
+                                if (BuildConfig.DEBUG) {
+                                    if (treatAsEnded) {
+                                        Log.d(
+                                            "NEXT",
+                                            "NEXT treat error as ended nearEnd pos=$posMs dur=$durMs uri=$uriString"
+                                        )
+                                    } else {
+                                        Log.d(
+                                            "NEXT",
+                                            "NEXT error no fallback pos=$posMs dur=$durMs next=$nextArmed"
+                                        )
+                                    }
+                                }
+
+                                if (treatAsEnded) {
+                                    onEnded.value.invoke()
+                                } else {
+                                    isPlaying = false
+                                    PlaybackCoordinator.onPlayerStop()
+                                }
                             }
                         )
                     }
