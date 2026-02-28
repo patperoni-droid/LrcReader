@@ -98,6 +98,7 @@ fun BackupScreen(
     val sSaveToastFailed = stringResource(R.string.backup_save_toast_failed)
     val sInternalExportToastSuccess = stringResource(R.string.backup_internal_export_toast_success)
     val sInternalExportToastFailed = stringResource(R.string.backup_internal_export_toast_failed)
+    val sBackupsTip = "Conseil : sauvegarde dans le dossier Backups pour restaurer sur un autre appareil."
 
     // État dernier import
     var lastImportFile by remember { mutableStateOf<String?>(null) }
@@ -251,11 +252,15 @@ fun BackupScreen(
         val jsonToSave = saveLauncherJson.value
         if (uri != null && jsonToSave.isNotBlank()) {
             val okSave = saveJsonToUri(context, uri, jsonToSave)
-            Toast.makeText(
-                context,
-                if (okSave) sSaveToastSuccess else sSaveToastFailed,
-                LENGTH_SHORT
-            ).show()
+            if (okSave) {
+                Toast.makeText(
+                    context,
+                    "Backup enregistré. $sBackupsTip",
+                    Toast.LENGTH_LONG
+                ).show()
+            } else {
+                Toast.makeText(context, sSaveToastFailed, LENGTH_SHORT).show()
+            }
         }
         saveLauncherJson.value = ""
     }
@@ -321,7 +326,11 @@ fun BackupScreen(
 
                             runCatching {
                                 target.writeText(json, Charsets.UTF_8)
-                                Toast.makeText(context, sInternalExportToastSuccess, LENGTH_SHORT).show()
+                                Toast.makeText(
+                                    context,
+                                    "$sInternalExportToastSuccess $sBackupsTip",
+                                    Toast.LENGTH_LONG
+                                ).show()
                                 refreshInternalBackups()
                             }.onFailure {
                                 Toast.makeText(context, sInternalExportToastFailed, LENGTH_SHORT).show()
