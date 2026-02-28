@@ -66,7 +66,9 @@ import com.patrick.lrcreader.core.config.PlaylistStateStore
 import com.patrick.lrcreader.core.config.TrackSettingsStore
 import com.patrick.lrcreader.ui.*
 import com.patrick.lrcreader.ui.library.LibraryScreen
-import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.pow
@@ -102,8 +104,39 @@ class MainActivity : AppCompatActivity() {
     @Volatile
     private var lastPersistedSessionSnapshot: SessionSnapshot? = null
     private var sessionSaveJob: Job? = null
+    private val sessionPersistGate = MutableSharedFlow<String>(
+        extraBufferCapacity = 32,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+    private val sessionPersistGateStarted = AtomicBoolean(false)
 
-    private fun persistSession(reason: String, snapshot: SessionSnapshot = latestSessionSnapshot) {
+    private fun ensureSessionPersistGateStarted() {
+        if (!sessionPersistGateStarted.compareAndSet(false, true)) return
+        lifecycleScope.launch {
+            sessionPersistGate.collectLatest { reason ->
+                val debounced = reason == "snapshotFlow"
+                if (debounced) delay(800L)
+                val snapshot = latestSessionSnapshot
+                withContext(Dispatchers.IO) {
+                    persistSessionNow(reason = reason, snapshot = snapshot, debounced = debounced)
+                }
+            }
+        }
+    }
+
+    private fun requestSessionPersist(reason: String, snapshot: SessionSnapshot = latestSessionSnapshot) {
+        latestSessionSnapshot = snapshot
+        val queued = sessionPersistGate.tryEmit(reason)
+        if (!queued && BuildConfig.DEBUG) {
+            Log.d("PERF_SESSION", "persistSession reason=$reason droppedByGate")
+        }
+    }
+
+    private suspend fun persistSessionNow(
+        reason: String,
+        snapshot: SessionSnapshot = latestSessionSnapshot,
+        debounced: Boolean = false
+    ) {
         val safeTab = snapshot.tabKey.ifBlank { TAB_HOME }
         val safeUri = snapshot.currentPlayingUri?.takeIf { it.isNotBlank() }
         val safePlaylist = snapshot.currentPlayingPlaylist?.takeIf { it.isNotBlank() }
@@ -125,26 +158,31 @@ class MainActivity : AppCompatActivity() {
             "BOOTSTEP",
             "SessionPersist:before reason=$reason tab=$safeTab quick=${snapshot.quickPlaylist} opened=${snapshot.openedPlaylist} uri=$safeUri playlist=$safePlaylist"
         )
+        val tStart = SystemClock.elapsedRealtime()
+        SessionPrefs.saveSessionSnapshot(
+            context = this@MainActivity,
+            tab = normalizedSnapshot.tabKey,
+            quickPlaylist = normalizedSnapshot.quickPlaylist,
+            openedPlaylist = normalizedSnapshot.openedPlaylist,
+            lastTrackUri = normalizedSnapshot.currentPlayingUri,
+            lastPlaylistName = normalizedSnapshot.currentPlayingPlaylist
+        )
+        lastPersistedSessionSnapshot = normalizedSnapshot
+        if (BuildConfig.DEBUG) {
+            val suffix = if (debounced) " debounced" else ""
+            Log.d(
+                "PERF_SESSION",
+                "persistSession reason=$reason$suffix ms=${SystemClock.elapsedRealtime() - tStart} tab=${normalizedSnapshot.tabKey}"
+            )
+        }
+        Log.d("BOOTSTEP", "SessionPersist:after reason=$reason")
+    }
+
+    private fun persistSession(reason: String, snapshot: SessionSnapshot = latestSessionSnapshot) {
         sessionSaveJob?.cancel()
         sessionSaveJob = lifecycleScope.launch(Dispatchers.IO) {
             try {
-                val tStart = SystemClock.elapsedRealtime()
-                SessionPrefs.saveSessionSnapshot(
-                    context = this@MainActivity,
-                    tab = normalizedSnapshot.tabKey,
-                    quickPlaylist = normalizedSnapshot.quickPlaylist,
-                    openedPlaylist = normalizedSnapshot.openedPlaylist,
-                    lastTrackUri = normalizedSnapshot.currentPlayingUri,
-                    lastPlaylistName = normalizedSnapshot.currentPlayingPlaylist
-                )
-                lastPersistedSessionSnapshot = normalizedSnapshot
-                if (BuildConfig.DEBUG) {
-                    Log.d(
-                        "PERF_SESSION",
-                        "persistSession reason=$reason ms=${SystemClock.elapsedRealtime() - tStart} tab=${normalizedSnapshot.tabKey}"
-                    )
-                }
-                Log.d("BOOTSTEP", "SessionPersist:after reason=$reason")
+                persistSessionNow(reason = reason, snapshot = snapshot, debounced = false)
             } catch (_: CancellationException) {
                 Log.d("BOOTSTEP", "SessionPersist:cancelled reason=$reason")
             }
@@ -154,6 +192,7 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         AppLanguagePrefs.applySavedLanguage(this)
         super.onCreate(savedInstanceState)
+        ensureSessionPersistGateStarted()
         if (BuildConfig.DEBUG) {
             StrictMode.setThreadPolicy(
                 StrictMode.ThreadPolicy.Builder()
@@ -797,19 +836,41 @@ class MainActivity : AppCompatActivity() {
                                 } else {
                                     lyricsResolveSeq += 1
                                     val seq = lyricsResolveSeq
+                                    if (BuildConfig.DEBUG) {
+                                        Log.d(
+                                            "PERF_LYRICS",
+                                            "start uri=$uriString token=$myToken seq=$seq embeddedObj=${System.identityHashCode(embeddedOrNull)}"
+                                        )
+                                    }
                                     scope.launch {
                                         val tLyrics = SystemClock.elapsedRealtime()
                                         val resolved = withContext(Dispatchers.IO) {
                                             LyricsResolver.resolveLyrics(ctx, uriString, embeddedOrNull)
                                         }
-                                        if (currentPlayToken != myToken) return@launch
-                                        if (seq != lyricsResolveSeq) return@launch
+                                        if (currentPlayToken != myToken) {
+                                            if (BuildConfig.DEBUG) {
+                                                Log.d(
+                                                    "PERF_LYRICS",
+                                                    "drop(token) uri=$uriString token=$myToken seq=$seq currentToken=$currentPlayToken"
+                                                )
+                                            }
+                                            return@launch
+                                        }
+                                        if (seq != lyricsResolveSeq) {
+                                            if (BuildConfig.DEBUG) {
+                                                Log.d(
+                                                    "PERF_LYRICS",
+                                                    "drop(seq) uri=$uriString token=$myToken seq=$seq currentSeq=$lyricsResolveSeq"
+                                                )
+                                            }
+                                            return@launch
+                                        }
                                         parsedLines = resolved
                                         lyricsLoading = false
                                         if (BuildConfig.DEBUG) {
                                             Log.d(
                                                 "PERF_LYRICS",
-                                                "resolveLyrics ms=${SystemClock.elapsedRealtime() - tLyrics} uri=$uriString embedded=${embeddedOrNull != null}"
+                                                "done uri=$uriString token=$myToken seq=$seq ms=${SystemClock.elapsedRealtime() - tLyrics} lines=${resolved.size}"
                                             )
                                         }
                                     }
@@ -1088,10 +1149,8 @@ class MainActivity : AppCompatActivity() {
                         )
                     }
                         .distinctUntilChanged()
-                        .debounce(300)
                         .collect { snapshot ->
-                            latestSessionSnapshot = snapshot
-                            persistSession(reason = "snapshotFlow", snapshot = snapshot)
+                            requestSessionPersist(reason = "snapshotFlow", snapshot = snapshot)
                         }
                 }
 
