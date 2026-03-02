@@ -39,8 +39,6 @@ class LibraryBackendInternal(
         val backingTracks = File(rootDir, "BackingTracks")
         val backups = File(rootDir, "Backups")
         val dj = File(rootDir, "DJ")
-        val exports = File(rootDir, "exports")
-        val imports = File(rootDir, "imports")
 
         val audio = File(backingTracks, "Audio")
         val lyrics = File(backingTracks, "Lyrics")
@@ -51,8 +49,6 @@ class LibraryBackendInternal(
         ensureDirWithLog(backingTracks, "BackingTracks")
         ensureDirWithLog(backups, "Backups")
         ensureDirWithLog(dj, "DJ")
-        ensureDirWithLog(exports, "exports")
-        ensureDirWithLog(imports, "imports")
 
         ensureDirWithLog(audio, "BackingTracks/Audio")
         ensureDirWithLog(lyrics, "BackingTracks/Lyrics")

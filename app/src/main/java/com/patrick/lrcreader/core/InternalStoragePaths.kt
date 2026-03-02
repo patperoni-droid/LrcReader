@@ -25,9 +25,7 @@ object InternalStoragePaths {
         // Dossiers racine (on garde tes noms actuels)
         listOf(
             "DJ",
-            "Backups",
-            "Exports",
-            "Imports"
+            "Backups"
         ).forEach { name ->
             File(root, name).mkdirs()
         }
