@@ -11,6 +11,7 @@ import com.patrick.lrcreader.core.BackupFolderPrefsSaf
 import com.patrick.lrcreader.core.ImportAudioManager
 import com.patrick.lrcreader.core.LibraryIndexCache
 import com.patrick.lrcreader.exo.BuildConfig
+import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.ui.LibraryEntry
 import com.patrick.lrcreader.ui.MoveResult
 
@@ -66,10 +67,8 @@ class LibraryBackendSaf(
         val backingTracks = ensureDirSmart(rootDoc, "BackingTracks", aliases = listOf("backingtracks", "backingtrack"))
         val backups = ensureDirSmart(rootDoc, "Backups", aliases = listOf("backups"))
         val dj = ensureDirSmart(rootDoc, "DJ", aliases = listOf("dj"))
-        val exports = ensureDirSmart(rootDoc, "exports", aliases = listOf("Exports"))
-        val imports = ensureDirSmart(rootDoc, "imports", aliases = listOf("Imports"))
 
-        Log.i(tag, "root dirs backingTracks=${backingTracks?.uri} backups=${backups?.uri} dj=${dj?.uri} exports=${exports?.uri} imports=${imports?.uri}")
+        Log.i(tag, "root dirs backingTracks=${backingTracks?.uri} backups=${backups?.uri} dj=${dj?.uri}")
 
         if (backingTracks != null && backingTracks.isDirectory) {
             val audio = ensureDirSmart(backingTracks, "Audio", aliases = listOf("audio"))
@@ -117,12 +116,23 @@ class LibraryBackendSaf(
         onIndexAll: (List<LibraryIndexCache.CachedEntry>) -> Unit,
         onEntries: (List<LibraryEntry>) -> Unit
     ) {
+        var latestIndex: List<LibraryIndexCache.CachedEntry> = emptyList()
+        val djReason = runCatching {
+            context.getString(R.string.library_dj_excluded_reason)
+        }.getOrDefault("Exclu de la bibliothèque (utilisé en mode DJ)")
+
         libraryRescanAll(
             context = context,
             root = root,
             folderToShow = folderToShow,
-            onIndexAll = onIndexAll,
-            onEntries = onEntries
+            onIndexAll = { idx ->
+                latestIndex = idx
+                onIndexAll(idx)
+            },
+            onEntries = {
+                // DJ reste hors index bibliothèque, donc on reconstruit l'affichage dossier via listFolder.
+                onEntries(listFolder(folderToShow, latestIndex, djReason))
+            }
         )
     }
 
@@ -139,22 +149,41 @@ class LibraryBackendSaf(
             "listFolder uri=$folderUri docExists=${folderDoc?.exists()} isDir=${folderDoc?.isDirectory} count=${runCatching { folderDoc?.listFiles()?.size }.getOrNull()}"
         )
 
-        val fromIndex = LibraryIndexCache.childrenOf(indexAll, folderUri).map { e ->
-            LibraryEntry(
-                uri = Uri.parse(e.uriString),
-                name = e.name,
-                isDirectory = e.isDirectory
+        fun asDjEntry(uri: Uri, name: String): LibraryEntry {
+            return LibraryEntry(
+                uri = uri,
+                name = name,
+                isDirectory = true,
+                disabled = true,
+                disabledReason = djExcludedReason
             )
+        }
+
+        val fromIndex = LibraryIndexCache.childrenOf(indexAll, folderUri).map { e ->
+            val isDj = e.isDirectory && e.name.equals("DJ", ignoreCase = true)
+            if (isDj) {
+                asDjEntry(Uri.parse(e.uriString), e.name)
+            } else {
+                LibraryEntry(
+                    uri = Uri.parse(e.uriString),
+                    name = e.name,
+                    isDirectory = e.isDirectory
+                )
+            }
         }.toMutableList()
 
         if (fromIndex.isEmpty()) {
             val real = folderDoc?.listFiles().orEmpty().mapNotNull { f ->
                 val n = f.name ?: return@mapNotNull null
-                LibraryEntry(
-                    uri = f.uri,
-                    name = n,
-                    isDirectory = f.isDirectory
-                )
+                if (f.isDirectory && n.equals("DJ", ignoreCase = true)) {
+                    asDjEntry(f.uri, n)
+                } else {
+                    LibraryEntry(
+                        uri = f.uri,
+                        name = n,
+                        isDirectory = f.isDirectory
+                    )
+                }
             }
             fromIndex.addAll(real)
         }
@@ -162,19 +191,20 @@ class LibraryBackendSaf(
         val djDoc = folderDoc?.listFiles()
             ?.firstOrNull { it.isDirectory && it.name.equals("DJ", ignoreCase = true) }
 
+        val rootUri = getRootUri()
+        val isRootFolder = runCatching {
+            val folderNorm = normalizeAsTreeUri(folderUri) ?: folderUri
+            val rootNorm = rootUri?.let { normalizeAsTreeUri(it) ?: it }
+            rootNorm != null && folderNorm == rootNorm
+        }.getOrDefault(false)
+
+        val alreadyHasDj = fromIndex.any { it.isDirectory && it.name.equals("DJ", ignoreCase = true) }
         if (djDoc != null) {
-            val already = fromIndex.any { it.isDirectory && it.name.equals("DJ", ignoreCase = true) }
-            if (!already) {
-                fromIndex.add(
-                    LibraryEntry(
-                        uri = djDoc.uri,
-                        name = djDoc.name ?: "DJ",
-                        isDirectory = true,
-                        disabled = true,
-                        disabledReason = djExcludedReason
-                    )
-                )
-            }
+            if (!alreadyHasDj) fromIndex.add(asDjEntry(djDoc.uri, djDoc.name ?: "DJ"))
+        } else if (isRootFolder && !alreadyHasDj) {
+            // DJ reste hors scan bibliothèque pour les perfs, mais doit rester visible au root SPL_Music.
+            val placeholderUri = folderUri.buildUpon().appendQueryParameter("dj_placeholder", "1").build()
+            fromIndex.add(asDjEntry(placeholderUri, "DJ"))
         }
 
         return fromIndex.sortedWith(

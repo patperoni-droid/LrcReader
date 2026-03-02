@@ -78,6 +78,11 @@ fun LibraryList(
         items(entries, key = { it.uri.toString() }) { entry ->
             val isDisabled = entry.disabled
             if (entry.isDirectory) {
+                val displayFolderName = if (entry.name.equals("DJ", ignoreCase = true)) {
+                    "DJ (scan séparé)"
+                } else {
+                    entry.name
+                }
 
                 val rowClick = if (!isDisabled) {
                     Modifier.clickable { onOpenFolder(entry) }
@@ -105,7 +110,7 @@ fun LibraryList(
                     Spacer(Modifier.width(10.dp))
 
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(entry.name, color = Color.White, fontSize = 15.sp)
+                        Text(displayFolderName, color = Color.White, fontSize = 15.sp)
 
                         if (isDisabled && !entry.disabledReason.isNullOrBlank()) {
                             Spacer(Modifier.height(2.dp))
