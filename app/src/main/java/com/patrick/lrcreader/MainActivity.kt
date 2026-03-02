@@ -1512,8 +1512,11 @@ class MainActivity : AppCompatActivity() {
                                     isSearchOpen = false
                                 },
                                 restrictToUriStrings = if (searchMode == SearchMode.PLAYLIST) {
-                                    openedPlaylist?.let { plName ->
-                                        PlaylistRepository.getSongsFor(plName).toSet()
+                                    selectedQuickPlaylist?.let { plName ->
+                                        PlaylistRepository.getSongsFor(plName)
+                                            .asSequence()
+                                            .filterNot { it.startsWith("prompter://") }
+                                            .toSet()
                                     }
                                 } else {
                                     null
