@@ -18,11 +18,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.core.LibraryIndexCache
+import com.patrick.lrcreader.core.PlaylistRepository
+import com.patrick.lrcreader.core.config.TitleAliasesStore
 import com.patrick.lrcreader.exo.R
 
 @Composable
@@ -35,6 +38,17 @@ fun SearchScreen(
     // non null => recherche limitée (ex: playlist)
     restrictToUriStrings: Set<String>? = null
 ) {
+    data class SearchRow(
+        val uri: Uri,
+        val displayTitle: String,
+        val searchKey: String
+    )
+
+    fun baseNameNoExt(name: String): String = name.substringBeforeLast('.', name)
+
+    val context = LocalContext.current
+    val aliasVersion = TitleAliasesStore.version.intValue
+
     // look "analogique"
     val titleColor = Color(0xFFFFF8E1)
     val subtitleColor = Color(0xFFB0BEC5)
@@ -43,16 +57,26 @@ fun SearchScreen(
     val accent = Color(0xFFFFC107)
 
     // ✅ liste globale des fichiers (pas les dossiers) + restriction optionnelle
-    val allAudio = remember(indexAll, restrictToUriStrings) {
+    val allAudio = remember(indexAll, restrictToUriStrings, aliasVersion) {
         indexAll
             .asSequence()
             .filter { !it.isDirectory }
             .filter { ce -> restrictToUriStrings?.contains(ce.uriString) ?: true }
             .map {
-                LibraryEntry(
+                val alias = TitleAliasesStore.getTitleForTrack(context, it.uriString)
+                    ?: PlaylistRepository.getAnyCustomTitleForUri(it.uriString)
+                val displayTitle = alias ?: it.name
+                val searchKey = buildString {
+                    append(displayTitle)
+                    append('\n')
+                    append(it.name)
+                    append('\n')
+                    append(baseNameNoExt(it.name))
+                }.lowercase()
+                SearchRow(
                     uri = Uri.parse(it.uriString),
-                    name = it.name,
-                    isDirectory = false
+                    displayTitle = displayTitle,
+                    searchKey = searchKey
                 )
             }
             .toList()
@@ -61,8 +85,9 @@ fun SearchScreen(
     var q by remember { mutableStateOf("") }
 
     val results = remember(q, allAudio) {
-        if (q.isBlank()) emptyList()
-        else allAudio.filter { it.name.contains(q, ignoreCase = true) }
+        val query = q.trim().lowercase()
+        if (query.isBlank()) emptyList()
+        else allAudio.filter { it.searchKey.contains(query) }
             .take(300)
     }
 
@@ -115,7 +140,7 @@ fun SearchScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            entry.name,
+                            entry.displayTitle,
                             color = Color.White,
                             fontSize = 15.sp,
                             maxLines = 1,

@@ -155,14 +155,36 @@ fun LibraryScreen(
 
     // search
     var searchQuery by remember { mutableStateOf("") }
-    val globalAudioEntries = remember(indexAll) {
+    val titleAliasVersion = TitleAliasesStore.version.intValue
+    data class SearchableLibraryEntry(
+        val entry: LibraryEntry,
+        val searchKey: String
+    )
+    fun baseNameNoExt(name: String): String = name.substringBeforeLast('.', name)
+    val globalAudioEntries = remember(indexAll, titleAliasVersion) {
         indexAll.filter { !it.isDirectory }.map {
-            LibraryEntry(Uri.parse(it.uriString), it.name, false)
+            val alias = TitleAliasesStore.getTitleForTrack(context, it.uriString)
+                ?: PlaylistRepository.getAnyCustomTitleForUri(it.uriString)
+            val displayTitle = alias ?: it.name
+            val key = buildString {
+                append(displayTitle)
+                append('\n')
+                append(it.name)
+                append('\n')
+                append(baseNameNoExt(it.name))
+            }.lowercase()
+            SearchableLibraryEntry(
+                entry = LibraryEntry(Uri.parse(it.uriString), it.name, false),
+                searchKey = key
+            )
         }
     }
     val filteredEntries = remember(searchQuery, entries, globalAudioEntries) {
-        if (searchQuery.isBlank()) entries
-        else globalAudioEntries.filter { it.name.contains(searchQuery, ignoreCase = true) }
+        val query = searchQuery.trim().lowercase()
+        if (query.isBlank()) entries
+        else globalAudioEntries
+            .filter { it.searchKey.contains(query) }
+            .map { it.entry }
     }
 
     val bottomBarHeight = 56.dp
