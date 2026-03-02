@@ -5,6 +5,7 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.DocumentsContract
 import android.util.Log
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
@@ -30,6 +31,8 @@ import com.patrick.lrcreader.core.DjFolderPrefs
 import com.patrick.lrcreader.core.ImportAudioManager
 import com.patrick.lrcreader.core.LibraryIndexCache
 import com.patrick.lrcreader.core.PlaylistRepository
+import com.patrick.lrcreader.core.config.TitleAliasesStore
+import com.patrick.lrcreader.exo.BuildConfig
 import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.ui.LibraryEntry
 import com.patrick.lrcreader.ui.LibraryFolderCache
@@ -724,7 +727,9 @@ fun LibraryScreen(
 
                             onRenameOne = { entry ->
                                 renameTarget = entry
-                                renameText = entry.name
+                                renameText = TitleAliasesStore.getTitleForTrack(context, entry.uri.toString())
+                                    ?: PlaylistRepository.getAnyCustomTitleForUri(entry.uri.toString())
+                                    ?: entry.name
                             },
 
                             onDeleteOne = { uri ->
@@ -872,80 +877,43 @@ fun LibraryScreen(
                 )
             }
 
+            val commitAliasRename: () -> Unit = commit@{
+                focusManager.clearFocus(force = true)
+
+                val target = renameTarget ?: return@commit
+                val newTitle = renameText.trim()
+                if (newTitle.isEmpty()) {
+                    renameTarget = null
+                    return@commit
+                }
+
+                if (BuildConfig.DEBUG) {
+                    Log.d("ALIAS_RENAME", "commit source=library uri=${target.uri} newTitle='$newTitle'")
+                }
+
+                val saved = TitleAliasesStore.setTitleForTrack(context, target.uri.toString(), newTitle)
+                if (saved) {
+                    PlaylistRepository.clearCustomTitleEverywhere(target.uri.toString())
+                }
+
+                if (BuildConfig.DEBUG) {
+                    Toast.makeText(
+                        context,
+                        if (saved) "Alias enregistré" else "Alias NON enregistré (voir logs)",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+
+                renameTarget = null
+            }
+
             RenameDialog(
                 show = renameTarget != null,
                 renameText = renameText,
                 onRenameText = { renameText = it },
                 onCancel = { renameTarget = null },
                 enabled = !isLoading,
-                onConfirm = {
-                    focusManager.clearFocus(force = true)
-
-                    val target = renameTarget ?: return@RenameDialog
-                    val newBase = renameText.trim()
-                    if (newBase.isEmpty()) {
-                        renameTarget = null
-                        return@RenameDialog
-                    }
-
-                    val folderUri = indexAll
-                        .firstOrNull { it.uriString == target.uri.toString() }
-                        ?.parentUriString
-                        ?.let { Uri.parse(it) }
-                        ?: currentFolderUri
-                        ?: run {
-                            Log.e("LibraryRename", "No parent folder found for uri=${target.uri}")
-                            renameTarget = null
-                            return@RenameDialog
-                        }
-
-                    renameTarget = null
-                    startLoading(sRenaming, determinate = false)
-
-                    scope.launch {
-                        try {
-                            val oldName = target.name
-                            val ext = oldName.substringAfterLast('.', "")
-                            val newNameFinal =
-                                if (ext.isNotEmpty() && !newBase.contains(".")) "$newBase.$ext" else newBase
-
-                            val newUriAfterRename = backend.rename(
-                                folderUri = folderUri,
-                                oldUri = target.uri,
-                                oldName = oldName,
-                                newNameFinal = newNameFinal
-                            ) ?: return@launch
-
-                            PlaylistRepository.clearCustomTitleEverywhere(target.uri.toString())
-                            if (newUriAfterRename.scheme != "file") {
-                                persistTreePermIfPossible(context, newUriAfterRename)
-                            }
-
-                            if (newUriAfterRename != target.uri) {
-                                PlaylistRepository.clearCustomTitleEverywhere(newUriAfterRename.toString())
-
-                                PlaylistRepository.replaceSongUriEverywhere(
-                                    oldUri = target.uri.toString(),
-                                    newUri = newUriAfterRename.toString()
-                                )
-
-                                if (selectedSongs.contains(target.uri)) {
-                                    selectedSongs = (selectedSongs - target.uri) + newUriAfterRename
-                                }
-                            }
-
-                            val root = backend.getRootUri()
-                            if (root != null) {
-                                runGlobalScan(root = root, folderToShow = folderUri)
-                            }
-
-                        } finally {
-                            isLoading = false
-                            moveProgress = null
-                            moveLabel = null
-                        }
-                    }
-                }
+                onConfirm = commitAliasRename
             )
 
             MoveBrowserDialog(

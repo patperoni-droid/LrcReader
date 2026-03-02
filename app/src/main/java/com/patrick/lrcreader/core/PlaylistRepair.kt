@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.provider.DocumentsContract
 import android.util.Log
+import com.patrick.lrcreader.core.config.TitleAliasesStore
 import java.net.URLDecoder
 import java.text.Normalizer
 
@@ -56,7 +57,8 @@ object PlaylistRepair {
                 if (canOpen(context, oldUriString)) return@forEach
 
                 val wantedFromUri = extractFileNameSafe(oldUriString)
-                val wantedFromCustom = PlaylistRepository.getAnyCustomTitleForUri(oldUriString)
+                val wantedFromCustom = TitleAliasesStore.getTitleForTrack(context, oldUriString)
+                    ?: PlaylistRepository.getAnyCustomTitleForUri(oldUriString)
 
                 val candidatesRaw = listOfNotNull(wantedFromCustom, wantedFromUri)
                     .map { it.trim() }
