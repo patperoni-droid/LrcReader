@@ -1,7 +1,9 @@
 package com.patrick.lrcreader.core.config
 
 import android.content.Context
+import android.net.Uri
 import android.os.SystemClock
+import android.provider.DocumentsContract
 import android.util.Log
 import androidx.documentfile.provider.DocumentFile
 import com.patrick.lrcreader.core.BackupFolderPrefs
@@ -274,12 +276,15 @@ internal object ConfigJsonAtomicFileIo {
             }
 
             "content" -> {
-                val rootDoc = DocumentFile.fromTreeUri(context, rootUri)
+                val normalizedRootUri = normalizeRootTreeUri(rootUri)
+                val rootDoc = DocumentFile.fromTreeUri(context, normalizedRootUri)
+                    ?: DocumentFile.fromTreeUri(context, rootUri)
                     ?: DocumentFile.fromSingleUri(context, rootUri)
                     ?: return null
                 if (!rootDoc.isDirectory) return null
 
-                val configDir = findOrCreateDirIgnoreCase(rootDoc, CONFIG_DIR_NAME) ?: return null
+                val configDir = runCatching { findOrCreateDirIgnoreCase(rootDoc, CONFIG_DIR_NAME) }.getOrNull()
+                    ?: return null
                 Storage.SafStorage(configDir)
             }
 
@@ -299,6 +304,15 @@ internal object ConfigJsonAtomicFileIo {
         return parent.listFiles().firstOrNull {
             it.isFile && (it.name ?: "").equals(name, ignoreCase = true)
         }
+    }
+
+    private fun normalizeRootTreeUri(rootUri: Uri): Uri {
+        if (rootUri.scheme != "content") return rootUri
+        val authority = rootUri.authority ?: return rootUri
+        val docId = runCatching { DocumentsContract.getDocumentId(rootUri) }.getOrNull() ?: return rootUri
+        return runCatching {
+            DocumentsContract.buildTreeDocumentUri(authority, docId)
+        }.getOrDefault(rootUri)
     }
 
     private sealed class Storage {

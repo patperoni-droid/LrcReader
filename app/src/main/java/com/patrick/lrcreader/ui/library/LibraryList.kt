@@ -23,10 +23,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.patrick.lrcreader.core.PlaylistRepository
+import com.patrick.lrcreader.core.config.TitleAliasesStore
 import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.ui.LibraryEntry
 
@@ -69,13 +72,15 @@ fun LibraryList(
     onRenameOne: (LibraryEntry) -> Unit,
     onDeleteOne: (Uri) -> Unit
 ) {
+    val context = LocalContext.current
+    val aliasVersion = TitleAliasesStore.version.intValue
     val selectionMode = selectedSongs.isNotEmpty()
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = bottomPadding)
     ) {
-        items(entries, key = { it.uri.toString() }) { entry ->
+        items(entries, key = { "$aliasVersion:${it.uri}" }) { entry ->
             val isDisabled = entry.disabled
             if (entry.isDirectory) {
                 val displayFolderName = if (entry.name.equals("DJ", ignoreCase = true)) {
@@ -133,6 +138,13 @@ fun LibraryList(
                 val canPlay = isPlayableByName(entry.name)
                 val isJson = isJsonByName(entry.name)
                 val isLrc = isLrcByName(entry.name)
+                val titleAlias = if (canPlay) {
+                    TitleAliasesStore.getTitleForTrack(context, uri.toString())
+                        ?: PlaylistRepository.getAnyCustomTitleForUri(uri.toString())
+                } else {
+                    null
+                }
+                val displayName = titleAlias ?: entry.name
 
                 Row(
                     modifier = Modifier
@@ -170,7 +182,7 @@ fun LibraryList(
                     // - sinon -> si .lrc -> ouvre éditeur
                     // - sinon (json/etc) -> rien
                     Text(
-                        text = entry.name,
+                        text = displayName,
                         color = Color.White,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -238,10 +250,12 @@ fun LibraryList(
                                 },
                                 onClick = { menuOpen = false; onMoveOne(uri) }
                             )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.library_list_rename), color = Color.White) },
-                                onClick = { menuOpen = false; onRenameOne(entry) }
-                            )
+                            if (canPlay) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.library_list_rename), color = Color.White) },
+                                    onClick = { menuOpen = false; onRenameOne(entry) }
+                                )
+                            }
                             DropdownMenuItem(
                                 text = {
                                     Text(

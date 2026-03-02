@@ -63,6 +63,7 @@ import com.patrick.lrcreader.core.lyrics.LyricsResolver
 import com.patrick.lrcreader.core.config.MidiCuesConfigStore
 import com.patrick.lrcreader.core.config.NotesConfigStore
 import com.patrick.lrcreader.core.config.PlaylistStateStore
+import com.patrick.lrcreader.core.config.TitleAliasesStore
 import com.patrick.lrcreader.core.config.TrackSettingsStore
 import com.patrick.lrcreader.ui.*
 import com.patrick.lrcreader.ui.library.LibraryScreen
@@ -321,6 +322,8 @@ class MainActivity : AppCompatActivity() {
                     }
 
                     var loadedLegacyTrimByUri: Map<String, EditPrefs.EditData> = emptyMap()
+                    val legacyCustomTitlesSnapshot = PlaylistRepository.getAnyCustomTitlesSnapshot()
+                    var migratedTitleAliases = 0
                     withContext(Dispatchers.IO) {
                         mark("compose.ensureInitialized.io:start root=$rootKey")
                         val sessionInitOk = runCatching { SessionPrefs.ensureInitialized(ctx) }.getOrDefault(false)
@@ -329,16 +332,26 @@ class MainActivity : AppCompatActivity() {
                         runCatching { FillerSoundPrefs.warmCache(ctx) }
                         val textSongsInitOk = runCatching { TextSongRepository.ensureInitialized(ctx) }.getOrDefault(false)
                         val trackInitOk = runCatching { TrackSettingsStore.ensureInitialized(ctx) }.getOrDefault(false)
+                        val aliasInitOk = runCatching { TitleAliasesStore.ensureInitialized(ctx) }.getOrDefault(false)
                         val notesInitOk = runCatching { NotesConfigStore.ensureInitialized(ctx) }.getOrDefault(false)
                         val midiInitOk = runCatching { MidiCuesConfigStore.ensureInitialized(ctx) }.getOrDefault(false)
                         val playlistInitOk = runCatching { PlaylistStateStore.ensureInitialized(ctx) }.getOrDefault(false)
+                        migratedTitleAliases = runCatching {
+                            TitleAliasesStore.migrateFromLegacyTitlesIfMissing(
+                                context = ctx,
+                                legacyTitlesByUri = legacyCustomTitlesSnapshot
+                            )
+                        }.getOrDefault(0)
                         loadedLegacyTrimByUri = runCatching { EditPrefs.getAllEdits(ctx) }.getOrDefault(emptyMap())
                         mark(
-                            "compose.ensureInitialized.io:end root=$rootKey session=$sessionInitOk trim=$trimInitOk textSongs=$textSongsInitOk track=$trackInitOk notes=$notesInitOk midi=$midiInitOk playlist=$playlistInitOk"
+                            "compose.ensureInitialized.io:end root=$rootKey session=$sessionInitOk trim=$trimInitOk textSongs=$textSongsInitOk track=$trackInitOk alias=$aliasInitOk aliasMigrated=$migratedTitleAliases notes=$notesInitOk midi=$midiInitOk playlist=$playlistInitOk"
                         )
                     }
 
                     legacyTrimByUri = loadedLegacyTrimByUri
+                    if (migratedTitleAliases > 0) {
+                        PlaylistRepository.touch()
+                    }
                     configInitDoneForRoot = rootKey
                     mark("compose.ensureInitialized.effect:end root=$rootKey")
                 }
@@ -779,7 +792,8 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 suspend fun playWithCrossfadeInternal(uriString: String, playlistName: String?) {
-                    val backingTitle = indexAll.firstOrNull { it.uriString == uriString }?.name
+                    val backingTitle = TitleAliasesStore.getTitleForTrack(ctx, uriString)
+                        ?: indexAll.firstOrNull { it.uriString == uriString }?.name
                         ?: Uri.parse(uriString).lastPathSegment
                         ?: HistoryRepository.UNTITLED_FALLBACK
 
@@ -1056,7 +1070,8 @@ class MainActivity : AppCompatActivity() {
                 // ✅ helper : lancer depuis recherche en mode DJ
                 fun playFromSearchInDj(uriString: String) {
                     // On récupère un nom "humain" depuis l'index (sinon fallback)
-                    val name = indexAll.firstOrNull { it.uriString == uriString }?.name
+                    val name = TitleAliasesStore.getTitleForTrack(ctx, uriString)
+                        ?: indexAll.firstOrNull { it.uriString == uriString }?.name
                         ?: Uri.parse(uriString).lastPathSegment
                         ?: "Titre"
 

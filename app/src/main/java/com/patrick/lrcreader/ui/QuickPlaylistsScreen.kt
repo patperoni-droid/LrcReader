@@ -4,13 +4,13 @@ package com.patrick.lrcreader.ui
 import android.media.MediaMetadataRetriever
 import android.os.SystemClock
 import android.util.Log
+import android.widget.Toast
 import kotlinx.coroutines.withContext
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
 import com.patrick.lrcreader.exo.R
 import androidx.compose.ui.res.stringResource
 import android.net.Uri
-import androidx.documentfile.provider.DocumentFile
 import com.patrick.lrcreader.core.LibraryIndexCache
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -23,6 +23,8 @@ import com.patrick.lrcreader.ui.theme.DarkBlueGradientBackground
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -53,6 +55,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.core.FillerSoundManager
@@ -61,6 +64,8 @@ import com.patrick.lrcreader.core.PlaylistRepository
 import com.patrick.lrcreader.core.TextSongRepository
 import com.patrick.lrcreader.core.config.PlaylistStateStore
 import com.patrick.lrcreader.core.config.TrackSettingsStore
+import com.patrick.lrcreader.core.config.TitleAliasesStore
+import com.patrick.lrcreader.exo.BuildConfig
 import kotlinx.coroutines.yield
 import java.net.URLDecoder
 
@@ -94,7 +99,7 @@ fun QuickPlaylistsScreen(
     val context = LocalContext.current
 
     val scope = rememberCoroutineScope()
-    var isRenameBusy by remember { mutableStateOf(false) }
+    val titleAliasVersion = TitleAliasesStore.version.intValue
 
 // ✅ IMPORTANT : on observe le repo RAM (sinon la playlist garde des URI "morts" après rename en bibliothèque)
     val repoVersion = PlaylistRepository.version.value
@@ -172,7 +177,7 @@ fun QuickPlaylistsScreen(
     }
 
     // recharge quand playlist ou notes changent
-    LaunchedEffect(internalSelected, refreshKey, notesVersion, repoVersion, libraryLoadedSignal, playlistsReady) {
+    LaunchedEffect(internalSelected, refreshKey, notesVersion, repoVersion, libraryLoadedSignal, playlistsReady, titleAliasVersion) {
         val pl = internalSelected
         Log.d(
             "BOOTSTEP",
@@ -552,10 +557,10 @@ fun QuickPlaylistsScreen(
                                     textSong?.title?.takeIf { it.isNotBlank() } ?: baseNameClean
                                 }
                             } else {
-                                // 👉 Audio normal
-                                internalSelected?.let {
-                                    PlaylistRepository.getCustomTitle(it, uriString)
-                                } ?: baseNameClean
+                                // 👉 Audio normal (alias global)
+                                TitleAliasesStore.getTitleForTrack(context, uriString)
+                                    ?: PlaylistRepository.getAnyCustomTitleForUri(uriString)
+                                    ?: baseNameClean
                             }
 
                             val isPlayed = internalSelected?.let {
@@ -930,6 +935,59 @@ fun QuickPlaylistsScreen(
 
     // ─── DIALOG RENOMMAGE ────────────────────────────────
     if (renameTarget != null && internalSelected != null) {
+        val commitAliasRename: () -> Unit = commit@{
+            val targetUri = renameTarget ?: return@commit
+            val newTitle = renameText.trim()
+            if (newTitle.isBlank()) return@commit
+
+            if (targetUri.startsWith("prompter://")) {
+                // 👉 Cas prompteur : on renomme LA SOURCE
+                val idPart = targetUri.removePrefix("prompter://")
+                val numericId = idPart.toLongOrNull()
+
+                if (numericId != null) {
+                    val note = NotesRepository.get(context, numericId)
+                    if (note != null) {
+                        NotesRepository.upsert(
+                            context = context,
+                            id = note.id,
+                            title = newTitle,
+                            content = note.content
+                        )
+                        NotesEventBus.notifyNotesChanged()
+                    }
+                } else {
+                    val textSong = TextSongRepository.get(context, idPart)
+                    if (textSong != null) {
+                        TextSongRepository.update(
+                            context = context,
+                            id = idPart,
+                            title = newTitle,
+                            content = textSong.content
+                        )
+                        NotesEventBus.notifyNotesChanged()
+                    }
+                }
+            } else {
+                if (BuildConfig.DEBUG) {
+                    Log.d("ALIAS_RENAME", "commit source=playlist uri=$targetUri newTitle='$newTitle'")
+                }
+                val saved = TitleAliasesStore.setTitleForTrack(context, targetUri, newTitle)
+                if (saved) {
+                    PlaylistRepository.clearCustomTitleEverywhere(targetUri)
+                }
+                if (BuildConfig.DEBUG) {
+                    Toast.makeText(
+                        context,
+                        if (saved) "Alias enregistré" else "Alias NON enregistré (voir logs)",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+
+            renameTarget = null
+        }
+
         AlertDialog(
             onDismissRequest = { renameTarget = null },
             title = { Text(stringResource(R.string.common_rename), color = Color.White) },
@@ -937,82 +995,14 @@ fun QuickPlaylistsScreen(
                 OutlinedTextField(
                     value = renameText,
                     onValueChange = { renameText = it },
-                    singleLine = true
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { commitAliasRename() })
                 )
             },
             confirmButton = {
                 TextButton(
-                    onClick = {
-                        val targetUri = renameTarget ?: return@TextButton
-                        val pl = internalSelected ?: return@TextButton
-                        val newTitle = renameText.trim()
-                        if (newTitle.isBlank()) return@TextButton
-
-                        if (targetUri.startsWith("prompter://")) {
-                            // 👉 Cas prompteur : on renomme LA SOURCE
-                            val idPart = targetUri.removePrefix("prompter://")
-                            val numericId = idPart.toLongOrNull()
-
-                            if (numericId != null) {
-                                val note = NotesRepository.get(context, numericId)
-                                if (note != null) {
-                                    NotesRepository.upsert(
-                                        context = context,
-                                        id = note.id,
-                                        title = newTitle,
-                                        content = note.content
-                                    )
-                                    NotesEventBus.notifyNotesChanged()
-                                }
-                            } else {
-                                val textSong = TextSongRepository.get(context, idPart)
-                                if (textSong != null) {
-                                    TextSongRepository.update(
-                                        context = context,
-                                        id = idPart,
-                                        title = newTitle,
-                                        content = textSong.content
-                                    )
-                                    NotesEventBus.notifyNotesChanged()
-                                }
-                            }
-                        } else {
-                            // ✅ Cas audio normal : RENOMMAGE RÉEL DU FICHIER (source unique)
-                            if (isRenameBusy) return@TextButton
-                            isRenameBusy = true
-
-                            scope.launch {
-                                try {
-                                    val result = withContext(Dispatchers.IO) {
-                                        renameAudioFileUsingLibraryCache(
-                                            context = context,
-                                            oldUriString = targetUri,
-                                            newBaseName = newTitle
-                                        )
-                                    }
-
-                                    if (result != null) {
-                                        val (newUriString, _) = result
-
-                                        // 1) migration des URI partout (playlist + états)
-                                        if (newUriString != targetUri) {
-                                            PlaylistRepository.replaceSongUriEverywhere(
-                                                oldUri = targetUri,
-                                                newUri = newUriString
-                                            )
-                                        }
-
-                                        // 2) on supprime les titres custom qui masquent le nom réel
-                                        PlaylistRepository.clearCustomTitleEverywhere(targetUri)
-                                        PlaylistRepository.clearCustomTitleEverywhere(newUriString)
-                                    }
-                                } finally {
-                                    isRenameBusy = false
-                                    renameTarget = null
-                                }
-                            }
-                        }
-                    }
+                    onClick = commitAliasRename
                 ) {
                     Text(stringResource(R.string.common_ok), color = Color.White)
                 }
@@ -1366,57 +1356,6 @@ private fun clearSongColor(context: Context, playlist: String, uri: String) {
         .apply()
 }
 
-
-/**
- * Renomme un fichier audio en s'appuyant sur le cache d'index de la bibliothèque.
- * Retourne Pair(newUriString, newFileNameFinal) si OK, sinon null.
- */
-private fun renameAudioFileUsingLibraryCache(
-    context: Context,
-    oldUriString: String,
-    newBaseName: String
-): Pair<String, String>? {
-    val cache = LibraryIndexCache.load(context) ?: return null
-    val entry = cache.firstOrNull { it.uriString == oldUriString } ?: return null
-
-    val parentUri = entry.parentUriString?.let { Uri.parse(it) } ?: return null
-
-    val oldName = entry.name
-    val ext = oldName.substringAfterLast('.', "")
-    val cleanBase = newBaseName.trim()
-    if (cleanBase.isEmpty()) return null
-
-    val newNameFinal =
-        if (ext.isNotEmpty() && !cleanBase.contains(".")) "$cleanBase.$ext" else cleanBase
-
-    val parentDoc = DocumentFile.fromTreeUri(context, parentUri) ?: return null
-    val fileDoc = parentDoc.findFile(oldName) ?: return null
-
-    val ok = try {
-        fileDoc.renameTo(newNameFinal)
-    } catch (_: Exception) {
-        false
-    }
-    if (!ok) return null
-
-    // URI peut changer => on le recherche par nom dans le dossier
-    val newUri = findUriByNameInFolder(context, parentUri, newNameFinal)
-    val finalUriString = (newUri ?: Uri.parse(oldUriString)).toString()
-
-    // Mise à jour du cache bibliothèque (nom + éventuellement uri)
-    val newCache = cache.map { ce ->
-        if (ce.uriString == oldUriString) {
-            if (finalUriString != oldUriString) {
-                ce.copy(uriString = finalUriString, name = newNameFinal)
-            } else {
-                ce.copy(name = newNameFinal)
-            }
-        } else ce
-    }
-    LibraryIndexCache.save(context, newCache)
-
-    return finalUriString to newNameFinal
-}
 // ✅ Helpers durée audio (AU NIVEAU FICHIER)
 private fun getAudioDurationMsQP(context: Context, uriString: String): Long? {
     return runCatching {

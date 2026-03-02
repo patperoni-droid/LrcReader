@@ -268,6 +268,24 @@ object PlaylistRepository {
         }.getOrNull()
     }
 
+    fun getAnyCustomTitlesSnapshot(): Map<String, String> {
+        return runCatching {
+            val out = linkedMapOf<String, String>()
+            val pls = getPlaylists()
+            for (pl in pls) {
+                val map = customTitles[pl] ?: continue
+                map.forEach { (uri, title) ->
+                    val cleanUri = uri.trim()
+                    val cleanTitle = title.trim()
+                    if (cleanUri.isNotEmpty() && cleanTitle.isNotEmpty() && !out.containsKey(cleanUri)) {
+                        out[cleanUri] = cleanTitle
+                    }
+                }
+            }
+            out.toMap()
+        }.getOrDefault(emptyMap())
+    }
+
     fun renameSongInPlaylist(playlistName: String, uri: String, newTitle: String) {
         val clean = newTitle.trim()
         val map = customTitles.getOrPut(playlistName) { mutableMapOf() }
