@@ -1520,7 +1520,9 @@ class MainActivity : AppCompatActivity() {
                                     }
                                 } else {
                                     null
-                                }
+                                },
+                                searchModeLabel = searchMode.name,
+                                searchPlaylistName = if (searchMode == SearchMode.PLAYLIST) selectedQuickPlaylist else null
                             )
                         }
                     }

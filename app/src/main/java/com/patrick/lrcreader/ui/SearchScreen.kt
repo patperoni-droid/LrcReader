@@ -1,6 +1,6 @@
 package com.patrick.lrcreader.ui
 
-import android.net.Uri
+import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -26,6 +26,8 @@ import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.core.LibraryIndexCache
 import com.patrick.lrcreader.core.PlaylistRepository
 import com.patrick.lrcreader.core.config.TitleAliasesStore
+import com.patrick.lrcreader.core.search.SearchEngine
+import com.patrick.lrcreader.exo.BuildConfig
 import com.patrick.lrcreader.exo.R
 
 @Composable
@@ -36,16 +38,10 @@ fun SearchScreen(
     onPlay: (String) -> Unit,
     // null => recherche globale (comme avant)
     // non null => recherche limitée (ex: playlist)
-    restrictToUriStrings: Set<String>? = null
+    restrictToUriStrings: Set<String>? = null,
+    searchModeLabel: String = "GLOBAL",
+    searchPlaylistName: String? = null
 ) {
-    data class SearchRow(
-        val uri: Uri,
-        val displayTitle: String,
-        val searchKey: String
-    )
-
-    fun baseNameNoExt(name: String): String = name.substringBeforeLast('.', name)
-
     val context = LocalContext.current
     val aliasVersion = TitleAliasesStore.version.intValue
 
@@ -56,39 +52,40 @@ fun SearchScreen(
     val rowBorder = Color(0x33FFFFFF)
     val accent = Color(0xFFFFC107)
 
-    // ✅ liste globale des fichiers (pas les dossiers) + restriction optionnelle
-    val allAudio = remember(indexAll, restrictToUriStrings, aliasVersion) {
+    val indexedItems = remember(indexAll, aliasVersion) {
         indexAll
             .asSequence()
             .filter { !it.isDirectory }
-            .filter { ce -> restrictToUriStrings?.contains(ce.uriString) ?: true }
             .map {
                 val alias = TitleAliasesStore.getTitleForTrack(context, it.uriString)
                     ?: PlaylistRepository.getAnyCustomTitleForUri(it.uriString)
-                val displayTitle = alias ?: it.name
-                val searchKey = buildString {
-                    append(displayTitle)
-                    append('\n')
-                    append(it.name)
-                    append('\n')
-                    append(baseNameNoExt(it.name))
-                }.lowercase()
-                SearchRow(
-                    uri = Uri.parse(it.uriString),
-                    displayTitle = displayTitle,
-                    searchKey = searchKey
+                SearchEngine.index(
+                    id = it.uriString,
+                    displayTitle = alias ?: it.name,
+                    fallbackName = it.name
                 )
             }
             .toList()
     }
+    val searchPool = remember(indexedItems, restrictToUriStrings) {
+        SearchEngine.restrictToIds(indexedItems, restrictToUriStrings)
+    }
 
     var q by remember { mutableStateOf("") }
 
-    val results = remember(q, allAudio) {
-        val query = q.trim().lowercase()
-        if (query.isBlank()) emptyList()
-        else allAudio.filter { it.searchKey.contains(query) }
+    val results = remember(q, searchPool) {
+        SearchEngine.filter(searchPool, q)
             .take(300)
+    }
+    val normalizedQuery = remember(q) { SearchEngine.normalize(q) }
+
+    LaunchedEffect(normalizedQuery, searchPool.size, results.size, searchModeLabel, searchPlaylistName) {
+        if (BuildConfig.DEBUG) {
+            Log.d(
+                "SEARCH_PROOF",
+                "mode=$searchModeLabel query='$normalizedQuery' playlist=${searchPlaylistName ?: "-"} itemsBefore=${searchPool.size} itemsAfter=${results.size}"
+            )
+        }
     }
 
 
@@ -128,14 +125,14 @@ fun SearchScreen(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(bottom = 70.dp)
             ) {
-                items(results, key = { it.uri.toString() }) { entry ->
+                items(results, key = { it.id }) { entry ->
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(vertical = 3.dp)
                             .background(cardBg, RoundedCornerShape(10.dp))
                             .border(1.dp, rowBorder, RoundedCornerShape(10.dp))
-                            .clickable { onPlay(entry.uri.toString()) }
+                            .clickable { onPlay(entry.id) }
                             .padding(horizontal = 12.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
