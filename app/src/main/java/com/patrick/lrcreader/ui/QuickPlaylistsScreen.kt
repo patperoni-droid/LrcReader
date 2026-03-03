@@ -66,6 +66,7 @@ import com.patrick.lrcreader.core.NotesRepository
 import com.patrick.lrcreader.core.buildGroupHeader
 import com.patrick.lrcreader.core.getGroupTitle
 import com.patrick.lrcreader.core.isGroupHeader
+import com.patrick.lrcreader.core.isPlayableAudioItem
 import com.patrick.lrcreader.core.PlaylistRepository
 import com.patrick.lrcreader.core.renameGroupHeader
 import com.patrick.lrcreader.core.TextSongRepository
@@ -133,8 +134,10 @@ fun QuickPlaylistsScreen(
     val listState = rememberLazyListState()
     val rowHeight = 56.dp
     val rowHeightPx = with(LocalDensity.current) { rowHeight.toPx() }
+    val headerDropPaddingPx = with(LocalDensity.current) { 12.dp.toPx() }
     var draggingUri by remember { mutableStateOf<String?>(null) }
     var dragOffsetPx by remember { mutableStateOf(0f) }
+    var dragYInListViewport by remember { mutableStateOf<Float?>(null) }
     var hoverHeaderKey by remember { mutableStateOf<String?>(null) }
     var collapsedGroupIds by rememberSaveable { mutableStateOf(setOf<String>()) }
 
@@ -356,12 +359,35 @@ fun QuickPlaylistsScreen(
                 onDragStart = {
                     draggingUri = itemKey
                     dragOffsetPx = 0f
-                    hoverHeaderKey = null
+                    val visibleInfo = listState.layoutInfo.visibleItemsInfo.firstOrNull { info ->
+                        (info.key as? String) == itemKey
+                    }
+                    dragYInListViewport = visibleInfo?.let { info ->
+                        info.offset + (info.size / 2f)
+                    }
+                    hoverHeaderKey = dragYInListViewport?.let { dragY ->
+                        val viewportItems = listState.layoutInfo.visibleItemsInfo.mapNotNull { info ->
+                            val key = info.key as? String ?: return@mapNotNull null
+                            ListViewportItem(key = key, start = info.offset, endExclusive = info.offset + info.size)
+                        }
+                        findHeaderDropTargetKey(
+                            songs = songs,
+                            viewportItems = viewportItems,
+                            dragY = dragY,
+                            draggedItemKey = itemKey,
+                            headerPaddingPx = headerDropPaddingPx
+                        )
+                    }
                 },
                 onDragEnd = {
                     val dragged = draggingUri
                     val hoverHeader = hoverHeaderKey
-                    if (dragged != null && hoverHeader != null && !isGroupHeader(dragged)) {
+                    if (
+                        dragged != null &&
+                        isPlayableAudioItem(dragged) &&
+                        hoverHeader != null &&
+                        isGroupHeader(hoverHeader)
+                    ) {
                         val fromIndex = songs.indexOf(dragged)
                         val headerIndex = songs.indexOf(hoverHeader)
                         moveItemIntoGroup(
@@ -373,6 +399,7 @@ fun QuickPlaylistsScreen(
                     }
                     draggingUri = null
                     dragOffsetPx = 0f
+                    dragYInListViewport = null
                     hoverHeaderKey = null
                     internalSelected?.let { pl ->
                         persistSongsOrder(pl, overwriteOriginal = true)
@@ -381,6 +408,7 @@ fun QuickPlaylistsScreen(
                 onDragCancel = {
                     draggingUri = null
                     dragOffsetPx = 0f
+                    dragYInListViewport = null
                     hoverHeaderKey = null
                 }
             ) { _, dragAmount ->
@@ -388,14 +416,35 @@ fun QuickPlaylistsScreen(
                 val currentIndex = songs.indexOf(current)
                 if (currentIndex == -1) return@detectDragGesturesAfterLongPress
 
+                val baseY = dragYInListViewport ?: listState.layoutInfo.visibleItemsInfo
+                    .firstOrNull { info -> (info.key as? String) == current }
+                    ?.let { info -> info.offset + (info.size / 2f) }
+                    ?: return@detectDragGesturesAfterLongPress
+                dragYInListViewport = baseY + dragAmount.y
+
+                val viewportItems = listState.layoutInfo.visibleItemsInfo.mapNotNull { info ->
+                    val key = info.key as? String ?: return@mapNotNull null
+                    ListViewportItem(key = key, start = info.offset, endExclusive = info.offset + info.size)
+                }
+                hoverHeaderKey = findHeaderDropTargetKey(
+                    songs = songs,
+                    viewportItems = viewportItems,
+                    dragY = dragYInListViewport ?: baseY,
+                    draggedItemKey = current,
+                    headerPaddingPx = headerDropPaddingPx
+                )
+
                 dragOffsetPx += dragAmount.y
+                val lockReorderForDrop = isPlayableAudioItem(current) && hoverHeaderKey != null
+                if (lockReorderForDrop) {
+                    dragOffsetPx = 0f
+                    return@detectDragGesturesAfterLongPress
+                }
 
                 if (dragOffsetPx >= rowHeightPx / 2f) {
                     val next = currentIndex + 1
                     if (next < songs.size) {
-                        val target = songs[next]
                         songs.swap(currentIndex, next)
-                        hoverHeaderKey = if (!isGroupHeader(current) && isGroupHeader(target)) target else null
                         internalSelected?.let { pl ->
                             PlaylistRepository.updatePlayListOrder(pl, songs.toList())
                         }
@@ -405,9 +454,7 @@ fun QuickPlaylistsScreen(
                 if (dragOffsetPx <= -rowHeightPx / 2f) {
                     val prev = currentIndex - 1
                     if (prev >= 0) {
-                        val target = songs[prev]
                         songs.swap(currentIndex, prev)
-                        hoverHeaderKey = if (!isGroupHeader(current) && isGroupHeader(target)) target else null
                         internalSelected?.let { pl ->
                             PlaylistRepository.updatePlayListOrder(pl, songs.toList())
                         }
@@ -646,6 +693,11 @@ fun QuickPlaylistsScreen(
                                 } else {
                                     folderBlueBorder
                                 }
+                                val rowBackground = if (isDropTargetHeader) {
+                                    Color(0xFF1184B8)
+                                } else {
+                                    folderBlue
+                                }
 
                                 Row(
                                     modifier = Modifier
@@ -653,7 +705,7 @@ fun QuickPlaylistsScreen(
                                         .height(rowHeight)
                                         .padding(vertical = 4.dp, horizontal = 2.dp)
                                         .clip(RoundedCornerShape(10.dp))
-                                        .background(folderBlue)
+                                        .background(rowBackground)
                                         .border(1.dp, rowBorder, RoundedCornerShape(10.dp))
                                         .padding(horizontal = 12.dp),
                                     verticalAlignment = Alignment.CenterVertically
@@ -722,6 +774,26 @@ fun QuickPlaylistsScreen(
                                             color = headerMuted,
                                             fontSize = 11.sp
                                         )
+                                        if (isDropTargetHeader) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(999.dp))
+                                                    .background(Color.White.copy(alpha = 0.22f))
+                                                    .border(
+                                                        width = 1.dp,
+                                                        color = Color.White.copy(alpha = 0.48f),
+                                                        shape = RoundedCornerShape(999.dp)
+                                                    )
+                                                    .padding(horizontal = 8.dp, vertical = 2.dp)
+                                            ) {
+                                                Text(
+                                                    text = "Lacher pour ranger ici",
+                                                    color = Color.White,
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Medium
+                                                )
+                                            }
+                                        }
                                     }
 
                                     Text(
@@ -1546,6 +1618,36 @@ private fun isItemHiddenByCollapsedGroup(
         cursor--
     }
     return false
+}
+
+internal data class ListViewportItem(
+    val key: String,
+    val start: Int,
+    val endExclusive: Int
+)
+
+internal fun findHeaderDropTargetKey(
+    songs: List<String>,
+    viewportItems: List<ListViewportItem>,
+    dragY: Float,
+    draggedItemKey: String?,
+    headerPaddingPx: Float = 0f
+): String? {
+    val dragged = draggedItemKey ?: return null
+    if (!isPlayableAudioItem(dragged)) return null
+
+    val headerHit = viewportItems
+        .asSequence()
+        .filter { item ->
+            songs.contains(item.key) && isGroupHeader(item.key)
+        }
+        .firstOrNull { header ->
+            dragY >= (header.start - headerPaddingPx) &&
+                dragY < (header.endExclusive + headerPaddingPx)
+        }
+        ?: return null
+
+    return headerHit.key
 }
 
 // prefs couleur playlist
