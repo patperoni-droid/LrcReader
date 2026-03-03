@@ -584,7 +584,7 @@ class MainActivity : AppCompatActivity() {
                 var trimAppliedForThisTrack by remember { mutableStateOf(false) }
                 val nextTrack by PlaybackCoordinator.nextTrack.collectAsState()
                 val nextChainedUri = remember(isChaining, chainIndex, chainQueue) {
-                    if (!isChaining) null else chainQueue.getOrNull(chainIndex + 1)
+                    if (!isChaining) null else nextPlayableUriAfter(chainQueue, chainIndex)
                 }
                 var isGlobalMixOpen by remember { mutableStateOf(false) }
                 var playerMasterLevel by remember { mutableStateOf(1f) }
@@ -1012,17 +1012,18 @@ class MainActivity : AppCompatActivity() {
                     if (!isChaining) return false
                     var idx = startIndex
                     while (idx in chainQueue.indices) {
-                        when (val target = PlaybackRouter.resolve(chainQueue[idx], chainPlaylist)) {
+                        val playableIndex = nextPlayableIndexAtOrAfter(chainQueue, idx) ?: return false
+                        when (val target = PlaybackRouter.resolve(chainQueue[playableIndex], chainPlaylist)) {
                             is PlaybackRouter.Target.Audio -> {
-                                chainIndex = idx
+                                chainIndex = playableIndex
                                 playWithCrossfade(target.uri, target.playlist)
                                 currentPlayingUri = target.uri
                                 setQuickPlaylistAndPersist(target.playlist, reason = "chainPlay")
                                 currentLyricsColor = Color.White
                                 return true
                             }
-                            is PlaybackRouter.Target.Prompter -> idx++
-                            is PlaybackRouter.Target.Unknown -> idx++
+                            is PlaybackRouter.Target.Prompter -> idx = playableIndex + 1
+                            is PlaybackRouter.Target.Unknown -> idx = playableIndex + 1
                         }
                     }
                     return false
@@ -1405,7 +1406,8 @@ class MainActivity : AppCompatActivity() {
                                         chainIndex = -1
                                         chainPlaylist = playlistName
                                         isChaining = true
-                                        if (!playChainFrom(startIndex)) {
+                                        val resolvedStart = nextPlayableIndexAtOrAfter(visibleQueue, startIndex)
+                                        if (resolvedStart == null || !playChainFrom(resolvedStart)) {
                                             stopChainPlayback()
                                         }
                                     },
@@ -1520,7 +1522,7 @@ class MainActivity : AppCompatActivity() {
                                     selectedQuickPlaylist?.let { plName ->
                                         PlaylistRepository.getSongsFor(plName)
                                             .asSequence()
-                                            .filterNot { it.startsWith("prompter://") }
+                                            .filter { isPlayableAudioItem(it) }
                                             .toSet()
                                     }
                                 } else {
