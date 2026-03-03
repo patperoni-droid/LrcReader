@@ -135,6 +135,8 @@ fun QuickPlaylistsScreen(
     val rowHeightPx = with(LocalDensity.current) { rowHeight.toPx() }
     var draggingUri by remember { mutableStateOf<String?>(null) }
     var dragOffsetPx by remember { mutableStateOf(0f) }
+    var hoverHeaderKey by remember { mutableStateOf<String?>(null) }
+    var collapsedGroupIds by rememberSaveable { mutableStateOf(setOf<String>()) }
 
     var renameTarget by remember { mutableStateOf<String?>(null) }
     var renameText by remember { mutableStateOf("") }
@@ -354,10 +356,24 @@ fun QuickPlaylistsScreen(
                 onDragStart = {
                     draggingUri = itemKey
                     dragOffsetPx = 0f
+                    hoverHeaderKey = null
                 },
                 onDragEnd = {
+                    val dragged = draggingUri
+                    val hoverHeader = hoverHeaderKey
+                    if (dragged != null && hoverHeader != null && !isGroupHeader(dragged)) {
+                        val fromIndex = songs.indexOf(dragged)
+                        val headerIndex = songs.indexOf(hoverHeader)
+                        moveItemIntoGroup(
+                            items = songs,
+                            fromIndex = fromIndex,
+                            headerIndex = headerIndex,
+                            mode = "TOP"
+                        )
+                    }
                     draggingUri = null
                     dragOffsetPx = 0f
+                    hoverHeaderKey = null
                     internalSelected?.let { pl ->
                         persistSongsOrder(pl, overwriteOriginal = true)
                     }
@@ -365,6 +381,7 @@ fun QuickPlaylistsScreen(
                 onDragCancel = {
                     draggingUri = null
                     dragOffsetPx = 0f
+                    hoverHeaderKey = null
                 }
             ) { _, dragAmount ->
                 val current = draggingUri ?: return@detectDragGesturesAfterLongPress
@@ -375,17 +392,25 @@ fun QuickPlaylistsScreen(
 
                 if (dragOffsetPx >= rowHeightPx / 2f) {
                     val next = currentIndex + 1
-                    if (next < songs.size) songs.swap(currentIndex, next)
-                    internalSelected?.let { pl ->
-                        PlaylistRepository.updatePlayListOrder(pl, songs.toList())
+                    if (next < songs.size) {
+                        val target = songs[next]
+                        songs.swap(currentIndex, next)
+                        hoverHeaderKey = if (!isGroupHeader(current) && isGroupHeader(target)) target else null
+                        internalSelected?.let { pl ->
+                            PlaylistRepository.updatePlayListOrder(pl, songs.toList())
+                        }
                     }
                     dragOffsetPx = 0f
                 }
                 if (dragOffsetPx <= -rowHeightPx / 2f) {
                     val prev = currentIndex - 1
-                    if (prev >= 0) songs.swap(currentIndex, prev)
-                    internalSelected?.let { pl ->
-                        PlaylistRepository.updatePlayListOrder(pl, songs.toList())
+                    if (prev >= 0) {
+                        val target = songs[prev]
+                        songs.swap(currentIndex, prev)
+                        hoverHeaderKey = if (!isGroupHeader(current) && isGroupHeader(target)) target else null
+                        internalSelected?.let { pl ->
+                            PlaylistRepository.updatePlayListOrder(pl, songs.toList())
+                        }
                     }
                     dragOffsetPx = 0f
                 }
@@ -588,10 +613,26 @@ fun QuickPlaylistsScreen(
                             .semantics { testTag = "quick_playlists_list" },
                         state = listState
                     ) {
-                        itemsIndexed(songs, key = { _, item -> item }) { _, uriString ->
+                        itemsIndexed(songs, key = { _, item -> item }) { itemIndex, uriString ->
+                            if (isItemHiddenByCollapsedGroup(songs, itemIndex, collapsedGroupIds)) {
+                                return@itemsIndexed
+                            }
+
                             if (isGroupHeader(uriString)) {
                                 val groupTitle = getGroupTitle(uriString)
+                                val groupId = groupHeaderId(uriString) ?: uriString
                                 val isDraggingThis = draggingUri == uriString
+                                val isCollapsed = collapsedGroupIds.contains(groupId)
+                                val isDraggingTrack = draggingUri?.let { !isGroupHeader(it) } == true
+                                val isDropTargetHeader = isDraggingTrack && hoverHeaderKey == uriString
+                                val groupRange = findGroupRange(songs, itemIndex)
+                                val groupTrackCount = if (groupRange.isEmpty()) {
+                                    0
+                                } else {
+                                    (groupRange.first + 1..groupRange.last).count { idx ->
+                                        !isGroupHeader(songs[idx])
+                                    }
+                                }
                                 val folderBlue = Color(0xFF0A6C97)
                                 val folderBlueBorder = Color(0xFF07506F)
                                 val headerText = Color.White
@@ -600,6 +641,11 @@ fun QuickPlaylistsScreen(
                                 val badgeBg = Color.White.copy(alpha = 0.18f)
                                 val badgeBorder = Color.White.copy(alpha = 0.30f)
                                 val dragTint = if (isDraggingThis) headerText else headerMuted
+                                val rowBorder = if (isDropTargetHeader) {
+                                    Color.White.copy(alpha = 0.70f)
+                                } else {
+                                    folderBlueBorder
+                                }
 
                                 Row(
                                     modifier = Modifier
@@ -608,7 +654,7 @@ fun QuickPlaylistsScreen(
                                         .padding(vertical = 4.dp, horizontal = 2.dp)
                                         .clip(RoundedCornerShape(10.dp))
                                         .background(folderBlue)
-                                        .border(1.dp, folderBlueBorder, RoundedCornerShape(10.dp))
+                                        .border(1.dp, rowBorder, RoundedCornerShape(10.dp))
                                         .padding(horizontal = 12.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
@@ -633,7 +679,15 @@ fun QuickPlaylistsScreen(
                                     )
 
                                     Row(
-                                        modifier = Modifier.weight(1f),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clickable {
+                                                collapsedGroupIds = if (isCollapsed) {
+                                                    collapsedGroupIds - groupId
+                                                } else {
+                                                    collapsedGroupIds + groupId
+                                                }
+                                            },
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
@@ -663,12 +717,17 @@ fun QuickPlaylistsScreen(
                                                 fontWeight = FontWeight.Medium
                                             )
                                         }
+                                        Text(
+                                            text = groupTrackCount.toString(),
+                                            color = headerMuted,
+                                            fontSize = 11.sp
+                                        )
                                     }
 
                                     Text(
-                                        text = "›",
+                                        text = if (isCollapsed) "▶" else "▼",
                                         color = headerChevron,
-                                        fontSize = 22.sp,
+                                        fontSize = 16.sp,
                                         modifier = Modifier.padding(end = 4.dp)
                                     )
 
@@ -712,6 +771,7 @@ fun QuickPlaylistsScreen(
                                                 onClick = {
                                                     internalSelected?.let { pl ->
                                                         songs.remove(uriString)
+                                                        collapsedGroupIds = collapsedGroupIds - groupId
                                                         persistSongsOrder(pl)
                                                     }
                                                     menuOpen = false
@@ -1415,6 +1475,77 @@ private fun <T> MutableList<T>.swap(i: Int, j: Int) {
     val tmp = this[i]
     this[i] = this[j]
     this[j] = tmp
+}
+
+internal fun findGroupRange(items: List<String>, headerIndex: Int): IntRange {
+    if (headerIndex !in items.indices) return IntRange.EMPTY
+    if (!isGroupHeader(items[headerIndex])) return IntRange.EMPTY
+    var end = items.lastIndex
+    var cursor = headerIndex + 1
+    while (cursor < items.size) {
+        if (isGroupHeader(items[cursor])) {
+            end = cursor - 1
+            break
+        }
+        cursor++
+    }
+    return headerIndex..end
+}
+
+internal fun moveItemIntoGroup(
+    items: MutableList<String>,
+    fromIndex: Int,
+    headerIndex: Int,
+    mode: String
+) {
+    if (fromIndex !in items.indices) return
+    if (headerIndex !in items.indices) return
+    val dragged = items[fromIndex]
+    if (isGroupHeader(dragged)) return
+    if (!isGroupHeader(items[headerIndex])) return
+
+    val headerKey = items[headerIndex]
+    items.removeAt(fromIndex)
+
+    val resolvedHeaderIndex = items.indexOf(headerKey)
+    if (resolvedHeaderIndex == -1) return
+
+    val insertionIndex = when (mode.uppercase()) {
+        "BOTTOM" -> {
+            val range = findGroupRange(items, resolvedHeaderIndex)
+            if (range.isEmpty()) resolvedHeaderIndex + 1 else range.last + 1
+        }
+        else -> resolvedHeaderIndex + 1
+    }.coerceIn(0, items.size)
+
+    items.add(insertionIndex, dragged)
+}
+
+private fun groupHeaderId(item: String): String? {
+    if (!isGroupHeader(item)) return null
+    val parts = item.split('|', limit = 4)
+    return parts.getOrNull(2)?.takeIf { it.isNotBlank() }
+}
+
+private fun isItemHiddenByCollapsedGroup(
+    items: List<String>,
+    itemIndex: Int,
+    collapsedGroupIds: Set<String>
+): Boolean {
+    if (itemIndex !in items.indices) return false
+    val item = items[itemIndex]
+    if (isGroupHeader(item)) return false
+
+    var cursor = itemIndex - 1
+    while (cursor >= 0) {
+        val current = items[cursor]
+        if (isGroupHeader(current)) {
+            val headerId = groupHeaderId(current) ?: return false
+            return collapsedGroupIds.contains(headerId)
+        }
+        cursor--
+    }
+    return false
 }
 
 // prefs couleur playlist
