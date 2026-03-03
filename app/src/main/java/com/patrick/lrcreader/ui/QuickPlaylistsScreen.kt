@@ -34,6 +34,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.DragHandle
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
@@ -49,12 +50,14 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -589,28 +592,30 @@ fun QuickPlaylistsScreen(
                             if (isGroupHeader(uriString)) {
                                 val groupTitle = getGroupTitle(uriString)
                                 val isDraggingThis = draggingUri == uriString
+                                val folderBlue = Color(0xFF0A6C97)
+                                val folderBlueBorder = Color(0xFF07506F)
+                                val headerText = Color.White
+                                val headerMuted = Color.White.copy(alpha = 0.75f)
+                                val headerChevron = Color.White.copy(alpha = 0.60f)
+                                val badgeBg = Color.White.copy(alpha = 0.18f)
+                                val badgeBorder = Color.White.copy(alpha = 0.30f)
+                                val dragTint = if (isDraggingThis) headerText else headerMuted
 
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .height(rowHeight)
                                         .padding(vertical = 4.dp, horizontal = 2.dp)
-                                        .background(
-                                            color = if (isDraggingThis) Color(0x3354A0FF) else Color(0xFF10253A),
-                                            shape = RoundedCornerShape(12.dp)
-                                        )
-                                        .border(
-                                            width = 1.dp,
-                                            color = Color(0x6654A0FF),
-                                            shape = RoundedCornerShape(12.dp)
-                                        )
-                                        .padding(horizontal = 6.dp),
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(folderBlue)
+                                        .border(1.dp, folderBlueBorder, RoundedCornerShape(10.dp))
+                                        .padding(horizontal = 12.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(
                                         imageVector = Icons.Filled.DragHandle,
                                         contentDescription = stringResource(R.string.common_cd_move),
-                                        tint = Color(0xFFB3D4FF),
+                                        tint = dragTint,
                                         modifier = Modifier
                                             .size(34.dp)
                                             .padding(end = 6.dp)
@@ -618,11 +623,53 @@ fun QuickPlaylistsScreen(
                                             .then(dragHandleModifier(uriString))
                                     )
 
+                                    Icon(
+                                        imageVector = Icons.Filled.Folder,
+                                        contentDescription = null,
+                                        tint = headerText,
+                                        modifier = Modifier
+                                            .size(18.dp)
+                                            .padding(end = 8.dp)
+                                    )
+
+                                    Row(
+                                        modifier = Modifier.weight(1f),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Text(
+                                            text = groupTitle,
+                                            color = headerText,
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            maxLines = 1,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(999.dp))
+                                                .background(badgeBg)
+                                                .border(
+                                                    width = 1.dp,
+                                                    color = badgeBorder,
+                                                    shape = RoundedCornerShape(999.dp)
+                                                )
+                                                .padding(horizontal = 8.dp, vertical = 2.dp)
+                                        ) {
+                                            Text(
+                                                text = "GROUPE",
+                                                color = headerMuted,
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Medium
+                                            )
+                                        }
+                                    }
+
                                     Text(
-                                        text = "GROUPE: ${groupTitle.uppercase()}",
-                                        color = Color(0xFFE3F2FD),
-                                        fontSize = 14.sp,
-                                        modifier = Modifier.weight(1f)
+                                        text = "›",
+                                        color = headerChevron,
+                                        fontSize = 22.sp,
+                                        modifier = Modifier.padding(end = 4.dp)
                                     )
 
                                     Box {
@@ -633,7 +680,7 @@ fun QuickPlaylistsScreen(
                                                 .size(32.dp)
                                                 .border(
                                                     width = 1.dp,
-                                                    color = Color(0xFFB3D4FF),
+                                                    color = badgeBorder,
                                                     shape = RoundedCornerShape(8.dp)
                                                 )
                                                 .clickable { menuOpen = true },
@@ -642,7 +689,7 @@ fun QuickPlaylistsScreen(
                                             Icon(
                                                 imageVector = Icons.Filled.MoreVert,
                                                 contentDescription = stringResource(R.string.common_cd_options),
-                                                tint = Color(0xFFE3F2FD),
+                                                tint = headerMuted,
                                                 modifier = Modifier.size(18.dp)
                                             )
                                         }
