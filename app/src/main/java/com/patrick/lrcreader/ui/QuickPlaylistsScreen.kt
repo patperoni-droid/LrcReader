@@ -60,7 +60,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.core.NotesRepository
+import com.patrick.lrcreader.core.buildGroupHeader
+import com.patrick.lrcreader.core.getGroupTitle
+import com.patrick.lrcreader.core.isGroupHeader
 import com.patrick.lrcreader.core.PlaylistRepository
+import com.patrick.lrcreader.core.renameGroupHeader
 import com.patrick.lrcreader.core.TextSongRepository
 import com.patrick.lrcreader.core.config.PlaylistStateStore
 import com.patrick.lrcreader.core.config.TrackSettingsStore
@@ -131,6 +135,8 @@ fun QuickPlaylistsScreen(
 
     var renameTarget by remember { mutableStateOf<String?>(null) }
     var renameText by remember { mutableStateOf("") }
+    var renameGroupTarget by remember { mutableStateOf<String?>(null) }
+    var renameGroupText by remember { mutableStateOf("") }
 
     var isFillerRunning by remember { mutableStateOf(FillerSoundManager.isPlaying()) }
 
@@ -330,6 +336,60 @@ fun QuickPlaylistsScreen(
 
     val menuBg = Color(0xFF1B1B1B)
 
+    fun persistSongsOrder(playlist: String, overwriteOriginal: Boolean = false) {
+        val snapshot = songs.toList()
+        PlaylistRepository.updatePlayListOrder(playlist, snapshot)
+        saveManualOrder(context, playlist, snapshot)
+        if (overwriteOriginal) {
+            overwriteOriginalOrder(context, playlist, snapshot)
+        }
+    }
+
+    fun dragHandleModifier(itemKey: String): Modifier {
+        return Modifier.pointerInput(songs.size) {
+            detectDragGesturesAfterLongPress(
+                onDragStart = {
+                    draggingUri = itemKey
+                    dragOffsetPx = 0f
+                },
+                onDragEnd = {
+                    draggingUri = null
+                    dragOffsetPx = 0f
+                    internalSelected?.let { pl ->
+                        persistSongsOrder(pl, overwriteOriginal = true)
+                    }
+                },
+                onDragCancel = {
+                    draggingUri = null
+                    dragOffsetPx = 0f
+                }
+            ) { _, dragAmount ->
+                val current = draggingUri ?: return@detectDragGesturesAfterLongPress
+                val currentIndex = songs.indexOf(current)
+                if (currentIndex == -1) return@detectDragGesturesAfterLongPress
+
+                dragOffsetPx += dragAmount.y
+
+                if (dragOffsetPx >= rowHeightPx / 2f) {
+                    val next = currentIndex + 1
+                    if (next < songs.size) songs.swap(currentIndex, next)
+                    internalSelected?.let { pl ->
+                        PlaylistRepository.updatePlayListOrder(pl, songs.toList())
+                    }
+                    dragOffsetPx = 0f
+                }
+                if (dragOffsetPx <= -rowHeightPx / 2f) {
+                    val prev = currentIndex - 1
+                    if (prev >= 0) songs.swap(currentIndex, prev)
+                    internalSelected?.let { pl ->
+                        PlaylistRepository.updatePlayListOrder(pl, songs.toList())
+                    }
+                    dragOffsetPx = 0f
+                }
+            }
+        }
+    }
+
     DarkBlueGradientBackground {
         Column(
             modifier = modifier
@@ -526,6 +586,96 @@ fun QuickPlaylistsScreen(
                         state = listState
                     ) {
                         itemsIndexed(songs, key = { _, item -> item }) { _, uriString ->
+                            if (isGroupHeader(uriString)) {
+                                val groupTitle = getGroupTitle(uriString)
+                                val isDraggingThis = draggingUri == uriString
+
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(rowHeight)
+                                        .padding(vertical = 4.dp, horizontal = 2.dp)
+                                        .background(
+                                            color = if (isDraggingThis) Color(0x3354A0FF) else Color(0xFF10253A),
+                                            shape = RoundedCornerShape(12.dp)
+                                        )
+                                        .border(
+                                            width = 1.dp,
+                                            color = Color(0x6654A0FF),
+                                            shape = RoundedCornerShape(12.dp)
+                                        )
+                                        .padding(horizontal = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.DragHandle,
+                                        contentDescription = stringResource(R.string.common_cd_move),
+                                        tint = Color(0xFFB3D4FF),
+                                        modifier = Modifier
+                                            .size(34.dp)
+                                            .padding(end = 6.dp)
+                                            .alpha(0.9f)
+                                            .then(dragHandleModifier(uriString))
+                                    )
+
+                                    Text(
+                                        text = "GROUPE: ${groupTitle.uppercase()}",
+                                        color = Color(0xFFE3F2FD),
+                                        fontSize = 14.sp,
+                                        modifier = Modifier.weight(1f)
+                                    )
+
+                                    Box {
+                                        var menuOpen by remember { mutableStateOf(false) }
+
+                                        Box(
+                                            modifier = Modifier
+                                                .size(32.dp)
+                                                .border(
+                                                    width = 1.dp,
+                                                    color = Color(0xFFB3D4FF),
+                                                    shape = RoundedCornerShape(8.dp)
+                                                )
+                                                .clickable { menuOpen = true },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.MoreVert,
+                                                contentDescription = stringResource(R.string.common_cd_options),
+                                                tint = Color(0xFFE3F2FD),
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+
+                                        DropdownMenu(
+                                            expanded = menuOpen,
+                                            onDismissRequest = { menuOpen = false },
+                                            modifier = Modifier.background(Color(0xFF1E1E1E))
+                                        ) {
+                                            DropdownMenuItem(
+                                                text = { Text(stringResource(R.string.common_rename), color = Color.White) },
+                                                onClick = {
+                                                    renameGroupTarget = uriString
+                                                    renameGroupText = groupTitle
+                                                    menuOpen = false
+                                                }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text("Supprimer le groupe", color = Color(0xFFFF8A80)) },
+                                                onClick = {
+                                                    internalSelected?.let { pl ->
+                                                        songs.remove(uriString)
+                                                        persistSongsOrder(pl)
+                                                    }
+                                                    menuOpen = false
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+                                return@itemsIndexed
+                            }
+
                             val decoded = runCatching {
                                 URLDecoder.decode(uriString, "UTF-8")
                             }.getOrElse { uriString }
@@ -624,56 +774,7 @@ fun QuickPlaylistsScreen(
                                         .size(34.dp)
                                         .padding(end = 6.dp)
                                         .alpha(if (isPlayed) 0.6f else 1f)
-                                        .pointerInput(songs.size) {
-                                            detectDragGesturesAfterLongPress(
-                                                onDragStart = {
-                                                    draggingUri = uriString
-                                                    dragOffsetPx = 0f
-                                                },
-                                                onDragEnd = {
-                                                    draggingUri = null
-                                                    dragOffsetPx = 0f
-                                                    internalSelected?.let { pl ->
-                                                        PlaylistRepository.updatePlayListOrder(
-                                                            pl,
-                                                            songs.toList()
-                                                        )
-                                                        saveManualOrder(context, pl, songs.toList())
-                                                        // ✅ Si tu réordonnes à la main, ce nouvel ordre devient
-                                                        // le nouvel "ordre d'origine" (persistant)
-                                                        overwriteOriginalOrder(context, pl, songs.toList())
-                                                    }
-                                                },
-                                                onDragCancel = {
-                                                    draggingUri = null
-                                                    dragOffsetPx = 0f
-                                                }
-                                            ) { _, dragAmount ->
-                                                val current = draggingUri
-                                                    ?: return@detectDragGesturesAfterLongPress
-                                                val currentIndex = songs.indexOf(current)
-                                                if (currentIndex == -1) return@detectDragGesturesAfterLongPress
-
-                                                dragOffsetPx += dragAmount.y
-
-                                                if (dragOffsetPx >= rowHeightPx / 2f) {
-                                                    val next = currentIndex + 1
-                                                    if (next < songs.size) songs.swap(currentIndex, next)
-                                                    internalSelected?.let { pl ->
-                                                        PlaylistRepository.updatePlayListOrder(pl, songs.toList())
-                                                    }
-                                                    dragOffsetPx = 0f
-                                                }
-                                                if (dragOffsetPx <= -rowHeightPx / 2f) {
-                                                    val prev = currentIndex - 1
-                                                    if (prev >= 0) songs.swap(currentIndex, prev)
-                                                    internalSelected?.let { pl ->
-                                                        PlaylistRepository.updatePlayListOrder(pl, songs.toList())
-                                                    }
-                                                    dragOffsetPx = 0f
-                                                }
-                                            }
-                                        }
+                                        .then(dragHandleModifier(uriString))
                                 )
                                 val isPrompter = uriString.startsWith("prompter://")
                                 val prefix = if (isPrompter) "📝 " else ""
@@ -793,6 +894,23 @@ fun QuickPlaylistsScreen(
                                                     val startIndex = visibleQueue.indexOf(uriString)
                                                     if (startIndex >= 0) {
                                                         onPlayFromHere(visibleQueue, startIndex, pl)
+                                                    }
+                                                }
+                                                menuOpen = false
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Insérer groupe au-dessus", color = Color.White) },
+                                            onClick = {
+                                                val pl = internalSelected
+                                                if (pl != null) {
+                                                    val index = songs.indexOf(uriString)
+                                                    if (index >= 0) {
+                                                        val header = buildGroupHeader("Nouveau groupe")
+                                                        songs.add(index, header)
+                                                        persistSongsOrder(pl)
+                                                        renameGroupTarget = header
+                                                        renameGroupText = getGroupTitle(header)
                                                     }
                                                 }
                                                 menuOpen = false
@@ -934,6 +1052,48 @@ fun QuickPlaylistsScreen(
                 }
             }
         }
+    }
+
+    // ─── DIALOG RENOMMAGE GROUPE ─────────────────────────
+    if (renameGroupTarget != null && internalSelected != null) {
+        val commitGroupRename: () -> Unit = commit@{
+            val target = renameGroupTarget ?: return@commit
+            val newTitle = renameGroupText.trim()
+            if (newTitle.isBlank()) return@commit
+
+            val pl = internalSelected ?: return@commit
+            val index = songs.indexOf(target)
+            if (index >= 0 && isGroupHeader(songs[index])) {
+                songs[index] = renameGroupHeader(songs[index], newTitle)
+                persistSongsOrder(pl)
+            }
+            renameGroupTarget = null
+        }
+
+        AlertDialog(
+            onDismissRequest = { renameGroupTarget = null },
+            title = { Text(stringResource(R.string.common_rename), color = Color.White) },
+            text = {
+                OutlinedTextField(
+                    value = renameGroupText,
+                    onValueChange = { renameGroupText = it },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { commitGroupRename() })
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = commitGroupRename) {
+                    Text(stringResource(R.string.common_ok), color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { renameGroupTarget = null }) {
+                    Text(stringResource(R.string.common_cancel), color = Color.White)
+                }
+            },
+            containerColor = Color(0xFF222222)
+        )
     }
 
     // ─── DIALOG RENOMMAGE ────────────────────────────────
