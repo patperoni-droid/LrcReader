@@ -32,6 +32,7 @@ import com.patrick.lrcreader.core.ImportAudioManager
 import com.patrick.lrcreader.core.LibraryIndexCache
 import com.patrick.lrcreader.core.PlaylistRepository
 import com.patrick.lrcreader.core.config.TitleAliasesStore
+import com.patrick.lrcreader.core.search.SearchEngine
 import com.patrick.lrcreader.exo.BuildConfig
 import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.ui.LibraryEntry
@@ -158,33 +159,46 @@ fun LibraryScreen(
     val titleAliasVersion = TitleAliasesStore.version.intValue
     data class SearchableLibraryEntry(
         val entry: LibraryEntry,
-        val searchKey: String
+        val indexedItem: SearchEngine.IndexedItem
     )
-    fun baseNameNoExt(name: String): String = name.substringBeforeLast('.', name)
     val globalAudioEntries = remember(indexAll, titleAliasVersion) {
         indexAll.filter { !it.isDirectory }.map {
             val alias = TitleAliasesStore.getTitleForTrack(context, it.uriString)
                 ?: PlaylistRepository.getAnyCustomTitleForUri(it.uriString)
-            val displayTitle = alias ?: it.name
-            val key = buildString {
-                append(displayTitle)
-                append('\n')
-                append(it.name)
-                append('\n')
-                append(baseNameNoExt(it.name))
-            }.lowercase()
             SearchableLibraryEntry(
                 entry = LibraryEntry(Uri.parse(it.uriString), it.name, false),
-                searchKey = key
+                indexedItem = SearchEngine.index(
+                    id = it.uriString,
+                    displayTitle = alias ?: it.name,
+                    fallbackName = it.name
+                )
             )
         }
     }
     val filteredEntries = remember(searchQuery, entries, globalAudioEntries) {
-        val query = searchQuery.trim().lowercase()
-        if (query.isBlank()) entries
-        else globalAudioEntries
-            .filter { it.searchKey.contains(query) }
-            .map { it.entry }
+        val normalizedQuery = SearchEngine.normalize(searchQuery)
+        if (normalizedQuery.isBlank()) {
+            entries
+        } else {
+            val filteredIds = SearchEngine.filter(
+                items = globalAudioEntries.map { it.indexedItem },
+                query = searchQuery
+            ).asSequence().map { it.id }.toSet()
+            globalAudioEntries
+                .filter { it.indexedItem.id in filteredIds }
+                .map { it.entry }
+        }
+    }
+    LaunchedEffect(searchQuery, globalAudioEntries.size, filteredEntries.size) {
+        if (BuildConfig.DEBUG) {
+            val normalizedQuery = SearchEngine.normalize(searchQuery)
+            val itemsBefore = if (normalizedQuery.isBlank()) entries.size else globalAudioEntries.size
+            val itemsAfter = filteredEntries.size
+            Log.d(
+                "SEARCH_PROOF",
+                "mode=LIBRARY query='$normalizedQuery' playlist=- itemsBefore=$itemsBefore itemsAfter=$itemsAfter"
+            )
+        }
     }
 
     val bottomBarHeight = 56.dp
