@@ -132,3 +132,13 @@ dependencies {
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 }
+
+tasks.register("ci") {
+    group = "verification"
+    description = "Runs SPL CI checks: unit tests for labo+concert and assembleDebug."
+    dependsOn(
+        "testLaboDebugUnitTest",
+        "testConcertDebugUnitTest",
+        "assembleDebug"
+    )
+}

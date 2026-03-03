@@ -10,8 +10,8 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Rule
 import org.junit.Test
@@ -22,6 +22,17 @@ class QuickPlaylistsScreenTest {
 
     @get:Rule
     val composeRule = createAndroidComposeRule<ComponentActivity>()
+
+    private fun waitUntilTagAppears(tag: String, timeoutMillis: Long = 12_000L) {
+        composeRule.waitUntil(timeoutMillis) {
+            runCatching {
+                composeRule
+                    .onAllNodesWithTag(tag, useUnmergedTree = true)
+                    .fetchSemanticsNodes()
+                    .isNotEmpty()
+            }.getOrDefault(false)
+        }
+    }
 
     /**
      * Smoke test ultra-simple :
@@ -36,7 +47,8 @@ class QuickPlaylistsScreenTest {
             )
         }
 
-        composeRule.onNodeWithTag("smoke_tag").assertIsDisplayed()
+        waitUntilTagAppears("smoke_tag")
+        composeRule.onNodeWithTag("smoke_tag", useUnmergedTree = true).assertIsDisplayed()
     }
 
     /**
@@ -47,7 +59,6 @@ class QuickPlaylistsScreenTest {
      */
     @Test
     fun quickPlaylistsScreen_headerClick_doesNotCrash() {
-
         composeRule.setContent {
             QuickPlaylistsScreen(
                 onPlaySong = { _, _, _ -> },
@@ -60,6 +71,9 @@ class QuickPlaylistsScreenTest {
                 indexAll = emptyList()
             )
         }
+
+        waitUntilTagAppears("quick_playlists_root")
+        waitUntilTagAppears("quickplaylists_header")
 
         // IMPORTANT :
         // le tag existe 2 fois -> on clique le premier node réellement cliquable
