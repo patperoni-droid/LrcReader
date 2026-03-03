@@ -2,6 +2,8 @@ package com.patrick.lrcreader.core
 
 import android.content.Context
 import android.net.Uri
+import android.os.Build
+import android.provider.DocumentsContract
 import org.json.JSONArray
 
 object DjFolderPrefs {
@@ -56,6 +58,31 @@ object DjFolderPrefs {
         // sinon on retombe sur l’ancien champ
         val old = prefs.getString(KEY_URI, null)
         return old?.let { Uri.parse(it) }
+    }
+
+    /**
+     * URI à utiliser pour les écrans picker:
+     * - préfère un treeUri lisible si disponible
+     * - sinon garde l'URI stockée telle quelle (documentUri inclus)
+     */
+    fun getResolvedUriForPicker(context: Context): Uri? {
+        val raw = get(context) ?: return null
+        if (raw.scheme != "content") return raw
+
+        val isTree = isTreeUriCompat(raw)
+        if (isTree && hasReadableTreeAccess(context, raw)) return raw
+
+        val candidateTree = runCatching {
+            val authority = raw.authority ?: return@runCatching null
+            val docId = DocumentsContract.getDocumentId(raw)
+            DocumentsContract.buildTreeDocumentUri(authority, docId)
+        }.getOrNull()
+
+        return if (candidateTree != null && hasReadableTreeAccess(context, candidateTree)) {
+            candidateTree
+        } else {
+            raw
+        }
     }
 
     /**
@@ -126,5 +153,27 @@ object DjFolderPrefs {
         val arr = JSONArray()
         list.forEach { arr.put(it) }
         return arr
+    }
+
+    private fun isTreeUriCompat(uri: Uri): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            DocumentsContract.isTreeUri(uri)
+        } else {
+            (uri.path ?: "").contains("/tree/")
+        }
+    }
+
+    private fun hasReadableTreeAccess(context: Context, targetTreeUri: Uri): Boolean {
+        val targetAuthority = targetTreeUri.authority ?: return false
+        val targetTreeId = runCatching { DocumentsContract.getTreeDocumentId(targetTreeUri) }.getOrNull()
+            ?: return false
+
+        return context.contentResolver.persistedUriPermissions.any { p ->
+            if (!p.isReadPermission) return@any false
+            if (p.uri.authority != targetAuthority) return@any false
+            val permTreeId = runCatching { DocumentsContract.getTreeDocumentId(p.uri) }.getOrNull()
+                ?: return@any false
+            targetTreeId == permTreeId || targetTreeId.startsWith("$permTreeId/")
+        }
     }
 }

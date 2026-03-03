@@ -3,6 +3,7 @@ package com.patrick.lrcreader.ui
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.provider.DocumentsContract
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -89,6 +90,22 @@ fun FillerSoundScreen(
         }.getOrElse { u }
     }
 
+    fun openPickerDocumentFile(u: Uri?): DocumentFile? {
+        if (u == null) return null
+        return runCatching {
+            val isTree = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                DocumentsContract.isTreeUri(u)
+            } else {
+                (u.path ?: "").contains("/tree/")
+            }
+            if (isTree) {
+                DocumentFile.fromTreeUri(context, u)
+            } else {
+                DocumentFile.fromSingleUri(context, u)
+            }
+        }.getOrNull()
+    }
+
     // ✅ Racine Music persistée par Bibliothèque
     val libraryRoot = remember { BackupFolderPrefs.get(context) }
 
@@ -107,14 +124,6 @@ fun FillerSoundScreen(
             fillerUri = libraryRoot
             fillerName = libraryRoot.lastPathSegment ?: sDefaultMusic
         }
-    }
-
-    fun canOpenTree(u: Uri?): Boolean {
-        val tree = normalizeToTreeUri(u) ?: return false
-        return runCatching {
-            val doc = DocumentFile.fromTreeUri(context, tree)
-            doc != null && doc.exists() && doc.canRead()
-        }.getOrDefault(false)
     }
 
     // mapping courbe : curseur “doux” en bas
@@ -638,14 +647,14 @@ fun FillerSoundScreen(
     // ───────────────────────────────────────────────
     if (showFolderPicker) {
 
-        val djRootTree = normalizeToTreeUri(DjFolderPrefs.get(context))
+        val djRootForPicker = DjFolderPrefs.getResolvedUriForPicker(context)
 
-        val rootDoc: DocumentFile? = remember(showFolderPicker, djRootTree) {
-            djRootTree?.let { DocumentFile.fromTreeUri(context, it) }
+        val rootDoc: DocumentFile? = remember(showFolderPicker, djRootForPicker) {
+            openPickerDocumentFile(djRootForPicker)
         }
 
         LaunchedEffect(rootDoc) {
-            android.util.Log.e("DJ_PICKER", "djRootTree=$djRootTree")
+            android.util.Log.e("DJ_PICKER", "djRootForPicker=$djRootForPicker")
             android.util.Log.e("DJ_PICKER", "rootDoc=${rootDoc?.uri} name=${rootDoc?.name}")
             android.util.Log.e("DJ_PICKER", "childrenCount=${rootDoc?.listFiles()?.size ?: -1}")
         }
@@ -671,12 +680,25 @@ fun FillerSoundScreen(
             },
             title = { Text(stringResource(R.string.filler_picker_title), color = onBg) },
             text = {
-                if (djRootTree == null || rootDoc == null) {
-                    Text(
-                        stringResource(R.string.filler_dj_missing),
-                        color = sub,
-                        fontSize = 12.sp
-                    )
+                if (djRootForPicker == null || rootDoc == null) {
+                    Column {
+                        Text(
+                            stringResource(R.string.filler_dj_missing),
+                            color = sub,
+                            fontSize = 12.sp
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            text = stringResource(R.string.filler_choose_dj),
+                            color = accent,
+                            fontSize = 12.sp,
+                            modifier = Modifier.clickable {
+                                pendingSlotIndex = folderPickSlotIndex ?: pendingSlotIndex
+                                showFolderPicker = false
+                                showDjInfoDialog = true
+                            }
+                        )
+                    }
                 } else {
                     Column(Modifier.verticalScroll(rememberScrollState())) {
 

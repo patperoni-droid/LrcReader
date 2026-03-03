@@ -564,7 +564,6 @@ class MainActivity : AppCompatActivity() {
                 var playlistSessionWriteJob by remember { mutableStateOf<Job?>(null) }
                 var lastPlaylistTapStartedAtMs by remember { mutableStateOf(0L) }
                 var currentTrackGainDb by remember { mutableStateOf(DEFAULT_TRACK_GAIN_DB) }
-                var gainDragLastLogAtMs by remember { mutableLongStateOf(0L) }
                 var currentLyricsColor by remember { mutableStateOf(Color.White) }
                 var refreshKey by remember { mutableStateOf(0) }
 
@@ -1332,27 +1331,11 @@ class MainActivity : AppCompatActivity() {
                                         val safeDb = clampTrackDb(db)
                                         currentTrackGainDb = safeDb
                                         AudioEngine.applyTrackGainDb(safeDb)
-                                        if (BuildConfig.DEBUG) {
-                                            val now = SystemClock.elapsedRealtime()
-                                            if (now - gainDragLastLogAtMs >= 180L) {
-                                                gainDragLastLogAtMs = now
-                                                Log.d(
-                                                    "GAIN_PROOF",
-                                                    "drag db=$safeDb main=${Looper.getMainLooper().isCurrentThread}"
-                                                )
-                                            }
-                                        }
                                     },
                                     onTrackGainCommit = { db ->
                                         val safeDb = clampTrackDb(db)
                                         currentTrackGainDb = safeDb
                                         AudioEngine.applyTrackGainDb(safeDb)
-                                        if (BuildConfig.DEBUG) {
-                                            Log.d(
-                                                "GAIN_PROOF",
-                                                "commit db=$safeDb main=${Looper.getMainLooper().isCurrentThread}"
-                                            )
-                                        }
                                         currentPlayingUri?.let { uri -> TrackVolumePrefs.saveDb(ctx, uri, safeDb) }
                                     },
                                     tempo = currentTrackTempo,
