@@ -48,6 +48,7 @@ fun TrackMixScreen(
 
     currentTrackGainDb: Int,
     onTrackGainChange: (Int) -> Unit,
+    onTrackGainCommit: (Int) -> Unit,
 
     tempo: Float,
     onTempoChange: (Float) -> Unit,
@@ -215,7 +216,7 @@ fun TrackMixScreen(
                                     .toInt()
                                     .coerceIn(minDb, maxDb)
                                 displayGainDb = finalDb
-                                onTrackGainChange(finalDb)
+                                onTrackGainCommit(finalDb)
                             },
                             labelMin = "$minDb",
                             labelMax = "$maxDb"
@@ -773,6 +774,7 @@ fun TrackMixScreenPreview() {
     TrackMixScreen(
         currentTrackGainDb = -5,
         onTrackGainChange = {},
+        onTrackGainCommit = {},
         tempo = 1f,
         onTempoChange = {},
         pitchSemi = 0,

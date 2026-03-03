@@ -89,6 +89,7 @@ fun PlayerScreen(
     nextTrackTitle: String? = null,
     currentTrackGainDb: Int,
     onTrackGainChange: (Int) -> Unit,
+    onTrackGainCommit: (Int) -> Unit,
     tempo: Float,
     onTempoChange: (Float) -> Unit,
     pitchSemi: Int,
@@ -678,10 +679,8 @@ fun PlayerScreen(
                     modifier = Modifier.fillMaxSize(),
                     highlightColor = highlightColor,
                     currentTrackGainDb = currentTrackGainDb,
-                    onTrackGainChange = { newDb ->
-                        onTrackGainChange(newDb)
-                        AudioEngine.applyTrackGainDb(newDb)
-                    },
+                    onTrackGainChange = onTrackGainChange,
+                    onTrackGainCommit = onTrackGainCommit,
                     tempo = tempo,
                     onTempoChange = { newTempo ->
                         if (!isHqAvailable) {
