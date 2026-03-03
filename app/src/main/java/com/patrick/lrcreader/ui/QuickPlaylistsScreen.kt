@@ -334,6 +334,7 @@ fun QuickPlaylistsScreen(
         Column(
             modifier = modifier
                 .fillMaxSize()
+                .semantics { testTag = "quick_playlists_root" }
                 .padding(16.dp)
         ) {
             // ─── HEADER encadré + flèche + icônes ───────────────────────────────
@@ -519,7 +520,9 @@ fun QuickPlaylistsScreen(
                     }
                 } else {
                     LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .semantics { testTag = "quick_playlists_list" },
                         state = listState
                     ) {
                         itemsIndexed(songs, key = { _, item -> item }) { _, uriString ->

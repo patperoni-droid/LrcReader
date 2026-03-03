@@ -1,0 +1,38 @@
+name: SPL Tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Make scripts executable
+        run: chmod +x gradlew tests.sh
+
+      - name: Run Labo unit tests
+        run: ./gradlew :app:testLaboDebugUnitTest
+
+      - name: Run Concert unit tests
+        run: ./gradlew :app:testConcertDebugUnitTest
+
+      - name: Assemble debug
+        run: ./gradlew assembleDebug
