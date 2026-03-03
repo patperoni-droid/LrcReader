@@ -16,10 +16,13 @@ object PlaybackRouter {
     fun resolve(uri: String, playlist: String?): Target {
         val clean = uri.trim()
         return when {
-            clean.startsWith("prompter://") ->
+            isGroupHeader(clean) ->
+                Target.Unknown(clean)
+
+            isPrompterItem(clean) ->
                 Target.Prompter(clean.removePrefix("prompter://"))
 
-            clean.isNotBlank() ->
+            isPlayableAudioItem(clean) ->
                 Target.Audio(clean, playlist)
 
             else ->
