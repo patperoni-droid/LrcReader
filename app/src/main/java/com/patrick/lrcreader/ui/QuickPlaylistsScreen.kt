@@ -799,24 +799,6 @@ fun QuickPlaylistsScreen(
                                             maxLines = 1,
                                             modifier = Modifier.weight(1f)
                                         )
-                                        Box(
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(999.dp))
-                                                .background(badgeBg)
-                                                .border(
-                                                    width = 1.dp,
-                                                    color = badgeBorder,
-                                                    shape = RoundedCornerShape(999.dp)
-                                                )
-                                                .padding(horizontal = 8.dp, vertical = 2.dp)
-                                        ) {
-                                            Text(
-                                                text = "GROUPE",
-                                                color = headerMuted,
-                                                fontSize = 10.sp,
-                                                fontWeight = FontWeight.Medium
-                                            )
-                                        }
                                         Text(
                                             text = groupTrackCount.toString(),
                                             color = headerMuted,
