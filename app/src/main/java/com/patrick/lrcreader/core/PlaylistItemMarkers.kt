@@ -9,6 +9,8 @@ private const val GROUP_MARKER_PREFIX = "__SPL_GROUP__|v1|"
 private const val GROUP_MARKER_TOKEN = "__SPL_GROUP__"
 private const val GROUP_MARKER_VERSION = "v1"
 private const val GROUP_DEFAULT_TITLE = "Group"
+const val GROUP_END_PREFIX = "__SPL_GROUP_END__|v1|"
+private const val GROUP_END_TOKEN = "__SPL_GROUP_END__"
 
 private data class GroupMarkerParts(
     val uuid: String,
@@ -16,6 +18,8 @@ private data class GroupMarkerParts(
 )
 
 fun isGroupHeader(item: String): Boolean = parseGroupMarker(item) != null
+
+fun isGroupEnd(item: String): Boolean = parseGroupEndUuid(item) != null
 
 fun buildGroupHeader(title: String): String {
     val cleanTitle = title.trim().ifBlank { GROUP_DEFAULT_TITLE }
@@ -37,9 +41,20 @@ fun renameGroupHeader(item: String, newTitle: String): String {
     return "$GROUP_MARKER_PREFIX${parts.uuid}|$encodedTitle"
 }
 
+fun getGroupUuid(item: String): String? {
+    parseGroupMarker(item)?.let { return it.uuid }
+    return parseGroupEndUuid(item)
+}
+
+fun buildGroupEnd(uuid: String): String {
+    val cleanUuid = uuid.trim().ifBlank { UUID.randomUUID().toString() }
+    return "$GROUP_END_PREFIX$cleanUuid"
+}
+
 fun isPrompterItem(item: String): Boolean = item.startsWith("prompter://")
 
-fun isVirtualPlaylistItem(item: String): Boolean = isGroupHeader(item) || isPrompterItem(item)
+fun isVirtualPlaylistItem(item: String): Boolean =
+    isGroupHeader(item) || isGroupEnd(item) || isPrompterItem(item)
 
 fun isPlayableAudioItem(item: String): Boolean = item.isNotBlank() && !isVirtualPlaylistItem(item)
 
@@ -55,4 +70,14 @@ private fun parseGroupMarker(item: String): GroupMarkerParts? {
         uuid = uuid,
         encodedTitle = encodedTitle
     )
+}
+
+private fun parseGroupEndUuid(item: String): String? {
+    if (!item.startsWith(GROUP_END_PREFIX)) return null
+    val parts = item.split('|', limit = 3)
+    if (parts.size != 3) return null
+    if (parts[0] != GROUP_END_TOKEN || parts[1] != GROUP_MARKER_VERSION) return null
+    val uuid = parts[2].trim()
+    if (uuid.isEmpty()) return null
+    return uuid
 }
