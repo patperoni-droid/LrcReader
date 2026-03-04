@@ -445,21 +445,57 @@ fun QuickPlaylistsScreen(
                 }
 
                 if (dragOffsetPx >= rowHeightPx / 2f) {
-                    val next = findNextReorderIndex(songs, currentIndex, +1)
-                    if (next != null) {
-                        songs.swap(currentIndex, next)
-                        internalSelected?.let { pl ->
-                            PlaylistRepository.updatePlayListOrder(pl, songs.toList())
+                    if (isGroupHeader(current)) {
+                        val range = findGroupBlockRange(songs, currentIndex)
+                        val next = if (range.isEmpty()) null else findNextReorderIndex(songs, range.last, +1)
+                        if (next != null) {
+                            val nextItem = songs[next]
+                            val newStart = if (isGroupHeader(nextItem)) {
+                                val targetRange = findGroupBlockRange(songs, next)
+                                if (targetRange.isEmpty()) next + 1 else targetRange.last + 1
+                            } else {
+                                next + 1
+                            }
+                            moveBlock(songs, range, newStart)
+                            internalSelected?.let { pl ->
+                                PlaylistRepository.updatePlayListOrder(pl, songs.toList())
+                            }
+                        }
+                    } else {
+                        val next = findNextReorderIndex(songs, currentIndex, +1)
+                        if (next != null) {
+                            songs.swap(currentIndex, next)
+                            internalSelected?.let { pl ->
+                                PlaylistRepository.updatePlayListOrder(pl, songs.toList())
+                            }
                         }
                     }
                     dragOffsetPx = 0f
                 }
                 if (dragOffsetPx <= -rowHeightPx / 2f) {
-                    val prev = findNextReorderIndex(songs, currentIndex, -1)
-                    if (prev != null) {
-                        songs.swap(currentIndex, prev)
-                        internalSelected?.let { pl ->
-                            PlaylistRepository.updatePlayListOrder(pl, songs.toList())
+                    if (isGroupHeader(current)) {
+                        val range = findGroupBlockRange(songs, currentIndex)
+                        val prev = if (range.isEmpty()) null else findNextReorderIndex(songs, range.first, -1)
+                        if (prev != null) {
+                            val prevItem = songs[prev]
+                            val newStart = if (isGroupHeader(prevItem)) {
+                                val targetRange = findGroupBlockRange(songs, prev)
+                                if (targetRange.isEmpty()) prev else targetRange.first
+                            } else {
+                                prev
+                            }
+                            moveBlock(songs, range, newStart)
+                            internalSelected?.let { pl ->
+                                PlaylistRepository.updatePlayListOrder(pl, songs.toList())
+                            }
+                        }
+                    } else {
+                        val prev = findNextReorderIndex(songs, currentIndex, -1)
+                        if (prev != null) {
+                            songs.swap(currentIndex, prev)
+                            internalSelected?.let { pl ->
+                                PlaylistRepository.updatePlayListOrder(pl, songs.toList())
+                            }
                         }
                     }
                     dragOffsetPx = 0f
@@ -1608,6 +1644,29 @@ internal fun findMatchingGroupEndIndex(items: List<String>, headerIndex: Int): I
         if (isGroupEnd(item) && getGroupUuid(item) == uuid) return cursor
     }
     return null
+}
+
+internal fun findGroupBlockRange(items: List<String>, headerIndex: Int): IntRange {
+    if (headerIndex !in items.indices) return IntRange.EMPTY
+    if (!isGroupHeader(items[headerIndex])) return IntRange.EMPTY
+    findMatchingGroupEndIndex(items, headerIndex)?.let { endIndex ->
+        return headerIndex..endIndex
+    }
+    val fallback = findGroupRange(items, headerIndex)
+    return if (fallback.isEmpty()) headerIndex..headerIndex else fallback
+}
+
+internal fun <T> moveBlock(items: MutableList<T>, range: IntRange, newStartIndex: Int) {
+    if (range.first !in items.indices || range.last !in items.indices) return
+    if (range.first > range.last) return
+    val block = items.subList(range.first, range.last + 1).toList()
+    repeat(block.size) { items.removeAt(range.first) }
+    val adjustedStart = if (newStartIndex > range.first) {
+        newStartIndex - block.size
+    } else {
+        newStartIndex
+    }.coerceIn(0, items.size)
+    items.addAll(adjustedStart, block)
 }
 
 internal fun moveItemIntoGroup(
