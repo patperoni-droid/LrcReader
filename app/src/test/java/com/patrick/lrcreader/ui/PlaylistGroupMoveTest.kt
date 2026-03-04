@@ -50,4 +50,32 @@ class PlaylistGroupMoveTest {
 
         assertEquals(before, items)
     }
+
+    @Test
+    fun moveGroupAsBlock_keepsStartContentEndContiguous() {
+        val headerA = buildGroupHeader("A")
+        val endA = buildGroupEnd(getGroupUuid(headerA)!!)
+        val headerB = buildGroupHeader("B")
+        val endB = buildGroupEnd(getGroupUuid(headerB)!!)
+
+        val items = mutableListOf(headerA, "t1", "t2", endA, "x1", "x2", headerB, "y1", endB)
+        val rangeA = findGroupBlockRange(items, 0)
+        moveBlock(items, rangeA, 6)
+
+        assertEquals(listOf("x1", "x2", headerA, "t1", "t2", endA, headerB, "y1", endB), items)
+    }
+
+    @Test
+    fun moveGroupBAboveGroupA_swapsWholeBlocks() {
+        val headerA = buildGroupHeader("A")
+        val endA = buildGroupEnd(getGroupUuid(headerA)!!)
+        val headerB = buildGroupHeader("B")
+        val endB = buildGroupEnd(getGroupUuid(headerB)!!)
+
+        val items = mutableListOf(headerA, "t1", "t2", endA, "x1", "x2", headerB, "y1", endB)
+        val rangeB = findGroupBlockRange(items, 6)
+        moveBlock(items, rangeB, 0)
+
+        assertEquals(listOf(headerB, "y1", endB, headerA, "t1", "t2", endA, "x1", "x2"), items)
+    }
 }
