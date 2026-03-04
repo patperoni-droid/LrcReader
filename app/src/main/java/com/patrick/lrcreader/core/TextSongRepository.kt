@@ -32,8 +32,26 @@ object TextSongRepository {
         val content: String
     )
 
+    data class TextSong(
+        val id: String,
+        val uri: String,
+        val title: String,
+        val content: String
+    )
+
     // Cache en mémoire
     private var cache: MutableMap<String, TextSongData>? = null
+    @Volatile
+    private var inMemoryOnlyForTests: Boolean = false
+
+    /**
+     * Test hook JVM: désactive totalement les accès disque / prefs.
+     * Ne pas utiliser en production.
+     */
+    internal fun setInMemoryOnlyForTests(enabled: Boolean) {
+        inMemoryOnlyForTests = enabled
+        if (enabled && cache == null) cache = mutableMapOf()
+    }
 
     fun ensureInitialized(context: Context): Boolean {
         return ConfigJsonAtomicFileIo.ensureInitialized(
@@ -46,6 +64,10 @@ object TextSongRepository {
 
     private fun ensureLoaded(context: Context) {
         if (cache != null) return
+        if (inMemoryOnlyForTests) {
+            cache = mutableMapOf()
+            return
+        }
 
         val fromJson = readPortableJson(context)
         val fromPrefs = readLegacyPrefs(context)
@@ -58,6 +80,7 @@ object TextSongRepository {
     }
 
     private fun persist(context: Context) {
+        if (inMemoryOnlyForTests) return
         val map = cache ?: return
         persistLegacyPrefs(context, map)
         persistPortableJson(context, map)
@@ -196,6 +219,32 @@ object TextSongRepository {
         return cache!![id]
     }
 
+    /** Liste complète triée pour alimenter un catalogue (ex: Bibliothèque). */
+    fun listAll(context: Context): List<TextSong> {
+        ensureLoaded(context)
+        return cache!!
+            .map { (id, data) ->
+                TextSong(
+                    id = id,
+                    uri = resolvePrompterUri(id),
+                    title = data.title,
+                    content = data.content
+                )
+            }
+            .sortedWith(
+                compareBy<TextSong> { it.title.lowercase() }
+                    .thenBy { it.title }
+                    .thenBy { it.id }
+            )
+    }
+
+    fun resolvePrompterUri(id: String): String = "prompter://$id"
+
+    fun getTitle(context: Context, uriOrId: String): String? {
+        val id = extractId(uriOrId) ?: return null
+        return get(context, id)?.title
+    }
+
     /** Met à jour un titre texte existant. */
     fun update(context: Context, id: String, title: String, content: String) {
         ensureLoaded(context)
@@ -227,5 +276,11 @@ object TextSongRepository {
         ensureLoaded(context)
         cache!![id] = TextSongData(title.trim(), content.trim())
         persist(context)
+    }
+
+    private fun extractId(uriOrId: String): String? {
+        val clean = uriOrId.trim()
+        if (clean.isBlank()) return null
+        return if (clean.startsWith("prompter://")) clean.removePrefix("prompter://").ifBlank { null } else clean
     }
 }
