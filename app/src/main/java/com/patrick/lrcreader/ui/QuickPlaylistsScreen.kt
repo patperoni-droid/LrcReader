@@ -714,7 +714,7 @@ fun QuickPlaylistsScreen(
                             val uriString = row.item
 
                             if (isGroupHeader(uriString)) {
-                                val groupTitle = getGroupTitle(uriString)
+                                val groupTitle = getGroupTitle(uriString).uppercase()
                                 val headerKey = uriString
                                 val isDraggingThis = draggingUri == uriString
                                 val isCollapsed = collapsedGroupIds.contains(headerKey)
@@ -960,8 +960,8 @@ fun QuickPlaylistsScreen(
                             val isInsideGroup =
                                 isPlayableAudioItem(uriString) && isItemInsideGroup(songs, itemIndex)
                             val rowShape = RoundedCornerShape(12.dp)
-                            val groupTint = Color(0xFF0A6C97).copy(alpha = 0.14f)
-                            val groupAccent = Color(0xFF0A6C97).copy(alpha = 0.55f)
+                            val groupTint = Color(0xFF0A6C97).copy(alpha = 0.38f)
+                            val groupAccent = Color(0xFF0A6C97).copy(alpha = 0.95f)
                             val rowBaseBackground = if (isDraggingThis)
                                 Color(0x33FFFFFF)
                             else if (isForcedNext)
