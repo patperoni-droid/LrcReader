@@ -46,6 +46,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -539,6 +540,7 @@ class MainActivity : AppCompatActivity() {
                 var selectedTab by remember {
                     mutableStateOf<BottomTab>(initialTabKey?.let { tabFromKey(it) } ?: BottomTab.Home)
                 }
+                val tabStateHolder = rememberSaveableStateHolder()
 
                 var closeMixSignal by remember { mutableIntStateOf(0) }
                 var sessionRestored by remember { mutableStateOf(false) }
@@ -1295,73 +1297,76 @@ class MainActivity : AppCompatActivity() {
                                 onClose = { textPrompterId = null }
                             )
                         } ?: run {
-                            when (selectedTab) {
+                            tabStateHolder.SaveableStateProvider(
+                                key = "tab_${tabKeyOf(selectedTab)}"
+                            ) {
+                                when (selectedTab) {
 
-                                is BottomTab.Home -> MixerHomePreviewScreen(
-                                    modifier = contentModifier,
-                                    onBack = {},
-                                    onOpenPlayer = {
-                                        setTabAndPersist(BottomTab.Player, reason = "homeOpenPlayer")
-                                    },
-                                    onOpenFondSonore = { isFillerSettingsOpen = true },
-                                    onOpenDj = {
-                                        setTabAndPersist(BottomTab.Dj, reason = "homeOpenDj")
-                                    },
-                                    onOpenTuner = {
-                                        setTabAndPersist(BottomTab.Tuner, reason = "homeOpenTuner")
-                                    }
-                                )
+                                    is BottomTab.Home -> MixerHomePreviewScreen(
+                                        modifier = contentModifier,
+                                        onBack = {},
+                                        onOpenPlayer = {
+                                            setTabAndPersist(BottomTab.Player, reason = "homeOpenPlayer")
+                                        },
+                                        onOpenFondSonore = { isFillerSettingsOpen = true },
+                                        onOpenDj = {
+                                            setTabAndPersist(BottomTab.Dj, reason = "homeOpenDj")
+                                        },
+                                        onOpenTuner = {
+                                            setTabAndPersist(BottomTab.Tuner, reason = "homeOpenTuner")
+                                        }
+                                    )
 
-                                is BottomTab.Player -> PlayerScreen(
-                                    modifier = contentModifier,
-                                    exoPlayer = exoPlayer,
-                                    closeMixSignal = closeMixSignal,
-                                    isPlaying = isPlaying,
-                                    onIsPlayingChange = { shouldPlay ->
-                                        isPlaying = shouldPlay
-                                        if (shouldPlay) exoPlayer.play() else exoPlayer.pause()
-                                    },
-                                    parsedLines = parsedLines,
-                                    lyricsLoading = lyricsLoading,
-                                    onParsedLinesChange = { parsedLines = it },
-                                    highlightColor = currentLyricsColor,
-                                    currentTrackUri = currentPlayingUri,
-                                    nextTrackTitle = nextTrack?.title,
-                                    currentTrackGainDb = currentTrackGainDb,
-                                    onTrackGainChange = { db ->
-                                        val safeDb = clampTrackDb(db)
-                                        currentTrackGainDb = safeDb
-                                        AudioEngine.applyTrackGainDb(safeDb)
-                                    },
-                                    onTrackGainCommit = { db ->
-                                        val safeDb = clampTrackDb(db)
-                                        currentTrackGainDb = safeDb
-                                        AudioEngine.applyTrackGainDb(safeDb)
-                                        currentPlayingUri?.let { uri -> TrackVolumePrefs.saveDb(ctx, uri, safeDb) }
-                                    },
-                                    tempo = currentTrackTempo,
-                                    onTempoChange = { newTempo ->
-                                        currentTrackTempo = newTempo
-                                        applyTempoAndPitchToPlayer(currentTrackTempo, currentTrackPitchSemi)
-                                        currentPlayingUri?.let { uri -> TrackTempoPrefs.saveTempo(ctx, uri, newTempo) }
-                                    },
-                                    pitchSemi = currentTrackPitchSemi,
-                                    onPitchSemiChange = { newSemi ->
-                                        val clamped = newSemi.coerceIn(-6, 6)
-                                        currentTrackPitchSemi = clamped
-                                        applyTempoAndPitchToPlayer(currentTrackTempo, currentTrackPitchSemi)
-                                        currentPlayingUri?.let { uri -> TrackPitchPrefs.saveSemi(ctx, uri, clamped) }
-                                    },
-                                    onRequestShowPlaylist = { selectedTab = BottomTab.QuickPlaylists },
-                                    getPositionMs = { exoPlayer.currentPosition },
-                                    getDurationMs = { exoPlayer.duration },
-                                    seekToMs = { ms -> exoPlayer.seekTo(ms) }
-                                )
+                                    is BottomTab.Player -> PlayerScreen(
+                                        modifier = contentModifier,
+                                        exoPlayer = exoPlayer,
+                                        closeMixSignal = closeMixSignal,
+                                        isPlaying = isPlaying,
+                                        onIsPlayingChange = { shouldPlay ->
+                                            isPlaying = shouldPlay
+                                            if (shouldPlay) exoPlayer.play() else exoPlayer.pause()
+                                        },
+                                        parsedLines = parsedLines,
+                                        lyricsLoading = lyricsLoading,
+                                        onParsedLinesChange = { parsedLines = it },
+                                        highlightColor = currentLyricsColor,
+                                        currentTrackUri = currentPlayingUri,
+                                        nextTrackTitle = nextTrack?.title,
+                                        currentTrackGainDb = currentTrackGainDb,
+                                        onTrackGainChange = { db ->
+                                            val safeDb = clampTrackDb(db)
+                                            currentTrackGainDb = safeDb
+                                            AudioEngine.applyTrackGainDb(safeDb)
+                                        },
+                                        onTrackGainCommit = { db ->
+                                            val safeDb = clampTrackDb(db)
+                                            currentTrackGainDb = safeDb
+                                            AudioEngine.applyTrackGainDb(safeDb)
+                                            currentPlayingUri?.let { uri -> TrackVolumePrefs.saveDb(ctx, uri, safeDb) }
+                                        },
+                                        tempo = currentTrackTempo,
+                                        onTempoChange = { newTempo ->
+                                            currentTrackTempo = newTempo
+                                            applyTempoAndPitchToPlayer(currentTrackTempo, currentTrackPitchSemi)
+                                            currentPlayingUri?.let { uri -> TrackTempoPrefs.saveTempo(ctx, uri, newTempo) }
+                                        },
+                                        pitchSemi = currentTrackPitchSemi,
+                                        onPitchSemiChange = { newSemi ->
+                                            val clamped = newSemi.coerceIn(-6, 6)
+                                            currentTrackPitchSemi = clamped
+                                            applyTempoAndPitchToPlayer(currentTrackTempo, currentTrackPitchSemi)
+                                            currentPlayingUri?.let { uri -> TrackPitchPrefs.saveSemi(ctx, uri, clamped) }
+                                        },
+                                        onRequestShowPlaylist = { selectedTab = BottomTab.QuickPlaylists },
+                                        getPositionMs = { exoPlayer.currentPosition },
+                                        getDurationMs = { exoPlayer.duration },
+                                        seekToMs = { ms -> exoPlayer.seekTo(ms) }
+                                    )
 
-                                is BottomTab.QuickPlaylists -> QuickPlaylistsScreen(
-                                    modifier = contentModifier,
-                                    onPlaySong = { uri, playlistName, color ->
-                                        stopChainPlayback()
+                                    is BottomTab.QuickPlaylists -> QuickPlaylistsScreen(
+                                        modifier = contentModifier,
+                                        onPlaySong = { uri, playlistName, color ->
+                                            stopChainPlayback()
 
                                         when (val target = PlaybackRouter.resolve(uri, playlistName)) {
 
@@ -1432,52 +1437,53 @@ class MainActivity : AppCompatActivity() {
                                         PlaybackCoordinator.clearNextTrack(reason = "ui")
                                     },
                                     onConsumeOpenPrompterSignal = { openPrompterSignal = 0 },
-                                    onRequestShowPlayer = {
-                                        setTabAndPersist(BottomTab.Player, reason = "quickPlaylistShowPlayer")
+                                        onRequestShowPlayer = {
+                                            setTabAndPersist(BottomTab.Player, reason = "quickPlaylistShowPlayer")
+                                        }
+                                    )
+
+                                    is BottomTab.Library -> LibraryScreen(
+                                        modifier = contentModifier,
+                                        onPlayFromLibrary = { uriString ->
+                                            stopChainPlayback()
+                                            playWithCrossfade(uriString, null)
+                                            currentPlayingUri = uriString
+                                            currentLyricsColor = Color.White
+                                            setTabAndPersist(BottomTab.Player, reason = "libraryPlay")
+                                        }
+                                    )
+
+                                    is BottomTab.AllPlaylists -> AllPlaylistsScreen(
+                                        modifier = contentModifier,
+                                        onPlaylistClick = { name ->
+                                            setOpenedPlaylistAndPersist(name, reason = "allPlaylistsOpen")
+                                        }
+                                    )
+
+                                    is BottomTab.Dj -> DjScreen(modifier = contentModifier, context = ctx)
+
+                                    is BottomTab.More -> MoreScreen(
+                                        modifier = contentModifier,
+                                        context = ctx,
+                                        onAfterImport = { refreshKey++ },
+                                        onOpenTuner = {
+                                            setTabAndPersist(BottomTab.Tuner, reason = "moreOpenTuner")
+                                        }
+                                    )
+
+                                    is BottomTab.Tuner -> TunerScreen(
+                                        modifier = contentModifier,
+                                        onClose = {
+                                            setTabAndPersist(BottomTab.Home, reason = "tunerClose")
+                                        }
+                                    )
+
+                                    else -> Box(
+                                        modifier = contentModifier.fillMaxSize(),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(stringResource(R.string.main_unknown_screen), color = Color.White)
                                     }
-                                )
-
-                                is BottomTab.Library -> LibraryScreen(
-                                    modifier = contentModifier,
-                                    onPlayFromLibrary = { uriString ->
-                                        stopChainPlayback()
-                                        playWithCrossfade(uriString, null)
-                                        currentPlayingUri = uriString
-                                        currentLyricsColor = Color.White
-                                        setTabAndPersist(BottomTab.Player, reason = "libraryPlay")
-                                    }
-                                )
-
-                                is BottomTab.AllPlaylists -> AllPlaylistsScreen(
-                                    modifier = contentModifier,
-                                    onPlaylistClick = { name ->
-                                        setOpenedPlaylistAndPersist(name, reason = "allPlaylistsOpen")
-                                    }
-                                )
-
-                                is BottomTab.Dj -> DjScreen(modifier = contentModifier, context = ctx)
-
-                                is BottomTab.More -> MoreScreen(
-                                    modifier = contentModifier,
-                                    context = ctx,
-                                    onAfterImport = { refreshKey++ },
-                                    onOpenTuner = {
-                                        setTabAndPersist(BottomTab.Tuner, reason = "moreOpenTuner")
-                                    }
-                                )
-
-                                is BottomTab.Tuner -> TunerScreen(
-                                    modifier = contentModifier,
-                                    onClose = {
-                                        setTabAndPersist(BottomTab.Home, reason = "tunerClose")
-                                    }
-                                )
-
-                                else -> Box(
-                                    modifier = contentModifier.fillMaxSize(),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(stringResource(R.string.main_unknown_screen), color = Color.White)
                                 }
                             }
                         }
