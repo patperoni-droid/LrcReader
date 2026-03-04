@@ -31,6 +31,7 @@ import com.patrick.lrcreader.core.DjFolderPrefs
 import com.patrick.lrcreader.core.ImportAudioManager
 import com.patrick.lrcreader.core.LibraryIndexCache
 import com.patrick.lrcreader.core.PlaylistRepository
+import com.patrick.lrcreader.core.TextSongRepository
 import com.patrick.lrcreader.core.config.TitleAliasesStore
 import com.patrick.lrcreader.core.search.SearchEngine
 import com.patrick.lrcreader.exo.BuildConfig
@@ -43,6 +44,16 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import com.patrick.lrcreader.core.StorageModePrefs
 import java.io.File
+
+private val PROMPTER_FOLDER_URI: Uri = Uri.parse("spl-prompter://folder")
+
+private fun isPrompterFolderUri(uri: Uri?): Boolean = uri?.scheme == "spl-prompter"
+
+private fun extractPrompterId(uri: Uri): String? {
+    val raw = uri.toString()
+    if (!raw.startsWith("prompter://")) return null
+    return raw.removePrefix("prompter://").ifBlank { null }
+}
 
 @Composable
 fun LibraryScreen(
@@ -79,6 +90,7 @@ fun LibraryScreen(
     val sDeleteAudioLrcFound = stringResource(R.string.library_delete_audio_lrc_found)
     val sDeleteAudioPlusLrc = stringResource(R.string.library_delete_audio_plus_lrc)
     val sDeleteAudioHintLyrics = stringResource(R.string.library_delete_audio_hint_lyrics)
+    val sPrompterFolder = stringResource(R.string.main_menu_prompter)
 
     // State
     var showLrcEditor by remember { mutableStateOf(false) }
@@ -112,17 +124,51 @@ fun LibraryScreen(
     var indexAll by remember { mutableStateOf<List<LibraryIndexCache.CachedEntry>>(emptyList()) }
     var importTargetFolderUri by remember { mutableStateOf<Uri?>(null) }
 
+    fun buildPrompterEntries(): List<LibraryEntry> {
+        return TextSongRepository.listAll(context).map { song ->
+            LibraryEntry(
+                uri = Uri.parse(song.uri),
+                name = song.title.ifBlank { "Prompter" },
+                isDirectory = false
+            )
+        }
+    }
+
+    fun decorateEntriesForFolder(folderUri: Uri, source: List<LibraryEntry>): List<LibraryEntry> {
+        if (isPrompterFolderUri(folderUri)) {
+            return buildPrompterEntries()
+        }
+
+        val root = backend.getRootUri()
+        val isRootFolder = root != null && folderUri.toString() == root.toString()
+        if (!isRootFolder) return source
+
+        val alreadyHasPrompter = source.any { it.isDirectory && isPrompterFolderUri(it.uri) }
+        if (alreadyHasPrompter) return source
+
+        return (source + LibraryEntry(PROMPTER_FOLDER_URI, sPrompterFolder, isDirectory = true))
+            .sortedWith(
+                compareByDescending<LibraryEntry> { it.isDirectory }
+                    .thenBy { it.name.lowercase() }
+            )
+    }
+
     fun buildEntriesForFolder(folderUri: Uri, useCache: Boolean = true): List<LibraryEntry> {
         if (useCache) {
             LibraryFolderCache.get(folderUri)?.let { return it }
         }
-        val fresh = backend.listFolder(
-            folderUri = folderUri,
-            indexAll = indexAll,
-            djExcludedReason = sDjExcludedReason
-        )
-        LibraryFolderCache.put(folderUri, fresh)
-        return fresh
+        val fresh = if (isPrompterFolderUri(folderUri)) {
+            emptyList()
+        } else {
+            backend.listFolder(
+                folderUri = folderUri,
+                indexAll = indexAll,
+                djExcludedReason = sDjExcludedReason
+            )
+        }
+        val decorated = decorateEntriesForFolder(folderUri, fresh)
+        LibraryFolderCache.put(folderUri, decorated)
+        return decorated
     }
 
     suspend fun runGlobalScan(root: Uri, folderToShow: Uri) {
@@ -132,10 +178,17 @@ fun LibraryScreen(
             folderToShow = folderToShow,
             onIndexAll = { indexAll = it },
             onEntries = {
-                entries = it
-                LibraryFolderCache.put(folderToShow, it)
+                val decorated = decorateEntriesForFolder(folderToShow, it)
+                entries = decorated
+                LibraryFolderCache.put(folderToShow, decorated)
             }
         )
+    }
+
+    fun removePrompterFromAllPlaylists(uriString: String) {
+        PlaylistRepository.getPlaylists().forEach { playlist ->
+            PlaylistRepository.removeSongFromPlaylist(playlist, uriString)
+        }
     }
 
     // dialogs state
@@ -153,6 +206,10 @@ fun LibraryScreen(
 
     var renameTarget by remember { mutableStateOf<LibraryEntry?>(null) }
     var renameText by remember { mutableStateOf("") }
+    var editPrompterId by remember { mutableStateOf<String?>(null) }
+    var editPrompterTitle by remember { mutableStateOf("") }
+    var editPrompterContent by remember { mutableStateOf("") }
+    var showEditPrompterDialog by remember { mutableStateOf(false) }
 
     // search
     var searchQuery by remember { mutableStateOf("") }
@@ -175,10 +232,32 @@ fun LibraryScreen(
             )
         }
     }
-    val filteredEntries = remember(searchQuery, entries, globalAudioEntries) {
+    val filteredEntries = remember(searchQuery, entries, globalAudioEntries, currentFolderUri) {
         val normalizedQuery = SearchEngine.normalize(searchQuery)
         if (normalizedQuery.isBlank()) {
             entries
+        } else if (isPrompterFolderUri(currentFolderUri)) {
+            val indexed = entries
+                .asSequence()
+                .filter { !it.isDirectory && it.uri.toString().startsWith("prompter://") }
+                .map { entry ->
+                    SearchableLibraryEntry(
+                        entry = entry,
+                        indexedItem = SearchEngine.index(
+                            id = entry.uri.toString(),
+                            displayTitle = entry.name,
+                            fallbackName = entry.name
+                        )
+                    )
+                }
+                .toList()
+            val filteredIds = SearchEngine.filter(
+                items = indexed.map { it.indexedItem },
+                query = searchQuery
+            ).asSequence().map { it.id }.toSet()
+            indexed
+                .filter { it.indexedItem.id in filteredIds }
+                .map { it.entry }
         } else {
             val filteredIds = SearchEngine.filter(
                 items = globalAudioEntries.map { it.indexedItem },
@@ -189,10 +268,14 @@ fun LibraryScreen(
                 .map { it.entry }
         }
     }
-    LaunchedEffect(searchQuery, globalAudioEntries.size, filteredEntries.size) {
+    LaunchedEffect(searchQuery, globalAudioEntries.size, filteredEntries.size, currentFolderUri) {
         if (BuildConfig.DEBUG) {
             val normalizedQuery = SearchEngine.normalize(searchQuery)
-            val itemsBefore = if (normalizedQuery.isBlank()) entries.size else globalAudioEntries.size
+            val itemsBefore = when {
+                normalizedQuery.isBlank() -> entries.size
+                isPrompterFolderUri(currentFolderUri) -> entries.size
+                else -> globalAudioEntries.size
+            }
             val itemsAfter = filteredEntries.size
             Log.d(
                 "SEARCH_PROOF",
@@ -632,7 +715,9 @@ fun LibraryScreen(
                         val rootNow = backend.getRootUri() ?: return@launch
                         startLoading(sScanning, determinate = false)
                         try {
-                            val folderToShow = currentFolderUri ?: rootNow
+                            val folderToShow = currentFolderUri
+                                ?.takeUnless { isPrompterFolderUri(it) }
+                                ?: rootNow
                             runGlobalScan(
                                 root = rootNow,
                                 folderToShow = folderToShow
@@ -664,7 +749,7 @@ fun LibraryScreen(
                 },
 
                 onImportBackingTracks = {
-                    importTargetFolderUri = currentFolderUri
+                    importTargetFolderUri = currentFolderUri?.takeUnless { isPrompterFolderUri(it) }
                     importAudioLauncher.launch(arrayOf("audio/*"))
                 }
             )
@@ -762,16 +847,38 @@ fun LibraryScreen(
                             },
 
                             onRenameOne = { entry ->
-                                renameTarget = entry
-                                renameText = TitleAliasesStore.getTitleForTrack(context, entry.uri.toString())
-                                    ?: PlaylistRepository.getAnyCustomTitleForUri(entry.uri.toString())
-                                    ?: entry.name
+                                val prompterId = extractPrompterId(entry.uri)
+                                if (prompterId != null) {
+                                    val textSong = TextSongRepository.get(context, prompterId)
+                                    if (textSong != null) {
+                                        editPrompterId = prompterId
+                                        editPrompterTitle = textSong.title
+                                        editPrompterContent = textSong.content
+                                        showEditPrompterDialog = true
+                                    }
+                                } else {
+                                    renameTarget = entry
+                                    renameText = TitleAliasesStore.getTitleForTrack(context, entry.uri.toString())
+                                        ?: PlaylistRepository.getAnyCustomTitleForUri(entry.uri.toString())
+                                        ?: entry.name
+                                }
                             },
 
                             onDeleteOne = { uri ->
-                                pendingDeleteUri = uri
-                                pendingDeleteLrcUri = findAssociatedLrcUri(uri)
-                                showDeleteConfirmDialog = true
+                                val prompterId = extractPrompterId(uri)
+                                if (prompterId != null) {
+                                    TextSongRepository.delete(context, prompterId)
+                                    removePrompterFromAllPlaylists(uri.toString())
+                                    selectedSongs = selectedSongs - uri
+                                    val folder = currentFolderUri
+                                    if (folder != null) {
+                                        entries = buildEntriesForFolder(folder, useCache = false)
+                                    }
+                                } else {
+                                    pendingDeleteUri = uri
+                                    pendingDeleteLrcUri = findAssociatedLrcUri(uri)
+                                    showDeleteConfirmDialog = true
+                                }
                             }
                         )
                     }
@@ -951,6 +1058,69 @@ fun LibraryScreen(
                 enabled = !isLoading,
                 onConfirm = commitAliasRename
             )
+
+            if (showEditPrompterDialog && editPrompterId != null) {
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = {
+                        showEditPrompterDialog = false
+                        editPrompterId = null
+                    },
+                    title = {
+                        androidx.compose.material3.Text(stringResource(R.string.quickplaylists_edit_prompter_title))
+                    },
+                    text = {
+                        Column {
+                            OutlinedTextField(
+                                value = editPrompterTitle,
+                                onValueChange = { editPrompterTitle = it },
+                                label = { Text(stringResource(R.string.common_title_label)) },
+                                singleLine = true
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            OutlinedTextField(
+                                value = editPrompterContent,
+                                onValueChange = { editPrompterContent = it },
+                                label = { Text(stringResource(R.string.quickplaylists_prompter_text_label)) },
+                                minLines = 4
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        androidx.compose.material3.TextButton(
+                            onClick = {
+                                val id = editPrompterId ?: return@TextButton
+                                val title = editPrompterTitle.trim()
+                                val content = editPrompterContent.trim()
+                                if (title.isBlank()) return@TextButton
+                                TextSongRepository.update(
+                                    context = context,
+                                    id = id,
+                                    title = title,
+                                    content = content
+                                )
+                                val folder = currentFolderUri
+                                if (folder != null) {
+                                    entries = buildEntriesForFolder(folder, useCache = false)
+                                }
+                                showEditPrompterDialog = false
+                                editPrompterId = null
+                            }
+                        ) {
+                            androidx.compose.material3.Text(stringResource(R.string.common_save))
+                        }
+                    },
+                    dismissButton = {
+                        androidx.compose.material3.TextButton(
+                            onClick = {
+                                showEditPrompterDialog = false
+                                editPrompterId = null
+                            }
+                        ) {
+                            androidx.compose.material3.Text(stringResource(R.string.common_cancel))
+                        }
+                    }
+                )
+            }
 
             MoveBrowserDialog(
                 show = showMoveBrowser && pendingMoveUri != null,
