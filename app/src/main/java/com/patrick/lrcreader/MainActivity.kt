@@ -1445,11 +1445,23 @@ class MainActivity : AppCompatActivity() {
                                     is BottomTab.Library -> LibraryScreen(
                                         modifier = contentModifier,
                                         onPlayFromLibrary = { uriString ->
-                                            stopChainPlayback()
-                                            playWithCrossfade(uriString, null)
-                                            currentPlayingUri = uriString
-                                            currentLyricsColor = Color.White
-                                            setTabAndPersist(BottomTab.Player, reason = "libraryPlay")
+                                            when (val target = PlaybackRouter.resolve(uriString, null)) {
+                                                is PlaybackRouter.Target.Audio -> {
+                                                    stopChainPlayback()
+                                                    playWithCrossfade(target.uri, target.playlist)
+                                                    currentPlayingUri = target.uri
+                                                    currentLyricsColor = Color.White
+                                                    setTabAndPersist(BottomTab.Player, reason = "libraryPlay")
+                                                }
+
+                                                is PlaybackRouter.Target.Prompter -> {
+                                                    textPrompterId = target.id
+                                                }
+
+                                                is PlaybackRouter.Target.Unknown -> {
+                                                    // rien
+                                                }
+                                            }
                                         }
                                     )
 

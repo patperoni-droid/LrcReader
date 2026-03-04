@@ -34,10 +34,12 @@ fun LibraryHeader(
     val context = LocalContext.current
     var actionsExpanded by remember { mutableStateOf(false) }
     val sNoFolderSelected = stringResource(R.string.library_no_folder_selected)
+    val sPrompter = stringResource(R.string.main_menu_prompter)
 
-    val folderName = remember(currentFolderUri, sNoFolderSelected) {
+    val folderName = remember(currentFolderUri, sNoFolderSelected, sPrompter) {
         currentFolderUri?.let { u ->
             when (u.scheme) {
+                "spl-prompter" -> sPrompter
                 "file" -> File(u.path ?: "").name.ifBlank { "SPL_Music" }
                 else -> (DocumentFile.fromTreeUri(context, u)
                     ?: DocumentFile.fromSingleUri(context, u))?.name ?: "SPL_Music"

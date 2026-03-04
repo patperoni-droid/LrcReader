@@ -132,13 +132,15 @@ fun LibraryList(
 
             } else {
                 val uri = entry.uri
+                val uriString = uri.toString()
                 val isSelected = selectedSongs.contains(uri)
                 var menuOpen by remember { mutableStateOf(false) }
 
+                val isPrompter = uriString.startsWith("prompter://")
                 val canPlay = isPlayableByName(entry.name)
                 val isJson = isJsonByName(entry.name)
                 val isLrc = isLrcByName(entry.name)
-                val titleAlias = if (canPlay) {
+                val titleAlias = if (canPlay && !isPrompter) {
                     TitleAliasesStore.getTitleForTrack(context, uri.toString())
                         ?: PlaylistRepository.getAnyCustomTitleForUri(uri.toString())
                 } else {
@@ -191,24 +193,38 @@ fun LibraryList(
                             .clickable {
                                 if (selectionMode) onToggleSelect(uri)
                                 else if (canPlay) onOpenPlayer(uri)
+                                else if (isPrompter) onOpenPlayer(uri)
                                 else if (isLrc) onOpenLrcEditor(uri)
                             }
                     )
 
-                    // ▶️ bouton PLAY : quick play UNIQUEMENT si media
-                    IconButton(
-                        onClick = {
-                            if (selectionMode) onToggleSelect(uri)
-                            else if (canPlay) onQuickPlay(uri)
-                        },
-                        modifier = Modifier.size(44.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.PlayArrow,
-                            contentDescription = stringResource(R.string.library_list_cd_play),
-                            tint = if (canPlay) accent else Color.White.copy(alpha = 0.25f),
-                            modifier = Modifier.size(26.dp)
-                        )
+                    if (isPrompter) {
+                        Box(
+                            modifier = Modifier.size(44.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "📝",
+                                color = accent,
+                                fontSize = 16.sp
+                            )
+                        }
+                    } else {
+                        // ▶️ bouton PLAY : quick play UNIQUEMENT si media
+                        IconButton(
+                            onClick = {
+                                if (selectionMode) onToggleSelect(uri)
+                                else if (canPlay) onQuickPlay(uri)
+                            },
+                            modifier = Modifier.size(44.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.PlayArrow,
+                                contentDescription = stringResource(R.string.library_list_cd_play),
+                                tint = if (canPlay) accent else Color.White.copy(alpha = 0.25f),
+                                modifier = Modifier.size(26.dp)
+                            )
+                        }
                     }
 
                     // menu ⋮
@@ -218,53 +234,80 @@ fun LibraryList(
                         }
                         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
 
-                            // ✅ uniquement pour les .lrc
-                            if (isLrc) {
+                            if (isPrompter) {
                                 DropdownMenuItem(
                                     text = {
-                                        Text(stringResource(R.string.library_list_edit_lrc), color = Color.White)
+                                        Text(stringResource(R.string.library_list_assign_to_playlist), color = Color.White)
                                     },
-                                    onClick = { menuOpen = false; onOpenLrcEditor(uri) }
+                                    onClick = { menuOpen = false; onAssignOne(uri) }
                                 )
-                            }
 
-                            // ✅ uniquement pour les .json
-                            if (isJson) {
                                 DropdownMenuItem(
                                     text = {
-                                        Text(stringResource(R.string.library_list_import_backup), color = Color.White)
+                                        Text(stringResource(R.string.quickplaylists_edit_prompter_title), color = Color.White)
                                     },
-                                    onClick = { menuOpen = false; onImportBackupJson(uri) }
-                                )
-                            }
-
-                            DropdownMenuItem(
-                                text = {
-                                    Text(stringResource(R.string.library_list_assign_to_playlist), color = Color.White)
-                                },
-                                onClick = { menuOpen = false; onAssignOne(uri) }
-                            )
-                            DropdownMenuItem(
-                                text = {
-                                    Text(stringResource(R.string.library_list_move_to_folder), color = Color.White)
-                                },
-                                onClick = { menuOpen = false; onMoveOne(uri) }
-                            )
-                            if (canPlay) {
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.library_list_rename), color = Color.White) },
                                     onClick = { menuOpen = false; onRenameOne(entry) }
                                 )
-                            }
-                            DropdownMenuItem(
-                                text = {
-                                    Text(
-                                        stringResource(R.string.library_list_delete_permanently),
-                                        color = Color(0xFFFF6464)
+
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            stringResource(R.string.library_list_delete_permanently),
+                                            color = Color(0xFFFF6464)
+                                        )
+                                    },
+                                    onClick = { menuOpen = false; onDeleteOne(uri) }
+                                )
+                            } else {
+                                // ✅ uniquement pour les .lrc
+                                if (isLrc) {
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(stringResource(R.string.library_list_edit_lrc), color = Color.White)
+                                        },
+                                        onClick = { menuOpen = false; onOpenLrcEditor(uri) }
                                     )
-                                },
-                                onClick = { menuOpen = false; onDeleteOne(uri) }
-                            )
+                                }
+
+                                // ✅ uniquement pour les .json
+                                if (isJson) {
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(stringResource(R.string.library_list_import_backup), color = Color.White)
+                                        },
+                                        onClick = { menuOpen = false; onImportBackupJson(uri) }
+                                    )
+                                }
+
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(stringResource(R.string.library_list_assign_to_playlist), color = Color.White)
+                                    },
+                                    onClick = { menuOpen = false; onAssignOne(uri) }
+                                )
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(stringResource(R.string.library_list_move_to_folder), color = Color.White)
+                                    },
+                                    onClick = { menuOpen = false; onMoveOne(uri) }
+                                )
+                                if (canPlay) {
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.library_list_rename), color = Color.White) },
+                                        onClick = { menuOpen = false; onRenameOne(entry) }
+                                    )
+                                }
+
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            stringResource(R.string.library_list_delete_permanently),
+                                            color = Color(0xFFFF6464)
+                                        )
+                                    },
+                                    onClick = { menuOpen = false; onDeleteOne(uri) }
+                                )
+                            }
                         }
                     }
                 }
