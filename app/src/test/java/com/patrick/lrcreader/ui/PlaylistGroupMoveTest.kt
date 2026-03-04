@@ -1,38 +1,49 @@
 package com.patrick.lrcreader.ui
 
+import com.patrick.lrcreader.core.buildGroupEnd
 import com.patrick.lrcreader.core.buildGroupHeader
+import com.patrick.lrcreader.core.getGroupUuid
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class PlaylistGroupMoveTest {
 
     @Test
-    fun moveTrackIntoFirstGroup_placesTrackAfterHeader() {
+    fun createGroupEmpty_insertsStartAndEndWithoutCapturingTracks() {
         val headerA = buildGroupHeader("A")
+        val headerAEnd = buildGroupEnd(getGroupUuid(headerA)!!)
         val headerB = buildGroupHeader("B")
-        val items = mutableListOf(headerA, "t1", "t2", headerB, "t3")
+        val headerBEnd = buildGroupEnd(getGroupUuid(headerB)!!)
+        val items = mutableListOf("x1", "x2", "x3")
 
-        moveItemIntoGroup(items, fromIndex = 4, headerIndex = 0, mode = "TOP")
+        items.add(1, headerA)
+        items.add(2, headerAEnd)
+        items.add(4, headerB)
+        items.add(5, headerBEnd)
 
-        assertEquals(listOf(headerA, "t3", "t1", "t2", headerB), items)
+        assertEquals(listOf("x1", headerA, headerAEnd, "x2", headerB, headerBEnd, "x3"), items)
     }
 
     @Test
-    fun moveTrackIntoSecondGroup_placesTrackInsideThatGroup() {
+    fun moveTrackIntoFirstGroup_placesTrackBetweenStartAndEnd() {
         val headerA = buildGroupHeader("A")
+        val endA = buildGroupEnd(getGroupUuid(headerA)!!)
         val headerB = buildGroupHeader("B")
-        val items = mutableListOf(headerA, "t1", "t2", headerB, "t3")
+        val endB = buildGroupEnd(getGroupUuid(headerB)!!)
+        val items = mutableListOf(headerA, "t1", "t2", endA, headerB, "t3", endB)
 
-        moveItemIntoGroup(items, fromIndex = 2, headerIndex = 3, mode = "TOP")
+        moveItemIntoGroup(items, fromIndex = 5, headerIndex = 0, mode = "TOP")
 
-        assertEquals(listOf(headerA, "t1", headerB, "t2", "t3"), items)
+        assertEquals(listOf(headerA, "t3", "t1", "t2", endA, headerB, endB), items)
     }
 
     @Test
     fun moveHeaderIntoHeader_isIgnored() {
         val headerA = buildGroupHeader("A")
+        val endA = buildGroupEnd(getGroupUuid(headerA)!!)
         val headerB = buildGroupHeader("B")
-        val items = mutableListOf(headerA, "t1", "t2", headerB, "t3")
+        val endB = buildGroupEnd(getGroupUuid(headerB)!!)
+        val items = mutableListOf(headerA, "t1", endA, headerB, "t3", endB)
         val before = items.toList()
 
         moveItemIntoGroup(items, fromIndex = 3, headerIndex = 0, mode = "TOP")

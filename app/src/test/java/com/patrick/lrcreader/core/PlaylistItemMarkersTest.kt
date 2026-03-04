@@ -40,15 +40,30 @@ class PlaylistItemMarkersTest {
     @Test
     fun virtualAndPlayableDetection_worksForGroupPrompterAudio() {
         val header = buildGroupHeader("Group")
+        val end = buildGroupEnd(getGroupUuid(header)!!)
         val prompter = "prompter://42"
         val audio = "content://media/external/audio/123"
 
         assertTrue(isVirtualPlaylistItem(header))
+        assertTrue(isVirtualPlaylistItem(end))
         assertTrue(isVirtualPlaylistItem(prompter))
         assertFalse(isVirtualPlaylistItem(audio))
 
         assertFalse(isPlayableAudioItem(header))
+        assertFalse(isPlayableAudioItem(end))
         assertFalse(isPlayableAudioItem(prompter))
         assertTrue(isPlayableAudioItem(audio))
+    }
+
+    @Test
+    fun groupEndMarkers_uuidAndDetection_workForStartAndEnd() {
+        val start = buildGroupHeader("Rock")
+        val uuid = getGroupUuid(start)
+        val end = buildGroupEnd(uuid!!)
+
+        assertTrue(isGroupHeader(start))
+        assertTrue(isGroupEnd(end))
+        assertEquals(uuid, getGroupUuid(end))
+        assertFalse(isGroupEnd(start))
     }
 }
