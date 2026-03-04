@@ -975,6 +975,19 @@ fun QuickPlaylistsScreen(
                             val isDraggingThis = draggingUri == uriString
                             val isChainedNext = nextChainedUri != null && uriString == nextChainedUri
                             val isForcedNext = nextTrackUri != null && uriString == nextTrackUri
+                            val isInsideGroup =
+                                isPlayableAudioItem(uriString) && isItemInsideGroup(songs, itemIndex)
+                            val rowShape = RoundedCornerShape(12.dp)
+                            val groupTint = Color(0xFF0A6C97).copy(alpha = 0.14f)
+                            val groupAccent = Color(0xFF0A6C97).copy(alpha = 0.55f)
+                            val rowBaseBackground = if (isDraggingThis)
+                                Color(0x33FFFFFF)
+                            else if (isForcedNext)
+                                Color(0x33D32F2F)
+                            else if (isChainedNext)
+                                Color(0x22FFFFFF)
+                            else
+                                Color(0xFF181818)
 
                             Row(
                                 modifier = Modifier
@@ -982,15 +995,15 @@ fun QuickPlaylistsScreen(
                                     .height(rowHeight)
                                     .padding(vertical = 4.dp, horizontal = 2.dp)
                                     .background(
-                                        color = if (isDraggingThis)
-                                            Color(0x33FFFFFF)
-                                        else if (isForcedNext)
-                                            Color(0x33D32F2F)
-                                        else if (isChainedNext)
-                                            Color(0x22FFFFFF)
-                                        else
-                                            Color(0xFF181818),
-                                        shape = RoundedCornerShape(12.dp)
+                                        color = rowBaseBackground,
+                                        shape = rowShape
+                                    )
+                                    .then(
+                                        if (isInsideGroup) {
+                                            Modifier.background(color = groupTint, shape = rowShape)
+                                        } else {
+                                            Modifier
+                                        }
                                     )
                                     .border(
                                         width = 1.dp,
@@ -1002,7 +1015,7 @@ fun QuickPlaylistsScreen(
                                             Color(0x66FFD54F)
                                         else
                                             Color(0x33FFFFFF),
-                                        shape = RoundedCornerShape(12.dp)
+                                        shape = rowShape
                                     )
                                     .padding(horizontal = 6.dp),
                                 verticalAlignment = Alignment.CenterVertically
@@ -1017,6 +1030,16 @@ fun QuickPlaylistsScreen(
                                         .alpha(if (isPlayed) 0.6f else 1f)
                                         .then(dragHandleModifier(uriString))
                                 )
+                                if (isInsideGroup) {
+                                    Box(
+                                        modifier = Modifier
+                                            .padding(end = 8.dp)
+                                            .width(3.dp)
+                                            .height(26.dp)
+                                            .clip(RoundedCornerShape(999.dp))
+                                            .background(groupAccent)
+                                    )
+                                }
                                 val isPrompter = uriString.startsWith("prompter://")
                                 val prefix = if (isPrompter) "📝 " else ""
                                 val playedTextColor = Color(0xFF9E9E9E)
@@ -1715,6 +1738,30 @@ internal fun isItemHiddenByCollapsedGroup(
         val current = items[cursor]
         if (isGroupHeader(current)) {
             if (!collapsedGroupIds.contains(current)) return false
+            val endIndex = findMatchingGroupEndIndex(items, cursor)
+            return if (endIndex != null) {
+                itemIndex > cursor && itemIndex < endIndex
+            } else {
+                itemIndex > cursor
+            }
+        }
+        cursor--
+    }
+    return false
+}
+
+internal fun isItemInsideGroup(
+    items: List<String>,
+    itemIndex: Int
+): Boolean {
+    if (itemIndex !in items.indices) return false
+    val item = items[itemIndex]
+    if (isGroupHeader(item) || isGroupEnd(item)) return false
+
+    var cursor = itemIndex - 1
+    while (cursor >= 0) {
+        val current = items[cursor]
+        if (isGroupHeader(current)) {
             val endIndex = findMatchingGroupEndIndex(items, cursor)
             return if (endIndex != null) {
                 itemIndex > cursor && itemIndex < endIndex

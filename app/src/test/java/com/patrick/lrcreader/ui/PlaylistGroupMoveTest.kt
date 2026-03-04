@@ -4,6 +4,8 @@ import com.patrick.lrcreader.core.buildGroupEnd
 import com.patrick.lrcreader.core.buildGroupHeader
 import com.patrick.lrcreader.core.getGroupUuid
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PlaylistGroupMoveTest {
@@ -77,5 +79,18 @@ class PlaylistGroupMoveTest {
         moveBlock(items, rangeB, 0)
 
         assertEquals(listOf(headerB, "y1", endB, headerA, "t1", "t2", endA, "x1", "x2"), items)
+    }
+
+    @Test
+    fun isItemInsideGroup_detectsOnlyTracksBetweenStartAndEnd() {
+        val headerA = buildGroupHeader("A")
+        val endA = buildGroupEnd(getGroupUuid(headerA)!!)
+        val items = listOf(headerA, "t1", "t2", endA, "x1")
+
+        assertFalse(isItemInsideGroup(items, 0))
+        assertTrue(isItemInsideGroup(items, 1))
+        assertTrue(isItemInsideGroup(items, 2))
+        assertFalse(isItemInsideGroup(items, 3))
+        assertFalse(isItemInsideGroup(items, 4))
     }
 }
