@@ -77,6 +77,7 @@ import com.patrick.lrcreader.core.config.PlaylistStateStore
 import com.patrick.lrcreader.core.config.TrackSettingsStore
 import com.patrick.lrcreader.core.config.TitleAliasesStore
 import com.patrick.lrcreader.exo.BuildConfig
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.yield
 import java.net.URLDecoder
 
@@ -143,6 +144,7 @@ fun QuickPlaylistsScreen(
     var dragYInListViewport by remember { mutableStateOf<Float?>(null) }
     var hoverHeaderKey by remember { mutableStateOf<String?>(null) }
     var collapsedGroupIds by rememberSaveable { mutableStateOf(setOf<String>()) }
+    var scrollByPlaylist by rememberSaveable { mutableStateOf<Map<String, List<Int>>>(emptyMap()) }
 
     var renameTarget by remember { mutableStateOf<String?>(null) }
     var renameText by remember { mutableStateOf("") }
@@ -511,6 +513,35 @@ fun QuickPlaylistsScreen(
                 if (isItemHiddenByCollapsedGroup(songs, realIndex, collapsedGroupIds)) return@mapIndexedNotNull null
                 VisiblePlaylistRow(realIndex = realIndex, item = item)
             }
+        }
+    }
+
+    LaunchedEffect(internalSelected) {
+        val playlist = internalSelected ?: return@LaunchedEffect
+        snapshotFlow {
+            listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
+        }
+            .distinctUntilChanged()
+            .collect { (index, offset) ->
+                scrollByPlaylist = scrollByPlaylist.toMutableMap().apply {
+                    put(playlist, listOf(index, offset))
+                }
+            }
+    }
+
+    LaunchedEffect(internalSelected, visibleRows.size) {
+        val playlist = internalSelected ?: return@LaunchedEffect
+        val saved = scrollByPlaylist[playlist] ?: return@LaunchedEffect
+        if (visibleRows.isEmpty()) return@LaunchedEffect
+
+        val savedIndex = saved.getOrNull(0) ?: return@LaunchedEffect
+        val savedOffset = saved.getOrNull(1) ?: 0
+        val targetIndex = savedIndex.coerceIn(0, visibleRows.lastIndex)
+
+        val currentIndex = listState.firstVisibleItemIndex
+        val currentOffset = listState.firstVisibleItemScrollOffset
+        if (currentIndex != targetIndex || currentOffset != savedOffset) {
+            listState.scrollToItem(targetIndex, savedOffset)
         }
     }
 
