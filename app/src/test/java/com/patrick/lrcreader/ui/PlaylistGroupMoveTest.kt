@@ -5,8 +5,10 @@ import com.patrick.lrcreader.core.buildGroupHeader
 import com.patrick.lrcreader.core.getGroupUuid
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.Collections
 
 class PlaylistGroupMoveTest {
 
@@ -36,7 +38,7 @@ class PlaylistGroupMoveTest {
 
         moveItemIntoGroup(items, fromIndex = 5, headerIndex = 0, mode = "TOP")
 
-        assertEquals(listOf(headerA, "t3", "t1", "t2", endA, headerB, endB), items)
+        assertEquals(listOf(headerA, "t1", "t2", "t3", endA, headerB, endB), items)
     }
 
     @Test
@@ -92,5 +94,87 @@ class PlaylistGroupMoveTest {
         assertTrue(isItemInsideGroup(items, 2))
         assertFalse(isItemInsideGroup(items, 3))
         assertFalse(isItemInsideGroup(items, 4))
+    }
+
+    @Test
+    fun dragFromBelowDropOnHeader_keepsEndMarkerBoundariesAndAddsSingleTrack() {
+        val headerA = buildGroupHeader("A")
+        val endA = buildGroupEnd(getGroupUuid(headerA)!!)
+        val items = mutableListOf(headerA, endA, "x1", "x2", "x3")
+
+        var fromIndex = items.indexOf("x3")
+        val firstReorderTarget = findNextTrackReorderIndex(items, fromIndex, -1)
+        assertEquals(3, firstReorderTarget)
+        Collections.swap(items, fromIndex, firstReorderTarget!!)
+
+        fromIndex = items.indexOf("x3")
+        val secondReorderTarget = findNextTrackReorderIndex(items, fromIndex, -1)
+        assertEquals(2, secondReorderTarget)
+        Collections.swap(items, fromIndex, secondReorderTarget!!)
+
+        fromIndex = items.indexOf("x3")
+        val blockedReorderTarget = findNextTrackReorderIndex(items, fromIndex, -1)
+        assertNull(blockedReorderTarget)
+
+        moveItemIntoGroup(
+            items = items,
+            fromIndex = items.indexOf("x3"),
+            headerIndex = items.indexOf(headerA),
+            mode = "TOP"
+        )
+
+        assertEquals(listOf(headerA, "x3", endA, "x1", "x2"), items)
+        assertEquals(2, findMatchingGroupEndIndex(items, 0))
+        assertTrue(isItemInsideGroup(items, 1))
+        assertFalse(isItemInsideGroup(items, 3))
+        assertFalse(isItemInsideGroup(items, 4))
+    }
+
+    @Test
+    fun moveItemOutOfGroup_nominal_placesTrackRightAfterEndMarker() {
+        val headerA = buildGroupHeader("A")
+        val endA = buildGroupEnd(getGroupUuid(headerA)!!)
+        val items = mutableListOf(headerA, "t1", "t2", endA, "x1", "x2")
+
+        val moved = moveItemOutOfGroup(items, "t1")
+
+        assertTrue(moved)
+        assertEquals(listOf(headerA, "t2", endA, "t1", "x1", "x2"), items)
+    }
+
+    @Test
+    fun moveItemOutOfGroup_trackOutsideGroup_returnsFalseAndKeepsList() {
+        val headerA = buildGroupHeader("A")
+        val endA = buildGroupEnd(getGroupUuid(headerA)!!)
+        val items = mutableListOf(headerA, "t1", "t2", endA, "x1")
+        val before = items.toList()
+
+        val moved = moveItemOutOfGroup(items, "x1")
+
+        assertFalse(moved)
+        assertEquals(before, items)
+    }
+
+    @Test
+    fun moveItemOutOfGroup_singleTrackGroup_becomesEmptyGroup() {
+        val headerA = buildGroupHeader("A")
+        val endA = buildGroupEnd(getGroupUuid(headerA)!!)
+        val items = mutableListOf(headerA, "t1", endA)
+
+        val moved = moveItemOutOfGroup(items, "t1")
+
+        assertTrue(moved)
+        assertEquals(listOf(headerA, endA, "t1"), items)
+    }
+
+    @Test
+    fun moveItemOutOfGroup_legacyGroupWithoutEnd_usesFallbackWithoutCrash() {
+        val headerA = buildGroupHeader("A")
+        val items = mutableListOf(headerA, "t1", "x1")
+
+        val moved = moveItemOutOfGroup(items, "t1")
+
+        assertTrue(moved)
+        assertEquals(listOf(headerA, "x1", "t1"), items)
     }
 }

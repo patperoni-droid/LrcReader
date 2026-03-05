@@ -462,7 +462,7 @@ fun QuickPlaylistsScreen(
                             }
                         }
                     } else {
-                        val next = findNextReorderIndex(songs, currentIndex, +1)
+                        val next = findNextTrackReorderIndex(songs, currentIndex, +1)
                         if (next != null) {
                             songs.swap(currentIndex, next)
                             internalSelected?.let { pl ->
@@ -490,7 +490,7 @@ fun QuickPlaylistsScreen(
                             }
                         }
                     } else {
-                        val prev = findNextReorderIndex(songs, currentIndex, -1)
+                        val prev = findNextTrackReorderIndex(songs, currentIndex, -1)
                         if (prev != null) {
                             songs.swap(currentIndex, prev)
                             internalSelected?.let { pl ->
@@ -1177,6 +1177,19 @@ fun QuickPlaylistsScreen(
                                                 menuOpen = false
                                             }
                                         )
+                                        if (isInsideGroup) {
+                                            DropdownMenuItem(
+                                                text = { Text("Retirer du groupe", color = Color.White) },
+                                                onClick = {
+                                                    internalSelected?.let { pl ->
+                                                        if (moveItemOutOfGroup(songs, uriString)) {
+                                                            persistSongsOrder(pl)
+                                                        }
+                                                    }
+                                                    menuOpen = false
+                                                }
+                                            )
+                                        }
                                         if (nextTrackUri != null) {
                                             DropdownMenuItem(
                                                 text = { Text(stringResource(R.string.quickplaylists_menu_cancel_next), color = Color.White) },
@@ -1693,17 +1706,51 @@ internal fun moveItemIntoGroup(
     if (resolvedHeaderIndex == -1) return
 
     val endIndex = findMatchingGroupEndIndex(items, resolvedHeaderIndex)
-    val insertionIndex = when (mode.uppercase()) {
-        "BOTTOM" -> {
-            endIndex ?: run {
-                val range = findGroupRange(items, resolvedHeaderIndex)
-                if (range.isEmpty()) resolvedHeaderIndex + 1 else range.last + 1
-            }
-        }
-        else -> resolvedHeaderIndex + 1
-    }.coerceIn(0, items.size)
+    val insertionIndex = (endIndex ?: (resolvedHeaderIndex + 1)).coerceIn(0, items.size)
 
     items.add(insertionIndex, dragged)
+}
+
+internal fun moveItemOutOfGroup(items: MutableList<String>, trackUri: String): Boolean {
+    val fromIndex = items.indexOf(trackUri)
+    if (fromIndex == -1) return false
+    val dragged = items[fromIndex]
+    if (!isPlayableAudioItem(dragged)) return false
+
+    var headerIndex = -1
+    for (cursor in (fromIndex - 1) downTo 0) {
+        if (isGroupHeader(items[cursor])) {
+            headerIndex = cursor
+            break
+        }
+    }
+    if (headerIndex == -1) return false
+
+    val headerKey = items[headerIndex]
+    val endBeforeRemoval = findMatchingGroupEndIndex(items, headerIndex)
+        ?: run {
+            val range = findGroupRange(items, headerIndex)
+            if (range.isEmpty()) return false
+            range.last
+        }
+
+    if (fromIndex <= headerIndex || fromIndex > endBeforeRemoval) return false
+    if (findMatchingGroupEndIndex(items, headerIndex) != null && fromIndex >= endBeforeRemoval) return false
+
+    items.removeAt(fromIndex)
+
+    val resolvedHeaderIndex = items.indexOf(headerKey)
+    if (resolvedHeaderIndex == -1) return false
+
+    val resolvedEndIndex = findMatchingGroupEndIndex(items, resolvedHeaderIndex)
+        ?: run {
+            val range = findGroupRange(items, resolvedHeaderIndex)
+            if (range.isEmpty()) resolvedHeaderIndex else range.last
+        }
+
+    val insertionIndex = (resolvedEndIndex + 1).coerceIn(0, items.size)
+    items.add(insertionIndex, dragged)
+    return true
 }
 
 internal fun isItemHiddenByCollapsedGroup(
@@ -1764,6 +1811,15 @@ private fun findNextReorderIndex(items: List<String>, startIndex: Int, step: Int
         cursor += step
     }
     return null
+}
+
+internal fun findNextTrackReorderIndex(items: List<String>, startIndex: Int, step: Int): Int? {
+    if (step == 0) return null
+    val cursor = startIndex + step
+    if (cursor !in items.indices) return null
+    val candidate = items[cursor]
+    if (isGroupHeader(candidate) || isGroupEnd(candidate)) return null
+    return cursor
 }
 
 internal data class ListViewportItem(
