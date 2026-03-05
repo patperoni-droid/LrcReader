@@ -29,6 +29,8 @@ import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -42,7 +44,6 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -57,9 +58,11 @@ import androidx.core.content.ContextCompat
 import com.patrick.lrcreader.core.DjBusController
 import com.patrick.lrcreader.core.FillerSoundPrefs
 import com.patrick.lrcreader.core.MeterManager
+import com.patrick.lrcreader.core.MiniTunerVisibilityStore
 import com.patrick.lrcreader.core.PlayerBusController
 import com.patrick.lrcreader.core.PlayerVolumePrefs
 import com.patrick.lrcreader.core.TunerEngine
+import com.patrick.lrcreader.core.TunerState
 import kotlinx.coroutines.launch
 import java.util.Locale
 
@@ -93,8 +96,12 @@ fun MixerHomePreviewScreen(
         contract = ActivityResultContracts.RequestPermission(),
         onResult = { granted -> hasMicPermission = granted }
     )
-    var miniTunerEnabled by rememberSaveable { mutableStateOf(true) }
-    val tunerState by TunerEngine.state.collectAsState()
+    val isMiniTunerVisible by MiniTunerVisibilityStore.state(context).collectAsState()
+    val tunerState: TunerState = if (isMiniTunerVisible) {
+        TunerEngine.state.collectAsState().value
+    } else {
+        TunerState()
+    }
 
     // Affichage du bloc-notes par-dessus le BUS PRINCIPAL
     var showNotes by remember { mutableStateOf(false) }
@@ -134,12 +141,12 @@ fun MixerHomePreviewScreen(
     DisposableEffect(Unit) {
         onDispose { MeterManager.stop() }
     }
-    DisposableEffect(hasMicPermission, miniTunerEnabled) {
-        if (hasMicPermission && miniTunerEnabled) {
+    DisposableEffect(hasMicPermission, isMiniTunerVisible) {
+        if (hasMicPermission && isMiniTunerVisible) {
             TunerEngine.start()
         }
         onDispose {
-            if (hasMicPermission && miniTunerEnabled) {
+            if (hasMicPermission && isMiniTunerVisible) {
                 TunerEngine.stop()
             }
         }
@@ -238,25 +245,57 @@ fun MixerHomePreviewScreen(
                         .fillMaxSize()
                         .padding(16.dp)
                 ) {
-                    val tunerCents = tunerState.cents?.toFloat()
-                    val miniTunerActive = hasMicPermission && miniTunerEnabled && tunerState.isListening
-                    val hasSignal = tunerCents != null && tunerState.noteName != "—"
-
-                    MiniTunerRow(
-                        noteString = tunerState.noteName,
-                        centsOffset = tunerCents ?: 0f,
-                        isInTune = isTunerInTune(tunerCents),
-                        hasSignal = hasSignal,
-                        isActive = miniTunerActive,
-                        onEnable = {
-                            miniTunerEnabled = true
-                            if (!hasMicPermission) {
-                                micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(
+                            onClick = {
+                                val next = !isMiniTunerVisible
+                                MiniTunerVisibilityStore.setVisible(context, next)
+                                if (next && !hasMicPermission) {
+                                    micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                }
                             }
+                        ) {
+                            Icon(
+                                imageVector = if (isMiniTunerVisible) {
+                                    Icons.Filled.Visibility
+                                } else {
+                                    Icons.Filled.VisibilityOff
+                                },
+                                contentDescription = if (isMiniTunerVisible) {
+                                    "Masquer l'accordeur mini"
+                                } else {
+                                    "Afficher l'accordeur mini"
+                                },
+                                tint = if (isMiniTunerVisible) Color(0xFF80DEEA) else Color(0xFF78909C)
+                            )
                         }
-                    )
+                    }
 
-                    Spacer(Modifier.height(8.dp))
+                    if (isMiniTunerVisible) {
+                        val tunerCents = tunerState.cents?.toFloat()
+                        val miniTunerActive = hasMicPermission && tunerState.isListening
+                        val hasSignal = tunerCents != null && tunerState.noteName != "—"
+
+                        MiniTunerRow(
+                            noteString = tunerState.noteName,
+                            centsOffset = tunerCents ?: 0f,
+                            isInTune = isTunerInTune(tunerCents),
+                            hasSignal = hasSignal,
+                            isActive = miniTunerActive,
+                            onEnable = {
+                                MiniTunerVisibilityStore.setVisible(context, true)
+                                if (!hasMicPermission) {
+                                    micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                }
+                            }
+                        )
+
+                        Spacer(Modifier.height(8.dp))
+                    }
 
                     // Bandeau BUS PRINCIPAL
                     Box(
