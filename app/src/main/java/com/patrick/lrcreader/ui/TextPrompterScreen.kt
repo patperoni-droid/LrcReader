@@ -37,6 +37,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -147,6 +148,7 @@ fun TextPrompterScreen(
     val scrollState = rememberScrollState()
     val scope = rememberCoroutineScope()
     val focusRequester = remember { FocusRequester() }
+    val hostView = LocalView.current
 
     var isPlaying by remember { mutableStateOf(false) }
     var prompterRootIsFocused by remember { mutableStateOf(false) }
@@ -222,7 +224,9 @@ fun TextPrompterScreen(
             )
         )
     }
-    LaunchedEffect(songId) {
+    LaunchedEffect(Unit) {
+        hostView.isFocusableInTouchMode = true
+        hostView.requestFocus()
         focusRequester.requestFocus()
     }
 
