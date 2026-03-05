@@ -1,11 +1,15 @@
 package com.patrick.lrcreader.ui
 
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.media.MediaMetadataRetriever
 import android.os.SystemClock
 import android.util.Log
 import android.widget.Toast
 import kotlinx.coroutines.withContext
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
 import com.patrick.lrcreader.exo.R
@@ -37,6 +41,8 @@ import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -61,8 +67,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.core.NotesRepository
+import com.patrick.lrcreader.core.TunerEngine
+import com.patrick.lrcreader.core.TunerState
 import com.patrick.lrcreader.core.buildGroupEnd
 import com.patrick.lrcreader.core.buildGroupHeader
 import com.patrick.lrcreader.core.getGroupUuid
@@ -108,6 +117,18 @@ fun QuickPlaylistsScreen(
 ) {
 
     val context = LocalContext.current
+    var hasMicPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.RECORD_AUDIO
+            ) == PackageManager.PERMISSION_GRANTED
+        )
+    }
+    val micPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+        onResult = { granted -> hasMicPermission = granted }
+    )
 
     val scope = rememberCoroutineScope()
     val titleAliasVersion = TitleAliasesStore.version.intValue
@@ -121,6 +142,7 @@ fun QuickPlaylistsScreen(
     var internalSelected by rememberSaveable {
         mutableStateOf<String?>(selectedPlaylist ?: playlists.firstOrNull())
     }
+    var isMiniTunerVisible by rememberSaveable { mutableStateOf(false) }
 
     val songs = remember { mutableStateListOf<String>() }
     // ✅ Snapshot "ordre d'origine" (pour le bouton Réinitialiser)
@@ -513,6 +535,22 @@ fun QuickPlaylistsScreen(
             }
         }
     }
+    val miniTunerState: TunerState = if (isMiniTunerVisible) {
+        TunerEngine.state.collectAsState().value
+    } else {
+        TunerState()
+    }
+
+    DisposableEffect(isMiniTunerVisible, hasMicPermission) {
+        if (isMiniTunerVisible && hasMicPermission) {
+            TunerEngine.start()
+        }
+        onDispose {
+            if (isMiniTunerVisible && hasMicPermission) {
+                TunerEngine.stop()
+            }
+        }
+    }
 
     DarkBlueGradientBackground {
         Column(
@@ -647,12 +685,55 @@ fun QuickPlaylistsScreen(
                         }
                     }
 
-
+                    IconButton(
+                        onClick = {
+                            val next = !isMiniTunerVisible
+                            isMiniTunerVisible = next
+                            if (next && !hasMicPermission) {
+                                micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                            }
+                        }
+                    ) {
+                        Icon(
+                            imageVector = if (isMiniTunerVisible) {
+                                Icons.Filled.Visibility
+                            } else {
+                                Icons.Filled.VisibilityOff
+                            },
+                            contentDescription = if (isMiniTunerVisible) {
+                                "Masquer l'accordeur mini"
+                            } else {
+                                "Afficher l'accordeur mini"
+                            },
+                            tint = if (isMiniTunerVisible) Color(0xFF80DEEA) else Color(0xFF78909C)
+                        )
+                    }
 
                 }
             }
 
             Spacer(Modifier.height(12.dp))
+
+            if (isMiniTunerVisible) {
+                val tunerCents = miniTunerState.cents?.toFloat()
+                val miniTunerActive = hasMicPermission && miniTunerState.isListening
+                val hasSignal = tunerCents != null && miniTunerState.noteName != "—"
+
+                MiniTunerRow(
+                    noteString = miniTunerState.noteName,
+                    centsOffset = tunerCents ?: 0f,
+                    isInTune = isTunerInTune(tunerCents),
+                    hasSignal = hasSignal,
+                    isActive = miniTunerActive,
+                    onEnable = {
+                        if (!hasMicPermission) {
+                            micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                        }
+                    }
+                )
+
+                Spacer(Modifier.height(10.dp))
+            }
 
             if (!internalSelected.isNullOrBlank() && songs.isEmpty() && (isRestoringSession || !playlistsReady)) {
                 Row(
