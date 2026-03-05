@@ -630,7 +630,9 @@ fun LibraryScreen(
 
     // ---------- UI ----------
     val currentFolderName = currentFolderUri?.let { u ->
-        if (u.scheme == "file") {
+        if (isPrompterFolderUri(u)) {
+            sPrompterFolder
+        } else if (u.scheme == "file") {
             java.io.File(u.path ?: "").name.ifBlank { "SPL_Music" }
         } else {
             val doc = DocumentFile.fromTreeUri(context, u) ?: DocumentFile.fromSingleUri(context, u)
@@ -642,6 +644,11 @@ fun LibraryScreen(
         val u = currentFolderUri ?: return@LaunchedEffect
         Log.d("LIB_SAF", "currentFolderUri=$u")
         Log.d("LIB_SAF", "savedRootUri=${BackupFolderPrefs.getLibraryRootUri(context)}")
+
+        if (isPrompterFolderUri(u)) {
+            Log.d("LIB_SAF", "virtualPrompterFolder=true (skip DocumentFile probes)")
+            return@LaunchedEffect
+        }
 
         if (u.scheme == "file") {
             val f = File(u.path ?: "")
