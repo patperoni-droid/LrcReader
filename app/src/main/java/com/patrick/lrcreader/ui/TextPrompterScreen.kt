@@ -276,31 +276,34 @@ fun TextPrompterScreen(
                             "key=${event.key} type=${event.type} keyCode=${event.nativeKeyEvent.keyCode}"
                         )
                     }
-                    if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                    val action = mapPrompterKey(event)
+                    if (action == null) return@onPreviewKeyEvent false
                     if (!prompterRootHasFocus) return@onPreviewKeyEvent false
 
-                    when (mapPrompterKey(event)) {
-                        PrompterAction.NEXT -> {
-                            onNextStep()
-                            true
+                    when (event.type) {
+                        KeyEventType.KeyDown -> when (action) {
+                            PrompterAction.NEXT -> {
+                                onNextStep()
+                                true
+                            }
+                            PrompterAction.PREV -> {
+                                onPrevStep()
+                                true
+                            }
+                            PrompterAction.TOGGLE -> {
+                                onTogglePlayPause()
+                                true
+                            }
+                            PrompterAction.HOME -> {
+                                onJumpToStart()
+                                true
+                            }
+                            PrompterAction.END -> {
+                                onJumpToEnd()
+                                true
+                            }
                         }
-                        PrompterAction.PREV -> {
-                            onPrevStep()
-                            true
-                        }
-                        PrompterAction.TOGGLE -> {
-                            onTogglePlayPause()
-                            true
-                        }
-                        PrompterAction.HOME -> {
-                            onJumpToStart()
-                            true
-                        }
-                        PrompterAction.END -> {
-                            onJumpToEnd()
-                            true
-                        }
-                        null -> false
+                        else -> true
                     }
                 }
         ) {
