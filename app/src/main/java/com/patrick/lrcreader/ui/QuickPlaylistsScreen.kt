@@ -69,6 +69,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.patrick.lrcreader.core.FillerSoundManager
+import com.patrick.lrcreader.core.MiniTunerVisibilityStore
 import com.patrick.lrcreader.core.NotesRepository
 import com.patrick.lrcreader.core.TunerEngine
 import com.patrick.lrcreader.core.TunerState
@@ -142,7 +143,7 @@ fun QuickPlaylistsScreen(
     var internalSelected by rememberSaveable {
         mutableStateOf<String?>(selectedPlaylist ?: playlists.firstOrNull())
     }
-    var isMiniTunerVisible by rememberSaveable { mutableStateOf(false) }
+    val isMiniTunerVisible by MiniTunerVisibilityStore.state(context).collectAsState()
 
     val songs = remember { mutableStateListOf<String>() }
     // ✅ Snapshot "ordre d'origine" (pour le bouton Réinitialiser)
@@ -688,7 +689,7 @@ fun QuickPlaylistsScreen(
                     IconButton(
                         onClick = {
                             val next = !isMiniTunerVisible
-                            isMiniTunerVisible = next
+                            MiniTunerVisibilityStore.setVisible(context, next)
                             if (next && !hasMicPermission) {
                                 micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                             }
