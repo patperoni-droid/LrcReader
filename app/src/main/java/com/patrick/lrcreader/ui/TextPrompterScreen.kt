@@ -148,7 +148,7 @@ fun TextPrompterScreen(
     val scope = rememberCoroutineScope()
     val focusRequester = remember { FocusRequester() }
 
-    var isPlaying by remember { mutableStateOf(true) }
+    var isPlaying by remember { mutableStateOf(false) }
     var prompterRootIsFocused by remember { mutableStateOf(false) }
     var isSpeedSliderOpen by remember { mutableStateOf(false) }
     val minSpeed = 0.10f
