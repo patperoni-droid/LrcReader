@@ -40,20 +40,23 @@ fun MiniTunerRow(
     onEnable: (() -> Unit)? = null
 ) {
     val clamped = centsOffset.coerceIn(-50f, 50f)
-    val target = if (hasSignal && isActive) clamped / 50f else 0f
+    val showCents = hasSignal && isActive
+    val centerLocked = showCents && abs(clamped) < MINI_TUNER_CENTER_LOCK_TOLERANCE_CENTS
+    val displayCents = if (centerLocked) 0f else clamped
+    val visualInTune = isInTune || centerLocked
+    val target = if (showCents) displayCents / 50f else 0f
     val animatedPos by animateFloatAsState(
         targetValue = target,
-        animationSpec = tween(durationMillis = 120),
+        animationSpec = tween(durationMillis = 140),
         label = "miniTunerNeedle"
     )
 
     val noteColor = when {
         !isActive -> Color(0xFF90A4AE)
-        isInTune -> Color(0xFF66BB6A)
+        visualInTune -> Color(0xFF66BB6A)
         else -> Color(0xFFFFECB3)
     }
-    val barColor = if (isInTune && hasSignal && isActive) Color(0xFF66BB6A) else Color(0xFF78909C)
-    val showCents = hasSignal && isActive
+    val barColor = if (visualInTune && showCents) Color(0xFF66BB6A) else Color(0xFF78909C)
     val compactNote = compactNoteName(noteString)
 
     Row(
@@ -110,10 +113,10 @@ fun MiniTunerRow(
         }
 
         if (showCents) {
-            val sign = if (clamped > 0f) "+" else ""
+            val sign = if (displayCents > 0f) "+" else ""
             Text(
-                text = "$sign${clamped.roundToInt()}c",
-                color = if (isInTune) Color(0xFF66BB6A) else Color(0xFFB0BEC5),
+                text = "$sign${displayCents.roundToInt()}c",
+                color = if (visualInTune) Color(0xFF66BB6A) else Color(0xFFB0BEC5),
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Medium
             )
@@ -156,3 +159,5 @@ fun isTunerInTune(centsOffset: Float?, toleranceCents: Float = 5f): Boolean {
     val cents = centsOffset ?: return false
     return abs(cents) < toleranceCents
 }
+
+private const val MINI_TUNER_CENTER_LOCK_TOLERANCE_CENTS = 5f
