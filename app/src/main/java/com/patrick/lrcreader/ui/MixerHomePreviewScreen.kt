@@ -1,5 +1,9 @@
 package com.patrick.lrcreader.ui
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -38,6 +42,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -48,11 +53,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.patrick.lrcreader.core.MeterManager
+import androidx.core.content.ContextCompat
+import com.patrick.lrcreader.core.DjBusController
 import com.patrick.lrcreader.core.FillerSoundPrefs
+import com.patrick.lrcreader.core.MeterManager
 import com.patrick.lrcreader.core.PlayerBusController
 import com.patrick.lrcreader.core.PlayerVolumePrefs
-import com.patrick.lrcreader.core.DjBusController
+import com.patrick.lrcreader.core.TunerEngine
 import kotlinx.coroutines.launch
 import java.util.Locale
 
@@ -74,6 +81,20 @@ fun MixerHomePreviewScreen(
 ) {
 
     val context = LocalContext.current
+    var hasMicPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.RECORD_AUDIO
+            ) == PackageManager.PERMISSION_GRANTED
+        )
+    }
+    val micPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+        onResult = { granted -> hasMicPermission = granted }
+    )
+    var miniTunerEnabled by rememberSaveable { mutableStateOf(true) }
+    val tunerState by TunerEngine.state.collectAsState()
 
     // Affichage du bloc-notes par-dessus le BUS PRINCIPAL
     var showNotes by remember { mutableStateOf(false) }
@@ -112,6 +133,16 @@ fun MixerHomePreviewScreen(
 
     DisposableEffect(Unit) {
         onDispose { MeterManager.stop() }
+    }
+    DisposableEffect(hasMicPermission, miniTunerEnabled) {
+        if (hasMicPermission && miniTunerEnabled) {
+            TunerEngine.start()
+        }
+        onDispose {
+            if (hasMicPermission && miniTunerEnabled) {
+                TunerEngine.stop()
+            }
+        }
     }
 
     val playerMeter by MeterManager.playerMeter.collectAsState()
@@ -207,6 +238,25 @@ fun MixerHomePreviewScreen(
                         .fillMaxSize()
                         .padding(16.dp)
                 ) {
+                    val tunerCents = tunerState.cents?.toFloat()
+                    val miniTunerActive = hasMicPermission && miniTunerEnabled && tunerState.isListening
+                    val hasSignal = tunerCents != null && tunerState.noteName != "—"
+
+                    MiniTunerRow(
+                        noteString = tunerState.noteName,
+                        centsOffset = tunerCents ?: 0f,
+                        isInTune = isTunerInTune(tunerCents),
+                        hasSignal = hasSignal,
+                        isActive = miniTunerActive,
+                        onEnable = {
+                            miniTunerEnabled = true
+                            if (!hasMicPermission) {
+                                micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                            }
+                        }
+                    )
+
+                    Spacer(Modifier.height(8.dp))
 
                     // Bandeau BUS PRINCIPAL
                     Box(
