@@ -8,7 +8,6 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.ui.res.stringResource
 import com.patrick.lrcreader.exo.R
-import com.patrick.lrcreader.exo.BuildConfig
 import androidx.compose.runtime.LaunchedEffect
 import com.patrick.lrcreader.core.PlaybackCoordinator   // pour stopPlayer et stopDj et stopFiller
 import com.patrick.lrcreader.core.FillerSoundManager    // pour fadeOutAndStop du fond sonore
@@ -121,7 +120,6 @@ fun MixerHomePreviewScreen(
     val hasFreshPlayerPcm by MeterManager.hasFreshPlayerPcm.collectAsState()
     val hasFreshFillerPcm by MeterManager.hasFreshFillerPcm.collectAsState()
     val hasFreshDjPcm by MeterManager.hasFreshDjPcm.collectAsState()
-    val meterDebug = "VU P:${"%.2f".format(Locale.US, playerMeter)} D:${"%.2f".format(Locale.US, djMeter)} F:${"%.2f".format(Locale.US, fillerMeter)} fresh[p=$hasFreshPlayerPcm,d=$hasFreshDjPcm,f=$hasFreshFillerPcm]"
 
     val backgroundBrush = Brush.verticalGradient(
         listOf(
@@ -156,10 +154,7 @@ fun MixerHomePreviewScreen(
 
                 Column {
                     Text(
-                        text = if (BuildConfig.FLAVOR == "labo")
-                            stringResource(R.string.mixer_app_title_labo)
-                        else
-                            stringResource(R.string.mixer_app_title),
+                        text = stringResource(R.string.mixer_app_title),
                         color = Color(0xFFFFE082),
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold
@@ -196,12 +191,6 @@ fun MixerHomePreviewScreen(
             }
 
             Spacer(Modifier.height(12.dp))
-            Text(
-                text = meterDebug,
-                color = Color(0xFF90A4AE),
-                fontSize = 10.sp
-            )
-            Spacer(Modifier.height(6.dp))
 
             // ---- PANNEAU PRINCIPAL ----
             Card(
