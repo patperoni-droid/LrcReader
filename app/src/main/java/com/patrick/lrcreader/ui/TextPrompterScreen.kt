@@ -1,6 +1,7 @@
 package com.patrick.lrcreader.ui
 
-import androidx.compose.ui.zIndex
+import android.util.Log
+import android.view.KeyEvent as AndroidKeyEvent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
@@ -9,6 +10,7 @@ import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -24,7 +26,15 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -34,6 +44,7 @@ import androidx.compose.ui.zIndex
 import com.patrick.lrcreader.core.NotesRepository
 import com.patrick.lrcreader.core.TextPrompterPrefs
 import com.patrick.lrcreader.core.TextSongRepository
+import com.patrick.lrcreader.exo.BuildConfig
 import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.ui.theme.DarkBlueGradientBackground
 import kotlinx.coroutines.delay
@@ -46,6 +57,37 @@ private data class SongInfo(
     val title: String?,
     val content: String?
 )
+
+private const val PROMPTER_KEY_LOG_TAG = "PROMPTER_KEY"
+
+internal enum class PrompterAction {
+    NEXT,
+    PREV,
+    TOGGLE,
+    HOME,
+    END
+}
+
+internal fun mapPrompterKey(nativeKeyCode: Int): PrompterAction? = when (nativeKeyCode) {
+    AndroidKeyEvent.KEYCODE_PAGE_DOWN,
+    AndroidKeyEvent.KEYCODE_DPAD_DOWN,
+    AndroidKeyEvent.KEYCODE_DPAD_RIGHT -> PrompterAction.NEXT
+
+    AndroidKeyEvent.KEYCODE_PAGE_UP,
+    AndroidKeyEvent.KEYCODE_DPAD_UP,
+    AndroidKeyEvent.KEYCODE_DPAD_LEFT -> PrompterAction.PREV
+
+    AndroidKeyEvent.KEYCODE_SPACE,
+    AndroidKeyEvent.KEYCODE_ENTER,
+    AndroidKeyEvent.KEYCODE_NUMPAD_ENTER -> PrompterAction.TOGGLE
+
+    AndroidKeyEvent.KEYCODE_MOVE_HOME -> PrompterAction.HOME
+    AndroidKeyEvent.KEYCODE_MOVE_END -> PrompterAction.END
+    else -> null
+}
+
+internal fun mapPrompterKey(event: KeyEvent): PrompterAction? =
+    mapPrompterKey(event.nativeKeyEvent.keyCode)
 
 @Composable
 fun TextPrompterScreen(
@@ -104,11 +146,34 @@ fun TextPrompterScreen(
 
     val scrollState = rememberScrollState()
     val scope = rememberCoroutineScope()
+    val focusRequester = remember { FocusRequester() }
 
     var isPlaying by remember { mutableStateOf(true) }
+    var prompterRootIsFocused by remember { mutableStateOf(false) }
     var isSpeedSliderOpen by remember { mutableStateOf(false) }
     val minSpeed = 0.10f
     val maxSpeed = 1.40f // + rapide possible → marge en haut
+
+    fun scrollByStep(direction: Int) {
+        scope.launch {
+            val step = (scrollState.maxValue * 0.08f).toInt().coerceAtLeast(80)
+            val target = when {
+                direction < 0 -> (scrollState.value - step).coerceAtLeast(0)
+                else -> (scrollState.value + step).coerceAtMost(scrollState.maxValue)
+            }
+            scrollState.animateScrollTo(target)
+        }
+    }
+
+    val onTogglePlayPause: () -> Unit = { isPlaying = !isPlaying }
+    val onPrevStep: () -> Unit = { scrollByStep(direction = -1) }
+    val onNextStep: () -> Unit = { scrollByStep(direction = 1) }
+    val onJumpToStart: () -> Unit = {
+        scope.launch { scrollState.animateScrollTo(0) }
+    }
+    val onJumpToEnd: () -> Unit = {
+        scope.launch { scrollState.animateScrollTo(scrollState.maxValue) }
+    }
 
     var speedFactor by remember(songId) {
         mutableStateOf(
@@ -157,6 +222,9 @@ fun TextPrompterScreen(
             )
         )
     }
+    LaunchedEffect(songId) {
+        focusRequester.requestFocus()
+    }
 
     DarkBlueGradientBackground {
 
@@ -191,7 +259,47 @@ fun TextPrompterScreen(
         val buttonOffsetX = 30.dp
         val buttonOffsetY = -0.dp
 
-        Box(modifier = modifier.fillMaxSize()) {
+        Box(
+            modifier = modifier
+                .fillMaxSize()
+                .focusRequester(focusRequester)
+                .focusable()
+                .onFocusChanged { prompterRootIsFocused = it.isFocused }
+                .onPreviewKeyEvent { event ->
+                    if (BuildConfig.DEBUG) {
+                        Log.d(
+                            PROMPTER_KEY_LOG_TAG,
+                            "key=${event.key} type=${event.type} keyCode=${event.nativeKeyEvent.keyCode}"
+                        )
+                    }
+                    if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                    if (!prompterRootIsFocused) return@onPreviewKeyEvent false
+
+                    when (mapPrompterKey(event)) {
+                        PrompterAction.NEXT -> {
+                            onNextStep()
+                            true
+                        }
+                        PrompterAction.PREV -> {
+                            onPrevStep()
+                            true
+                        }
+                        PrompterAction.TOGGLE -> {
+                            onTogglePlayPause()
+                            true
+                        }
+                        PrompterAction.HOME -> {
+                            onJumpToStart()
+                            true
+                        }
+                        PrompterAction.END -> {
+                            onJumpToEnd()
+                            true
+                        }
+                        null -> false
+                    }
+                }
+        ) {
 
             // 1) TEXTE plein écran
             PrompterTextViewport(
@@ -290,21 +398,9 @@ fun TextPrompterScreen(
 // ✅ TRANSPORT AU-DESSUS de la vitre
             PrompterTransportBarAudioLike(
                 isPlaying = isPlaying,
-                onPlayPause = { isPlaying = !isPlaying },
-                onPrev = {
-                    scope.launch {
-                        val step = (scrollState.maxValue * 0.08f).toInt().coerceAtLeast(80)
-                        val target = (scrollState.value - step).coerceAtLeast(0)
-                        scrollState.animateScrollTo(target)
-                    }
-                },
-                onNext = {
-                    scope.launch {
-                        val step = (scrollState.maxValue * 0.08f).toInt().coerceAtLeast(80)
-                        val target = (scrollState.value + step).coerceAtMost(scrollState.maxValue)
-                        scrollState.animateScrollTo(target)
-                    }
-                },
+                onPlayPause = onTogglePlayPause,
+                onPrev = onPrevStep,
+                onNext = onNextStep,
                 modifier = Modifier
                     .zIndex(2f)
                     .align(Alignment.BottomCenter)
