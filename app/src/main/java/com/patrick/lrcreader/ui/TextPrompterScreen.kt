@@ -151,7 +151,7 @@ fun TextPrompterScreen(
     val hostView = LocalView.current
 
     var isPlaying by remember { mutableStateOf(false) }
-    var prompterRootIsFocused by remember { mutableStateOf(false) }
+    var prompterRootHasFocus by remember { mutableStateOf(false) }
     var isSpeedSliderOpen by remember { mutableStateOf(false) }
     val minSpeed = 0.10f
     val maxSpeed = 1.40f // + rapide possible → marge en haut
@@ -268,7 +268,7 @@ fun TextPrompterScreen(
                 .fillMaxSize()
                 .focusRequester(focusRequester)
                 .focusable()
-                .onFocusChanged { prompterRootIsFocused = it.isFocused }
+                .onFocusChanged { prompterRootHasFocus = it.hasFocus }
                 .onPreviewKeyEvent { event ->
                     if (BuildConfig.DEBUG) {
                         Log.d(
@@ -277,7 +277,7 @@ fun TextPrompterScreen(
                         )
                     }
                     if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                    if (!prompterRootIsFocused) return@onPreviewKeyEvent false
+                    if (!prompterRootHasFocus) return@onPreviewKeyEvent false
 
                     when (mapPrompterKey(event)) {
                         PrompterAction.NEXT -> {
