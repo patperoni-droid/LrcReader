@@ -397,7 +397,7 @@ fun QuickPlaylistsScreen(
                             items = songs,
                             fromIndex = fromIndex,
                             headerIndex = headerIndex,
-                            mode = "TOP"
+                            mode = "BOTTOM"
                         )
                     }
                     draggingUri = null
@@ -1803,6 +1803,27 @@ internal fun isItemInsideGroup(
     return false
 }
 
+internal fun findContainingGroupHeaderIndex(items: List<String>, itemIndex: Int): Int? {
+    if (itemIndex !in items.indices) return null
+    val item = items[itemIndex]
+    if (isGroupHeader(item) || isGroupEnd(item)) return null
+
+    var cursor = itemIndex - 1
+    while (cursor >= 0) {
+        val current = items[cursor]
+        if (isGroupHeader(current)) {
+            val endIndex = findMatchingGroupEndIndex(items, cursor)
+            return if (endIndex != null) {
+                if (itemIndex > cursor && itemIndex < endIndex) cursor else null
+            } else {
+                if (itemIndex > cursor) cursor else null
+            }
+        }
+        cursor--
+    }
+    return null
+}
+
 private fun findNextReorderIndex(items: List<String>, startIndex: Int, step: Int): Int? {
     if (step == 0) return null
     var cursor = startIndex + step
@@ -1843,18 +1864,33 @@ internal fun findHeaderDropTargetKey(
     val dragged = draggedItemKey ?: return null
     if (!isPlayableAudioItem(dragged)) return null
 
-    val headerHit = viewportItems
-        .asSequence()
-        .filter { item ->
-            songs.contains(item.key) && isGroupHeader(item.key)
-        }
-        .firstOrNull { header ->
-            dragY >= (header.start - headerPaddingPx) &&
-                dragY < (header.endExclusive + headerPaddingPx)
-        }
-        ?: return null
+    val hoverHit = viewportItems.firstOrNull { item ->
+        dragY >= (item.start - headerPaddingPx) &&
+            dragY < (item.endExclusive + headerPaddingPx)
+    } ?: return null
 
-    return headerHit.key
+    val hoverKey = hoverHit.key
+    val targetHeaderIndex = when {
+        isGroupHeader(hoverKey) -> songs.indexOf(hoverKey).takeIf { it >= 0 }
+        else -> {
+            val hoveredIndex = songs.indexOf(hoverKey)
+            if (hoveredIndex == -1) {
+                null
+            } else {
+                findContainingGroupHeaderIndex(songs, hoveredIndex)
+            }
+        }
+    } ?: return null
+
+    val draggedIndex = songs.indexOf(dragged)
+    val draggedGroupHeaderIndex = if (draggedIndex >= 0) {
+        findContainingGroupHeaderIndex(songs, draggedIndex)
+    } else {
+        null
+    }
+    if (draggedGroupHeaderIndex != null && draggedGroupHeaderIndex == targetHeaderIndex) return null
+
+    return songs[targetHeaderIndex].takeIf { isGroupHeader(it) }
 }
 
 // prefs couleur playlist
