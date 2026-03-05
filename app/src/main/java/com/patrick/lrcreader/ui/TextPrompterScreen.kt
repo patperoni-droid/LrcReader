@@ -278,7 +278,9 @@ fun TextPrompterScreen(
                     }
                     val action = mapPrompterKey(event)
                     if (action == null) return@onPreviewKeyEvent false
-                    if (!prompterRootHasFocus) return@onPreviewKeyEvent false
+                    if (!prompterRootHasFocus) {
+                        focusRequester.requestFocus()
+                    }
 
                     when (event.type) {
                         KeyEventType.KeyDown -> when (action) {
