@@ -59,6 +59,7 @@ import java.nio.ByteBuffer
 import java.nio.charset.Charset
 import java.nio.charset.CodingErrorAction
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.yield
@@ -121,6 +122,8 @@ fun LyricsEditorSection(
     var paletteInput by remember(chordPaletteStorageKey) { mutableStateOf("") }
     var paletteChords by remember(chordPaletteStorageKey) { mutableStateOf<List<String>>(emptyList()) }
     var lastLiveCaptureClickElapsedMs by remember { mutableStateOf<Long?>(null) }
+    var pendingCapturedLine by remember { mutableStateOf<LrcLine?>(null) }
+    var highlightedCapturedIndex by remember { mutableStateOf<Int?>(null) }
 
     var editingCueLineIndex by remember { mutableStateOf<Int?>(null) }
     var lineMenuIndex by remember { mutableStateOf<Int?>(null) }
@@ -203,6 +206,7 @@ fun LyricsEditorSection(
                 selection = TextRange(nextRaw.length)
             )
             onRawLyricsTextChange(nextRaw)
+            pendingCapturedLine = captured
 
             if (BuildConfig.DEBUG) {
                 Log.d(
@@ -213,6 +217,30 @@ fun LyricsEditorSection(
             return
         }
         insertChordFromPalette(chord)
+    }
+
+    LaunchedEffect(showChordPalette, currentEditTab, pendingCapturedLine, editingLines.size) {
+        val pending = pendingCapturedLine ?: return@LaunchedEffect
+        if (!showChordPalette || currentEditTab != 1) return@LaunchedEffect
+        val targetIndex = editingLines.indexOfLast { it.timeMs == pending.timeMs && it.text == pending.text }
+        if (targetIndex < 0) return@LaunchedEffect
+
+        val viewport = lazyListState.layoutInfo.viewportEndOffset - lazyListState.layoutInfo.viewportStartOffset
+        val comfortableOffset = if (viewport > 0) -viewport / 4 else 0
+        runCatching {
+            lazyListState.animateScrollToItem(
+                index = targetIndex,
+                scrollOffset = comfortableOffset
+            )
+        }
+        highlightedCapturedIndex = targetIndex
+        pendingCapturedLine = null
+    }
+
+    LaunchedEffect(highlightedCapturedIndex) {
+        if (highlightedCapturedIndex == null) return@LaunchedEffect
+        delay(900L)
+        highlightedCapturedIndex = null
     }
 
     fun tagLineAt(index: Int) {
@@ -643,7 +671,11 @@ fun LyricsEditorSection(
 
                                         Text(
                                             text = line.text,
-                                            color = Color.White,
+                                            color = if (index == highlightedCapturedIndex) {
+                                                Color(0xFFFFF176)
+                                            } else {
+                                                Color.White
+                                            },
                                             fontSize = 16.sp,
                                             modifier = Modifier.combinedClickable(
                                                 onClick = {
