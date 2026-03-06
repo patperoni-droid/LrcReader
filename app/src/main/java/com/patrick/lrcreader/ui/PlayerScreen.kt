@@ -622,18 +622,22 @@ fun PlayerScreen(
                                 if (selectedViewMode == LyricsViewMode.CHORDS) {
                                     recomputeCurrentIndexForActiveView()
                                 }
-                                val writtenName = writeAccordsToSplByTrackUri(
-                                    context = context,
-                                    trackUriString = trackUri,
-                                    preferredLrcFileName = resolvedLyricsLrcFileName,
-                                    lines = lines
-                                )
-                                if (!writtenName.isNullOrBlank()) {
-                                    ensureLyricsFileExistsForTrack(
-                                        context = context,
-                                        trackUriString = trackUri,
-                                        preferredLrcFileName = writtenName
-                                    )
+                                scope.launch(Dispatchers.IO) {
+                                    runCatching {
+                                        val writtenName = writeAccordsToSplByTrackUri(
+                                            context = context,
+                                            trackUriString = trackUri,
+                                            preferredLrcFileName = resolvedLyricsLrcFileName,
+                                            lines = lines
+                                        )
+                                        if (!writtenName.isNullOrBlank()) {
+                                            ensureLyricsFileExistsForTrack(
+                                                context = context,
+                                                trackUriString = trackUri,
+                                                preferredLrcFileName = writtenName
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
