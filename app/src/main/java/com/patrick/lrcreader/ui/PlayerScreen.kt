@@ -617,6 +617,11 @@ fun PlayerScreen(
                                     )
                                 }
                             } else {
+                                parsedChordLines = lines
+                                hasChordsSource = lines.isNotEmpty()
+                                if (selectedViewMode == LyricsViewMode.CHORDS) {
+                                    recomputeCurrentIndexForActiveView()
+                                }
                                 val writtenName = writeAccordsToSplByTrackUri(
                                     context = context,
                                     trackUriString = trackUri,

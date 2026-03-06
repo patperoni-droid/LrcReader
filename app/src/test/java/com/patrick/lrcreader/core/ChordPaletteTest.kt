@@ -1,6 +1,8 @@
 package com.patrick.lrcreader.core
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ChordPaletteTest {
@@ -63,5 +65,46 @@ class ChordPaletteTest {
             rawText = "Am D G"
         )
         assertEquals(emptyList<String>(), sorted)
+    }
+
+    @Test
+    fun captureLiveChord_createsExpectedLrcLine() {
+        val line = captureLiveChord(
+            chord = "G",
+            playerPositionMs = 12_400L
+        )
+        assertEquals(12_250L, line.timeMs)
+        assertEquals("G", line.text)
+        assertEquals("[00:12.25] G", formatCapturedLiveChordLine(line))
+    }
+
+    @Test
+    fun captureLiveChord_appliesCompensationAndClampsToZero() {
+        val line = captureLiveChord(
+            chord = "Am",
+            playerPositionMs = 100L
+        )
+        assertEquals(0L, line.timeMs)
+        assertEquals("Am", line.text)
+    }
+
+    @Test
+    fun appendCapturedChordLineSorted_sortsTimelineByTimestamp() {
+        val current = listOf(
+            LrcLine(timeMs = 2_000L, text = "D"),
+            LrcLine(timeMs = 5_000L, text = "G")
+        )
+        val updated = appendCapturedChordLineSorted(
+            current = current,
+            newLine = LrcLine(timeMs = 3_000L, text = "Am")
+        )
+        assertEquals(listOf(2_000L, 3_000L, 5_000L), updated.map { it.timeMs })
+        assertEquals(listOf("D", "Am", "G"), updated.map { it.text })
+    }
+
+    @Test
+    fun isLiveCaptureAllowed_ignoresTooFastDoubleClick() {
+        assertFalse(isLiveCaptureAllowed(nowElapsedMs = 1_050L, lastCaptureElapsedMs = 1_000L))
+        assertTrue(isLiveCaptureAllowed(nowElapsedMs = 1_080L, lastCaptureElapsedMs = 1_000L))
     }
 }
