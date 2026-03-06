@@ -33,6 +33,37 @@ fun inferChordPaletteFromText(raw: String): List<String> {
     }
 }
 
+fun sortChordPaletteByUsage(
+    palette: List<String>,
+    rawText: String
+): List<String> {
+    if (palette.isEmpty()) return emptyList()
+    if (rawText.isBlank()) return palette
+
+    val tokens = rawText
+        .split(Regex("""[\s,;|]+"""))
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
+
+    if (tokens.isEmpty()) return palette
+
+    val usageCountByToken = mutableMapOf<String, Int>()
+    tokens.forEach { token ->
+        val normalized = token.lowercase()
+        usageCountByToken[normalized] = (usageCountByToken[normalized] ?: 0) + 1
+    }
+
+    return palette
+        .mapIndexed { index, chord ->
+            Triple(chord, usageCountByToken[chord.lowercase()] ?: 0, index)
+        }
+        .sortedWith(
+            compareByDescending<Triple<String, Int, Int>> { it.second }
+                .thenBy { it.third }
+        )
+        .map { it.first }
+}
+
 fun insertChordAtCursor(
     text: String,
     selectionStart: Int,
