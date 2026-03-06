@@ -9,6 +9,12 @@ import java.security.MessageDigest
 
 object LrcStorage {
 
+    data class TrackLrcOrigin(
+        val source: String,
+        val fileName: String?,
+        val debugPath: String?
+    )
+
     private const val TAG = "LRC_STORAGE"
     private const val CACHE_DIR = "lrc_cache"
 
@@ -74,6 +80,78 @@ object LrcStorage {
         }
 
         Log.d(TAG, "mode UNKNOWN load miss")
+        return null
+    }
+
+    fun resolveOriginForTrack(context: Context, trackUriString: String): TrackLrcOrigin? {
+        if (trackUriString.isBlank()) return null
+
+        if (isInternalSplMode(context)) {
+            val (upperDir, lowerDir) = internalSplLyricsDirs(context)
+            val sidecar = sidecarNameForTrack(trackUriString)
+
+            val upper = File(upperDir, sidecar)
+            if (upper.exists() && upper.isFile) {
+                return TrackLrcOrigin(
+                    source = "LRC_STORAGE_INTERNAL_SPL_UPPER",
+                    fileName = upper.name,
+                    debugPath = upper.absolutePath
+                )
+            }
+
+            val lower = File(lowerDir, sidecar)
+            if (lower.exists() && lower.isFile) {
+                return TrackLrcOrigin(
+                    source = "LRC_STORAGE_INTERNAL_SPL_LOWER",
+                    fileName = lower.name,
+                    debugPath = lower.absolutePath
+                )
+            }
+
+            val cache = internalFile(context, trackUriString)
+            if (cache.exists() && cache.isFile) {
+                return TrackLrcOrigin(
+                    source = "LRC_STORAGE_INTERNAL_CACHE",
+                    fileName = cache.name,
+                    debugPath = cache.absolutePath
+                )
+            }
+
+            return null
+        }
+
+        val safDir = getConfiguredSafDir(context)
+        if (safDir != null) {
+            val cache = internalFile(context, trackUriString)
+            if (cache.exists() && cache.isFile) {
+                return TrackLrcOrigin(
+                    source = "LRC_STORAGE_INTERNAL_CACHE",
+                    fileName = cache.name,
+                    debugPath = cache.absolutePath
+                )
+            }
+
+            val fileName = fileNameForTrack(trackUriString)
+            val file = safDir.findFile(fileName)
+            if (file != null && file.isFile) {
+                return TrackLrcOrigin(
+                    source = "LRC_STORAGE_SAF_CONFIGURED",
+                    fileName = file.name ?: fileName,
+                    debugPath = file.uri.toString()
+                )
+            }
+
+            return null
+        }
+
+        val cache = internalFile(context, trackUriString)
+        if (cache.exists() && cache.isFile) {
+            return TrackLrcOrigin(
+                source = "LRC_STORAGE_INTERNAL_CACHE",
+                fileName = cache.name,
+                debugPath = cache.absolutePath
+            )
+        }
         return null
     }
 

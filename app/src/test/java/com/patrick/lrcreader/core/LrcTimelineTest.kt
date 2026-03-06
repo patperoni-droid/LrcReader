@@ -43,6 +43,15 @@ class LrcTimelineTest {
     }
 
     @Test
+    fun resolveChordsLookupFileName_fallsBackToAudioBaseWhenMissing() {
+        val fileName = resolveChordsLookupFileName(
+            exactLyricsFileName = null,
+            fallbackBaseName = "Titre"
+        )
+        assertEquals("Titre.lrc", fileName)
+    }
+
+    @Test
     fun findActiveLrcIndex_returnsLastTaggedBeforePosition() {
         val lines = listOf(
             LrcLine(timeMs = 1_000L, text = "A"),
