@@ -73,10 +73,14 @@ class LibraryBackendSaf(
         if (backingTracks != null && backingTracks.isDirectory) {
             val audio = ensureDirSmart(backingTracks, "Audio", aliases = listOf("audio"))
             val lyrics = ensureDirSmart(backingTracks, "Lyrics", aliases = listOf("lyrics"))
+            val accords = ensureDirSmart(backingTracks, "Accords", aliases = listOf("accords"))
             val midi = ensureDirSmart(backingTracks, "Midi", aliases = listOf("midi"))
             val videos = ensureDirSmart(backingTracks, "Videos", aliases = listOf("videos"))
 
-            Log.i(tag, "BackingTracks dirs audio=${audio?.uri} lyrics=${lyrics?.uri} midi=${midi?.uri} videos=${videos?.uri}")
+            Log.i(
+                tag,
+                "BackingTracks dirs audio=${audio?.uri} lyrics=${lyrics?.uri} accords=${accords?.uri} midi=${midi?.uri} videos=${videos?.uri}"
+            )
         }
 
         if (BuildConfig.DEBUG) {
