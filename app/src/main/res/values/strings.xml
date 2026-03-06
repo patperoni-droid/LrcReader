@@ -253,6 +253,7 @@
     <string name="lyrics_editor_cd_sync_play_pause">Play/Pause synchro</string>
     <string name="lyrics_editor_cd_back_to_start">Revenir début</string>
     <string name="lyrics_editor_reset_tags">Reset TAGs</string>
+    <string name="chords_editor_clear_all">Tout effacer</string>
     <string name="lyrics_editor_empty_sync_hint">Ajoute d’abord des paroles dans l’onglet Simple.</string>
     <string name="lyrics_editor_tag_button">TAG</string>
     <string name="lyrics_editor_cd_play_from_line">Lire depuis cette phrase</string>

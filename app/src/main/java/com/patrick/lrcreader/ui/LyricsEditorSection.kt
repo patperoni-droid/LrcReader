@@ -62,6 +62,7 @@ import java.nio.charset.CodingErrorAction
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.yield
 
 private val INLINE_LRC_TIME_TAG_REGEX =
     Regex("""\[(\d{1,2}):(\d{1,2})(?:\.(\d{1,3}))?]""")
@@ -191,7 +192,11 @@ fun LyricsEditorSection(
                 newLine = captured
             )
             onEditingLinesChange(updated)
-            onPersistLines(updated)
+            scope.launch {
+                // Let Compose render the new tag first, then persist.
+                yield()
+                onPersistLines(updated)
+            }
 
             val plainChordLine = captured.text
             val nextRaw = if (rawTextFieldValue.text.isBlank()) {
@@ -214,6 +219,32 @@ fun LyricsEditorSection(
             return
         }
         insertChordFromPalette(chord)
+    }
+
+    fun tagLineAt(index: Int) {
+        val now = positionMs.coerceAtLeast(0)
+        onEditingLinesChange(
+            editingLines.mapIndexed { i, old ->
+                if (i == index) old.copy(timeMs = now.toLong()) else old
+            }
+        )
+
+        // auto-scroll
+        scope.launch {
+            val layoutInfo = lazyListState.layoutInfo
+            val visibleItem = layoutInfo.visibleItemsInfo.find { it.index == index }
+            if (visibleItem != null) {
+                val itemCenter = visibleItem.offset + visibleItem.size / 2
+                val viewportCenter = layoutInfo.viewportEndOffset / 2
+                if (itemCenter > viewportCenter) {
+                    val nextIndex = (index + 1).coerceAtMost(editingLines.lastIndex)
+                    lazyListState.animateScrollToItem(
+                        nextIndex,
+                        scrollOffset = -layoutInfo.viewportEndOffset / 3
+                    )
+                }
+            }
+        }
     }
 
     @Composable
@@ -524,10 +555,27 @@ fun LyricsEditorSection(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         TextButton(
-                            onClick = { onEditingLinesChange(editingLines.map { it.copy(timeMs = 0L) }) }
+                            onClick = {
+                                if (showChordPalette) {
+                                    val cleared = emptyList<LrcLine>()
+                                    onEditingLinesChange(cleared)
+                                    rawTextFieldValue = TextFieldValue("", TextRange(0))
+                                    onRawLyricsTextChange("")
+                                    scope.launch {
+                                        yield()
+                                        onPersistLines(cleared)
+                                    }
+                                } else {
+                                    onEditingLinesChange(editingLines.map { it.copy(timeMs = 0L) })
+                                }
+                            }
                         ) {
                             Text(
-                                text = stringResource(R.string.lyrics_editor_reset_tags),
+                                text = if (showChordPalette) {
+                                    stringResource(R.string.chords_editor_clear_all)
+                                } else {
+                                    stringResource(R.string.lyrics_editor_reset_tags)
+                                },
                                 color = Color(0xFFFF8A80),
                                 fontSize = 11.sp
                             )
@@ -571,35 +619,20 @@ fun LyricsEditorSection(
                                         horizontalAlignment = Alignment.CenterHorizontally,
                                         modifier = Modifier.padding(end = 8.dp)
                                     ) {
-                                        TextButton(
-                                            onClick = {
-                                                val now = positionMs.coerceAtLeast(0)
-                                                onEditingLinesChange(
-                                                    editingLines.mapIndexed { i, old ->
-                                                        if (i == index) old.copy(timeMs = now.toLong()) else old
+                                        Text(
+                                            stringResource(R.string.lyrics_editor_tag_button),
+                                            color = Color(0xFF80CBC4),
+                                            fontSize = 12.sp,
+                                            modifier = Modifier
+                                                .combinedClickable(
+                                                    onClick = { tagLineAt(index) },
+                                                    onLongClick = {
+                                                        lineMenuIndex = index
+                                                        lineMenuText = line.text
                                                     }
                                                 )
-
-                                                // auto-scroll
-                                                scope.launch {
-                                                    val layoutInfo = lazyListState.layoutInfo
-                                                    val visibleItem = layoutInfo.visibleItemsInfo.find { it.index == index }
-                                                    if (visibleItem != null) {
-                                                        val itemCenter = visibleItem.offset + visibleItem.size / 2
-                                                        val viewportCenter = layoutInfo.viewportEndOffset / 2
-                                                        if (itemCenter > viewportCenter) {
-                                                            val nextIndex = (index + 1).coerceAtMost(editingLines.lastIndex)
-                                                            lazyListState.animateScrollToItem(
-                                                                nextIndex,
-                                                                scrollOffset = -layoutInfo.viewportEndOffset / 3
-                                                            )
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        ) {
-                                            Text(stringResource(R.string.lyrics_editor_tag_button), color = Color(0xFF80CBC4), fontSize = 12.sp)
-                                        }
+                                                .padding(horizontal = 12.dp, vertical = 8.dp)
+                                        )
                                         Text(timeLabel, color = Color(0xFFB0BEC5), fontSize = 10.sp)
                                     }
 

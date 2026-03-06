@@ -253,6 +253,7 @@
     <string name="lyrics_editor_cd_sync_play_pause">Sync play/pause</string>
     <string name="lyrics_editor_cd_back_to_start">Back to start</string>
     <string name="lyrics_editor_reset_tags">Reset tags</string>
+    <string name="chords_editor_clear_all">Clear all</string>
     <string name="lyrics_editor_empty_sync_hint">Add lyrics first in the Simple tab.</string>
     <string name="lyrics_editor_tag_button">TAG</string>
     <string name="lyrics_editor_cd_play_from_line">Play from this line</string>
