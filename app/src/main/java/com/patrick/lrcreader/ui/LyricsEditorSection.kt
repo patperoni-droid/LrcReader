@@ -1,6 +1,5 @@
 package com.patrick.lrcreader.ui
 
-import com.patrick.lrcreader.core.LrcStorage
 import android.content.Context
 import android.media.MediaMetadataRetriever
 import android.net.Uri
@@ -81,7 +80,13 @@ fun LyricsEditorSection(
 
     // ✅ callback sauvegarde
     onSaveSortedLines: (List<LrcLine>) -> Unit,
-    onImportedLinesApplied: (List<LrcLine>) -> Unit
+    onImportedLinesApplied: (List<LrcLine>) -> Unit,
+    onPersistLines: (List<LrcLine>) -> Unit,
+    onDeletePersisted: () -> Unit,
+    showImportButton: Boolean = true,
+    mainTabLabelRes: Int = R.string.lyrics_editor_tab_lyrics,
+    inputLabelRes: Int = R.string.lyrics_editor_input_label,
+    enableCueEditing: Boolean = true
 ) {
     if (!isEditingLyrics) return
 
@@ -106,11 +111,7 @@ fun LyricsEditorSection(
         if (simpleLines.isEmpty()) {
             onEditingLinesChange(emptyList())
             onRawLyricsTextChange("")
-
-            if (currentTrackUri != null) {
-                LrcStorage.deleteForTrack(context, currentTrackUri)
-            }
-
+            onDeletePersisted()
             onSaveSortedLines(emptyList())
             return
         }
@@ -131,13 +132,7 @@ fun LyricsEditorSection(
 
         Log.d("LrcDebug", "EDITOR_SAVE currentTrackUri=$currentTrackUri lines=${finalLines.size}")
 
-        if (currentTrackUri != null) {
-            LrcStorage.saveForTrack(
-                context = context,
-                trackUriString = currentTrackUri,
-                lines = finalLines
-            )
-        }
+        onPersistLines(finalLines)
 
         onSaveSortedLines(finalLines)
     }
@@ -186,13 +181,7 @@ fun LyricsEditorSection(
                 }
 
                 val parsed = withContext(Dispatchers.IO) { parseLrc(importedText) }
-                withContext(Dispatchers.IO) {
-                    LrcStorage.saveForTrack(
-                        context = context,
-                        trackUriString = trackUri,
-                        lines = parsed
-                    )
-                }
+                onPersistLines(parsed)
 
                 onRawLyricsTextChange(importedText)
                 onEditingLinesChange(parsed)
@@ -226,7 +215,7 @@ fun LyricsEditorSection(
                     Tab(
                         selected = currentEditTab == 0,
                         onClick = { onCurrentEditTabChange(0) },
-                        text = { Text(stringResource(R.string.lyrics_editor_tab_lyrics)) }
+                        text = { Text(stringResource(mainTabLabelRes)) }
                     )
                     Tab(
                         selected = currentEditTab == 1,
@@ -238,14 +227,16 @@ fun LyricsEditorSection(
                 }
             }
 
-            TextButton(
-                enabled = currentTrackUri != null && !isImportBusy,
-                onClick = {
-                    importLauncher.launch(arrayOf("*/*"))
-                },
-                modifier = Modifier.padding(start = 4.dp)
-            ) {
-                Text("Import .LRC", color = Color.White)
+            if (showImportButton) {
+                TextButton(
+                    enabled = currentTrackUri != null && !isImportBusy,
+                    onClick = {
+                        importLauncher.launch(arrayOf("*/*"))
+                    },
+                    modifier = Modifier.padding(start = 4.dp)
+                ) {
+                    Text("Import .LRC", color = Color.White)
+                }
             }
 
             IconButton(
@@ -282,7 +273,7 @@ fun LyricsEditorSection(
                         ),
                         label = {
                             Text(
-                                stringResource(R.string.lyrics_editor_input_label),
+                                stringResource(inputLabelRes),
                                 color = Color.LightGray
                             )
                         }
@@ -384,7 +375,7 @@ fun LyricsEditorSection(
                                     if (line.timeMs > 0) formatLrcTime(line.timeMs) else "--:--.--"
 
                                 val hasCueForThisLine =
-                                    cuesForTrack.any { it.lineIndex == index }
+                                    enableCueEditing && cuesForTrack.any { it.lineIndex == index }
 
                                 Row(
                                     modifier = Modifier
@@ -445,7 +436,11 @@ fun LyricsEditorSection(
                                             color = Color.White,
                                             fontSize = 16.sp,
                                             modifier = Modifier.combinedClickable(
-                                                onClick = { editingCueLineIndex = index },
+                                                onClick = {
+                                                    if (enableCueEditing) {
+                                                        editingCueLineIndex = index
+                                                    }
+                                                },
                                                 onLongClick = {
                                                     lineMenuIndex = index
                                                     lineMenuText = line.text
@@ -530,7 +525,7 @@ fun LyricsEditorSection(
                                                 Log.w("LrcDebug", "DELETE_LINE_SKIPPED invalidIndex idx=$idx size=${list.size}")
                                             }
 
-                                            if (currentTrackUri != null) {
+                                            if (enableCueEditing && currentTrackUri != null) {
                                                 CueMidiStore.deleteCue(trackUri = currentTrackUri, lineIndex = idx)
                                             }
 
@@ -548,7 +543,7 @@ fun LyricsEditorSection(
 
                     // ✅ Popup édition CUE MIDI
                     val lineIndexEditing = editingCueLineIndex
-                    if (lineIndexEditing != null && currentTrackUri != null) {
+                    if (enableCueEditing && lineIndexEditing != null && currentTrackUri != null) {
                         CueMidiEditorPopup(
                             trackUri = currentTrackUri,
                             lineIndex = lineIndexEditing,
