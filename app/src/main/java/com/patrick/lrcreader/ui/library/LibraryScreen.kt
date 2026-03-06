@@ -874,12 +874,12 @@ fun LibraryScreen(
                             onDeleteOne = { uri ->
                                 val prompterId = extractPrompterId(uri)
                                 if (prompterId != null) {
-                                    TextSongRepository.delete(context, prompterId)
-                                    removePrompterFromAllPlaylists(uri.toString())
-                                    selectedSongs = selectedSongs - uri
-                                    val folder = currentFolderUri
-                                    if (folder != null) {
-                                        entries = buildEntriesForFolder(folder, useCache = false)
+                                    if (deletePrompterAndRemoveFromAllPlaylists(context, uri.toString())) {
+                                        selectedSongs = selectedSongs - uri
+                                        val folder = currentFolderUri
+                                        if (folder != null) {
+                                            entries = buildEntriesForFolder(folder, useCache = false)
+                                        }
                                     }
                                 } else {
                                     pendingDeleteUri = uri
