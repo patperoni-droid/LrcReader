@@ -8,6 +8,9 @@ data class TextInsertionResult(
     val cursor: Int
 )
 
+private const val LIVE_CHORD_COMPENSATION_MS = 150L
+private const val LIVE_CHORD_DOUBLE_CLICK_GUARD_MS = 80L
+
 fun parseChordPaletteInput(raw: String): List<String> {
     return raw
         .split(Regex("""[,\n;]+"""))
@@ -83,4 +86,46 @@ fun insertChordAtCursor(
     val nextText = before + inserted + after
     val nextCursor = (before + inserted).length
     return TextInsertionResult(text = nextText, cursor = nextCursor)
+}
+
+fun captureLiveChord(
+    chord: String,
+    playerPositionMs: Long,
+    compensationMs: Long = LIVE_CHORD_COMPENSATION_MS
+): LrcLine {
+    val safeChord = chord.trim()
+    val capturedTime = (playerPositionMs - compensationMs).coerceAtLeast(0L)
+    return LrcLine(
+        timeMs = capturedTime,
+        text = safeChord
+    )
+}
+
+fun formatLrcTimeTag(timeMs: Long): String {
+    val safe = timeMs.coerceAtLeast(0L)
+    val totalSeconds = safe / 1000
+    val minutes = totalSeconds / 60
+    val seconds = totalSeconds % 60
+    val hundredths = (safe % 1000) / 10
+    return "[%02d:%02d.%02d]".format(minutes, seconds, hundredths)
+}
+
+fun formatCapturedLiveChordLine(line: LrcLine): String {
+    return "${formatLrcTimeTag(line.timeMs)} ${line.text.trim()}"
+}
+
+fun appendCapturedChordLineSorted(
+    current: List<LrcLine>,
+    newLine: LrcLine
+): List<LrcLine> {
+    return (current + newLine).sortedBy { it.timeMs }
+}
+
+fun isLiveCaptureAllowed(
+    nowElapsedMs: Long,
+    lastCaptureElapsedMs: Long?,
+    minIntervalMs: Long = LIVE_CHORD_DOUBLE_CLICK_GUARD_MS
+): Boolean {
+    if (lastCaptureElapsedMs == null) return true
+    return nowElapsedMs - lastCaptureElapsedMs >= minIntervalMs
 }

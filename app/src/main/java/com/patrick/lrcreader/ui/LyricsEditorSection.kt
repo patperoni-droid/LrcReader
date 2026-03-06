@@ -3,6 +3,7 @@ package com.patrick.lrcreader.ui
 import android.content.Context
 import android.media.MediaMetadataRetriever
 import android.net.Uri
+import android.os.SystemClock
 import android.provider.OpenableColumns
 import android.util.Log
 import android.widget.Toast
@@ -44,7 +45,11 @@ import com.patrick.lrcreader.core.CueMidiStore
 import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.core.LrcCleaner
 import com.patrick.lrcreader.core.LrcLine
+import com.patrick.lrcreader.core.appendCapturedChordLineSorted
+import com.patrick.lrcreader.core.captureLiveChord
+import com.patrick.lrcreader.core.formatCapturedLiveChordLine
 import com.patrick.lrcreader.core.inferChordPaletteFromText
+import com.patrick.lrcreader.core.isLiveCaptureAllowed
 import com.patrick.lrcreader.core.insertChordAtCursor
 import com.patrick.lrcreader.core.parseLrc
 import com.patrick.lrcreader.core.parseChordPaletteInput
@@ -115,6 +120,7 @@ fun LyricsEditorSection(
     }
     var paletteInput by remember(chordPaletteStorageKey) { mutableStateOf("") }
     var paletteChords by remember(chordPaletteStorageKey) { mutableStateOf<List<String>>(emptyList()) }
+    var lastLiveCaptureClickElapsedMs by remember { mutableStateOf<Long?>(null) }
 
     var editingCueLineIndex by remember { mutableStateOf<Int?>(null) }
     var lineMenuIndex by remember { mutableStateOf<Int?>(null) }
@@ -166,6 +172,48 @@ fun LyricsEditorSection(
             selection = TextRange(insertion.cursor)
         )
         onRawLyricsTextChange(insertion.text)
+    }
+
+    fun handlePaletteChordClick(chord: String) {
+        if (showChordPalette && isPlaying) {
+            val nowElapsed = SystemClock.elapsedRealtime()
+            if (!isLiveCaptureAllowed(nowElapsed, lastLiveCaptureClickElapsedMs)) {
+                return
+            }
+            lastLiveCaptureClickElapsedMs = nowElapsed
+
+            val captured = captureLiveChord(
+                chord = chord,
+                playerPositionMs = positionMs.toLong()
+            )
+            val updated = appendCapturedChordLineSorted(
+                current = editingLines,
+                newLine = captured
+            )
+            onEditingLinesChange(updated)
+            onPersistLines(updated)
+
+            val plainChordLine = captured.text
+            val nextRaw = if (rawTextFieldValue.text.isBlank()) {
+                plainChordLine
+            } else {
+                rawTextFieldValue.text + "\n" + plainChordLine
+            }
+            rawTextFieldValue = TextFieldValue(
+                text = nextRaw,
+                selection = TextRange(nextRaw.length)
+            )
+            onRawLyricsTextChange(nextRaw)
+
+            if (BuildConfig.DEBUG) {
+                Log.d(
+                    "CHORDS_LIVE_CAPTURE",
+                    "captured=${formatCapturedLiveChordLine(captured)} size=${updated.size}"
+                )
+            }
+            return
+        }
+        insertChordFromPalette(chord)
     }
 
     LaunchedEffect(showChordPalette, chordPaletteStorageKey) {
@@ -370,7 +418,7 @@ fun LyricsEditorSection(
                             ) {
                                 displayedPalette.forEach { chord ->
                                     TextButton(
-                                        onClick = { insertChordFromPalette(chord) }
+                                        onClick = { handlePaletteChordClick(chord) }
                                     ) {
                                         Text("[$chord]", color = Color(0xFF80CBC4))
                                     }
