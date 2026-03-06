@@ -203,6 +203,7 @@ fun PlayerScreen(
     }
 
     var isEditingLyrics by remember { mutableStateOf(false) }
+    var editingTargetMode by remember(currentTrackUri) { mutableStateOf(LyricsViewMode.LYRICS) }
     var showMixScreen by remember { mutableStateOf(false) }
     LaunchedEffect(closeMixSignal) { showMixScreen = false }
 
@@ -565,22 +566,68 @@ fun PlayerScreen(
                 onSaveSortedLines = { sorted ->
                     rawLyricsText = sorted.joinToString("\n") { it.text }
                     editingLines = sorted
-                    onParsedLinesChange(sorted)
-                    isEditingLyrics = false
-
-                    if (currentTrackUri != null) {
-                        runCatching {
-                            LrcStorage.saveForTrack(
-                                context = context,
-                                trackUriString = currentTrackUri,
-                                lines = sorted
-                            )
+                    if (editingTargetMode == LyricsViewMode.LYRICS) {
+                        onParsedLinesChange(sorted)
+                        hasLyricsSource = sorted.isNotEmpty()
+                    } else {
+                        parsedChordLines = sorted
+                        hasChordsSource = sorted.isNotEmpty()
+                        if (selectedViewMode == LyricsViewMode.CHORDS) {
+                            recomputeCurrentIndexForActiveView()
                         }
                     }
+                    isEditingLyrics = false
                 },
                 onImportedLinesApplied = { imported ->
                     onParsedLinesChange(imported)
-                }
+                },
+                onPersistLines = { lines ->
+                    currentTrackUri?.let { trackUri ->
+                        runCatching {
+                            if (editingTargetMode == LyricsViewMode.LYRICS) {
+                                LrcStorage.saveForTrack(
+                                    context = context,
+                                    trackUriString = trackUri,
+                                    lines = lines
+                                )
+                            } else {
+                                writeAccordsToSplByTrackUri(
+                                    context = context,
+                                    trackUriString = trackUri,
+                                    preferredLrcFileName = resolvedLyricsLrcFileName,
+                                    lines = lines
+                                )
+                            }
+                        }
+                    }
+                },
+                onDeletePersisted = {
+                    currentTrackUri?.let { trackUri ->
+                        runCatching {
+                            if (editingTargetMode == LyricsViewMode.LYRICS) {
+                                LrcStorage.deleteForTrack(context, trackUri)
+                            } else {
+                                deleteAccordsFromSplByTrackUri(
+                                    context = context,
+                                    trackUriString = trackUri,
+                                    preferredLrcFileName = resolvedLyricsLrcFileName
+                                )
+                            }
+                        }
+                    }
+                },
+                showImportButton = editingTargetMode == LyricsViewMode.LYRICS,
+                mainTabLabelRes = if (editingTargetMode == LyricsViewMode.LYRICS) {
+                    R.string.lyrics_editor_tab_lyrics
+                } else {
+                    R.string.player_view_chords
+                },
+                inputLabelRes = if (editingTargetMode == LyricsViewMode.LYRICS) {
+                    R.string.lyrics_editor_input_label
+                } else {
+                    R.string.chords_editor_input_label
+                },
+                enableCueEditing = editingTargetMode == LyricsViewMode.LYRICS
             )
         } else {
             Column(
@@ -619,18 +666,21 @@ fun PlayerScreen(
                             },
                             highlightColor = highlightColor,
                             onOpenMix = { showMixScreen = true },
-                            showEditLyrics = selectedViewMode == LyricsViewMode.LYRICS,
+                            showEditLyrics = selectedViewMode == LyricsViewMode.LYRICS ||
+                                selectedViewMode == LyricsViewMode.CHORDS,
                             onOpenEditor = {
-                                if (editingLines.isNotEmpty()) {
-                                    rawLyricsText = plainLyricsText(editingLines)
+                                editingTargetMode = selectedViewMode
+                                val sourceLines = if (editingTargetMode == LyricsViewMode.CHORDS) {
+                                    parsedChordLines
                                 } else {
-                                    if (parsedLines.isNotEmpty()) {
-                                        rawLyricsText = plainLyricsText(parsedLines)
-                                        editingLines = parsedLines
-                                    } else {
-                                        rawLyricsText = ""
-                                        editingLines = emptyList()
-                                    }
+                                    parsedLines
+                                }
+                                if (sourceLines.isNotEmpty()) {
+                                    rawLyricsText = plainLyricsText(sourceLines)
+                                    editingLines = sourceLines
+                                } else {
+                                    rawLyricsText = ""
+                                    editingLines = emptyList()
                                 }
                                 currentEditTab = 0
                                 isEditingLyrics = true
@@ -1260,6 +1310,203 @@ private fun readAccordsFromSplByTrackUri(
         ensureFolderName = "Accords",
         debugLookupLabel = "ACCORDS_LOOKUP_FALLBACK"
     )?.text
+}
+
+private fun writeAccordsToSplByTrackUri(
+    context: android.content.Context,
+    trackUriString: String,
+    preferredLrcFileName: String?,
+    lines: List<LrcLine>
+): Boolean {
+    val fallbackBaseName = baseNameFromTrackUriString(trackUriString)
+    val targetName = resolveChordsLookupFileName(
+        exactLyricsFileName = preferredLrcFileName,
+        fallbackBaseName = fallbackBaseName
+    )
+    if (targetName.isBlank()) return false
+    return writeLrcToSplFolderByFileName(
+        context = context,
+        targetName = targetName,
+        folderAliases = listOf("Accords", "accords"),
+        ensureFolderName = "Accords",
+        text = linesToLrcText(lines)
+    )
+}
+
+private fun deleteAccordsFromSplByTrackUri(
+    context: android.content.Context,
+    trackUriString: String,
+    preferredLrcFileName: String?
+): Boolean {
+    val fallbackBaseName = baseNameFromTrackUriString(trackUriString)
+    val candidates = linkedSetOf<String>().apply {
+        preferredLrcFileName?.trim()?.takeIf { it.isNotBlank() }?.let { add(it) }
+        fallbackBaseName.trim().takeIf { it.isNotBlank() }?.let { add("$it.lrc") }
+    }
+    if (candidates.isEmpty()) return false
+    return deleteLrcFromSplFolderByFileNames(
+        context = context,
+        fileNames = candidates,
+        folderAliases = listOf("Accords", "accords")
+    )
+}
+
+private fun linesToLrcText(lines: List<LrcLine>): String {
+    return lines.joinToString("\n") { line ->
+        if (line.timeMs > 0L) {
+            val total = line.timeMs
+            val mm = (total / 60000).toInt()
+            val ss = ((total % 60000) / 1000).toInt()
+            val xx = ((total % 1000) / 10).toInt()
+            "[%02d:%02d.%02d] %s".format(mm, ss, xx, line.text)
+        } else {
+            line.text
+        }
+    }.trim()
+}
+
+private fun writeLrcToSplFolderByFileName(
+    context: android.content.Context,
+    targetName: String,
+    folderAliases: List<String>,
+    ensureFolderName: String,
+    text: String
+): Boolean {
+    val cleanTargetName = targetName.trim()
+    if (cleanTargetName.isBlank()) return false
+
+    val fileRoots = linkedSetOf<File>().apply {
+        val rootUri = BackupFolderPrefs.getLibraryRootUri(context)
+        if (rootUri?.scheme == "file" && !rootUri.path.isNullOrBlank()) {
+            add(File(rootUri.path!!))
+        }
+        add(File(context.getExternalFilesDir(null), "SPL_Music"))
+    }
+
+    for (root in fileRoots) {
+        if (!root.exists()) continue
+        val backingTracks = File(root, "BackingTracks")
+        val backingTrack = File(root, "BackingTrack")
+        val backingRoot = when {
+            backingTracks.exists() -> backingTracks
+            backingTrack.exists() -> backingTrack
+            else -> backingTracks
+        }
+        if (!backingRoot.exists()) backingRoot.mkdirs()
+        val targetFolder = folderAliases
+            .asSequence()
+            .map { File(backingRoot, it) }
+            .firstOrNull { it.exists() && it.isDirectory }
+            ?: File(backingRoot, ensureFolderName).apply { if (!exists()) mkdirs() }
+        val outFile = File(targetFolder, cleanTargetName)
+        val ok = runCatching {
+            outFile.writeText(text, Charsets.UTF_8)
+            true
+        }.getOrDefault(false)
+        if (ok) return true
+    }
+
+    val rootUri = BackupFolderPrefs.getLibraryRootUri(context)
+    if (rootUri?.scheme == "content") {
+        val rootDoc = DocumentFile.fromTreeUri(context, rootUri)
+            ?: DocumentFile.fromSingleUri(context, rootUri)
+        if (rootDoc != null && rootDoc.isDirectory) {
+            val backingDirs = findDirsByAliases(
+                parent = rootDoc,
+                aliases = listOf("BackingTracks", "BackingTrack")
+            ).toMutableList()
+            if (backingDirs.isEmpty()) {
+                ensureOrFindDir(
+                    parent = rootDoc,
+                    preferredName = "BackingTracks",
+                    aliases = listOf("BackingTracks", "BackingTrack")
+                )?.let { backingDirs.add(it) }
+            }
+
+            backingDirs.forEach { backing ->
+                val targetFolder = findDirsByAliases(backing, folderAliases).firstOrNull()
+                    ?: ensureOrFindDir(
+                        parent = backing,
+                        preferredName = ensureFolderName,
+                        aliases = folderAliases
+                    )
+                    ?: return@forEach
+
+                val fileDoc = targetFolder.listFiles().firstOrNull { child ->
+                    child.isFile && (child.name ?: "").equals(cleanTargetName, ignoreCase = true)
+                } ?: targetFolder.createFile("application/octet-stream", cleanTargetName)
+
+                if (fileDoc != null) {
+                    val ok = runCatching {
+                        context.contentResolver.openOutputStream(fileDoc.uri, "w")?.use { out ->
+                            out.write(text.toByteArray(Charsets.UTF_8))
+                            out.flush()
+                        } != null
+                    }.getOrDefault(false)
+                    if (ok) return true
+                }
+            }
+        }
+    }
+    return false
+}
+
+private fun deleteLrcFromSplFolderByFileNames(
+    context: android.content.Context,
+    fileNames: Set<String>,
+    folderAliases: List<String>
+): Boolean {
+    val cleanNames = fileNames.map { it.trim() }.filter { it.isNotBlank() }.toSet()
+    if (cleanNames.isEmpty()) return false
+    var deleted = false
+
+    val fileRoots = linkedSetOf<File>().apply {
+        val rootUri = BackupFolderPrefs.getLibraryRootUri(context)
+        if (rootUri?.scheme == "file" && !rootUri.path.isNullOrBlank()) {
+            add(File(rootUri.path!!))
+        }
+        add(File(context.getExternalFilesDir(null), "SPL_Music"))
+    }
+
+    for (root in fileRoots) {
+        if (!root.exists()) continue
+        val backingRoots = linkedSetOf(File(root, "BackingTracks"), File(root, "BackingTrack"))
+        for (backingRoot in backingRoots) {
+            for (alias in folderAliases) {
+                val folder = File(backingRoot, alias)
+                for (name in cleanNames) {
+                    val candidate = File(folder, name)
+                    if (candidate.exists() && candidate.isFile) {
+                        deleted = runCatching { candidate.delete() }.getOrDefault(false) || deleted
+                    }
+                }
+            }
+        }
+    }
+
+    val rootUri = BackupFolderPrefs.getLibraryRootUri(context)
+    if (rootUri?.scheme == "content") {
+        val rootDoc = DocumentFile.fromTreeUri(context, rootUri)
+            ?: DocumentFile.fromSingleUri(context, rootUri)
+        if (rootDoc != null && rootDoc.isDirectory) {
+            val backingDirs = findDirsByAliases(
+                parent = rootDoc,
+                aliases = listOf("BackingTracks", "BackingTrack")
+            )
+            backingDirs.forEach { backing ->
+                val targetFolders = findDirsByAliases(backing, folderAliases)
+                targetFolders.forEach { targetFolder ->
+                    targetFolder.listFiles().forEach { child ->
+                        if (child.isFile && cleanNames.any { it.equals(child.name, ignoreCase = true) }) {
+                            deleted = runCatching { child.delete() }.getOrDefault(false) || deleted
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return deleted
 }
 
 private fun readLrcFromSplFolderByBaseName(
