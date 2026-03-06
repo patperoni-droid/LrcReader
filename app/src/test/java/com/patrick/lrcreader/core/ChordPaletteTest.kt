@@ -32,42 +32,6 @@ class ChordPaletteTest {
     }
 
     @Test
-    fun sortChordPaletteByUsage_sortsByDescendingFrequency() {
-        val sorted = sortChordPaletteByUsage(
-            palette = listOf("Am", "D", "G", "F"),
-            rawText = "G Am G D G F"
-        )
-        assertEquals(listOf("G", "Am", "D", "F"), sorted)
-    }
-
-    @Test
-    fun sortChordPaletteByUsage_keepsStableOrderOnTie() {
-        val sorted = sortChordPaletteByUsage(
-            palette = listOf("Am", "D", "G"),
-            rawText = "D Am"
-        )
-        assertEquals(listOf("Am", "D", "G"), sorted)
-    }
-
-    @Test
-    fun sortChordPaletteByUsage_keepsInitialOrderWhenNoMatch() {
-        val sorted = sortChordPaletteByUsage(
-            palette = listOf("Am", "D", "G"),
-            rawText = "C F Bb"
-        )
-        assertEquals(listOf("Am", "D", "G"), sorted)
-    }
-
-    @Test
-    fun sortChordPaletteByUsage_handlesEmptyPalette() {
-        val sorted = sortChordPaletteByUsage(
-            palette = emptyList(),
-            rawText = "Am D G"
-        )
-        assertEquals(emptyList<String>(), sorted)
-    }
-
-    @Test
     fun captureLiveChord_createsExpectedLrcLine() {
         val line = captureLiveChord(
             chord = "G",

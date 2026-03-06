@@ -53,7 +53,6 @@ import com.patrick.lrcreader.core.isLiveCaptureAllowed
 import com.patrick.lrcreader.core.insertChordAtCursor
 import com.patrick.lrcreader.core.parseLrc
 import com.patrick.lrcreader.core.parseChordPaletteInput
-import com.patrick.lrcreader.core.sortChordPaletteByUsage
 import com.patrick.lrcreader.exo.BuildConfig
 import com.patrick.lrcreader.exo.R
 import java.nio.ByteBuffer
@@ -126,12 +125,7 @@ fun LyricsEditorSection(
     var editingCueLineIndex by remember { mutableStateOf<Int?>(null) }
     var lineMenuIndex by remember { mutableStateOf<Int?>(null) }
     var lineMenuText by remember { mutableStateOf("") }
-    val displayedPalette = remember(paletteChords, rawTextFieldValue.text) {
-        sortChordPaletteByUsage(
-            palette = paletteChords,
-            rawText = rawTextFieldValue.text
-        )
-    }
+    val displayedPalette = paletteChords
 
     LaunchedEffect(rawLyricsText) {
         if (rawLyricsText != rawTextFieldValue.text) {
