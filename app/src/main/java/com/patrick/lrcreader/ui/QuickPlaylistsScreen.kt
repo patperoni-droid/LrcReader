@@ -955,22 +955,10 @@ fun QuickPlaylistsScreen(
                                                 onClick = {
                                                     internalSelected?.let { pl ->
                                                         val headerIndex = songs.indexOf(uriString)
-                                                        val endIndex = if (headerIndex >= 0) {
-                                                            findMatchingGroupEndIndex(songs, headerIndex)
-                                                        } else {
-                                                            null
+                                                        if (removeGroupAtHeader(songs, headerIndex)) {
+                                                            collapsedGroupIds = collapsedGroupIds - headerKey
+                                                            persistSongsOrder(pl)
                                                         }
-                                                        if (headerIndex >= 0) {
-                                                            songs.removeAt(headerIndex)
-                                                        }
-                                                        if (endIndex != null) {
-                                                            val adjustedEndIndex = if (endIndex > headerIndex) endIndex - 1 else endIndex
-                                                            if (adjustedEndIndex in songs.indices && isGroupEnd(songs[adjustedEndIndex])) {
-                                                                songs.removeAt(adjustedEndIndex)
-                                                            }
-                                                        }
-                                                        collapsedGroupIds = collapsedGroupIds - headerKey
-                                                        persistSongsOrder(pl)
                                                     }
                                                     menuOpen = false
                                                 }
@@ -1832,6 +1820,22 @@ internal fun moveItemOutOfGroup(items: MutableList<String>, trackUri: String): B
 
     val insertionIndex = (resolvedEndIndex + 1).coerceIn(0, items.size)
     items.add(insertionIndex, dragged)
+    return true
+}
+
+internal fun removeGroupAtHeader(items: MutableList<String>, headerIndex: Int): Boolean {
+    if (headerIndex !in items.indices) return false
+    if (!isGroupHeader(items[headerIndex])) return false
+
+    val endIndex = findMatchingGroupEndIndex(items, headerIndex)
+    items.removeAt(headerIndex)
+
+    if (endIndex != null) {
+        val adjustedEndIndex = if (endIndex > headerIndex) endIndex - 1 else endIndex
+        if (adjustedEndIndex in items.indices && isGroupEnd(items[adjustedEndIndex])) {
+            items.removeAt(adjustedEndIndex)
+        }
+    }
     return true
 }
 
