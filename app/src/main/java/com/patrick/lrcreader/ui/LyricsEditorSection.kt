@@ -10,6 +10,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -33,13 +35,19 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.patrick.lrcreader.core.ChordPaletteStore
 import com.patrick.lrcreader.core.CueMidiStore
 import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.core.LrcCleaner
 import com.patrick.lrcreader.core.LrcLine
+import com.patrick.lrcreader.core.inferChordPaletteFromText
+import com.patrick.lrcreader.core.insertChordAtCursor
 import com.patrick.lrcreader.core.parseLrc
+import com.patrick.lrcreader.core.parseChordPaletteInput
 import com.patrick.lrcreader.exo.BuildConfig
 import com.patrick.lrcreader.exo.R
 import java.nio.ByteBuffer
@@ -86,7 +94,9 @@ fun LyricsEditorSection(
     showImportButton: Boolean = true,
     mainTabLabelRes: Int = R.string.lyrics_editor_tab_lyrics,
     inputLabelRes: Int = R.string.lyrics_editor_input_label,
-    enableCueEditing: Boolean = true
+    enableCueEditing: Boolean = true,
+    showChordPalette: Boolean = false,
+    chordPaletteStorageKey: String? = null
 ) {
     if (!isEditingLyrics) return
 
@@ -94,23 +104,88 @@ fun LyricsEditorSection(
     val scope = rememberCoroutineScope()
     val lazyListState = rememberLazyListState()
     var isImportBusy by remember { mutableStateOf(false) }
+    var rawTextFieldValue by remember(currentTrackUri, showChordPalette) {
+        mutableStateOf(
+            TextFieldValue(
+                text = rawLyricsText,
+                selection = TextRange(rawLyricsText.length)
+            )
+        )
+    }
+    var paletteInput by remember(chordPaletteStorageKey) { mutableStateOf("") }
+    var paletteChords by remember(chordPaletteStorageKey) { mutableStateOf<List<String>>(emptyList()) }
 
     var editingCueLineIndex by remember { mutableStateOf<Int?>(null) }
     var lineMenuIndex by remember { mutableStateOf<Int?>(null) }
     var lineMenuText by remember { mutableStateOf("") }
+
+    LaunchedEffect(rawLyricsText) {
+        if (rawLyricsText != rawTextFieldValue.text) {
+            val nextCursor = rawTextFieldValue.selection.end.coerceAtMost(rawLyricsText.length)
+            rawTextFieldValue = TextFieldValue(
+                text = rawLyricsText,
+                selection = TextRange(nextCursor)
+            )
+        }
+    }
 
     fun rawToPlainLines(raw: String): List<String> =
         raw.lines()
             .map { line -> line.trim().replace(INLINE_LRC_TIME_TAG_REGEX, "").trim() }
             .filter { it.isNotEmpty() }
 
+    fun updatePalette(raw: String, persist: Boolean) {
+        paletteInput = raw
+        paletteChords = parseChordPaletteInput(raw)
+        val key = chordPaletteStorageKey
+        if (showChordPalette && persist && !key.isNullOrBlank()) {
+            if (raw.isBlank()) {
+                ChordPaletteStore.clear(context, key)
+            } else {
+                ChordPaletteStore.saveRaw(context, key, raw)
+            }
+        }
+    }
+
+    fun insertChordFromPalette(chord: String) {
+        val insertion = insertChordAtCursor(
+            text = rawTextFieldValue.text,
+            selectionStart = rawTextFieldValue.selection.start,
+            selectionEnd = rawTextFieldValue.selection.end,
+            chord = chord
+        )
+        rawTextFieldValue = TextFieldValue(
+            text = insertion.text,
+            selection = TextRange(insertion.cursor)
+        )
+        onRawLyricsTextChange(insertion.text)
+    }
+
+    LaunchedEffect(showChordPalette, chordPaletteStorageKey) {
+        if (!showChordPalette) return@LaunchedEffect
+        val key = chordPaletteStorageKey
+        if (key.isNullOrBlank()) return@LaunchedEffect
+        val saved = ChordPaletteStore.loadRaw(context, key)
+        if (saved.isNotBlank()) {
+            updatePalette(saved, persist = false)
+            return@LaunchedEffect
+        }
+        val inferred = inferChordPaletteFromText(rawLyricsText)
+        if (inferred.isNotEmpty()) {
+            updatePalette(inferred.joinToString(", "), persist = true)
+            return@LaunchedEffect
+        }
+        updatePalette("", persist = false)
+    }
+
     // 🔹 Enregistrer
     fun handleSave() {
-        val simpleLines = rawToPlainLines(rawLyricsText)
+        val simpleLines = rawToPlainLines(rawTextFieldValue.text)
 
         if (simpleLines.isEmpty()) {
             onEditingLinesChange(emptyList())
             onRawLyricsTextChange("")
+            rawTextFieldValue = TextFieldValue("", TextRange(0))
             onDeletePersisted()
             onSaveSortedLines(emptyList())
             return
@@ -184,6 +259,10 @@ fun LyricsEditorSection(
                 onPersistLines(parsed)
 
                 onRawLyricsTextChange(importedText)
+                rawTextFieldValue = TextFieldValue(
+                    text = importedText,
+                    selection = TextRange(importedText.length)
+                )
                 onEditingLinesChange(parsed)
                 onImportedLinesApplied(parsed)
                 Log.d("LRC_IMPORT", "imported uri=$pickedUri lines=${parsed.size}")
@@ -261,9 +340,47 @@ fun LyricsEditorSection(
                         .fillMaxWidth()
                         .weight(1f)
                 ) {
+                    if (showChordPalette) {
+                        OutlinedTextField(
+                            value = paletteInput,
+                            onValueChange = { updatePalette(it, persist = true) },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text(stringResource(R.string.chords_palette_input_label), color = Color.LightGray) },
+                            textStyle = androidx.compose.ui.text.TextStyle(
+                                color = Color.White,
+                                fontSize = 14.sp
+                            ),
+                            singleLine = false
+                        )
+
+                        if (paletteChords.isNotEmpty()) {
+                            Spacer(Modifier.height(8.dp))
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                paletteChords.forEach { chord ->
+                                    TextButton(
+                                        onClick = { insertChordFromPalette(chord) }
+                                    ) {
+                                        Text("[$chord]", color = Color(0xFF80CBC4))
+                                    }
+                                }
+                            }
+                            Spacer(Modifier.height(8.dp))
+                        } else {
+                            Spacer(Modifier.height(8.dp))
+                        }
+                    }
+
                     OutlinedTextField(
-                        value = rawLyricsText,
-                        onValueChange = onRawLyricsTextChange,
+                        value = rawTextFieldValue,
+                        onValueChange = { value ->
+                            rawTextFieldValue = value
+                            onRawLyricsTextChange(value.text)
+                        },
                         modifier = Modifier
                             .fillMaxWidth()
                             .weight(1f),
