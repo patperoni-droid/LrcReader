@@ -68,7 +68,6 @@ import com.patrick.lrcreader.core.MidiCueDispatcher
 import com.patrick.lrcreader.core.PlaybackCoordinator
 import com.patrick.lrcreader.core.audio.AudioEngine
 import com.patrick.lrcreader.core.audio.SoundTouchBridge
-import com.patrick.lrcreader.core.computeLyricsChordsUiState
 import com.patrick.lrcreader.core.findActiveLrcIndex
 import com.patrick.lrcreader.core.parseLrc
 import com.patrick.lrcreader.core.resolveChordsLookupFileName
@@ -303,12 +302,12 @@ fun PlayerScreen(
         } else null
 
         Log.d("LrcDebug", "SIDECAR found=${sidecarLrcResult != null}")
-        if (sidecarLrcResult != null && sidecarLrcResult.text.isNotBlank()) {
+        if (sidecarLrcResult != null) {
             Log.d(
                 "LrcDebug",
                 "LYRICS_SOURCE source=SIDECAR fileName=${sidecarLrcResult.fileName} path=${sidecarLrcResult.debugPath}"
             )
-            val parsed = parseLrc(sidecarLrcResult.text)
+            val parsed = if (sidecarLrcResult.text.isNotBlank()) parseLrc(sidecarLrcResult.text) else emptyList()
             onParsedLinesChange(parsed)
             rawLyricsText = parsed.joinToString("\n") { it.text }
             seedEditingLinesIfBetter(parsed)
@@ -346,7 +345,7 @@ fun PlayerScreen(
     }
 
     // 🔁 reload accords dédiés (BackingTracks/Accords/<base>.lrc)
-    LaunchedEffect(currentTrackUri, resolvedLyricsLrcFileName) {
+    LaunchedEffect(currentTrackUri, resolvedLyricsLrcFileName, selectedViewMode) {
         if (currentTrackUri == null) {
             parsedChordLines = emptyList()
             hasChordsSource = false
@@ -358,16 +357,28 @@ fun PlayerScreen(
             "ACCORDS_EFFECT_START uri=$currentTrackUri resolvedLyricsLrcFileName=$resolvedLyricsLrcFileName"
         )
         chordsLoading = true
-        val raw = withContext(Dispatchers.IO) {
+        var raw = withContext(Dispatchers.IO) {
             readAccordsFromSplByTrackUri(
                 context = context,
                 trackUriString = currentTrackUri,
                 preferredLrcFileName = resolvedLyricsLrcFileName
             )
         }
+        if (raw == null && selectedViewMode == LyricsViewMode.CHORDS) {
+            val created = withContext(Dispatchers.IO) {
+                ensureAccordsFileExistsForTrack(
+                    context = context,
+                    trackUriString = currentTrackUri,
+                    preferredLrcFileName = resolvedLyricsLrcFileName
+                )
+            }
+            if (created) {
+                raw = ""
+            }
+        }
         val parsed = if (!raw.isNullOrBlank()) parseLrc(raw) else emptyList()
         parsedChordLines = parsed
-        hasChordsSource = parsed.isNotEmpty()
+        hasChordsSource = raw != null
         Log.d(
             "LrcDebug",
             "ACCORDS_EFFECT_DONE uri=$currentTrackUri parsedCount=${parsed.size} hasChordsSource=$hasChordsSource"
@@ -378,10 +389,8 @@ fun PlayerScreen(
     val activeDisplayLines = if (selectedViewMode == LyricsViewMode.CHORDS) parsedChordLines else parsedLines
     val hasLyricsMode = hasLyricsSource || parsedLines.isNotEmpty()
     val hasChordsMode = hasChordsSource || parsedChordLines.isNotEmpty()
-    val viewUiState = computeLyricsChordsUiState(
-        hasLyrics = hasLyricsMode,
-        hasChords = hasChordsMode
-    )
+    val showViewToggle = hasLyricsMode || hasChordsMode
+    val canSelectChordsMode = hasChordsMode || hasLyricsMode
 
     fun recomputeCurrentIndexForActiveView() {
         if (activeDisplayLines.isEmpty()) {
@@ -590,13 +599,36 @@ fun PlayerScreen(
                                     trackUriString = trackUri,
                                     lines = lines
                                 )
+                                val resolvedFileName = resolveExactLrcFileNameForTrack(
+                                    context = context,
+                                    trackUriString = trackUri,
+                                    preferredLrcFileName = resolvedLyricsLrcFileName
+                                )
+                                if (resolvedFileName.isNotBlank()) {
+                                    updateResolvedLyricsFileName(
+                                        resolvedFileName,
+                                        "source=LYRICS_SAVE"
+                                    )
+                                    ensureAccordsFileExistsForTrack(
+                                        context = context,
+                                        trackUriString = trackUri,
+                                        preferredLrcFileName = resolvedFileName
+                                    )
+                                }
                             } else {
-                                writeAccordsToSplByTrackUri(
+                                val writtenName = writeAccordsToSplByTrackUri(
                                     context = context,
                                     trackUriString = trackUri,
                                     preferredLrcFileName = resolvedLyricsLrcFileName,
                                     lines = lines
                                 )
+                                if (!writtenName.isNullOrBlank()) {
+                                    ensureLyricsFileExistsForTrack(
+                                        context = context,
+                                        trackUriString = trackUri,
+                                        preferredLrcFileName = writtenName
+                                    )
+                                }
                             }
                         }
                     }
@@ -717,11 +749,11 @@ fun PlayerScreen(
                             )
                         }
 
-                        if (viewUiState.showToggle) {
+                        if (showViewToggle) {
                             LyricsViewSelector(
                                 selectedMode = selectedViewMode,
                                 hasLyrics = hasLyricsMode,
-                                hasChords = hasChordsMode,
+                                hasChords = canSelectChordsMode,
                                 onSelectMode = { mode ->
                                     selectedViewMode = mode
                                     recomputeCurrentIndexForActiveView()
@@ -729,12 +761,6 @@ fun PlayerScreen(
                                         centerCurrentLineLazy(listState)
                                     }
                                 }
-                            )
-                        } else if (viewUiState.showMissingChordsMessage && currentTrackUri != null) {
-                            Text(
-                                text = stringResource(R.string.player_chords_file_missing),
-                                color = Color(0xFF90A4AE),
-                                fontSize = 11.sp
                             )
                         }
 
@@ -1312,25 +1338,98 @@ private fun readAccordsFromSplByTrackUri(
     )?.text
 }
 
+private fun resolveExactLrcFileNameForTrack(
+    context: android.content.Context,
+    trackUriString: String,
+    preferredLrcFileName: String?
+): String {
+    preferredLrcFileName?.trim()?.takeIf { it.isNotBlank() }?.let { return it }
+    val fromStorage = runCatching {
+        LrcStorage.resolveOriginForTrack(context, trackUriString)?.fileName
+    }.getOrNull()
+    fromStorage?.trim()?.takeIf { it.isNotBlank() }?.let { return it }
+    val base = baseNameFromTrackUriString(trackUriString).trim()
+    return if (base.isNotBlank()) "$base.lrc" else "track.lrc"
+}
+
+private fun ensureAccordsFileExistsForTrack(
+    context: android.content.Context,
+    trackUriString: String,
+    preferredLrcFileName: String?
+): Boolean {
+    val exactName = resolveExactLrcFileNameForTrack(
+        context = context,
+        trackUriString = trackUriString,
+        preferredLrcFileName = preferredLrcFileName
+    )
+    return ensureLrcFileExistsInFolder(
+        context = context,
+        targetName = exactName,
+        folderAliases = listOf("Accords", "accords"),
+        ensureFolderName = "Accords"
+    )
+}
+
+private fun ensureLyricsFileExistsForTrack(
+    context: android.content.Context,
+    trackUriString: String,
+    preferredLrcFileName: String?
+): Boolean {
+    val exactName = resolveExactLrcFileNameForTrack(
+        context = context,
+        trackUriString = trackUriString,
+        preferredLrcFileName = preferredLrcFileName
+    )
+    return ensureLrcFileExistsInFolder(
+        context = context,
+        targetName = exactName,
+        folderAliases = listOf("Lyrics", "lyrics"),
+        ensureFolderName = "Lyrics"
+    )
+}
+
+private fun ensureLrcFileExistsInFolder(
+    context: android.content.Context,
+    targetName: String,
+    folderAliases: List<String>,
+    ensureFolderName: String
+): Boolean {
+    val exists = readLrcFromSplFolderByFileName(
+        context = context,
+        targetName = targetName,
+        folderAliases = folderAliases,
+        ensureFolderName = ensureFolderName
+    ) != null
+    if (exists) return false
+    return writeLrcToSplFolderByFileName(
+        context = context,
+        targetName = targetName,
+        folderAliases = folderAliases,
+        ensureFolderName = ensureFolderName,
+        text = ""
+    )
+}
+
 private fun writeAccordsToSplByTrackUri(
     context: android.content.Context,
     trackUriString: String,
     preferredLrcFileName: String?,
     lines: List<LrcLine>
-): Boolean {
-    val fallbackBaseName = baseNameFromTrackUriString(trackUriString)
-    val targetName = resolveChordsLookupFileName(
-        exactLyricsFileName = preferredLrcFileName,
-        fallbackBaseName = fallbackBaseName
+): String? {
+    val targetName = resolveExactLrcFileNameForTrack(
+        context = context,
+        trackUriString = trackUriString,
+        preferredLrcFileName = preferredLrcFileName
     )
-    if (targetName.isBlank()) return false
-    return writeLrcToSplFolderByFileName(
+    if (targetName.isBlank()) return null
+    val ok = writeLrcToSplFolderByFileName(
         context = context,
         targetName = targetName,
         folderAliases = listOf("Accords", "accords"),
         ensureFolderName = "Accords",
         text = linesToLrcText(lines)
     )
+    return if (ok) targetName else null
 }
 
 private fun deleteAccordsFromSplByTrackUri(

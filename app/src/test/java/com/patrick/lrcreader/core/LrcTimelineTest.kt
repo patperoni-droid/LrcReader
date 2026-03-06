@@ -52,6 +52,50 @@ class LrcTimelineTest {
     }
 
     @Test
+    fun decideLrcAutoCreate_openChordsWithoutChordsFile_createsPrimary() {
+        val decision = decideLrcAutoCreate(
+            trigger = LrcAutoCreateTrigger.OPEN_CHORDS,
+            primaryExists = false,
+            twinExists = true
+        )
+        assertEquals(true, decision.createPrimaryFile)
+        assertEquals(false, decision.createTwinFile)
+    }
+
+    @Test
+    fun decideLrcAutoCreate_saveLyrics_createsMissingChordsTwin() {
+        val decision = decideLrcAutoCreate(
+            trigger = LrcAutoCreateTrigger.SAVE_LYRICS,
+            primaryExists = true,
+            twinExists = false
+        )
+        assertEquals(false, decision.createPrimaryFile)
+        assertEquals(true, decision.createTwinFile)
+    }
+
+    @Test
+    fun decideLrcAutoCreate_saveChords_createsMissingLyricsTwin() {
+        val decision = decideLrcAutoCreate(
+            trigger = LrcAutoCreateTrigger.SAVE_CHORDS,
+            primaryExists = true,
+            twinExists = false
+        )
+        assertEquals(false, decision.createPrimaryFile)
+        assertEquals(true, decision.createTwinFile)
+    }
+
+    @Test
+    fun decideLrcAutoCreate_doesNotCreateTwinWhenAlreadyPresent() {
+        val decision = decideLrcAutoCreate(
+            trigger = LrcAutoCreateTrigger.SAVE_LYRICS,
+            primaryExists = true,
+            twinExists = true
+        )
+        assertEquals(false, decision.createPrimaryFile)
+        assertEquals(false, decision.createTwinFile)
+    }
+
+    @Test
     fun findActiveLrcIndex_returnsLastTaggedBeforePosition() {
         val lines = listOf(
             LrcLine(timeMs = 1_000L, text = "A"),
