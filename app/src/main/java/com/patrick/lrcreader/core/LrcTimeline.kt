@@ -10,6 +10,17 @@ data class LyricsChordsUiState(
     val showMissingChordsMessage: Boolean
 )
 
+enum class LrcAutoCreateTrigger {
+    OPEN_CHORDS,
+    SAVE_LYRICS,
+    SAVE_CHORDS
+}
+
+data class LrcAutoCreateDecision(
+    val createPrimaryFile: Boolean,
+    val createTwinFile: Boolean
+)
+
 data class ChordsWindow(
     val previous: LrcLine?,
     val current: LrcLine?,
@@ -42,6 +53,24 @@ fun resolveChordsLookupFileName(exactLyricsFileName: String?, fallbackBaseName: 
     val fallback = fallbackBaseName.trim()
     if (fallback.isBlank()) return ""
     return "$fallback.lrc"
+}
+
+fun decideLrcAutoCreate(
+    trigger: LrcAutoCreateTrigger,
+    primaryExists: Boolean,
+    twinExists: Boolean
+): LrcAutoCreateDecision {
+    return when (trigger) {
+        LrcAutoCreateTrigger.OPEN_CHORDS -> LrcAutoCreateDecision(
+            createPrimaryFile = !primaryExists,
+            createTwinFile = false
+        )
+        LrcAutoCreateTrigger.SAVE_LYRICS,
+        LrcAutoCreateTrigger.SAVE_CHORDS -> LrcAutoCreateDecision(
+            createPrimaryFile = !primaryExists,
+            createTwinFile = !twinExists
+        )
+    }
 }
 
 fun findActiveLrcIndex(lines: List<LrcLine>, positionMs: Long): Int {
