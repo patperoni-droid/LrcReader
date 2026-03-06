@@ -7,6 +7,33 @@ import org.junit.Test
 class LrcTimelineTest {
 
     @Test
+    fun resolveLyricsViewMode_keepsChordsWhenAvailable() {
+        val mode = resolveLyricsViewMode(
+            current = LyricsViewMode.CHORDS,
+            hasLyrics = true,
+            hasChords = true
+        )
+        assertEquals(LyricsViewMode.CHORDS, mode)
+    }
+
+    @Test
+    fun resolveLyricsViewMode_fallsBackWhenChordsMissing() {
+        val mode = resolveLyricsViewMode(
+            current = LyricsViewMode.CHORDS,
+            hasLyrics = true,
+            hasChords = false
+        )
+        assertEquals(LyricsViewMode.LYRICS, mode)
+    }
+
+    @Test
+    fun computeLyricsChordsUiState_hidesToggleAndShowsMissingMessageWhenNoChords() {
+        val ui = computeLyricsChordsUiState(hasLyrics = true, hasChords = false)
+        assertEquals(false, ui.showToggle)
+        assertEquals(true, ui.showMissingChordsMessage)
+    }
+
+    @Test
     fun findActiveLrcIndex_returnsLastTaggedBeforePosition() {
         val lines = listOf(
             LrcLine(timeMs = 1_000L, text = "A"),

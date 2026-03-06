@@ -61,14 +61,17 @@ import com.patrick.lrcreader.core.DisplayPrefs
 import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.core.LrcLine
 import com.patrick.lrcreader.core.LrcStorage
+import com.patrick.lrcreader.core.LyricsViewMode
 import com.patrick.lrcreader.core.MidiCueDispatcher
 // ✅ On retire l’import pour éviter tout auto-import douteux
 // import com.patrick.lrcreader.core.PlaylistRepository
 import com.patrick.lrcreader.core.PlaybackCoordinator
 import com.patrick.lrcreader.core.audio.AudioEngine
 import com.patrick.lrcreader.core.audio.SoundTouchBridge
+import com.patrick.lrcreader.core.computeLyricsChordsUiState
 import com.patrick.lrcreader.core.findActiveLrcIndex
 import com.patrick.lrcreader.core.parseLrc
+import com.patrick.lrcreader.core.resolveLyricsViewMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -76,11 +79,6 @@ import kotlinx.coroutines.withContext
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
-
-private enum class LyricsViewMode {
-    LYRICS,
-    CHORDS
-}
 
 @Composable
 fun PlayerScreen(
@@ -331,6 +329,10 @@ fun PlayerScreen(
     val activeDisplayLines = if (selectedViewMode == LyricsViewMode.CHORDS) parsedChordLines else parsedLines
     val hasLyricsMode = hasLyricsSource || parsedLines.isNotEmpty()
     val hasChordsMode = hasChordsSource || parsedChordLines.isNotEmpty()
+    val viewUiState = computeLyricsChordsUiState(
+        hasLyrics = hasLyricsMode,
+        hasChords = hasChordsMode
+    )
 
     fun recomputeCurrentIndexForActiveView() {
         if (activeDisplayLines.isEmpty()) {
@@ -344,12 +346,11 @@ fun PlayerScreen(
     }
 
     LaunchedEffect(hasLyricsMode, hasChordsMode, currentTrackUri) {
-        selectedViewMode = when {
-            selectedViewMode == LyricsViewMode.CHORDS && hasChordsMode -> LyricsViewMode.CHORDS
-            hasLyricsMode -> LyricsViewMode.LYRICS
-            hasChordsMode -> LyricsViewMode.CHORDS
-            else -> LyricsViewMode.LYRICS
-        }
+        selectedViewMode = resolveLyricsViewMode(
+            current = selectedViewMode,
+            hasLyrics = hasLyricsMode,
+            hasChords = hasChordsMode
+        )
     }
 
     LaunchedEffect(selectedViewMode, parsedLines, parsedChordLines, userOffsetMs) {
@@ -618,7 +619,7 @@ fun PlayerScreen(
                             )
                         }
 
-                        if (hasLyricsMode || hasChordsMode) {
+                        if (viewUiState.showToggle) {
                             LyricsViewSelector(
                                 selectedMode = selectedViewMode,
                                 hasLyrics = hasLyricsMode,
@@ -630,6 +631,12 @@ fun PlayerScreen(
                                         centerCurrentLineLazy(listState)
                                     }
                                 }
+                            )
+                        } else if (viewUiState.showMissingChordsMessage && currentTrackUri != null) {
+                            Text(
+                                text = stringResource(R.string.player_chords_file_missing),
+                                color = Color(0xFF90A4AE),
+                                fontSize = 11.sp
                             )
                         }
 
@@ -1171,22 +1178,27 @@ private fun readLrcFromSplFolderByBaseName(
     for (root in fileRoots) {
         if (!root.exists()) continue
 
-        val backingRoot = when {
-            File(root, "BackingTracks").exists() -> File(root, "BackingTracks")
-            File(root, "BackingTrack").exists() -> File(root, "BackingTrack")
-            else -> File(root, "BackingTracks")
-        }
+        val backingTracks = File(root, "BackingTracks")
+        val backingTrack = File(root, "BackingTrack")
+        val backingRoots = linkedSetOf(backingTracks, backingTrack)
 
         if (ensureFolderName != null) {
-            if (!backingRoot.exists()) backingRoot.mkdirs()
-            val ensure = File(backingRoot, ensureFolderName)
+            val ensureParent = when {
+                backingTracks.exists() -> backingTracks
+                backingTrack.exists() -> backingTrack
+                else -> backingTracks
+            }
+            if (!ensureParent.exists()) ensureParent.mkdirs()
+            val ensure = File(ensureParent, ensureFolderName)
             if (!ensure.exists()) ensure.mkdirs()
         }
 
-        for (alias in folderAliases) {
-            val candidate = File(File(backingRoot, alias), targetName)
-            if (candidate.exists() && candidate.isFile) {
-                return runCatching { candidate.readText(Charsets.UTF_8) }.getOrNull()
+        for (backingRoot in backingRoots) {
+            for (alias in folderAliases) {
+                val candidate = File(File(backingRoot, alias), targetName)
+                if (candidate.exists() && candidate.isFile) {
+                    return runCatching { candidate.readText(Charsets.UTF_8) }.getOrNull()
+                }
             }
         }
     }
@@ -1197,28 +1209,44 @@ private fun readLrcFromSplFolderByBaseName(
         val rootDoc = DocumentFile.fromTreeUri(context, rootUri)
             ?: DocumentFile.fromSingleUri(context, rootUri)
         if (rootDoc != null && rootDoc.isDirectory) {
-            val backing = ensureOrFindDir(
+            val backingDirs = findDirsByAliases(
                 parent = rootDoc,
-                preferredName = "BackingTracks",
                 aliases = listOf("BackingTracks", "BackingTrack")
-            ) ?: return null
+            )
+                .toMutableList()
 
-            val targetFolder = ensureOrFindDir(
-                parent = backing,
-                preferredName = ensureFolderName ?: folderAliases.first(),
-                aliases = folderAliases
-            ) ?: return null
-
-            val fileDoc = targetFolder.listFiles().firstOrNull { child ->
-                child.isFile && (child.name ?: "").equals(targetName, ignoreCase = true)
+            if (backingDirs.isEmpty()) {
+                ensureOrFindDir(
+                    parent = rootDoc,
+                    preferredName = "BackingTracks",
+                    aliases = listOf("BackingTracks", "BackingTrack")
+                )?.let { backingDirs.add(it) }
             }
 
-            if (fileDoc != null) {
-                return runCatching {
-                    context.contentResolver.openInputStream(fileDoc.uri)
-                        ?.bufferedReader(Charsets.UTF_8)
-                        ?.use { it.readText() }
-                }.getOrNull()
+            backingDirs.forEach { backing ->
+                val targetFolders = findDirsByAliases(backing, folderAliases).toMutableList()
+
+                if (targetFolders.isEmpty()) {
+                    ensureOrFindDir(
+                        parent = backing,
+                        preferredName = ensureFolderName ?: folderAliases.first(),
+                        aliases = folderAliases
+                    )?.let { targetFolders.add(it) }
+                }
+
+                targetFolders.forEach { targetFolder ->
+                    val fileDoc = targetFolder.listFiles().firstOrNull { child ->
+                        child.isFile && (child.name ?: "").equals(targetName, ignoreCase = true)
+                    }
+
+                    if (fileDoc != null) {
+                        return runCatching {
+                            context.contentResolver.openInputStream(fileDoc.uri)
+                                ?.bufferedReader(Charsets.UTF_8)
+                                ?.use { it.readText() }
+                        }.getOrNull()
+                    }
+                }
             }
         }
     }
@@ -1236,6 +1264,16 @@ private fun ensureOrFindDir(
         child.isDirectory && normalizedAliases.contains(normalizeDirName(child.name.orEmpty()))
     }?.let { return it }
     return runCatching { parent.createDirectory(preferredName) }.getOrNull()
+}
+
+private fun findDirsByAliases(
+    parent: DocumentFile,
+    aliases: List<String>
+): List<DocumentFile> {
+    val normalizedAliases = aliases.map { normalizeDirName(it) }.toSet()
+    return parent.listFiles().filter { child ->
+        child.isDirectory && normalizedAliases.contains(normalizeDirName(child.name.orEmpty()))
+    }
 }
 
 private fun normalizeDirName(name: String): String {

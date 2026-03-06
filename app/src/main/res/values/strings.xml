@@ -197,6 +197,7 @@
     <string name="chords_none">Aucun accord</string>
     <string name="player_view_lyrics">Paroles</string>
     <string name="player_view_chords">Accords</string>
+    <string name="player_chords_file_missing">Fichier Accords non trouvé</string>
 
     <string name="player_cd_prev">Précédent</string>
     <string name="player_cd_play_pause">Play/Pause</string>

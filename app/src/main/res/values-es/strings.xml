@@ -203,6 +203,7 @@
     <string name="chords_none">Sin acordes</string>
     <string name="player_view_lyrics">Letras</string>
     <string name="player_view_chords">Acordes</string>
+    <string name="player_chords_file_missing">Archivo de acordes no encontrado</string>
 
     <string name="player_cd_prev">Anterior</string>
     <string name="player_cd_play_pause">Reproducir/Pausar</string>
