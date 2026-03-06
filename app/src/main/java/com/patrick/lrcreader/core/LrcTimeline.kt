@@ -36,6 +36,14 @@ fun computeLyricsChordsUiState(hasLyrics: Boolean, hasChords: Boolean): LyricsCh
     )
 }
 
+fun resolveChordsLookupFileName(exactLyricsFileName: String?, fallbackBaseName: String): String {
+    val exact = exactLyricsFileName?.trim().orEmpty()
+    if (exact.isNotBlank()) return exact
+    val fallback = fallbackBaseName.trim()
+    if (fallback.isBlank()) return ""
+    return "$fallback.lrc"
+}
+
 fun findActiveLrcIndex(lines: List<LrcLine>, positionMs: Long): Int {
     if (lines.isEmpty()) return -1
     val taggedIndices = lines.withIndex()

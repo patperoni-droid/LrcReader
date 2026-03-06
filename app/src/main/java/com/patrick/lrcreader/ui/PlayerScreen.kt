@@ -71,6 +71,7 @@ import com.patrick.lrcreader.core.audio.SoundTouchBridge
 import com.patrick.lrcreader.core.computeLyricsChordsUiState
 import com.patrick.lrcreader.core.findActiveLrcIndex
 import com.patrick.lrcreader.core.parseLrc
+import com.patrick.lrcreader.core.resolveChordsLookupFileName
 import com.patrick.lrcreader.core.resolveLyricsViewMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -175,6 +176,7 @@ fun PlayerScreen(
     var chordsLoading by remember(currentTrackUri) { mutableStateOf(false) }
     var hasLyricsSource by remember(currentTrackUri) { mutableStateOf(false) }
     var hasChordsSource by remember(currentTrackUri) { mutableStateOf(false) }
+    var resolvedLyricsLrcFileName by remember(currentTrackUri) { mutableStateOf<String?>(null) }
 
     var lyricsBoxHeightPx by remember { mutableStateOf(0) }
     var currentLrcIndex by remember { mutableStateOf(0) }
@@ -232,6 +234,7 @@ fun PlayerScreen(
             rawLyricsText = ""
             editingLines = emptyList()
             hasLyricsSource = false
+            resolvedLyricsLrcFileName = null
             return@LaunchedEffect
         }
 
@@ -252,6 +255,7 @@ fun PlayerScreen(
             rawLyricsText = parsed.joinToString("\n") { it.text }
             seedEditingLinesIfBetter(parsed)
             hasLyricsSource = true
+            resolvedLyricsLrcFileName = null
             return@LaunchedEffect
         }
 
@@ -266,23 +270,25 @@ fun PlayerScreen(
             rawLyricsText = parsed.joinToString("\n") { it.text }
             seedEditingLinesIfBetter(parsed)
             hasLyricsSource = true
+            resolvedLyricsLrcFileName = null
             return@LaunchedEffect
         }
 
         // 3) Sidecar .lrc (voisin du MP3 / SAF / MediaStore)
-        val sidecarLrcText: String? = if (trackUri != null) {
+        val sidecarLrcResult: LrcTextWithFileName? = if (trackUri != null) {
             withContext(Dispatchers.IO) {
                 runCatching { readSidecarLrcSmart(context, trackUri) }.getOrNull()
             }
         } else null
 
-        Log.d("LrcDebug", "SIDECAR found=${!sidecarLrcText.isNullOrBlank()}")
-        if (!sidecarLrcText.isNullOrBlank()) {
-            val parsed = parseLrc(sidecarLrcText)
+        Log.d("LrcDebug", "SIDECAR found=${sidecarLrcResult != null}")
+        if (sidecarLrcResult != null && sidecarLrcResult.text.isNotBlank()) {
+            val parsed = parseLrc(sidecarLrcResult.text)
             onParsedLinesChange(parsed)
             rawLyricsText = parsed.joinToString("\n") { it.text }
             seedEditingLinesIfBetter(parsed)
             hasLyricsSource = true
+            resolvedLyricsLrcFileName = sidecarLrcResult.fileName
             return@LaunchedEffect
         }
 
@@ -299,6 +305,7 @@ fun PlayerScreen(
             rawLyricsText = parsed.joinToString("\n") { it.text }
             seedEditingLinesIfBetter(parsed)
             hasLyricsSource = true
+            resolvedLyricsLrcFileName = null
             return@LaunchedEffect
         }
 
@@ -306,10 +313,11 @@ fun PlayerScreen(
         rawLyricsText = ""
         seedEditingLinesIfBetter(emptyList())
         hasLyricsSource = false
+        resolvedLyricsLrcFileName = null
     }
 
     // 🔁 reload accords dédiés (BackingTracks/Accords/<base>.lrc)
-    LaunchedEffect(currentTrackUri) {
+    LaunchedEffect(currentTrackUri, resolvedLyricsLrcFileName) {
         if (currentTrackUri == null) {
             parsedChordLines = emptyList()
             hasChordsSource = false
@@ -318,7 +326,11 @@ fun PlayerScreen(
         }
         chordsLoading = true
         val raw = withContext(Dispatchers.IO) {
-            readAccordsFromSplByTrackUri(context, currentTrackUri)
+            readAccordsFromSplByTrackUri(
+                context = context,
+                trackUriString = currentTrackUri,
+                preferredLrcFileName = resolvedLyricsLrcFileName
+            )
         }
         val parsed = if (!raw.isNullOrBlank()) parseLrc(raw) else emptyList()
         parsedChordLines = parsed
@@ -1023,7 +1035,12 @@ private fun ReaderHeader(
     }
 }
 
-private fun readSidecarLrcNearTrack(context: android.content.Context, trackUri: Uri): String? {
+private data class LrcTextWithFileName(
+    val text: String,
+    val fileName: String
+)
+
+private fun readSidecarLrcNearTrack(context: android.content.Context, trackUri: Uri): LrcTextWithFileName? {
     // trackUri = content://com.android.externalstorage.documents/tree/.../document/...
     val docId = runCatching { DocumentsContract.getDocumentId(trackUri) }.getOrNull() ?: return null
 
@@ -1064,18 +1081,20 @@ private fun readSidecarLrcNearTrack(context: android.content.Context, trackUri: 
             if (childName.equals(targetLrcName, ignoreCase = true)) {
                 // ✅ Pour ouvrir le fichier, on reconstruit une URI document via le TREE
                 val lrcUri = DocumentsContract.buildDocumentUriUsingTree(trackUri, childId)
-                return cr.openInputStream(lrcUri)
+                val text = cr.openInputStream(lrcUri)
                     ?.bufferedReader(Charsets.UTF_8)
                     ?.use { it.readText() }
+                    ?: return null
+                return LrcTextWithFileName(text = text, fileName = childName)
             }
         }
     }
 
     // 🔥 NOUVEAU fallback : si le .lrc n’est pas "à côté", on tente SPL_Music/BackingTracks/lyrics
-    return readLrcFromSplLyricsByBaseName(context, baseName)
+    return readLrcFromSplLyricsByBaseNameWithMatch(context, baseName)
 }
 
-private fun readSidecarLrcSmart(context: android.content.Context, trackUri: Uri): String? {
+private fun readSidecarLrcSmart(context: android.content.Context, trackUri: Uri): LrcTextWithFileName? {
     // 1) Si c’est un SAF tree (DocumentsContract) : on utilise la méthode SAF
     val isDoc = runCatching { DocumentsContract.isDocumentUri(context, trackUri) }.getOrDefault(false)
     if (isDoc) {
@@ -1106,7 +1125,7 @@ private fun readSidecarLrcSmart(context: android.content.Context, trackUri: Uri)
  * Ancien comportement : chercher "<base>.lrc" dans le même dossier que l’audio.
  * 🔥 NOUVEAU : si pas trouvé, on tente SPL_Music/BackingTracks/lyrics et /Lyrics.
  */
-private fun readSidecarFromFilePath(context: android.content.Context, mp3Path: String): String? {
+private fun readSidecarFromFilePath(context: android.content.Context, mp3Path: String): LrcTextWithFileName? {
     val mp3File = File(mp3Path)
     if (!mp3File.exists()) return null
 
@@ -1115,11 +1134,12 @@ private fun readSidecarFromFilePath(context: android.content.Context, mp3Path: S
 
     val lrcFile = File(mp3File.parentFile, "$base.lrc")
     if (lrcFile.exists() && lrcFile.isFile) {
-        return runCatching { lrcFile.readText(Charsets.UTF_8) }.getOrNull()
+        val text = runCatching { lrcFile.readText(Charsets.UTF_8) }.getOrNull() ?: return null
+        return LrcTextWithFileName(text = text, fileName = lrcFile.name)
     }
 
     // 🔥 fallback SPL_Music/BackingTracks/lyrics
-    return readLrcFromSplLyricsByBaseName(context, base)
+    return readLrcFromSplLyricsByBaseNameWithMatch(context, base)
 }
 
 /**
@@ -1134,6 +1154,13 @@ private fun readLrcFromSplLyricsByBaseName(
     context: android.content.Context,
     baseName: String
 ): String? {
+    return readLrcFromSplLyricsByBaseNameWithMatch(context, baseName)?.text
+}
+
+private fun readLrcFromSplLyricsByBaseNameWithMatch(
+    context: android.content.Context,
+    baseName: String
+): LrcTextWithFileName? {
     return readLrcFromSplFolderByBaseName(
         context = context,
         baseName = baseName,
@@ -1144,16 +1171,35 @@ private fun readLrcFromSplLyricsByBaseName(
 
 private fun readAccordsFromSplByTrackUri(
     context: android.content.Context,
-    trackUriString: String
+    trackUriString: String,
+    preferredLrcFileName: String?
 ): String? {
-    val baseName = baseNameFromTrackUriString(trackUriString)
-    if (baseName.isBlank()) return null
-    return readLrcFromSplFolderByBaseName(
+    val fallbackBaseName = baseNameFromTrackUriString(trackUriString)
+    val preferredTarget = resolveChordsLookupFileName(
+        exactLyricsFileName = preferredLrcFileName,
+        fallbackBaseName = fallbackBaseName
+    )
+    if (preferredTarget.isBlank()) return null
+
+    val byPreferred = readLrcFromSplFolderByFileName(
         context = context,
-        baseName = baseName,
+        targetName = preferredTarget,
         folderAliases = listOf("Accords", "accords"),
         ensureFolderName = "Accords"
     )
+    if (byPreferred != null) return byPreferred.text
+
+    if (!preferredLrcFileName.isNullOrBlank()) {
+        return null
+    }
+
+    if (fallbackBaseName.isBlank()) return null
+    return readLrcFromSplFolderByBaseName(
+        context = context,
+        baseName = fallbackBaseName,
+        folderAliases = listOf("Accords", "accords"),
+        ensureFolderName = "Accords"
+    )?.text
 }
 
 private fun readLrcFromSplFolderByBaseName(
@@ -1161,10 +1207,25 @@ private fun readLrcFromSplFolderByBaseName(
     baseName: String,
     folderAliases: List<String>,
     ensureFolderName: String? = null
-): String? {
+): LrcTextWithFileName? {
     val b = baseName.trim()
     if (b.isBlank()) return null
-    val targetName = "$b.lrc"
+    return readLrcFromSplFolderByFileName(
+        context = context,
+        targetName = "$b.lrc",
+        folderAliases = folderAliases,
+        ensureFolderName = ensureFolderName
+    )
+}
+
+private fun readLrcFromSplFolderByFileName(
+    context: android.content.Context,
+    targetName: String,
+    folderAliases: List<String>,
+    ensureFolderName: String? = null
+): LrcTextWithFileName? {
+    val cleanTargetName = targetName.trim()
+    if (cleanTargetName.isBlank()) return null
 
     // INTERNAL (file://) + fallback app-private SPL
     val fileRoots = linkedSetOf<File>().apply {
@@ -1195,9 +1256,10 @@ private fun readLrcFromSplFolderByBaseName(
 
         for (backingRoot in backingRoots) {
             for (alias in folderAliases) {
-                val candidate = File(File(backingRoot, alias), targetName)
+                val candidate = File(File(backingRoot, alias), cleanTargetName)
                 if (candidate.exists() && candidate.isFile) {
-                    return runCatching { candidate.readText(Charsets.UTF_8) }.getOrNull()
+                    val text = runCatching { candidate.readText(Charsets.UTF_8) }.getOrNull() ?: return null
+                    return LrcTextWithFileName(text = text, fileName = candidate.name)
                 }
             }
         }
@@ -1236,15 +1298,19 @@ private fun readLrcFromSplFolderByBaseName(
 
                 targetFolders.forEach { targetFolder ->
                     val fileDoc = targetFolder.listFiles().firstOrNull { child ->
-                        child.isFile && (child.name ?: "").equals(targetName, ignoreCase = true)
+                        child.isFile && (child.name ?: "").equals(cleanTargetName, ignoreCase = true)
                     }
 
                     if (fileDoc != null) {
-                        return runCatching {
+                        val text = runCatching {
                             context.contentResolver.openInputStream(fileDoc.uri)
                                 ?.bufferedReader(Charsets.UTF_8)
                                 ?.use { it.readText() }
-                        }.getOrNull()
+                        }.getOrNull() ?: return null
+                        return LrcTextWithFileName(
+                            text = text,
+                            fileName = fileDoc.name ?: cleanTargetName
+                        )
                     }
                 }
             }
