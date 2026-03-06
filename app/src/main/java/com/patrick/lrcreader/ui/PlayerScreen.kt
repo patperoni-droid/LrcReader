@@ -203,6 +203,7 @@ fun PlayerScreen(
 
     var isEditingLyrics by remember { mutableStateOf(false) }
     var editingTargetMode by remember(currentTrackUri) { mutableStateOf(LyricsViewMode.LYRICS) }
+    var editingResolvedLrcFileName by remember(currentTrackUri) { mutableStateOf<String?>(null) }
     var showMixScreen by remember { mutableStateOf(false) }
     LaunchedEffect(closeMixSignal) { showMixScreen = false }
 
@@ -659,7 +660,13 @@ fun PlayerScreen(
                 } else {
                     R.string.chords_editor_input_label
                 },
-                enableCueEditing = editingTargetMode == LyricsViewMode.LYRICS
+                enableCueEditing = editingTargetMode == LyricsViewMode.LYRICS,
+                showChordPalette = editingTargetMode == LyricsViewMode.CHORDS,
+                chordPaletteStorageKey = if (editingTargetMode == LyricsViewMode.CHORDS) {
+                    editingResolvedLrcFileName
+                } else {
+                    null
+                }
             )
         } else {
             Column(
@@ -702,6 +709,13 @@ fun PlayerScreen(
                                 selectedViewMode == LyricsViewMode.CHORDS,
                             onOpenEditor = {
                                 editingTargetMode = selectedViewMode
+                                editingResolvedLrcFileName = currentTrackUri?.let { trackUri ->
+                                    resolveExactLrcFileNameForTrack(
+                                        context = context,
+                                        trackUriString = trackUri,
+                                        preferredLrcFileName = resolvedLyricsLrcFileName
+                                    )
+                                }
                                 val sourceLines = if (editingTargetMode == LyricsViewMode.CHORDS) {
                                     parsedChordLines
                                 } else {

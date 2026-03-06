@@ -255,6 +255,7 @@
     <string name="lyrics_editor_cd_save_lyrics">Guardar letras</string>
     <string name="lyrics_editor_input_label">Letras (una línea por frase)</string>
     <string name="chords_editor_input_label">Acordes (una línea por acorde)</string>
+    <string name="chords_palette_input_label">Paleta de acordes (ej.: Am, D, G, F)</string>
     <string name="lyrics_editor_cd_sync_play_pause">Sync reproducir/pausar</string>
     <string name="lyrics_editor_cd_back_to_start">Volver al inicio</string>
     <string name="lyrics_editor_reset_tags">Restablecer marcas</string>
