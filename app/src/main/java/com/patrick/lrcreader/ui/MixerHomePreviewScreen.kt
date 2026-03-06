@@ -28,7 +28,6 @@ import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.MusicNote
-import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Card
@@ -218,12 +217,28 @@ fun MixerHomePreviewScreen(
 
                 Spacer(Modifier.width(4.dp))
 
-                // Nouvelle icône : ACCORDEUR
-                IconButton(onClick = onOpenTuner) {
+                // Toggle visibilité mini-accordeur (source partagée playlist + BUS)
+                IconButton(
+                    onClick = {
+                        val next = !isMiniTunerVisible
+                        MiniTunerVisibilityStore.setVisible(context, next)
+                        if (next && !hasMicPermission) {
+                            micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                        }
+                    }
+                ) {
                     Icon(
-                        imageVector = Icons.Filled.Tune,
-                        contentDescription = stringResource(R.string.mixer_cd_tuner),
-                        tint = Color(0xFF80DEEA)
+                        imageVector = if (isMiniTunerVisible) {
+                            Icons.Filled.Visibility
+                        } else {
+                            Icons.Filled.VisibilityOff
+                        },
+                        contentDescription = if (isMiniTunerVisible) {
+                            "Masquer l'accordeur mini"
+                        } else {
+                            "Afficher l'accordeur mini"
+                        },
+                        tint = if (isMiniTunerVisible) Color(0xFF80DEEA) else Color(0xFF78909C)
                     )
                 }
             }
@@ -245,36 +260,6 @@ fun MixerHomePreviewScreen(
                         .fillMaxSize()
                         .padding(16.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        IconButton(
-                            onClick = {
-                                val next = !isMiniTunerVisible
-                                MiniTunerVisibilityStore.setVisible(context, next)
-                                if (next && !hasMicPermission) {
-                                    micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                                }
-                            }
-                        ) {
-                            Icon(
-                                imageVector = if (isMiniTunerVisible) {
-                                    Icons.Filled.Visibility
-                                } else {
-                                    Icons.Filled.VisibilityOff
-                                },
-                                contentDescription = if (isMiniTunerVisible) {
-                                    "Masquer l'accordeur mini"
-                                } else {
-                                    "Afficher l'accordeur mini"
-                                },
-                                tint = if (isMiniTunerVisible) Color(0xFF80DEEA) else Color(0xFF78909C)
-                            )
-                        }
-                    }
-
                     if (isMiniTunerVisible) {
                         val tunerCents = tunerState.cents?.toFloat()
                         val miniTunerActive = hasMicPermission && tunerState.isListening
