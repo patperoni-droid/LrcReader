@@ -1,10 +1,40 @@
 package com.patrick.lrcreader.core
 
+enum class LyricsViewMode {
+    LYRICS,
+    CHORDS
+}
+
+data class LyricsChordsUiState(
+    val showToggle: Boolean,
+    val showMissingChordsMessage: Boolean
+)
+
 data class ChordsWindow(
     val previous: LrcLine?,
     val current: LrcLine?,
     val next: List<LrcLine>
 )
+
+fun resolveLyricsViewMode(
+    current: LyricsViewMode,
+    hasLyrics: Boolean,
+    hasChords: Boolean
+): LyricsViewMode {
+    return when {
+        current == LyricsViewMode.CHORDS && hasChords -> LyricsViewMode.CHORDS
+        hasLyrics -> LyricsViewMode.LYRICS
+        hasChords -> LyricsViewMode.CHORDS
+        else -> LyricsViewMode.LYRICS
+    }
+}
+
+fun computeLyricsChordsUiState(hasLyrics: Boolean, hasChords: Boolean): LyricsChordsUiState {
+    return LyricsChordsUiState(
+        showToggle = hasLyrics && hasChords,
+        showMissingChordsMessage = hasLyrics && !hasChords
+    )
+}
 
 fun findActiveLrcIndex(lines: List<LrcLine>, positionMs: Long): Int {
     if (lines.isEmpty()) return -1
