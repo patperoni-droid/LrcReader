@@ -216,6 +216,25 @@ fun LyricsEditorSection(
         insertChordFromPalette(chord)
     }
 
+    @Composable
+    fun ChordPaletteChipsRow() {
+        if (!showChordPalette || displayedPalette.isEmpty()) return
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            displayedPalette.forEach { chord ->
+                TextButton(
+                    onClick = { handlePaletteChordClick(chord) }
+                ) {
+                    Text("[$chord]", color = Color(0xFF80CBC4))
+                }
+            }
+        }
+    }
+
     LaunchedEffect(showChordPalette, chordPaletteStorageKey) {
         if (!showChordPalette) return@LaunchedEffect
         val key = chordPaletteStorageKey
@@ -410,20 +429,7 @@ fun LyricsEditorSection(
 
                         if (displayedPalette.isNotEmpty()) {
                             Spacer(Modifier.height(8.dp))
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                displayedPalette.forEach { chord ->
-                                    TextButton(
-                                        onClick = { handlePaletteChordClick(chord) }
-                                    ) {
-                                        Text("[$chord]", color = Color(0xFF80CBC4))
-                                    }
-                                }
-                            }
+                            ChordPaletteChipsRow()
                             Spacer(Modifier.height(8.dp))
                         } else {
                             Spacer(Modifier.height(8.dp))
@@ -502,6 +508,11 @@ fun LyricsEditorSection(
                             color = Color.LightGray,
                             fontSize = 12.sp
                         )
+                    }
+
+                    if (showChordPalette && displayedPalette.isNotEmpty()) {
+                        ChordPaletteChipsRow()
+                        Spacer(Modifier.height(8.dp))
                     }
 
                     // Reset TAGs
