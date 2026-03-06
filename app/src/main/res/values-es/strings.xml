@@ -259,6 +259,7 @@
     <string name="lyrics_editor_cd_sync_play_pause">Sync reproducir/pausar</string>
     <string name="lyrics_editor_cd_back_to_start">Volver al inicio</string>
     <string name="lyrics_editor_reset_tags">Restablecer marcas</string>
+    <string name="chords_editor_clear_all">Borrar todo</string>
     <string name="lyrics_editor_empty_sync_hint">Primero agrega letras en la pestaña Simple.</string>
     <string name="lyrics_editor_tag_button">TAG</string>
     <string name="lyrics_editor_cd_play_from_line">Reproducir desde esta línea</string>
