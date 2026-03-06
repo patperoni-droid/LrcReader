@@ -8,11 +8,13 @@ import android.provider.MediaStore
 import java.io.File
 import android.provider.DocumentsContract
 import android.net.Uri
+import androidx.documentfile.provider.DocumentFile
 import com.patrick.lrcreader.core.readSyltAsLrcFromUri
 import com.patrick.lrcreader.core.readUsltFromUri
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.OutlinedTextField
 import com.patrick.lrcreader.core.notes.LiveNote
 import com.patrick.lrcreader.core.notes.LiveNoteManager
@@ -54,6 +56,7 @@ import androidx.compose.ui.unit.sp
 import androidx.media3.exoplayer.ExoPlayer
 import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.core.AutoReturnPrefs
+import com.patrick.lrcreader.core.BackupFolderPrefs
 import com.patrick.lrcreader.core.DisplayPrefs
 import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.core.LrcLine
@@ -64,6 +67,7 @@ import com.patrick.lrcreader.core.MidiCueDispatcher
 import com.patrick.lrcreader.core.PlaybackCoordinator
 import com.patrick.lrcreader.core.audio.AudioEngine
 import com.patrick.lrcreader.core.audio.SoundTouchBridge
+import com.patrick.lrcreader.core.findActiveLrcIndex
 import com.patrick.lrcreader.core.parseLrc
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -72,6 +76,11 @@ import kotlinx.coroutines.withContext
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
+
+private enum class LyricsViewMode {
+    LYRICS,
+    CHORDS
+}
 
 @Composable
 fun PlayerScreen(
@@ -163,12 +172,16 @@ fun PlayerScreen(
     val lyricsDelayMs = 0L
     var userOffsetMs by remember(currentTrackUri) { mutableStateOf(-100L) }
     var isConcertMode by remember { mutableStateOf(DisplayPrefs.isConcertMode(context)) }
+    var selectedViewMode by remember(currentTrackUri) { mutableStateOf(LyricsViewMode.LYRICS) }
+    var parsedChordLines by remember(currentTrackUri) { mutableStateOf<List<LrcLine>>(emptyList()) }
+    var chordsLoading by remember(currentTrackUri) { mutableStateOf(false) }
+    var hasLyricsSource by remember(currentTrackUri) { mutableStateOf(false) }
+    var hasChordsSource by remember(currentTrackUri) { mutableStateOf(false) }
 
     var lyricsBoxHeightPx by remember { mutableStateOf(0) }
     var currentLrcIndex by remember { mutableStateOf(0) }
 
     var lastMidiIndex by remember(currentTrackUri) { mutableStateOf(-1) }
-    var showLyrics by remember { mutableStateOf(true) }
     var userScrolling by remember { mutableStateOf(false) }
 
     var durationMs by remember(currentTrackUri) { mutableStateOf(0) }
@@ -220,6 +233,7 @@ fun PlayerScreen(
             onParsedLinesChange(emptyList())
             rawLyricsText = ""
             editingLines = emptyList()
+            hasLyricsSource = false
             return@LaunchedEffect
         }
 
@@ -239,6 +253,7 @@ fun PlayerScreen(
             onParsedLinesChange(parsed)
             rawLyricsText = parsed.joinToString("\n") { it.text }
             seedEditingLinesIfBetter(parsed)
+            hasLyricsSource = true
             return@LaunchedEffect
         }
 
@@ -252,6 +267,7 @@ fun PlayerScreen(
             onParsedLinesChange(parsed)
             rawLyricsText = parsed.joinToString("\n") { it.text }
             seedEditingLinesIfBetter(parsed)
+            hasLyricsSource = true
             return@LaunchedEffect
         }
 
@@ -268,6 +284,7 @@ fun PlayerScreen(
             onParsedLinesChange(parsed)
             rawLyricsText = parsed.joinToString("\n") { it.text }
             seedEditingLinesIfBetter(parsed)
+            hasLyricsSource = true
             return@LaunchedEffect
         }
 
@@ -283,16 +300,68 @@ fun PlayerScreen(
             onParsedLinesChange(parsed)
             rawLyricsText = parsed.joinToString("\n") { it.text }
             seedEditingLinesIfBetter(parsed)
+            hasLyricsSource = true
             return@LaunchedEffect
         }
 
         onParsedLinesChange(emptyList())
         rawLyricsText = ""
         seedEditingLinesIfBetter(emptyList())
+        hasLyricsSource = false
+    }
+
+    // 🔁 reload accords dédiés (BackingTracks/Accords/<base>.lrc)
+    LaunchedEffect(currentTrackUri) {
+        if (currentTrackUri == null) {
+            parsedChordLines = emptyList()
+            hasChordsSource = false
+            chordsLoading = false
+            return@LaunchedEffect
+        }
+        chordsLoading = true
+        val raw = withContext(Dispatchers.IO) {
+            readAccordsFromSplByTrackUri(context, currentTrackUri)
+        }
+        val parsed = if (!raw.isNullOrBlank()) parseLrc(raw) else emptyList()
+        parsedChordLines = parsed
+        hasChordsSource = parsed.isNotEmpty()
+        chordsLoading = false
+    }
+
+    val activeDisplayLines = if (selectedViewMode == LyricsViewMode.CHORDS) parsedChordLines else parsedLines
+    val hasLyricsMode = hasLyricsSource || parsedLines.isNotEmpty()
+    val hasChordsMode = hasChordsSource || parsedChordLines.isNotEmpty()
+
+    fun recomputeCurrentIndexForActiveView() {
+        if (activeDisplayLines.isEmpty()) {
+            currentLrcIndex = 0
+            return
+        }
+        val totalOffsetMs = lyricsDelayMs + userOffsetMs
+        val effectivePos = (getPositionMs() - totalOffsetMs).coerceAtLeast(0L)
+        val idx = findActiveLrcIndex(activeDisplayLines, effectivePos)
+        currentLrcIndex = if (idx >= 0) idx else 0
+    }
+
+    LaunchedEffect(hasLyricsMode, hasChordsMode, currentTrackUri) {
+        selectedViewMode = when {
+            selectedViewMode == LyricsViewMode.CHORDS && hasChordsMode -> LyricsViewMode.CHORDS
+            hasLyricsMode -> LyricsViewMode.LYRICS
+            hasChordsMode -> LyricsViewMode.CHORDS
+            else -> LyricsViewMode.LYRICS
+        }
+    }
+
+    LaunchedEffect(selectedViewMode, parsedLines, parsedChordLines, userOffsetMs) {
+        if (selectedViewMode != LyricsViewMode.LYRICS) {
+            lastMidiIndex = -1
+        }
+        recomputeCurrentIndexForActiveView()
     }
 
     fun centerCurrentLineLazy(state: LazyListState) {
-        if (parsedLines.isEmpty()) return
+        if (selectedViewMode != LyricsViewMode.LYRICS) return
+        if (activeDisplayLines.isEmpty()) return
         scope.launch {
             val visible = state.layoutInfo.visibleItemsInfo.firstOrNull { it.index == currentLrcIndex }
             if (visible == null) state.scrollToItem(currentLrcIndex)
@@ -321,7 +390,7 @@ fun PlayerScreen(
             .toInt()
 
         runCatching { seekToMs(seekPos.toLong()) }
-        currentLrcIndex = targetIndex.coerceIn(0, max(parsedLines.size - 1, 0))
+        currentLrcIndex = targetIndex.coerceIn(0, max(activeDisplayLines.size - 1, 0))
         positionMs = seekPos
 
         if (!isPlaying) {
@@ -332,8 +401,8 @@ fun PlayerScreen(
     }
 
 
-    // ---------- Suivi lecture + index ligne courante + MIDI + masque ----------
-    LaunchedEffect(isPlaying, parsedLines, userOffsetMs, currentTrackUri) {
+    // ---------- Suivi lecture + index ligne courante + MIDI ----------
+    LaunchedEffect(isPlaying, activeDisplayLines, selectedViewMode, userOffsetMs, currentTrackUri) {
         while (true) {
             val d = getDurationMs().toInt()
             if (d > 0) durationMs = d
@@ -341,29 +410,20 @@ fun PlayerScreen(
             val p = getPositionMs().toInt()
             if (!isDragging) positionMs = p
 
-            if (parsedLines.isNotEmpty()) {
+            if (activeDisplayLines.isNotEmpty()) {
                 val totalOffsetMs = lyricsDelayMs + userOffsetMs
                 val posMs = (p.toLong() - totalOffsetMs).coerceAtLeast(0L)
-
-                val taggedIndices = parsedLines.withIndex()
-                    .filter { it.value.timeMs > 0L }
-                    .map { it.index }
-
-                showLyrics = if (taggedIndices.isEmpty()) {
-                    true
-                } else {
-                    val firstTaggedIndex = taggedIndices.first()
-                    val firstTaggedTime = parsedLines[firstTaggedIndex].timeMs
-                    posMs >= firstTaggedTime
+                val newIndex = findActiveLrcIndex(activeDisplayLines, posMs)
+                if (newIndex >= 0 && newIndex != currentLrcIndex) {
+                    currentLrcIndex = newIndex
                 }
 
-                val newIndex = taggedIndices.lastOrNull { idx ->
-                    parsedLines[idx].timeMs <= posMs
-                } ?: -1
-
-                if (newIndex != -1 && newIndex != currentLrcIndex) currentLrcIndex = newIndex
-
-                if (currentTrackUri != null && newIndex != -1 && newIndex != lastMidiIndex) {
+                if (
+                    selectedViewMode == LyricsViewMode.LYRICS &&
+                    currentTrackUri != null &&
+                    newIndex >= 0 &&
+                    newIndex != lastMidiIndex
+                ) {
                     lastMidiIndex = newIndex
                     MidiCueDispatcher.onActiveLineChanged(
                         trackUri = currentTrackUri,
@@ -409,8 +469,9 @@ fun PlayerScreen(
     }
 
     // ---------- Auto-centering ----------
-    LaunchedEffect(isPlaying, parsedLines, lyricsBoxHeightPx, currentLrcIndex) {
-        if (parsedLines.isEmpty() || lyricsBoxHeightPx == 0) return@LaunchedEffect
+    LaunchedEffect(isPlaying, activeDisplayLines, selectedViewMode, lyricsBoxHeightPx, currentLrcIndex) {
+        if (selectedViewMode != LyricsViewMode.LYRICS) return@LaunchedEffect
+        if (activeDisplayLines.isEmpty() || lyricsBoxHeightPx == 0) return@LaunchedEffect
         while (true) {
             if (isPlaying && !userScrolling && !isDragging) centerCurrentLineLazy(listState)
             delay(120)
@@ -509,6 +570,7 @@ fun PlayerScreen(
                             },
                             highlightColor = highlightColor,
                             onOpenMix = { showMixScreen = true },
+                            showEditLyrics = selectedViewMode == LyricsViewMode.LYRICS,
                             onOpenEditor = {
                                 if (editingLines.isNotEmpty()) {
                                     rawLyricsText = plainLyricsText(editingLines)
@@ -556,35 +618,60 @@ fun PlayerScreen(
                             )
                         }
 
-                        Spacer(Modifier.height(8.dp))
-
-                        Box(modifier = Modifier.weight(1f)) {
-
-                            // --- PAROLES (INCHANGÉES) ---
-                            val safeLrcIndex = currentLrcIndex
-                                .coerceIn(0, (parsedLines.size - 1).coerceAtLeast(0))
-                            LyricsAreaLazy(
-                                modifier = Modifier.fillMaxSize(),
-                                listState = listState,
-                                parsedLines = parsedLines,
-                                currentTrackUri = currentTrackUri,
-                                lyricsLoading = lyricsLoading,
-                                isConcertMode = isConcertMode,
-                                currentLrcIndex = safeLrcIndex,
-                                onLyricsBoxHeightChange = { lyricsBoxHeightPx = it },
-                                highlightColor = highlightColor,
-                                onLineClick = { index, timeMs ->
-                                    seekAndCenter(timeMs.toInt(), index)
-                                    if (currentTrackUri != null) {
-                                        lastMidiIndex = index
-                                        MidiCueDispatcher.onActiveLineChanged(
-                                            trackUri = currentTrackUri,
-                                            lineIndex = index,
-                                            positionMs = getPositionMs()
-                                        )
+                        if (hasLyricsMode || hasChordsMode) {
+                            LyricsViewSelector(
+                                selectedMode = selectedViewMode,
+                                hasLyrics = hasLyricsMode,
+                                hasChords = hasChordsMode,
+                                onSelectMode = { mode ->
+                                    selectedViewMode = mode
+                                    recomputeCurrentIndexForActiveView()
+                                    if (mode == LyricsViewMode.LYRICS) {
+                                        centerCurrentLineLazy(listState)
                                     }
                                 }
                             )
+                        }
+
+                        Spacer(Modifier.height(8.dp))
+
+                        Box(modifier = Modifier.weight(1f)) {
+                            if (selectedViewMode == LyricsViewMode.LYRICS) {
+                                val safeLrcIndex = currentLrcIndex
+                                    .coerceIn(0, (parsedLines.size - 1).coerceAtLeast(0))
+                                LyricsAreaLazy(
+                                    modifier = Modifier.fillMaxSize(),
+                                    listState = listState,
+                                    parsedLines = parsedLines,
+                                    currentTrackUri = currentTrackUri,
+                                    lyricsLoading = lyricsLoading,
+                                    isConcertMode = isConcertMode,
+                                    currentLrcIndex = safeLrcIndex,
+                                    onLyricsBoxHeightChange = { lyricsBoxHeightPx = it },
+                                    highlightColor = highlightColor,
+                                    onLineClick = { index, timeMs ->
+                                        seekAndCenter(timeMs.toInt(), index)
+                                        if (currentTrackUri != null) {
+                                            lastMidiIndex = index
+                                            MidiCueDispatcher.onActiveLineChanged(
+                                                trackUri = currentTrackUri,
+                                                lineIndex = index,
+                                                positionMs = getPositionMs()
+                                            )
+                                        }
+                                    }
+                                )
+                            } else {
+                                val safeChordIndex = currentLrcIndex
+                                    .coerceIn(0, (parsedChordLines.size - 1).coerceAtLeast(0))
+                                AccordsArea(
+                                    modifier = Modifier.fillMaxSize(),
+                                    parsedLines = parsedChordLines,
+                                    currentTrackUri = currentTrackUri,
+                                    loading = chordsLoading,
+                                    currentLrcIndex = safeChordIndex
+                                )
+                            }
 
                             // --- NOTE LIVE (AU-DESSUS DES PAROLES) ---
                             activeLiveNote?.let { note ->
@@ -818,6 +905,39 @@ private fun HqOffBanner() {
 }
 
 @Composable
+private fun LyricsViewSelector(
+    selectedMode: LyricsViewMode,
+    hasLyrics: Boolean,
+    hasChords: Boolean,
+    onSelectMode: (LyricsViewMode) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 6.dp),
+        horizontalArrangement = Arrangement.Center
+    ) {
+        if (hasLyrics) {
+            FilterChip(
+                selected = selectedMode == LyricsViewMode.LYRICS,
+                onClick = { onSelectMode(LyricsViewMode.LYRICS) },
+                label = { Text(stringResource(R.string.player_view_lyrics)) }
+            )
+        }
+        if (hasLyrics && hasChords) {
+            Spacer(Modifier.width(10.dp))
+        }
+        if (hasChords) {
+            FilterChip(
+                selected = selectedMode == LyricsViewMode.CHORDS,
+                onClick = { onSelectMode(LyricsViewMode.CHORDS) },
+                label = { Text(stringResource(R.string.player_view_chords)) }
+            )
+        }
+    }
+}
+
+@Composable
 private fun ReaderHeader(
     isConcertMode: Boolean,
     onToggleConcertMode: () -> Unit,
@@ -825,6 +945,7 @@ private fun ReaderHeader(
     onToggleAutoReturn: () -> Unit,
     highlightColor: Color,
     onOpenMix: () -> Unit,
+    showEditLyrics: Boolean,
     onOpenEditor: () -> Unit,
     onAddLiveNote: () -> Unit,
 ) {
@@ -878,12 +999,14 @@ private fun ReaderHeader(
                 )
             }
 
-            IconButton(onClick = onOpenEditor) {
-                Icon(
-                    imageVector = Icons.Filled.Edit,
-                    contentDescription = stringResource(R.string.player_cd_edit_lyrics),
-                    tint = Color(0xFFFFF3E0)
-                )
+            if (showEditLyrics) {
+                IconButton(onClick = onOpenEditor) {
+                    Icon(
+                        imageVector = Icons.Filled.Edit,
+                        contentDescription = stringResource(R.string.player_cd_edit_lyrics),
+                        tint = Color(0xFFFFF3E0)
+                    )
+                }
             }
 
             IconButton(onClick = onAddLiveNote) {
@@ -1004,23 +1127,127 @@ private fun readLrcFromSplLyricsByBaseName(
     context: android.content.Context,
     baseName: String
 ): String? {
+    return readLrcFromSplFolderByBaseName(
+        context = context,
+        baseName = baseName,
+        folderAliases = listOf("lyrics", "Lyrics"),
+        ensureFolderName = "Lyrics"
+    )
+}
+
+private fun readAccordsFromSplByTrackUri(
+    context: android.content.Context,
+    trackUriString: String
+): String? {
+    val baseName = baseNameFromTrackUriString(trackUriString)
+    if (baseName.isBlank()) return null
+    return readLrcFromSplFolderByBaseName(
+        context = context,
+        baseName = baseName,
+        folderAliases = listOf("Accords", "accords"),
+        ensureFolderName = "Accords"
+    )
+}
+
+private fun readLrcFromSplFolderByBaseName(
+    context: android.content.Context,
+    baseName: String,
+    folderAliases: List<String>,
+    ensureFolderName: String? = null
+): String? {
     val b = baseName.trim()
     if (b.isBlank()) return null
+    val targetName = "$b.lrc"
 
-    val root = File(context.getExternalFilesDir(null), "SPL_Music")
-    val backingTracks = File(root, "BackingTracks")
+    // INTERNAL (file://) + fallback app-private SPL
+    val fileRoots = linkedSetOf<File>().apply {
+        val rootUri = BackupFolderPrefs.getLibraryRootUri(context)
+        if (rootUri?.scheme == "file" && !rootUri.path.isNullOrBlank()) {
+            add(File(rootUri.path!!))
+        }
+        add(File(context.getExternalFilesDir(null), "SPL_Music"))
+    }
 
-    val candidates = listOf(
-        File(File(backingTracks, "lyrics"), "$b.lrc"),
-        File(File(backingTracks, "Lyrics"), "$b.lrc")
-    )
+    for (root in fileRoots) {
+        if (!root.exists()) continue
 
-    for (f in candidates) {
-        if (f.exists() && f.isFile) {
-            return runCatching { f.readText(Charsets.UTF_8) }.getOrNull()
+        val backingRoot = when {
+            File(root, "BackingTracks").exists() -> File(root, "BackingTracks")
+            File(root, "BackingTrack").exists() -> File(root, "BackingTrack")
+            else -> File(root, "BackingTracks")
+        }
+
+        if (ensureFolderName != null) {
+            if (!backingRoot.exists()) backingRoot.mkdirs()
+            val ensure = File(backingRoot, ensureFolderName)
+            if (!ensure.exists()) ensure.mkdirs()
+        }
+
+        for (alias in folderAliases) {
+            val candidate = File(File(backingRoot, alias), targetName)
+            if (candidate.exists() && candidate.isFile) {
+                return runCatching { candidate.readText(Charsets.UTF_8) }.getOrNull()
+            }
         }
     }
+
+    // SAF (content://)
+    val rootUri = BackupFolderPrefs.getLibraryRootUri(context)
+    if (rootUri?.scheme == "content") {
+        val rootDoc = DocumentFile.fromTreeUri(context, rootUri)
+            ?: DocumentFile.fromSingleUri(context, rootUri)
+        if (rootDoc != null && rootDoc.isDirectory) {
+            val backing = ensureOrFindDir(
+                parent = rootDoc,
+                preferredName = "BackingTracks",
+                aliases = listOf("BackingTracks", "BackingTrack")
+            ) ?: return null
+
+            val targetFolder = ensureOrFindDir(
+                parent = backing,
+                preferredName = ensureFolderName ?: folderAliases.first(),
+                aliases = folderAliases
+            ) ?: return null
+
+            val fileDoc = targetFolder.listFiles().firstOrNull { child ->
+                child.isFile && (child.name ?: "").equals(targetName, ignoreCase = true)
+            }
+
+            if (fileDoc != null) {
+                return runCatching {
+                    context.contentResolver.openInputStream(fileDoc.uri)
+                        ?.bufferedReader(Charsets.UTF_8)
+                        ?.use { it.readText() }
+                }.getOrNull()
+            }
+        }
+    }
+
     return null
+}
+
+private fun ensureOrFindDir(
+    parent: DocumentFile,
+    preferredName: String,
+    aliases: List<String>
+): DocumentFile? {
+    val normalizedAliases = aliases.map { normalizeDirName(it) }.toSet()
+    parent.listFiles().firstOrNull { child ->
+        child.isDirectory && normalizedAliases.contains(normalizeDirName(child.name.orEmpty()))
+    }?.let { return it }
+    return runCatching { parent.createDirectory(preferredName) }.getOrNull()
+}
+
+private fun normalizeDirName(name: String): String {
+    return name.trim().lowercase()
+}
+
+private fun baseNameFromTrackUriString(trackUriString: String): String {
+    val uri = runCatching { Uri.parse(trackUriString) }.getOrNull()
+    val last = uri?.lastPathSegment ?: trackUriString
+    val clean = last.substringAfterLast('/').substringAfterLast(':')
+    val base = clean.substringBeforeLast('.', clean).trim()
+    return if (base.isBlank()) "track" else base
 }
 
 private fun queryMediaStoreDataPath(context: android.content.Context, uri: Uri): String? {

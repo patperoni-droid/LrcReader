@@ -42,6 +42,7 @@ class LibraryBackendInternal(
 
         val audio = File(backingTracks, "Audio")
         val lyrics = File(backingTracks, "Lyrics")
+        val accords = File(backingTracks, "Accords")
         val midi = File(backingTracks, "Midi")
         val videos = File(backingTracks, "Videos")
 
@@ -52,6 +53,7 @@ class LibraryBackendInternal(
 
         ensureDirWithLog(audio, "BackingTracks/Audio")
         ensureDirWithLog(lyrics, "BackingTracks/Lyrics")
+        ensureDirWithLog(accords, "BackingTracks/Accords")
         ensureDirWithLog(midi, "BackingTracks/Midi")
         ensureDirWithLog(videos, "BackingTracks/Videos")
 

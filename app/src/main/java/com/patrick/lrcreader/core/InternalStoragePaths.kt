@@ -37,19 +37,21 @@ object InternalStoragePaths {
         // --- Dossiers attendus (minuscules)
         val audioLower = File(backingTracks, "audio")
         val lyricsLower = File(backingTracks, "lyrics")
+        val accordsLower = File(backingTracks, "accords")
         val midiLower = File(backingTracks, "midi")
         val videosLower = File(backingTracks, "videos")
 
         // --- Dossiers legacy (Majuscules)
         val audioUpper = File(backingTracks, "Audio")
         val lyricsUpper = File(backingTracks, "Lyrics")
+        val accordsUpper = File(backingTracks, "Accords")
         val midiUpper = File(backingTracks, "Midi")
         val videosUpper = File(backingTracks, "Videos")
 
         // Crée tout (sans risque)
         listOf(
-            audioLower, lyricsLower, midiLower, videosLower,
-            audioUpper, lyricsUpper, midiUpper, videosUpper
+            audioLower, lyricsLower, accordsLower, midiLower, videosLower,
+            audioUpper, lyricsUpper, accordsUpper, midiUpper, videosUpper
         ).forEach { it.mkdirs() }
 
         // Migration SAFE : copie dans les deux sens, sans suppression
@@ -59,6 +61,9 @@ object InternalStoragePaths {
 
         mirrorCopyOnly(lyricsUpper, lyricsLower, tag = "MIGRATION_LYRICS")
         mirrorCopyOnly(lyricsLower, lyricsUpper, tag = "MIGRATION_LYRICS")
+
+        mirrorCopyOnly(accordsUpper, accordsLower, tag = "MIGRATION_CHORDS")
+        mirrorCopyOnly(accordsLower, accordsUpper, tag = "MIGRATION_CHORDS")
 
         mirrorCopyOnly(midiUpper, midiLower, tag = "MIGRATION_MIDI")
         mirrorCopyOnly(midiLower, midiUpper, tag = "MIGRATION_MIDI")
