@@ -85,6 +85,42 @@ class LrcTimelineTest {
     }
 
     @Test
+    fun decideLrcAutoCreate_saveChords_whenBothMissing_createsBoth() {
+        val decision = decideLrcAutoCreate(
+            trigger = LrcAutoCreateTrigger.SAVE_CHORDS,
+            primaryExists = false,
+            twinExists = false
+        )
+
+        val targetName = resolveChordsLookupFileName(
+            exactLyricsFileName = null,
+            fallbackBaseName = "MySong"
+        )
+
+        assertEquals(true, decision.createPrimaryFile)
+        assertEquals(true, decision.createTwinFile)
+        assertEquals("MySong.lrc", targetName)
+    }
+
+    @Test
+    fun decideLrcAutoCreate_saveLyrics_whenBothMissing_createsBoth() {
+        val decision = decideLrcAutoCreate(
+            trigger = LrcAutoCreateTrigger.SAVE_LYRICS,
+            primaryExists = false,
+            twinExists = false
+        )
+
+        val targetName = resolveChordsLookupFileName(
+            exactLyricsFileName = null,
+            fallbackBaseName = "MySong"
+        )
+
+        assertEquals(true, decision.createPrimaryFile)
+        assertEquals(true, decision.createTwinFile)
+        assertEquals("MySong.lrc", targetName)
+    }
+
+    @Test
     fun decideLrcAutoCreate_doesNotCreateTwinWhenAlreadyPresent() {
         val decision = decideLrcAutoCreate(
             trigger = LrcAutoCreateTrigger.SAVE_LYRICS,
@@ -148,5 +184,24 @@ class LrcTimelineTest {
         assertNull(window.previous)
         assertNull(window.current)
         assertEquals(emptyList<LrcLine>(), window.next)
+    }
+
+    @Test
+    fun clearAllChords_keepsPalette_and_keepsLyrics() {
+        val palette = listOf("Am", "F", "C")
+        val lyrics = listOf(
+            LrcLine(timeMs = 1_000L, text = "Line 1"),
+            LrcLine(timeMs = 2_000L, text = "Line 2")
+        )
+
+        val result = clearAllChordsKeepingPaletteAndLyrics(
+            palette = palette,
+            lyrics = lyrics
+        )
+
+        assertEquals(emptyList<LrcLine>(), result.clearedChordLines)
+        assertEquals("", result.clearedChordRawText)
+        assertEquals(palette, result.keptPalette)
+        assertEquals(lyrics, result.keptLyrics)
     }
 }
