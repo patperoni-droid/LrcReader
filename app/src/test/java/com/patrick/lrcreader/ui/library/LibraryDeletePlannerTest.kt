@@ -107,6 +107,42 @@ class LibraryDeletePlannerTest {
         assertTrue(roles.contains(LibraryDeleteRole.ACCORDS))
     }
 
+    @Test
+    fun findAssociatedLrcMatches_findsHistoricalHashedLrcNames_notBasedOnCurrentUriHash() {
+        val rootUri = "content://spl/root"
+        val backingUri = "content://spl/backing"
+        val audioDirUri = "content://spl/audio"
+        val lyricsDirUri = "content://spl/lyrics"
+        val accordsDirUri = "content://spl/accords"
+        val audioUri = "content://spl/audio/conkisador.mp3"
+        val historicalHashedName = "conkisador-5093ad2667.lrc"
+        val lyricsUri = "content://spl/lyrics/$historicalHashedName"
+        val accordsUri = "content://spl/accords/$historicalHashedName"
+
+        val index = listOf(
+            entry(rootUri, "SPL_Music", true, null),
+            entry(backingUri, "BackingTracks", true, rootUri),
+            entry(audioDirUri, "Audio", true, backingUri),
+            entry(lyricsDirUri, "Lyrics", true, backingUri),
+            entry(accordsDirUri, "Accords", true, backingUri),
+            entry(audioUri, "conkisador.mp3", false, audioDirUri),
+            entry(lyricsUri, historicalHashedName, false, lyricsDirUri),
+            entry(accordsUri, historicalHashedName, false, accordsDirUri)
+        )
+
+        val associated = LibraryDeletePlanner.findAssociatedLrcMatches(
+            targetUriString = audioUri,
+            indexAll = index
+        )
+
+        assertEquals(2, associated.size)
+        val names = associated.map { it.displayName }.toSet()
+        assertTrue(names.contains(historicalHashedName))
+        val roles = associated.map { it.role }.toSet()
+        assertTrue(roles.contains(LibraryDeleteRole.LYRICS))
+        assertTrue(roles.contains(LibraryDeleteRole.ACCORDS))
+    }
+
     private fun entry(
         uriString: String,
         name: String,
