@@ -71,4 +71,27 @@ class ChordPaletteTest {
         assertFalse(isLiveCaptureAllowed(nowElapsedMs = 1_050L, lastCaptureElapsedMs = 1_000L))
         assertTrue(isLiveCaptureAllowed(nowElapsedMs = 1_080L, lastCaptureElapsedMs = 1_000L))
     }
+
+    @Test
+    fun liveCaptureSequence_filtersFastTapAndKeepsSortedTimeline() {
+        var lastCaptureElapsedMs: Long? = null
+        var timeline = emptyList<LrcLine>()
+
+        fun captureTap(chord: String, elapsedMs: Long, playerPositionMs: Long) {
+            if (!isLiveCaptureAllowed(elapsedMs, lastCaptureElapsedMs)) return
+            lastCaptureElapsedMs = elapsedMs
+            timeline = appendCapturedChordLineSorted(
+                current = timeline,
+                newLine = captureLiveChord(chord = chord, playerPositionMs = playerPositionMs)
+            )
+        }
+
+        captureTap(chord = "G", elapsedMs = 1_000L, playerPositionMs = 5_000L)   // kept
+        captureTap(chord = "Am", elapsedMs = 1_050L, playerPositionMs = 5_200L)  // ignored (<80ms)
+        captureTap(chord = "F", elapsedMs = 1_080L, playerPositionMs = 5_100L)   // kept (==80ms)
+        captureTap(chord = "C", elapsedMs = 1_200L, playerPositionMs = 4_900L)   // kept, inserted before
+
+        assertEquals(listOf(4_750L, 4_850L, 4_950L), timeline.map { it.timeMs })
+        assertEquals(listOf("C", "G", "F"), timeline.map { it.text })
+    }
 }
