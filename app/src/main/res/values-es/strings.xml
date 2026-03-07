@@ -154,10 +154,10 @@
     <string name="library_list_rename">Renombrar</string>
     <string name="library_list_delete_permanently">Eliminar permanentemente</string>
 
-    <string name="library_delete_backing_track_title">Eliminar pista de acompañamiento</string>
-    <string name="library_delete_audio_question">¿Quieres eliminar este archivo de audio?</string>
+    <string name="library_delete_backing_track_title">¿Eliminar esta pista?</string>
+    <string name="library_delete_audio_question">Solo pista</string>
     <string name="library_delete_audio_lrc_found">Se encontraron archivos .lrc asociados.\n¿También quieres eliminarlos?</string>
-    <string name="library_delete_audio_plus_lrc">Eliminar audio + archivos asociados</string>
+    <string name="library_delete_audio_plus_lrc">Pista + letras/acordes</string>
     <string name="library_delete_audio_hint_lyrics">Consejo: los archivos asociados se buscan en las carpetas &quot;Lyrics&quot; y &quot;Accords&quot;.</string>
 
     <string name="common_search_placeholder">Buscar…</string>

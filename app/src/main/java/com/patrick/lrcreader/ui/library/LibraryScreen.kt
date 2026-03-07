@@ -87,10 +87,8 @@ fun LibraryScreen(
     val sDjExcludedReason = stringResource(R.string.library_dj_excluded_reason)
     val sDeleteBackingTrackTitle = stringResource(R.string.library_delete_backing_track_title)
     val sDeleteFileTitle = stringResource(R.string.library_delete_file_title)
-    val sDeleteAudioQuestion = stringResource(R.string.library_delete_audio_question)
-    val sDeleteAudioLrcFound = stringResource(R.string.library_delete_audio_lrc_found)
+    val sDeleteAudioOnly = stringResource(R.string.library_delete_audio_question)
     val sDeleteAudioPlusLrc = stringResource(R.string.library_delete_audio_plus_lrc)
-    val sDeleteAudioHintLyrics = stringResource(R.string.library_delete_audio_hint_lyrics)
     val sDeleteConfirmText = stringResource(R.string.library_delete_file_confirm_text)
     val sDeletePermanently = stringResource(R.string.library_list_delete_permanently)
     val sPrompterFolder = stringResource(R.string.main_menu_prompter)
@@ -950,7 +948,6 @@ fun LibraryScreen(
             if (showDeleteConfirmDialog && pendingDeletePlan != null) {
                 val deletePlan = pendingDeletePlan!!
                 val hasAssociated = deletePlan.isAudioTarget && deletePlan.hasAssociated
-                val associatedLabel = summarizeDeleteRoles(deletePlan.associated)
 
                 suspend fun executeDeletion(includeAssociated: Boolean) {
                     startLoading(sDeleting, determinate = false)
@@ -983,20 +980,6 @@ fun LibraryScreen(
                             if (deletePlan.isAudioTarget) sDeleteBackingTrackTitle else sDeleteFileTitle
                         )
                     },
-                    text = {
-                        Column {
-                            androidx.compose.material3.Text(
-                                if (deletePlan.isAudioTarget) sDeleteAudioQuestion else sDeleteConfirmText
-                            )
-                            if (hasAssociated) {
-                                Spacer(Modifier.height(8.dp))
-                                androidx.compose.material3.Text(
-                                    text = "$sDeleteAudioLrcFound ($associatedLabel)",
-                                    color = Color.Gray
-                                )
-                            }
-                        }
-                    },
                     confirmButton = {
                         Column {
                             if (hasAssociated) {
@@ -1019,16 +1002,7 @@ fun LibraryScreen(
                                 }
                             ) {
                                 androidx.compose.material3.Text(
-                                    if (deletePlan.isAudioTarget) sDeleteAudioQuestion else sDeletePermanently
-                                )
-                            }
-
-                            if (deletePlan.isAudioTarget) {
-                                Spacer(Modifier.height(6.dp))
-                                androidx.compose.material3.Text(
-                                    text = sDeleteAudioHintLyrics,
-                                    color = Color.Gray,
-                                    fontSize = 12.sp
+                                    if (deletePlan.isAudioTarget) sDeleteAudioOnly else sDeletePermanently
                                 )
                             }
                         }
