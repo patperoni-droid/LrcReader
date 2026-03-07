@@ -2,6 +2,7 @@ package com.patrick.lrcreader.ui.library
 
 import android.net.Uri
 import com.patrick.lrcreader.core.LibraryIndexCache
+import java.security.MessageDigest
 import java.util.Locale
 
 internal object LibraryDeletePlanner {
@@ -81,9 +82,11 @@ internal object LibraryDeletePlanner {
         val targetEntry = indexAll.firstOrNull { it.uriString == targetUriString } ?: return emptyList()
         if (targetEntry.isDirectory || !isAudioFileName(targetEntry.name)) return emptyList()
 
-        val baseName = targetEntry.name.substringBeforeLast('.', targetEntry.name).trim()
-        if (baseName.isBlank()) return emptyList()
-        val wantedLrc = "$baseName.lrc"
+        val candidateNames = buildCandidateLrcNames(
+            targetUriString = targetUriString,
+            targetDisplayName = targetEntry.name
+        )
+        if (candidateNames.isEmpty()) return emptyList()
 
         val byUri = indexAll.associateBy { it.uriString }
         val backingRootUri = findBackingTracksAncestorUri(targetEntry, byUri) ?: return emptyList()
@@ -101,10 +104,10 @@ internal object LibraryDeletePlanner {
             .toSet()
 
         val associated = linkedMapOf<String, AssociatedLrcMatch>()
-        findLrcInDirs(indexAll, lyricsDirUris, wantedLrc)?.let {
+        findLrcInDirs(indexAll, lyricsDirUris, candidateNames)?.let {
             associated[it.uriString] = it.copy(role = LibraryDeleteRole.LYRICS)
         }
-        findLrcInDirs(indexAll, accordsDirUris, wantedLrc)?.let {
+        findLrcInDirs(indexAll, accordsDirUris, candidateNames)?.let {
             associated[it.uriString] = it.copy(role = LibraryDeleteRole.ACCORDS)
         }
         return associated.values.toList()
@@ -113,13 +116,13 @@ internal object LibraryDeletePlanner {
     private fun findLrcInDirs(
         indexAll: List<LibraryIndexCache.CachedEntry>,
         dirUris: Set<String>,
-        wantedName: String
+        candidateNames: Set<String>
     ): AssociatedLrcMatch? {
-        if (dirUris.isEmpty()) return null
+        if (dirUris.isEmpty() || candidateNames.isEmpty()) return null
         val hit = indexAll.firstOrNull { entry ->
             !entry.isDirectory &&
                 entry.parentUriString in dirUris &&
-                entry.name.equals(wantedName, ignoreCase = true)
+                candidateNames.any { wanted -> entry.name.equals(wanted, ignoreCase = true) }
         } ?: return null
 
         return AssociatedLrcMatch(
@@ -127,6 +130,36 @@ internal object LibraryDeletePlanner {
             role = LibraryDeleteRole.FILE,
             displayName = hit.name
         )
+    }
+
+    private fun buildCandidateLrcNames(
+        targetUriString: String,
+        targetDisplayName: String
+    ): Set<String> {
+        val names = linkedSetOf<String>()
+        val audioBase = extractBaseNameFromTrackUriString(targetUriString, targetDisplayName)
+        val cleanBase = audioBase.trim()
+        if (cleanBase.isBlank()) return emptySet()
+
+        names.add("$cleanBase.lrc")
+        val hash = md5(targetUriString).take(10)
+        names.add("${cleanBase.take(48)}-$hash.lrc")
+        return names
+    }
+
+    private fun extractBaseNameFromTrackUriString(
+        trackUriString: String,
+        fallbackDisplayName: String
+    ): String {
+        val last = trackUriString.substringAfterLast('/').substringAfterLast(':')
+        val fromUri = last.substringBeforeLast('.', last).trim()
+        if (fromUri.isNotBlank()) return fromUri
+        return fallbackDisplayName.substringBeforeLast('.', fallbackDisplayName).trim()
+    }
+
+    private fun md5(text: String): String {
+        val md = MessageDigest.getInstance("MD5")
+        return md.digest(text.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
     }
 
     private fun isAlias(name: String?, aliases: Set<String>): Boolean {
