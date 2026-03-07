@@ -4,6 +4,7 @@ import android.net.Uri
 import com.patrick.lrcreader.core.LibraryIndexCache
 import java.security.MessageDigest
 import java.util.Locale
+import java.util.regex.Pattern
 
 internal object LibraryDeletePlanner {
 
@@ -82,9 +83,13 @@ internal object LibraryDeletePlanner {
         val targetEntry = indexAll.firstOrNull { it.uriString == targetUriString } ?: return emptyList()
         if (targetEntry.isDirectory || !isAudioFileName(targetEntry.name)) return emptyList()
 
+        val baseName = extractBaseNameFromTrackUriString(
+            trackUriString = targetUriString,
+            fallbackDisplayName = targetEntry.name
+        )
         val candidateNames = buildCandidateLrcNames(
             targetUriString = targetUriString,
-            targetDisplayName = targetEntry.name
+            baseName = baseName
         )
         if (candidateNames.isEmpty()) return emptyList()
 
@@ -104,10 +109,20 @@ internal object LibraryDeletePlanner {
             .toSet()
 
         val associated = linkedMapOf<String, AssociatedLrcMatch>()
-        findLrcInDirs(indexAll, lyricsDirUris, candidateNames)?.let {
+        findLrcInDirs(
+            indexAll = indexAll,
+            dirUris = lyricsDirUris,
+            candidateNames = candidateNames,
+            baseName = baseName
+        )?.let {
             associated[it.uriString] = it.copy(role = LibraryDeleteRole.LYRICS)
         }
-        findLrcInDirs(indexAll, accordsDirUris, candidateNames)?.let {
+        findLrcInDirs(
+            indexAll = indexAll,
+            dirUris = accordsDirUris,
+            candidateNames = candidateNames,
+            baseName = baseName
+        )?.let {
             associated[it.uriString] = it.copy(role = LibraryDeleteRole.ACCORDS)
         }
         return associated.values.toList()
@@ -116,15 +131,32 @@ internal object LibraryDeletePlanner {
     private fun findLrcInDirs(
         indexAll: List<LibraryIndexCache.CachedEntry>,
         dirUris: Set<String>,
-        candidateNames: Set<String>
+        candidateNames: Set<String>,
+        baseName: String
     ): AssociatedLrcMatch? {
         if (dirUris.isEmpty() || candidateNames.isEmpty()) return null
-        val hit = indexAll.firstOrNull { entry ->
+        val exactHit = indexAll.firstOrNull { entry ->
             !entry.isDirectory &&
                 entry.parentUriString in dirUris &&
                 candidateNames.any { wanted -> entry.name.equals(wanted, ignoreCase = true) }
-        } ?: return null
+        }
+        if (exactHit != null) {
+            return AssociatedLrcMatch(
+                uriString = exactHit.uriString,
+                role = LibraryDeleteRole.FILE,
+                displayName = exactHit.name
+            )
+        }
 
+        // Fallback historique: base-<10 hex>.lrc (indépendant de l'URI audio courante)
+        val historicalRegex = historicalHashedLrcRegex(baseName)
+        val historicalHits = indexAll.filter { entry ->
+            !entry.isDirectory &&
+                entry.parentUriString in dirUris &&
+                historicalRegex.matcher(entry.name).matches()
+        }
+        if (historicalHits.size != 1) return null
+        val hit = historicalHits.first()
         return AssociatedLrcMatch(
             uriString = hit.uriString,
             role = LibraryDeleteRole.FILE,
@@ -134,11 +166,10 @@ internal object LibraryDeletePlanner {
 
     private fun buildCandidateLrcNames(
         targetUriString: String,
-        targetDisplayName: String
+        baseName: String
     ): Set<String> {
         val names = linkedSetOf<String>()
-        val audioBase = extractBaseNameFromTrackUriString(targetUriString, targetDisplayName)
-        val cleanBase = audioBase.trim()
+        val cleanBase = baseName.trim()
         if (cleanBase.isBlank()) return emptySet()
 
         names.add("$cleanBase.lrc")
@@ -160,6 +191,11 @@ internal object LibraryDeletePlanner {
     private fun md5(text: String): String {
         val md = MessageDigest.getInstance("MD5")
         return md.digest(text.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
+    }
+
+    private fun historicalHashedLrcRegex(baseName: String): Pattern {
+        val escapedBase = Pattern.quote(baseName.take(48))
+        return Pattern.compile("^$escapedBase-[0-9a-fA-F]{10}\\.lrc$")
     }
 
     private fun isAlias(name: String?, aliases: Set<String>): Boolean {
