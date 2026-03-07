@@ -11,8 +11,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -70,7 +70,7 @@ private val INLINE_LRC_TIME_TAG_REGEX =
 // ─────────────────────────────
 //  ÉDITEUR DE PAROLES
 // ─────────────────────────────
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 @Composable
 fun LyricsEditorSection(
     highlightColor: Color,
@@ -272,17 +272,19 @@ fun LyricsEditorSection(
     @Composable
     fun ChordPaletteChipsRow() {
         if (!showChordPalette || displayedPalette.isEmpty()) return
-        Row(
+        FlowRow(
             modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                .fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             displayedPalette.forEach { chord ->
                 TextButton(
-                    onClick = { handlePaletteChordClick(chord) }
+                    onClick = { handlePaletteChordClick(chord) },
+                    modifier = Modifier.defaultMinSize(minWidth = 0.dp, minHeight = 34.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                 ) {
-                    Text("[$chord]", color = Color(0xFF80CBC4))
+                    Text("[$chord]", color = Color(0xFF80CBC4), fontSize = 13.sp)
                 }
             }
         }
