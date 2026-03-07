@@ -156,9 +156,9 @@
 
     <string name="library_delete_backing_track_title">Delete backing track</string>
     <string name="library_delete_audio_question">Do you want to delete this audio file?</string>
-    <string name="library_delete_audio_lrc_found">An associated lyrics file (.lrc) was found.\nDo you also want to delete it?</string>
-    <string name="library_delete_audio_plus_lrc">Delete audio + .lrc</string>
-    <string name="library_delete_audio_hint_lyrics">Tip: if lyrics exist, remember to also delete the file in the &quot;Lyrics&quot; folder.</string>
+    <string name="library_delete_audio_lrc_found">Associated .lrc files were found.\nDo you also want to delete them?</string>
+    <string name="library_delete_audio_plus_lrc">Delete audio + associated files</string>
+    <string name="library_delete_audio_hint_lyrics">Tip: associated files are searched in the &quot;Lyrics&quot; and &quot;Accords&quot; folders.</string>
 
     <string name="common_search_placeholder">Search…</string>
     <string name="search_title">Search</string>

@@ -185,10 +185,70 @@ class LibraryBackendInternal(
         )
     }
 
+    override suspend fun planDelete(
+        target: Uri,
+        indexAll: List<LibraryIndexCache.CachedEntry>
+    ): LibraryDeletePlan = withContext(Dispatchers.Default) {
+        LibraryDeletePlanner.buildPlan(target = target, indexAll = indexAll)
+    }
+
+    override suspend fun deleteWithPlan(
+        plan: LibraryDeletePlan,
+        includeAssociated: Boolean
+    ): LibraryDeleteResult = withContext(Dispatchers.IO) {
+        val items = LinkedHashMap<String, LibraryDeleteItem>()
+        items[plan.target.uri.toString()] = plan.target
+        if (includeAssociated) {
+            plan.associated.forEach { item ->
+                items.putIfAbsent(item.uri.toString(), item)
+            }
+        }
+        val results = items.values.map { item -> deleteSingleDetailed(item) }
+        LibraryDeleteResult(results = results)
+    }
+
     override suspend fun delete(target: Uri): Boolean = withContext(Dispatchers.IO) {
-        if (target.scheme != "file") return@withContext false
-        val f = File(target.path ?: return@withContext false)
-        f.exists() && f.delete()
+        val item = LibraryDeleteItem(
+            uri = target,
+            role = LibraryDeleteRole.FILE,
+            displayName = target.lastPathSegment ?: "file"
+        )
+        deleteSingleDetailed(item).success
+    }
+
+    private fun deleteSingleDetailed(item: LibraryDeleteItem): LibraryDeleteItemResult {
+        if (item.uri.scheme != "file") {
+            Log.e(tag, "delete failed invalid scheme uri=${item.uri} role=${item.role}")
+            return LibraryDeleteItemResult(
+                item = item,
+                status = LibraryDeleteStatus.FAILED,
+                detail = "invalid_scheme"
+            )
+        }
+
+        val file = File(item.uri.path ?: "")
+        if (!file.exists()) {
+            return LibraryDeleteItemResult(
+                item = item,
+                status = LibraryDeleteStatus.ALREADY_MISSING,
+                detail = "already_missing"
+            )
+        }
+
+        val ok = runCatching { file.delete() }.getOrDefault(false)
+        if (ok) {
+            return LibraryDeleteItemResult(
+                item = item,
+                status = LibraryDeleteStatus.DELETED
+            )
+        }
+
+        Log.e(tag, "delete failed path=${file.absolutePath} role=${item.role}")
+        return LibraryDeleteItemResult(
+            item = item,
+            status = LibraryDeleteStatus.FAILED,
+            detail = "delete_returned_false"
+        )
     }
 
     private fun buildInternalIndex(rootDir: File): List<LibraryIndexCache.CachedEntry> {

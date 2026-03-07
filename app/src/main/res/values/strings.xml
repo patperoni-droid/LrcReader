@@ -150,9 +150,9 @@
 
     <string name="library_delete_backing_track_title">Supprimer le backing track</string>
     <string name="library_delete_audio_question">Voulez-vous supprimer ce fichier audio ?</string>
-    <string name="library_delete_audio_lrc_found">Un fichier de paroles (.lrc) associé a été trouvé.\nSouhaitez-vous aussi le supprimer ?</string>
-    <string name="library_delete_audio_plus_lrc">Supprimer audio + .lrc</string>
-    <string name="library_delete_audio_hint_lyrics">Astuce : si des paroles existent, pense à supprimer aussi le fichier dans le dossier &quot;Lyrics&quot;.</string>
+    <string name="library_delete_audio_lrc_found">Des fichiers .lrc associés ont été trouvés.\nSouhaitez-vous aussi les supprimer ?</string>
+    <string name="library_delete_audio_plus_lrc">Supprimer audio + fichiers associés</string>
+    <string name="library_delete_audio_hint_lyrics">Astuce : les fichiers associés sont recherchés dans les dossiers &quot;Lyrics&quot; et &quot;Accords&quot;.</string>
 
     <string name="common_search_placeholder">Rechercher…</string>
     <string name="search_title">Recherche</string>
