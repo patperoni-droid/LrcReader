@@ -14,6 +14,8 @@ import com.patrick.lrcreader.exo.BuildConfig
 import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.ui.LibraryEntry
 import com.patrick.lrcreader.ui.MoveResult
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class LibraryBackendSaf(
     private val context: Context
@@ -277,8 +279,84 @@ class LibraryBackendSaf(
         )
     }
 
+    override suspend fun planDelete(
+        target: Uri,
+        indexAll: List<LibraryIndexCache.CachedEntry>
+    ): LibraryDeletePlan = withContext(Dispatchers.Default) {
+        LibraryDeletePlanner.buildPlan(target = target, indexAll = indexAll)
+    }
+
+    override suspend fun deleteWithPlan(
+        plan: LibraryDeletePlan,
+        includeAssociated: Boolean
+    ): LibraryDeleteResult = withContext(Dispatchers.IO) {
+        val items = LinkedHashMap<String, LibraryDeleteItem>()
+        items[plan.target.uri.toString()] = plan.target
+        if (includeAssociated) {
+            plan.associated.forEach { item ->
+                items.putIfAbsent(item.uri.toString(), item)
+            }
+        }
+
+        val results = items.values.map { item -> deleteSingleDetailed(item) }
+        LibraryDeleteResult(results = results)
+    }
+
     override suspend fun delete(target: Uri): Boolean {
-        return libraryDeleteFile(context, target)
+        val item = LibraryDeleteItem(
+            uri = target,
+            role = LibraryDeleteRole.FILE,
+            displayName = target.lastPathSegment ?: "file"
+        )
+        return withContext(Dispatchers.IO) {
+            deleteSingleDetailed(item).success
+        }
+    }
+
+    private fun deleteSingleDetailed(item: LibraryDeleteItem): LibraryDeleteItemResult {
+        return try {
+            val doc = DocumentFile.fromSingleUri(context, item.uri)
+                ?: DocumentFile.fromTreeUri(context, item.uri)
+            if (doc == null) {
+                Log.e(tag, "delete failed unresolved uri=${item.uri}")
+                return LibraryDeleteItemResult(
+                    item = item,
+                    status = LibraryDeleteStatus.FAILED,
+                    detail = "unresolved_uri"
+                )
+            }
+
+            val existed = runCatching { doc.exists() }.getOrDefault(false)
+            if (!existed) {
+                return LibraryDeleteItemResult(
+                    item = item,
+                    status = LibraryDeleteStatus.ALREADY_MISSING,
+                    detail = "already_missing"
+                )
+            }
+
+            val ok = runCatching { doc.delete() }.getOrDefault(false)
+            if (ok) {
+                return LibraryDeleteItemResult(
+                    item = item,
+                    status = LibraryDeleteStatus.DELETED
+                )
+            }
+
+            Log.e(tag, "delete failed uri=${item.uri} role=${item.role} detail=delete_returned_false")
+            LibraryDeleteItemResult(
+                item = item,
+                status = LibraryDeleteStatus.FAILED,
+                detail = "delete_returned_false"
+            )
+        } catch (t: Throwable) {
+            Log.e(tag, "delete exception uri=${item.uri} role=${item.role}", t)
+            LibraryDeleteItemResult(
+                item = item,
+                status = LibraryDeleteStatus.FAILED,
+                detail = "exception:${t::class.simpleName ?: "Unknown"}"
+            )
+        }
     }
 
     private fun ensureDirSmart(

@@ -86,10 +86,13 @@ fun LibraryScreen(
     val sNoFolderSelected = stringResource(R.string.library_no_folder_selected)
     val sDjExcludedReason = stringResource(R.string.library_dj_excluded_reason)
     val sDeleteBackingTrackTitle = stringResource(R.string.library_delete_backing_track_title)
+    val sDeleteFileTitle = stringResource(R.string.library_delete_file_title)
     val sDeleteAudioQuestion = stringResource(R.string.library_delete_audio_question)
     val sDeleteAudioLrcFound = stringResource(R.string.library_delete_audio_lrc_found)
     val sDeleteAudioPlusLrc = stringResource(R.string.library_delete_audio_plus_lrc)
     val sDeleteAudioHintLyrics = stringResource(R.string.library_delete_audio_hint_lyrics)
+    val sDeleteConfirmText = stringResource(R.string.library_delete_file_confirm_text)
+    val sDeletePermanently = stringResource(R.string.library_list_delete_permanently)
     val sPrompterFolder = stringResource(R.string.main_menu_prompter)
 
     // State
@@ -194,10 +197,9 @@ fun LibraryScreen(
     // dialogs state
     var showAssignDialog by remember { mutableStateOf(false) }
 
-    // ✅ delete with optional LRC
+    // ✅ delete planifiée (audio + associés potentiels)
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
-    var pendingDeleteUri by remember { mutableStateOf<Uri?>(null) }
-    var pendingDeleteLrcUri by remember { mutableStateOf<Uri?>(null) }
+    var pendingDeletePlan by remember { mutableStateOf<LibraryDeletePlan?>(null) }
 
     var pendingMoveUri by remember { mutableStateOf<Uri?>(null) }
     var showMoveBrowser by remember { mutableStateOf(false) }
@@ -358,27 +360,6 @@ fun LibraryScreen(
         quickIsPlaying = false
     }
 
-    // --------------------------------------------
-    // Helper: retrouve le .lrc associé à un audio
-    // (même dossier + même nom de base + .lrc)
-    // --------------------------------------------
-    fun findAssociatedLrcUri(audioUri: Uri): Uri? {
-        val audio = indexAll.firstOrNull { it.uriString == audioUri.toString() } ?: return null
-        if (audio.isDirectory) return null
-
-        val parent = audio.parentUriString ?: return null
-        val base = audio.name.substringBeforeLast('.', audio.name)
-        val wantedName = "$base.lrc"
-
-        val lrc = indexAll.firstOrNull {
-            !it.isDirectory &&
-                    it.parentUriString == parent &&
-                    it.name.equals(wantedName, ignoreCase = true)
-        } ?: return null
-
-        return Uri.parse(lrc.uriString)
-    }
-
     fun startLoading(label: String, determinate: Boolean) {
         loadingStartedAt = System.currentTimeMillis()
         isLoading = true
@@ -393,6 +374,35 @@ fun LibraryScreen(
         isLoading = false
         moveProgress = null
         moveLabel = null
+    }
+
+    fun summarizeDeleteRoles(items: List<LibraryDeleteItem>): String {
+        val hasLyrics = items.any { it.role == LibraryDeleteRole.LYRICS }
+        val hasAccords = items.any { it.role == LibraryDeleteRole.ACCORDS }
+        return when {
+            hasLyrics && hasAccords -> "Lyrics + Accords"
+            hasLyrics -> "Lyrics"
+            hasAccords -> "Accords"
+            else -> ".lrc"
+        }
+    }
+
+    fun applyDeleteResult(result: LibraryDeleteResult) {
+        result.results
+            .filter { it.success }
+            .forEach { itemResult ->
+                selectedSongs = selectedSongs - itemResult.item.uri
+            }
+
+        if (!result.hasFailures) return
+
+        val failed = result.results.count { !it.success }
+        val total = result.results.size
+        Toast.makeText(
+            context,
+            "Suppression partielle: $failed echec(s) sur $total fichier(s).",
+            Toast.LENGTH_LONG
+        ).show()
     }
 
     // ---------- SAF launchers ----------
@@ -882,9 +892,25 @@ fun LibraryScreen(
                                         }
                                     }
                                 } else {
-                                    pendingDeleteUri = uri
-                                    pendingDeleteLrcUri = findAssociatedLrcUri(uri)
-                                    showDeleteConfirmDialog = true
+                                    scope.launch {
+                                        val plan = runCatching {
+                                            backend.planDelete(
+                                                target = uri,
+                                                indexAll = indexAll
+                                            )
+                                        }.getOrElse {
+                                            LibraryDeletePlan(
+                                                target = LibraryDeleteItem(
+                                                    uri = uri,
+                                                    role = LibraryDeleteRole.FILE,
+                                                    displayName = uri.lastPathSegment ?: "file"
+                                                ),
+                                                associated = emptyList()
+                                            )
+                                        }
+                                        pendingDeletePlan = plan
+                                        showDeleteConfirmDialog = true
+                                    }
                                 }
                             }
                         )
@@ -920,25 +946,52 @@ fun LibraryScreen(
                     selectedSongs = emptySet()
                 }
             )
-            // ✅ Nouveau dialog suppression : audio seul OU audio + .lrc
-            if (showDeleteConfirmDialog && pendingDeleteUri != null) {
-                val targetAudio = pendingDeleteUri!!
-                val targetLrc = pendingDeleteLrcUri
+            // ✅ Nouveau dialog suppression : audio seul OU audio + fichiers associes
+            if (showDeleteConfirmDialog && pendingDeletePlan != null) {
+                val deletePlan = pendingDeletePlan!!
+                val hasAssociated = deletePlan.isAudioTarget && deletePlan.hasAssociated
+                val associatedLabel = summarizeDeleteRoles(deletePlan.associated)
+
+                suspend fun executeDeletion(includeAssociated: Boolean) {
+                    startLoading(sDeleting, determinate = false)
+                    try {
+                        val result = backend.deleteWithPlan(
+                            plan = deletePlan,
+                            includeAssociated = includeAssociated
+                        )
+                        applyDeleteResult(result)
+
+                        val root = backend.getRootUri()
+                        val folderUri = currentFolderUri ?: root
+                        if (root != null && folderUri != null) {
+                            runGlobalScan(root = root, folderToShow = folderUri)
+                        }
+                    } finally {
+                        showDeleteConfirmDialog = false
+                        pendingDeletePlan = null
+                        stopLoadingNice()
+                    }
+                }
 
                 androidx.compose.material3.AlertDialog(
                     onDismissRequest = {
                         showDeleteConfirmDialog = false
-                        pendingDeleteUri = null
-                        pendingDeleteLrcUri = null
+                        pendingDeletePlan = null
                     },
-                    title = { androidx.compose.material3.Text(sDeleteBackingTrackTitle) },
+                    title = {
+                        androidx.compose.material3.Text(
+                            if (deletePlan.isAudioTarget) sDeleteBackingTrackTitle else sDeleteFileTitle
+                        )
+                    },
                     text = {
                         Column {
-                            androidx.compose.material3.Text(sDeleteAudioQuestion)
-                            if (targetLrc != null) {
+                            androidx.compose.material3.Text(
+                                if (deletePlan.isAudioTarget) sDeleteAudioQuestion else sDeleteConfirmText
+                            )
+                            if (hasAssociated) {
                                 Spacer(Modifier.height(8.dp))
                                 androidx.compose.material3.Text(
-                                    sDeleteAudioLrcFound,
+                                    text = "$sDeleteAudioLrcFound ($associatedLabel)",
                                     color = Color.Gray
                                 )
                             }
@@ -946,30 +999,11 @@ fun LibraryScreen(
                     },
                     confirmButton = {
                         Column {
-                            // Bouton 1 : audio + lrc (si dispo)
-                            if (targetLrc != null) {
+                            if (hasAssociated) {
                                 androidx.compose.material3.TextButton(
                                     onClick = {
                                         scope.launch {
-                                            startLoading(sDeleting, determinate = false)
-                                            try {
-                                                val okAudio = backend.delete(targetAudio)
-                                                val okLrc = backend.delete(targetLrc)
-
-                                                if (okAudio) selectedSongs = selectedSongs - targetAudio
-                                                if (okLrc) selectedSongs = selectedSongs - targetLrc
-
-                                                val root = backend.getRootUri()
-                                                val folderUri = currentFolderUri ?: root
-                                                if (root != null && folderUri != null) {
-                                                    runGlobalScan(root = root, folderToShow = folderUri)
-                                                }
-                                            } finally {
-                                                showDeleteConfirmDialog = false
-                                                pendingDeleteUri = null
-                                                pendingDeleteLrcUri = null
-                                                stopLoadingNice()
-                                            }
+                                            executeDeletion(includeAssociated = true)
                                         }
                                     }
                                 ) {
@@ -977,48 +1011,33 @@ fun LibraryScreen(
                                 }
                             }
 
-                            // Bouton 2 : audio seul
                             androidx.compose.material3.TextButton(
                                 onClick = {
                                     scope.launch {
-                                        startLoading(sDeleting, determinate = false)
-                                        try {
-                                            val ok = backend.delete(targetAudio)
-                                            if (ok) {
-                                                selectedSongs = selectedSongs - targetAudio
-                                                val root = backend.getRootUri()
-                                                val folderUri = currentFolderUri ?: root
-                                                if (root != null && folderUri != null) {
-                                                    runGlobalScan(root = root, folderToShow = folderUri)
-                                                }
-                                            }
-                                        } finally {
-                                            showDeleteConfirmDialog = false
-                                            pendingDeleteUri = null
-                                            pendingDeleteLrcUri = null
-                                            stopLoadingNice()
-                                        }
+                                        executeDeletion(includeAssociated = false)
                                     }
                                 }
                             ) {
-                                androidx.compose.material3.Text(sDeleteAudioQuestion)
+                                androidx.compose.material3.Text(
+                                    if (deletePlan.isAudioTarget) sDeleteAudioQuestion else sDeletePermanently
+                                )
                             }
 
-                            // ✅ Petit rappel (toujours affiché, même si pas de .lrc détecté)
-                            Spacer(Modifier.height(6.dp))
-                            androidx.compose.material3.Text(
-                                text = sDeleteAudioHintLyrics,
-                                color = Color.Gray,
-                                fontSize = 12.sp
-                            )
+                            if (deletePlan.isAudioTarget) {
+                                Spacer(Modifier.height(6.dp))
+                                androidx.compose.material3.Text(
+                                    text = sDeleteAudioHintLyrics,
+                                    color = Color.Gray,
+                                    fontSize = 12.sp
+                                )
+                            }
                         }
                     },
                     dismissButton = {
                         androidx.compose.material3.TextButton(
                             onClick = {
                                 showDeleteConfirmDialog = false
-                                pendingDeleteUri = null
-                                pendingDeleteLrcUri = null
+                                pendingDeletePlan = null
                             }
                         ) {
                             androidx.compose.material3.Text(stringResource(R.string.common_cancel))

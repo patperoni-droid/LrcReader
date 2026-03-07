@@ -156,9 +156,9 @@
 
     <string name="library_delete_backing_track_title">Eliminar pista de acompañamiento</string>
     <string name="library_delete_audio_question">¿Quieres eliminar este archivo de audio?</string>
-    <string name="library_delete_audio_lrc_found">Se encontró un archivo de letras asociado (.lrc).\n¿También quieres eliminarlo?</string>
-    <string name="library_delete_audio_plus_lrc">Eliminar audio + .lrc</string>
-    <string name="library_delete_audio_hint_lyrics">Consejo: si existen letras, recuerda eliminar también el archivo en la carpeta &quot;Lyrics&quot;.</string>
+    <string name="library_delete_audio_lrc_found">Se encontraron archivos .lrc asociados.\n¿También quieres eliminarlos?</string>
+    <string name="library_delete_audio_plus_lrc">Eliminar audio + archivos asociados</string>
+    <string name="library_delete_audio_hint_lyrics">Consejo: los archivos asociados se buscan en las carpetas &quot;Lyrics&quot; y &quot;Accords&quot;.</string>
 
     <string name="common_search_placeholder">Buscar…</string>
     <string name="search_title">Buscar</string>
