@@ -154,10 +154,10 @@
     <string name="library_list_rename">Rename</string>
     <string name="library_list_delete_permanently">Delete permanently</string>
 
-    <string name="library_delete_backing_track_title">Delete backing track</string>
-    <string name="library_delete_audio_question">Do you want to delete this audio file?</string>
+    <string name="library_delete_backing_track_title">Delete this track?</string>
+    <string name="library_delete_audio_question">Track only</string>
     <string name="library_delete_audio_lrc_found">Associated .lrc files were found.\nDo you also want to delete them?</string>
-    <string name="library_delete_audio_plus_lrc">Delete audio + associated files</string>
+    <string name="library_delete_audio_plus_lrc">Track + lyrics/chords</string>
     <string name="library_delete_audio_hint_lyrics">Tip: associated files are searched in the &quot;Lyrics&quot; and &quot;Accords&quot; folders.</string>
 
     <string name="common_search_placeholder">Search…</string>
