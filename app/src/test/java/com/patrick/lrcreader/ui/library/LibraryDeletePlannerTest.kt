@@ -5,6 +5,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.security.MessageDigest
 
 class LibraryDeletePlannerTest {
 
@@ -69,6 +70,43 @@ class LibraryDeletePlannerTest {
         assertFalse(LibraryDeletePlanner.isAudioFileName("track.json"))
     }
 
+    @Test
+    fun findAssociatedLrcMatches_findsHashedLrcNamesFromTrackUriHash() {
+        val rootUri = "content://spl/root"
+        val backingUri = "content://spl/backing"
+        val audioDirUri = "content://spl/audio"
+        val lyricsDirUri = "content://spl/lyrics"
+        val accordsDirUri = "content://spl/accords"
+        val audioUri = "content://spl/audio/conkisador.mp3"
+        val hash10 = md5(audioUri).take(10)
+        val hashedName = "conkisador-$hash10.lrc"
+        val lyricsUri = "content://spl/lyrics/$hashedName"
+        val accordsUri = "content://spl/accords/$hashedName"
+
+        val index = listOf(
+            entry(rootUri, "SPL_Music", true, null),
+            entry(backingUri, "BackingTracks", true, rootUri),
+            entry(audioDirUri, "Audio", true, backingUri),
+            entry(lyricsDirUri, "Lyrics", true, backingUri),
+            entry(accordsDirUri, "Accords", true, backingUri),
+            entry(audioUri, "conkisador.mp3", false, audioDirUri),
+            entry(lyricsUri, hashedName, false, lyricsDirUri),
+            entry(accordsUri, hashedName, false, accordsDirUri)
+        )
+
+        val associated = LibraryDeletePlanner.findAssociatedLrcMatches(
+            targetUriString = audioUri,
+            indexAll = index
+        )
+
+        assertEquals(2, associated.size)
+        val names = associated.map { it.displayName }.toSet()
+        assertTrue(names.contains(hashedName))
+        val roles = associated.map { it.role }.toSet()
+        assertTrue(roles.contains(LibraryDeleteRole.LYRICS))
+        assertTrue(roles.contains(LibraryDeleteRole.ACCORDS))
+    }
+
     private fun entry(
         uriString: String,
         name: String,
@@ -81,5 +119,10 @@ class LibraryDeletePlannerTest {
             isDirectory = isDirectory,
             parentUriString = parentUriString
         )
+    }
+
+    private fun md5(text: String): String {
+        val md = MessageDigest.getInstance("MD5")
+        return md.digest(text.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
     }
 }
