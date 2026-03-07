@@ -83,9 +83,9 @@ internal object LibraryDeletePlanner {
         val targetEntry = indexAll.firstOrNull { it.uriString == targetUriString } ?: return emptyList()
         if (targetEntry.isDirectory || !isAudioFileName(targetEntry.name)) return emptyList()
 
-        val baseName = extractBaseNameFromTrackUriString(
-            trackUriString = targetUriString,
-            fallbackDisplayName = targetEntry.name
+        val baseName = extractBaseName(
+            displayName = targetEntry.name,
+            trackUriString = targetUriString
         )
         val candidateNames = buildCandidateLrcNames(
             targetUriString = targetUriString,
@@ -178,14 +178,15 @@ internal object LibraryDeletePlanner {
         return names
     }
 
-    private fun extractBaseNameFromTrackUriString(
-        trackUriString: String,
-        fallbackDisplayName: String
+    private fun extractBaseName(
+        displayName: String,
+        trackUriString: String
     ): String {
-        val last = trackUriString.substringAfterLast('/').substringAfterLast(':')
-        val fromUri = last.substringBeforeLast('.', last).trim()
-        if (fromUri.isNotBlank()) return fromUri
-        return fallbackDisplayName.substringBeforeLast('.', fallbackDisplayName).trim()
+        val fromDisplayName = displayName.substringBeforeLast('.', displayName).trim()
+        if (fromDisplayName.isNotBlank()) return fromDisplayName
+
+        val decodedLast = Uri.decode(trackUriString.substringAfterLast('/').substringAfterLast(':'))
+        return decodedLast.substringBeforeLast('.', decodedLast).trim()
     }
 
     private fun md5(text: String): String {
