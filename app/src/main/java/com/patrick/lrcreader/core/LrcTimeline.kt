@@ -27,6 +27,13 @@ data class ChordsWindow(
     val next: List<LrcLine>
 )
 
+data class ClearAllChordsResult(
+    val clearedChordLines: List<LrcLine>,
+    val clearedChordRawText: String,
+    val keptPalette: List<String>,
+    val keptLyrics: List<LrcLine>
+)
+
 fun resolveLyricsViewMode(
     current: LyricsViewMode,
     hasLyrics: Boolean,
@@ -104,5 +111,17 @@ fun buildChordsWindow(lines: List<LrcLine>, activeIndex: Int, nextCount: Int = 3
         previous = previous,
         current = current,
         next = next
+    )
+}
+
+fun clearAllChordsKeepingPaletteAndLyrics(
+    palette: List<String>,
+    lyrics: List<LrcLine>
+): ClearAllChordsResult {
+    return ClearAllChordsResult(
+        clearedChordLines = emptyList(),
+        clearedChordRawText = "",
+        keptPalette = palette.toList(),
+        keptLyrics = lyrics.toList()
     )
 }
