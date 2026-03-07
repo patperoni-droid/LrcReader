@@ -171,6 +171,8 @@ fun QuickPlaylistsScreen(
     var renameText by remember { mutableStateOf("") }
     var renameGroupTarget by remember { mutableStateOf<String?>(null) }
     var renameGroupText by remember { mutableStateOf("") }
+    var assignGroupTargetUri by remember { mutableStateOf<String?>(null) }
+    var assignGroupOptions by remember { mutableStateOf<List<GroupAssignOption>>(emptyList()) }
 
     var isFillerRunning by remember { mutableStateOf(FillerSoundManager.isPlaying()) }
 
@@ -1237,6 +1239,21 @@ fun QuickPlaylistsScreen(
                                             }
                                         )
                                         DropdownMenuItem(
+                                            text = { Text(stringResource(R.string.quickplaylists_menu_assign_to_group), color = Color.White) },
+                                            onClick = {
+                                                val options = songs.asSequence()
+                                                    .filter { isGroupHeader(it) }
+                                                    .map { GroupAssignOption(headerKey = it, title = getGroupTitle(it)) }
+                                                    .toList()
+                                                if (options.isNotEmpty()) {
+                                                    assignGroupTargetUri = uriString
+                                                    assignGroupOptions = options
+                                                }
+                                                menuOpen = false
+                                            },
+                                            enabled = songs.any { isGroupHeader(it) }
+                                        )
+                                        DropdownMenuItem(
                                             text = { Text(stringResource(R.string.quickplaylists_menu_set_next), color = Color.White) },
                                             onClick = {
                                                 onSetNextTrack(
@@ -1422,6 +1439,61 @@ fun QuickPlaylistsScreen(
             },
             dismissButton = {
                 TextButton(onClick = { renameGroupTarget = null }) {
+                    Text(stringResource(R.string.common_cancel), color = Color.White)
+                }
+            },
+            containerColor = Color(0xFF222222)
+        )
+    }
+
+    // ─── DIALOG ATTRIBUER AU GROUPE ──────────────────────
+    if (assignGroupTargetUri != null && internalSelected != null) {
+        AlertDialog(
+            onDismissRequest = {
+                assignGroupTargetUri = null
+                assignGroupOptions = emptyList()
+            },
+            title = { Text(stringResource(R.string.quickplaylists_assign_group_title), color = Color.White) },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 320.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    assignGroupOptions.forEach { option ->
+                        TextButton(
+                            onClick = {
+                                val pl = internalSelected
+                                val trackUri = assignGroupTargetUri
+                                if (pl != null && trackUri != null) {
+                                    val moved = assignTrackToGroupByHeaderKey(
+                                        items = songs,
+                                        trackUri = trackUri,
+                                        headerKey = option.headerKey
+                                    )
+                                    if (moved) {
+                                        persistSongsOrder(pl)
+                                    }
+                                }
+                                assignGroupTargetUri = null
+                                assignGroupOptions = emptyList()
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(option.title, color = Color.White)
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        assignGroupTargetUri = null
+                        assignGroupOptions = emptyList()
+                    }
+                ) {
                     Text(stringResource(R.string.common_cancel), color = Color.White)
                 }
             },
@@ -1781,6 +1853,32 @@ internal fun moveItemIntoGroup(
     items.add(insertionIndex, dragged)
 }
 
+internal fun assignTrackToGroupByHeaderKey(
+    items: MutableList<String>,
+    trackUri: String,
+    headerKey: String
+): Boolean {
+    val fromIndex = items.indexOf(trackUri)
+    if (fromIndex == -1) return false
+    if (!isPlayableAudioItem(items[fromIndex])) return false
+
+    val headerIndex = items.indexOf(headerKey)
+    if (headerIndex == -1) return false
+    if (!isGroupHeader(items[headerIndex])) return false
+
+    val currentHeaderIndex = findContainingGroupHeaderIndex(items, fromIndex)
+    if (currentHeaderIndex != null && items[currentHeaderIndex] == headerKey) return false
+
+    val before = items.toList()
+    moveItemIntoGroup(
+        items = items,
+        fromIndex = fromIndex,
+        headerIndex = headerIndex,
+        mode = "BOTTOM"
+    )
+    return items != before
+}
+
 internal fun moveItemOutOfGroup(items: MutableList<String>, trackUri: String): Boolean {
     val fromIndex = items.indexOf(trackUri)
     if (fromIndex == -1) return false
@@ -1933,6 +2031,11 @@ internal data class ListViewportItem(
     val key: String,
     val start: Int,
     val endExclusive: Int
+)
+
+internal data class GroupAssignOption(
+    val headerKey: String,
+    val title: String
 )
 
 private data class VisiblePlaylistRow(

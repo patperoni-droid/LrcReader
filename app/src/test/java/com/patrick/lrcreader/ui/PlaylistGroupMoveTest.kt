@@ -177,4 +177,22 @@ class PlaylistGroupMoveTest {
         assertTrue(moved)
         assertEquals(listOf(headerA, "x1", "t1"), items)
     }
+
+    @Test
+    fun assignTrackToGroupByHeaderKey_targetsExactHeaderWhenGroupTitlesAreDuplicated() {
+        val headerA1 = buildGroupHeader("A")
+        val endA1 = buildGroupEnd(getGroupUuid(headerA1)!!)
+        val headerA2 = buildGroupHeader("A")
+        val endA2 = buildGroupEnd(getGroupUuid(headerA2)!!)
+        val items = mutableListOf(headerA1, endA1, "x1", headerA2, endA2, "x2")
+
+        val moved = assignTrackToGroupByHeaderKey(
+            items = items,
+            trackUri = "x2",
+            headerKey = headerA2
+        )
+
+        assertTrue(moved)
+        assertEquals(listOf(headerA1, endA1, "x1", headerA2, "x2", endA2), items)
+    }
 }

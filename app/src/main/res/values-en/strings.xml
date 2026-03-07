@@ -339,6 +339,8 @@
     <string name="quickplaylists_menu_cancel_next">Cancel NEXT</string>
     <string name="quickplaylists_menu_remove_from_playlist">Remove from playlist</string>
     <string name="quickplaylists_menu_title_color">Title color</string>
+    <string name="quickplaylists_menu_assign_to_group">Assign to group</string>
+    <string name="quickplaylists_assign_group_title">Assign to group</string>
     <string name="quickplaylists_edit_prompter_title">Edit prompter ✅ TEST 2026</string>
     <string name="quickplaylists_new_prompter_title">New title (prompter 2026 )</string>
     <string name="quickplaylists_prompter_text_label">Prompter text</string>
