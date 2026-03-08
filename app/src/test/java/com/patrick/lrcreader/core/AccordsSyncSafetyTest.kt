@@ -88,7 +88,7 @@ class AccordsSyncSafetyTest {
 
         val io = runAccordsSaveIo(
             writeAccords = { null },
-            ensureLyricsTwin = { true }
+            ensureLyricsTwin = { AccordsEnsureResult.CREATED }
         )
         val resolved = resolveAccordsUiTruthAfterSave(
             previous = previous,
@@ -116,7 +116,7 @@ class AccordsSyncSafetyTest {
             writeAccords = { "song.lrc" },
             ensureLyricsTwin = {
                 ensureCalled = true
-                false
+                AccordsEnsureResult.FAILED
             }
         )
         val resolved = resolveAccordsUiTruthAfterSave(
@@ -127,9 +127,98 @@ class AccordsSyncSafetyTest {
 
         assertTrue(ensureCalled)
         assertFalse(io.success)
-        assertEquals("ensureLyricsTwin", io.stage)
+        assertEquals("ensureLyricsTwin:FAILED", io.stage)
         assertEquals(previous, resolved)
         assertNotNull(buildAccordsIoFailureFeedback("sauvegarde", io))
+    }
+
+    @Test
+    fun runAccordsSaveIo_alreadyExists_doesNotFailAndDoesNotRollbackUiTruth() {
+        val previous = AccordsUiTruth(
+            lines = emptyList(),
+            hasSource = false
+        )
+        val requested = listOf(
+            LrcLine(1_000L, "Am"),
+            LrcLine(2_000L, "F")
+        )
+
+        val io = runAccordsSaveIo(
+            writeAccords = { "La Bamba-2df611b11e.lrc" },
+            ensureLyricsTwin = { AccordsEnsureResult.ALREADY_EXISTS }
+        )
+        val resolved = resolveAccordsUiTruthAfterSave(
+            previous = previous,
+            requestedLines = requested,
+            io = io
+        )
+
+        assertTrue(io.success)
+        assertEquals("ok", io.stage)
+        assertEquals(requested, resolved.lines)
+        assertTrue(resolved.hasSource)
+    }
+
+    @Test
+    fun runAccordsSaveIo_created_onVirginTrack_doesNotRollbackUi() {
+        val previous = AccordsUiTruth(
+            lines = emptyList(),
+            hasSource = false
+        )
+        val requested = listOf(LrcLine(3_000L, "G"))
+
+        val io = runAccordsSaveIo(
+            writeAccords = { "La Bamba-2df611b11e.lrc" },
+            ensureLyricsTwin = { AccordsEnsureResult.CREATED }
+        )
+        val resolved = resolveAccordsUiTruthAfterSave(
+            previous = previous,
+            requestedLines = requested,
+            io = io
+        )
+
+        assertTrue(io.success)
+        assertEquals(requested, resolved.lines)
+        assertTrue(resolved.hasSource)
+    }
+
+    @Test
+    fun resolveAccordsLrcFileName_onVirginTrack_usesHashedFallback() {
+        val resolved = resolveAccordsLrcFileName(
+            preferredLrcFileName = null,
+            originLrcFileName = null,
+            hashedFallbackFileName = "La Bamba-2df611b11e.lrc"
+        )
+
+        assertEquals("La Bamba-2df611b11e.lrc", resolved.fileName)
+        assertEquals("hashedFallback", resolved.source)
+    }
+
+    @Test
+    fun resolveAccordsLrcFileName_prefersPreferredThenOrigin_nonRegression() {
+        val preferred = resolveAccordsLrcFileName(
+            preferredLrcFileName = "preferred.lrc",
+            originLrcFileName = "origin.lrc",
+            hashedFallbackFileName = "hash.lrc"
+        )
+        assertEquals("preferred.lrc", preferred.fileName)
+        assertEquals("preferred", preferred.source)
+
+        val origin = resolveAccordsLrcFileName(
+            preferredLrcFileName = null,
+            originLrcFileName = "origin.lrc",
+            hashedFallbackFileName = "hash.lrc"
+        )
+        assertEquals("origin.lrc", origin.fileName)
+        assertEquals("origin", origin.source)
+    }
+
+    @Test
+    fun hashedFileNameForTrack_producesHistoricalHashedPattern() {
+        val fileName = LrcStorage.hashedFileNameForTrack("content://media/external/audio/media/42")
+        assertTrue(fileName.endsWith(".lrc"))
+        assertTrue(fileName.contains("-"))
+        assertTrue(".*-[0-9a-f]{10}\\.lrc".toRegex().matches(fileName))
     }
 
     @Test
@@ -164,7 +253,7 @@ class AccordsSyncSafetyTest {
 
         val saveIo = runAccordsSaveIo(
             writeAccords = { "song.lrc" },
-            ensureLyricsTwin = { true }
+            ensureLyricsTwin = { AccordsEnsureResult.CREATED }
         )
         val afterSave = resolveAccordsUiTruthAfterSave(previous, requested, saveIo)
         assertTrue(saveIo.success)

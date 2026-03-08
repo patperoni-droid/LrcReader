@@ -208,6 +208,10 @@ object LrcStorage {
         }
     }
 
+    fun hashedFileNameForTrack(trackUriString: String): String {
+        return fileNameForTrack(trackUriString)
+    }
+
     // ------------------------------------------------------------
     // SAF (dossier configuré)
     // ------------------------------------------------------------
