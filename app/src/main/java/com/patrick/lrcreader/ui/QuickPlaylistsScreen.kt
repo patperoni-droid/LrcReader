@@ -27,6 +27,8 @@ import com.patrick.lrcreader.ui.theme.DarkBlueGradientBackground
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
@@ -94,6 +96,7 @@ import java.net.URLDecoder
  * QuickPlaylistsScreen + titres "texte seul" (prompteur).
  */
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 fun QuickPlaylistsScreen(
     modifier: Modifier = Modifier,
     onPlaySong: (String, String, Color) -> Unit,
@@ -171,7 +174,8 @@ fun QuickPlaylistsScreen(
     var renameText by remember { mutableStateOf("") }
     var renameGroupTarget by remember { mutableStateOf<String?>(null) }
     var renameGroupText by remember { mutableStateOf("") }
-    var assignGroupTargetUri by remember { mutableStateOf<String?>(null) }
+    var selectedTrackKeys by remember { mutableStateOf(setOf<String>()) }
+    var assignGroupTargetUris by remember { mutableStateOf<List<String>>(emptyList()) }
     var assignGroupOptions by remember { mutableStateOf<List<GroupAssignOption>>(emptyList()) }
 
     var isFillerRunning by remember { mutableStateOf(FillerSoundManager.isPlaying()) }
@@ -359,6 +363,9 @@ fun QuickPlaylistsScreen(
     }
 
     LaunchedEffect(songs.size) {
+        selectedTrackKeys = selectedTrackKeys.filterTo(linkedSetOf()) { key ->
+            songs.contains(key) && isPlayableAudioItem(key)
+        }
         if (previousSongsSize == 0 && songs.size > 0) {
             val now = SystemClock.elapsedRealtime()
             val delta = if (quickEnterAtMs > 0L) now - quickEnterAtMs else -1L
@@ -1029,6 +1036,7 @@ fun QuickPlaylistsScreen(
                             val isDraggingThis = draggingUri == uriString
                             val isChainedNext = nextChainedUri != null && uriString == nextChainedUri
                             val isForcedNext = nextTrackUri != null && uriString == nextTrackUri
+                            val isSelected = selectedTrackKeys.contains(uriString)
                             val isInsideGroup =
                                 isPlayableAudioItem(uriString) && isItemInsideGroup(songs, itemIndex)
                             val rowShape = RoundedCornerShape(12.dp)
@@ -1036,6 +1044,8 @@ fun QuickPlaylistsScreen(
                             val groupAccent = Color(0xFF0A6C97).copy(alpha = 0.95f)
                             val rowBaseBackground = if (isDraggingThis)
                                 Color(0x33FFFFFF)
+                            else if (isSelected)
+                                Color(0x2239B7FF)
                             else if (isForcedNext)
                                 Color(0x33D32F2F)
                             else if (isChainedNext)
@@ -1061,7 +1071,9 @@ fun QuickPlaylistsScreen(
                                     )
                                     .border(
                                         width = 1.dp,
-                                        color = if (isCurrentPlaying)
+                                        color = if (isSelected)
+                                            Color(0xAA4FC3F7)
+                                        else if (isCurrentPlaying)
                                             Color.White.copy(alpha = 0.8f)
                                         else if (isForcedNext)
                                             Color(0x99FF8A80)
@@ -1114,23 +1126,32 @@ fun QuickPlaylistsScreen(
                                     modifier = Modifier
                                         .weight(1f)
                                         .alpha(if (isPlayed) 0.6f else 1f)
-                                        .clickable {
-                                            val pl = internalSelected ?: return@clickable
-                                            // ✅ IMPORTANT : on capture l'ordre "d'origine" AVANT que le système
-                                            // ne pousse une chanson jouée en bas.
-                                            // Persistant => ça survit au redémarrage.
-                                            saveOriginalOrderIfMissing(context, pl, songs.toList())
-                                            // ✅ On arme le suivi "10s de lecture réelle"
-                                            PlaylistRepository.setNowPlaying(pl, uriString)
+                                        .combinedClickable(
+                                            onClick = {
+                                                val pl = internalSelected ?: return@combinedClickable
+                                                // ✅ IMPORTANT : on capture l'ordre "d'origine" AVANT que le système
+                                                // ne pousse une chanson jouée en bas.
+                                                // Persistant => ça survit au redémarrage.
+                                                saveOriginalOrderIfMissing(context, pl, songs.toList())
+                                                // ✅ On arme le suivi "10s de lecture réelle"
+                                                PlaylistRepository.setNowPlaying(pl, uriString)
 
-                                            // ✅ Lance le player
-                                            onPlaySong(uriString, pl, Color.White) // ✅ ne teinte plus le lecteur / paroles
-                                            // ⚠️ IMPORTANT : on NE rappelle PAS onSelectedPlaylistChange(pl) ici,
-                                            // sinon le parent peut recharger la playlist immédiatement (LaunchedEffect),
-                                            // ce qui donne l'impression que le titre "descend direct".
-                                            onRequestShowPlayer()
-
-                                        }
+                                                // ✅ Lance le player
+                                                onPlaySong(uriString, pl, Color.White) // ✅ ne teinte plus le lecteur / paroles
+                                                // ⚠️ IMPORTANT : on NE rappelle PAS onSelectedPlaylistChange(pl) ici,
+                                                // sinon le parent peut recharger la playlist immédiatement (LaunchedEffect),
+                                                // ce qui donne l'impression que le titre "descend direct".
+                                                onRequestShowPlayer()
+                                            },
+                                            onLongClick = {
+                                                if (!isPlayableAudioItem(uriString)) return@combinedClickable
+                                                selectedTrackKeys = if (selectedTrackKeys.contains(uriString)) {
+                                                    selectedTrackKeys - uriString
+                                                } else {
+                                                    selectedTrackKeys + uriString
+                                                }
+                                            }
+                                        )
                                 )
 
                                 if (isForcedNext) {
@@ -1245,8 +1266,19 @@ fun QuickPlaylistsScreen(
                                                     .filter { isGroupHeader(it) }
                                                     .map { GroupAssignOption(headerKey = it, title = getGroupTitle(it)) }
                                                     .toList()
+                                                val selectedBatch = songs.filter { key ->
+                                                    key in selectedTrackKeys && isPlayableAudioItem(key)
+                                                }
+                                                val targets = if (
+                                                    uriString in selectedTrackKeys &&
+                                                    selectedBatch.size > 1
+                                                ) {
+                                                    selectedBatch
+                                                } else {
+                                                    listOf(uriString)
+                                                }
                                                 if (options.isNotEmpty()) {
-                                                    assignGroupTargetUri = uriString
+                                                    assignGroupTargetUris = targets
                                                     assignGroupOptions = options
                                                 }
                                                 menuOpen = false
@@ -1447,10 +1479,10 @@ fun QuickPlaylistsScreen(
     }
 
     // ─── DIALOG ATTRIBUER AU GROUPE ──────────────────────
-    if (assignGroupTargetUri != null && internalSelected != null) {
+    if (assignGroupTargetUris.isNotEmpty() && internalSelected != null) {
         AlertDialog(
             onDismissRequest = {
-                assignGroupTargetUri = null
+                assignGroupTargetUris = emptyList()
                 assignGroupOptions = emptyList()
             },
             title = { Text(stringResource(R.string.quickplaylists_assign_group_title), color = Color.White) },
@@ -1465,18 +1497,19 @@ fun QuickPlaylistsScreen(
                         TextButton(
                             onClick = {
                                 val pl = internalSelected
-                                val trackUri = assignGroupTargetUri
-                                if (pl != null && trackUri != null) {
-                                    val moved = assignTrackToGroupByHeaderKey(
+                                val targetUris = assignGroupTargetUris
+                                if (pl != null && targetUris.isNotEmpty()) {
+                                    val movedCount = assignTracksToGroupByHeaderKey(
                                         items = songs,
-                                        trackUri = trackUri,
+                                        trackUris = targetUris,
                                         headerKey = option.headerKey
                                     )
-                                    if (moved) {
+                                    if (movedCount > 0) {
                                         persistSongsOrder(pl)
+                                        selectedTrackKeys = emptySet()
                                     }
                                 }
-                                assignGroupTargetUri = null
+                                assignGroupTargetUris = emptyList()
                                 assignGroupOptions = emptyList()
                             },
                             modifier = Modifier.fillMaxWidth()
@@ -1490,7 +1523,7 @@ fun QuickPlaylistsScreen(
             dismissButton = {
                 TextButton(
                     onClick = {
-                        assignGroupTargetUri = null
+                        assignGroupTargetUris = emptyList()
                         assignGroupOptions = emptyList()
                     }
                 ) {
@@ -1877,6 +1910,23 @@ internal fun assignTrackToGroupByHeaderKey(
         mode = "BOTTOM"
     )
     return items != before
+}
+
+internal fun assignTracksToGroupByHeaderKey(
+    items: MutableList<String>,
+    trackUris: List<String>,
+    headerKey: String
+): Int {
+    if (trackUris.isEmpty()) return 0
+    val targetSet = trackUris.toSet()
+    var movedCount = 0
+    val ordered = items.filter { it in targetSet && isPlayableAudioItem(it) }
+    ordered.forEach { trackUri ->
+        if (assignTrackToGroupByHeaderKey(items, trackUri, headerKey)) {
+            movedCount++
+        }
+    }
+    return movedCount
 }
 
 internal fun moveItemOutOfGroup(items: MutableList<String>, trackUri: String): Boolean {
