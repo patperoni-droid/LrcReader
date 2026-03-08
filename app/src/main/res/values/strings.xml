@@ -358,8 +358,6 @@
     <string name="quickplaylists_menu_remove_from_playlist">Retirer de la liste</string>
     <string name="quickplaylists_menu_title_color">Couleur du titre</string>
     <string name="quickplaylists_menu_assign_to_group">Attribuer au groupe</string>
-    <string name="quickplaylists_multiselect_count">%1$d titres sélectionnés</string>
-    <string name="quickplaylists_multiselect_remove">Retirer</string>
     <string name="quickplaylists_assign_group_title">Attribuer au groupe</string>
     <string name="quickplaylists_cd_hide_mini_tuner">Masquer l’accordeur mini</string>
     <string name="quickplaylists_cd_show_mini_tuner">Afficher l’accordeur mini</string>

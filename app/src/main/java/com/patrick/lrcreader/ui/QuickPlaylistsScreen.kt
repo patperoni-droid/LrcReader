@@ -389,9 +389,6 @@ fun QuickPlaylistsScreen(
         }
     }
 
-    fun selectedAudioBatchInVisualOrder(): List<String> =
-        songs.filter { key -> key in selectedTrackKeys && isPlayableAudioItem(key) }
-
     fun openAssignDialogForTargets(targets: List<String>) {
         if (targets.isEmpty()) return
         val options = songs.asSequence()
@@ -819,67 +816,13 @@ fun QuickPlaylistsScreen(
                         )
                     }
                 } else {
-                    Column(modifier = Modifier.fillMaxSize()) {
-                        val batchSelection = selectedAudioBatchInVisualOrder()
-                        if (batchSelection.size >= 2) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 4.dp, vertical = 4.dp)
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(Color(0xFF1C1C1C))
-                                    .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(10.dp))
-                                    .padding(horizontal = 8.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Text(
-                                    text = stringResource(
-                                        R.string.quickplaylists_multiselect_count,
-                                        batchSelection.size
-                                    ),
-                                    color = Color(0xFFB3E5FC),
-                                    fontSize = 12.sp,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                TextButton(
-                                    onClick = { openAssignDialogForTargets(batchSelection) },
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
-                                ) {
-                                    Text(
-                                        text = stringResource(R.string.quickplaylists_menu_assign_to_group),
-                                        fontSize = 12.sp
-                                    )
-                                }
-                                TextButton(
-                                    onClick = { removeTargetsFromGroup(batchSelection) },
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
-                                ) {
-                                    Text(
-                                        text = stringResource(R.string.quickplaylists_multiselect_remove),
-                                        fontSize = 12.sp
-                                    )
-                                }
-                                TextButton(
-                                    onClick = { selectedTrackKeys = emptySet() },
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
-                                ) {
-                                    Text(
-                                        text = stringResource(R.string.common_cancel),
-                                        fontSize = 12.sp
-                                    )
-                                }
-                            }
-                        }
-
-                        LazyColumn(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxWidth()
-                                .semantics { testTag = "quick_playlists_list" },
-                            state = listState
-                        ) {
-                            itemsIndexed(visibleRows, key = { _, row -> row.item }) { _, row ->
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .semantics { testTag = "quick_playlists_list" },
+                        state = listState
+                    ) {
+                        itemsIndexed(visibleRows, key = { _, row -> row.item }) { _, row ->
                             val itemIndex = row.realIndex
                             val uriString = row.item
 
@@ -1520,14 +1463,13 @@ fun QuickPlaylistsScreen(
                                         }
 
 
-                                    }
                                 }
                             }
-                        }
                         }
                     }
                 }
             }
+        }
         }
     }
 
