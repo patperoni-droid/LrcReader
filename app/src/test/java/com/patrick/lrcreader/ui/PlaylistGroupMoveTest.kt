@@ -228,4 +228,58 @@ class PlaylistGroupMoveTest {
         assertEquals(setOf("a1", "a3"), moved)
         assertEquals(listOf(headerA, "a2", endA, "a1", "a3", "x1"), items)
     }
+
+    @Test
+    fun assignTracksToGroupByHeaderKey_ignoresNonAudioAndDuplicateUris() {
+        val headerA = buildGroupHeader("A")
+        val endA = buildGroupEnd(getGroupUuid(headerA)!!)
+        val headerB = buildGroupHeader("B")
+        val endB = buildGroupEnd(getGroupUuid(headerB)!!)
+        val items = mutableListOf(headerA, "a1", endA, headerB, "b1", endB, "x1")
+
+        val movedCount = assignTracksToGroupByHeaderKey(
+            items = items,
+            trackUris = listOf(headerA, endA, "x1", "x1", "missing"),
+            headerKey = headerB
+        )
+
+        assertEquals(1, movedCount)
+        assertEquals(listOf(headerA, "a1", endA, headerB, "b1", "x1", endB), items)
+    }
+
+    @Test
+    fun assignTracksToGroupByHeaderKey_movesFromDifferentSources_andKeepsMarkersValid() {
+        val headerA = buildGroupHeader("A")
+        val endA = buildGroupEnd(getGroupUuid(headerA)!!)
+        val headerB = buildGroupHeader("B")
+        val endB = buildGroupEnd(getGroupUuid(headerB)!!)
+        val items = mutableListOf(headerA, "a1", "a2", endA, headerB, "b1", endB, "x1")
+
+        val movedCount = assignTracksToGroupByHeaderKey(
+            items = items,
+            trackUris = listOf("a2", "x1"),
+            headerKey = headerB
+        )
+
+        assertEquals(2, movedCount)
+        assertEquals(listOf(headerA, "a1", endA, headerB, "b1", "a2", "x1", endB), items)
+    }
+
+    @Test
+    fun assignTracksToGroupByHeaderKey_targetsExactHeaderWhenTitlesDuplicated() {
+        val headerA1 = buildGroupHeader("A")
+        val endA1 = buildGroupEnd(getGroupUuid(headerA1)!!)
+        val headerA2 = buildGroupHeader("A")
+        val endA2 = buildGroupEnd(getGroupUuid(headerA2)!!)
+        val items = mutableListOf(headerA1, endA1, headerA2, endA2, "x1", "x2")
+
+        val movedCount = assignTracksToGroupByHeaderKey(
+            items = items,
+            trackUris = listOf("x1", "x2"),
+            headerKey = headerA2
+        )
+
+        assertEquals(2, movedCount)
+        assertEquals(listOf(headerA1, endA1, headerA2, "x1", "x2", endA2), items)
+    }
 }
