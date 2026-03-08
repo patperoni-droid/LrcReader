@@ -213,4 +213,19 @@ class PlaylistGroupMoveTest {
         assertEquals(3, movedCount)
         assertEquals(listOf(headerA, "a1", endA, headerB, "b1", "x1", "x2", "x3", endB), items)
     }
+
+    @Test
+    fun moveTracksOutOfGroup_bottomToTop_keepsStableOrder_skipsOutsideGroup_andPreservesMarkers() {
+        val headerA = buildGroupHeader("A")
+        val endA = buildGroupEnd(getGroupUuid(headerA)!!)
+        val items = mutableListOf(headerA, "a1", "a2", "a3", endA, "x1")
+
+        val moved = moveTracksOutOfGroup(
+            items = items,
+            trackUris = listOf("a1", "a3", "x1")
+        )
+
+        assertEquals(setOf("a1", "a3"), moved)
+        assertEquals(listOf(headerA, "a2", endA, "a1", "a3", "x1"), items)
+    }
 }

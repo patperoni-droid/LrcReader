@@ -1301,8 +1301,24 @@ fun QuickPlaylistsScreen(
                                                 text = { Text("Retirer du groupe", color = Color.White) },
                                                 onClick = {
                                                     internalSelected?.let { pl ->
-                                                        if (moveItemOutOfGroup(songs, uriString)) {
+                                                        val selectedBatch = songs.filter { key ->
+                                                            key in selectedTrackKeys && isPlayableAudioItem(key)
+                                                        }
+                                                        val targets = if (
+                                                            uriString in selectedTrackKeys &&
+                                                            selectedBatch.size > 1
+                                                        ) {
+                                                            selectedBatch
+                                                        } else {
+                                                            listOf(uriString)
+                                                        }
+                                                        val movedUris = moveTracksOutOfGroup(
+                                                            items = songs,
+                                                            trackUris = targets
+                                                        )
+                                                        if (movedUris.isNotEmpty()) {
                                                             persistSongsOrder(pl)
+                                                            selectedTrackKeys = selectedTrackKeys - movedUris
                                                         }
                                                     }
                                                     menuOpen = false
@@ -1969,6 +1985,26 @@ internal fun moveItemOutOfGroup(items: MutableList<String>, trackUri: String): B
     val insertionIndex = (resolvedEndIndex + 1).coerceIn(0, items.size)
     items.add(insertionIndex, dragged)
     return true
+}
+
+internal fun moveTracksOutOfGroup(
+    items: MutableList<String>,
+    trackUris: List<String>
+): Set<String> {
+    if (trackUris.isEmpty()) return emptySet()
+    val targetSet = trackUris.toSet()
+    val ordered = items.withIndex()
+        .filter { (idx, key) -> key in targetSet && isPlayableAudioItem(key) && idx in items.indices }
+        .sortedByDescending { it.index }
+        .map { it.value }
+
+    val moved = linkedSetOf<String>()
+    ordered.forEach { trackUri ->
+        if (moveItemOutOfGroup(items, trackUri)) {
+            moved += trackUri
+        }
+    }
+    return moved
 }
 
 internal fun removeGroupAtHeader(items: MutableList<String>, headerIndex: Int): Boolean {
