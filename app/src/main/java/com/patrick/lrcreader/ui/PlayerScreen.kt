@@ -57,6 +57,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.core.AutoReturnPrefs
 import com.patrick.lrcreader.core.BackupFolderPrefs
+import com.patrick.lrcreader.core.AccordsEnsureResult
 import com.patrick.lrcreader.core.AccordsUiTruth
 import com.patrick.lrcreader.core.DisplayPrefs
 import com.patrick.lrcreader.core.FillerSoundManager
@@ -76,6 +77,7 @@ import com.patrick.lrcreader.core.runAccordsDeleteIo
 import com.patrick.lrcreader.core.runAccordsSaveIo
 import com.patrick.lrcreader.core.resolveAccordsUiTruthAfterDelete
 import com.patrick.lrcreader.core.resolveAccordsUiTruthAfterSave
+import com.patrick.lrcreader.core.resolveAccordsLrcFileName
 import com.patrick.lrcreader.core.buildAccordsIoFailureFeedback
 import com.patrick.lrcreader.core.buildAccordsIoFailureLog
 import com.patrick.lrcreader.core.resolveChordsLookupFileName
@@ -269,11 +271,16 @@ fun PlayerScreen(
                         )
                     },
                     ensureLyricsTwin = { writtenName ->
-                        ensureLyricsFileExistsForTrack(
+                        val ensureResult = ensureLyricsFileExistsForTrack(
                             context = context,
                             trackUriString = request.trackUriString,
                             preferredLrcFileName = writtenName
                         )
+                        Log.d(
+                            "LrcDebug",
+                            "ACCORDS_ENSURE_LYRICS trackUri=${request.trackUriString} target=$writtenName result=$ensureResult"
+                        )
+                        ensureResult
                     }
                 )
             }.getOrElse {
@@ -1529,6 +1536,19 @@ private fun readAccordsFromSplByTrackUri(
         return null
     }
 
+    val hashedTarget = LrcStorage.hashedFileNameForTrack(trackUriString)
+    val byHashedFallback = readLrcFromSplFolderByFileName(
+        context = context,
+        targetName = hashedTarget,
+        folderAliases = listOf("Accords", "accords"),
+        ensureFolderName = "Accords",
+        debugLookupLabel = "ACCORDS_LOOKUP_HASH_FALLBACK"
+    )
+    if (byHashedFallback != null) {
+        Log.d("LrcDebug", "ACCORDS_LOOKUP hit hashedFallback target=$hashedTarget")
+        return byHashedFallback.text
+    }
+
     if (fallbackBaseName.isBlank()) return null
     Log.d(
         "LrcDebug",
@@ -1548,13 +1568,20 @@ private fun resolveExactLrcFileNameForTrack(
     trackUriString: String,
     preferredLrcFileName: String?
 ): String {
-    preferredLrcFileName?.trim()?.takeIf { it.isNotBlank() }?.let { return it }
     val fromStorage = runCatching {
         LrcStorage.resolveOriginForTrack(context, trackUriString)?.fileName
     }.getOrNull()
-    fromStorage?.trim()?.takeIf { it.isNotBlank() }?.let { return it }
-    val base = baseNameFromTrackUriString(trackUriString).trim()
-    return if (base.isNotBlank()) "$base.lrc" else "track.lrc"
+    val hashedFallback = LrcStorage.hashedFileNameForTrack(trackUriString)
+    val resolution = resolveAccordsLrcFileName(
+        preferredLrcFileName = preferredLrcFileName,
+        originLrcFileName = fromStorage,
+        hashedFallbackFileName = hashedFallback
+    )
+    Log.d(
+        "LrcDebug",
+        "ACCORDS_FILE_NAME_RESOLVE trackUri=$trackUriString source=${resolution.source} target=${resolution.fileName} preferred=$preferredLrcFileName origin=$fromStorage"
+    )
+    return resolution.fileName
 }
 
 private fun ensureAccordsFileExistsForTrack(
@@ -1567,19 +1594,24 @@ private fun ensureAccordsFileExistsForTrack(
         trackUriString = trackUriString,
         preferredLrcFileName = preferredLrcFileName
     )
-    return ensureLrcFileExistsInFolder(
+    val ensureResult = ensureLrcFileExistsInFolder(
         context = context,
         targetName = exactName,
         folderAliases = listOf("Accords", "accords"),
         ensureFolderName = "Accords"
     )
+    Log.d(
+        "LrcDebug",
+        "ACCORDS_ENSURE_FILE trackUri=$trackUriString target=$exactName result=$ensureResult"
+    )
+    return ensureResult == AccordsEnsureResult.CREATED
 }
 
 private fun ensureLyricsFileExistsForTrack(
     context: android.content.Context,
     trackUriString: String,
     preferredLrcFileName: String?
-): Boolean {
+): AccordsEnsureResult {
     val exactName = resolveExactLrcFileNameForTrack(
         context = context,
         trackUriString = trackUriString,
@@ -1598,21 +1630,26 @@ private fun ensureLrcFileExistsInFolder(
     targetName: String,
     folderAliases: List<String>,
     ensureFolderName: String
-): Boolean {
+): AccordsEnsureResult {
     val exists = readLrcFromSplFolderByFileName(
         context = context,
         targetName = targetName,
         folderAliases = folderAliases,
         ensureFolderName = ensureFolderName
     ) != null
-    if (exists) return false
-    return writeLrcToSplFolderByFileName(
+    if (exists) return AccordsEnsureResult.ALREADY_EXISTS
+    val created = writeLrcToSplFolderByFileName(
         context = context,
         targetName = targetName,
         folderAliases = folderAliases,
         ensureFolderName = ensureFolderName,
         text = ""
     )
+    return if (created) {
+        AccordsEnsureResult.CREATED
+    } else {
+        AccordsEnsureResult.FAILED
+    }
 }
 
 private fun writeAccordsToSplByTrackUri(
@@ -1645,6 +1682,7 @@ private fun deleteAccordsFromSplByTrackUri(
     val fallbackBaseName = baseNameFromTrackUriString(trackUriString)
     val candidates = linkedSetOf<String>().apply {
         preferredLrcFileName?.trim()?.takeIf { it.isNotBlank() }?.let { add(it) }
+        add(LrcStorage.hashedFileNameForTrack(trackUriString))
         fallbackBaseName.trim().takeIf { it.isNotBlank() }?.let { add("$it.lrc") }
     }
     if (candidates.isEmpty()) return false

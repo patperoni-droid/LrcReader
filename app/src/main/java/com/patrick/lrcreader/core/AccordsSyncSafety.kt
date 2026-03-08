@@ -19,6 +19,17 @@ data class AccordsUiTruth(
     val hasSource: Boolean
 )
 
+enum class AccordsEnsureResult {
+    CREATED,
+    ALREADY_EXISTS,
+    FAILED
+}
+
+data class AccordsFileNameResolution(
+    val fileName: String,
+    val source: String
+)
+
 /**
  * Returns the locked editing track only when it still matches the current track.
  * Any mismatch means the edit action must be blocked.
@@ -35,17 +46,32 @@ fun resolveAccordsEditTargetTrack(
 
 fun runAccordsSaveIo(
     writeAccords: () -> String?,
-    ensureLyricsTwin: (writtenName: String) -> Boolean
+    ensureLyricsTwin: (writtenName: String) -> AccordsEnsureResult
 ): AccordsIoResult {
     val writtenName = writeAccords()
     if (writtenName.isNullOrBlank()) {
         return AccordsIoResult(success = false, stage = "writeAccords")
     }
-    val ensured = ensureLyricsTwin(writtenName)
-    if (!ensured) {
-        return AccordsIoResult(success = false, stage = "ensureLyricsTwin")
+    val ensureResult = ensureLyricsTwin(writtenName)
+    if (ensureResult == AccordsEnsureResult.FAILED) {
+        return AccordsIoResult(success = false, stage = "ensureLyricsTwin:FAILED")
     }
     return AccordsIoResult(success = true, stage = "ok")
+}
+
+fun resolveAccordsLrcFileName(
+    preferredLrcFileName: String?,
+    originLrcFileName: String?,
+    hashedFallbackFileName: String
+): AccordsFileNameResolution {
+    preferredLrcFileName?.trim()?.takeIf { it.isNotBlank() }?.let {
+        return AccordsFileNameResolution(fileName = it, source = "preferred")
+    }
+    originLrcFileName?.trim()?.takeIf { it.isNotBlank() }?.let {
+        return AccordsFileNameResolution(fileName = it, source = "origin")
+    }
+    val fallback = hashedFallbackFileName.trim().ifBlank { "track.lrc" }
+    return AccordsFileNameResolution(fileName = fallback, source = "hashedFallback")
 }
 
 fun runAccordsDeleteIo(
