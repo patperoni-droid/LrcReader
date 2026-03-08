@@ -195,4 +195,22 @@ class PlaylistGroupMoveTest {
         assertTrue(moved)
         assertEquals(listOf(headerA1, endA1, "x1", headerA2, "x2", endA2), items)
     }
+
+    @Test
+    fun assignTracksToGroupByHeaderKey_keepsRelativeOrder_skipsAlreadyInsideTarget_andPreservesMarkers() {
+        val headerA = buildGroupHeader("A")
+        val endA = buildGroupEnd(getGroupUuid(headerA)!!)
+        val headerB = buildGroupHeader("B")
+        val endB = buildGroupEnd(getGroupUuid(headerB)!!)
+        val items = mutableListOf(headerA, "a1", endA, "x1", "x2", headerB, "b1", endB, "x3")
+
+        val movedCount = assignTracksToGroupByHeaderKey(
+            items = items,
+            trackUris = listOf("x2", "b1", "x3", "x1"),
+            headerKey = headerB
+        )
+
+        assertEquals(3, movedCount)
+        assertEquals(listOf(headerA, "a1", endA, headerB, "b1", "x1", "x2", "x3", endB), items)
+    }
 }
