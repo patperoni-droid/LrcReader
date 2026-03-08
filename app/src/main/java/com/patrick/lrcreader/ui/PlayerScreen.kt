@@ -124,6 +124,10 @@ fun PlayerScreen(
     val showHqOffBanner = isLaboBuild && !isHqAvailable
     var hqToastShownAtMs by remember { mutableStateOf(0L) }
     val sHqUnavailable = stringResource(R.string.player_hq_unavailable)
+    val sAccordsTrackChangedBlocked = stringResource(R.string.player_accords_track_changed_blocked)
+    val sAccordsSaveQueueClosed = stringResource(R.string.player_accords_save_queue_closed)
+    val sAccordsActionSave = stringResource(R.string.accords_action_save)
+    val sAccordsActionDelete = stringResource(R.string.accords_action_delete)
 
     // 📝 Notes LIVE (création depuis le lecteur)
     var showAddNoteDialog by remember { mutableStateOf(false) }
@@ -239,7 +243,7 @@ fun PlayerScreen(
     fun showAccordsTrackChangedBlockedToast() {
         Toast.makeText(
             context,
-            "Action bloquee: le morceau actif a change pendant l'edition des accords.",
+            sAccordsTrackChangedBlocked,
             Toast.LENGTH_SHORT
         ).show()
     }
@@ -311,7 +315,11 @@ fun PlayerScreen(
                 hasChordsSource = resolved.hasSource
 
                 if (!ioResult.success) {
-                    buildAccordsIoFailureFeedback(action = "sauvegarde", io = ioResult)
+                    buildAccordsIoFailureFeedback(
+                        context = context,
+                        actionLabel = sAccordsActionSave,
+                        io = ioResult
+                    )
                         ?.let { showAccordsIoFailureToast(it) }
                 }
             }
@@ -717,7 +725,7 @@ fun PlayerScreen(
                                 "LrcDebug",
                                 "ACCORDS_SAVE_DROPPED queueClosed trackUri=$lockedTrackUri"
                             )
-                            showAccordsIoFailureToast("Accords: echec sauvegarde (queue fermee).")
+                            showAccordsIoFailureToast(sAccordsSaveQueueClosed)
                             return@persistLines false
                         }
                         return@persistLines true
@@ -807,7 +815,11 @@ fun PlayerScreen(
                                     io = ioResult
                                 )
                             )
-                            buildAccordsIoFailureFeedback(action = "suppression", io = ioResult)
+                            buildAccordsIoFailureFeedback(
+                                context = context,
+                                actionLabel = sAccordsActionDelete,
+                                io = ioResult
+                            )
                                 ?.let { showAccordsIoFailureToast(it) }
                             return@deletePersisted false
                         }
