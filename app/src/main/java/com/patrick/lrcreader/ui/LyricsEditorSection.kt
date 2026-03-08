@@ -96,8 +96,8 @@ fun LyricsEditorSection(
     // ✅ callback sauvegarde
     onSaveSortedLines: (List<LrcLine>) -> Unit,
     onImportedLinesApplied: (List<LrcLine>) -> Unit,
-    onPersistLines: (List<LrcLine>) -> Unit,
-    onDeletePersisted: () -> Unit,
+    onPersistLines: (List<LrcLine>) -> Boolean,
+    onDeletePersisted: () -> Boolean,
     showImportButton: Boolean = true,
     mainTabLabelRes: Int = R.string.lyrics_editor_tab_lyrics,
     inputLabelRes: Int = R.string.lyrics_editor_input_label,
@@ -312,10 +312,11 @@ fun LyricsEditorSection(
         val simpleLines = rawToPlainLines(rawTextFieldValue.text)
 
         if (simpleLines.isEmpty()) {
+            val deleted = onDeletePersisted()
+            if (!deleted) return
             onEditingLinesChange(emptyList())
             onRawLyricsTextChange("")
             rawTextFieldValue = TextFieldValue("", TextRange(0))
-            onDeletePersisted()
             onSaveSortedLines(emptyList())
             return
         }
@@ -336,7 +337,8 @@ fun LyricsEditorSection(
 
         Log.d("LrcDebug", "EDITOR_SAVE currentTrackUri=$currentTrackUri lines=${finalLines.size}")
 
-        onPersistLines(finalLines)
+        val persisted = onPersistLines(finalLines)
+        if (!persisted) return
 
         onSaveSortedLines(finalLines)
     }
