@@ -356,8 +356,6 @@
     <string name="quickplaylists_menu_remove_from_playlist">Remove from playlist</string>
     <string name="quickplaylists_menu_title_color">Title color</string>
     <string name="quickplaylists_menu_assign_to_group">Assign to group</string>
-    <string name="quickplaylists_multiselect_count">%1$d tracks selected</string>
-    <string name="quickplaylists_multiselect_remove">Remove</string>
     <string name="quickplaylists_assign_group_title">Assign to group</string>
     <string name="quickplaylists_cd_hide_mini_tuner">Hide mini tuner</string>
     <string name="quickplaylists_cd_show_mini_tuner">Show mini tuner</string>

@@ -356,8 +356,6 @@
     <string name="quickplaylists_menu_remove_from_playlist">Quitar de la lista de reproducción</string>
     <string name="quickplaylists_menu_title_color">Color del título</string>
     <string name="quickplaylists_menu_assign_to_group">Asignar al grupo</string>
-    <string name="quickplaylists_multiselect_count">%1$d pistas seleccionadas</string>
-    <string name="quickplaylists_multiselect_remove">Quitar</string>
     <string name="quickplaylists_assign_group_title">Asignar al grupo</string>
     <string name="quickplaylists_cd_hide_mini_tuner">Ocultar mini afinador</string>
     <string name="quickplaylists_cd_show_mini_tuner">Mostrar mini afinador</string>
