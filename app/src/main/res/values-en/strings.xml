@@ -159,6 +159,7 @@
     <string name="library_delete_audio_lrc_found">Associated .lrc files were found.\nDo you also want to delete them?</string>
     <string name="library_delete_audio_plus_lrc">Track + lyrics/chords</string>
     <string name="library_delete_audio_hint_lyrics">Tip: associated files are searched in the &quot;Lyrics&quot; and &quot;Accords&quot; folders.</string>
+    <string name="library_delete_partial_failure">Partial deletion: %1$d failure(s) out of %2$d file(s).</string>
 
     <string name="common_search_placeholder">Search…</string>
     <string name="search_title">Search</string>
@@ -200,6 +201,10 @@
 
     <!-- Player / Lyrics -->
     <string name="lyrics_none">No lyrics</string>
+    <string name="chords_none">No chords</string>
+    <string name="player_view_lyrics">Lyrics</string>
+    <string name="player_view_chords">Chords</string>
+    <string name="player_chords_file_missing">Chords file not found</string>
 
     <string name="player_cd_prev">Previous</string>
     <string name="player_cd_play_pause">Play/Pause</string>
@@ -221,6 +226,11 @@
     <string name="player_auto_return_button">-10</string>
     <string name="player_hq_tag">TS=HQ</string>
     <string name="player_add_note_icon">📝</string>
+    <string name="player_accords_track_changed_blocked">Action blocked: active track changed during chords editing.</string>
+    <string name="player_accords_save_queue_closed">Chords: save failed (queue closed).</string>
+    <string name="accords_action_save">save</string>
+    <string name="accords_action_delete">delete</string>
+    <string name="accords_error_action_with_stage">Chords: %1$s failed (%2$s).</string>
 
     <!-- Setup install -->
     <string name="setup_title">Installation</string>
@@ -250,6 +260,8 @@
     <string name="lyrics_editor_tab_sync">Sync</string>
     <string name="lyrics_editor_cd_save_lyrics">Save lyrics</string>
     <string name="lyrics_editor_input_label">Lyrics (one line per phrase)</string>
+    <string name="chords_editor_input_label">Chords (one line per chord)</string>
+    <string name="chords_palette_input_label">Chord palette (e.g.: Am, D, G, F)</string>
     <string name="lyrics_editor_cd_sync_play_pause">Sync play/pause</string>
     <string name="lyrics_editor_cd_back_to_start">Back to start</string>
     <string name="lyrics_editor_reset_tags">Reset tags</string>
@@ -263,6 +275,10 @@
     <string name="lyrics_editor_edit">Edit</string>
     <string name="lyrics_editor_delete">Delete</string>
     <string name="lyrics_editor_cancel">Cancel</string>
+    <string name="lyrics_editor_import_lrc">Import .LRC</string>
+    <string name="lyrics_editor_import_choose_lrc">Choose a .lrc file</string>
+    <string name="lyrics_editor_import_failed">Import failed</string>
+    <string name="lyrics_editor_import_empty">Empty file</string>
 
     <!-- Common content descriptions -->
     <string name="common_cd_back">Back</string>
@@ -343,6 +359,13 @@
     <string name="quickplaylists_multiselect_count">%1$d tracks selected</string>
     <string name="quickplaylists_multiselect_remove">Remove</string>
     <string name="quickplaylists_assign_group_title">Assign to group</string>
+    <string name="quickplaylists_cd_hide_mini_tuner">Hide mini tuner</string>
+    <string name="quickplaylists_cd_show_mini_tuner">Show mini tuner</string>
+    <string name="quickplaylists_drop_here">Drop to move here</string>
+    <string name="quickplaylists_menu_delete_group">Delete group</string>
+    <string name="quickplaylists_menu_insert_group_above">Insert group above</string>
+    <string name="quickplaylists_menu_remove_from_group">Remove from group</string>
+    <string name="quickplaylists_group_new_default">New group</string>
     <string name="quickplaylists_edit_prompter_title">Edit prompter ✅ TEST 2026</string>
     <string name="quickplaylists_new_prompter_title">New title (prompter 2026 )</string>
     <string name="quickplaylists_prompter_text_label">Prompter text</string>

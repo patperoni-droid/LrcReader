@@ -366,7 +366,7 @@ fun LyricsEditorSection(
             )
         }
         if (!(nameOk || mimeOk)) {
-            Toast.makeText(context, "Choisis un fichier .lrc", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, context.getString(R.string.lyrics_editor_import_choose_lrc), Toast.LENGTH_SHORT).show()
             return@rememberLauncherForActivityResult
         }
 
@@ -376,13 +376,13 @@ fun LyricsEditorSection(
                 val importedText = readImportedLrcText(context, pickedUri)
                 if (importedText == null) {
                     Log.e("LRC_IMPORT", "failed to read uri=$pickedUri")
-                    Toast.makeText(context, "Import impossible", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, context.getString(R.string.lyrics_editor_import_failed), Toast.LENGTH_SHORT).show()
                     return@launch
                 }
 
                 if (importedText.isBlank()) {
                     Log.w("LRC_IMPORT", "empty file uri=$pickedUri")
-                    Toast.makeText(context, "Fichier vide", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, context.getString(R.string.lyrics_editor_import_empty), Toast.LENGTH_SHORT).show()
                     return@launch
                 }
 
@@ -399,7 +399,7 @@ fun LyricsEditorSection(
                 Log.d("LRC_IMPORT", "imported uri=$pickedUri lines=${parsed.size}")
             } catch (t: Throwable) {
                 Log.e("LRC_IMPORT", "import failed uri=$pickedUri", t)
-                Toast.makeText(context, "Import impossible", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, context.getString(R.string.lyrics_editor_import_failed), Toast.LENGTH_SHORT).show()
             } finally {
                 isImportBusy = false
             }
@@ -445,7 +445,7 @@ fun LyricsEditorSection(
                     },
                     modifier = Modifier.padding(start = 4.dp)
                 ) {
-                    Text("Import .LRC", color = Color.White)
+                    Text(stringResource(R.string.lyrics_editor_import_lrc), color = Color.White)
                 }
             }
 

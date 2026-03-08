@@ -121,6 +121,7 @@ fun QuickPlaylistsScreen(
 ) {
 
     val context = LocalContext.current
+    val sQuickplaylistsNewGroupDefault = stringResource(R.string.quickplaylists_group_new_default)
     var hasMicPermission by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(
@@ -735,9 +736,9 @@ fun QuickPlaylistsScreen(
                                 Icons.Filled.VisibilityOff
                             },
                             contentDescription = if (isMiniTunerVisible) {
-                                "Masquer l'accordeur mini"
+                                stringResource(R.string.quickplaylists_cd_hide_mini_tuner)
                             } else {
-                                "Afficher l'accordeur mini"
+                                stringResource(R.string.quickplaylists_cd_show_mini_tuner)
                             },
                             tint = if (isMiniTunerVisible) Color(0xFF80DEEA) else Color(0xFF78909C)
                         )
@@ -986,7 +987,7 @@ fun QuickPlaylistsScreen(
                                                     .padding(horizontal = 8.dp, vertical = 2.dp)
                                             ) {
                                                 Text(
-                                                    text = "Lacher pour ranger ici",
+                                                    text = stringResource(R.string.quickplaylists_drop_here),
                                                     color = Color.White,
                                                     fontSize = 10.sp,
                                                     fontWeight = FontWeight.Medium
@@ -1038,7 +1039,12 @@ fun QuickPlaylistsScreen(
                                                 }
                                             )
                                             DropdownMenuItem(
-                                                text = { Text("Supprimer le groupe", color = Color(0xFFFF8A80)) },
+                                                text = {
+                                                    Text(
+                                                        stringResource(R.string.quickplaylists_menu_delete_group),
+                                                        color = Color(0xFFFF8A80)
+                                                    )
+                                                },
                                                 onClick = {
                                                     internalSelected?.let { pl ->
                                                         val headerIndex = songs.indexOf(uriString)
@@ -1317,13 +1323,18 @@ fun QuickPlaylistsScreen(
                                             }
                                         )
                                         DropdownMenuItem(
-                                            text = { Text("Insérer groupe au-dessus", color = Color.White) },
+                                            text = {
+                                                Text(
+                                                    stringResource(R.string.quickplaylists_menu_insert_group_above),
+                                                    color = Color.White
+                                                )
+                                            },
                                             onClick = {
                                                 val pl = internalSelected
                                                 if (pl != null) {
                                                     val index = songs.indexOf(uriString)
                                                     if (index >= 0) {
-                                                        val header = buildGroupHeader("Nouveau groupe")
+                                                        val header = buildGroupHeader(sQuickplaylistsNewGroupDefault)
                                                         val end = getGroupUuid(header)?.let { buildGroupEnd(it) }
                                                         songs.add(index, header)
                                                         if (end != null) {
@@ -1369,7 +1380,12 @@ fun QuickPlaylistsScreen(
                                         )
                                         if (isInsideGroup) {
                                             DropdownMenuItem(
-                                                text = { Text("Retirer du groupe", color = Color.White) },
+                                                text = {
+                                                    Text(
+                                                        stringResource(R.string.quickplaylists_menu_remove_from_group),
+                                                        color = Color.White
+                                                    )
+                                                },
                                                 onClick = {
                                                     val selectedBatch = songs.filter { key ->
                                                         key in selectedTrackKeys && isPlayableAudioItem(key)

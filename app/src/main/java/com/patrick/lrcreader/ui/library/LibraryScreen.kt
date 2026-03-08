@@ -398,7 +398,7 @@ fun LibraryScreen(
         val total = result.results.size
         Toast.makeText(
             context,
-            "Suppression partielle: $failed echec(s) sur $total fichier(s).",
+            context.getString(R.string.library_delete_partial_failure, failed, total),
             Toast.LENGTH_LONG
         ).show()
     }

@@ -153,6 +153,7 @@
     <string name="library_delete_audio_lrc_found">Des fichiers .lrc associés ont été trouvés.\nSouhaitez-vous aussi les supprimer ?</string>
     <string name="library_delete_audio_plus_lrc">Morceau + paroles/accords</string>
     <string name="library_delete_audio_hint_lyrics">Astuce : les fichiers associés sont recherchés dans les dossiers &quot;Lyrics&quot; et &quot;Accords&quot;.</string>
+    <string name="library_delete_partial_failure">Suppression partielle : %1$d échec(s) sur %2$d fichier(s).</string>
 
     <string name="common_search_placeholder">Rechercher…</string>
     <string name="search_title">Recherche</string>
@@ -219,6 +220,11 @@
     <string name="player_auto_return_button">-10</string>
     <string name="player_hq_tag">TS=HQ</string>
     <string name="player_add_note_icon">📝</string>
+    <string name="player_accords_track_changed_blocked">Action bloquée: le morceau actif a changé pendant l’édition des accords.</string>
+    <string name="player_accords_save_queue_closed">Accords: échec sauvegarde (queue fermée).</string>
+    <string name="accords_action_save">sauvegarde</string>
+    <string name="accords_action_delete">suppression</string>
+    <string name="accords_error_action_with_stage">Accords: échec %1$s (%2$s).</string>
 
     <!-- Setup install -->
     <string name="setup_title">Installation</string>
@@ -263,6 +269,10 @@
     <string name="lyrics_editor_edit">Modifier</string>
     <string name="lyrics_editor_delete">Supprimer</string>
     <string name="lyrics_editor_cancel">Annuler</string>
+    <string name="lyrics_editor_import_lrc">Import .LRC</string>
+    <string name="lyrics_editor_import_choose_lrc">Choisis un fichier .lrc</string>
+    <string name="lyrics_editor_import_failed">Import impossible</string>
+    <string name="lyrics_editor_import_empty">Fichier vide</string>
 
     <!-- Common content descriptions -->
     <string name="common_cd_back">Retour</string>
@@ -351,6 +361,13 @@
     <string name="quickplaylists_multiselect_count">%1$d titres sélectionnés</string>
     <string name="quickplaylists_multiselect_remove">Retirer</string>
     <string name="quickplaylists_assign_group_title">Attribuer au groupe</string>
+    <string name="quickplaylists_cd_hide_mini_tuner">Masquer l’accordeur mini</string>
+    <string name="quickplaylists_cd_show_mini_tuner">Afficher l’accordeur mini</string>
+    <string name="quickplaylists_drop_here">Lâcher pour ranger ici</string>
+    <string name="quickplaylists_menu_delete_group">Supprimer le groupe</string>
+    <string name="quickplaylists_menu_insert_group_above">Insérer groupe au-dessus</string>
+    <string name="quickplaylists_menu_remove_from_group">Retirer du groupe</string>
+    <string name="quickplaylists_group_new_default">Nouveau groupe</string>
     <string name="quickplaylists_edit_prompter_title">Éditer le prompteur ✅ TEST 2026</string>
     <string name="quickplaylists_new_prompter_title">Nouveau titre (prompteur 2026 )</string>
     <string name="quickplaylists_prompter_text_label">Texte du prompteur</string>
