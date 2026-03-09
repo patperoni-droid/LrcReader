@@ -1,5 +1,6 @@
 package com.patrick.lrcreader.ui
 
+import android.net.Uri
 import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -30,6 +31,15 @@ import com.patrick.lrcreader.core.search.SearchEngine
 import com.patrick.lrcreader.exo.BuildConfig
 import com.patrick.lrcreader.exo.R
 
+private fun fallbackNameFromUriString(uriString: String): String {
+    val decoded = Uri.decode(uriString)
+    val tail = decoded.substringAfterLast('/')
+    val fromDocId = tail.substringAfterLast(':').substringAfterLast('/')
+    return fromDocId.ifBlank {
+        tail.ifBlank { decoded.ifBlank { uriString } }
+    }
+}
+
 @Composable
 fun SearchScreen(
     modifier: Modifier = Modifier,
@@ -56,6 +66,7 @@ fun SearchScreen(
         indexAll
             .asSequence()
             .filter { !it.isDirectory }
+            .filter { SearchEngine.isPlayableAudioFile(id = it.uriString, fallbackName = it.name) }
             .map {
                 val alias = TitleAliasesStore.getTitleForTrack(context, it.uriString)
                     ?: PlaylistRepository.getAnyCustomTitleForUri(it.uriString)
@@ -67,8 +78,29 @@ fun SearchScreen(
             }
             .toList()
     }
+    val fallbackNameById = remember(indexAll, aliasVersion, restrictToUriStrings) {
+        if (restrictToUriStrings == null) {
+            emptyMap()
+        } else {
+            restrictToUriStrings.associateWith { uriString ->
+                TitleAliasesStore.getTitleForTrack(context, uriString)
+                    ?: PlaylistRepository.getAnyCustomTitleForUri(uriString)
+                    ?: indexAll.firstOrNull { it.uriString == uriString }?.name
+                    ?: fallbackNameFromUriString(uriString)
+            }
+        }
+    }
     val searchPool = remember(indexedItems, restrictToUriStrings) {
-        SearchEngine.restrictToIds(indexedItems, restrictToUriStrings)
+        val safeAllowedIds = restrictToUriStrings
+            ?.filterTo(linkedSetOf()) { id ->
+                SearchEngine.isPlayableAudioFile(id = id, fallbackName = fallbackNameById[id] ?: "")
+            }
+        SearchEngine.restrictWithFallbackIds(
+            items = indexedItems,
+            allowedIds = safeAllowedIds
+        ) { id ->
+            fallbackNameById[id] ?: fallbackNameFromUriString(id)
+        }
     }
 
     var q by remember { mutableStateOf("") }

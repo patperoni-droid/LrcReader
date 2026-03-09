@@ -82,4 +82,55 @@ class SearchEngineTest {
 
         assertEquals(listOf("uri-1", "uri-3"), results.map { it.id })
     }
+
+    @Test
+    fun test_playlist_restrict_fallback_for_missing_ids() {
+        val items = listOf(
+            SearchEngine.index(id = "uri-1", displayTitle = "Volare", fallbackName = "a.mp3")
+        )
+
+        val restricted = SearchEngine.restrictWithFallbackIds(
+            items = items,
+            allowedIds = setOf("uri-1", "uri-missing")
+        ) { id ->
+            if (id == "uri-missing") "Bella Ciao.mp3" else id
+        }
+        val results = SearchEngine.filter(restricted, "bella")
+
+        assertEquals(listOf("uri-missing"), results.map { it.id })
+    }
+
+    @Test
+    fun test_is_playable_audio_file_filters_non_audio() {
+        assertTrue(
+            SearchEngine.isPlayableAudioFile(
+                id = "content://tree/primary%3ABackingTracks%2FAudio%2FTrack.mp3",
+                fallbackName = "Track.mp3"
+            )
+        )
+        assertTrue(
+            SearchEngine.isPlayableAudioFile(
+                id = "content://tree/primary%3ABackingTracks%2FAudio%2FTrack.wav",
+                fallbackName = "Track"
+            )
+        )
+        assertTrue(
+            !SearchEngine.isPlayableAudioFile(
+                id = "content://tree/primary%3ABackingTracks%2FLyrics%2FTrack.lrc",
+                fallbackName = "Track.lrc"
+            )
+        )
+        assertTrue(
+            !SearchEngine.isPlayableAudioFile(
+                id = "content://tree/primary%3ABackingTracks%2FConfig%2Fbackup.json",
+                fallbackName = "backup.json"
+            )
+        )
+        assertTrue(
+            !SearchEngine.isPlayableAudioFile(
+                id = "content://tree/primary%3ABackingTracks%2FBackups%2Fexport.zip",
+                fallbackName = "export.zip"
+            )
+        )
+    }
 }
