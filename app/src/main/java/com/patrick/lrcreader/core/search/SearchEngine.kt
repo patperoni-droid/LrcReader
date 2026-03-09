@@ -1,8 +1,14 @@
 package com.patrick.lrcreader.core.search
 
 import java.text.Normalizer
+import java.net.URLDecoder
+import java.nio.charset.StandardCharsets
 
 object SearchEngine {
+
+    private val AUDIO_EXTENSIONS = setOf(
+        ".mp3", ".wav", ".flac", ".m4a", ".aac", ".ogg", ".opus", ".wma", ".alac", ".aiff"
+    )
 
     data class IndexedItem(
         val id: String,
@@ -66,5 +72,41 @@ object SearchEngine {
     ): List<IndexedItem> {
         if (allowedIds == null) return items
         return items.filter { it.id in allowedIds }
+    }
+
+    /**
+     * Restrict to [allowedIds], and synthesize missing ids when the index source is incomplete.
+     * This keeps restricted search usable even if some playlist tracks are absent from index cache.
+     */
+    fun restrictWithFallbackIds(
+        items: List<IndexedItem>,
+        allowedIds: Set<String>?,
+        fallbackNameForId: (String) -> String
+    ): List<IndexedItem> {
+        if (allowedIds == null) return items
+        val restricted = restrictToIds(items, allowedIds)
+        if (restricted.size == allowedIds.size) return restricted
+
+        val out = ArrayList<IndexedItem>(restricted.size + allowedIds.size)
+        out.addAll(restricted)
+        val seen = restricted.asSequence().map { it.id }.toHashSet()
+        allowedIds.forEach { id ->
+            if (seen.add(id)) {
+                val fallback = fallbackNameForId(id).trim().ifBlank { id }
+                out.add(index(id = id, displayTitle = null, fallbackName = fallback))
+            }
+        }
+        return out
+    }
+
+    fun isPlayableAudioFile(id: String, fallbackName: String): Boolean {
+        val cleanName = fallbackName.trim().lowercase()
+        if (AUDIO_EXTENSIONS.any { cleanName.endsWith(it) }) return true
+
+        val decodedId = runCatching {
+            URLDecoder.decode(id, StandardCharsets.UTF_8.name())
+        }.getOrElse { id }.lowercase()
+        val tail = decodedId.substringAfterLast('/').substringAfterLast(':')
+        return AUDIO_EXTENSIONS.any { tail.endsWith(it) }
     }
 }
