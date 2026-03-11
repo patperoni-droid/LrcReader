@@ -124,8 +124,9 @@ fun LibraryLoadingOverlay(
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             val p = moveProgress
             if (p == null) {
-                LinearProgressIndicator(
-                    modifier = Modifier.fillMaxWidth(0.72f).height(10.dp)
+                CircularProgressIndicator(
+                    color = Color.White,
+                    strokeWidth = 4.dp
                 )
                 Spacer(Modifier.height(12.dp))
                 Text(
