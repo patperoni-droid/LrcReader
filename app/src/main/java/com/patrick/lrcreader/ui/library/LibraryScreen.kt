@@ -40,8 +40,10 @@ import com.patrick.lrcreader.ui.LibraryEntry
 import com.patrick.lrcreader.ui.LibraryFolderCache
 import com.patrick.lrcreader.ui.clearPersistedUris
 import com.patrick.lrcreader.ui.theme.DarkBlueGradientBackground
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import com.patrick.lrcreader.core.StorageModePrefs
 import java.io.File
 
@@ -198,6 +200,7 @@ fun LibraryScreen(
     // ✅ delete planifiée (audio + associés potentiels)
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var pendingDeletePlan by remember { mutableStateOf<LibraryDeletePlan?>(null) }
+    var deleteInProgress by remember { mutableStateOf(false) }
 
     var pendingMoveUri by remember { mutableStateOf<Uri?>(null) }
     var showMoveBrowser by remember { mutableStateOf(false) }
@@ -950,6 +953,8 @@ fun LibraryScreen(
                 val hasAssociated = deletePlan.isAudioTarget && deletePlan.hasAssociated
 
                 suspend fun executeDeletion(includeAssociated: Boolean) {
+                    if (deleteInProgress) return
+                    deleteInProgress = true
                     startLoading(sDeleting, determinate = false)
                     try {
                         val result = backend.deleteWithPlan(
@@ -964,6 +969,7 @@ fun LibraryScreen(
                             runGlobalScan(root = root, folderToShow = folderUri)
                         }
                     } finally {
+                        deleteInProgress = false
                         showDeleteConfirmDialog = false
                         pendingDeletePlan = null
                         stopLoadingNice()
@@ -972,6 +978,7 @@ fun LibraryScreen(
 
                 androidx.compose.material3.AlertDialog(
                     onDismissRequest = {
+                        if (deleteInProgress) return@AlertDialog
                         showDeleteConfirmDialog = false
                         pendingDeletePlan = null
                     },
@@ -984,7 +991,9 @@ fun LibraryScreen(
                         Column {
                             if (hasAssociated) {
                                 androidx.compose.material3.TextButton(
+                                    enabled = !deleteInProgress,
                                     onClick = {
+                                        if (deleteInProgress) return@TextButton
                                         scope.launch {
                                             executeDeletion(includeAssociated = true)
                                         }
@@ -995,7 +1004,9 @@ fun LibraryScreen(
                             }
 
                             androidx.compose.material3.TextButton(
+                                enabled = !deleteInProgress,
                                 onClick = {
+                                    if (deleteInProgress) return@TextButton
                                     scope.launch {
                                         executeDeletion(includeAssociated = false)
                                     }
@@ -1009,7 +1020,9 @@ fun LibraryScreen(
                     },
                     dismissButton = {
                         androidx.compose.material3.TextButton(
+                            enabled = !deleteInProgress,
                             onClick = {
+                                if (deleteInProgress) return@TextButton
                                 showDeleteConfirmDialog = false
                                 pendingDeletePlan = null
                             }
@@ -1034,20 +1047,28 @@ fun LibraryScreen(
                     Log.d("ALIAS_RENAME", "commit source=library uri=${target.uri} newTitle='$newTitle'")
                 }
 
-                val saved = TitleAliasesStore.setTitleForTrack(context, target.uri.toString(), newTitle)
-                if (saved) {
-                    PlaylistRepository.clearCustomTitleEverywhere(target.uri.toString())
-                }
+                scope.launch {
+                    startLoading(sRenaming, determinate = false)
+                    try {
+                        val saved = withContext(Dispatchers.IO) {
+                            TitleAliasesStore.setTitleForTrack(context, target.uri.toString(), newTitle)
+                        }
+                        if (saved) {
+                            PlaylistRepository.clearCustomTitleEverywhere(target.uri.toString())
+                        }
 
-                if (BuildConfig.DEBUG) {
-                    Toast.makeText(
-                        context,
-                        if (saved) "Alias enregistré" else "Alias NON enregistré (voir logs)",
-                        Toast.LENGTH_SHORT
-                    ).show()
+                        if (BuildConfig.DEBUG) {
+                            Toast.makeText(
+                                context,
+                                if (saved) "Alias enregistré" else "Alias NON enregistré (voir logs)",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    } finally {
+                        renameTarget = null
+                        stopLoadingNice()
+                    }
                 }
-
-                renameTarget = null
             }
 
             RenameDialog(
