@@ -955,6 +955,7 @@ fun LibraryScreen(
                 suspend fun executeDeletion(includeAssociated: Boolean) {
                     if (deleteInProgress) return
                     deleteInProgress = true
+                    showDeleteConfirmDialog = false
                     startLoading(sDeleting, determinate = false)
                     try {
                         val result = backend.deleteWithPlan(
@@ -1047,6 +1048,7 @@ fun LibraryScreen(
                     Log.d("ALIAS_RENAME", "commit source=library uri=${target.uri} newTitle='$newTitle'")
                 }
 
+                renameTarget = null
                 scope.launch {
                     startLoading(sRenaming, determinate = false)
                     try {
@@ -1065,7 +1067,6 @@ fun LibraryScreen(
                             ).show()
                         }
                     } finally {
-                        renameTarget = null
                         stopLoadingNice()
                     }
                 }
