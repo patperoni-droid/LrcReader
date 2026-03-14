@@ -260,34 +260,42 @@ fun PlayerScreen(
         LatestAccordsWriteQueue<AccordsWriteRequest>(
             scope = scope
         ) { request ->
-            val ioResult = runCatching {
-                runAccordsSaveIo(
-                    writeAccords = {
-                        writeAccordsToSplByTrackUri(
-                            context = context,
-                            trackUriString = request.trackUriString,
-                            preferredLrcFileName = request.preferredLrcFileName,
-                            lines = request.lines
-                        )
-                    },
-                    ensureLyricsTwin = { writtenName ->
-                        val ensureResult = ensureLyricsFileExistsForTrack(
-                            context = context,
-                            trackUriString = request.trackUriString,
-                            preferredLrcFileName = writtenName
-                        )
-                        Log.d(
-                            "LrcDebug",
-                            "ACCORDS_ENSURE_LYRICS trackUri=${request.trackUriString} target=$writtenName result=$ensureResult"
-                        )
-                        ensureResult
-                    }
-                )
-            }.getOrElse {
+            val preflightStage = resolveAccordsSafWritePreflightStage(context)
+            val ioResult = if (!preflightStage.isNullOrBlank()) {
                 com.patrick.lrcreader.core.AccordsIoResult(
                     success = false,
-                    stage = "exception:${it::class.simpleName ?: "Unknown"}"
+                    stage = preflightStage
                 )
+            } else {
+                runCatching {
+                    runAccordsSaveIo(
+                        writeAccords = {
+                            writeAccordsToSplByTrackUri(
+                                context = context,
+                                trackUriString = request.trackUriString,
+                                preferredLrcFileName = request.preferredLrcFileName,
+                                lines = request.lines
+                            )
+                        },
+                        ensureLyricsTwin = { writtenName ->
+                            val ensureResult = ensureLyricsFileExistsForTrack(
+                                context = context,
+                                trackUriString = request.trackUriString,
+                                preferredLrcFileName = writtenName
+                            )
+                            Log.d(
+                                "LrcDebug",
+                                "ACCORDS_ENSURE_LYRICS trackUri=${request.trackUriString} target=$writtenName result=$ensureResult"
+                            )
+                            ensureResult
+                        }
+                    )
+                }.getOrElse {
+                    com.patrick.lrcreader.core.AccordsIoResult(
+                        success = false,
+                        stage = "exception:${it::class.simpleName ?: "Unknown"}"
+                    )
+                }
             }
 
             scope.launch {
@@ -1716,53 +1724,98 @@ private fun writeLrcToSplFolderByFileName(
 ): Boolean {
     val cleanTargetName = targetName.trim()
     if (cleanTargetName.isBlank()) return false
-
-    val fileRoots = linkedSetOf<File>().apply {
-        val rootUri = BackupFolderPrefs.getLibraryRootUri(context)
-        if (rootUri?.scheme == "file" && !rootUri.path.isNullOrBlank()) {
-            add(File(rootUri.path!!))
-        }
-        add(File(context.getExternalFilesDir(null), "SPL_Music"))
-    }
-
-    for (root in fileRoots) {
-        if (!root.exists()) continue
-        val backingTracks = File(root, "BackingTracks")
-        val backingTrack = File(root, "BackingTrack")
-        val backingRoot = when {
-            backingTracks.exists() -> backingTracks
-            backingTrack.exists() -> backingTrack
-            else -> backingTracks
-        }
-        if (!backingRoot.exists()) backingRoot.mkdirs()
-        val targetFolder = folderAliases
-            .asSequence()
-            .map { File(backingRoot, it) }
-            .firstOrNull { it.exists() && it.isDirectory }
-            ?: File(backingRoot, ensureFolderName).apply { if (!exists()) mkdirs() }
-        val outFile = File(targetFolder, cleanTargetName)
-        val ok = runCatching {
-            outFile.writeText(text, Charsets.UTF_8)
-            true
-        }.getOrDefault(false)
-        if (ok) return true
-    }
-
     val rootUri = BackupFolderPrefs.getLibraryRootUri(context)
-    if (rootUri?.scheme == "content") {
-        val rootDoc = DocumentFile.fromTreeUri(context, rootUri)
-            ?: DocumentFile.fromSingleUri(context, rootUri)
-        if (rootDoc != null && rootDoc.isDirectory) {
+    val safOnlyBackend = shouldUseSafBackendForChords(rootUri)
+    logChordsBackend(rootUri, safOnlyBackend)
+    Log.d("LrcDebug", "ACCORDS_WRITE_START target=$cleanTargetName rootUri=$rootUri")
+
+    if (!safOnlyBackend) {
+        val fileRoots = linkedSetOf<File>().apply {
+            if (rootUri?.scheme == "file" && !rootUri.path.isNullOrBlank()) {
+                add(File(rootUri.path!!))
+            }
+            val externalRoot = context.getExternalFilesDir(null)
+            if (externalRoot != null) {
+                val appPrivateSplRoot = File(externalRoot, "SPL_Music")
+                if (!appPrivateSplRoot.exists()) {
+                    val created = appPrivateSplRoot.mkdirs()
+                    Log.d(
+                        "LrcDebug",
+                        "ACCORDS_WRITE_APP_PRIVATE_ROOT create path=${appPrivateSplRoot.absolutePath} success=$created"
+                    )
+                }
+                add(appPrivateSplRoot)
+            } else {
+                Log.w("LrcDebug", "ACCORDS_WRITE_APP_PRIVATE_ROOT unavailable externalFilesDir=null")
+            }
+        }
+
+        for (root in fileRoots) {
+            if (!root.exists()) {
+                Log.d("LrcDebug", "ACCORDS_WRITE_FILE skip_root_not_found root=${root.absolutePath}")
+                continue
+            }
+            val backingTracks = File(root, "BackingTracks")
+            val backingTrack = File(root, "BackingTrack")
+            val backingRoot = when {
+                backingTracks.exists() -> backingTracks
+                backingTrack.exists() -> backingTrack
+                else -> backingTracks
+            }
+            if (!backingRoot.exists()) {
+                val backingCreated = backingRoot.mkdirs()
+                Log.d(
+                    "LrcDebug",
+                    "ACCORDS_WRITE_FILE ensure_backing_root path=${backingRoot.absolutePath} success=$backingCreated"
+                )
+            }
+            val targetFolder = folderAliases
+                .asSequence()
+                .map { File(backingRoot, it) }
+                .firstOrNull { it.exists() && it.isDirectory }
+                ?: File(backingRoot, ensureFolderName).apply { if (!exists()) mkdirs() }
+            val outFile = File(targetFolder, cleanTargetName)
+            Log.d(
+                "LrcDebug",
+                "ACCORDS_WRITE_FILE root=${root.absolutePath} folder=${targetFolder.absolutePath} file=${outFile.absolutePath}"
+            )
+            val ok = runCatching {
+                outFile.writeText(text, Charsets.UTF_8)
+                true
+            }.onFailure { error ->
+                Log.e("LrcDebug", "ACCORDS_WRITE_FILE exception file=${outFile.absolutePath}", error)
+            }.getOrDefault(false)
+            if (ok) {
+                Log.i("LrcDebug", "ACCORDS_WRITE_FILE success file=${outFile.absolutePath}")
+                return true
+            }
+            Log.w("LrcDebug", "ACCORDS_WRITE_FILE failed file=${outFile.absolutePath}")
+        }
+    }
+
+    if (safOnlyBackend) {
+        val safRootUri = rootUri ?: return false
+        val rootDoc = DocumentFile.fromTreeUri(context, safRootUri)
+            ?: DocumentFile.fromSingleUri(context, safRootUri)
+        if (rootDoc == null || !rootDoc.isDirectory) {
+            Log.w("LrcDebug", "ACCORDS_WRITE_SAF invalid_root rootUri=$safRootUri")
+        } else {
+            Log.d("LrcDebug", "ACCORDS_WRITE_SAF rootDoc=${rootDoc.uri}")
             val backingDirs = findDirsByAliases(
                 parent = rootDoc,
                 aliases = listOf("BackingTracks", "BackingTrack")
             ).toMutableList()
             if (backingDirs.isEmpty()) {
-                ensureOrFindDir(
+                val ensured = ensureOrFindDir(
                     parent = rootDoc,
                     preferredName = "BackingTracks",
                     aliases = listOf("BackingTracks", "BackingTrack")
-                )?.let { backingDirs.add(it) }
+                )
+                Log.d(
+                    "LrcDebug",
+                    "ACCORDS_WRITE_SAF ensure_backing_dir root=${rootDoc.uri} success=${ensured != null} dir=${ensured?.uri}"
+                )
+                ensured?.let { backingDirs.add(it) }
             }
 
             backingDirs.forEach { backing ->
@@ -1773,24 +1826,115 @@ private fun writeLrcToSplFolderByFileName(
                         aliases = folderAliases
                     )
                     ?: return@forEach
+                Log.d("LrcDebug", "ACCORDS_WRITE_SAF folder=${targetFolder.uri} target=$cleanTargetName")
 
-                val fileDoc = targetFolder.listFiles().firstOrNull { child ->
+                val existingFileDoc = targetFolder.listFiles().firstOrNull { child ->
                     child.isFile && (child.name ?: "").equals(cleanTargetName, ignoreCase = true)
-                } ?: targetFolder.createFile("application/octet-stream", cleanTargetName)
+                }
+                if (existingFileDoc != null) {
+                    Log.d("LrcDebug", "ACCORDS_WRITE_SAF reusing_file uri=${existingFileDoc.uri}")
+                }
+                val fileDoc = existingFileDoc ?: targetFolder.createFile("application/octet-stream", cleanTargetName)
+                if (existingFileDoc == null) {
+                    Log.d(
+                        "LrcDebug",
+                        "ACCORDS_WRITE_SAF create_file folder=${targetFolder.uri} success=${fileDoc != null} uri=${fileDoc?.uri}"
+                    )
+                }
 
                 if (fileDoc != null) {
                     val ok = runCatching {
-                        context.contentResolver.openOutputStream(fileDoc.uri, "w")?.use { out ->
+                        val output = context.contentResolver.openOutputStream(fileDoc.uri, "w")
+                        val hasStream = output != null
+                        Log.d("LrcDebug", "ACCORDS_WRITE_SAF open_output uri=${fileDoc.uri} success=$hasStream")
+                        output?.use { out ->
                             out.write(text.toByteArray(Charsets.UTF_8))
                             out.flush()
-                        } != null
+                        }
+                        hasStream
+                    }.onFailure { error ->
+                        Log.e("LrcDebug", "ACCORDS_WRITE_SAF exception uri=${fileDoc.uri}", error)
                     }.getOrDefault(false)
-                    if (ok) return true
+                    if (ok) {
+                        Log.i("LrcDebug", "ACCORDS_WRITE_SAF success uri=${fileDoc.uri}")
+                        return true
+                    }
+                    Log.w("LrcDebug", "ACCORDS_WRITE_SAF failed uri=${fileDoc.uri}")
+                } else {
+                    Log.w(
+                        "LrcDebug",
+                        "ACCORDS_WRITE_SAF create_file_failed folder=${targetFolder.uri} target=$cleanTargetName"
+                    )
                 }
             }
         }
     }
+    Log.e("LrcDebug", "ACCORDS_WRITE_FAIL target=$cleanTargetName rootUri=$rootUri")
     return false
+}
+
+private fun resolveAccordsSafWritePreflightStage(context: android.content.Context): String? {
+    val rootUri = BackupFolderPrefs.getLibraryRootUri(context) ?: return null
+    if (rootUri.scheme != "content") return null
+    val hasWritePermission = hasPersistedWritePermissionForUri(context, rootUri)
+    if (hasWritePermission) return null
+
+    val persistedSnapshot = context.contentResolver.persistedUriPermissions.joinToString(separator = ", ") { p ->
+        "${p.uri}(r=${p.isReadPermission},w=${p.isWritePermission})"
+    }
+    Log.e(
+        "LrcDebug",
+        "ACCORDS_SAVE_PREFLIGHT_FAIL stage=safNoWritePermission rootUri=$rootUri persisted=[$persistedSnapshot]"
+    )
+    return "safNoWritePermission"
+}
+
+private fun hasPersistedWritePermissionForUri(
+    context: android.content.Context,
+    targetUri: Uri
+): Boolean {
+    val targetNorm = normalizeAsTreeUriForPermission(targetUri) ?: targetUri
+    val targetTreeId = extractTreeDocumentIdForPermission(targetNorm)
+        ?: extractTreeDocumentIdForPermission(targetUri)
+    return context.contentResolver.persistedUriPermissions.any { permission ->
+        val permissionNorm = normalizeAsTreeUriForPermission(permission.uri) ?: permission.uri
+        if (!permission.isWritePermission) return@any false
+
+        val exactRootMatch = permissionNorm == targetNorm
+        if (exactRootMatch) {
+            Log.d(
+                "LrcDebug",
+                "ACCORDS_SAVE_PREFLIGHT_PERMISSION_MATCH type=exact target=$targetNorm permission=${permissionNorm}"
+            )
+            return@any true
+        }
+
+        val permissionTreeId = extractTreeDocumentIdForPermission(permissionNorm)
+            ?: extractTreeDocumentIdForPermission(permission.uri)
+        val parentTreeMatch = !targetTreeId.isNullOrBlank() &&
+            !permissionTreeId.isNullOrBlank() &&
+            (targetTreeId == permissionTreeId || targetTreeId.startsWith("$permissionTreeId/"))
+        if (parentTreeMatch) {
+            Log.d(
+                "LrcDebug",
+                "ACCORDS_SAVE_PREFLIGHT_PERMISSION_MATCH type=parentTree targetTreeId=$targetTreeId permissionTreeId=$permissionTreeId target=$targetNorm permission=${permissionNorm}"
+            )
+        }
+        parentTreeMatch
+    }
+}
+
+private fun normalizeAsTreeUriForPermission(uri: Uri): Uri? {
+    val authority = uri.authority ?: return null
+    val treeId = runCatching { DocumentsContract.getTreeDocumentId(uri) }.getOrNull()
+        ?: runCatching { DocumentsContract.getDocumentId(uri) }.getOrNull()
+        ?: return null
+    return DocumentsContract.buildTreeDocumentUri(authority, treeId)
+}
+
+private fun extractTreeDocumentIdForPermission(uri: Uri): String? {
+    return runCatching { DocumentsContract.getTreeDocumentId(uri) }.getOrNull()
+        ?: runCatching { DocumentsContract.getDocumentId(uri) }.getOrNull()
 }
 
 private fun deleteLrcFromSplFolderByFileNames(
@@ -1801,35 +1945,39 @@ private fun deleteLrcFromSplFolderByFileNames(
     val cleanNames = fileNames.map { it.trim() }.filter { it.isNotBlank() }.toSet()
     if (cleanNames.isEmpty()) return false
     var deleted = false
+    val rootUri = BackupFolderPrefs.getLibraryRootUri(context)
+    val safOnlyBackend = shouldUseSafBackendForChords(rootUri)
+    logChordsBackend(rootUri, safOnlyBackend)
 
-    val fileRoots = linkedSetOf<File>().apply {
-        val rootUri = BackupFolderPrefs.getLibraryRootUri(context)
-        if (rootUri?.scheme == "file" && !rootUri.path.isNullOrBlank()) {
-            add(File(rootUri.path!!))
+    if (!safOnlyBackend) {
+        val fileRoots = linkedSetOf<File>().apply {
+            if (rootUri?.scheme == "file" && !rootUri.path.isNullOrBlank()) {
+                add(File(rootUri.path!!))
+            }
+            add(File(context.getExternalFilesDir(null), "SPL_Music"))
         }
-        add(File(context.getExternalFilesDir(null), "SPL_Music"))
-    }
 
-    for (root in fileRoots) {
-        if (!root.exists()) continue
-        val backingRoots = linkedSetOf(File(root, "BackingTracks"), File(root, "BackingTrack"))
-        for (backingRoot in backingRoots) {
-            for (alias in folderAliases) {
-                val folder = File(backingRoot, alias)
-                for (name in cleanNames) {
-                    val candidate = File(folder, name)
-                    if (candidate.exists() && candidate.isFile) {
-                        deleted = runCatching { candidate.delete() }.getOrDefault(false) || deleted
+        for (root in fileRoots) {
+            if (!root.exists()) continue
+            val backingRoots = linkedSetOf(File(root, "BackingTracks"), File(root, "BackingTrack"))
+            for (backingRoot in backingRoots) {
+                for (alias in folderAliases) {
+                    val folder = File(backingRoot, alias)
+                    for (name in cleanNames) {
+                        val candidate = File(folder, name)
+                        if (candidate.exists() && candidate.isFile) {
+                            deleted = runCatching { candidate.delete() }.getOrDefault(false) || deleted
+                        }
                     }
                 }
             }
         }
     }
 
-    val rootUri = BackupFolderPrefs.getLibraryRootUri(context)
-    if (rootUri?.scheme == "content") {
-        val rootDoc = DocumentFile.fromTreeUri(context, rootUri)
-            ?: DocumentFile.fromSingleUri(context, rootUri)
+    if (safOnlyBackend) {
+        val safRootUri = rootUri ?: return deleted
+        val rootDoc = DocumentFile.fromTreeUri(context, safRootUri)
+            ?: DocumentFile.fromSingleUri(context, safRootUri)
         if (rootDoc != null && rootDoc.isDirectory) {
             val backingDirs = findDirsByAliases(
                 parent = rootDoc,
@@ -1878,60 +2026,64 @@ private fun readLrcFromSplFolderByFileName(
 ): LrcTextWithFileName? {
     val cleanTargetName = targetName.trim()
     if (cleanTargetName.isBlank()) return null
+    val rootUri = BackupFolderPrefs.getLibraryRootUri(context)
+    val safOnlyBackend = shouldUseSafBackendForChords(rootUri)
+    logChordsBackend(rootUri, safOnlyBackend)
 
     // INTERNAL (file://) + fallback app-private SPL
-    val fileRoots = linkedSetOf<File>().apply {
-        val rootUri = BackupFolderPrefs.getLibraryRootUri(context)
-        if (rootUri?.scheme == "file" && !rootUri.path.isNullOrBlank()) {
-            add(File(rootUri.path!!))
-        }
-        add(File(context.getExternalFilesDir(null), "SPL_Music"))
-    }
-
-    for (root in fileRoots) {
-        if (!root.exists()) continue
-
-        val backingTracks = File(root, "BackingTracks")
-        val backingTrack = File(root, "BackingTrack")
-        val backingRoots = linkedSetOf(backingTracks, backingTrack)
-
-        if (ensureFolderName != null) {
-            val ensureParent = when {
-                backingTracks.exists() -> backingTracks
-                backingTrack.exists() -> backingTrack
-                else -> backingTracks
+    if (!safOnlyBackend) {
+        val fileRoots = linkedSetOf<File>().apply {
+            if (rootUri?.scheme == "file" && !rootUri.path.isNullOrBlank()) {
+                add(File(rootUri.path!!))
             }
-            if (!ensureParent.exists()) ensureParent.mkdirs()
-            val ensure = File(ensureParent, ensureFolderName)
-            if (!ensure.exists()) ensure.mkdirs()
+            add(File(context.getExternalFilesDir(null), "SPL_Music"))
         }
 
-        for (backingRoot in backingRoots) {
-            for (alias in folderAliases) {
-                val candidate = File(File(backingRoot, alias), cleanTargetName)
-                if (!debugLookupLabel.isNullOrBlank()) {
-                    Log.d("LrcDebug", "$debugLookupLabel candidate_file=${candidate.absolutePath}")
+        for (root in fileRoots) {
+            if (!root.exists()) continue
+
+            val backingTracks = File(root, "BackingTracks")
+            val backingTrack = File(root, "BackingTrack")
+            val backingRoots = linkedSetOf(backingTracks, backingTrack)
+
+            if (ensureFolderName != null) {
+                val ensureParent = when {
+                    backingTracks.exists() -> backingTracks
+                    backingTrack.exists() -> backingTrack
+                    else -> backingTracks
                 }
-                if (candidate.exists() && candidate.isFile) {
-                    val text = runCatching { candidate.readText(Charsets.UTF_8) }.getOrNull() ?: return null
+                if (!ensureParent.exists()) ensureParent.mkdirs()
+                val ensure = File(ensureParent, ensureFolderName)
+                if (!ensure.exists()) ensure.mkdirs()
+            }
+
+            for (backingRoot in backingRoots) {
+                for (alias in folderAliases) {
+                    val candidate = File(File(backingRoot, alias), cleanTargetName)
                     if (!debugLookupLabel.isNullOrBlank()) {
-                        Log.d("LrcDebug", "$debugLookupLabel hit_file=${candidate.absolutePath}")
+                        Log.d("LrcDebug", "$debugLookupLabel candidate_file=${candidate.absolutePath}")
                     }
-                    return LrcTextWithFileName(
-                        text = text,
-                        fileName = candidate.name,
-                        debugPath = candidate.absolutePath
-                    )
+                    if (candidate.exists() && candidate.isFile) {
+                        val text = runCatching { candidate.readText(Charsets.UTF_8) }.getOrNull() ?: return null
+                        if (!debugLookupLabel.isNullOrBlank()) {
+                            Log.d("LrcDebug", "$debugLookupLabel hit_file=${candidate.absolutePath}")
+                        }
+                        return LrcTextWithFileName(
+                            text = text,
+                            fileName = candidate.name,
+                            debugPath = candidate.absolutePath
+                        )
+                    }
                 }
             }
         }
     }
 
     // SAF (content://)
-    val rootUri = BackupFolderPrefs.getLibraryRootUri(context)
-    if (rootUri?.scheme == "content") {
-        val rootDoc = DocumentFile.fromTreeUri(context, rootUri)
-            ?: DocumentFile.fromSingleUri(context, rootUri)
+    if (safOnlyBackend) {
+        val safRootUri = rootUri ?: return null
+        val rootDoc = DocumentFile.fromTreeUri(context, safRootUri)
+            ?: DocumentFile.fromSingleUri(context, safRootUri)
         if (rootDoc != null && rootDoc.isDirectory) {
             val backingDirs = findDirsByAliases(
                 parent = rootDoc,
@@ -1987,6 +2139,18 @@ private fun readLrcFromSplFolderByFileName(
     }
 
     return null
+}
+
+private fun shouldUseSafBackendForChords(rootUri: Uri?): Boolean {
+    return rootUri?.scheme == "content"
+}
+
+private fun logChordsBackend(rootUri: Uri?, safOnlyBackend: Boolean) {
+    if (safOnlyBackend) {
+        Log.d("LrcDebug", "CHORDS_BACKEND SAF rootUri=$rootUri")
+    } else {
+        Log.d("LrcDebug", "CHORDS_BACKEND APP_PRIVATE rootUri=$rootUri")
+    }
 }
 
 private fun ensureOrFindDir(
