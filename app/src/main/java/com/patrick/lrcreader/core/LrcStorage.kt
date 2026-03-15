@@ -2,6 +2,7 @@ package com.patrick.lrcreader.core
 
 import android.content.Context
 import android.net.Uri
+import android.provider.OpenableColumns
 import android.util.Log
 import androidx.documentfile.provider.DocumentFile
 import java.io.File
@@ -12,81 +13,92 @@ object LrcStorage {
     data class TrackLrcOrigin(
         val source: String,
         val fileName: String?,
-        val debugPath: String?
+        val debugPath: String?,
+        val sourceType: String? = null
+    )
+
+    private data class SafResolvedFile(
+        val fileName: String,
+        val sourceType: String,
+        val file: DocumentFile
     )
 
     private const val TAG = "LRC_STORAGE"
     private const val CACHE_DIR = "lrc_cache"
+    private const val CANONICAL_PREF = "lrc_storage_canonical"
 
     // ------------------------------------------------------------
     // API
     // ------------------------------------------------------------
 
+    fun logTrackNameDiagnostics(context: Context, trackUriString: String, stage: String) {
+        if (trackUriString.isBlank()) return
+        val uri = runCatching { Uri.parse(trackUriString) }.getOrNull()
+        val audioBaseName = baseNameFromUriString(trackUriString)
+        val displayName = resolveTrackDisplayName(context, uri)
+        Log.d(
+            "LrcDebug",
+            "TRACK_NAME_DIAG stage=$stage trackUri=$trackUriString audioBaseName=$audioBaseName displayName=$displayName lastPathSegment=${uri?.lastPathSegment}"
+        )
+    }
+
     fun loadForTrack(context: Context, trackUriString: String): String? {
         if (trackUriString.isBlank()) return null
+        val safOnlyBackend = isSafBackend(context)
+        logLyricsBackend(context, safOnlyBackend)
+        logTrackNameDiagnostics(context, trackUriString, stage = "LYRICS_LOAD")
 
-        // ✅ 1) MODE INTERNE SPL EN PRIORITÉ (BackingTracks/Lyrics)
-        if (isInternalSplMode(context)) {
-            Log.i(TAG, "mode INTERNAL SPL load root=${getInternalSplRoot(context).absolutePath}")
-
-            loadFromInternalSplFolder(context, trackUriString)?.let { txt ->
-                if (txt.isNotBlank()) {
-                    Log.d(TAG, "mode INTERNAL SPL load hit FILE")
-                    return txt
-                }
+        if (safOnlyBackend) {
+            val safDir = getConfiguredSafDir(context)
+            if (safDir == null) {
+                Log.w(TAG, "mode SAF load blocked: SAF dir unavailable")
+                return null
             }
-
-            // fallback : cache interne
-            loadFromInternalCache(context, trackUriString)?.let { txt ->
-                if (txt.isNotBlank()) {
-                    Log.d(TAG, "mode INTERNAL SPL load hit INTERNAL_CACHE")
-                    return txt
-                }
-            }
-
-            Log.d(TAG, "mode INTERNAL SPL load miss")
-            return null
-        }
-
-        // ✅ 2) SAF seulement si on n'est PAS en mode interne
-        val safDir = getConfiguredSafDir(context)
-        if (safDir != null) {
             Log.i(TAG, "mode SAF load dir=${safDir.uri}")
-
-            loadFromInternalCache(context, trackUriString)?.let { txt ->
-                if (txt.isNotBlank()) {
-                    Log.d(TAG, "mode SAF load hit INTERNAL_CACHE")
-                    return txt
+            val resolved = resolveSafExistingFile(context, trackUriString, safDir)
+            if (resolved != null) {
+                rememberCanonicalFileName(context, trackUriString, resolved.fileName)
+                Log.d("LrcDebug", "LYRICS_SOURCE_TYPE ${resolved.sourceType}")
+                val text = readSafText(context, resolved.file)
+                Log.d(
+                    "LrcDebug",
+                    "LYRICS_READ_RESULT file=${resolved.fileName} textLen=${text?.length ?: -1} blank=${text.isNullOrBlank()}"
+                )
+                if (!text.isNullOrBlank()) {
+                    Log.d(TAG, "mode SAF load hit CONFIGURED file=${resolved.fileName}")
+                    return text
                 }
             }
-
-            loadFromConfiguredFolder(context, trackUriString)?.let { txt ->
-                if (txt.isNotBlank()) {
-                    Log.d(TAG, "mode SAF load hit CONFIGURED")
-                    return txt
-                }
-            }
-
             Log.d(TAG, "mode SAF load miss")
             return null
         }
 
-        // 3) Mode inconnu : fallback cache interne
-        loadFromInternalCache(context, trackUriString)?.let { txt ->
+        // ✅ 1) MODE INTERNE SPL EN PRIORITÉ (BackingTracks/Lyrics)
+        Log.i(TAG, "mode INTERNAL SPL load root=${getInternalSplRoot(context).absolutePath}")
+        loadFromInternalSplFolder(context, trackUriString)?.let { txt ->
             if (txt.isNotBlank()) {
-                Log.d(TAG, "mode UNKNOWN load hit INTERNAL_CACHE")
+                Log.d(TAG, "mode INTERNAL SPL load hit FILE")
                 return txt
             }
         }
 
-        Log.d(TAG, "mode UNKNOWN load miss")
+        // fallback : cache interne
+        loadFromInternalCache(context, trackUriString)?.let { txt ->
+            if (txt.isNotBlank()) {
+                Log.d(TAG, "mode INTERNAL SPL load hit INTERNAL_CACHE")
+                return txt
+            }
+        }
+        Log.d(TAG, "mode INTERNAL SPL load miss")
         return null
     }
 
     fun resolveOriginForTrack(context: Context, trackUriString: String): TrackLrcOrigin? {
         if (trackUriString.isBlank()) return null
+        val safOnlyBackend = isSafBackend(context)
+        logLyricsBackend(context, safOnlyBackend)
 
-        if (isInternalSplMode(context)) {
+        if (!safOnlyBackend) {
             val (upperDir, lowerDir) = internalSplLyricsDirs(context)
             val sidecar = sidecarNameForTrack(trackUriString)
 
@@ -122,35 +134,22 @@ object LrcStorage {
 
         val safDir = getConfiguredSafDir(context)
         if (safDir != null) {
-            val cache = internalFile(context, trackUriString)
-            if (cache.exists() && cache.isFile) {
+            val resolved = resolveSafExistingFile(context, trackUriString, safDir)
+            if (resolved != null) {
+                rememberCanonicalFileName(context, trackUriString, resolved.fileName)
                 return TrackLrcOrigin(
-                    source = "LRC_STORAGE_INTERNAL_CACHE",
-                    fileName = cache.name,
-                    debugPath = cache.absolutePath
-                )
-            }
-
-            val fileName = fileNameForTrack(trackUriString)
-            val file = safDir.findFile(fileName)
-            if (file != null && file.isFile) {
-                return TrackLrcOrigin(
-                    source = "LRC_STORAGE_SAF_CONFIGURED",
-                    fileName = file.name ?: fileName,
-                    debugPath = file.uri.toString()
+                    source = if (resolved.sourceType == "canonical") {
+                        "LRC_STORAGE_SAF_CANONICAL"
+                    } else {
+                        "LRC_STORAGE_SAF_LEGACY"
+                    },
+                    fileName = resolved.fileName,
+                    debugPath = resolved.file.uri.toString(),
+                    sourceType = resolved.sourceType
                 )
             }
 
             return null
-        }
-
-        val cache = internalFile(context, trackUriString)
-        if (cache.exists() && cache.isFile) {
-            return TrackLrcOrigin(
-                source = "LRC_STORAGE_INTERNAL_CACHE",
-                fileName = cache.name,
-                debugPath = cache.absolutePath
-            )
         }
         return null
     }
@@ -162,49 +161,94 @@ object LrcStorage {
         )
         if (trackUriString.isBlank()) return
         val text = linesToLrcText(lines)
+        val safOnlyBackend = isSafBackend(context)
+        logLyricsBackend(context, safOnlyBackend)
 
-        // ✅ 1) MODE INTERNE SPL EN PRIORITÉ : écrit dans BackingTracks/Lyrics/<base>.lrc
-        if (isInternalSplMode(context)) {
+        if (safOnlyBackend) {
+            val safDir = getConfiguredSafDir(context)
+            if (safDir == null) {
+                Log.w(TAG, "mode SAF save blocked: SAF dir unavailable")
+                return
+            }
+            Log.i(TAG, "mode SAF save dir=${safDir.uri}")
+            val targetFileName = resolveSafWriteTargetFileName(context, trackUriString, safDir)
+            val savedPath = saveToConfiguredFolder(context, safDir, targetFileName, text)
+            val okConfigured = !savedPath.isNullOrBlank()
+            if (okConfigured) {
+                rememberCanonicalFileName(context, trackUriString, targetFileName)
+                Log.i("LrcDebug", "LRC_SAVE path=$savedPath")
+            }
+            Log.i(TAG, "mode SAF save configured=$okConfigured len=${text.length} file=$targetFileName")
+            return
+        }
+
+        // ✅ MODE INTERNE SPL : écrit dans BackingTracks/Lyrics/<base>.lrc
+        if (!safOnlyBackend) {
             Log.i(TAG, "mode INTERNAL SPL save root=${getInternalSplRoot(context).absolutePath}")
             val okFile = saveToInternalSplFolder(context, trackUriString, text)
             val okInternal = saveToInternalCache(context, trackUriString, text)
+            if (okFile) {
+                val (upperDir, _) = internalSplLyricsDirs(context)
+                val outFile = File(upperDir, sidecarNameForTrack(trackUriString))
+                Log.i("LrcDebug", "LRC_SAVE path=${outFile.absolutePath}")
+            }
             Log.i(TAG, "mode INTERNAL SPL save file=$okFile internalCache=$okInternal len=${text.length}")
             return
         }
-
-        // ✅ 2) SAF si pas interne
-        val safDir = getConfiguredSafDir(context)
-        if (safDir != null) {
-            Log.i(TAG, "mode SAF save dir=${safDir.uri}")
-            val okInternal = saveToInternalCache(context, trackUriString, text)
-            val okConfigured = saveToConfiguredFolder(context, trackUriString, text)
-            Log.i(TAG, "mode SAF save internalCache=$okInternal configured=$okConfigured len=${text.length}")
-            return
-        }
-
-        val okInternal = saveToInternalCache(context, trackUriString, text)
-        Log.w(TAG, "mode UNKNOWN save internalCache=$okInternal len=${text.length}")
     }
 
     fun deleteForTrack(context: Context, trackUriString: String) {
         if (trackUriString.isBlank()) return
+        val safOnlyBackend = isSafBackend(context)
+        logLyricsBackend(context, safOnlyBackend)
+
+        if (safOnlyBackend) {
+            runCatching {
+                val safDir = getConfiguredSafDir(context)
+                if (safDir == null) {
+                    Log.w(TAG, "mode SAF delete blocked: SAF dir unavailable")
+                    return@runCatching
+                }
+                val targetNames = linkedSetOf<String>().apply {
+                    getRememberedCanonicalFileName(context, trackUriString)
+                        ?.takeIf { it.isNotBlank() }
+                        ?.let { add(it) }
+                    add(fileNameForTrack(trackUriString))
+                    add(sidecarNameForTrack(trackUriString))
+                }
+                targetNames.forEach { name ->
+                    findFileIgnoreCase(safDir, name)?.let { doc ->
+                        val deleted = runCatching { doc.delete() }.getOrDefault(false)
+                        if (deleted) {
+                            Log.i("LrcDebug", "LRC_DELETE path=${doc.uri}")
+                        }
+                    }
+                }
+                clearRememberedCanonicalFileName(context, trackUriString)
+            }
+            return
+        }
 
         // cache interne
-        runCatching { internalFile(context, trackUriString).delete() }
-
-        // SAF (hash)
         runCatching {
-            val safDir = getConfiguredSafDir(context) ?: return@runCatching
-            val fileName = fileNameForTrack(trackUriString)
-            safDir.findFile(fileName)?.delete()
+            val cache = internalFile(context, trackUriString)
+            if (cache.delete()) {
+                Log.i("LrcDebug", "LRC_DELETE path=${cache.absolutePath}")
+            }
         }
 
         // INTERNAL SPL sidecar
         runCatching {
             val (upperDir, lowerDir) = internalSplLyricsDirs(context)
             val sidecar = sidecarNameForTrack(trackUriString)
-            File(upperDir, sidecar).delete()
-            File(lowerDir, sidecar).delete()
+            val upper = File(upperDir, sidecar)
+            val lower = File(lowerDir, sidecar)
+            if (upper.delete()) {
+                Log.i("LrcDebug", "LRC_DELETE path=${upper.absolutePath}")
+            }
+            if (lower.delete()) {
+                Log.i("LrcDebug", "LRC_DELETE path=${lower.absolutePath}")
+            }
         }
     }
 
@@ -217,20 +261,211 @@ object LrcStorage {
     // ------------------------------------------------------------
 
     private fun getConfiguredSafDir(context: Context): DocumentFile? {
-        val folderUri = LyricsFolderPrefs.get(context) ?: return null
-        if (folderUri.scheme != "content") return null
-        val dir = DocumentFile.fromTreeUri(context, folderUri) ?: return null
-        return if (dir.isDirectory && dir.canRead()) dir else null
+        val explicitPrefUri = LyricsFolderPrefs.get(context)
+        Log.d("LrcDebug", "LYRICS_SAF_DIR explicitPrefUri=$explicitPrefUri")
+        val explicitDir = explicitPrefUri
+            ?.takeIf { it.scheme == "content" }
+            ?.let { folderUri ->
+                DocumentFile.fromTreeUri(context, folderUri)
+            }
+            ?.takeIf { it.isDirectory && it.canRead() }
+        Log.d(
+            "LrcDebug",
+            "LYRICS_SAF_DIR explicitResolved=${explicitDir?.uri} explicitChildren=${explicitDir?.let { listChildNames(it) }}"
+        )
+        if (explicitDir != null) {
+            return explicitDir
+        }
+
+        val fallbackDir = resolveSafLyricsDirFromLibraryRoot(context)
+        if (fallbackDir != null) {
+            Log.i(TAG, "mode SAF fallback lyrics dir=${fallbackDir.uri}")
+            LyricsFolderPrefs.save(context, fallbackDir.uri)
+        }
+        return fallbackDir
     }
 
-    private fun loadFromConfiguredFolder(context: Context, trackUriString: String): String? {
-        val dir = getConfiguredSafDir(context) ?: return null
-        val fileName = fileNameForTrack(trackUriString)
-        val file = dir.findFile(fileName) ?: return null
-        if (!file.isFile) return null
+    private fun resolveSafLyricsDirFromLibraryRoot(context: Context): DocumentFile? {
+        val rootUri = BackupFolderPrefs.getLibraryRootUri(context) ?: return null
+        Log.d("LrcDebug", "LYRICS_SAF_DIR fallbackRoot=$rootUri")
+        if (rootUri.scheme != "content") return null
+        val rootDoc = DocumentFile.fromTreeUri(context, rootUri)
+            ?: DocumentFile.fromSingleUri(context, rootUri)
+            ?: return null
+        if (!rootDoc.isDirectory || !rootDoc.canRead()) return null
 
-        Log.d(TAG, "mode SAF load uri=${file.uri}")
+        val backingTracks = findDirByAliases(rootDoc, listOf("BackingTracks", "BackingTrack"))
+        Log.d(
+            "LrcDebug",
+            "LYRICS_SAF_DIR backingTracks=${backingTracks?.uri} rootChildren=${listChildNames(rootDoc)}"
+        )
+        val safeBackingTracks = backingTracks ?: return null
+        val lyricsDir = findDirByAliases(safeBackingTracks, listOf("Lyrics", "lyrics"))
+        Log.d(
+            "LrcDebug",
+            "LYRICS_SAF_DIR resolvedLyricsDir=${lyricsDir?.uri} backingChildren=${listChildNames(safeBackingTracks)}"
+        )
+        val safeLyricsDir = lyricsDir ?: return null
+        Log.d(
+            "LrcDebug",
+            "LYRICS_SAF_DIR children=${listChildNames(safeLyricsDir)}"
+        )
+        return safeLyricsDir.takeIf { it.isDirectory && it.canRead() }
+    }
 
+    private fun findDirByAliases(parent: DocumentFile, aliases: List<String>): DocumentFile? {
+        val normalizedAliases = aliases.map { normalizeDirName(it) }.toSet()
+        return parent.listFiles().firstOrNull { child ->
+            child.isDirectory && normalizedAliases.contains(normalizeDirName(child.name.orEmpty()))
+        }
+    }
+
+    private fun normalizeDirName(name: String): String {
+        return name.trim().lowercase()
+    }
+
+    private fun resolveSafExistingFile(
+        context: Context,
+        trackUriString: String,
+        dir: DocumentFile
+    ): SafResolvedFile? {
+        val base = baseNameFromUriString(trackUriString)
+        val remembered = getRememberedCanonicalFileName(context, trackUriString)
+        val canonicalHashed = fileNameForTrack(trackUriString)
+        val sidecar = sidecarNameForTrack(trackUriString)
+        val children = listChildNames(dir)
+        Log.d(
+            "LrcDebug",
+            "LYRICS_LOOKUP_START trackUri=$trackUriString base=$base dir=${dir.uri}"
+        )
+        Log.d(
+            "LrcDebug",
+            "LYRICS_LOOKUP_TARGETS remembered=$remembered canonicalHashed=$canonicalHashed sidecar=$sidecar"
+        )
+        Log.d(
+            "LrcDebug",
+            "LYRICS_LOOKUP_CHILDREN dir=${dir.uri} childNames=$children"
+        )
+        if (!remembered.isNullOrBlank()) {
+            val rememberedFile = findFileIgnoreCaseOrLrcTxt(dir, remembered)
+            Log.d(
+                "LrcDebug",
+                "LYRICS_LOOKUP_REMEMBERED hit=${rememberedFile != null} target=$remembered"
+            )
+            if (rememberedFile != null && rememberedFile.isFile) {
+                Log.d(
+                    "LrcDebug",
+                    "LYRICS_LOOKUP_RESULT source=remembered file=${rememberedFile.name ?: remembered}"
+                )
+                return SafResolvedFile(
+                    fileName = rememberedFile.name ?: remembered,
+                    sourceType = "canonical",
+                    file = rememberedFile
+                )
+            }
+        } else {
+            Log.d("LrcDebug", "LYRICS_LOOKUP_REMEMBERED hit=false target=null")
+        }
+
+        val hashedFile = findFileIgnoreCaseOrLrcTxt(dir, canonicalHashed)
+        Log.d(
+            "LrcDebug",
+            "LYRICS_LOOKUP_CANONICAL hit=${hashedFile != null} target=$canonicalHashed"
+        )
+        if (hashedFile != null && hashedFile.isFile) {
+            Log.d(
+                "LrcDebug",
+                "LYRICS_LOOKUP_RESULT source=canonical file=${hashedFile.name ?: canonicalHashed}"
+            )
+            return SafResolvedFile(
+                fileName = hashedFile.name ?: canonicalHashed,
+                sourceType = "canonical",
+                file = hashedFile
+            )
+        }
+
+        val sidecarFile = findFileIgnoreCaseOrLrcTxt(dir, sidecar)
+        Log.d(
+            "LrcDebug",
+            "LYRICS_LOOKUP_SIDECAR hit=${sidecarFile != null} target=$sidecar"
+        )
+        if (sidecarFile != null && sidecarFile.isFile) {
+            Log.d(
+                "LrcDebug",
+                "LYRICS_LOOKUP_RESULT source=sidecar file=${sidecarFile.name ?: sidecar}"
+            )
+            return SafResolvedFile(
+                fileName = sidecarFile.name ?: sidecar,
+                sourceType = "legacy",
+                file = sidecarFile
+            )
+        }
+
+        val legacyMatches = dir.listFiles()
+            .filter { it.isFile }
+            .filter { child ->
+                val name = child.name.orEmpty()
+                name.startsWith("$base-", ignoreCase = true) &&
+                    (
+                        name.endsWith(".lrc", ignoreCase = true) ||
+                            name.endsWith(".lrc.txt", ignoreCase = true)
+                        )
+            }
+        Log.d(
+            "LrcDebug",
+            "LYRICS_LOOKUP_LEGACY prefix=$base- matches=${legacyMatches.map { it.name.orEmpty() }}"
+        )
+        val prefixedLegacy = legacyMatches.firstOrNull()
+        if (prefixedLegacy != null) {
+            Log.d(
+                "LrcDebug",
+                "LYRICS_LOOKUP_RESULT source=legacy file=${prefixedLegacy.name ?: canonicalHashed}"
+            )
+            return SafResolvedFile(
+                fileName = prefixedLegacy.name ?: canonicalHashed,
+                sourceType = "legacy",
+                file = prefixedLegacy
+            )
+        }
+
+        Log.d("LrcDebug", "LYRICS_LOOKUP_RESULT source=none file=null")
+        return null
+    }
+
+    private fun resolveSafWriteTargetFileName(
+        context: Context,
+        trackUriString: String,
+        dir: DocumentFile
+    ): String {
+        val existing = resolveSafExistingFile(context, trackUriString, dir)
+        if (existing != null) return existing.fileName
+        val remembered = getRememberedCanonicalFileName(context, trackUriString)
+        if (!remembered.isNullOrBlank()) return remembered
+        return fileNameForTrack(trackUriString)
+    }
+
+    private fun saveToConfiguredFolder(
+        context: Context,
+        dir: DocumentFile,
+        targetFileName: String,
+        text: String
+    ): String? {
+        if (targetFileName.isBlank()) return null
+        return runCatching {
+            val existing = findFileIgnoreCase(dir, targetFileName)
+            val target = existing ?: dir.createFile("application/octet-stream", targetFileName) ?: return null
+            Log.d(TAG, "mode SAF save uri=${target.uri}")
+
+            context.contentResolver.openOutputStream(target.uri, "w")?.use { out ->
+                out.write(text.toByteArray(Charsets.UTF_8))
+                out.flush()
+            } ?: return null
+
+            target.uri.toString()
+        }.getOrNull()
+    }
+
+    private fun readSafText(context: Context, file: DocumentFile): String? {
         return runCatching {
             context.contentResolver.openInputStream(file.uri)
                 ?.bufferedReader(Charsets.UTF_8)
@@ -238,33 +473,109 @@ object LrcStorage {
         }.getOrNull()
     }
 
-    private fun saveToConfiguredFolder(context: Context, trackUriString: String, text: String): Boolean {
-        val dir = getConfiguredSafDir(context) ?: return false
-        val fileName = fileNameForTrack(trackUriString)
-
+    private fun listChildNames(dir: DocumentFile): List<String> {
         return runCatching {
-            val existing = dir.findFile(fileName)
-            val target = existing ?: dir.createFile("application/octet-stream", fileName) ?: return false
-            Log.d(TAG, "mode SAF save uri=${target.uri}")
+            dir.listFiles().map { child ->
+                val kind = if (child.isDirectory) "dir" else "file"
+                "${child.name.orEmpty()}<$kind>"
+            }
+        }.getOrDefault(emptyList())
+    }
 
-            context.contentResolver.openOutputStream(target.uri, "w")?.use { out ->
-                out.write(text.toByteArray(Charsets.UTF_8))
-                out.flush()
-            } ?: return false
+    private fun findFileIgnoreCase(dir: DocumentFile, targetFileName: String): DocumentFile? {
+        return dir.listFiles().firstOrNull { child ->
+            child.isFile && child.name.orEmpty().equals(targetFileName, ignoreCase = true)
+        }
+    }
 
-            true
-        }.getOrDefault(false)
+    private fun findFileIgnoreCaseOrLrcTxt(dir: DocumentFile, targetFileName: String): DocumentFile? {
+        findFileIgnoreCase(dir, targetFileName)?.let { return it }
+        val txtVariant = lrcTxtVariant(targetFileName) ?: return null
+        return findFileIgnoreCase(dir, txtVariant)
+    }
+
+    private fun lrcTxtVariant(targetFileName: String): String? {
+        val trimmed = targetFileName.trim()
+        return if (trimmed.endsWith(".lrc", ignoreCase = true)) {
+            "$trimmed.txt"
+        } else {
+            null
+        }
+    }
+
+    private fun resolveTrackDisplayName(context: Context, uri: Uri?): String? {
+        if (uri == null) return null
+        if (uri.scheme == "file") {
+            return uri.path?.let { File(it).name }?.takeIf { it.isNotBlank() }
+        }
+
+        if (uri.scheme == "content") {
+            runCatching {
+                context.contentResolver.query(
+                    uri,
+                    arrayOf(OpenableColumns.DISPLAY_NAME),
+                    null,
+                    null,
+                    null
+                )?.use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        val idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                        if (idx >= 0) {
+                            cursor.getString(idx)
+                        } else {
+                            null
+                        }
+                    } else {
+                        null
+                    }
+                }
+            }.getOrNull()?.takeIf { it.isNotBlank() }?.let { return it }
+        }
+
+        return DocumentFile.fromSingleUri(context, uri)?.name
+            ?.takeIf { it.isNotBlank() }
+            ?: DocumentFile.fromTreeUri(context, uri)?.name?.takeIf { it.isNotBlank() }
+    }
+
+    private fun rememberCanonicalFileName(context: Context, trackUriString: String, fileName: String) {
+        if (trackUriString.isBlank() || fileName.isBlank()) return
+        context.getSharedPreferences(CANONICAL_PREF, Context.MODE_PRIVATE)
+            .edit()
+            .putString(md5(trackUriString), fileName)
+            .apply()
+    }
+
+    private fun getRememberedCanonicalFileName(context: Context, trackUriString: String): String? {
+        if (trackUriString.isBlank()) return null
+        return context.getSharedPreferences(CANONICAL_PREF, Context.MODE_PRIVATE)
+            .getString(md5(trackUriString), null)
+    }
+
+    private fun clearRememberedCanonicalFileName(context: Context, trackUriString: String) {
+        if (trackUriString.isBlank()) return
+        context.getSharedPreferences(CANONICAL_PREF, Context.MODE_PRIVATE)
+            .edit()
+            .remove(md5(trackUriString))
+            .apply()
     }
 
     // ------------------------------------------------------------
     // INTERNAL SPL
     // ------------------------------------------------------------
 
-    private fun isInternalSplMode(context: Context): Boolean {
-        // Si l'utilisateur a choisi une racine SAF (content://), alors ce n'est PAS du mode interne
-        val rootUri = BackupFolderPrefs.getLibraryRootUri(context)
-        return rootUri == null || rootUri.scheme == "file"
+    private fun isSafBackend(context: Context): Boolean {
+        return BackupFolderPrefs.getLibraryRootUri(context)?.scheme == "content"
     }
+
+    private fun logLyricsBackend(context: Context, safOnlyBackend: Boolean) {
+        val rootUri = BackupFolderPrefs.getLibraryRootUri(context)
+        if (safOnlyBackend) {
+            Log.d("LrcDebug", "LYRICS_BACKEND SAF rootUri=$rootUri")
+        } else {
+            Log.d("LrcDebug", "LYRICS_BACKEND APP_PRIVATE rootUri=$rootUri")
+        }
+    }
+
     private fun getInternalSplRoot(context: Context): File {
         val rootUri = BackupFolderPrefs.getLibraryRootUri(context)
         val fromPrefs = if (rootUri?.scheme == "file" && !rootUri.path.isNullOrBlank()) {
