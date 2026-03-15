@@ -188,6 +188,10 @@ fun PlayerScreen(
     var selectedViewMode by remember(currentTrackUri) { mutableStateOf(LyricsViewMode.LYRICS) }
     var parsedChordLines by remember(currentTrackUri) { mutableStateOf<List<LrcLine>>(emptyList()) }
     var chordsLoading by remember(currentTrackUri) { mutableStateOf(false) }
+    var lyricsResolving by remember(currentTrackUri) { mutableStateOf(false) }
+    var lyricsResolutionCompleted by remember(currentTrackUri) {
+        mutableStateOf(currentTrackUri == null)
+    }
     var hasLyricsSource by remember(currentTrackUri) { mutableStateOf(false) }
     var hasChordsSource by remember(currentTrackUri) { mutableStateOf(false) }
     var persistedChordLines by remember(currentTrackUri) { mutableStateOf<List<LrcLine>>(emptyList()) }
@@ -357,7 +361,13 @@ fun PlayerScreen(
 
     // 🔁 reload paroles (priorité : SYLT -> EDIT (LrcStorage) -> SIDECAR -> USLT)
     LaunchedEffect(currentTrackUri) {
-        if (isEditingLyrics) return@LaunchedEffect
+        if (isEditingLyrics) {
+            lyricsResolutionCompleted = true
+            return@LaunchedEffect
+        }
+        lyricsResolutionCompleted = false
+        lyricsResolving = true
+        try {
         if (currentTrackUri == null) {
             onParsedLinesChange(emptyList())
             rawLyricsText = ""
@@ -386,6 +396,7 @@ fun PlayerScreen(
             rawLyricsText = parsed.joinToString("\n") { it.text }
             seedEditingLinesIfBetter(parsed)
             hasLyricsSource = true
+            Log.d("LrcDebug", "LYRICS_SOURCE_TYPE embedded")
             updateResolvedLyricsFileName(null, "source=SYLT")
             return@LaunchedEffect
         }
@@ -403,6 +414,7 @@ fun PlayerScreen(
                 "LrcDebug",
                 "LYRICS_SOURCE source=LRC_STORAGE origin=${storedOrigin?.source} fileName=${storedOrigin?.fileName} path=${storedOrigin?.debugPath}"
             )
+            Log.d("LrcDebug", "LYRICS_SOURCE_TYPE ${storedOrigin?.sourceType ?: "canonical"}")
             val parsed = parseLrc(stored)
             onParsedLinesChange(parsed)
             rawLyricsText = parsed.joinToString("\n") { it.text }
@@ -428,6 +440,7 @@ fun PlayerScreen(
                 "LrcDebug",
                 "LYRICS_SOURCE source=SIDECAR fileName=${sidecarLrcResult.fileName} path=${sidecarLrcResult.debugPath}"
             )
+            Log.d("LrcDebug", "LYRICS_SOURCE_TYPE legacy")
             val parsed = if (sidecarLrcResult.text.isNotBlank()) parseLrc(sidecarLrcResult.text) else emptyList()
             onParsedLinesChange(parsed)
             rawLyricsText = parsed.joinToString("\n") { it.text }
@@ -453,6 +466,7 @@ fun PlayerScreen(
             rawLyricsText = parsed.joinToString("\n") { it.text }
             seedEditingLinesIfBetter(parsed)
             hasLyricsSource = true
+            Log.d("LrcDebug", "LYRICS_SOURCE_TYPE embedded")
             updateResolvedLyricsFileName(null, "source=USLT")
             return@LaunchedEffect
         }
@@ -463,6 +477,10 @@ fun PlayerScreen(
         hasLyricsSource = false
         Log.d("LrcDebug", "LYRICS_SOURCE source=NONE")
         updateResolvedLyricsFileName(null, "source=NONE")
+        } finally {
+            lyricsResolving = false
+            lyricsResolutionCompleted = true
+        }
     }
 
     // 🔁 reload accords dédiés (BackingTracks/Accords/<base>.lrc)
@@ -747,28 +765,60 @@ fun PlayerScreen(
                     }
 
                     currentTrackUri?.let { trackUri ->
-                        runCatching {
-                            LrcStorage.saveForTrack(
-                                context = context,
-                                trackUriString = trackUri,
-                                lines = lines
-                            )
-                            val resolvedFileName = resolveExactLrcFileNameForTrack(
-                                context = context,
-                                trackUriString = trackUri,
-                                preferredLrcFileName = resolvedLyricsLrcFileName
-                            )
-                            if (resolvedFileName.isNotBlank()) {
+                        val preferredAtSave = resolvedLyricsLrcFileName
+                        val saveStartMs = android.os.SystemClock.elapsedRealtime()
+                        Log.d(
+                            "LrcDebug",
+                            "LYRICS_SAVE_ASYNC start trackUri=$trackUri lines=${lines.size}"
+                        )
+                        scope.launch {
+                            val resolvedFileName = withContext(Dispatchers.IO) {
+                                runCatching {
+                                    LrcStorage.saveForTrack(
+                                        context = context,
+                                        trackUriString = trackUri,
+                                        lines = lines
+                                    )
+                                    LrcStorage.resolveOriginForTrack(
+                                        context = context,
+                                        trackUriString = trackUri
+                                    )?.fileName
+                                        ?: resolveExactLrcFileNameForTrack(
+                                            context = context,
+                                            trackUriString = trackUri,
+                                            preferredLrcFileName = preferredAtSave
+                                        )
+                                }.onFailure { error ->
+                                    Log.e(
+                                        "LrcDebug",
+                                        "LYRICS_SAVE_ASYNC failed trackUri=$trackUri",
+                                        error
+                                    )
+                                }.getOrNull()
+                            }
+
+                            if (!resolvedFileName.isNullOrBlank() && latestCurrentTrackUri == trackUri) {
                                 updateResolvedLyricsFileName(
                                     resolvedFileName,
                                     "source=LYRICS_SAVE"
                                 )
-                                ensureAccordsFileExistsForTrack(
-                                    context = context,
-                                    trackUriString = trackUri,
-                                    preferredLrcFileName = resolvedFileName
-                                )
                             }
+
+                            if (!resolvedFileName.isNullOrBlank()) {
+                                launch(Dispatchers.IO) {
+                                    ensureAccordsFileExistsForTrack(
+                                        context = context,
+                                        trackUriString = trackUri,
+                                        preferredLrcFileName = resolvedFileName
+                                    )
+                                }
+                            }
+
+                            val elapsedMs = android.os.SystemClock.elapsedRealtime() - saveStartMs
+                            Log.d(
+                                "LrcDebug",
+                                "LYRICS_SAVE_ASYNC end trackUri=$trackUri durationMs=$elapsedMs resolved=$resolvedFileName"
+                            )
                         }
                     }
                     true
@@ -989,7 +1039,7 @@ fun PlayerScreen(
                                     listState = listState,
                                     parsedLines = parsedLines,
                                     currentTrackUri = currentTrackUri,
-                                    lyricsLoading = lyricsLoading,
+                                    lyricsLoading = lyricsLoading || lyricsResolving || !lyricsResolutionCompleted,
                                     isConcertMode = isConcertMode,
                                     currentLrcIndex = safeLrcIndex,
                                     onLyricsBoxHeightChange = { lyricsBoxHeightPx = it },
@@ -1534,7 +1584,11 @@ private fun readAccordsFromSplByTrackUri(
         ensureFolderName = "Accords",
         debugLookupLabel = "ACCORDS_LOOKUP"
     )
-    if (byPreferred != null) return byPreferred.text
+    if (byPreferred != null) {
+        val sourceType = if (!preferredLrcFileName.isNullOrBlank()) "canonical" else "legacy"
+        Log.d("LrcDebug", "CHORDS_SOURCE_TYPE $sourceType")
+        return byPreferred.text
+    }
 
     if (!preferredLrcFileName.isNullOrBlank()) {
         Log.d(
@@ -1554,6 +1608,7 @@ private fun readAccordsFromSplByTrackUri(
     )
     if (byHashedFallback != null) {
         Log.d("LrcDebug", "ACCORDS_LOOKUP hit hashedFallback target=$hashedTarget")
+        Log.d("LrcDebug", "CHORDS_SOURCE_TYPE canonical")
         return byHashedFallback.text
     }
 
@@ -1562,13 +1617,17 @@ private fun readAccordsFromSplByTrackUri(
         "LrcDebug",
         "ACCORDS_LOOKUP fallback_to_audio_base fallbackBaseName=$fallbackBaseName reason=no_runtime_resolved_lyrics_filename"
     )
-    return readLrcFromSplFolderByBaseName(
+    val byBaseFallback = readLrcFromSplFolderByBaseName(
         context = context,
         baseName = fallbackBaseName,
         folderAliases = listOf("Accords", "accords"),
         ensureFolderName = "Accords",
         debugLookupLabel = "ACCORDS_LOOKUP_FALLBACK"
-    )?.text
+    )
+    if (byBaseFallback != null) {
+        Log.d("LrcDebug", "CHORDS_SOURCE_TYPE legacy")
+    }
+    return byBaseFallback?.text
 }
 
 private fun resolveExactLrcFileNameForTrack(
@@ -1679,7 +1738,11 @@ private fun writeAccordsToSplByTrackUri(
         ensureFolderName = "Accords",
         text = linesToLrcText(lines)
     )
-    return if (ok) targetName else null
+    if (ok) {
+        Log.i("LrcDebug", "ACCORDS_SAVE path=BackingTracks/Accords/$targetName")
+        return targetName
+    }
+    return null
 }
 
 private fun deleteAccordsFromSplByTrackUri(
@@ -1966,7 +2029,11 @@ private fun deleteLrcFromSplFolderByFileNames(
                     for (name in cleanNames) {
                         val candidate = File(folder, name)
                         if (candidate.exists() && candidate.isFile) {
-                            deleted = runCatching { candidate.delete() }.getOrDefault(false) || deleted
+                            val didDelete = runCatching { candidate.delete() }.getOrDefault(false)
+                            if (didDelete) {
+                                Log.i("LrcDebug", "ACCORDS_DELETE path=${candidate.absolutePath}")
+                            }
+                            deleted = didDelete || deleted
                         }
                     }
                 }
@@ -1988,7 +2055,11 @@ private fun deleteLrcFromSplFolderByFileNames(
                 targetFolders.forEach { targetFolder ->
                     targetFolder.listFiles().forEach { child ->
                         if (child.isFile && cleanNames.any { it.equals(child.name, ignoreCase = true) }) {
-                            deleted = runCatching { child.delete() }.getOrDefault(false) || deleted
+                            val didDelete = runCatching { child.delete() }.getOrDefault(false)
+                            if (didDelete) {
+                                Log.i("LrcDebug", "ACCORDS_DELETE path=${child.uri}")
+                            }
+                            deleted = didDelete || deleted
                         }
                     }
                 }
