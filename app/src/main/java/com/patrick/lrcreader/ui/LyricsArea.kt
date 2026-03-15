@@ -45,7 +45,7 @@ fun LyricsAreaLazy(
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 val message = when {
                     currentTrackUri == null -> stringResource(R.string.lyrics_none)
-                    lyricsLoading -> "Chargement..."
+                    lyricsLoading -> stringResource(R.string.lyrics_loading)
                     else -> stringResource(R.string.lyrics_none)
                 }
                 Text(message, color = Color.Gray)

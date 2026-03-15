@@ -194,6 +194,7 @@
     <string name="backup_unknown_error">erreur inconnue</string>
 
     <!-- Player / Lyrics -->
+    <string name="lyrics_loading">Chargement…</string>
     <string name="lyrics_none">Aucune parole</string>
     <string name="chords_none">Aucun accord</string>
     <string name="player_view_lyrics">Paroles</string>

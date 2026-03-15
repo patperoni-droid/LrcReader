@@ -200,6 +200,7 @@
     <string name="backup_unknown_error">unknown error</string>
 
     <!-- Player / Lyrics -->
+    <string name="lyrics_loading">Loading…</string>
     <string name="lyrics_none">No lyrics</string>
     <string name="chords_none">No chords</string>
     <string name="player_view_lyrics">Lyrics</string>
