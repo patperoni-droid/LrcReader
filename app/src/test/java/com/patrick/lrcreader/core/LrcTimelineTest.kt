@@ -27,6 +27,16 @@ class LrcTimelineTest {
     }
 
     @Test
+    fun resolveLyricsViewMode_defaultsToLyricsWhenNothingAvailable() {
+        val mode = resolveLyricsViewMode(
+            current = LyricsViewMode.LYRICS,
+            hasLyrics = false,
+            hasChords = false
+        )
+        assertEquals(LyricsViewMode.LYRICS, mode)
+    }
+
+    @Test
     fun computeLyricsChordsUiState_hidesToggleAndShowsMissingMessageWhenNoChords() {
         val ui = computeLyricsChordsUiState(hasLyrics = true, hasChords = false)
         assertEquals(false, ui.showToggle)

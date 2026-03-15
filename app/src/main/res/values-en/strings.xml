@@ -242,10 +242,14 @@
     <string name="setup_downloads_blocked_message">This phone does not let you go back up to Documents.\n\n✅ Solution: switch to internal mode (reliable on older phones).\n➡️ No impact on your main phone.</string>
     <string name="setup_continue_internal_mode">Continue (internal mode)</string>
     <string name="setup_retry">Try again</string>
-    <string name="setup_import_prompt_title">Import music?</string>
-    <string name="setup_import_prompt_subtitle">You can import now, or do it later from the library.</string>
+    <string name="setup_import_prompt_title">What would you like to do?</string>
+    <string name="setup_import_prompt_subtitle">You can import your music, install the demo, or do it later from the library.</string>
     <string name="setup_import_later">Later</string>
-    <string name="setup_import_now">Import</string>
+    <string name="setup_import_now">Import my music</string>
+    <string name="setup_install_demo">Install demo</string>
+    <string name="setup_install_demo_progress">Installing demo…</string>
+    <string name="setup_install_demo_success">Demo installed.</string>
+    <string name="setup_install_demo_error">Could not install demo.</string>
 
     <!-- DJ UI sections -->
     <string name="dj_bus_mix_auto">DJ BUS / AUTO MIX</string>

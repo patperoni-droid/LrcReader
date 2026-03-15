@@ -3,6 +3,7 @@ package com.patrick.lrcreader.ui.library
 import android.content.Intent
 import android.net.Uri
 import android.provider.DocumentsContract
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -25,6 +26,7 @@ import com.patrick.lrcreader.core.DjFolderPrefs
 import com.patrick.lrcreader.core.InternalStoragePaths
 import com.patrick.lrcreader.core.StorageModePrefs
 import com.patrick.lrcreader.exo.R
+import kotlinx.coroutines.launch
 
 @Composable
 fun SetupInstallScreen(
@@ -33,11 +35,14 @@ fun SetupInstallScreen(
     accent: Color,
     onSetupDone: () -> Unit,
     onImportNow: (() -> Unit)? = null,
-    onImportLater: (() -> Unit)? = null
+    onImportLater: (() -> Unit)? = null,
+    onDemoInstalled: ((DemoInstallResult) -> Unit)? = null
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
 
     var showImportPrompt by remember { mutableStateOf(false) }
+    var isInstallingDemo by remember { mutableStateOf(false) }
 
     // ✅ Anti-boucle vieux téléphones (Téléchargements)
     var showBadFolderDialog by remember { mutableStateOf(false) }
@@ -280,34 +285,37 @@ fun SetupInstallScreen(
                             textAlign = TextAlign.Center
                         )
 
+                        if (isInstallingDemo) {
+                            Spacer(Modifier.height(14.dp))
+                            CircularProgressIndicator(
+                                color = accent,
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                stringResource(R.string.setup_install_demo_progress),
+                                color = subtitleColor,
+                                fontSize = 12.sp,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+
                         Spacer(Modifier.height(18.dp))
 
-                        Row(
+                        Column(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            OutlinedButton(
-                                onClick = {
-                                    showImportPrompt = false
-                                    onImportLater()
-                                    onSetupDone()
-                                },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(48.dp),
-                                shape = RoundedCornerShape(14.dp),
-                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
-                                border = ButtonDefaults.outlinedButtonBorder.copy(width = 1.dp)
-                            ) { Text(stringResource(R.string.setup_import_later)) }
-
                             Button(
                                 onClick = {
+                                    if (isInstallingDemo) return@Button
                                     showImportPrompt = false
                                     onImportNow()
                                     onSetupDone()
                                 },
+                                enabled = !isInstallingDemo,
                                 modifier = Modifier
-                                    .weight(1f)
+                                    .fillMaxWidth()
                                     .height(48.dp),
                                 shape = RoundedCornerShape(14.dp),
                                 colors = ButtonDefaults.buttonColors(
@@ -315,6 +323,57 @@ fun SetupInstallScreen(
                                     contentColor = Color.Black
                                 )
                             ) { Text(stringResource(R.string.setup_import_now)) }
+
+                            OutlinedButton(
+                                onClick = {
+                                    if (isInstallingDemo) return@OutlinedButton
+                                    scope.launch {
+                                        isInstallingDemo = true
+                                        try {
+                                            val result = installDemoLibrary(context)
+                                            showImportPrompt = false
+                                            onDemoInstalled?.invoke(result)
+                                            Toast.makeText(
+                                                context,
+                                                context.getString(R.string.setup_install_demo_success),
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                            onSetupDone()
+                                        } catch (_: Exception) {
+                                            Toast.makeText(
+                                                context,
+                                                context.getString(R.string.setup_install_demo_error),
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                        } finally {
+                                            isInstallingDemo = false
+                                        }
+                                    }
+                                },
+                                enabled = !isInstallingDemo,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(48.dp),
+                                shape = RoundedCornerShape(14.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                                border = ButtonDefaults.outlinedButtonBorder.copy(width = 1.dp)
+                            ) { Text(stringResource(R.string.setup_install_demo)) }
+
+                            OutlinedButton(
+                                onClick = {
+                                    if (isInstallingDemo) return@OutlinedButton
+                                    showImportPrompt = false
+                                    onImportLater()
+                                    onSetupDone()
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(48.dp),
+                                shape = RoundedCornerShape(14.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                                border = ButtonDefaults.outlinedButtonBorder.copy(width = 1.dp),
+                                enabled = !isInstallingDemo
+                            ) { Text(stringResource(R.string.setup_import_later)) }
                         }
                     }
                 }
