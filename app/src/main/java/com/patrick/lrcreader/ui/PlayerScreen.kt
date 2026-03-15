@@ -66,6 +66,7 @@ import com.patrick.lrcreader.core.LrcLine
 import com.patrick.lrcreader.core.LrcStorage
 import com.patrick.lrcreader.core.LyricsViewMode
 import com.patrick.lrcreader.core.MidiCueDispatcher
+import com.patrick.lrcreader.core.TrackLyricsViewPrefs
 // ✅ On retire l’import pour éviter tout auto-import douteux
 // import com.patrick.lrcreader.core.PlaylistRepository
 import com.patrick.lrcreader.core.PlaybackCoordinator
@@ -185,7 +186,13 @@ fun PlayerScreen(
     val lyricsDelayMs = 0L
     var userOffsetMs by remember(currentTrackUri) { mutableStateOf(-100L) }
     var isConcertMode by remember { mutableStateOf(DisplayPrefs.isConcertMode(context)) }
-    var selectedViewMode by remember(currentTrackUri) { mutableStateOf(LyricsViewMode.LYRICS) }
+    var selectedViewMode by remember(currentTrackUri) {
+        mutableStateOf(
+            currentTrackUri
+                ?.let { TrackLyricsViewPrefs.get(context, it) }
+                ?: LyricsViewMode.LYRICS
+        )
+    }
     var parsedChordLines by remember(currentTrackUri) { mutableStateOf<List<LrcLine>>(emptyList()) }
     var chordsLoading by remember(currentTrackUri) { mutableStateOf(false) }
     var lyricsResolving by remember(currentTrackUri) { mutableStateOf(false) }
@@ -379,34 +386,22 @@ fun PlayerScreen(
 
         val trackUri = runCatching { Uri.parse(currentTrackUri) }.getOrNull()
         val audioBase = baseNameFromTrackUriString(currentTrackUri)
+        val preferExternalLyricsFirst = BackupFolderPrefs.getLibraryRootUri(context)?.scheme == "content"
         Log.d("LrcDebug", "TRACK uriString=$currentTrackUri")
         Log.d("LrcDebug", "TRACK uriParsed=$trackUri scheme=${trackUri?.scheme} authority=${trackUri?.authority}")
         Log.d("LrcDebug", "TRACK audioBaseName=$audioBase")
+        Log.d(
+            "LrcDebug",
+            "LYRICS_RESOLUTION_ORDER mode=${if (preferExternalLyricsFirst) "SAF_EXTERNAL_FIRST" else "DEFAULT"} order=${if (preferExternalLyricsFirst) "LRC_STORAGE->SIDECAR->SYLT->USLT" else "SYLT->LRC_STORAGE->SIDECAR->USLT"}"
+        )
 
-        // 1) SYLT (synchronisé) -> LRC
-        val syltLrcText: String? = if (trackUri != null) {
-            withContext(Dispatchers.IO) {
-                runCatching { readSyltAsLrcFromUri(context, trackUri) }.getOrNull()
+        suspend fun tryStoredLyrics(): Boolean {
+            val stored = withContext(Dispatchers.IO) {
+                LrcStorage.loadForTrack(context, currentTrackUri)
             }
-        } else null
+            Log.d("LrcDebug", "STORED found=${!stored.isNullOrBlank()}")
+            if (stored.isNullOrBlank()) return false
 
-        if (!syltLrcText.isNullOrBlank()) {
-            val parsed = parseLrc(syltLrcText)
-            onParsedLinesChange(parsed)
-            rawLyricsText = parsed.joinToString("\n") { it.text }
-            seedEditingLinesIfBetter(parsed)
-            hasLyricsSource = true
-            Log.d("LrcDebug", "LYRICS_SOURCE_TYPE embedded")
-            updateResolvedLyricsFileName(null, "source=SYLT")
-            return@LaunchedEffect
-        }
-
-        // 2) ✅ PRIORITÉ : paroles éditées (LrcStorage)
-        val stored = withContext(Dispatchers.IO) {
-            LrcStorage.loadForTrack(context, currentTrackUri)
-        }
-        Log.d("LrcDebug", "STORED found=${!stored.isNullOrBlank()}")
-        if (!stored.isNullOrBlank()) {
             val storedOrigin = withContext(Dispatchers.IO) {
                 runCatching { LrcStorage.resolveOriginForTrack(context, currentTrackUri) }.getOrNull()
             }
@@ -424,18 +419,19 @@ fun PlayerScreen(
                 storedOrigin?.fileName,
                 reason = "source=LRC_STORAGE path=${storedOrigin?.debugPath}"
             )
-            return@LaunchedEffect
+            return true
         }
 
-        // 3) Sidecar .lrc (voisin du MP3 / SAF / MediaStore)
-        val sidecarLrcResult: LrcTextWithFileName? = if (trackUri != null) {
-            withContext(Dispatchers.IO) {
-                runCatching { readSidecarLrcSmart(context, trackUri) }.getOrNull()
-            }
-        } else null
+        suspend fun trySidecarLyrics(): Boolean {
+            val sidecarLrcResult: LrcTextWithFileName? = if (trackUri != null) {
+                withContext(Dispatchers.IO) {
+                    runCatching { readSidecarLrcSmart(context, trackUri) }.getOrNull()
+                }
+            } else null
 
-        Log.d("LrcDebug", "SIDECAR found=${sidecarLrcResult != null}")
-        if (sidecarLrcResult != null) {
+            Log.d("LrcDebug", "SIDECAR found=${sidecarLrcResult != null}")
+            if (sidecarLrcResult == null) return false
+
             Log.d(
                 "LrcDebug",
                 "LYRICS_SOURCE source=SIDECAR fileName=${sidecarLrcResult.fileName} path=${sidecarLrcResult.debugPath}"
@@ -450,17 +446,35 @@ fun PlayerScreen(
                 sidecarLrcResult.fileName,
                 reason = "source=SIDECAR path=${sidecarLrcResult.debugPath}"
             )
-            return@LaunchedEffect
+            return true
         }
 
-        // 4) USLT (non synchronisé)
-        val usltText: String? = if (trackUri != null) {
-            withContext(Dispatchers.IO) {
-                runCatching { readUsltFromUri(context, trackUri) }.getOrNull()
-            }
-        } else null
+        suspend fun trySyltLyrics(): Boolean {
+            val syltLrcText: String? = if (trackUri != null) {
+                withContext(Dispatchers.IO) {
+                    runCatching { readSyltAsLrcFromUri(context, trackUri) }.getOrNull()
+                }
+            } else null
+            if (syltLrcText.isNullOrBlank()) return false
 
-        if (!usltText.isNullOrBlank()) {
+            val parsed = parseLrc(syltLrcText)
+            onParsedLinesChange(parsed)
+            rawLyricsText = parsed.joinToString("\n") { it.text }
+            seedEditingLinesIfBetter(parsed)
+            hasLyricsSource = true
+            Log.d("LrcDebug", "LYRICS_SOURCE_TYPE embedded")
+            updateResolvedLyricsFileName(null, "source=SYLT")
+            return true
+        }
+
+        suspend fun tryUsltLyrics(): Boolean {
+            val usltText: String? = if (trackUri != null) {
+                withContext(Dispatchers.IO) {
+                    runCatching { readUsltFromUri(context, trackUri) }.getOrNull()
+                }
+            } else null
+            if (usltText.isNullOrBlank()) return false
+
             val parsed = parseLrc(usltText)
             onParsedLinesChange(parsed)
             rawLyricsText = parsed.joinToString("\n") { it.text }
@@ -468,6 +482,15 @@ fun PlayerScreen(
             hasLyricsSource = true
             Log.d("LrcDebug", "LYRICS_SOURCE_TYPE embedded")
             updateResolvedLyricsFileName(null, "source=USLT")
+            return true
+        }
+
+        val resolved = if (preferExternalLyricsFirst) {
+            tryStoredLyrics() || trySidecarLyrics() || trySyltLyrics() || tryUsltLyrics()
+        } else {
+            trySyltLyrics() || tryStoredLyrics() || trySidecarLyrics() || tryUsltLyrics()
+        }
+        if (resolved) {
             return@LaunchedEffect
         }
 
@@ -546,7 +569,10 @@ fun PlayerScreen(
         currentLrcIndex = if (idx >= 0) idx else 0
     }
 
-    LaunchedEffect(hasLyricsMode, hasChordsMode, currentTrackUri) {
+    LaunchedEffect(hasLyricsMode, hasChordsMode, currentTrackUri, lyricsResolutionCompleted, chordsLoading) {
+        if (currentTrackUri != null && (!lyricsResolutionCompleted || chordsLoading)) {
+            return@LaunchedEffect
+        }
         selectedViewMode = resolveLyricsViewMode(
             current = selectedViewMode,
             hasLyrics = hasLyricsMode,
@@ -1020,6 +1046,9 @@ fun PlayerScreen(
                                 hasChords = canSelectChordsMode,
                                 onSelectMode = { mode ->
                                     selectedViewMode = mode
+                                    currentTrackUri?.let { trackUri ->
+                                        TrackLyricsViewPrefs.save(context, trackUri, mode)
+                                    }
                                     recomputeCurrentIndexForActiveView()
                                     if (mode == LyricsViewMode.LYRICS) {
                                         centerCurrentLineLazy(listState)
@@ -1565,6 +1594,7 @@ private fun readAccordsFromSplByTrackUri(
     trackUriString: String,
     preferredLrcFileName: String?
 ): String? {
+    LrcStorage.logTrackNameDiagnostics(context, trackUriString, stage = "ACCORDS_LOOKUP")
     val fallbackBaseName = baseNameFromTrackUriString(trackUriString)
     Log.d(
         "LrcDebug",

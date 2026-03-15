@@ -267,6 +267,7 @@ object LrcStorage {
             ?.takeIf { it.scheme == "content" }
             ?.let { folderUri ->
                 DocumentFile.fromTreeUri(context, folderUri)
+                    ?: DocumentFile.fromSingleUri(context, folderUri)
             }
             ?.takeIf { it.isDirectory && it.canRead() }
         Log.d(
@@ -333,7 +334,8 @@ object LrcStorage {
         val remembered = getRememberedCanonicalFileName(context, trackUriString)
         val canonicalHashed = fileNameForTrack(trackUriString)
         val sidecar = sidecarNameForTrack(trackUriString)
-        val children = listChildNames(dir)
+        val files = listSafFiles(dir)
+        val children = files.map { "${it.name.orEmpty()}<file>" }
         Log.d(
             "LrcDebug",
             "LYRICS_LOOKUP_START trackUri=$trackUriString base=$base dir=${dir.uri}"
@@ -347,7 +349,7 @@ object LrcStorage {
             "LYRICS_LOOKUP_CHILDREN dir=${dir.uri} childNames=$children"
         )
         if (!remembered.isNullOrBlank()) {
-            val rememberedFile = findFileIgnoreCaseOrLrcTxt(dir, remembered)
+            val rememberedFile = findFileIgnoreCaseOrLrcTxt(files, remembered)
             Log.d(
                 "LrcDebug",
                 "LYRICS_LOOKUP_REMEMBERED hit=${rememberedFile != null} target=$remembered"
@@ -367,7 +369,7 @@ object LrcStorage {
             Log.d("LrcDebug", "LYRICS_LOOKUP_REMEMBERED hit=false target=null")
         }
 
-        val hashedFile = findFileIgnoreCaseOrLrcTxt(dir, canonicalHashed)
+        val hashedFile = findFileIgnoreCaseOrLrcTxt(files, canonicalHashed)
         Log.d(
             "LrcDebug",
             "LYRICS_LOOKUP_CANONICAL hit=${hashedFile != null} target=$canonicalHashed"
@@ -384,7 +386,7 @@ object LrcStorage {
             )
         }
 
-        val sidecarFile = findFileIgnoreCaseOrLrcTxt(dir, sidecar)
+        val sidecarFile = findFileIgnoreCaseOrLrcTxt(files, sidecar)
         Log.d(
             "LrcDebug",
             "LYRICS_LOOKUP_SIDECAR hit=${sidecarFile != null} target=$sidecar"
@@ -401,9 +403,7 @@ object LrcStorage {
             )
         }
 
-        val legacyMatches = dir.listFiles()
-            .filter { it.isFile }
-            .filter { child ->
+        val legacyMatches = files.filter { child ->
                 val name = child.name.orEmpty()
                 name.startsWith("$base-", ignoreCase = true) &&
                     (
@@ -482,6 +482,12 @@ object LrcStorage {
         }.getOrDefault(emptyList())
     }
 
+    private fun listSafFiles(dir: DocumentFile): List<DocumentFile> {
+        return runCatching {
+            dir.listFiles().filter { it.isFile }
+        }.getOrDefault(emptyList())
+    }
+
     private fun findFileIgnoreCase(dir: DocumentFile, targetFileName: String): DocumentFile? {
         return dir.listFiles().firstOrNull { child ->
             child.isFile && child.name.orEmpty().equals(targetFileName, ignoreCase = true)
@@ -492,6 +498,18 @@ object LrcStorage {
         findFileIgnoreCase(dir, targetFileName)?.let { return it }
         val txtVariant = lrcTxtVariant(targetFileName) ?: return null
         return findFileIgnoreCase(dir, txtVariant)
+    }
+
+    private fun findFileIgnoreCase(entries: List<DocumentFile>, targetFileName: String): DocumentFile? {
+        return entries.firstOrNull { child ->
+            child.name.orEmpty().equals(targetFileName, ignoreCase = true)
+        }
+    }
+
+    private fun findFileIgnoreCaseOrLrcTxt(entries: List<DocumentFile>, targetFileName: String): DocumentFile? {
+        findFileIgnoreCase(entries, targetFileName)?.let { return it }
+        val txtVariant = lrcTxtVariant(targetFileName) ?: return null
+        return findFileIgnoreCase(entries, txtVariant)
     }
 
     private fun lrcTxtVariant(targetFileName: String): String? {

@@ -179,6 +179,43 @@ class LibraryDeletePlannerTest {
         assertTrue(roles.contains(LibraryDeleteRole.ACCORDS))
     }
 
+    @Test
+    fun findAssociatedLrcMatches_prefersResolvedPlayerFileName_whenProvided() {
+        val rootUri = "content://spl/root"
+        val backingUri = "content://spl/backing"
+        val audioDirUri = "content://spl/audio"
+        val lyricsDirUri = "content://spl/lyrics"
+        val accordsDirUri = "content://spl/accords"
+        val audioUri = "content://spl/audio/song.mp3"
+        val resolvedName = "song-custom-origin.lrc"
+        val lyricsUri = "content://spl/lyrics/$resolvedName"
+        val accordsUri = "content://spl/accords/$resolvedName"
+
+        val index = listOf(
+            entry(rootUri, "SPL_Music", true, null),
+            entry(backingUri, "BackingTracks", true, rootUri),
+            entry(audioDirUri, "Audio", true, backingUri),
+            entry(lyricsDirUri, "Lyrics", true, backingUri),
+            entry(accordsDirUri, "Accords", true, backingUri),
+            entry(audioUri, "song.mp3", false, audioDirUri),
+            entry(lyricsUri, resolvedName, false, lyricsDirUri),
+            entry(accordsUri, resolvedName, false, accordsDirUri)
+        )
+
+        val associated = LibraryDeletePlanner.findAssociatedLrcMatches(
+            targetUriString = audioUri,
+            indexAll = index,
+            preferredLrcFileName = resolvedName
+        )
+
+        assertEquals(2, associated.size)
+        val names = associated.map { it.displayName }.toSet()
+        assertTrue(names.contains(resolvedName))
+        val roles = associated.map { it.role }.toSet()
+        assertTrue(roles.contains(LibraryDeleteRole.LYRICS))
+        assertTrue(roles.contains(LibraryDeleteRole.ACCORDS))
+    }
+
     private fun entry(
         uriString: String,
         name: String,

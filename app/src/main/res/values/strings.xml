@@ -236,10 +236,14 @@
     <string name="setup_downloads_blocked_message">Ce téléphone ne te laisse pas remonter vers Documents.\n\n✅ Solution : passer en mode interne (fiable sur vieux téléphones).\n➡️ Aucun impact sur ton téléphone principal.</string>
     <string name="setup_continue_internal_mode">Continuer (mode interne)</string>
     <string name="setup_retry">Réessayer</string>
-    <string name="setup_import_prompt_title">Importer des musiques ?</string>
-    <string name="setup_import_prompt_subtitle">Tu peux importer maintenant, ou le faire plus tard depuis la bibliothèque.</string>
+    <string name="setup_import_prompt_title">Que veux-tu faire ?</string>
+    <string name="setup_import_prompt_subtitle">Tu peux importer ta musique, installer la démo, ou le faire plus tard depuis la bibliothèque.</string>
     <string name="setup_import_later">Plus tard</string>
-    <string name="setup_import_now">Importer</string>
+    <string name="setup_import_now">Importer ma musique</string>
+    <string name="setup_install_demo">Installer la démo</string>
+    <string name="setup_install_demo_progress">Installation de la démo…</string>
+    <string name="setup_install_demo_success">Démo installée.</string>
+    <string name="setup_install_demo_error">Impossible d’installer la démo.</string>
 
     <!-- DJ UI sections -->
     <string name="dj_bus_mix_auto">BUS DJ / MIX AUTO</string>

@@ -1,8 +1,9 @@
 package com.patrick.lrcreader.ui.library
 
+import android.content.Context
 import android.net.Uri
 import com.patrick.lrcreader.core.LibraryIndexCache
-import java.security.MessageDigest
+import com.patrick.lrcreader.core.LrcStorage
 import java.util.Locale
 import java.util.regex.Pattern
 
@@ -19,6 +20,7 @@ internal object LibraryDeletePlanner {
     )
 
     fun buildPlan(
+        context: Context,
         target: Uri,
         indexAll: List<LibraryIndexCache.CachedEntry>
     ): LibraryDeletePlan {
@@ -35,9 +37,14 @@ internal object LibraryDeletePlanner {
             return LibraryDeletePlan(target = targetItem, associated = emptyList())
         }
 
+        val preferredLrcFileName = runCatching {
+            LrcStorage.resolveOriginForTrack(context, target.toString())?.fileName
+        }.getOrNull()
+
         val associated = findAssociatedLrcMatches(
             targetUriString = target.toString(),
-            indexAll = indexAll
+            indexAll = indexAll,
+            preferredLrcFileName = preferredLrcFileName
         )
             .mapNotNull { match ->
                 runCatching {
@@ -78,7 +85,8 @@ internal object LibraryDeletePlanner {
 
     fun findAssociatedLrcMatches(
         targetUriString: String,
-        indexAll: List<LibraryIndexCache.CachedEntry>
+        indexAll: List<LibraryIndexCache.CachedEntry>,
+        preferredLrcFileName: String? = null
     ): List<AssociatedLrcMatch> {
         val targetEntry = indexAll.firstOrNull { it.uriString == targetUriString } ?: return emptyList()
         if (targetEntry.isDirectory || !isAudioFileName(targetEntry.name)) return emptyList()
@@ -89,7 +97,8 @@ internal object LibraryDeletePlanner {
         )
         val candidateNames = buildCandidateLrcNames(
             targetUriString = targetUriString,
-            baseName = baseName
+            baseName = baseName,
+            preferredLrcFileName = preferredLrcFileName
         )
         if (candidateNames.isEmpty()) return emptyList()
 
@@ -166,15 +175,19 @@ internal object LibraryDeletePlanner {
 
     private fun buildCandidateLrcNames(
         targetUriString: String,
-        baseName: String
+        baseName: String,
+        preferredLrcFileName: String?
     ): Set<String> {
         val names = linkedSetOf<String>()
         val cleanBase = baseName.trim()
-        if (cleanBase.isBlank()) return emptySet()
+        preferredLrcFileName
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?.let { names.add(it) }
+        if (cleanBase.isBlank()) return names
 
         names.add("$cleanBase.lrc")
-        val hash = md5(targetUriString).take(10)
-        names.add("${cleanBase.take(48)}-$hash.lrc")
+        names.add(LrcStorage.hashedFileNameForTrack(targetUriString))
         return names
     }
 
@@ -188,12 +201,6 @@ internal object LibraryDeletePlanner {
         val decodedLast = Uri.decode(trackUriString.substringAfterLast('/').substringAfterLast(':'))
         return decodedLast.substringBeforeLast('.', decodedLast).trim()
     }
-
-    private fun md5(text: String): String {
-        val md = MessageDigest.getInstance("MD5")
-        return md.digest(text.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
-    }
-
     private fun historicalHashedLrcRegex(baseName: String): Pattern {
         val escapedBase = Pattern.quote(baseName.take(48))
         return Pattern.compile("^$escapedBase-[0-9a-fA-F]{10}\\.lrc$")

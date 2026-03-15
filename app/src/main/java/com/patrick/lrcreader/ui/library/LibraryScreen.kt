@@ -701,7 +701,14 @@ fun LibraryScreen(
                     importTargetFolderUri = backend.getRootUri()
                     importAudioLauncher.launch(arrayOf("audio/*"))
                 },
-                onImportLater = { }
+                onImportLater = { },
+                onDemoInstalled = { result ->
+                    LibraryFolderCache.clear()
+                    indexAll = backend.loadIndex()
+                    val targetFolder = result.audioFolderUri ?: backend.getRootUri()
+                    currentFolderUri = targetFolder
+                    entries = targetFolder?.let { buildEntriesForFolder(it, useCache = false) }.orEmpty()
+                }
             )
         }
         return

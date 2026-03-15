@@ -283,7 +283,7 @@ class LibraryBackendSaf(
         target: Uri,
         indexAll: List<LibraryIndexCache.CachedEntry>
     ): LibraryDeletePlan = withContext(Dispatchers.Default) {
-        LibraryDeletePlanner.buildPlan(target = target, indexAll = indexAll)
+        LibraryDeletePlanner.buildPlan(context = context, target = target, indexAll = indexAll)
     }
 
     override suspend fun deleteWithPlan(
