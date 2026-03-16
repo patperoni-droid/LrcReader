@@ -9,6 +9,7 @@ import java.io.File
 import android.provider.DocumentsContract
 import android.net.Uri
 import androidx.documentfile.provider.DocumentFile
+import com.patrick.lrcreader.core.BackupFolderPrefsSaf
 import com.patrick.lrcreader.core.readSyltAsLrcFromUri
 import com.patrick.lrcreader.core.readUsltFromUri
 import androidx.compose.runtime.LaunchedEffect
@@ -383,6 +384,9 @@ fun PlayerScreen(
             updateResolvedLyricsFileName(null, "track=null")
             return@LaunchedEffect
         }
+
+        Log.d("LrcDebug", "LYRICS_UI_RESET owner=PlayerScreen uri=$currentTrackUri reason=track_change")
+        onParsedLinesChange(emptyList())
 
         val trackUri = runCatching { Uri.parse(currentTrackUri) }.getOrNull()
         val audioBase = baseNameFromTrackUriString(currentTrackUri)
@@ -1039,22 +1043,29 @@ fun PlayerScreen(
                             )
                         }
 
-                        if (showViewToggle) {
-                            LyricsViewSelector(
-                                selectedMode = selectedViewMode,
-                                hasLyrics = hasLyricsMode,
-                                hasChords = canSelectChordsMode,
-                                onSelectMode = { mode ->
-                                    selectedViewMode = mode
-                                    currentTrackUri?.let { trackUri ->
-                                        TrackLyricsViewPrefs.save(context, trackUri, mode)
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(38.dp),
+                            contentAlignment = Alignment.TopCenter
+                        ) {
+                            if (showViewToggle) {
+                                LyricsViewSelector(
+                                    selectedMode = selectedViewMode,
+                                    hasLyrics = hasLyricsMode,
+                                    hasChords = canSelectChordsMode,
+                                    onSelectMode = { mode ->
+                                        selectedViewMode = mode
+                                        currentTrackUri?.let { trackUri ->
+                                            TrackLyricsViewPrefs.save(context, trackUri, mode)
+                                        }
+                                        recomputeCurrentIndexForActiveView()
+                                        if (mode == LyricsViewMode.LYRICS) {
+                                            centerCurrentLineLazy(listState)
+                                        }
                                     }
-                                    recomputeCurrentIndexForActiveView()
-                                    if (mode == LyricsViewMode.LYRICS) {
-                                        centerCurrentLineLazy(listState)
-                                    }
-                                }
-                            )
+                                )
+                            }
                         }
 
                         Spacer(Modifier.height(8.dp))
@@ -1817,7 +1828,7 @@ private fun writeLrcToSplFolderByFileName(
 ): Boolean {
     val cleanTargetName = targetName.trim()
     if (cleanTargetName.isBlank()) return false
-    val rootUri = BackupFolderPrefs.getLibraryRootUri(context)
+    val rootUri = resolveRequestedChordsRootUri(context)
     val safOnlyBackend = shouldUseSafBackendForChords(rootUri)
     logChordsBackend(rootUri, safOnlyBackend)
     Log.d("LrcDebug", "ACCORDS_WRITE_START target=$cleanTargetName rootUri=$rootUri")
@@ -1887,11 +1898,13 @@ private fun writeLrcToSplFolderByFileName(
     }
 
     if (safOnlyBackend) {
-        val safRootUri = rootUri ?: return false
-        val rootDoc = DocumentFile.fromTreeUri(context, safRootUri)
-            ?: DocumentFile.fromSingleUri(context, safRootUri)
+        val rootDoc = resolveActualSafSplRootForChords(
+            context = context,
+            requestedRootUri = rootUri,
+            stage = "WRITE"
+        )
         if (rootDoc == null || !rootDoc.isDirectory) {
-            Log.w("LrcDebug", "ACCORDS_WRITE_SAF invalid_root rootUri=$safRootUri")
+            Log.w("LrcDebug", "ACCORDS_WRITE_SAF invalid_root rootUri=$rootUri")
         } else {
             Log.d("LrcDebug", "ACCORDS_WRITE_SAF rootDoc=${rootDoc.uri}")
             val backingDirs = findDirsByAliases(
@@ -2038,7 +2051,7 @@ private fun deleteLrcFromSplFolderByFileNames(
     val cleanNames = fileNames.map { it.trim() }.filter { it.isNotBlank() }.toSet()
     if (cleanNames.isEmpty()) return false
     var deleted = false
-    val rootUri = BackupFolderPrefs.getLibraryRootUri(context)
+    val rootUri = resolveRequestedChordsRootUri(context)
     val safOnlyBackend = shouldUseSafBackendForChords(rootUri)
     logChordsBackend(rootUri, safOnlyBackend)
 
@@ -2072,9 +2085,11 @@ private fun deleteLrcFromSplFolderByFileNames(
     }
 
     if (safOnlyBackend) {
-        val safRootUri = rootUri ?: return deleted
-        val rootDoc = DocumentFile.fromTreeUri(context, safRootUri)
-            ?: DocumentFile.fromSingleUri(context, safRootUri)
+        val rootDoc = resolveActualSafSplRootForChords(
+            context = context,
+            requestedRootUri = rootUri,
+            stage = "DELETE"
+        )
         if (rootDoc != null && rootDoc.isDirectory) {
             val backingDirs = findDirsByAliases(
                 parent = rootDoc,
@@ -2127,7 +2142,7 @@ private fun readLrcFromSplFolderByFileName(
 ): LrcTextWithFileName? {
     val cleanTargetName = targetName.trim()
     if (cleanTargetName.isBlank()) return null
-    val rootUri = BackupFolderPrefs.getLibraryRootUri(context)
+    val rootUri = resolveRequestedChordsRootUri(context)
     val safOnlyBackend = shouldUseSafBackendForChords(rootUri)
     logChordsBackend(rootUri, safOnlyBackend)
 
@@ -2182,9 +2197,11 @@ private fun readLrcFromSplFolderByFileName(
 
     // SAF (content://)
     if (safOnlyBackend) {
-        val safRootUri = rootUri ?: return null
-        val rootDoc = DocumentFile.fromTreeUri(context, safRootUri)
-            ?: DocumentFile.fromSingleUri(context, safRootUri)
+        val rootDoc = resolveActualSafSplRootForChords(
+            context = context,
+            requestedRootUri = rootUri,
+            stage = "READ"
+        ) ?: return null
         if (rootDoc != null && rootDoc.isDirectory) {
             val backingDirs = findDirsByAliases(
                 parent = rootDoc,
@@ -2252,6 +2269,93 @@ private fun logChordsBackend(rootUri: Uri?, safOnlyBackend: Boolean) {
     } else {
         Log.d("LrcDebug", "CHORDS_BACKEND APP_PRIVATE rootUri=$rootUri")
     }
+}
+
+private fun resolveRequestedChordsRootUri(context: android.content.Context): Uri? {
+    return BackupFolderPrefsSaf.getLibraryRootUri(context)
+        ?: BackupFolderPrefs.getLibraryRootUri(context)
+}
+
+private fun resolveActualSafSplRootForChords(
+    context: android.content.Context,
+    requestedRootUri: Uri?,
+    stage: String
+): DocumentFile? {
+    val safeRequestedRootUri = requestedRootUri?.takeIf { it.scheme == "content" } ?: return null
+    Log.d("LrcDebug", "CHORDS_SAF_ROOT stage=$stage requested=$safeRequestedRootUri")
+
+    val requestedRootDoc = resolveChordRootDocument(context, safeRequestedRootUri)
+        ?.takeIf { it.isDirectory && it.canRead() }
+    Log.d(
+        "LrcDebug",
+        "CHORDS_SAF_ROOT stage=$stage requestedResolved=${requestedRootDoc?.uri} requestedChildren=${requestedRootDoc?.let { listChordChildNames(it) }}"
+    )
+    if (requestedRootDoc != null && matchesChordDirAlias(requestedRootDoc, listOf("SPL_Music", "spl_music"))) {
+        Log.d("LrcDebug", "CHORDS_SAF_ROOT stage=$stage finalResolved=${requestedRootDoc.uri}")
+        return requestedRootDoc
+    }
+
+    val setupTreeUri = BackupFolderPrefsSaf.getSetupTreeUri(context)
+        ?: BackupFolderPrefs.getSetupTreeUri(context)
+    Log.d("LrcDebug", "CHORDS_SAF_ROOT stage=$stage setupTreeUri=$setupTreeUri")
+    val setupRootDoc = setupTreeUri
+        ?.takeIf { it.scheme == "content" }
+        ?.let { resolveChordRootDocument(context, it) }
+        ?.takeIf { it.isDirectory && it.canRead() }
+    Log.d(
+        "LrcDebug",
+        "CHORDS_SAF_ROOT stage=$stage setupResolved=${setupRootDoc?.uri} setupChildren=${setupRootDoc?.let { listChordChildNames(it) }}"
+    )
+    if (setupRootDoc != null) {
+        if (matchesChordDirAlias(setupRootDoc, listOf("SPL_Music", "spl_music"))) {
+            Log.d("LrcDebug", "CHORDS_SAF_ROOT stage=$stage finalResolved=${setupRootDoc.uri}")
+            return setupRootDoc
+        }
+        val splRoot = findDirsByAliases(setupRootDoc, listOf("SPL_Music", "spl_music")).firstOrNull()
+        Log.d("LrcDebug", "CHORDS_SAF_ROOT stage=$stage setupSplRoot=${splRoot?.uri}")
+        if (splRoot != null && splRoot.isDirectory && splRoot.canRead()) {
+            Log.d("LrcDebug", "CHORDS_SAF_ROOT stage=$stage finalResolved=${splRoot.uri}")
+            return splRoot
+        }
+    }
+
+    Log.d("LrcDebug", "CHORDS_SAF_ROOT stage=$stage finalResolved=${requestedRootDoc?.uri}")
+    return requestedRootDoc
+}
+
+private fun resolveChordRootDocument(
+    context: android.content.Context,
+    rootUri: Uri
+): DocumentFile? {
+    val directTree = DocumentFile.fromTreeUri(context, rootUri)
+    if (directTree?.isDirectory == true) return directTree
+
+    val normalizedTreeUri = normalizeAsTreeUriForPermission(rootUri)
+    val normalizedTree = normalizedTreeUri?.let { DocumentFile.fromTreeUri(context, it) }
+    if (normalizedTree?.isDirectory == true) return normalizedTree
+
+    val single = DocumentFile.fromSingleUri(context, rootUri)
+    if (single?.isDirectory == true) return single
+
+    Log.w(
+        "LrcDebug",
+        "CHORDS_SAF_ROOT resolve_failed request=$rootUri directTree=${directTree?.uri} normalizedTree=$normalizedTreeUri single=${single?.uri}"
+    )
+    return directTree ?: normalizedTree ?: single
+}
+
+private fun matchesChordDirAlias(dir: DocumentFile, aliases: List<String>): Boolean {
+    val normalizedAliases = aliases.map { normalizeDirName(it) }.toSet()
+    return normalizedAliases.contains(normalizeDirName(dir.name.orEmpty()))
+}
+
+private fun listChordChildNames(dir: DocumentFile): List<String> {
+    return runCatching {
+        dir.listFiles().map { child ->
+            val kind = if (child.isDirectory) "dir" else "file"
+            "${child.name.orEmpty()}<$kind>"
+        }
+    }.getOrDefault(emptyList())
 }
 
 private fun ensureOrFindDir(
