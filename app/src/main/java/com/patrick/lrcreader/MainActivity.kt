@@ -60,6 +60,7 @@ import com.patrick.lrcreader.core.dj.DjEngine
 import com.patrick.lrcreader.core.exoCrossfadePlay
 import com.patrick.lrcreader.core.history.HistoryRepository
 import com.patrick.lrcreader.core.history.PlaySource
+import com.patrick.lrcreader.core.lyrics.LyricsMemoryCache
 import com.patrick.lrcreader.core.lyrics.LyricsResolver
 import com.patrick.lrcreader.core.config.MidiCuesConfigStore
 import com.patrick.lrcreader.core.config.NotesConfigStore
@@ -799,9 +800,12 @@ class MainActivity : AppCompatActivity() {
                         ?: Uri.parse(uriString).lastPathSegment
                         ?: HistoryRepository.UNTITLED_FALLBACK
 
+                    LyricsPerf.mark(
+                        uriString,
+                        "play_internal_start",
+                        "playlistName=$playlistName"
+                    )
                     PlaybackCoordinator.onPlayerStart()
-                    lyricsLoading = true
-                    parsedLines = emptyList()
                     currentPlayingUri = uriString
                     currentPlayingPlaylist = playlistName
                     embeddedLyricsListener.reset()
@@ -846,12 +850,25 @@ class MainActivity : AppCompatActivity() {
                             getCurrentToken = { currentPlayToken },
                             onLyricsLoaded = { embeddedOrNull ->
                                 if (embeddedOrNull == null) {
-                                    // Résolution terminée côté embedded : pas de paroles embarquées.
-                                    // Ne pas toucher parsedLines ici (déjà cleared au track change).
-                                    lyricsLoading = false
+                                    LyricsPerf.mark(
+                                        uriString,
+                                        "embedded_callback",
+                                        "token=$myToken embedded=false"
+                                    )
+                                    if (BuildConfig.DEBUG) {
+                                        Log.d(
+                                            "PERF_LYRICS",
+                                            "embedded_none uri=$uriString token=$myToken"
+                                        )
+                                    }
                                 } else {
                                     lyricsResolveSeq += 1
                                     val seq = lyricsResolveSeq
+                                    LyricsPerf.mark(
+                                        uriString,
+                                        "embedded_callback",
+                                        "token=$myToken embedded=true seq=$seq len=${embeddedOrNull.length}"
+                                    )
                                     if (BuildConfig.DEBUG) {
                                         Log.d(
                                             "PERF_LYRICS",
@@ -881,8 +898,37 @@ class MainActivity : AppCompatActivity() {
                                             }
                                             return@launch
                                         }
-                                        parsedLines = resolved
-                                        lyricsLoading = false
+                                        if (resolved.isNotEmpty() && parsedLines.isEmpty()) {
+                                            parsedLines = resolved
+                                            val cacheScopeKey = (BackupFolderPrefsSaf.getLibraryRootUri(ctx)
+                                                ?: BackupFolderPrefs.getLibraryRootUri(ctx))
+                                                ?.toString()
+                                            LyricsMemoryCache.updateScope(cacheScopeKey)
+                                            LyricsMemoryCache.put(
+                                                trackUriString = uriString,
+                                                parsedLines = resolved,
+                                                resolvedLyricsFileName = null,
+                                                source = "EMBEDDED_FALLBACK",
+                                                sourceType = "embedded",
+                                                debugPath = null
+                                            )
+                                            LyricsPerf.mark(
+                                                uriString,
+                                                "cache_store_embedded_fallback",
+                                                "lines=${resolved.size}"
+                                            )
+                                            if (BuildConfig.DEBUG) {
+                                                Log.d(
+                                                    "PERF_LYRICS",
+                                                    "ui_fallback_apply uri=$uriString token=$myToken seq=$seq lines=${resolved.size}"
+                                                )
+                                            }
+                                        } else if (BuildConfig.DEBUG) {
+                                            Log.d(
+                                                "PERF_LYRICS",
+                                                "ui_fallback_skip uri=$uriString token=$myToken seq=$seq resolvedLines=${resolved.size} existingLines=${parsedLines.size}"
+                                            )
+                                        }
                                         if (BuildConfig.DEBUG) {
                                             Log.d(
                                                 "PERF_LYRICS",
@@ -899,6 +945,11 @@ class MainActivity : AppCompatActivity() {
                                     ?.uri
                                     ?.toString()
                                     ?: uriString
+                                LyricsPerf.mark(
+                                    uriString,
+                                    "player_on_start",
+                                    "token=$myToken activeUri=$activeUri"
+                                )
                                 val trimConfig = resolveTrimConfig(
                                     requestedUri = uriString,
                                     activeUri = activeUri
@@ -1376,6 +1427,11 @@ class MainActivity : AppCompatActivity() {
                                             }
 
                                             is PlaybackRouter.Target.Audio -> {
+                                                LyricsPerf.startOpen(
+                                                    trackUriString = target.uri,
+                                                    source = "quick_play_tap",
+                                                    playlistName = target.playlist
+                                                )
                                                 playlistTapPlayJob?.cancel()
                                                 playlistTapPlayJob = scope.launch {
                                                     val now = SystemClock.uptimeMillis()
@@ -1384,8 +1440,6 @@ class MainActivity : AppCompatActivity() {
                                                     lastPlaylistTapStartedAtMs = SystemClock.uptimeMillis()
                                                     playWithCrossfadeInternal(target.uri, target.playlist)
                                                 }
-                                                lyricsLoading = true
-                                                parsedLines = emptyList()
                                                 currentPlayingUri = target.uri
 
                                                 selectedQuickPlaylist = target.playlist
@@ -1448,6 +1502,11 @@ class MainActivity : AppCompatActivity() {
                                             when (val target = PlaybackRouter.resolve(uriString, null)) {
                                                 is PlaybackRouter.Target.Audio -> {
                                                     stopChainPlayback()
+                                                    LyricsPerf.startOpen(
+                                                        trackUriString = target.uri,
+                                                        source = "library_tap",
+                                                        playlistName = target.playlist
+                                                    )
                                                     playWithCrossfade(target.uri, target.playlist)
                                                     currentPlayingUri = target.uri
                                                     currentLyricsColor = Color.White
@@ -1468,7 +1527,9 @@ class MainActivity : AppCompatActivity() {
                                     is BottomTab.AllPlaylists -> AllPlaylistsScreen(
                                         modifier = contentModifier,
                                         onPlaylistClick = { name ->
-                                            setOpenedPlaylistAndPersist(name, reason = "allPlaylistsOpen")
+                                            selectedQuickPlaylist = name
+                                            openedPlaylist = name
+                                            setTabAndPersist(BottomTab.QuickPlaylists, reason = "allPlaylistsOpen")
                                         }
                                     )
 
@@ -1516,6 +1577,11 @@ class MainActivity : AppCompatActivity() {
                                     when (searchMode) {
                                         SearchMode.PLAYER -> {
                                             stopChainPlayback()
+                                            LyricsPerf.startOpen(
+                                                trackUriString = uriString,
+                                                source = "search_player_tap",
+                                                playlistName = null
+                                            )
                                             playWithCrossfade(uriString, null)
                                             currentPlayingUri = uriString
                                             setTabAndPersist(BottomTab.Player, reason = "searchPlayPlayer")
@@ -1528,6 +1594,11 @@ class MainActivity : AppCompatActivity() {
                                         SearchMode.PLAYLIST -> {
                                             // ✅ comme PLAYER : on lance et on bascule sur le lecteur
                                             stopChainPlayback()
+                                            LyricsPerf.startOpen(
+                                                trackUriString = uriString,
+                                                source = "search_playlist_tap",
+                                                playlistName = selectedQuickPlaylist
+                                            )
                                             playWithCrossfade(uriString, null)
                                             currentPlayingUri = uriString
                                             currentLyricsColor = Color(0xFFE040FB)

@@ -7,6 +7,7 @@ import android.util.Log
 import androidx.documentfile.provider.DocumentFile
 import com.patrick.lrcreader.core.BackupFolderPrefs
 import com.patrick.lrcreader.core.BackupFolderPrefsSaf
+import com.patrick.lrcreader.core.BackupManager
 import com.patrick.lrcreader.core.LibraryIndexCache
 import com.patrick.lrcreader.core.LibrarySnapshot
 import com.patrick.lrcreader.core.PlaylistRepository
@@ -24,6 +25,12 @@ data class DemoInstallResult(
     val importedAudioUris: List<String>
 )
 
+private data class DemoInstallPaths(
+    val copyRootUri: Uri,
+    val audioFolderUri: Uri?,
+    val importedAudioUris: List<String>
+)
+
 suspend fun installDemoLibrary(context: Context): DemoInstallResult = withContext(Dispatchers.IO) {
     var stage = "start"
     try {
@@ -36,11 +43,18 @@ suspend fun installDemoLibrary(context: Context): DemoInstallResult = withContex
         )
 
         stage = "copy_demo_files"
-        val (audioFolderUri, importedAudioUris) = if (rootUri.scheme == "file") {
+        val installPaths = if (rootUri.scheme == "file") {
             installDemoIntoInternalStorage(context, rootUri)
         } else {
             installDemoIntoSafStorage(context, rootUri)
         }
+        val copyRootUri = installPaths.copyRootUri
+        val audioFolderUri = installPaths.audioFolderUri
+        val importedAudioUris = installPaths.importedAudioUris
+        Log.i(
+            TAG,
+            "copy:end requestedRoot=$rootUri copyRoot=$copyRootUri audioFolderUri=$audioFolderUri importedCount=${importedAudioUris.size}"
+        )
 
         stage = "playlist_start"
         Log.i(
@@ -58,9 +72,24 @@ suspend fun installDemoLibrary(context: Context): DemoInstallResult = withContex
             TAG,
             "playlist:end name=$DEMO_PLAYLIST_NAME finalCount=${PlaylistRepository.getAllSongsRaw(DEMO_PLAYLIST_NAME).size}"
         )
+        runCatching {
+            BackupManager.autoSaveToDefaultBackupFile(context)
+        }.onSuccess {
+            Log.i(TAG, "backup:autoSave success playlist=$DEMO_PLAYLIST_NAME")
+        }.onFailure { error ->
+            Log.w(
+                TAG,
+                "backup:autoSave failed playlist=$DEMO_PLAYLIST_NAME message=${error.message}"
+            )
+        }
 
         stage = "refresh_start"
-        Log.i(TAG, "refresh:start root=$rootUri folderToShow=${audioFolderUri ?: rootUri}")
+        val refreshRootUri = copyRootUri
+        val folderToShow = audioFolderUri ?: refreshRootUri
+        Log.i(
+            TAG,
+            "refresh:start requestedRoot=$rootUri refreshRoot=$refreshRootUri folderToShow=$folderToShow"
+        )
         val backend: LibraryBackend = if (rootUri.scheme == "file") {
             LibraryBackendInternal(context)
         } else {
@@ -69,20 +98,20 @@ suspend fun installDemoLibrary(context: Context): DemoInstallResult = withContex
 
         var refreshedIndex: List<LibraryIndexCache.CachedEntry> = emptyList()
         backend.scanAll(
-            root = rootUri,
-            folderToShow = audioFolderUri ?: rootUri,
+            root = refreshRootUri,
+            folderToShow = folderToShow,
             onIndexAll = { refreshedIndex = it },
             onEntries = { }
         )
-        LibrarySnapshot.rootFolderUri = rootUri
+        LibrarySnapshot.rootFolderUri = refreshRootUri
         LibrarySnapshot.entries = refreshedIndex.map { it.uriString }
         LibrarySnapshot.isReady = true
-        Log.i(TAG, "refresh:end indexCount=${refreshedIndex.size}")
+        Log.i(TAG, "refresh:end refreshRoot=$refreshRootUri indexCount=${refreshedIndex.size}")
 
         stage = "done"
         Log.i(
             TAG,
-            "installDemoLibrary:end playlist=$DEMO_PLAYLIST_NAME audioFolderUri=$audioFolderUri importedCount=${importedAudioUris.size}"
+            "installDemoLibrary:end playlist=$DEMO_PLAYLIST_NAME copyRoot=$copyRootUri audioFolderUri=$audioFolderUri importedCount=${importedAudioUris.size}"
         )
         DemoInstallResult(
             playlistName = DEMO_PLAYLIST_NAME,
@@ -98,7 +127,7 @@ suspend fun installDemoLibrary(context: Context): DemoInstallResult = withContex
 private fun installDemoIntoInternalStorage(
     context: Context,
     rootUri: Uri
-): Pair<Uri, List<String>> {
+): DemoInstallPaths {
     val rootDir = File(rootUri.path ?: error("internal_root_path_missing"))
     val backingTracks = File(rootDir, "BackingTracks").apply { mkdirs() }
     val audioDir = File(backingTracks, "audio").apply { mkdirs() }
@@ -140,15 +169,19 @@ private fun installDemoIntoInternalStorage(
         )
     }
 
-    return Uri.fromFile(audioDir) to audioNames.map { name ->
-        Uri.fromFile(File(audioDir, name)).toString()
-    }
+    return DemoInstallPaths(
+        copyRootUri = rootUri,
+        audioFolderUri = Uri.fromFile(audioDir),
+        importedAudioUris = audioNames.map { name ->
+            Uri.fromFile(File(audioDir, name)).toString()
+        }
+    )
 }
 
 private fun installDemoIntoSafStorage(
     context: Context,
     rootUri: Uri
-): Pair<Uri?, List<String>> {
+): DemoInstallPaths {
     val setupTreeUri = BackupFolderPrefsSaf.getSetupTreeUri(context)
         ?: BackupFolderPrefs.getSetupTreeUri(context)
         ?: rootUri
@@ -211,7 +244,11 @@ private fun installDemoIntoSafStorage(
         )
     }
 
-    return audioDir.uri to importedAudioUris
+    return DemoInstallPaths(
+        copyRootUri = splRoot.uri,
+        audioFolderUri = audioDir.uri,
+        importedAudioUris = importedAudioUris
+    )
 }
 
 private fun copyAssetToFile(
