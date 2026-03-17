@@ -2,11 +2,14 @@ package com.patrick.lrcreader.core
 
 import android.content.Context
 import android.net.Uri
+import android.os.SystemClock
+import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import android.util.Log
 import androidx.documentfile.provider.DocumentFile
 import java.io.File
 import java.security.MessageDigest
+import java.util.LinkedHashMap
 
 object LrcStorage {
 
@@ -26,6 +29,17 @@ object LrcStorage {
     private const val TAG = "LRC_STORAGE"
     private const val CACHE_DIR = "lrc_cache"
     private const val CANONICAL_PREF = "lrc_storage_canonical"
+    private const val RECENT_ORIGIN_CACHE_MAX = 32
+
+    private val recentResolvedOrigins = object : LinkedHashMap<String, TrackLrcOrigin>(
+        RECENT_ORIGIN_CACHE_MAX,
+        0.75f,
+        true
+    ) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, TrackLrcOrigin>?): Boolean {
+            return size > RECENT_ORIGIN_CACHE_MAX
+        }
+    }
 
     // ------------------------------------------------------------
     // API
@@ -45,30 +59,58 @@ object LrcStorage {
     fun loadForTrack(context: Context, trackUriString: String): String? {
         if (trackUriString.isBlank()) return null
         val safOnlyBackend = isSafBackend(context)
+        LyricsPerf.mark(trackUriString, "lrc_storage_load_start", "backend=${if (safOnlyBackend) "SAF" else "INTERNAL"}")
         logLyricsBackend(context, safOnlyBackend)
         logTrackNameDiagnostics(context, trackUriString, stage = "LYRICS_LOAD")
 
         if (safOnlyBackend) {
-            val safDir = getConfiguredSafDir(context)
+            val safDirStartMs = SystemClock.elapsedRealtime()
+            val safDir = getConfiguredSafDir(context, trackUriString)
+            LyricsPerf.mark(
+                trackUriString,
+                "saf_lyrics_dir_ready",
+                "ms=${SystemClock.elapsedRealtime() - safDirStartMs} dir=${safDir?.uri}"
+            )
             if (safDir == null) {
+                clearRecentResolvedOrigin(trackUriString)
                 Log.w(TAG, "mode SAF load blocked: SAF dir unavailable")
                 return null
             }
             Log.i(TAG, "mode SAF load dir=${safDir.uri}")
+            val lookupStartMs = SystemClock.elapsedRealtime()
             val resolved = resolveSafExistingFile(context, trackUriString, safDir)
+            LyricsPerf.mark(
+                trackUriString,
+                "saf_lyrics_lookup_done",
+                "ms=${SystemClock.elapsedRealtime() - lookupStartMs} hit=${resolved != null} file=${resolved?.fileName}"
+            )
             if (resolved != null) {
                 rememberCanonicalFileName(context, trackUriString, resolved.fileName)
                 Log.d("LrcDebug", "LYRICS_SOURCE_TYPE ${resolved.sourceType}")
-                val text = readSafText(context, resolved.file)
+                val text = readSafText(context, resolved.file, trackUriString)
                 Log.d(
                     "LrcDebug",
                     "LYRICS_READ_RESULT file=${resolved.fileName} textLen=${text?.length ?: -1} blank=${text.isNullOrBlank()}"
                 )
                 if (!text.isNullOrBlank()) {
+                    cacheRecentResolvedOrigin(
+                        trackUriString,
+                        TrackLrcOrigin(
+                            source = if (resolved.sourceType == "canonical") {
+                                "LRC_STORAGE_SAF_CANONICAL"
+                            } else {
+                                "LRC_STORAGE_SAF_LEGACY"
+                            },
+                            fileName = resolved.fileName,
+                            debugPath = resolved.file.uri.toString(),
+                            sourceType = resolved.sourceType
+                        )
+                    )
                     Log.d(TAG, "mode SAF load hit CONFIGURED file=${resolved.fileName}")
                     return text
                 }
             }
+            clearRecentResolvedOrigin(trackUriString)
             Log.d(TAG, "mode SAF load miss")
             return null
         }
@@ -89,6 +131,7 @@ object LrcStorage {
                 return txt
             }
         }
+        clearRecentResolvedOrigin(trackUriString)
         Log.d(TAG, "mode INTERNAL SPL load miss")
         return null
     }
@@ -96,7 +139,18 @@ object LrcStorage {
     fun resolveOriginForTrack(context: Context, trackUriString: String): TrackLrcOrigin? {
         if (trackUriString.isBlank()) return null
         val safOnlyBackend = isSafBackend(context)
+        val originStartMs = SystemClock.elapsedRealtime()
+        LyricsPerf.mark(trackUriString, "lrc_origin_resolve_start", "backend=${if (safOnlyBackend) "SAF" else "INTERNAL"}")
         logLyricsBackend(context, safOnlyBackend)
+
+        getRecentResolvedOrigin(trackUriString)?.let { cached ->
+            LyricsPerf.mark(
+                trackUriString,
+                "lrc_origin_resolve_done",
+                "ms=${SystemClock.elapsedRealtime() - originStartMs} sourceType=${cached.sourceType} file=${cached.fileName} cache=true"
+            )
+            return cached
+        }
 
         if (!safOnlyBackend) {
             val (upperDir, lowerDir) = internalSplLyricsDirs(context)
@@ -108,7 +162,7 @@ object LrcStorage {
                     source = "LRC_STORAGE_INTERNAL_SPL_UPPER",
                     fileName = upper.name,
                     debugPath = upper.absolutePath
-                )
+                ).also { cacheRecentResolvedOrigin(trackUriString, it) }
             }
 
             val lower = File(lowerDir, sidecar)
@@ -117,7 +171,7 @@ object LrcStorage {
                     source = "LRC_STORAGE_INTERNAL_SPL_LOWER",
                     fileName = lower.name,
                     debugPath = lower.absolutePath
-                )
+                ).also { cacheRecentResolvedOrigin(trackUriString, it) }
             }
 
             val cache = internalFile(context, trackUriString)
@@ -126,17 +180,22 @@ object LrcStorage {
                     source = "LRC_STORAGE_INTERNAL_CACHE",
                     fileName = cache.name,
                     debugPath = cache.absolutePath
-                )
+                ).also { cacheRecentResolvedOrigin(trackUriString, it) }
             }
 
             return null
         }
 
-        val safDir = getConfiguredSafDir(context)
+        val safDir = getConfiguredSafDir(context, trackUriString)
         if (safDir != null) {
             val resolved = resolveSafExistingFile(context, trackUriString, safDir)
             if (resolved != null) {
                 rememberCanonicalFileName(context, trackUriString, resolved.fileName)
+                LyricsPerf.mark(
+                    trackUriString,
+                    "lrc_origin_resolve_done",
+                    "ms=${SystemClock.elapsedRealtime() - originStartMs} sourceType=${resolved.sourceType} file=${resolved.fileName}"
+                )
                 return TrackLrcOrigin(
                     source = if (resolved.sourceType == "canonical") {
                         "LRC_STORAGE_SAF_CANONICAL"
@@ -146,11 +205,21 @@ object LrcStorage {
                     fileName = resolved.fileName,
                     debugPath = resolved.file.uri.toString(),
                     sourceType = resolved.sourceType
-                )
+                ).also { cacheRecentResolvedOrigin(trackUriString, it) }
             }
 
+            LyricsPerf.mark(
+                trackUriString,
+                "lrc_origin_resolve_done",
+                "ms=${SystemClock.elapsedRealtime() - originStartMs} source=null dir=${safDir.uri}"
+            )
             return null
         }
+        LyricsPerf.mark(
+            trackUriString,
+            "lrc_origin_resolve_done",
+            "ms=${SystemClock.elapsedRealtime() - originStartMs} source=null"
+        )
         return null
     }
 
@@ -160,6 +229,7 @@ object LrcStorage {
             "BackupFolderPrefs rootUri = ${BackupFolderPrefs.getLibraryRootUri(context)}"
         )
         if (trackUriString.isBlank()) return
+        clearRecentResolvedOrigin(trackUriString)
         val text = linesToLrcText(lines)
         val safOnlyBackend = isSafBackend(context)
         logLyricsBackend(context, safOnlyBackend)
@@ -199,6 +269,7 @@ object LrcStorage {
 
     fun deleteForTrack(context: Context, trackUriString: String) {
         if (trackUriString.isBlank()) return
+        clearRecentResolvedOrigin(trackUriString)
         val safOnlyBackend = isSafBackend(context)
         logLyricsBackend(context, safOnlyBackend)
 
@@ -260,7 +331,8 @@ object LrcStorage {
     // SAF (dossier configuré)
     // ------------------------------------------------------------
 
-    private fun getConfiguredSafDir(context: Context): DocumentFile? {
+    private fun getConfiguredSafDir(context: Context, trackUriString: String? = null): DocumentFile? {
+        val configuredStartMs = SystemClock.elapsedRealtime()
         val explicitPrefUri = LyricsFolderPrefs.get(context)
         Log.d("LrcDebug", "LYRICS_SAF_DIR explicitPrefUri=$explicitPrefUri")
         val explicitDir = explicitPrefUri
@@ -272,57 +344,217 @@ object LrcStorage {
             ?.takeIf { it.isDirectory && it.canRead() }
         Log.d(
             "LrcDebug",
-            "LYRICS_SAF_DIR explicitResolved=${explicitDir?.uri} explicitChildren=${explicitDir?.let { listChildNames(it) }}"
+            "LYRICS_SAF_DIR explicitResolved=${explicitDir?.uri} explicitChildren=${explicitDir?.let { listChildNames(it, trackUriString, label = "explicit_dir_children") }}"
         )
         if (explicitDir != null) {
+            LyricsPerf.mark(
+                trackUriString,
+                "saf_configured_dir_done",
+                "ms=${SystemClock.elapsedRealtime() - configuredStartMs} mode=explicit dir=${explicitDir.uri}"
+            )
             return explicitDir
         }
 
-        val fallbackDir = resolveSafLyricsDirFromLibraryRoot(context)
+        val fallbackDir = resolveSafLyricsDirFromLibraryRoot(context, trackUriString)
         if (fallbackDir != null) {
             Log.i(TAG, "mode SAF fallback lyrics dir=${fallbackDir.uri}")
             LyricsFolderPrefs.save(context, fallbackDir.uri)
         }
+        LyricsPerf.mark(
+            trackUriString,
+            "saf_configured_dir_done",
+            "ms=${SystemClock.elapsedRealtime() - configuredStartMs} mode=fallback dir=${fallbackDir?.uri}"
+        )
         return fallbackDir
     }
 
-    private fun resolveSafLyricsDirFromLibraryRoot(context: Context): DocumentFile? {
-        val rootUri = BackupFolderPrefs.getLibraryRootUri(context) ?: return null
-        Log.d("LrcDebug", "LYRICS_SAF_DIR fallbackRoot=$rootUri")
-        if (rootUri.scheme != "content") return null
-        val rootDoc = DocumentFile.fromTreeUri(context, rootUri)
-            ?: DocumentFile.fromSingleUri(context, rootUri)
+    private fun resolveSafLyricsDirFromLibraryRoot(context: Context, trackUriString: String? = null): DocumentFile? {
+        val resolveStartMs = SystemClock.elapsedRealtime()
+        val requestedRootUri = BackupFolderPrefsSaf.getLibraryRootUri(context)
+            ?: BackupFolderPrefs.getLibraryRootUri(context)
             ?: return null
+        Log.d("LrcDebug", "LYRICS_SAF_DIR fallbackRoot=$requestedRootUri")
+        if (requestedRootUri.scheme != "content") return null
+        val rootDoc = resolveActualSafSplRoot(context, requestedRootUri, trackUriString) ?: return null
+        Log.d(
+            "LrcDebug",
+            "LYRICS_SAF_DIR fallbackResolvedRoot=${rootDoc.uri} rootChildren=${listChildNames(rootDoc, trackUriString, label = "fallback_root_children")}"
+        )
         if (!rootDoc.isDirectory || !rootDoc.canRead()) return null
 
-        val backingTracks = findDirByAliases(rootDoc, listOf("BackingTracks", "BackingTrack"))
+        val backingTracks = findDirByAliases(
+            parent = rootDoc,
+            aliases = listOf("BackingTracks", "BackingTrack"),
+            trackUriString = trackUriString,
+            stage = "resolve_backing_tracks"
+        )
         Log.d(
             "LrcDebug",
-            "LYRICS_SAF_DIR backingTracks=${backingTracks?.uri} rootChildren=${listChildNames(rootDoc)}"
+            "LYRICS_SAF_DIR backingTracks=${backingTracks?.uri} rootChildren=${listChildNames(rootDoc, trackUriString, label = "fallback_root_children_repeat")}"
         )
         val safeBackingTracks = backingTracks ?: return null
-        val lyricsDir = findDirByAliases(safeBackingTracks, listOf("Lyrics", "lyrics"))
+        val lyricsDir = findDirByAliases(
+            parent = safeBackingTracks,
+            aliases = listOf("Lyrics", "lyrics"),
+            trackUriString = trackUriString,
+            stage = "resolve_lyrics_dir"
+        )
         Log.d(
             "LrcDebug",
-            "LYRICS_SAF_DIR resolvedLyricsDir=${lyricsDir?.uri} backingChildren=${listChildNames(safeBackingTracks)}"
+            "LYRICS_SAF_DIR resolvedLyricsDir=${lyricsDir?.uri} backingChildren=${listChildNames(safeBackingTracks, trackUriString, label = "backing_tracks_children")}"
         )
         val safeLyricsDir = lyricsDir ?: return null
         Log.d(
             "LrcDebug",
-            "LYRICS_SAF_DIR children=${listChildNames(safeLyricsDir)}"
+            "LYRICS_SAF_DIR children=${listChildNames(safeLyricsDir, trackUriString, label = "lyrics_dir_children")}"
+        )
+        LyricsPerf.mark(
+            trackUriString,
+            "saf_fallback_dir_done",
+            "ms=${SystemClock.elapsedRealtime() - resolveStartMs} root=${rootDoc.uri} lyricsDir=${safeLyricsDir.uri}"
         )
         return safeLyricsDir.takeIf { it.isDirectory && it.canRead() }
     }
 
-    private fun findDirByAliases(parent: DocumentFile, aliases: List<String>): DocumentFile? {
+    private fun resolveActualSafSplRoot(context: Context, requestedRootUri: Uri, trackUriString: String? = null): DocumentFile? {
+        val rootResolveStartMs = SystemClock.elapsedRealtime()
+        val requestedRootDoc = resolveRootDocument(context, requestedRootUri, trackUriString)
+            ?.takeIf { it.isDirectory && it.canRead() }
+        if (requestedRootDoc != null && matchesDirAlias(requestedRootDoc, listOf("SPL_Music", "spl_music"))) {
+            LyricsPerf.mark(
+                trackUriString,
+                "saf_root_resolve_done",
+                "ms=${SystemClock.elapsedRealtime() - rootResolveStartMs} source=requested root=${requestedRootDoc.uri}"
+            )
+            return requestedRootDoc
+        }
+
+        val setupTreeUri = BackupFolderPrefsSaf.getSetupTreeUri(context)
+            ?: BackupFolderPrefs.getSetupTreeUri(context)
+        Log.d("LrcDebug", "LYRICS_SAF_DIR setupTreeUri=$setupTreeUri")
+        val setupRootDoc = setupTreeUri
+            ?.takeIf { it.scheme == "content" }
+            ?.let { resolveRootDocument(context, it, trackUriString) }
+            ?.takeIf { it.isDirectory && it.canRead() }
+        Log.d(
+            "LrcDebug",
+            "LYRICS_SAF_DIR setupResolved=${setupRootDoc?.uri} setupChildren=${setupRootDoc?.let { listChildNames(it, trackUriString, label = "setup_root_children") }}"
+        )
+        if (setupRootDoc != null) {
+            if (matchesDirAlias(setupRootDoc, listOf("SPL_Music", "spl_music"))) {
+                LyricsPerf.mark(
+                    trackUriString,
+                    "saf_root_resolve_done",
+                    "ms=${SystemClock.elapsedRealtime() - rootResolveStartMs} source=setup_root root=${setupRootDoc.uri}"
+                )
+                return setupRootDoc
+            }
+            val splRoot = findDirByAliases(
+                parent = setupRootDoc,
+                aliases = listOf("SPL_Music", "spl_music"),
+                trackUriString = trackUriString,
+                stage = "resolve_setup_spl_root"
+            )
+            Log.d("LrcDebug", "LYRICS_SAF_DIR setupSplRoot=${splRoot?.uri}")
+            if (splRoot != null && splRoot.isDirectory && splRoot.canRead()) {
+                LyricsPerf.mark(
+                    trackUriString,
+                    "saf_root_resolve_done",
+                    "ms=${SystemClock.elapsedRealtime() - rootResolveStartMs} source=setup_child root=${splRoot.uri}"
+                )
+                return splRoot
+            }
+        }
+
+        LyricsPerf.mark(
+            trackUriString,
+            "saf_root_resolve_done",
+            "ms=${SystemClock.elapsedRealtime() - rootResolveStartMs} source=requested_fallback root=${requestedRootDoc?.uri}"
+        )
+        return requestedRootDoc
+    }
+
+    private fun findDirByAliases(
+        parent: DocumentFile,
+        aliases: List<String>,
+        trackUriString: String? = null,
+        stage: String = "find_dir_by_aliases"
+    ): DocumentFile? {
+        val listStartMs = SystemClock.elapsedRealtime()
         val normalizedAliases = aliases.map { normalizeDirName(it) }.toSet()
-        return parent.listFiles().firstOrNull { child ->
+        val children = runCatching { parent.listFiles().toList() }.getOrDefault(emptyList())
+        val result = children.firstOrNull { child ->
             child.isDirectory && normalizedAliases.contains(normalizeDirName(child.name.orEmpty()))
         }
+        LyricsPerf.mark(
+            trackUriString,
+            "saf_list_dirs_done",
+            "stage=$stage ms=${SystemClock.elapsedRealtime() - listStartMs} dir=${parent.uri} childCount=${children.size} result=${result?.uri}"
+        )
+        return result
+    }
+
+    private fun matchesDirAlias(dir: DocumentFile, aliases: List<String>): Boolean {
+        val normalizedAliases = aliases.map { normalizeDirName(it) }.toSet()
+        return normalizedAliases.contains(normalizeDirName(dir.name.orEmpty()))
     }
 
     private fun normalizeDirName(name: String): String {
         return name.trim().lowercase()
+    }
+
+    private fun resolveRootDocument(context: Context, rootUri: Uri, trackUriString: String? = null): DocumentFile? {
+        val resolveStartMs = SystemClock.elapsedRealtime()
+        val directTree = DocumentFile.fromTreeUri(context, rootUri)
+        if (directTree?.isDirectory == true) {
+            LyricsPerf.mark(
+                trackUriString,
+                "saf_root_document_done",
+                "ms=${SystemClock.elapsedRealtime() - resolveStartMs} requestUri=$rootUri resolved=${directTree.uri} mode=direct_tree"
+            )
+            return directTree
+        }
+
+        val normalizedTreeUri = normalizeAsTreeUri(rootUri)
+        val normalizedTree = normalizedTreeUri?.let { DocumentFile.fromTreeUri(context, it) }
+        if (normalizedTree?.isDirectory == true) {
+            LyricsPerf.mark(
+                trackUriString,
+                "saf_root_document_done",
+                "ms=${SystemClock.elapsedRealtime() - resolveStartMs} requestUri=$rootUri resolved=${normalizedTree.uri} mode=normalized_tree"
+            )
+            return normalizedTree
+        }
+
+        val single = DocumentFile.fromSingleUri(context, rootUri)
+        if (single?.isDirectory == true) {
+            LyricsPerf.mark(
+                trackUriString,
+                "saf_root_document_done",
+                "ms=${SystemClock.elapsedRealtime() - resolveStartMs} requestUri=$rootUri resolved=${single.uri} mode=single"
+            )
+            return single
+        }
+
+        Log.w(
+            TAG,
+            "lyricsRoot:resolve_failed requestUri=$rootUri directTree=${directTree?.uri} normalizedTree=$normalizedTreeUri single=${single?.uri}"
+        )
+        val fallback = directTree ?: normalizedTree ?: single
+        LyricsPerf.mark(
+            trackUriString,
+            "saf_root_document_done",
+            "ms=${SystemClock.elapsedRealtime() - resolveStartMs} requestUri=$rootUri resolved=${fallback?.uri} mode=fallback"
+        )
+        return fallback
+    }
+
+    private fun normalizeAsTreeUri(uri: Uri): Uri? {
+        val authority = uri.authority ?: return null
+        val treeId = runCatching { DocumentsContract.getTreeDocumentId(uri) }.getOrNull()
+            ?: runCatching { DocumentsContract.getDocumentId(uri) }.getOrNull()
+            ?: return null
+        return DocumentsContract.buildTreeDocumentUri(authority, treeId)
     }
 
     private fun resolveSafExistingFile(
@@ -330,11 +562,12 @@ object LrcStorage {
         trackUriString: String,
         dir: DocumentFile
     ): SafResolvedFile? {
+        val lookupStartMs = SystemClock.elapsedRealtime()
         val base = baseNameFromUriString(trackUriString)
         val remembered = getRememberedCanonicalFileName(context, trackUriString)
         val canonicalHashed = fileNameForTrack(trackUriString)
         val sidecar = sidecarNameForTrack(trackUriString)
-        val files = listSafFiles(dir)
+        val files = listSafFiles(dir, trackUriString, label = "lyrics_lookup_files")
         val children = files.map { "${it.name.orEmpty()}<file>" }
         Log.d(
             "LrcDebug",
@@ -359,6 +592,11 @@ object LrcStorage {
                     "LrcDebug",
                     "LYRICS_LOOKUP_RESULT source=remembered file=${rememberedFile.name ?: remembered}"
                 )
+                LyricsPerf.mark(
+                    trackUriString,
+                    "saf_lookup_result",
+                    "ms=${SystemClock.elapsedRealtime() - lookupStartMs} source=remembered file=${rememberedFile.name ?: remembered}"
+                )
                 return SafResolvedFile(
                     fileName = rememberedFile.name ?: remembered,
                     sourceType = "canonical",
@@ -379,6 +617,11 @@ object LrcStorage {
                 "LrcDebug",
                 "LYRICS_LOOKUP_RESULT source=canonical file=${hashedFile.name ?: canonicalHashed}"
             )
+            LyricsPerf.mark(
+                trackUriString,
+                "saf_lookup_result",
+                "ms=${SystemClock.elapsedRealtime() - lookupStartMs} source=canonical file=${hashedFile.name ?: canonicalHashed}"
+            )
             return SafResolvedFile(
                 fileName = hashedFile.name ?: canonicalHashed,
                 sourceType = "canonical",
@@ -395,6 +638,11 @@ object LrcStorage {
             Log.d(
                 "LrcDebug",
                 "LYRICS_LOOKUP_RESULT source=sidecar file=${sidecarFile.name ?: sidecar}"
+            )
+            LyricsPerf.mark(
+                trackUriString,
+                "saf_lookup_result",
+                "ms=${SystemClock.elapsedRealtime() - lookupStartMs} source=sidecar file=${sidecarFile.name ?: sidecar}"
             )
             return SafResolvedFile(
                 fileName = sidecarFile.name ?: sidecar,
@@ -421,6 +669,11 @@ object LrcStorage {
                 "LrcDebug",
                 "LYRICS_LOOKUP_RESULT source=legacy file=${prefixedLegacy.name ?: canonicalHashed}"
             )
+            LyricsPerf.mark(
+                trackUriString,
+                "saf_lookup_result",
+                "ms=${SystemClock.elapsedRealtime() - lookupStartMs} source=legacy file=${prefixedLegacy.name ?: canonicalHashed}"
+            )
             return SafResolvedFile(
                 fileName = prefixedLegacy.name ?: canonicalHashed,
                 sourceType = "legacy",
@@ -429,6 +682,11 @@ object LrcStorage {
         }
 
         Log.d("LrcDebug", "LYRICS_LOOKUP_RESULT source=none file=null")
+        LyricsPerf.mark(
+            trackUriString,
+            "saf_lookup_result",
+            "ms=${SystemClock.elapsedRealtime() - lookupStartMs} source=none file=null"
+        )
         return null
     }
 
@@ -465,27 +723,48 @@ object LrcStorage {
         }.getOrNull()
     }
 
-    private fun readSafText(context: Context, file: DocumentFile): String? {
-        return runCatching {
+    private fun readSafText(context: Context, file: DocumentFile, trackUriString: String? = null): String? {
+        val readStartMs = SystemClock.elapsedRealtime()
+        val text = runCatching {
             context.contentResolver.openInputStream(file.uri)
                 ?.bufferedReader(Charsets.UTF_8)
                 ?.use { it.readText() }
         }.getOrNull()
+        LyricsPerf.mark(
+            trackUriString,
+            "saf_read_text_done",
+            "ms=${SystemClock.elapsedRealtime() - readStartMs} file=${file.uri} len=${text?.length ?: -1} blank=${text.isNullOrBlank()}"
+        )
+        return text
     }
 
-    private fun listChildNames(dir: DocumentFile): List<String> {
-        return runCatching {
+    private fun listChildNames(dir: DocumentFile, trackUriString: String? = null, label: String = "child_names"): List<String> {
+        val listStartMs = SystemClock.elapsedRealtime()
+        val children = runCatching {
             dir.listFiles().map { child ->
                 val kind = if (child.isDirectory) "dir" else "file"
                 "${child.name.orEmpty()}<$kind>"
             }
         }.getOrDefault(emptyList())
+        LyricsPerf.mark(
+            trackUriString,
+            "saf_list_children_done",
+            "label=$label ms=${SystemClock.elapsedRealtime() - listStartMs} dir=${dir.uri} count=${children.size}"
+        )
+        return children
     }
 
-    private fun listSafFiles(dir: DocumentFile): List<DocumentFile> {
-        return runCatching {
+    private fun listSafFiles(dir: DocumentFile, trackUriString: String? = null, label: String = "list_saf_files"): List<DocumentFile> {
+        val listStartMs = SystemClock.elapsedRealtime()
+        val files = runCatching {
             dir.listFiles().filter { it.isFile }
         }.getOrDefault(emptyList())
+        LyricsPerf.mark(
+            trackUriString,
+            "saf_list_files_done",
+            "label=$label ms=${SystemClock.elapsedRealtime() - listStartMs} dir=${dir.uri} count=${files.size}"
+        )
+        return files
     }
 
     private fun findFileIgnoreCase(dir: DocumentFile, targetFileName: String): DocumentFile? {
@@ -561,6 +840,24 @@ object LrcStorage {
             .edit()
             .putString(md5(trackUriString), fileName)
             .apply()
+    }
+
+    @Synchronized
+    private fun cacheRecentResolvedOrigin(trackUriString: String, origin: TrackLrcOrigin) {
+        if (trackUriString.isBlank()) return
+        recentResolvedOrigins[trackUriString] = origin
+    }
+
+    @Synchronized
+    private fun getRecentResolvedOrigin(trackUriString: String): TrackLrcOrigin? {
+        if (trackUriString.isBlank()) return null
+        return recentResolvedOrigins[trackUriString]
+    }
+
+    @Synchronized
+    private fun clearRecentResolvedOrigin(trackUriString: String) {
+        if (trackUriString.isBlank()) return
+        recentResolvedOrigins.remove(trackUriString)
     }
 
     private fun getRememberedCanonicalFileName(context: Context, trackUriString: String): String? {
