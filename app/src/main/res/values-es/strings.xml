@@ -3,15 +3,16 @@
 
     <!-- DJ -->
     <string name="dj_title">DJ</string>
-    <string name="dj_no_folder_selected">No hay carpeta DJ seleccionada</string>
+    <string name="dj_no_folder_selected">La carpeta DJ no está autorizada</string>
+    <string name="dj_fixed_folder_path">Documents/SPL_Music/DJ</string>
 
     <string name="dj_cd_back">Atrás</string>
     <string name="dj_cd_search">Buscar</string>
     <string name="dj_cd_options">Opciones</string>
     <string name="dj_cd_stop">Detener DJ</string>
 
-    <string name="dj_menu_choose_folder">Elegir carpeta DJ…</string>
-    <string name="dj_menu_scan_refresh">Escanear / actualizar carpeta DJ</string>
+    <string name="dj_menu_choose_folder">Autorizar carpeta DJ…</string>
+    <string name="dj_menu_scan_refresh">Volver a escanear la carpeta DJ</string>
     <string name="dj_menu_import_music">Importar música (→ backingtracks)</string>
 
     <string name="dj_search_placeholder">Buscar (todas las carpetas DJ)…</string>
@@ -20,7 +21,12 @@
     <string name="dj_scan_done">Escaneo DJ completado (%1$d entradas)</string>
     <string name="dj_scan_error">Error durante el escaneo DJ</string>
 
-    <string name="dj_hint_first_scan">⚠️ Menú ⋮ → “Escanear / actualizar carpeta DJ” (una vez). Después de eso, DJ es instantáneo.</string>
+    <string name="dj_hint_first_scan">El modo DJ usa siempre la carpeta %1$s.</string>
+    <string name="dj_authorize_title">Autorizar carpeta DJ</string>
+    <string name="dj_authorize_body">El modo DJ usa la carpeta obligatoria de SPL:\n\n%1$s\n\nColoca allí tus pistas DJ y luego autorízala para activar el escaneo automático.</string>
+    <string name="dj_empty_title">No se encontraron pistas DJ</string>
+    <string name="dj_empty_body">No se encontraron pistas DJ en:\n\n%1$s\n\nAñade tus archivos DJ a esa carpeta y vuelve a la pantalla DJ. La app volverá a escanear automáticamente si el contenido cambió.</string>
+    <string name="dj_reauthorize_action">Volver a autorizar la carpeta DJ</string>
 
     <!-- Common -->
     <string name="common_loading">Cargando…</string>
@@ -76,10 +82,10 @@
 
     <string name="filler_dj_required_title">Ambientes: carpeta requerida</string>
     <string name="filler_dj_required_text">Para que los ambientes funcionen, deben estar dentro de:\n\nSPL_Music / DJ</string>
-    <string name="filler_choose_dj">Elegir carpeta DJ</string>
+    <string name="filler_choose_dj">Autorizar carpeta DJ</string>
 
     <string name="filler_picker_title">Elegir una carpeta (dentro de DJ)</string>
-    <string name="filler_dj_missing">Carpeta DJ no seleccionada (o falta permiso).\nToca 📁 y luego elige la carpeta DJ (SPL_Music/DJ).</string>
+    <string name="filler_dj_missing">La carpeta DJ no está autorizada (o falta permiso).\nToca 📁 y autoriza la carpeta requerida: Documents/SPL_Music/DJ.</string>
 
     <string name="filler_current_folder">Carpeta actual: %1$s</string>
     <string name="filler_back">⬅️ Atrás</string>

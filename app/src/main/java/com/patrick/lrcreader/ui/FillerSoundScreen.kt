@@ -213,8 +213,10 @@ fun FillerSoundScreen(
             } catch (_: Exception) {
             }
 
+            val resolvedDjRoot = DjFolderPrefs.resolveFixedDjRootFromPickedTree(context, treeUri) ?: treeUri
+
             // ✅ on enregistre la racine DJ (partagée avec l’écran DJ)
-            DjFolderPrefs.save(context, treeUri)
+            DjFolderPrefs.save(context, resolvedDjRoot)
             DjFolderPrefs.setScanned(context, false)
 
             // ✅ feedback immédiat (sinon l’utilisateur reclique)
@@ -224,9 +226,20 @@ fun FillerSoundScreen(
             scope.launch {
                 try {
                     val newDjIndex = withContext(Dispatchers.IO) {
-                        buildDjFullIndex(context, treeUri) // ⚠️ treeUri, pas picked
+                        buildDjFullIndex(context, resolvedDjRoot)
                     }
                     DjIndexCache.save(context, newDjIndex)
+                    withContext(Dispatchers.IO) {
+                        computeDjFolderSignature(context, resolvedDjRoot)
+                    }?.let { signature ->
+                        DjIndexCache.saveScanMeta(
+                            context = context,
+                            rootUri = resolvedDjRoot,
+                            signature = signature.hash,
+                            rootLastModifiedMs = signature.rootLastModifiedMs,
+                            itemCount = signature.itemCount
+                        )
+                    }
                     DjFolderPrefs.setScanned(context, true)
 
                     // ✅ ouvrir le picker seulement quand le scan est terminé
@@ -573,7 +586,7 @@ fun FillerSoundScreen(
 
                                 pendingSlotIndex = index
 
-                                val djRoot = DjFolderPrefs.get(context)
+                                val djRoot = DjFolderPrefs.getOrAdoptFromLibraryRoot(context)
                                 val djCache = DjIndexCache.load(context).orEmpty()
                                 val needScan =
                                     (djRoot == null) || djCache.isEmpty() || !DjFolderPrefs.isScanned(context)

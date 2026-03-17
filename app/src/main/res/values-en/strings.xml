@@ -3,15 +3,17 @@
 
     <!-- DJ -->
     <string name="dj_title">DJ</string>
-    <string name="dj_no_folder_selected">No DJ folder selected</string>
+    <string name="dj_no_folder_selected">DJ folder not authorized</string>
+    <string name="dj_fixed_folder_path">Documents/SPL_Music/DJ</string>
 
     <string name="dj_cd_back">Back</string>
     <string name="dj_cd_search">Search</string>
     <string name="dj_cd_options">Options</string>
     <string name="dj_cd_stop">Stop DJ</string>
 
-    <string name="dj_menu_choose_folder">Choose DJ folder…</string>
-    <string name="dj_menu_scan_refresh">Scan / refresh DJ folder</string>
+    <string name="dj_menu_choose_folder">Authorize DJ folder</string>
+    <string name="dj_menu_reauthorize_folder">Re-authorize DJ folder</string>
+    <string name="dj_menu_scan_refresh">Re-scan DJ folder</string>
     <string name="dj_menu_import_music">Import music (→ backingtracks)</string>
 
     <string name="dj_search_placeholder">Search (all DJ folders)…</string>
@@ -20,7 +22,13 @@
     <string name="dj_scan_done">DJ scan complete (%1$d entries)</string>
     <string name="dj_scan_error">Error during DJ scan</string>
 
-    <string name="dj_hint_first_scan">⚠️ Menu ⋮ → “Scan / refresh DJ folder” (once). After that, DJ is instant.</string>
+    <string name="dj_hint_first_scan">DJ mode always uses the folder %1$s.</string>
+    <string name="dj_authorize_title">Enable DJ mode</string>
+    <string name="dj_authorize_body">DJ mode uses this folder:\n\n%1$s\n\nAdd your DJ tracks to this folder to find them here.</string>
+    <string name="dj_authorize_hint">When the browser opens, select the &quot;DJ&quot; folder.</string>
+    <string name="dj_empty_title">No DJ tracks found</string>
+    <string name="dj_empty_body">No DJ tracks were found in:\n\n%1$s\n\nAdd your DJ files to that folder, then return to the DJ screen. The app will re-scan automatically if the content changed.</string>
+    <string name="dj_reauthorize_action">Re-authorize DJ folder</string>
 
     <!-- Common -->
     <string name="common_loading">Loading…</string>
@@ -76,10 +84,10 @@
 
     <string name="filler_dj_required_title">Ambiences: required folder</string>
     <string name="filler_dj_required_text">For ambiences to work, they must be inside:\n\nSPL_Music / DJ</string>
-    <string name="filler_choose_dj">Choose DJ folder</string>
+    <string name="filler_choose_dj">Authorize DJ folder</string>
 
     <string name="filler_picker_title">Choose a folder (inside DJ)</string>
-    <string name="filler_dj_missing">DJ folder not selected (or missing permission).\nTap 📁 then choose the DJ folder (SPL_Music/DJ).</string>
+    <string name="filler_dj_missing">DJ folder not authorized (or missing permission).\nTap 📁 then authorize the required folder: Documents/SPL_Music/DJ.</string>
 
     <string name="filler_current_folder">Current folder: %1$s</string>
     <string name="filler_back">⬅️ Back</string>

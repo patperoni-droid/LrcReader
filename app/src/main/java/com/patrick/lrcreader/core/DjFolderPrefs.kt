@@ -4,7 +4,9 @@ import android.content.Context
 import android.net.Uri
 import android.os.Build
 import android.provider.DocumentsContract
+import androidx.documentfile.provider.DocumentFile
 import org.json.JSONArray
+import java.io.File
 
 object DjFolderPrefs {
     private const val PREF = "dj_folder_prefs"
@@ -26,6 +28,7 @@ object DjFolderPrefs {
     fun save(context: Context, uri: Uri) {
         val prefs = context.getSharedPreferences(PREF, Context.MODE_PRIVATE)
         val all = getAllInternal(prefs).toMutableList()
+        val previousCurrent = prefs.getString(KEY_CURRENT, null)
 
         // on évite les doublons
         val asString = uri.toString()
@@ -42,6 +45,10 @@ object DjFolderPrefs {
             // ✅ nouveau dossier => scan requis
             .putBoolean(KEY_DJ_SCANNED, false)
             .apply()
+
+        if (previousCurrent != null && previousCurrent != asString) {
+            DjIndexCache.clear(context)
+        }
     }
 
     /**
@@ -61,12 +68,72 @@ object DjFolderPrefs {
     }
 
     /**
+     * Retourne un dossier DJ exploitable.
+     * Si rien n'est stocké, ou si l'URI stockée n'est plus exploitable,
+     * on tente de retrouver / recréer SPL_Music/DJ depuis la racine bibliothèque.
+     */
+    fun getOrAdoptFromLibraryRoot(context: Context): Uri? {
+        val current = get(context)
+        val resolved = resolveDjFromLibraryRoot(context)
+        if (resolved != null) {
+            if (current?.toString() != resolved.toString()) {
+                save(context, resolved)
+            }
+            return resolved
+        }
+
+        if (isUsableDirectory(context, current)) {
+            return current
+        }
+
+        return null
+    }
+
+    /**
+     * À partir d'un tree SAF choisi par l'utilisateur, résout le dossier imposé SPL_Music/DJ.
+     * Si l'utilisateur choisit Documents ou SPL_Music, on descend automatiquement vers DJ.
+     */
+    fun resolveFixedDjRootFromPickedTree(context: Context, pickedUri: Uri): Uri? {
+        resolveDjFromLibraryRoot(context)?.let { return it }
+
+        if (pickedUri.scheme == "file") {
+            val base = File(pickedUri.path ?: return null)
+            val target = when {
+                base.name.equals("DJ", ignoreCase = true) -> base
+                base.name.equals("SPL_Music", ignoreCase = true) -> File(base, "DJ")
+                else -> File(File(base, "SPL_Music"), "DJ")
+            }
+            if (!target.exists()) target.mkdirs()
+            return Uri.fromFile(target)
+        }
+
+        val pickedDoc = DocumentFile.fromTreeUri(context, pickedUri)
+            ?: DocumentFile.fromSingleUri(context, pickedUri)
+            ?: return null
+
+        val splRoot = when {
+            pickedDoc.name.equals("DJ", ignoreCase = true) -> return pickedDoc.uri
+            pickedDoc.name.equals("SPL_Music", ignoreCase = true) -> pickedDoc
+            else -> pickedDoc.listFiles()
+                .firstOrNull { it.isDirectory && it.name.equals("SPL_Music", ignoreCase = true) }
+                ?: pickedDoc.createDirectory("SPL_Music")
+                ?: return null
+        }
+
+        val djRoot = splRoot.listFiles()
+            .firstOrNull { it.isDirectory && it.name.equals("DJ", ignoreCase = true) }
+            ?: splRoot.createDirectory("DJ")
+
+        return djRoot?.uri
+    }
+
+    /**
      * URI à utiliser pour les écrans picker:
      * - préfère un treeUri lisible si disponible
      * - sinon garde l'URI stockée telle quelle (documentUri inclus)
      */
     fun getResolvedUriForPicker(context: Context): Uri? {
-        val raw = get(context) ?: return null
+        val raw = getOrAdoptFromLibraryRoot(context) ?: return null
         if (raw.scheme != "content") return raw
 
         val isTree = isTreeUriCompat(raw)
@@ -99,10 +166,15 @@ object DjFolderPrefs {
      */
     fun setCurrent(context: Context, uri: Uri) {
         val prefs = context.getSharedPreferences(PREF, Context.MODE_PRIVATE)
+        val previousCurrent = prefs.getString(KEY_CURRENT, null)
         prefs.edit()
             .putString(KEY_CURRENT, uri.toString())
             .putBoolean(KEY_DJ_SCANNED, false)
             .apply()
+
+        if (previousCurrent != null && previousCurrent != uri.toString()) {
+            DjIndexCache.clear(context)
+        }
     }
 
     /** ✅ Le dossier DJ courant a déjà été scanné ? */
@@ -161,6 +233,43 @@ object DjFolderPrefs {
         } else {
             (uri.path ?: "").contains("/tree/")
         }
+    }
+
+    private fun isUsableDirectory(context: Context, uri: Uri?): Boolean {
+        if (uri == null) return false
+        if (uri.scheme == "file") {
+            val path = uri.path ?: return false
+            val dir = File(path)
+            if (!dir.exists()) dir.mkdirs()
+            return dir.isDirectory
+        }
+
+        val doc = DocumentFile.fromTreeUri(context, uri)
+            ?: DocumentFile.fromSingleUri(context, uri)
+            ?: return false
+
+        return runCatching { doc.isDirectory }.getOrDefault(false)
+    }
+
+    private fun resolveDjFromLibraryRoot(context: Context): Uri? {
+        val libraryRoot = BackupFolderPrefs.getLibraryRootUri(context) ?: return null
+
+        if (libraryRoot.scheme == "file") {
+            val rootPath = libraryRoot.path ?: return null
+            val djDir = File(rootPath, "DJ")
+            if (!djDir.exists()) djDir.mkdirs()
+            return Uri.fromFile(djDir)
+        }
+
+        val rootDoc = DocumentFile.fromTreeUri(context, libraryRoot)
+            ?: DocumentFile.fromSingleUri(context, libraryRoot)
+            ?: return null
+
+        val djDoc = rootDoc.listFiles()
+            .firstOrNull { it.isDirectory && it.name.equals("DJ", ignoreCase = true) }
+            ?: runCatching { rootDoc.createDirectory("DJ") }.getOrNull()
+
+        return djDoc?.uri
     }
 
     private fun hasReadableTreeAccess(context: Context, targetTreeUri: Uri): Boolean {
