@@ -10,6 +10,7 @@ import android.provider.DocumentsContract
 import android.net.Uri
 import androidx.documentfile.provider.DocumentFile
 import com.patrick.lrcreader.core.BackupFolderPrefsSaf
+import com.patrick.lrcreader.core.LyricsPerf
 import com.patrick.lrcreader.core.readSyltAsLrcFromUri
 import com.patrick.lrcreader.core.readUsltFromUri
 import androidx.compose.runtime.LaunchedEffect
@@ -75,6 +76,7 @@ import com.patrick.lrcreader.core.audio.AudioEngine
 import com.patrick.lrcreader.core.audio.SoundTouchBridge
 import com.patrick.lrcreader.core.findActiveLrcIndex
 import com.patrick.lrcreader.core.parseLrc
+import com.patrick.lrcreader.core.lyrics.LyricsMemoryCache
 import com.patrick.lrcreader.core.runAccordsDeleteIo
 import com.patrick.lrcreader.core.runAccordsSaveIo
 import com.patrick.lrcreader.core.resolveAccordsUiTruthAfterDelete
@@ -85,6 +87,7 @@ import com.patrick.lrcreader.core.buildAccordsIoFailureLog
 import com.patrick.lrcreader.core.resolveChordsLookupFileName
 import com.patrick.lrcreader.core.resolveAccordsEditTargetTrack
 import com.patrick.lrcreader.core.resolveLyricsViewMode
+import com.patrick.lrcreader.core.lyrics.LyricsCacheEntry
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -205,6 +208,7 @@ fun PlayerScreen(
     var persistedChordLines by remember(currentTrackUri) { mutableStateOf<List<LrcLine>>(emptyList()) }
     var persistedHasChordsSource by remember(currentTrackUri) { mutableStateOf(false) }
     var resolvedLyricsLrcFileName by remember(currentTrackUri) { mutableStateOf<String?>(null) }
+    var lyricsUiVisibleLogged by remember(currentTrackUri) { mutableStateOf(false) }
 
     var lyricsBoxHeightPx by remember { mutableStateOf(0) }
     var currentLrcIndex by remember { mutableStateOf(0) }
@@ -267,6 +271,7 @@ fun PlayerScreen(
     }
 
     val latestCurrentTrackUri by rememberUpdatedState(currentTrackUri)
+    val latestParsedLines by rememberUpdatedState(parsedLines)
 
     val accordsWriteQueue = remember(scope, context) {
         LatestAccordsWriteQueue<AccordsWriteRequest>(
@@ -367,6 +372,32 @@ fun PlayerScreen(
         }
     }
 
+    fun applyCachedLyrics(trackUriString: String, entry: LyricsCacheEntry) {
+        Log.d(
+            "LrcDebug",
+            "LYRICS_CACHE_HIT source=${entry.source} fileName=${entry.resolvedLyricsFileName} path=${entry.debugPath} sourceType=${entry.sourceType}"
+        )
+        LyricsPerf.mark(
+            trackUriString,
+            "cache_hit",
+            "source=${entry.source} file=${entry.resolvedLyricsFileName} lines=${entry.parsedLines.size} loadedAtMs=${entry.loadedAtMs}"
+        )
+        onParsedLinesChange(entry.parsedLines)
+        LyricsPerf.mark(
+            trackUriString,
+            "ui_apply",
+            "source=CACHE lines=${entry.parsedLines.size}"
+        )
+        rawLyricsText = entry.parsedLines.joinToString("\n") { it.text }
+        seedEditingLinesIfBetter(entry.parsedLines)
+        hasLyricsSource = true
+        Log.d("LrcDebug", "LYRICS_SOURCE_TYPE ${entry.sourceType ?: "cached"}")
+        updateResolvedLyricsFileName(
+            entry.resolvedLyricsFileName,
+            reason = "source=CACHE origin=${entry.source} path=${entry.debugPath}"
+        )
+    }
+
     // 🔁 reload paroles (priorité : SYLT -> EDIT (LrcStorage) -> SIDECAR -> USLT)
     LaunchedEffect(currentTrackUri) {
         if (isEditingLyrics) {
@@ -375,6 +406,8 @@ fun PlayerScreen(
         }
         lyricsResolutionCompleted = false
         lyricsResolving = true
+        val resolveStartMs = android.os.SystemClock.elapsedRealtime()
+        var resolvedSource = "SKIPPED"
         try {
         if (currentTrackUri == null) {
             onParsedLinesChange(emptyList())
@@ -385,40 +418,122 @@ fun PlayerScreen(
             return@LaunchedEffect
         }
 
+        val cacheScopeKey = (BackupFolderPrefsSaf.getLibraryRootUri(context)
+            ?: BackupFolderPrefs.getLibraryRootUri(context))
+            ?.toString()
+        LyricsMemoryCache.updateScope(cacheScopeKey)
+        val cachedLyrics = LyricsMemoryCache.get(currentTrackUri)
+        if (cachedLyrics != null) {
+            applyCachedLyrics(currentTrackUri, cachedLyrics)
+            resolvedSource = "CACHE"
+            return@LaunchedEffect
+        }
+
         Log.d("LrcDebug", "LYRICS_UI_RESET owner=PlayerScreen uri=$currentTrackUri reason=track_change")
         onParsedLinesChange(emptyList())
 
         val trackUri = runCatching { Uri.parse(currentTrackUri) }.getOrNull()
         val audioBase = baseNameFromTrackUriString(currentTrackUri)
         val preferExternalLyricsFirst = BackupFolderPrefs.getLibraryRootUri(context)?.scheme == "content"
+        resolvedSource = "NONE"
         Log.d("LrcDebug", "TRACK uriString=$currentTrackUri")
         Log.d("LrcDebug", "TRACK uriParsed=$trackUri scheme=${trackUri?.scheme} authority=${trackUri?.authority}")
         Log.d("LrcDebug", "TRACK audioBaseName=$audioBase")
+        LyricsPerf.mark(
+            currentTrackUri,
+            "player_resolution_start",
+            "preferExternalFirst=$preferExternalLyricsFirst"
+        )
         Log.d(
             "LrcDebug",
             "LYRICS_RESOLUTION_ORDER mode=${if (preferExternalLyricsFirst) "SAF_EXTERNAL_FIRST" else "DEFAULT"} order=${if (preferExternalLyricsFirst) "LRC_STORAGE->SIDECAR->SYLT->USLT" else "SYLT->LRC_STORAGE->SIDECAR->USLT"}"
         )
 
+        fun cacheResolvedLyrics(
+            parsed: List<LrcLine>,
+            resolvedLyricsFileName: String?,
+            source: String,
+            sourceType: String?,
+            debugPath: String?
+        ) {
+            if (parsed.isEmpty()) return
+            LyricsMemoryCache.put(
+                trackUriString = currentTrackUri,
+                parsedLines = parsed,
+                resolvedLyricsFileName = resolvedLyricsFileName,
+                source = source,
+                sourceType = sourceType,
+                debugPath = debugPath
+            )
+            LyricsPerf.mark(
+                currentTrackUri,
+                "cache_store",
+                "source=$source file=$resolvedLyricsFileName lines=${parsed.size}"
+            )
+        }
+
+        fun shouldSkipEmptyUiApply(source: String): Boolean {
+            val existingLines = latestParsedLines.size
+            if (existingLines <= 0) return false
+            LyricsPerf.mark(
+                currentTrackUri,
+                "ui_apply_skip_empty_over_non_empty",
+                "source=$source existingLines=$existingLines"
+            )
+            return true
+        }
+
         suspend fun tryStoredLyrics(): Boolean {
+            val storedLoadStartMs = android.os.SystemClock.elapsedRealtime()
             val stored = withContext(Dispatchers.IO) {
                 LrcStorage.loadForTrack(context, currentTrackUri)
             }
+            LyricsPerf.mark(
+                currentTrackUri,
+                "stored_load_done",
+                "ms=${android.os.SystemClock.elapsedRealtime() - storedLoadStartMs} found=${!stored.isNullOrBlank()} len=${stored?.length ?: -1}"
+            )
             Log.d("LrcDebug", "STORED found=${!stored.isNullOrBlank()}")
             if (stored.isNullOrBlank()) return false
 
+            val originResolveStartMs = android.os.SystemClock.elapsedRealtime()
             val storedOrigin = withContext(Dispatchers.IO) {
                 runCatching { LrcStorage.resolveOriginForTrack(context, currentTrackUri) }.getOrNull()
             }
+            LyricsPerf.mark(
+                currentTrackUri,
+                "stored_origin_done",
+                "ms=${android.os.SystemClock.elapsedRealtime() - originResolveStartMs} source=${storedOrigin?.source} file=${storedOrigin?.fileName}"
+            )
             Log.d(
                 "LrcDebug",
                 "LYRICS_SOURCE source=LRC_STORAGE origin=${storedOrigin?.source} fileName=${storedOrigin?.fileName} path=${storedOrigin?.debugPath}"
             )
             Log.d("LrcDebug", "LYRICS_SOURCE_TYPE ${storedOrigin?.sourceType ?: "canonical"}")
+            val parseStartMs = android.os.SystemClock.elapsedRealtime()
             val parsed = parseLrc(stored)
+            LyricsPerf.mark(
+                currentTrackUri,
+                "parse_done",
+                "source=LRC_STORAGE ms=${android.os.SystemClock.elapsedRealtime() - parseStartMs} lines=${parsed.size} chars=${stored.length}"
+            )
             onParsedLinesChange(parsed)
+            LyricsPerf.mark(
+                currentTrackUri,
+                "ui_apply",
+                "source=LRC_STORAGE lines=${parsed.size}"
+            )
             rawLyricsText = parsed.joinToString("\n") { it.text }
             seedEditingLinesIfBetter(parsed)
             hasLyricsSource = true
+            resolvedSource = "LRC_STORAGE"
+            cacheResolvedLyrics(
+                parsed = parsed,
+                resolvedLyricsFileName = storedOrigin?.fileName,
+                source = "LRC_STORAGE",
+                sourceType = storedOrigin?.sourceType ?: "canonical",
+                debugPath = storedOrigin?.debugPath
+            )
             updateResolvedLyricsFileName(
                 storedOrigin?.fileName,
                 reason = "source=LRC_STORAGE path=${storedOrigin?.debugPath}"
@@ -427,11 +542,17 @@ fun PlayerScreen(
         }
 
         suspend fun trySidecarLyrics(): Boolean {
+            val sidecarReadStartMs = android.os.SystemClock.elapsedRealtime()
             val sidecarLrcResult: LrcTextWithFileName? = if (trackUri != null) {
                 withContext(Dispatchers.IO) {
                     runCatching { readSidecarLrcSmart(context, trackUri) }.getOrNull()
                 }
             } else null
+            LyricsPerf.mark(
+                currentTrackUri,
+                "sidecar_read_done",
+                "ms=${android.os.SystemClock.elapsedRealtime() - sidecarReadStartMs} found=${sidecarLrcResult != null} len=${sidecarLrcResult?.text?.length ?: -1}"
+            )
 
             Log.d("LrcDebug", "SIDECAR found=${sidecarLrcResult != null}")
             if (sidecarLrcResult == null) return false
@@ -441,11 +562,34 @@ fun PlayerScreen(
                 "LYRICS_SOURCE source=SIDECAR fileName=${sidecarLrcResult.fileName} path=${sidecarLrcResult.debugPath}"
             )
             Log.d("LrcDebug", "LYRICS_SOURCE_TYPE legacy")
+            val parseStartMs = android.os.SystemClock.elapsedRealtime()
             val parsed = if (sidecarLrcResult.text.isNotBlank()) parseLrc(sidecarLrcResult.text) else emptyList()
+            LyricsPerf.mark(
+                currentTrackUri,
+                "parse_done",
+                "source=SIDECAR ms=${android.os.SystemClock.elapsedRealtime() - parseStartMs} lines=${parsed.size} chars=${sidecarLrcResult.text.length}"
+            )
+            if (parsed.isEmpty() && shouldSkipEmptyUiApply("SIDECAR")) {
+                resolvedSource = "SIDECAR_EMPTY_SKIPPED"
+                return false
+            }
             onParsedLinesChange(parsed)
+            LyricsPerf.mark(
+                currentTrackUri,
+                "ui_apply",
+                "source=SIDECAR lines=${parsed.size}"
+            )
             rawLyricsText = parsed.joinToString("\n") { it.text }
             seedEditingLinesIfBetter(parsed)
             hasLyricsSource = true
+            resolvedSource = "SIDECAR"
+            cacheResolvedLyrics(
+                parsed = parsed,
+                resolvedLyricsFileName = sidecarLrcResult.fileName,
+                source = "SIDECAR",
+                sourceType = "legacy",
+                debugPath = sidecarLrcResult.debugPath
+            )
             updateResolvedLyricsFileName(
                 sidecarLrcResult.fileName,
                 reason = "source=SIDECAR path=${sidecarLrcResult.debugPath}"
@@ -454,37 +598,87 @@ fun PlayerScreen(
         }
 
         suspend fun trySyltLyrics(): Boolean {
+            val syltReadStartMs = android.os.SystemClock.elapsedRealtime()
             val syltLrcText: String? = if (trackUri != null) {
                 withContext(Dispatchers.IO) {
                     runCatching { readSyltAsLrcFromUri(context, trackUri) }.getOrNull()
                 }
             } else null
+            LyricsPerf.mark(
+                currentTrackUri,
+                "embedded_sylt_read_done",
+                "ms=${android.os.SystemClock.elapsedRealtime() - syltReadStartMs} found=${!syltLrcText.isNullOrBlank()} len=${syltLrcText?.length ?: -1}"
+            )
             if (syltLrcText.isNullOrBlank()) return false
 
+            val parseStartMs = android.os.SystemClock.elapsedRealtime()
             val parsed = parseLrc(syltLrcText)
+            LyricsPerf.mark(
+                currentTrackUri,
+                "parse_done",
+                "source=SYLT ms=${android.os.SystemClock.elapsedRealtime() - parseStartMs} lines=${parsed.size} chars=${syltLrcText.length}"
+            )
             onParsedLinesChange(parsed)
+            LyricsPerf.mark(
+                currentTrackUri,
+                "ui_apply",
+                "source=SYLT lines=${parsed.size}"
+            )
             rawLyricsText = parsed.joinToString("\n") { it.text }
             seedEditingLinesIfBetter(parsed)
             hasLyricsSource = true
             Log.d("LrcDebug", "LYRICS_SOURCE_TYPE embedded")
+            resolvedSource = "SYLT"
+            cacheResolvedLyrics(
+                parsed = parsed,
+                resolvedLyricsFileName = null,
+                source = "SYLT",
+                sourceType = "embedded",
+                debugPath = null
+            )
             updateResolvedLyricsFileName(null, "source=SYLT")
             return true
         }
 
         suspend fun tryUsltLyrics(): Boolean {
+            val usltReadStartMs = android.os.SystemClock.elapsedRealtime()
             val usltText: String? = if (trackUri != null) {
                 withContext(Dispatchers.IO) {
                     runCatching { readUsltFromUri(context, trackUri) }.getOrNull()
                 }
             } else null
+            LyricsPerf.mark(
+                currentTrackUri,
+                "embedded_uslt_read_done",
+                "ms=${android.os.SystemClock.elapsedRealtime() - usltReadStartMs} found=${!usltText.isNullOrBlank()} len=${usltText?.length ?: -1}"
+            )
             if (usltText.isNullOrBlank()) return false
 
+            val parseStartMs = android.os.SystemClock.elapsedRealtime()
             val parsed = parseLrc(usltText)
+            LyricsPerf.mark(
+                currentTrackUri,
+                "parse_done",
+                "source=USLT ms=${android.os.SystemClock.elapsedRealtime() - parseStartMs} lines=${parsed.size} chars=${usltText.length}"
+            )
             onParsedLinesChange(parsed)
+            LyricsPerf.mark(
+                currentTrackUri,
+                "ui_apply",
+                "source=USLT lines=${parsed.size}"
+            )
             rawLyricsText = parsed.joinToString("\n") { it.text }
             seedEditingLinesIfBetter(parsed)
             hasLyricsSource = true
             Log.d("LrcDebug", "LYRICS_SOURCE_TYPE embedded")
+            resolvedSource = "USLT"
+            cacheResolvedLyrics(
+                parsed = parsed,
+                resolvedLyricsFileName = null,
+                source = "USLT",
+                sourceType = "embedded",
+                debugPath = null
+            )
             updateResolvedLyricsFileName(null, "source=USLT")
             return true
         }
@@ -498,6 +692,10 @@ fun PlayerScreen(
             return@LaunchedEffect
         }
 
+        if (shouldSkipEmptyUiApply("NONE")) {
+            resolvedSource = "NONE_EMPTY_SKIPPED"
+            return@LaunchedEffect
+        }
         onParsedLinesChange(emptyList())
         rawLyricsText = ""
         seedEditingLinesIfBetter(emptyList())
@@ -505,9 +703,27 @@ fun PlayerScreen(
         Log.d("LrcDebug", "LYRICS_SOURCE source=NONE")
         updateResolvedLyricsFileName(null, "source=NONE")
         } finally {
+            LyricsPerf.mark(
+                currentTrackUri,
+                "player_resolution_done",
+                "ms=${android.os.SystemClock.elapsedRealtime() - resolveStartMs} source=$resolvedSource"
+            )
             lyricsResolving = false
             lyricsResolutionCompleted = true
         }
+    }
+
+    LaunchedEffect(currentTrackUri, parsedLines, selectedViewMode) {
+        if (lyricsUiVisibleLogged) return@LaunchedEffect
+        if (currentTrackUri == null) return@LaunchedEffect
+        if (selectedViewMode != LyricsViewMode.LYRICS) return@LaunchedEffect
+        if (parsedLines.isEmpty()) return@LaunchedEffect
+        lyricsUiVisibleLogged = true
+        LyricsPerf.mark(
+            currentTrackUri,
+            "ui_visible",
+            "mode=$selectedViewMode lines=${parsedLines.size}"
+        )
     }
 
     // 🔁 reload accords dédiés (BackingTracks/Accords/<base>.lrc)
@@ -797,6 +1013,7 @@ fun PlayerScreen(
                     currentTrackUri?.let { trackUri ->
                         val preferredAtSave = resolvedLyricsLrcFileName
                         val saveStartMs = android.os.SystemClock.elapsedRealtime()
+                        LyricsMemoryCache.invalidate(trackUri)
                         Log.d(
                             "LrcDebug",
                             "LYRICS_SAVE_ASYNC start trackUri=$trackUri lines=${lines.size}"
@@ -923,6 +1140,7 @@ fun PlayerScreen(
 
                     currentTrackUri?.let { trackUri ->
                         runCatching {
+                            LyricsMemoryCache.invalidate(trackUri)
                             LrcStorage.deleteForTrack(context, trackUri)
                         }
                     }
