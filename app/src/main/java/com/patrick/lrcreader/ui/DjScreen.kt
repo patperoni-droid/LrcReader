@@ -33,10 +33,13 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.documentfile.provider.DocumentFile
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.patrick.lrcreader.core.BackupFolderPrefs
 import com.patrick.lrcreader.core.DjFolderPrefs
@@ -48,7 +51,10 @@ import com.patrick.lrcreader.exo.R
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 import kotlin.math.roundToInt
+
+private const val DJ_SIGNATURE_RECHECK_COOLDOWN_MS = 15_000L
 
 @Composable
 fun DjScreen(
@@ -65,6 +71,7 @@ fun DjScreen(
     var entries by remember { mutableStateOf<List<DjEntry>>(emptyList()) }
 
     var isLoading by remember { mutableStateOf(false) }
+    var hasResolvedDjAccess by remember { mutableStateOf(false) }
 
     var menuOpen by remember { mutableStateOf(false) }
     var isQueuePanelOpen by remember { mutableStateOf(false) }
@@ -85,6 +92,82 @@ fun DjScreen(
             name = e.name,
             isDirectory = e.isDirectory
         )
+    }
+
+    fun syncBrowserToRoot(root: Uri?) {
+        val rootChanged = browserVm.rootFolderUri?.toString() != root?.toString()
+        if (rootChanged) {
+            browserVm.setRoot(root)
+            browserVm.clearStack()
+        } else if (browserVm.rootFolderUri == null) {
+            browserVm.setRoot(root)
+        }
+
+        if (rootChanged || browserVm.currentFolderUri == null) {
+            browserVm.setCurrent(root)
+        }
+    }
+
+    fun djRootDisplayName(root: Uri?): String {
+        if (root == null) return context.getString(R.string.dj_no_folder_selected)
+        if (root.scheme == "file") {
+            return File(root.path ?: "").name.ifBlank { context.getString(R.string.common_ellipsis) }
+        }
+        return (
+            DocumentFile.fromTreeUri(context, root)
+                ?: DocumentFile.fromSingleUri(context, root)
+            )?.name ?: context.getString(R.string.common_ellipsis)
+    }
+
+    fun readDjRootLastModified(root: Uri): Long {
+        return if (root.scheme == "file") {
+            File(root.path ?: return 0L).lastModified()
+        } else {
+            val doc = DocumentFile.fromTreeUri(context, root)
+                ?: DocumentFile.fromSingleUri(context, root)
+                ?: return 0L
+            runCatching { doc.lastModified() }.getOrDefault(0L)
+        }
+    }
+
+    suspend fun shouldAutoScanDj(root: Uri, currentIndex: List<DjIndexCache.Entry>): Boolean {
+        if (!DjFolderPrefs.isScanned(context)) return true
+        if (currentIndex.isEmpty()) return true
+
+        val meta = DjIndexCache.loadScanMeta(context) ?: return true
+        if (meta.rootUriString != root.toString()) return true
+
+        val currentRootLastModified = withContext(Dispatchers.IO) {
+            readDjRootLastModified(root)
+        }
+        if (
+            meta.rootLastModifiedMs > 0L &&
+            currentRootLastModified > 0L &&
+            meta.rootLastModifiedMs == currentRootLastModified
+        ) {
+            return false
+        }
+
+        val now = System.currentTimeMillis()
+        if (!DjScanState.isScanning.value && now - meta.verifiedAtMs < DJ_SIGNATURE_RECHECK_COOLDOWN_MS) {
+            return false
+        }
+
+        val currentSignature = withContext(Dispatchers.IO) {
+            computeDjFolderSignature(context, root)
+        } ?: return true
+
+        if (currentSignature.hash == meta.signature) {
+            DjIndexCache.updateScanVerification(
+                context = context,
+                rootUri = root,
+                rootLastModifiedMs = currentSignature.rootLastModifiedMs,
+                verifiedAtMs = now
+            )
+            return false
+        }
+
+        return true
     }
 
     fun refreshFromIndex() {
@@ -130,10 +213,34 @@ fun DjScreen(
             isLoading = true
             DjScanState.start()
             try {
+                val djRootAccessible = withContext(Dispatchers.IO) {
+                    if (djRoot.scheme == "file") {
+                        File(djRoot.path ?: "").isDirectory
+                    } else {
+                        val doc = DocumentFile.fromTreeUri(context, djRoot)
+                            ?: DocumentFile.fromSingleUri(context, djRoot)
+                        doc != null && doc.isDirectory
+                    }
+                }
+                if (!djRootAccessible) {
+                    throw IllegalStateException("DJ root inaccessible: $djRoot")
+                }
+
                 val newDjIndex = withContext(Dispatchers.IO) {
                     buildDjFullIndex(context, djRoot)
                 }
                 DjIndexCache.save(context, newDjIndex)
+                withContext(Dispatchers.IO) {
+                    computeDjFolderSignature(context, djRoot)
+                }?.let { signature ->
+                    DjIndexCache.saveScanMeta(
+                        context = context,
+                        rootUri = djRoot,
+                        signature = signature.hash,
+                        rootLastModifiedMs = signature.rootLastModifiedMs,
+                        itemCount = signature.itemCount
+                    )
+                }
                 DjFolderPrefs.setScanned(context, true)
 
                 indexAll = newDjIndex
@@ -162,6 +269,33 @@ fun DjScreen(
         }
     }
 
+    suspend fun refreshDjState(forceSignatureCheck: Boolean) {
+        val root = DjFolderPrefs.getOrAdoptFromLibraryRoot(context)
+        syncBrowserToRoot(root)
+
+        if (root == null) {
+            indexAll = emptyList()
+            refreshFromIndex()
+            return
+        }
+
+        val cached = DjIndexCache.load(context).orEmpty()
+        indexAll = cached
+        refreshFromIndex()
+
+        val shouldScan = if (forceSignatureCheck) {
+            shouldAutoScanDj(root, cached)
+        } else {
+            !DjFolderPrefs.isScanned(context) ||
+                cached.isEmpty() ||
+                DjIndexCache.loadScanMeta(context)?.rootUriString != root.toString()
+        }
+
+        if (shouldScan) {
+            launchDjScan(root, showToast = false)
+        }
+    }
+
     val pickDjFolderLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree(),
         onResult = { uri ->
@@ -175,13 +309,16 @@ fun DjScreen(
                 )
             } catch (_: Exception) {}
 
+            val resolvedDjRoot = DjFolderPrefs.resolveFixedDjRootFromPickedTree(context, uri) ?: uri
+
             // 2) sauver la racine DJ + mettre à jour le browser
-            DjFolderPrefs.save(context, uri)
-            browserVm.setRoot(uri)
-            browserVm.setCurrent(uri)
+            DjFolderPrefs.save(context, resolvedDjRoot)
+            syncBrowserToRoot(resolvedDjRoot)
+            indexAll = emptyList()
+            refreshFromIndex()
 
             // 3) scanner
-            launchDjScan(uri, showToast = false)
+            launchDjScan(resolvedDjRoot, showToast = false)
         }
     )
 
@@ -241,21 +378,29 @@ fun DjScreen(
         label = "pulse"
     )
 
+    val lifecycleOwner = LocalLifecycleOwner.current
+
     // -------------------------- 1er chargement ---------------------------
     LaunchedEffect(Unit) {
-        val root = DjFolderPrefs.get(context)
+        try {
+            refreshDjState(forceSignatureCheck = false)
+        } finally {
+            hasResolvedDjAccess = true
+        }
+    }
 
-        // (1) synchro VM
-        if (browserVm.rootFolderUri == null) browserVm.setRoot(root)
-        if (browserVm.currentFolderUri == null) browserVm.setCurrent(browserVm.rootFolderUri)
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                scope.launch {
+                    refreshDjState(forceSignatureCheck = true)
+                }
+            }
+        }
 
-        // (2) charge cache DJ
-        indexAll = DjIndexCache.load(context).orEmpty()
-        refreshFromIndex()
-
-        // (3) auto-scan 1 fois si on a un root mais pas d’index
-        if (root != null && indexAll.isEmpty()) {
-            launchDjScan(root, showToast = false)
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
 
@@ -273,6 +418,7 @@ fun DjScreen(
     val accentGo = Color(0xFFFFC107)
     val deckAGlow = Color(0xFF4CAF50)
     val deckBGlow = Color(0xFFE040FB)
+    val fixedDjPath = stringResource(R.string.dj_fixed_folder_path)
 
     // Liste visible (filtre dans le dossier courant)
     val visibleEntries = remember(entries, searchQuery) {
@@ -290,6 +436,19 @@ fun DjScreen(
             val q = searchQuery.trim().lowercase()
             allAudioEntries.filter { !it.isDirectory && it.name.lowercase().contains(q) }
         }
+    }
+    val isResolvingDjAccess = !hasResolvedDjAccess
+    val needsDjAuthorization = hasResolvedDjAccess && browserVm.rootFolderUri == null
+    val showDjEmptyState = hasResolvedDjAccess &&
+        !needsDjAuthorization &&
+        !isLoading &&
+        searchQuery.isBlank() &&
+        visibleEntries.isEmpty() &&
+        allAudioEntries.isEmpty()
+    val authorizeMenuLabel = if (needsDjAuthorization) {
+        stringResource(R.string.dj_menu_choose_folder)
+    } else {
+        stringResource(R.string.dj_menu_reauthorize_folder)
     }
 
     // ============================== UI ==============================
@@ -341,8 +500,7 @@ fun DjScreen(
 
                     val shownUri = browserVm.currentFolderUri ?: browserVm.rootFolderUri
                     Text(
-                        text = shownUri?.let { DocumentFile.fromTreeUri(context, it)?.name ?: stringResource(R.string.common_ellipsis) }
-                            ?: stringResource(R.string.dj_no_folder_selected),
+                        text = djRootDisplayName(shownUri),
                         color = Color.Gray,
                         fontSize = 12.sp,
                         maxLines = 1
@@ -378,7 +536,7 @@ fun DjScreen(
                 ) {
 
                     DropdownMenuItem(
-                        text = { Text(stringResource(R.string.dj_menu_choose_folder)) },
+                        text = { Text(authorizeMenuLabel) },
                         onClick = {
                             menuOpen = false
                             pickDjFolderLauncher.launch(null)
@@ -390,11 +548,8 @@ fun DjScreen(
                         onClick = {
                             menuOpen = false
 
-                            val djRoot = DjFolderPrefs.get(context)
-                            browserVm.setRoot(djRoot)
-                            if (browserVm.currentFolderUri == null) {
-                                browserVm.setCurrent(browserVm.rootFolderUri)
-                            }
+                            val djRoot = DjFolderPrefs.getOrAdoptFromLibraryRoot(context)
+                            syncBrowserToRoot(djRoot)
 
                             if (djRoot == null) {
                                 indexAll = emptyList()
@@ -633,39 +788,132 @@ fun DjScreen(
             Spacer(Modifier.height(8.dp))
 
             // ───────── Liste dossiers + titres (dossier courant) ─────────
-            DjFolderBrowser(
-                currentFolderUri = browserVm.currentFolderUri,
-                visibleEntries = visibleEntries,
-                onBg = onBg,
-                subColor = sub,
-                isLoading = isLoading,
-                onDirectoryClick = { entry ->
-                    val old = browserVm.currentFolderUri ?: browserVm.rootFolderUri
-                    if (old != null) browserVm.pushCurrent(old)
-
-                    browserVm.setCurrent(entry.uri)
-                    refreshFromIndex()
-                    searchQuery = ""
-                },
-                onFilePlay = { entry ->
-                    val uriStr = entry.uri.toString()
-                    PlaybackCoordinator.onDjStart()
-                    DjEngine.selectTrackFromList(uriStr, entry.name)
-                },
-                onFileEnqueue = { entry ->
-                    val uriStr = entry.uri.toString()
-                    DjEngine.addToQueue(uriStr, entry.name)
+            when {
+                isResolvingDjAccess -> {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = card),
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 6.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                                color = onBg
+                            )
+                            Spacer(Modifier.width(10.dp))
+                            Text(
+                                text = stringResource(R.string.common_loading),
+                                color = sub,
+                                fontSize = 13.sp
+                            )
+                        }
+                    }
                 }
-            )
 
-            // ✅ Petit message si pas de dossier DJ choisi
-            if (browserVm.rootFolderUri == null) {
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    text = stringResource(R.string.dj_hint_first_scan),
-                    color = sub,
-                    fontSize = 12.sp
-                )
+                needsDjAuthorization -> {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = card),
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 6.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Text(
+                                text = stringResource(R.string.dj_authorize_title),
+                                color = onBg,
+                                fontSize = 16.sp
+                            )
+                            Text(
+                                text = stringResource(R.string.dj_authorize_body, fixedDjPath),
+                                color = sub,
+                                fontSize = 13.sp
+                            )
+                            Button(onClick = { pickDjFolderLauncher.launch(null) }) {
+                                Text(stringResource(R.string.dj_menu_choose_folder))
+                            }
+                            Text(
+                                text = stringResource(R.string.dj_authorize_hint),
+                                color = sub,
+                                fontSize = 12.sp
+                            )
+                        }
+                    }
+                }
+
+                showDjEmptyState -> {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = card),
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 6.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Text(
+                                text = stringResource(R.string.dj_empty_title),
+                                color = onBg,
+                                fontSize = 16.sp
+                            )
+                            Text(
+                                text = stringResource(R.string.dj_empty_body, fixedDjPath),
+                                color = sub,
+                                fontSize = 13.sp
+                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedButton(
+                                    onClick = {
+                                        browserVm.rootFolderUri?.let { launchDjScan(it, showToast = true) }
+                                    }
+                                ) {
+                                    Text(stringResource(R.string.dj_menu_scan_refresh))
+                                }
+                                TextButton(onClick = { pickDjFolderLauncher.launch(null) }) {
+                                    Text(stringResource(R.string.dj_reauthorize_action))
+                                }
+                            }
+                        }
+                    }
+                }
+
+                else -> {
+                    DjFolderBrowser(
+                        currentFolderUri = browserVm.currentFolderUri,
+                        visibleEntries = visibleEntries,
+                        onBg = onBg,
+                        subColor = sub,
+                        isLoading = isLoading,
+                        onDirectoryClick = { entry ->
+                            val old = browserVm.currentFolderUri ?: browserVm.rootFolderUri
+                            if (old != null) browserVm.pushCurrent(old)
+
+                            browserVm.setCurrent(entry.uri)
+                            refreshFromIndex()
+                            searchQuery = ""
+                        },
+                        onFilePlay = { entry ->
+                            val uriStr = entry.uri.toString()
+                            PlaybackCoordinator.onDjStart()
+                            DjEngine.selectTrackFromList(uriStr, entry.name)
+                        },
+                        onFileEnqueue = { entry ->
+                            val uriStr = entry.uri.toString()
+                            DjEngine.addToQueue(uriStr, entry.name)
+                        }
+                    )
+                }
             }
 
             // ✅ Spinner si refresh

@@ -3,10 +3,12 @@ package com.patrick.lrcreader.ui
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import androidx.documentfile.provider.DocumentFile
-import com.patrick.lrcreader.core.LibraryIndexCache
 import android.provider.DocumentsContract
+import androidx.documentfile.provider.DocumentFile
 import com.patrick.lrcreader.core.BackupFolderPrefs
+import com.patrick.lrcreader.core.LibraryIndexCache
+import java.io.File
+import java.security.MessageDigest
 
 /* -----------------------------------------------------------
    MOTEUR BIBLIOTHÈQUE : cache + utilitaires fichiers
@@ -306,40 +308,172 @@ fun buildFullIndex(context: Context, rootUri: Uri): List<LibraryIndexCache.Cache
 // ------------------------------------------------------------
 // ✅ SCAN DJ (sur demande) → index séparé (DJ seulement)
 // ------------------------------------------------------------
+data class DjFolderSignature(
+    val hash: String,
+    val rootLastModifiedMs: Long,
+    val itemCount: Int
+)
+
 fun buildDjFullIndex(
     context: Context,
     djRootUri: Uri
 ): List<com.patrick.lrcreader.core.DjIndexCache.Entry> {
 
     val out = ArrayList<com.patrick.lrcreader.core.DjIndexCache.Entry>()
-    val rootDoc = DocumentFile.fromTreeUri(context, djRootUri) ?: return emptyList()
+    if (djRootUri.scheme == "file") {
+        val rootDir = File(djRootUri.path ?: return emptyList())
+        if (!rootDir.isDirectory) return emptyList()
+
+        fun recurse(folder: File, parentKey: String) {
+            folder.listFiles()
+                ?.sortedBy { it.name.lowercase() }
+                .orEmpty()
+                .forEach { child ->
+                    val name = child.name
+
+                    if (!child.isDirectory && !isAudioOrVideo(name)) return@forEach
+
+                    out.add(
+                        com.patrick.lrcreader.core.DjIndexCache.Entry(
+                            uriString = Uri.fromFile(child).toString(),
+                            name = name,
+                            isDirectory = child.isDirectory,
+                            parentUriString = parentKey,
+                            lastModifiedMs = child.lastModified(),
+                            sizeBytes = if (child.isFile) child.length() else 0L
+                        )
+                    )
+
+                    if (child.isDirectory) {
+                        recurse(child, Uri.fromFile(child).toString())
+                    }
+                }
+        }
+
+        recurse(rootDir, djRootUri.toString())
+        return out
+    }
+
+    val rootDoc = DocumentFile.fromTreeUri(context, djRootUri)
+        ?: DocumentFile.fromSingleUri(context, djRootUri)
+        ?: return emptyList()
+    if (!rootDoc.isDirectory) return emptyList()
 
     fun recurse(folderDoc: DocumentFile, parentKey: String) {
-        folderDoc.listFiles().forEach { child ->
-            val name = child.name ?: (if (child.isDirectory) "Dossier" else "Fichier")
+        folderDoc.listFiles()
+            .sortedBy { (it.name ?: "").lowercase() }
+            .forEach { child ->
+                val name = child.name ?: (if (child.isDirectory) "Dossier" else "Fichier")
 
-            // ✅ DJ: on garde uniquement dossiers + médias
-            if (!child.isDirectory) {
-                if (!isAudioOrVideo(context, child.uri, name)) return@forEach
-            }
+                if (!child.isDirectory && !isAudioOrVideo(context, child.uri, name)) return@forEach
 
-            out.add(
-                com.patrick.lrcreader.core.DjIndexCache.Entry(
-                    uriString = child.uri.toString(),
-                    name = name,
-                    isDirectory = child.isDirectory,
-                    parentUriString = parentKey
+                out.add(
+                    com.patrick.lrcreader.core.DjIndexCache.Entry(
+                        uriString = child.uri.toString(),
+                        name = name,
+                        isDirectory = child.isDirectory,
+                        parentUriString = parentKey,
+                        lastModifiedMs = runCatching { child.lastModified() }.getOrDefault(0L),
+                        sizeBytes = if (child.isDirectory) 0L else runCatching { child.length() }.getOrDefault(0L)
+                    )
                 )
-            )
 
-            if (child.isDirectory) {
-                recurse(child, child.uri.toString())
+                if (child.isDirectory) {
+                    recurse(child, child.uri.toString())
+                }
             }
-        }
     }
 
     recurse(rootDoc, djRootUri.toString())
     return out
+}
+
+fun computeDjFolderSignature(
+    context: Context,
+    djRootUri: Uri
+): DjFolderSignature? {
+    val digest = MessageDigest.getInstance("SHA-256")
+    var itemCount = 0
+
+    fun update(parts: List<String>) {
+        parts.forEach { part ->
+            digest.update(part.toByteArray(Charsets.UTF_8))
+            digest.update(0)
+        }
+    }
+
+    if (djRootUri.scheme == "file") {
+        val rootDir = File(djRootUri.path ?: return null)
+        if (!rootDir.isDirectory) return null
+
+        fun recurse(folder: File, parentRelativePath: String) {
+            folder.listFiles()
+                ?.sortedBy { it.name.lowercase() }
+                .orEmpty()
+                .forEach { child ->
+                    if (!child.isDirectory && !isAudioOrVideo(child.name)) return@forEach
+
+                    val relativePath = if (parentRelativePath.isBlank()) {
+                        child.name
+                    } else {
+                        "$parentRelativePath/${child.name}"
+                    }
+
+                    update(
+                        listOf(
+                            relativePath.lowercase(),
+                            if (child.isDirectory) "D" else "F",
+                            child.lastModified().toString(),
+                            if (child.isFile) child.length().toString() else "0"
+                        )
+                    )
+                    itemCount++
+
+                    if (child.isDirectory) recurse(child, relativePath)
+                }
+        }
+
+        recurse(rootDir, "")
+        return DjFolderSignature(
+            hash = digest.digest().joinToString("") { "%02x".format(it) },
+            rootLastModifiedMs = rootDir.lastModified(),
+            itemCount = itemCount
+        )
+    }
+
+    val rootDoc = DocumentFile.fromTreeUri(context, djRootUri)
+        ?: DocumentFile.fromSingleUri(context, djRootUri)
+        ?: return null
+    if (!rootDoc.isDirectory) return null
+
+    fun recurse(folderDoc: DocumentFile, parentRelativePath: String) {
+        folderDoc.listFiles()
+            .sortedBy { (it.name ?: "").lowercase() }
+            .forEach { child ->
+                val name = child.name ?: return@forEach
+                if (!child.isDirectory && !isAudioOrVideo(context, child.uri, name)) return@forEach
+
+                val relativePath = if (parentRelativePath.isBlank()) name else "$parentRelativePath/$name"
+                update(
+                    listOf(
+                        relativePath.lowercase(),
+                        if (child.isDirectory) "D" else "F",
+                        runCatching { child.lastModified() }.getOrDefault(0L).toString(),
+                        if (child.isDirectory) "0" else runCatching { child.length() }.getOrDefault(0L).toString()
+                    )
+                )
+                itemCount++
+
+                if (child.isDirectory) recurse(child, relativePath)
+            }
+    }
+
+    recurse(rootDoc, "")
+    return DjFolderSignature(
+        hash = digest.digest().joinToString("") { "%02x".format(it) },
+        rootLastModifiedMs = runCatching { rootDoc.lastModified() }.getOrDefault(0L),
+        itemCount = itemCount
+    )
 }
 
 fun moveLibraryFileWithProgress(

@@ -3,15 +3,17 @@
 
     <!-- DJ -->
     <string name="dj_title">DJ</string>
-    <string name="dj_no_folder_selected">Aucun dossier DJ choisi</string>
+    <string name="dj_no_folder_selected">Dossier DJ non autorisé</string>
+    <string name="dj_fixed_folder_path">Documents/SPL_Music/DJ</string>
 
     <string name="dj_cd_back">Retour</string>
     <string name="dj_cd_search">Rechercher</string>
     <string name="dj_cd_options">Options</string>
     <string name="dj_cd_stop">Stop DJ</string>
 
-    <string name="dj_menu_choose_folder">Choisir dossier DJ…</string>
-    <string name="dj_menu_scan_refresh">Scanner / rafraîchir le dossier DJ</string>
+    <string name="dj_menu_choose_folder">Autoriser le dossier DJ</string>
+    <string name="dj_menu_reauthorize_folder">Réautoriser le dossier DJ</string>
+    <string name="dj_menu_scan_refresh">Réanalyser le dossier DJ</string>
     <string name="dj_menu_import_music">Importer des musiques (→ backingtracks)</string>
 
     <string name="dj_search_placeholder">Recherche (tous dossiers DJ)…</string>
@@ -20,7 +22,13 @@
     <string name="dj_scan_done">Scan DJ terminé (%1$d entrées)</string>
     <string name="dj_scan_error">Erreur pendant le scan DJ</string>
 
-    <string name="dj_hint_first_scan">⚠️ Menu ⋮ → “Scanner / rafraîchir le dossier DJ” (1 fois). Ensuite DJ sera instantané.</string>
+    <string name="dj_hint_first_scan">Le mode DJ utilise automatiquement le dossier %1$s.</string>
+    <string name="dj_authorize_title">Activer le mode DJ</string>
+    <string name="dj_authorize_body">Le mode DJ utilise ce dossier :\n\n%1$s\n\nAjoutez vos morceaux DJ dans ce dossier pour les retrouver ici.</string>
+    <string name="dj_authorize_hint">Quand le navigateur s’ouvre, sélectionnez le dossier &quot;DJ&quot;.</string>
+    <string name="dj_empty_title">Aucun morceau DJ trouvé</string>
+    <string name="dj_empty_body">Aucun morceau DJ n’a été trouvé dans :\n\n%1$s\n\nAjoute tes fichiers DJ dans ce dossier puis reviens dans l’écran DJ. L’app relancera l’analyse automatiquement si le contenu a changé.</string>
+    <string name="dj_reauthorize_action">Réautoriser le dossier DJ</string>
 
     <!-- Communs -->
     <string name="common_loading">Chargement…</string>
@@ -71,10 +79,10 @@
 
     <string name="filler_dj_required_title">Ambiances : dossier obligatoire</string>
     <string name="filler_dj_required_text">Pour que les ambiances fonctionnent, elles doivent être placées dans le dossier :\n\nSPL_Music / DJ</string>
-    <string name="filler_choose_dj">Choisir le dossier DJ</string>
+    <string name="filler_choose_dj">Autoriser le dossier DJ</string>
 
     <string name="filler_picker_title">Choisir un dossier (dans DJ)</string>
-    <string name="filler_dj_missing">Dossier DJ non choisi (ou permission manquante).\nAppuie sur 📁 puis choisis le dossier DJ (SPL_Music/DJ).</string>
+    <string name="filler_dj_missing">Dossier DJ non autorisé (ou permission manquante).\nAppuie sur 📁 puis autorise le dossier DJ imposé : Documents/SPL_Music/DJ.</string>
     <string name="filler_current_folder">Dossier courant : %1$s</string>
     <string name="filler_back">⬅️ Retour</string>
     <string name="filler_choose_this">✅ Choisir ce dossier</string>
