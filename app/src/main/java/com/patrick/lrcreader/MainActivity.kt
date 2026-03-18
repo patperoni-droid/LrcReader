@@ -368,6 +368,7 @@ class MainActivity : AppCompatActivity() {
                 )
                 val smpImporter = remember(ctx) { SmpImporter(ctx) }
                 val smpLibraryScanner = remember(ctx) { SmpLibraryScanner(ctx) }
+                var smpCacheRefreshTick by remember { mutableIntStateOf(0) }
                 val pickSmpFileLauncher = rememberLauncherForActivityResult(
                     contract = ActivityResultContracts.OpenDocument()
                 ) { uri ->
@@ -411,6 +412,9 @@ class MainActivity : AppCompatActivity() {
                         }
 
                         withContext(Dispatchers.Main) {
+                            if (importedSong != null) {
+                                smpCacheRefreshTick++
+                            }
                             Toast.makeText(ctx, toastMessage, Toast.LENGTH_SHORT).show()
                         }
                     }
@@ -650,6 +654,7 @@ class MainActivity : AppCompatActivity() {
                 var isMixerPreviewOpen by remember { mutableStateOf(false) }
                 var isSmpImportedSongsDialogOpen by remember { mutableStateOf(false) }
                 var smpImportedSongs by remember { mutableStateOf<List<com.patrick.lrcreader.smp.SongUnit>>(emptyList()) }
+                var smpSongsById by remember { mutableStateOf<Map<String, com.patrick.lrcreader.smp.SongUnit>>(emptyMap()) }
                 var selectedSmpImportedSongDetail by remember { mutableStateOf<SmpImportedSongDetail?>(null) }
                 var textPrompterId by remember { mutableStateOf<String?>(null) }
 
@@ -661,6 +666,11 @@ class MainActivity : AppCompatActivity() {
 
                 // ✅ Index pour SearchScreen
                 var indexAll by remember { mutableStateOf<List<LibraryIndexCache.CachedEntry>>(emptyList()) }
+                LaunchedEffect(smpCacheRefreshTick) {
+                    smpSongsById = withContext(Dispatchers.IO) {
+                        smpLibraryScanner.listSongs().associateBy { it.id }
+                    }
+                }
                 LaunchedEffect(Unit) {
                     mark("compose.LibraryIndexCache.load(initial):before")
                     val loaded = withContext(Dispatchers.IO) {
@@ -1117,17 +1127,92 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
 
+                fun resolveSmpAudioTarget(
+                    songId: String,
+                    playlistName: String?,
+                    showToastOnFailure: Boolean = false
+                ): PlaybackRouter.Target.Audio? {
+                    val song = smpSongsById[songId]
+                    if (song == null) {
+                        Log.w("SMP", "Lecture SMP impossible: songId introuvable=$songId playlist=$playlistName")
+                        if (showToastOnFailure) {
+                            Toast.makeText(ctx, "Morceau SMP introuvable", Toast.LENGTH_SHORT).show()
+                        }
+                        return null
+                    }
+
+                    val audioPath = song.audioPath
+                    if (audioPath.isNullOrBlank()) {
+                        Log.w("SMP", "Lecture SMP impossible sans audio: songId=${song.id} title=${song.title}")
+                        if (showToastOnFailure) {
+                            Toast.makeText(ctx, "Ce SMP ne contient pas d'audio", Toast.LENGTH_SHORT).show()
+                        }
+                        return null
+                    }
+
+                    val audioFile = File(audioPath)
+                    if (!audioFile.isFile) {
+                        Log.w(
+                            "SMP",
+                            "Lecture SMP impossible: fichier audio absent songId=${song.id} path=${audioFile.absolutePath}"
+                        )
+                        if (showToastOnFailure) {
+                            Toast.makeText(ctx, "Audio SMP introuvable", Toast.LENGTH_SHORT).show()
+                        }
+                        return null
+                    }
+
+                    val resolvedUri = Uri.fromFile(audioFile).toString()
+                    runCatching {
+                        TitleAliasesStore.setTitleForTrack(ctx, resolvedUri, song.title)
+                    }.onFailure { error ->
+                        Log.w(
+                            "SMP",
+                            "Alias SMP non enregistré: songId=${song.id} uri=$resolvedUri",
+                            error
+                        )
+                    }
+
+                    Log.i(
+                        "SMP",
+                        "Lecture SMP résolue: songId=${song.id} title=${song.title} uri=$resolvedUri playlist=$playlistName"
+                    )
+                    return PlaybackRouter.Target.Audio(resolvedUri, playlistName)
+                }
+
+                fun resolveAudioTarget(
+                    target: PlaybackRouter.Target,
+                    showToastOnFailure: Boolean = false
+                ): PlaybackRouter.Target.Audio? {
+                    return when (target) {
+                        is PlaybackRouter.Target.Audio -> target
+                        is PlaybackRouter.Target.Smp -> resolveSmpAudioTarget(
+                            songId = target.songId,
+                            playlistName = target.playlist,
+                            showToastOnFailure = showToastOnFailure
+                        )
+                        is PlaybackRouter.Target.Prompter,
+                        is PlaybackRouter.Target.Unknown -> null
+                    }
+                }
+
                 fun playChainFrom(startIndex: Int): Boolean {
                     if (!isChaining) return false
                     var idx = startIndex
                     while (idx in chainQueue.indices) {
                         val playableIndex = nextPlayableIndexAtOrAfter(chainQueue, idx) ?: return false
                         when (val target = PlaybackRouter.resolve(chainQueue[playableIndex], chainPlaylist)) {
-                            is PlaybackRouter.Target.Audio -> {
+                            is PlaybackRouter.Target.Audio,
+                            is PlaybackRouter.Target.Smp -> {
+                                val resolvedTarget = resolveAudioTarget(target)
+                                if (resolvedTarget == null) {
+                                    idx = playableIndex + 1
+                                    continue
+                                }
                                 chainIndex = playableIndex
-                                playWithCrossfade(target.uri, target.playlist)
-                                currentPlayingUri = target.uri
-                                setQuickPlaylistAndPersist(target.playlist, reason = "chainPlay")
+                                playWithCrossfade(resolvedTarget.uri, resolvedTarget.playlist)
+                                currentPlayingUri = resolvedTarget.uri
+                                setQuickPlaylistAndPersist(resolvedTarget.playlist, reason = "chainPlay")
                                 currentLyricsColor = Color.White
                                 return true
                             }
@@ -1148,13 +1233,19 @@ class MainActivity : AppCompatActivity() {
                             "trigger uri=${forcedNext.uri} title=${forcedNext.title} playlist=${forcedNext.playlist}"
                         )
                         val started = when (val target = PlaybackRouter.resolve(forcedNext.uri, forcedNext.playlist)) {
-                            is PlaybackRouter.Target.Audio -> {
-                                stopChainPlayback()
-                                playWithCrossfade(target.uri, target.playlist)
-                                currentPlayingUri = target.uri
-                                setQuickPlaylistAndPersist(target.playlist, reason = "nextTrackTrigger")
-                                currentLyricsColor = Color.White
-                                true
+                            is PlaybackRouter.Target.Audio,
+                            is PlaybackRouter.Target.Smp -> {
+                                val resolvedTarget = resolveAudioTarget(target)
+                                if (resolvedTarget == null) {
+                                    false
+                                } else {
+                                    stopChainPlayback()
+                                    playWithCrossfade(resolvedTarget.uri, resolvedTarget.playlist)
+                                    currentPlayingUri = resolvedTarget.uri
+                                    setQuickPlaylistAndPersist(resolvedTarget.playlist, reason = "nextTrackTrigger")
+                                    currentLyricsColor = Color.White
+                                    true
+                                }
                             }
                             is PlaybackRouter.Target.Prompter -> {
                                 Log.w("NEXT", "trigger skipped (prompter id=${target.id})")
@@ -1472,6 +1563,7 @@ class MainActivity : AppCompatActivity() {
                                                     }
                                                     withContext(Dispatchers.Main) {
                                                         smpImportedSongs = songs
+                                                        smpSongsById = songs.associateBy { it.id }
                                                         isSmpImportedSongsDialogOpen = true
                                                         Toast.makeText(
                                                             ctx,
@@ -1559,11 +1651,16 @@ class MainActivity : AppCompatActivity() {
                                                 return@QuickPlaylistsScreen
                                             }
 
-                                            is PlaybackRouter.Target.Audio -> {
+                                            is PlaybackRouter.Target.Audio,
+                                            is PlaybackRouter.Target.Smp -> {
+                                                val resolvedTarget = resolveAudioTarget(
+                                                    target = target,
+                                                    showToastOnFailure = true
+                                                ) ?: return@QuickPlaylistsScreen
                                                 LyricsPerf.startOpen(
-                                                    trackUriString = target.uri,
+                                                    trackUriString = resolvedTarget.uri,
                                                     source = "quick_play_tap",
-                                                    playlistName = target.playlist
+                                                    playlistName = resolvedTarget.playlist
                                                 )
                                                 playlistTapPlayJob?.cancel()
                                                 playlistTapPlayJob = scope.launch {
@@ -1571,19 +1668,19 @@ class MainActivity : AppCompatActivity() {
                                                     val waitMs = (lastPlaylistTapStartedAtMs + 250L) - now
                                                     if (waitMs > 0L) delay(waitMs)
                                                     lastPlaylistTapStartedAtMs = SystemClock.uptimeMillis()
-                                                    playWithCrossfadeInternal(target.uri, target.playlist)
+                                                    playWithCrossfadeInternal(resolvedTarget.uri, resolvedTarget.playlist)
                                                 }
-                                                currentPlayingUri = target.uri
+                                                currentPlayingUri = resolvedTarget.uri
 
-                                                selectedQuickPlaylist = target.playlist
+                                                selectedQuickPlaylist = resolvedTarget.playlist
                                                 currentLyricsColor = color
                                                 selectedTab = BottomTab.Player
                                                 latestSessionSnapshot = SessionSnapshot(
                                                     tabKey = TAB_PLAYER,
-                                                    quickPlaylist = target.playlist ?: selectedQuickPlaylist,
+                                                    quickPlaylist = resolvedTarget.playlist ?: selectedQuickPlaylist,
                                                     openedPlaylist = openedPlaylist,
-                                                    currentPlayingUri = target.uri,
-                                                    currentPlayingPlaylist = target.playlist
+                                                    currentPlayingUri = resolvedTarget.uri,
+                                                    currentPlayingPlaylist = resolvedTarget.playlist
                                                 )
                                                 persistSession(reason = "quickPlayTap")
                                             }
@@ -1633,15 +1730,20 @@ class MainActivity : AppCompatActivity() {
                                         modifier = contentModifier,
                                         onPlayFromLibrary = { uriString ->
                                             when (val target = PlaybackRouter.resolve(uriString, null)) {
-                                                is PlaybackRouter.Target.Audio -> {
+                                                is PlaybackRouter.Target.Audio,
+                                                is PlaybackRouter.Target.Smp -> {
+                                                    val resolvedTarget = resolveAudioTarget(
+                                                        target = target,
+                                                        showToastOnFailure = true
+                                                    ) ?: return@LibraryScreen
                                                     stopChainPlayback()
                                                     LyricsPerf.startOpen(
-                                                        trackUriString = target.uri,
+                                                        trackUriString = resolvedTarget.uri,
                                                         source = "library_tap",
-                                                        playlistName = target.playlist
+                                                        playlistName = resolvedTarget.playlist
                                                     )
-                                                    playWithCrossfade(target.uri, target.playlist)
-                                                    currentPlayingUri = target.uri
+                                                    playWithCrossfade(resolvedTarget.uri, resolvedTarget.playlist)
+                                                    currentPlayingUri = resolvedTarget.uri
                                                     currentLyricsColor = Color.White
                                                     setTabAndPersist(BottomTab.Player, reason = "libraryPlay")
                                                 }

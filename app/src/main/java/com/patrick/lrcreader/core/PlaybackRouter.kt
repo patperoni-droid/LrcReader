@@ -4,6 +4,7 @@ object PlaybackRouter {
 
     sealed class Target {
         data class Audio(val uri: String, val playlist: String?) : Target()
+        data class Smp(val songId: String, val playlist: String?) : Target()
         data class Prompter(val id: String) : Target()
         data class Unknown(val uri: String) : Target()
     }
@@ -21,6 +22,9 @@ object PlaybackRouter {
 
             isPrompterItem(clean) ->
                 Target.Prompter(clean.removePrefix("prompter://"))
+
+            isSmpItem(clean) ->
+                Target.Smp(getSmpSongId(clean) ?: clean, playlist)
 
             isPlayableAudioItem(clean) ->
                 Target.Audio(clean, playlist)
