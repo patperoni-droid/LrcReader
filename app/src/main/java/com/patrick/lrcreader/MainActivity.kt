@@ -27,6 +27,7 @@ import android.os.Looper
 import android.os.StrictMode
 import android.os.SystemClock
 import android.util.Log
+import android.widget.Toast
 import androidx.activity.compose.setContent
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
@@ -67,6 +68,8 @@ import com.patrick.lrcreader.core.config.NotesConfigStore
 import com.patrick.lrcreader.core.config.PlaylistStateStore
 import com.patrick.lrcreader.core.config.TitleAliasesStore
 import com.patrick.lrcreader.core.config.TrackSettingsStore
+import com.patrick.lrcreader.smp.SmpImporter
+import com.patrick.lrcreader.smp.SmpLibraryScanner
 import com.patrick.lrcreader.ui.*
 import com.patrick.lrcreader.ui.library.LibraryScreen
 import kotlinx.coroutines.channels.BufferOverflow
@@ -362,6 +365,55 @@ class MainActivity : AppCompatActivity() {
                     "SETUP_GATE",
                     "savedRoot=$savedRoot internal=$isInternalMode isDone=${BackupFolderPrefs.isDone(ctx)} hasPerm=$hasSetupPerm shouldShow=$shouldShowSetup"
                 )
+                val smpImporter = remember(ctx) { SmpImporter(ctx) }
+                val smpLibraryScanner = remember(ctx) { SmpLibraryScanner(ctx) }
+                val pickSmpFileLauncher = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.OpenDocument()
+                ) { uri ->
+                    if (uri == null) {
+                        Log.d("SMP", "Sélection du fichier .smp annulée")
+                        return@rememberLauncherForActivityResult
+                    }
+
+                    fun displayNameOf(uri: Uri): String {
+                        val cr = ctx.contentResolver
+                        var name = uri.lastPathSegment ?: "unknown.smp"
+                        val c: Cursor? = cr.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+                        c?.use {
+                            if (it.moveToFirst()) {
+                                val idx = it.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                                if (idx >= 0) name = it.getString(idx)
+                            }
+                        }
+                        return name
+                    }
+
+                    val pickedName = displayNameOf(uri)
+                    if (!pickedName.endsWith(".smp", ignoreCase = true)) {
+                        Log.w("SMP", "Fichier sélectionné sans extension .smp: name=$pickedName uri=$uri")
+                    }
+
+                    scope.launch(Dispatchers.IO) {
+                        val importedSong = smpImporter.importSmp(uri)
+                        val toastMessage = if (importedSong != null) {
+                            Log.i(
+                                "SMP",
+                                "Import SMP réussi: name=$pickedName songId=${importedSong.id} title=${importedSong.title} storageFolder=${importedSong.storageFolder}"
+                            )
+                            "Import SMP réussi"
+                        } else {
+                            Log.e(
+                                "SMP",
+                                "Import SMP échoué: name=$pickedName reason=${smpImporter.lastFailureReason ?: "inconnue"}"
+                            )
+                            "Import SMP échoué"
+                        }
+
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(ctx, toastMessage, Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
                 val pickAudioFilesLauncher = rememberLauncherForActivityResult(
                     contract = ActivityResultContracts.OpenMultipleDocuments()
                 ) { uris ->
@@ -1353,20 +1405,62 @@ class MainActivity : AppCompatActivity() {
                             ) {
                                 when (selectedTab) {
 
-                                    is BottomTab.Home -> MixerHomePreviewScreen(
-                                        modifier = contentModifier,
-                                        onBack = {},
-                                        onOpenPlayer = {
-                                            setTabAndPersist(BottomTab.Player, reason = "homeOpenPlayer")
-                                        },
-                                        onOpenFondSonore = { isFillerSettingsOpen = true },
-                                        onOpenDj = {
-                                            setTabAndPersist(BottomTab.Dj, reason = "homeOpenDj")
-                                        },
-                                        onOpenTuner = {
-                                            setTabAndPersist(BottomTab.Tuner, reason = "homeOpenTuner")
+                                    is BottomTab.Home -> Box(
+                                        modifier = contentModifier.fillMaxSize()
+                                    ) {
+                                        MixerHomePreviewScreen(
+                                            modifier = Modifier.fillMaxSize(),
+                                            onBack = {},
+                                            onOpenPlayer = {
+                                                setTabAndPersist(BottomTab.Player, reason = "homeOpenPlayer")
+                                            },
+                                            onOpenFondSonore = { isFillerSettingsOpen = true },
+                                            onOpenDj = {
+                                                setTabAndPersist(BottomTab.Dj, reason = "homeOpenDj")
+                                            },
+                                            onOpenTuner = {
+                                                setTabAndPersist(BottomTab.Tuner, reason = "homeOpenTuner")
+                                            }
+                                        )
+                                        Button(
+                                            onClick = {
+                                                scope.launch(Dispatchers.IO) {
+                                                    val songs = smpLibraryScanner.listSongs()
+                                                    Log.i("SMP", "SMP importés: count=${songs.size}")
+                                                    songs.forEach { song ->
+                                                        Log.i(
+                                                            "SMP",
+                                                            "SMP importé: songId=${song.id} title=${song.title} storageFolder=${song.storageFolder}"
+                                                        )
+                                                    }
+                                                    withContext(Dispatchers.Main) {
+                                                        Toast.makeText(
+                                                            ctx,
+                                                            "SMP importés: ${songs.size}",
+                                                            Toast.LENGTH_SHORT
+                                                        ).show()
+                                                    }
+                                                }
+                                            },
+                                            modifier = Modifier
+                                                .align(Alignment.BottomEnd)
+                                                .padding(end = 16.dp, bottom = 72.dp)
+                                        ) {
+                                            Text("Afficher SMP importés")
                                         }
-                                    )
+                                        Button(
+                                            onClick = {
+                                                pickSmpFileLauncher.launch(
+                                                    arrayOf("application/zip", "application/octet-stream", "*/*")
+                                                )
+                                            },
+                                            modifier = Modifier
+                                                .align(Alignment.BottomEnd)
+                                                .padding(16.dp)
+                                        ) {
+                                            Text("Tester un fichier .smp")
+                                        }
+                                    }
 
                                     is BottomTab.Player -> PlayerScreen(
                                         modifier = contentModifier,
