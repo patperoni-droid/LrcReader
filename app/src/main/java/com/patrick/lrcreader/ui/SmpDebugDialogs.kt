@@ -42,6 +42,7 @@ import com.patrick.lrcreader.core.parseLrc
 import com.patrick.lrcreader.smp.SmpConfig
 import com.patrick.lrcreader.smp.SmpExporter
 import com.patrick.lrcreader.smp.SmpImportedSongDetail
+import com.patrick.lrcreader.smp.SmpImporter
 import com.patrick.lrcreader.smp.SongUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -52,7 +53,36 @@ import java.io.File
 
 private const val SMP_PLAYER_TAG = "SMP_PLAYER"
 private const val SMP_DEBUG_TAG = "SMP"
+private const val SMP_TEST_TAG = "SMP_TEST"
 private const val SMP_PLAYER_POLL_MS = 75L
+
+private data class SmpRoundTripSnapshot(
+    val trimStartMs: Long?,
+    val trimEndMs: Long?,
+    val audioPresent: Boolean,
+    val lyricsPresent: Boolean,
+    val chordsPresent: Boolean,
+    val annotationsPresent: Boolean,
+    val midiPresent: Boolean,
+    val dmxPresent: Boolean,
+    val prompterPresent: Boolean
+)
+
+private data class SmpRoundTripCheck(
+    val label: String,
+    val ok: Boolean,
+    val detail: String? = null
+)
+
+private data class SmpRoundTripResult(
+    val exportPath: String?,
+    val importedSongId: String?,
+    val checks: List<SmpRoundTripCheck>,
+    val failureReason: String? = null
+) {
+    val isSuccessful: Boolean
+        get() = failureReason == null && checks.all { it.ok }
+}
 
 @Composable
 fun SmpImportedSongsDialog(
@@ -142,6 +172,8 @@ fun SmpImportedSongDetailDialog(
     var generatedConfigJson by remember(detail.song.id) { mutableStateOf<String?>(null) }
     var lastExportPath by remember(detail.song.id) { mutableStateOf<String?>(null) }
     var isExporting by remember(detail.song.id) { mutableStateOf(false) }
+    var isRoundTripRunning by remember(detail.song.id) { mutableStateOf(false) }
+    var roundTripResult by remember(detail.song.id) { mutableStateOf<SmpRoundTripResult?>(null) }
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
@@ -194,6 +226,12 @@ fun SmpImportedSongDetailDialog(
                         onDismiss = { generatedConfigJson = null }
                     )
                 }
+                roundTripResult?.let { result ->
+                    SmpRoundTripResultDialog(
+                        result = result,
+                        onDismiss = { roundTripResult = null }
+                    )
+                }
                 Column {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -243,10 +281,31 @@ fun SmpImportedSongDetailDialog(
                             Text(if (isExporting) "Export..." else "Exporter SMP")
                         }
                     }
+                    Spacer(modifier = Modifier.height(8.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
+                        Button(
+                            onClick = {
+                                isRoundTripRunning = true
+                                scope.launch {
+                                    val result = withContext(Dispatchers.IO) {
+                                        runSmpRoundTripTest(appContext, song)
+                                    }
+                                    isRoundTripRunning = false
+                                    lastExportPath = result.exportPath ?: lastExportPath
+                                    roundTripResult = result
+                                    Log.i(
+                                        SMP_TEST_TAG,
+                                        "Round-trip SMP terminé: songId=${song.id} success=${result.isSuccessful} exportPath=${result.exportPath ?: "null"} importedSongId=${result.importedSongId ?: "null"}"
+                                    )
+                                }
+                            },
+                            enabled = !isRoundTripRunning
+                        ) {
+                            Text(if (isRoundTripRunning) "Test..." else "Test round-trip SMP")
+                        }
                         TextButton(onClick = onDismiss) {
                             Text("Fermer")
                         }
@@ -283,6 +342,232 @@ private fun formatPlayback(playback: SmpConfig.PlaybackConfig?): String {
         append(playback.trimEndMs ?: "null")
         append("}")
     }
+}
+
+@Composable
+private fun SmpRoundTripResultDialog(
+    result: SmpRoundTripResult,
+    onDismiss: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .widthIn(max = 720.dp),
+            shape = MaterialTheme.shapes.large,
+            tonalElevation = 6.dp
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(20.dp)
+                    .heightIn(max = 620.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                Text(
+                    text = "ROUND-TRIP RESULT",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                SmpDebugField(label = "status", value = if (result.isSuccessful) "OK" else "KO")
+                SmpDebugField(label = "exportPath", value = result.exportPath)
+                SmpDebugField(label = "importedSongId", value = result.importedSongId)
+                result.failureReason?.let {
+                    SmpDebugField(label = "failureReason", value = it)
+                }
+                result.checks.forEach { check ->
+                    SmpDebugField(
+                        label = check.label,
+                        value = buildString {
+                            append(if (check.ok) "OK" else "KO")
+                            check.detail?.takeIf { it.isNotBlank() }?.let {
+                                append(" - ")
+                                append(it)
+                            }
+                        }
+                    )
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text("Fermer")
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun runSmpRoundTripTest(
+    context: android.content.Context,
+    sourceSong: SongUnit
+): SmpRoundTripResult {
+    val sourceSnapshot = buildSmpRoundTripSnapshot(context, sourceSong)
+    Log.i(
+        SMP_TEST_TAG,
+        "Round-trip SMP démarré: songId=${sourceSong.id} title=${sourceSong.title}"
+    )
+
+    val exportedFile = SmpExporter.exportSongUnitToSmp(context, sourceSong)
+    if (exportedFile == null) {
+        Log.e(SMP_TEST_TAG, "Round-trip SMP impossible: export KO songId=${sourceSong.id}")
+        return SmpRoundTripResult(
+            exportPath = null,
+            importedSongId = null,
+            failureReason = "export SMP impossible",
+            checks = listOf(
+                SmpRoundTripCheck(label = "EXPORT", ok = false, detail = "fichier .smp non créé")
+            )
+        )
+    }
+
+    val importer = SmpImporter(context)
+    val importedSong = importer.importSmp(Uri.fromFile(exportedFile))
+    if (importedSong == null) {
+        val reason = importer.lastFailureReason ?: "import SMP impossible"
+        Log.e(
+            SMP_TEST_TAG,
+            "Round-trip SMP impossible: import KO songId=${sourceSong.id} exportPath=${exportedFile.absolutePath} reason=$reason"
+        )
+        return SmpRoundTripResult(
+            exportPath = exportedFile.absolutePath,
+            importedSongId = null,
+            failureReason = reason,
+            checks = listOf(
+                SmpRoundTripCheck(label = "EXPORT", ok = true, detail = exportedFile.absolutePath),
+                SmpRoundTripCheck(label = "IMPORT", ok = false, detail = reason)
+            )
+        )
+    }
+
+    val importedSnapshot = buildSmpRoundTripSnapshot(context, importedSong)
+    val checks = buildList {
+        add(SmpRoundTripCheck(label = "EXPORT", ok = true, detail = exportedFile.absolutePath))
+        add(SmpRoundTripCheck(label = "IMPORT", ok = true, detail = importedSong.id))
+        add(
+            buildTrimCheck(
+                label = "TRIM START",
+                sourceValue = sourceSnapshot.trimStartMs,
+                importedValue = importedSnapshot.trimStartMs
+            )
+        )
+        add(
+            buildTrimCheck(
+                label = "TRIM END",
+                sourceValue = sourceSnapshot.trimEndMs,
+                importedValue = importedSnapshot.trimEndMs
+            )
+        )
+        add(buildBucketCheck("AUDIO", sourceSnapshot.audioPresent, importedSong.audioPath, importedSong.storageFolder))
+        add(buildBucketCheck("LYRICS", sourceSnapshot.lyricsPresent, importedSong.lyricsPath, importedSong.storageFolder))
+        add(buildBucketCheck("CHORDS", sourceSnapshot.chordsPresent, importedSong.chordsPath, importedSong.storageFolder))
+        add(buildBucketCheck("ANNOTATIONS", sourceSnapshot.annotationsPresent, importedSong.annotationsPath, importedSong.storageFolder))
+        add(buildBucketCheck("MIDI", sourceSnapshot.midiPresent, importedSong.midiPath, importedSong.storageFolder))
+        add(buildBucketCheck("DMX", sourceSnapshot.dmxPresent, importedSong.dmxPath, importedSong.storageFolder))
+        add(buildBucketCheck("PROMPTER", sourceSnapshot.prompterPresent, importedSong.prompterPath, importedSong.storageFolder))
+        add(buildStorageFolderCheck(importedSong))
+    }
+
+    checks.forEach { check ->
+        Log.i(
+            SMP_TEST_TAG,
+            "${check.label}: ${if (check.ok) "OK" else "KO"}${check.detail?.let { " ($it)" } ?: ""}"
+        )
+    }
+
+    return SmpRoundTripResult(
+        exportPath = exportedFile.absolutePath,
+        importedSongId = importedSong.id,
+        checks = checks
+    )
+}
+
+private fun buildSmpRoundTripSnapshot(
+    context: android.content.Context,
+    song: SongUnit
+): SmpRoundTripSnapshot {
+    val config = SmpConfig.fromSongUnit(context, song)
+    return SmpRoundTripSnapshot(
+        trimStartMs = config.playback?.trimStartMs,
+        trimEndMs = config.playback?.trimEndMs,
+        audioPresent = hasExistingFile(song.audioPath),
+        lyricsPresent = hasExistingFile(song.lyricsPath),
+        chordsPresent = hasExistingFile(song.chordsPath),
+        annotationsPresent = hasExistingFile(song.annotationsPath),
+        midiPresent = hasExistingFile(song.midiPath),
+        dmxPresent = hasExistingFile(song.dmxPath),
+        prompterPresent = hasExistingFile(song.prompterPath)
+    )
+}
+
+private fun buildTrimCheck(
+    label: String,
+    sourceValue: Long?,
+    importedValue: Long?
+): SmpRoundTripCheck {
+    return SmpRoundTripCheck(
+        label = label,
+        ok = sourceValue == importedValue,
+        detail = "source=${sourceValue ?: "absent"} imported=${importedValue ?: "absent"}"
+    )
+}
+
+private fun buildBucketCheck(
+    label: String,
+    sourcePresent: Boolean,
+    importedPath: String?,
+    importedStorageFolder: String?
+): SmpRoundTripCheck {
+    val importedPresent = hasExistingFile(importedPath)
+    val insideStorageFolder = if (importedPresent) {
+        isPathInsideStorageFolder(importedPath, importedStorageFolder)
+    } else {
+        true
+    }
+
+    return SmpRoundTripCheck(
+        label = label,
+        ok = sourcePresent == importedPresent && insideStorageFolder,
+        detail = buildString {
+            append("source=")
+            append(if (sourcePresent) "present" else "absent")
+            append(" imported=")
+            append(if (importedPresent) "present" else "absent")
+            if (importedPresent) {
+                append(" folder=")
+                append(if (insideStorageFolder) "ok" else "ko")
+            }
+        }
+    )
+}
+
+private fun buildStorageFolderCheck(importedSong: SongUnit): SmpRoundTripCheck {
+    val folderPath = importedSong.storageFolder
+    val folderOk = !folderPath.isNullOrBlank() && File(folderPath).isDirectory
+    return SmpRoundTripCheck(
+        label = "STORAGE FOLDER",
+        ok = folderOk,
+        detail = folderPath ?: "absent"
+    )
+}
+
+private fun hasExistingFile(path: String?): Boolean {
+    return !path.isNullOrBlank() && File(path).isFile
+}
+
+private fun isPathInsideStorageFolder(path: String?, storageFolder: String?): Boolean {
+    if (path.isNullOrBlank() || storageFolder.isNullOrBlank()) {
+        return false
+    }
+
+    return runCatching {
+        val filePath = File(path).canonicalPath
+        val folderPath = File(storageFolder).canonicalPath.trimEnd(File.separatorChar)
+        filePath == folderPath || filePath.startsWith("$folderPath${File.separator}")
+    }.getOrDefault(false)
 }
 
 @Composable
