@@ -41,6 +41,15 @@ class SmpLibraryScanner(private val context: Context) {
             .toList()
     }
 
+    fun findSongById(songId: String): SongUnit? {
+        val cleanSongId = songId.trim()
+        if (cleanSongId.isEmpty()) {
+            return null
+        }
+
+        return listSongs().firstOrNull { it.id == cleanSongId }
+    }
+
     fun readSongDetail(song: SongUnit): SmpImportedSongDetail? {
         val storageFolder = song.storageFolder
         if (storageFolder.isNullOrBlank()) {

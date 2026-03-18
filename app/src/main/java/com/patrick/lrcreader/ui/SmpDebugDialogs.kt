@@ -37,6 +37,8 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import com.patrick.lrcreader.core.LrcLine
+import com.patrick.lrcreader.core.PlaylistRepository
+import com.patrick.lrcreader.core.buildSmpItem
 import com.patrick.lrcreader.core.findActiveLrcIndex
 import com.patrick.lrcreader.core.parseLrc
 import com.patrick.lrcreader.smp.SmpConfig
@@ -55,6 +57,7 @@ private const val SMP_PLAYER_TAG = "SMP_PLAYER"
 private const val SMP_DEBUG_TAG = "SMP"
 private const val SMP_TEST_TAG = "SMP_TEST"
 private const val SMP_PLAYER_POLL_MS = 75L
+private const val SMP_DEBUG_PLAYLIST_NAME = "SMP Debug"
 
 private data class SmpRoundTripSnapshot(
     val trimStartMs: Long?,
@@ -286,6 +289,29 @@ fun SmpImportedSongDetailDialog(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
+                        Button(
+                            onClick = {
+                                val smpMarker = buildSmpItem(song.id)
+                                PlaylistRepository.createIfNotExists(SMP_DEBUG_PLAYLIST_NAME)
+                                PlaylistRepository.assignSongToPlaylist(SMP_DEBUG_PLAYLIST_NAME, smpMarker)
+                                PlaylistRepository.renameSongInPlaylist(
+                                    playlistName = SMP_DEBUG_PLAYLIST_NAME,
+                                    uri = smpMarker,
+                                    newTitle = song.title
+                                )
+                                Log.i(
+                                    SMP_DEBUG_TAG,
+                                    "SMP ajouté à la playlist debug: playlist=$SMP_DEBUG_PLAYLIST_NAME songId=${song.id} title=${song.title} marker=$smpMarker"
+                                )
+                                Toast.makeText(
+                                    context,
+                                    "Ajouté à la playlist $SMP_DEBUG_PLAYLIST_NAME",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        ) {
+                            Text("Ajouter playlist")
+                        }
                         Button(
                             onClick = {
                                 isRoundTripRunning = true

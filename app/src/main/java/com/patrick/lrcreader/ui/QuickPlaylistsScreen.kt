@@ -82,6 +82,7 @@ import com.patrick.lrcreader.core.getGroupTitle
 import com.patrick.lrcreader.core.isGroupEnd
 import com.patrick.lrcreader.core.isGroupHeader
 import com.patrick.lrcreader.core.isPlayableAudioItem
+import com.patrick.lrcreader.core.getSmpSongId
 import com.patrick.lrcreader.core.PlaylistRepository
 import com.patrick.lrcreader.core.renameGroupHeader
 import com.patrick.lrcreader.core.TextSongRepository
@@ -1039,10 +1040,16 @@ fun QuickPlaylistsScreen(
                                     textSong?.title?.takeIf { it.isNotBlank() } ?: baseNameClean
                                 }
                             } else {
-                                // 👉 Audio normal (alias global)
-                                TitleAliasesStore.getTitleForTrack(context, uriString)
-                                    ?: PlaylistRepository.getAnyCustomTitleForUri(uriString)
-                                    ?: baseNameClean
+                                val smpSongId = getSmpSongId(uriString)
+                                if (smpSongId != null) {
+                                    PlaylistRepository.getAnyCustomTitleForUri(uriString)
+                                        ?: "SMP $smpSongId"
+                                } else {
+                                    // 👉 Audio normal (alias global)
+                                    TitleAliasesStore.getTitleForTrack(context, uriString)
+                                        ?: PlaylistRepository.getAnyCustomTitleForUri(uriString)
+                                        ?: baseNameClean
+                                }
                             }
 
                             val isPlayed = internalSelected?.let {

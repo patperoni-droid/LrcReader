@@ -11,6 +11,7 @@ private const val GROUP_MARKER_VERSION = "v1"
 private const val GROUP_DEFAULT_TITLE = "Group"
 const val GROUP_END_PREFIX = "__SPL_GROUP_END__|v1|"
 private const val GROUP_END_TOKEN = "__SPL_GROUP_END__"
+private const val SMP_ITEM_PREFIX = "smp://"
 
 private data class GroupMarkerParts(
     val uuid: String,
@@ -50,6 +51,24 @@ fun buildGroupEnd(uuid: String): String {
     val cleanUuid = uuid.trim().ifBlank { UUID.randomUUID().toString() }
     return "$GROUP_END_PREFIX$cleanUuid"
 }
+
+fun buildSmpItem(songId: String): String {
+    val cleanSongId = songId.trim().ifBlank { UUID.randomUUID().toString() }
+    val encodedSongId = URLEncoder.encode(cleanSongId, StandardCharsets.UTF_8.name())
+    return "$SMP_ITEM_PREFIX$encodedSongId"
+}
+
+fun getSmpSongId(item: String): String? {
+    if (!item.startsWith(SMP_ITEM_PREFIX)) return null
+    val encodedSongId = item.removePrefix(SMP_ITEM_PREFIX).trim()
+    if (encodedSongId.isEmpty()) return null
+    val decodedSongId = runCatching {
+        URLDecoder.decode(encodedSongId, StandardCharsets.UTF_8.name()).trim()
+    }.getOrNull()
+    return decodedSongId?.takeIf { it.isNotEmpty() }
+}
+
+fun isSmpItem(item: String): Boolean = getSmpSongId(item) != null
 
 fun isPrompterItem(item: String): Boolean = item.startsWith("prompter://")
 
