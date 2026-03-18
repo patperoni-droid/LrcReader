@@ -25,6 +25,7 @@ class SoundTouchAudioProcessor : AudioProcessor {
         private const val TAG = "AUDIO_TS"
         private const val TAG_HQ = "AUDIO_TS_HQ"
         private const val METER_SAMPLE_STRIDE = 2
+        private const val VERBOSE_HQ_PROCESS_LOGS = false
         private val EMPTY_BUFFER: ByteBuffer =
             ByteBuffer.allocateDirect(0).order(ByteOrder.nativeOrder())
     }
@@ -156,8 +157,8 @@ class SoundTouchAudioProcessor : AudioProcessor {
         val h = handle
         dbgCount++
 
-        // log 1 fois sur 30 (et aussi quand out=0)
-        if (dbgCount % 30 == 0) {
+        // Logs chauds désactivés par défaut : trop coûteux sur appareil réel.
+        if (VERBOSE_HQ_PROCESS_LOGS && dbgCount % 30 == 0) {
             Log.i(
                 TAG_HQ,
                 "queueInput remaining=${inputBuffer.remaining()} enabled=$enabled h=$h fmt=${inputFormat.sampleRate}Hz/${inputFormat.channelCount}ch"
@@ -183,7 +184,7 @@ class SoundTouchAudioProcessor : AudioProcessor {
 
         if (outBytes.isEmpty()) {
             dbgZeros++
-            if (dbgZeros <= 10 || dbgZeros % 30 == 0) {
+            if (VERBOSE_HQ_PROCESS_LOGS && (dbgZeros <= 10 || dbgZeros % 30 == 0)) {
                 Log.w(TAG_HQ, "nativeProcess outBytes=0 (zeros=$dbgZeros)")
             }
             outputBuffer = EMPTY_BUFFER
