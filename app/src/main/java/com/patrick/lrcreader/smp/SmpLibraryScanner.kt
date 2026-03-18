@@ -4,6 +4,11 @@ import android.content.Context
 import android.util.Log
 import java.io.File
 
+data class SmpImportedSongDetail(
+    val song: SongUnit,
+    val playback: SmpConfig.PlaybackConfig?
+)
+
 class SmpLibraryScanner(private val context: Context) {
 
     companion object {
@@ -36,22 +41,28 @@ class SmpLibraryScanner(private val context: Context) {
             .toList()
     }
 
-    private fun readSongUnit(songDir: File): SongUnit? {
-        val configFile = File(songDir, CONFIG_FILE_NAME)
-        if (!configFile.isFile) {
-            Log.w(TAG, "Dossier SMP ignoré sans config.json: ${songDir.absolutePath}")
+    fun readSongDetail(song: SongUnit): SmpImportedSongDetail? {
+        val storageFolder = song.storageFolder
+        if (storageFolder.isNullOrBlank()) {
+            Log.w(TAG, "Lecture détail SMP impossible sans storageFolder: songId=${song.id}")
             return null
         }
 
-        val config = runCatching {
-            SmpConfig.fromJsonOrNull(configFile.readText(Charsets.UTF_8))
-        }.getOrElse { error ->
-            Log.e(TAG, "Lecture config.json impossible: ${configFile.absolutePath}", error)
-            null
-        } ?: run {
-            Log.w(TAG, "Dossier SMP ignoré avec config.json invalide: ${songDir.absolutePath}")
+        val songDir = File(storageFolder)
+        if (!songDir.isDirectory) {
+            Log.w(TAG, "Lecture détail SMP impossible: dossier absent ${songDir.absolutePath}")
             return null
         }
+
+        val config = readConfig(songDir) ?: return null
+        return SmpImportedSongDetail(
+            song = song,
+            playback = config.playback
+        )
+    }
+
+    private fun readSongUnit(songDir: File): SongUnit? {
+        val config = readConfig(songDir) ?: return null
 
         val audioFile = AUDIO_FILE_NAMES
             .asSequence()
@@ -85,5 +96,23 @@ class SmpLibraryScanner(private val context: Context) {
             .map { File(songDir, it) }
             .firstOrNull { it.isFile }
             ?.absolutePath
+    }
+
+    private fun readConfig(songDir: File): SmpConfig? {
+        val configFile = File(songDir, CONFIG_FILE_NAME)
+        if (!configFile.isFile) {
+            Log.w(TAG, "Dossier SMP ignoré sans config.json: ${songDir.absolutePath}")
+            return null
+        }
+
+        return runCatching {
+            SmpConfig.fromJsonOrNull(configFile.readText(Charsets.UTF_8))
+        }.getOrElse { error ->
+            Log.e(TAG, "Lecture config.json impossible: ${configFile.absolutePath}", error)
+            null
+        } ?: run {
+            Log.w(TAG, "Dossier SMP ignoré avec config.json invalide: ${songDir.absolutePath}")
+            null
+        }
     }
 }

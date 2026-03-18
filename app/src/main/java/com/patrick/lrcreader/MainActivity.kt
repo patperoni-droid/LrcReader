@@ -69,6 +69,7 @@ import com.patrick.lrcreader.core.config.PlaylistStateStore
 import com.patrick.lrcreader.core.config.TitleAliasesStore
 import com.patrick.lrcreader.core.config.TrackSettingsStore
 import com.patrick.lrcreader.smp.SmpImporter
+import com.patrick.lrcreader.smp.SmpImportedSongDetail
 import com.patrick.lrcreader.smp.SmpLibraryScanner
 import com.patrick.lrcreader.ui.*
 import com.patrick.lrcreader.ui.library.LibraryScreen
@@ -647,6 +648,9 @@ class MainActivity : AppCompatActivity() {
                 var fillerMasterLevel by remember { mutableStateOf(0.6f) }
 
                 var isMixerPreviewOpen by remember { mutableStateOf(false) }
+                var isSmpImportedSongsDialogOpen by remember { mutableStateOf(false) }
+                var smpImportedSongs by remember { mutableStateOf<List<com.patrick.lrcreader.smp.SongUnit>>(emptyList()) }
+                var selectedSmpImportedSongDetail by remember { mutableStateOf<SmpImportedSongDetail?>(null) }
                 var textPrompterId by remember { mutableStateOf<String?>(null) }
 
                 // ✅ overlay states
@@ -1408,6 +1412,39 @@ class MainActivity : AppCompatActivity() {
                                     is BottomTab.Home -> Box(
                                         modifier = contentModifier.fillMaxSize()
                                     ) {
+                                        if (isSmpImportedSongsDialogOpen) {
+                                            SmpImportedSongsDialog(
+                                                songs = smpImportedSongs,
+                                                onDismiss = { isSmpImportedSongsDialogOpen = false },
+                                                onSongSelected = { song ->
+                                                    scope.launch(Dispatchers.IO) {
+                                                        val detail = smpLibraryScanner.readSongDetail(song)
+                                                        withContext(Dispatchers.Main) {
+                                                            if (detail != null) {
+                                                                Log.i(
+                                                                    "SMP",
+                                                                    "Ouverture fiche SMP: songId=${detail.song.id} title=${detail.song.title} playback=${detail.playback != null}"
+                                                                )
+                                                                isSmpImportedSongsDialogOpen = false
+                                                                selectedSmpImportedSongDetail = detail
+                                                            } else {
+                                                                Toast.makeText(
+                                                                    ctx,
+                                                                    "Lecture détail SMP échouée",
+                                                                    Toast.LENGTH_SHORT
+                                                                ).show()
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            )
+                                        }
+                                        selectedSmpImportedSongDetail?.let { detail ->
+                                            SmpImportedSongDetailDialog(
+                                                detail = detail,
+                                                onDismiss = { selectedSmpImportedSongDetail = null }
+                                            )
+                                        }
                                         MixerHomePreviewScreen(
                                             modifier = Modifier.fillMaxSize(),
                                             onBack = {},
@@ -1434,6 +1471,8 @@ class MainActivity : AppCompatActivity() {
                                                         )
                                                     }
                                                     withContext(Dispatchers.Main) {
+                                                        smpImportedSongs = songs
+                                                        isSmpImportedSongsDialogOpen = true
                                                         Toast.makeText(
                                                             ctx,
                                                             "SMP importés: ${songs.size}",
