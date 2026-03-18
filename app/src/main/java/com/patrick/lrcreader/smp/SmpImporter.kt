@@ -5,6 +5,7 @@ import android.net.Uri
 import android.os.Looper
 import android.provider.OpenableColumns
 import android.util.Log
+import com.patrick.lrcreader.core.EditSoundPrefs
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
@@ -91,12 +92,20 @@ class SmpImporter(private val context: Context) {
             }
 
             importedDir = destinationDir
+            val audioPath = extracted.audioFileName?.let { File(destinationDir, it).absolutePath }
+
+            restoreWaveformTrims(
+                playback = config.playback,
+                audioPath = audioPath,
+                songId = songId,
+                title = title
+            )
 
             val songUnit = SongUnit(
                 id = songId,
                 title = title,
                 storageFolder = destinationDir.absolutePath,
-                audioPath = extracted.audioFileName?.let { File(destinationDir, it).absolutePath },
+                audioPath = audioPath,
                 lyricsPath = extracted.lyricsFileName?.let { File(destinationDir, it).absolutePath },
                 chordsPath = extracted.chordsFileName?.let { File(destinationDir, it).absolutePath },
                 annotationsPath = extracted.annotationsFileName?.let { File(destinationDir, it).absolutePath },
@@ -311,6 +320,56 @@ class SmpImporter(private val context: Context) {
 
     private fun deleteRecursivelyIfExists(target: File): Boolean {
         return !target.exists() || target.deleteRecursively()
+    }
+
+    private fun restoreWaveformTrims(
+        playback: SmpConfig.PlaybackConfig?,
+        audioPath: String?,
+        songId: String,
+        title: String
+    ) {
+        if (playback == null) {
+            return
+        }
+
+        if (audioPath.isNullOrBlank()) {
+            Log.i(
+                TAG,
+                "Trims SMP ignorés: aucun audio extrait songId=$songId title=$title"
+            )
+            return
+        }
+
+        val startMs = playback.trimStartMs ?: 0L
+        val endMs = playback.trimEndMs ?: 0L
+        if (startMs > Int.MAX_VALUE.toLong() || endMs > Int.MAX_VALUE.toLong()) {
+            Log.w(
+                TAG,
+                "Trims SMP ignorés: valeurs hors plage songId=$songId title=$title startMs=$startMs endMs=$endMs"
+            )
+            return
+        }
+
+        val audioUri = Uri.fromFile(File(audioPath))
+        runCatching {
+            EditSoundPrefs.save(
+                context = context,
+                uri = audioUri,
+                startMs = startMs.toInt(),
+                endMs = endMs.toInt()
+            )
+        }.onSuccess {
+            Log.i(
+                TAG,
+                "Trims SMP restaurés: songId=$songId title=$title audioUri=$audioUri startMs=$startMs endMs=$endMs"
+            )
+        }.onFailure { error ->
+            Log.e(
+                TAG,
+                "Impossible de restaurer les trims SMP: songId=$songId title=$title audioUri=$audioUri",
+                error
+            )
+        }
     }
 
     private fun resolveDisplayName(uri: Uri): String {
