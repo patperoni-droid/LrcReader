@@ -15,6 +15,10 @@ import java.util.zip.ZipInputStream
 
 class SmpImporter(private val context: Context) {
 
+    @Volatile
+    var lastFailureReason: String? = null
+        private set
+
     companion object {
         private const val TAG = "SmpImporter"
         private const val TRACKS_DIR_NAME = "tracks"
@@ -22,7 +26,10 @@ class SmpImporter(private val context: Context) {
     }
 
     fun importSmp(uri: Uri): SongUnit? {
+        lastFailureReason = null
+
         if (Looper.myLooper() == Looper.getMainLooper()) {
+            lastFailureReason = "appel sur le thread principal"
             Log.w(TAG, "importSmp refusé sur le thread principal uri=$uri")
             return null
         }
@@ -30,6 +37,7 @@ class SmpImporter(private val context: Context) {
         val displayName = resolveDisplayName(uri)
         val tracksRoot = File(context.filesDir, TRACKS_DIR_NAME)
         if (!tracksRoot.exists() && !tracksRoot.mkdirs()) {
+            lastFailureReason = "création du dossier tracks impossible"
             Log.e(TAG, "Impossible de créer le dossier tracks: ${tracksRoot.absolutePath}")
             return null
         }
@@ -39,6 +47,7 @@ class SmpImporter(private val context: Context) {
             ".import_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(8)}"
         )
         if (!stagingDir.mkdirs()) {
+            lastFailureReason = "création du dossier temporaire impossible"
             Log.e(TAG, "Impossible de créer le dossier temporaire: ${stagingDir.absolutePath}")
             return null
         }
@@ -49,16 +58,33 @@ class SmpImporter(private val context: Context) {
             val extracted = extractArchive(uri = uri, stagingDir = stagingDir) ?: return null
 
             val config = extracted.config
-            val songId = resolveSongId(config)
             val title = config.title ?: displayName.removeSmpSuffix().ifBlank { "Untitled" }
+            val rawConfigId = config.id
+            val stableConfigId = sanitizeSongId(rawConfigId)
+            val songId = stableConfigId ?: "song_${UUID.randomUUID()}"
             val destinationDir = File(tracksRoot, songId)
 
+            if (stableConfigId != null && destinationDir.exists()) {
+                Log.i(
+                    TAG,
+                    "Doublon SMP détecté: remplacement du morceau existant configId=$stableConfigId songId=$songId title=$title dir=${destinationDir.absolutePath}"
+                )
+            } else if (stableConfigId == null) {
+                val reason = if (rawConfigId.isNullOrBlank()) "config.id absent" else "config.id invalide"
+                Log.i(
+                    TAG,
+                    "Import SMP traité comme nouveau morceau: $reason rawConfigId=${rawConfigId ?: "null"} generatedSongId=$songId title=$title"
+                )
+            }
+
             if (destinationDir.exists() && !deleteRecursivelyIfExists(destinationDir)) {
+                lastFailureReason = "écrasement du dossier existant impossible"
                 Log.e(TAG, "Impossible d'écraser le dossier existant: ${destinationDir.absolutePath}")
                 return null
             }
 
             if (!moveStagingToDestination(stagingDir = stagingDir, destinationDir = destinationDir)) {
+                lastFailureReason = "finalisation de l'import impossible"
                 Log.e(TAG, "Impossible de finaliser l'import vers ${destinationDir.absolutePath}")
                 deleteRecursivelyIfExists(destinationDir)
                 return null
@@ -85,6 +111,7 @@ class SmpImporter(private val context: Context) {
             )
             return songUnit
         } catch (e: Exception) {
+            lastFailureReason = "exception pendant l'import"
             Log.e(TAG, "Erreur pendant l'import du .smp name=$displayName uri=$uri", e)
             return null
         } finally {
@@ -139,27 +166,32 @@ class SmpImporter(private val context: Context) {
                     }
                 }
             } ?: run {
+                lastFailureReason = "uri inaccessible"
                 Log.e(TAG, "Uri inaccessible pour l'import .smp uri=$uri")
                 return null
             }
         } catch (e: Exception) {
+            lastFailureReason = "zip corrompu ou illisible"
             Log.e(TAG, "Zip .smp corrompu ou illisible uri=$uri", e)
             return null
         }
 
         if (!extractedFiles.hasConfig) {
+            lastFailureReason = "config.json absent"
             Log.e(TAG, "Import .smp impossible: config.json absent")
             return null
         }
 
         val config = SmpConfig.fromJsonOrNull(rawConfig)
         if (config == null) {
+            lastFailureReason = "config.json invalide"
             Log.e(TAG, "Import .smp impossible: config.json invalide")
             return null
         }
 
-        if (extractedFiles.audioFileName == null) {
-            Log.e(TAG, "Import .smp impossible: audio absent")
+        if (!extractedFiles.hasImportableContent()) {
+            lastFailureReason = "aucune ressource utile trouvée"
+            Log.e(TAG, "Import .smp impossible: aucune ressource utile trouvée")
             return null
         }
 
@@ -207,15 +239,6 @@ class SmpImporter(private val context: Context) {
             fileName == "prompteur.json" ||
             fileName == "prompter.txt" ||
             fileName == "prompter.json"
-    }
-
-    private fun resolveSongId(config: SmpConfig): String {
-        val safeConfigId = sanitizeSongId(config.id)
-        if (safeConfigId != null) {
-            return safeConfigId
-        }
-
-        return "song_${UUID.randomUUID()}"
     }
 
     private fun sanitizeSongId(rawId: String?): String? {
@@ -361,6 +384,16 @@ class SmpImporter(private val context: Context) {
                 fileName == "dmx_cues.json" -> dmxFileName = fileName
                 isPrompterFile(fileName) -> prompterFileName = fileName
             }
+        }
+
+        fun hasImportableContent(): Boolean {
+            return audioFileName != null ||
+                lyricsFileName != null ||
+                chordsFileName != null ||
+                annotationsFileName != null ||
+                midiFileName != null ||
+                dmxFileName != null ||
+                prompterFileName != null
         }
     }
 }
