@@ -7,6 +7,7 @@ import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import android.util.Log
 import androidx.documentfile.provider.DocumentFile
+import com.patrick.lrcreader.smp.SmpConfig
 import java.io.File
 import java.security.MessageDigest
 import java.util.LinkedHashMap
@@ -24,6 +25,11 @@ object LrcStorage {
         val fileName: String,
         val sourceType: String,
         val file: DocumentFile
+    )
+
+    private data class SmpResolvedLyrics(
+        val file: File,
+        val fileName: String
     )
 
     private const val TAG = "LRC_STORAGE"
@@ -58,6 +64,22 @@ object LrcStorage {
 
     fun loadForTrack(context: Context, trackUriString: String): String? {
         if (trackUriString.isBlank()) return null
+        loadFromSmpSongFolder(context, trackUriString)?.let { resolved ->
+            val text = runCatching { resolved.file.readText(Charsets.UTF_8) }.getOrNull()
+            if (!text.isNullOrBlank()) {
+                cacheRecentResolvedOrigin(
+                    trackUriString,
+                    TrackLrcOrigin(
+                        source = "LRC_STORAGE_SMP",
+                        fileName = resolved.fileName,
+                        debugPath = resolved.file.absolutePath,
+                        sourceType = "smp"
+                    )
+                )
+                Log.d(TAG, "mode SMP load path=${resolved.file.absolutePath}")
+                return text
+            }
+        }
         val safOnlyBackend = isSafBackend(context)
         LyricsPerf.mark(trackUriString, "lrc_storage_load_start", "backend=${if (safOnlyBackend) "SAF" else "INTERNAL"}")
         logLyricsBackend(context, safOnlyBackend)
@@ -864,6 +886,65 @@ object LrcStorage {
         if (trackUriString.isBlank()) return null
         return context.getSharedPreferences(CANONICAL_PREF, Context.MODE_PRIVATE)
             .getString(md5(trackUriString), null)
+    }
+
+    private fun loadFromSmpSongFolder(context: Context, trackUriString: String): SmpResolvedLyrics? {
+        val trackUri = runCatching { Uri.parse(trackUriString) }.getOrNull() ?: return null
+        if (trackUri.scheme != "file") return null
+
+        val audioPath = trackUri.path?.takeIf { it.isNotBlank() } ?: return null
+        val audioFile = File(audioPath)
+        if (!audioFile.isFile || !audioFile.name.startsWith("audio.", ignoreCase = true)) {
+            return null
+        }
+
+        val songDir = audioFile.parentFile?.canonicalFile ?: return null
+        val tracksRoot = File(context.filesDir, "tracks").canonicalFile
+        if (songDir.parentFile?.canonicalFile != tracksRoot) {
+            return null
+        }
+
+        val configFile = File(songDir, "config.json")
+        if (!configFile.isFile) {
+            return null
+        }
+
+        val config = runCatching {
+            SmpConfig.fromJsonOrNull(configFile.readText(Charsets.UTF_8))
+        }.getOrNull() ?: return null
+
+        val expectedAudioName = config.files?.audio?.trim()
+        if (!expectedAudioName.isNullOrBlank() && !audioFile.name.equals(expectedAudioName, ignoreCase = true)) {
+            return null
+        }
+
+        val lyricsName = config.files?.lyrics?.trim().takeUnless { it.isNullOrBlank() } ?: "lyrics.lrc"
+        val lyricsFile = resolveSongUnitChildFile(songDir, lyricsName) ?: return null
+        if (!lyricsFile.isFile) {
+            return null
+        }
+
+        return SmpResolvedLyrics(
+            file = lyricsFile,
+            fileName = lyricsFile.name
+        )
+    }
+
+    private fun resolveSongUnitChildFile(songDir: File, transportName: String): File? {
+        val cleanName = transportName.trim()
+        if (cleanName.isEmpty()) {
+            return null
+        }
+
+        return runCatching {
+            val canonicalSongDir = songDir.canonicalFile
+            val canonicalChild = File(canonicalSongDir, cleanName).canonicalFile
+            val songPath = canonicalSongDir.path
+            if (!canonicalChild.path.startsWith("$songPath${File.separator}") && canonicalChild.path != songPath) {
+                return null
+            }
+            canonicalChild
+        }.getOrNull()
     }
 
     private fun clearRememberedCanonicalFileName(context: Context, trackUriString: String) {
