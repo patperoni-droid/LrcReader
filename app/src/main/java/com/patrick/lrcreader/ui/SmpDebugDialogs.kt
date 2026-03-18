@@ -1,5 +1,7 @@
 package com.patrick.lrcreader.ui
 
+import android.net.Uri
+import android.util.Log
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -12,18 +14,35 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
 import com.patrick.lrcreader.smp.SmpConfig
 import com.patrick.lrcreader.smp.SmpImportedSongDetail
 import com.patrick.lrcreader.smp.SongUnit
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import java.io.File
+
+private const val SMP_PLAYER_TAG = "SMP_PLAYER"
 
 @Composable
 fun SmpImportedSongsDialog(
@@ -103,6 +122,10 @@ fun SmpImportedSongDetailDialog(
     onDismiss: () -> Unit
 ) {
     val song = detail.song
+    val canPlay = remember(song.audioPath) {
+        song.audioPath?.let { File(it).isFile() } == true
+    }
+    var isPlayerDialogOpen by remember(detail.song.id) { mutableStateOf(false) }
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
@@ -142,10 +165,22 @@ fun SmpImportedSongDetailDialog(
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
+                if (isPlayerDialogOpen) {
+                    SmpPlayerDialog(
+                        detail = detail,
+                        onDismiss = { isPlayerDialogOpen = false }
+                    )
+                }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
+                    Button(
+                        onClick = { isPlayerDialogOpen = true },
+                        enabled = canPlay
+                    ) {
+                        Text("Lire ce SMP")
+                    }
                     TextButton(onClick = onDismiss) {
                         Text("Fermer")
                     }
@@ -180,5 +215,186 @@ private fun formatPlayback(playback: SmpConfig.PlaybackConfig?): String {
         append(", trimEndMs=")
         append(playback.trimEndMs ?: "null")
         append("}")
+    }
+}
+
+@Composable
+private fun SmpPlayerDialog(
+    detail: SmpImportedSongDetail,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val appContext = context.applicationContext
+    val scope = rememberCoroutineScope()
+    val exoPlayer = remember(appContext) {
+        ExoPlayer.Builder(appContext).build().apply {
+            playWhenReady = false
+        }
+    }
+    val audioPath = detail.song.audioPath
+    val trimStartMs = detail.playback?.trimStartMs ?: 0L
+    val trimEndMs = detail.playback?.trimEndMs
+    var status by remember(detail.song.id) { mutableStateOf("Prêt") }
+    var trimWatcherJob by remember { mutableStateOf<Job?>(null) }
+
+    fun cancelTrimWatcher() {
+        trimWatcherJob?.cancel()
+        trimWatcherJob = null
+    }
+
+    fun stopPlayback() {
+        cancelTrimWatcher()
+        runCatching {
+            exoPlayer.stop()
+            exoPlayer.seekTo(trimStartMs)
+        }.onFailure { error ->
+            Log.e(
+                SMP_PLAYER_TAG,
+                "Stop SMP isolé impossible: songId=${detail.song.id} audioPath=$audioPath",
+                error
+            )
+        }
+        status = "Arrêté"
+    }
+
+    fun startTrimWatcher() {
+        cancelTrimWatcher()
+        if (trimEndMs == null || trimEndMs <= 0L) {
+            return
+        }
+
+        trimWatcherJob = scope.launch {
+            while (true) {
+                val isPlaying = runCatching { exoPlayer.isPlaying }.getOrDefault(false)
+                if (!isPlaying) {
+                    delay(50L)
+                    continue
+                }
+
+                val positionMs = runCatching { exoPlayer.currentPosition }.getOrDefault(0L)
+                if (positionMs >= trimEndMs) {
+                    stopPlayback()
+                    return@launch
+                }
+
+                delay(50L)
+            }
+        }
+    }
+
+    fun play() {
+        if (audioPath.isNullOrBlank()) {
+            status = "Audio absent"
+            return
+        }
+
+        val audioFile = File(audioPath)
+        if (!audioFile.isFile) {
+            status = "Audio introuvable"
+            Log.w(
+                SMP_PLAYER_TAG,
+                "Lecture SMP impossible: fichier audio absent songId=${detail.song.id} audioPath=$audioPath"
+            )
+            return
+        }
+
+        val audioUri = Uri.fromFile(audioFile)
+        cancelTrimWatcher()
+
+        runCatching {
+            exoPlayer.setMediaItem(MediaItem.fromUri(audioUri))
+            exoPlayer.prepare()
+            exoPlayer.seekTo(trimStartMs)
+            exoPlayer.play()
+        }.onSuccess {
+            status = "Lecture"
+            Log.i(
+                SMP_PLAYER_TAG,
+                "Lecture SMP démarrée: songId=${detail.song.id} title=${detail.song.title} trimStartMs=$trimStartMs trimEndMs=${trimEndMs ?: 0L}"
+            )
+            startTrimWatcher()
+        }.onFailure { error ->
+            status = "Erreur de lecture"
+            Log.e(
+                SMP_PLAYER_TAG,
+                "Lecture SMP impossible: songId=${detail.song.id} audioPath=$audioPath",
+                error
+            )
+        }
+    }
+
+    DisposableEffect(exoPlayer) {
+        val listener = object : Player.Listener {
+            override fun onPlaybackStateChanged(state: Int) {
+                if (state == Player.STATE_ENDED) {
+                    cancelTrimWatcher()
+                    status = "Terminé"
+                }
+            }
+        }
+
+        exoPlayer.addListener(listener)
+        onDispose {
+            cancelTrimWatcher()
+            runCatching { exoPlayer.stop() }
+            exoPlayer.removeListener(listener)
+            exoPlayer.release()
+        }
+    }
+
+    Dialog(
+        onDismissRequest = {
+            stopPlayback()
+            onDismiss()
+        }
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .widthIn(max = 520.dp),
+            shape = MaterialTheme.shapes.large,
+            tonalElevation = 6.dp
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(20.dp)
+            ) {
+                Text(
+                    text = detail.song.title,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = status,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "trimStartMs=$trimStartMs trimEndMs=${trimEndMs ?: "absent"}",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Button(onClick = { play() }) {
+                        Text("PLAY")
+                    }
+                    Button(onClick = { stopPlayback() }) {
+                        Text("STOP")
+                    }
+                    TextButton(
+                        onClick = {
+                            stopPlayback()
+                            onDismiss()
+                        }
+                    ) {
+                        Text("Fermer")
+                    }
+                }
+            }
+        }
     }
 }
