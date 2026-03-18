@@ -10,6 +10,8 @@ import android.util.Log
 object SoundTouchBridge {
 
     private const val TAG = "AUDIO_TS"
+    private const val TAG_HQ = "AUDIO_TS_HQ"
+    private const val VERBOSE_PROCESS_LOGS = false
 
     @Volatile private var loadTried = false
     @Volatile private var loadedOk = false
@@ -178,10 +180,17 @@ object SoundTouchBridge {
         return ok
     }
 
-    private const val TAG_HQ = "AUDIO_TS_HQ"
-
     fun processWithLogs(handle: Long, input: ByteArray): ByteArray? {
         if (!ensureAvailableOrLog("processWithLogs")) return null
+
+        if (!VERBOSE_PROCESS_LOGS) {
+            return try {
+                nativeProcess(handle, input)
+            } catch (t: Throwable) {
+                Log.e(TAG_HQ, "K!! nativeProcess CRASH", t)
+                null
+            }
+        }
 
         Log.i(TAG_HQ, "K-> nativeProcess handle=$handle inBytes=${input.size}")
 

@@ -55,11 +55,16 @@ object AudioEngine {
 
     fun setTimeStretchMode(mode: TimeStretchMode, reason: String = "") {
         val hqAvailable = SoundTouchBridge.isAvailable()
-        val effective = if (hqAvailable) {
-            TimeStretchMode.HQ
-        } else {
-            Log.w(TS_TAG, "HQ unavailable")
-            TimeStretchMode.EXO
+        val effective = when (mode) {
+            TimeStretchMode.HQ -> {
+                if (hqAvailable) {
+                    TimeStretchMode.HQ
+                } else {
+                    Log.w(TS_TAG, "HQ unavailable")
+                    TimeStretchMode.EXO
+                }
+            }
+            TimeStretchMode.EXO -> TimeStretchMode.EXO
         }
 
         if (effective != mode) {
@@ -222,6 +227,20 @@ object AudioEngine {
         Log.d(TS_TAG, "TS_ACTIVE=$timeStretchMode speed=$speed pitch=$pitch reason=$reason")
         val s = speed.coerceIn(0.5f, 2.0f)
         val pi = pitch.coerceIn(0.5f, 2.0f)
+        val isNeutral = abs(s - 1f) < 0.0005f && abs(pi - 1f) < 0.0005f
+
+        if (isNeutral) {
+            hqApplyPending = false
+            soundTouchProcessor.setEnabled(false)
+
+            val before = p.playbackParameters
+            if (abs(before.speed - 1f) > 0.0005f || abs(before.pitch - 1f) > 0.0005f) {
+                p.playbackParameters = PlaybackParameters(1f, 1f)
+            }
+
+            Log.d(TS_TAG, "apply(BYPASS_NEUTRAL,$reason)")
+            return
+        }
 
         when (timeStretchMode) {
             TimeStretchMode.EXO -> {

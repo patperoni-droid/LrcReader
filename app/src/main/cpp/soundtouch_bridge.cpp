@@ -16,6 +16,7 @@
 
 namespace {
     constexpr const char* kTag = "SOUNDTOUCH_JNI";
+    constexpr bool kVerboseProcessLogs = false;
 
     struct Processor {
         int sampleRate = 0;
@@ -304,7 +305,9 @@ Java_com_patrick_lrcreader_core_audio_SoundTouchBridge_nativeSetTempo(
     return JNI_TRUE;
 #else
     p->st.setTempo(tempo);
-    __android_log_print(ANDROID_LOG_INFO, kTag, "nativeSetTempo tempo=%f", tempo);
+    if (kVerboseProcessLogs) {
+        __android_log_print(ANDROID_LOG_INFO, kTag, "nativeSetTempo tempo=%f", tempo);
+    }
     return JNI_TRUE;
 #endif
 }
@@ -325,7 +328,9 @@ Java_com_patrick_lrcreader_core_audio_SoundTouchBridge_nativeSetPitchSemi(
     return JNI_TRUE;
 #else
     p->st.setPitchSemiTones(semi);
-    __android_log_print(ANDROID_LOG_INFO, kTag, "nativeSetPitchSemi semi=%f", semi);
+    if (kVerboseProcessLogs) {
+        __android_log_print(ANDROID_LOG_INFO, kTag, "nativeSetPitchSemi semi=%f", semi);
+    }
     return JNI_TRUE;
 #endif
 }
@@ -366,13 +371,15 @@ Java_com_patrick_lrcreader_core_audio_SoundTouchBridge_nativeProcess(
             stIn[i] = pcm16ToSample(pcm[i]);
         }
         p->st.putSamples(stIn.data(), frames);
-        __android_log_print(
-                ANDROID_LOG_INFO,
-            kTag,
-            "nativeProcess inFrames=%u inSamples=%zu",
-            frames,
-            pcm.size()
-        );
+        if (kVerboseProcessLogs) {
+            __android_log_print(
+                    ANDROID_LOG_INFO,
+                kTag,
+                "nativeProcess inFrames=%u inSamples=%zu",
+                frames,
+                pcm.size()
+            );
+        }
     }
 
     std::vector<int16_t> out = drainOutputLimited(p, 0); // 0 = drain tout
