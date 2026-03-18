@@ -117,6 +117,7 @@ data class SmpConfig(
 
     companion object {
         private const val TAG = "SmpConfig"
+        private val SUPPORTED_AUDIO_EXTENSIONS = setOf("mp3", "wav", "flac", "m4a", "aac", "ogg")
 
         fun fromSongUnit(context: Context, songUnit: SongUnit): SmpConfig {
             return SmpConfig(
@@ -249,11 +250,11 @@ data class SmpConfig(
                 .trim()
                 .lowercase(Locale.ROOT)
 
-            return if (extension.isBlank()) {
-                "audio"
-            } else {
-                "audio.$extension"
+            if (extension !in SUPPORTED_AUDIO_EXTENSIONS) {
+                return null
             }
+
+            return "audio.$extension"
         }
 
         private fun resolvePrompterTransportName(path: String?): String? {

@@ -2,6 +2,7 @@ package com.patrick.lrcreader.ui
 
 import android.net.Uri
 import android.util.Log
+import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -39,6 +40,7 @@ import com.patrick.lrcreader.core.LrcLine
 import com.patrick.lrcreader.core.findActiveLrcIndex
 import com.patrick.lrcreader.core.parseLrc
 import com.patrick.lrcreader.smp.SmpConfig
+import com.patrick.lrcreader.smp.SmpExporter
 import com.patrick.lrcreader.smp.SmpImportedSongDetail
 import com.patrick.lrcreader.smp.SongUnit
 import kotlinx.coroutines.Dispatchers
@@ -138,6 +140,8 @@ fun SmpImportedSongDetailDialog(
     }
     var isPlayerDialogOpen by remember(detail.song.id) { mutableStateOf(false) }
     var generatedConfigJson by remember(detail.song.id) { mutableStateOf<String?>(null) }
+    var lastExportPath by remember(detail.song.id) { mutableStateOf<String?>(null) }
+    var isExporting by remember(detail.song.id) { mutableStateOf(false) }
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
@@ -173,6 +177,7 @@ fun SmpImportedSongDetailDialog(
                         SmpDebugField(label = "dmxPath", value = song.dmxPath)
                         SmpDebugField(label = "prompterPath", value = song.prompterPath)
                         SmpDebugField(label = "playback", value = formatPlayback(detail.playback))
+                        SmpDebugField(label = "lastExportPath", value = lastExportPath)
                     }
                 }
 
@@ -189,34 +194,62 @@ fun SmpImportedSongDetailDialog(
                         onDismiss = { generatedConfigJson = null }
                     )
                 }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Button(
-                        onClick = { isPlayerDialogOpen = true },
-                        enabled = canPlay
+                Column {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("Lire ce SMP")
-                    }
-                    Button(
-                        onClick = {
-                            scope.launch {
-                                val generatedJson = withContext(Dispatchers.IO) {
-                                    SmpConfig.fromSongUnit(appContext, song).toJsonString()
-                                }
-                                Log.i(
-                                    SMP_DEBUG_TAG,
-                                    "Config SMP généré: songId=${song.id} title=${song.title}\n$generatedJson"
-                                )
-                                generatedConfigJson = generatedJson
-                            }
+                        Button(
+                            onClick = { isPlayerDialogOpen = true },
+                            enabled = canPlay
+                        ) {
+                            Text("Lire ce SMP")
                         }
-                    ) {
-                        Text("Config SMP")
+                        Button(
+                            onClick = {
+                                scope.launch {
+                                    val generatedJson = withContext(Dispatchers.IO) {
+                                        SmpConfig.fromSongUnit(appContext, song).toJsonString()
+                                    }
+                                    Log.i(
+                                        SMP_DEBUG_TAG,
+                                        "Config SMP généré: songId=${song.id} title=${song.title}\n$generatedJson"
+                                    )
+                                    generatedConfigJson = generatedJson
+                                }
+                            }
+                        ) {
+                            Text("Config SMP")
+                        }
+                        Button(
+                            onClick = {
+                                isExporting = true
+                                scope.launch {
+                                    val exportedFile = withContext(Dispatchers.IO) {
+                                        SmpExporter.exportSongUnitToSmp(appContext, song)
+                                    }
+                                    isExporting = false
+                                    if (exportedFile != null) {
+                                        lastExportPath = exportedFile.absolutePath
+                                        Toast.makeText(context, "Export SMP réussi", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        lastExportPath = null
+                                        Toast.makeText(context, "Export SMP échoué", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            },
+                            enabled = !isExporting
+                        ) {
+                            Text(if (isExporting) "Export..." else "Exporter SMP")
+                        }
                     }
-                    TextButton(onClick = onDismiss) {
-                        Text("Fermer")
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        TextButton(onClick = onDismiss) {
+                            Text("Fermer")
+                        }
                     }
                 }
             }
