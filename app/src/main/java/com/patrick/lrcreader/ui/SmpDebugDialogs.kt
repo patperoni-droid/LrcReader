@@ -49,6 +49,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 private const val SMP_PLAYER_TAG = "SMP_PLAYER"
+private const val SMP_DEBUG_TAG = "SMP"
 private const val SMP_PLAYER_POLL_MS = 75L
 
 @Composable
@@ -128,11 +129,15 @@ fun SmpImportedSongDetailDialog(
     detail: SmpImportedSongDetail,
     onDismiss: () -> Unit
 ) {
+    val context = LocalContext.current
+    val appContext = context.applicationContext
+    val scope = rememberCoroutineScope()
     val song = detail.song
     val canPlay = remember(song.audioPath) {
         song.audioPath?.let { File(it).isFile() } == true
     }
     var isPlayerDialogOpen by remember(detail.song.id) { mutableStateOf(false) }
+    var generatedConfigJson by remember(detail.song.id) { mutableStateOf<String?>(null) }
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
@@ -178,6 +183,12 @@ fun SmpImportedSongDetailDialog(
                         onDismiss = { isPlayerDialogOpen = false }
                     )
                 }
+                generatedConfigJson?.let { json ->
+                    SmpGeneratedConfigDialog(
+                        json = json,
+                        onDismiss = { generatedConfigJson = null }
+                    )
+                }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
@@ -187,6 +198,22 @@ fun SmpImportedSongDetailDialog(
                         enabled = canPlay
                     ) {
                         Text("Lire ce SMP")
+                    }
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                val generatedJson = withContext(Dispatchers.IO) {
+                                    SmpConfig.fromSongUnit(appContext, song).toJsonString()
+                                }
+                                Log.i(
+                                    SMP_DEBUG_TAG,
+                                    "Config SMP généré: songId=${song.id} title=${song.title}\n$generatedJson"
+                                )
+                                generatedConfigJson = generatedJson
+                            }
+                        }
+                    ) {
+                        Text("Config SMP")
                     }
                     TextButton(onClick = onDismiss) {
                         Text("Fermer")
@@ -222,6 +249,51 @@ private fun formatPlayback(playback: SmpConfig.PlaybackConfig?): String {
         append(", trimEndMs=")
         append(playback.trimEndMs ?: "null")
         append("}")
+    }
+}
+
+@Composable
+private fun SmpGeneratedConfigDialog(
+    json: String,
+    onDismiss: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .widthIn(max = 720.dp),
+            shape = MaterialTheme.shapes.large,
+            tonalElevation = 6.dp
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(20.dp)
+                    .heightIn(max = 620.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                Text(
+                    text = "config.json généré",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                SelectionContainer {
+                    Text(
+                        text = json,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text("Fermer")
+                    }
+                }
+            }
+        }
     }
 }
 
