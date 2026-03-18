@@ -88,6 +88,7 @@ import com.patrick.lrcreader.core.resolveChordsLookupFileName
 import com.patrick.lrcreader.core.resolveAccordsEditTargetTrack
 import com.patrick.lrcreader.core.resolveLyricsViewMode
 import com.patrick.lrcreader.core.lyrics.LyricsCacheEntry
+import com.patrick.lrcreader.smp.SmpConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -1823,6 +1824,16 @@ private fun readAccordsFromSplByTrackUri(
     trackUriString: String,
     preferredLrcFileName: String?
 ): String? {
+    val smpAccords = readAccordsFromSmpSongFolder(context, trackUriString)
+    if (smpAccords != null) {
+        Log.d(
+            "LrcDebug",
+            "ACCORDS_LOOKUP hit SMP fileName=${smpAccords.fileName} path=${smpAccords.debugPath}"
+        )
+        Log.d("LrcDebug", "CHORDS_SOURCE_TYPE smp")
+        return smpAccords.text
+    }
+
     LrcStorage.logTrackNameDiagnostics(context, trackUriString, stage = "ACCORDS_LOOKUP")
     val fallbackBaseName = baseNameFromTrackUriString(trackUriString)
     Log.d(
@@ -1887,6 +1898,70 @@ private fun readAccordsFromSplByTrackUri(
         Log.d("LrcDebug", "CHORDS_SOURCE_TYPE legacy")
     }
     return byBaseFallback?.text
+}
+
+private fun readAccordsFromSmpSongFolder(
+    context: android.content.Context,
+    trackUriString: String
+): LrcTextWithFileName? {
+    val trackUri = runCatching { Uri.parse(trackUriString) }.getOrNull() ?: return null
+    if (trackUri.scheme != "file") return null
+
+    val audioPath = trackUri.path?.takeIf { it.isNotBlank() } ?: return null
+    val audioFile = File(audioPath)
+    if (!audioFile.isFile || !audioFile.name.startsWith("audio.", ignoreCase = true)) {
+        return null
+    }
+
+    val songDir = audioFile.parentFile?.canonicalFile ?: return null
+    val tracksRoot = File(context.filesDir, "tracks").canonicalFile
+    if (songDir.parentFile?.canonicalFile != tracksRoot) {
+        return null
+    }
+
+    val configFile = File(songDir, "config.json")
+    if (!configFile.isFile) {
+        return null
+    }
+
+    val config = runCatching {
+        SmpConfig.fromJsonOrNull(configFile.readText(Charsets.UTF_8))
+    }.getOrNull() ?: return null
+
+    val expectedAudioName = config.files?.audio?.trim()
+    if (!expectedAudioName.isNullOrBlank() && !audioFile.name.equals(expectedAudioName, ignoreCase = true)) {
+        return null
+    }
+
+    val chordsName = config.files?.chords?.trim().takeUnless { it.isNullOrBlank() } ?: "chords.lrc"
+    val chordsFile = resolveSmpSongUnitChildFile(songDir, chordsName) ?: return null
+    if (!chordsFile.isFile) {
+        return null
+    }
+
+    val text = runCatching { chordsFile.readText(Charsets.UTF_8) }.getOrNull() ?: return null
+    return LrcTextWithFileName(
+        text = text,
+        fileName = chordsFile.name,
+        debugPath = chordsFile.absolutePath
+    )
+}
+
+private fun resolveSmpSongUnitChildFile(songDir: File, transportName: String): File? {
+    val cleanName = transportName.trim()
+    if (cleanName.isEmpty()) {
+        return null
+    }
+
+    return runCatching {
+        val canonicalSongDir = songDir.canonicalFile
+        val canonicalChild = File(canonicalSongDir, cleanName).canonicalFile
+        val songPath = canonicalSongDir.path
+        if (!canonicalChild.path.startsWith("$songPath${File.separator}") && canonicalChild.path != songPath) {
+            return null
+        }
+        canonicalChild
+    }.getOrNull()
 }
 
 private fun resolveExactLrcFileNameForTrack(
