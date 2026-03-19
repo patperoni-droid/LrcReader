@@ -254,12 +254,12 @@ object LrcStorage {
         return null
     }
 
-    fun saveForTrack(context: Context, trackUriString: String, lines: List<LrcLine>) {
+    fun saveForTrack(context: Context, trackUriString: String, lines: List<LrcLine>): Boolean {
         Log.e(
             "DEBUG_ROOT_URI",
             "BackupFolderPrefs rootUri = ${BackupFolderPrefs.getLibraryRootUri(context)}"
         )
-        if (trackUriString.isBlank()) return
+        if (trackUriString.isBlank()) return false
         clearRecentResolvedOrigin(trackUriString)
         val text = linesToLrcText(lines)
         val safOnlyBackend = isSafBackend(context)
@@ -286,14 +286,14 @@ object LrcStorage {
                 Log.w(TAG, "mode SMP save failed path=${resolved.file.absolutePath}")
             }
             Log.i(TAG, "mode SMP save file=$written len=${text.length} target=${resolved.fileName}")
-            return
+            return written
         }
 
         if (safOnlyBackend) {
             val safDir = getConfiguredSafDir(context)
             if (safDir == null) {
                 Log.w(TAG, "mode SAF save blocked: SAF dir unavailable")
-                return
+                return false
             }
             Log.i(TAG, "mode SAF save dir=${safDir.uri}")
             val targetFileName = resolveSafWriteTargetFileName(context, trackUriString, safDir)
@@ -304,7 +304,7 @@ object LrcStorage {
                 Log.i("LrcDebug", "LRC_SAVE path=$savedPath")
             }
             Log.i(TAG, "mode SAF save configured=$okConfigured len=${text.length} file=$targetFileName")
-            return
+            return okConfigured
         }
 
         // ✅ MODE INTERNE SPL : écrit dans BackingTracks/Lyrics/<base>.lrc
@@ -318,12 +318,13 @@ object LrcStorage {
                 Log.i("LrcDebug", "LRC_SAVE path=${outFile.absolutePath}")
             }
             Log.i(TAG, "mode INTERNAL SPL save file=$okFile internalCache=$okInternal len=${text.length}")
-            return
+            return okFile
         }
+        return false
     }
 
-    fun deleteForTrack(context: Context, trackUriString: String) {
-        if (trackUriString.isBlank()) return
+    fun deleteForTrack(context: Context, trackUriString: String): Boolean {
+        if (trackUriString.isBlank()) return false
         clearRecentResolvedOrigin(trackUriString)
         val safOnlyBackend = isSafBackend(context)
         logLyricsBackend(context, safOnlyBackend)
@@ -335,15 +336,16 @@ object LrcStorage {
             } else {
                 Log.w(TAG, "mode SMP delete failed path=${resolved.file.absolutePath}")
             }
-            return
+            return deleted
         }
 
         if (safOnlyBackend) {
+            var deletedAny = false
             runCatching {
                 val safDir = getConfiguredSafDir(context)
                 if (safDir == null) {
                     Log.w(TAG, "mode SAF delete blocked: SAF dir unavailable")
-                    return@runCatching
+                    return@runCatching false
                 }
                 val targetNames = linkedSetOf<String>().apply {
                     getRememberedCanonicalFileName(context, trackUriString)
@@ -356,19 +358,23 @@ object LrcStorage {
                     findFileIgnoreCase(safDir, name)?.let { doc ->
                         val deleted = runCatching { doc.delete() }.getOrDefault(false)
                         if (deleted) {
+                            deletedAny = true
                             Log.i("LrcDebug", "LRC_DELETE path=${doc.uri}")
                         }
                     }
                 }
                 clearRememberedCanonicalFileName(context, trackUriString)
+                true
             }
-            return
+            return deletedAny
         }
 
         // cache interne
+        var deletedAny = false
         runCatching {
             val cache = internalFile(context, trackUriString)
             if (cache.delete()) {
+                deletedAny = true
                 Log.i("LrcDebug", "LRC_DELETE path=${cache.absolutePath}")
             }
         }
@@ -380,12 +386,15 @@ object LrcStorage {
             val upper = File(upperDir, sidecar)
             val lower = File(lowerDir, sidecar)
             if (upper.delete()) {
+                deletedAny = true
                 Log.i("LrcDebug", "LRC_DELETE path=${upper.absolutePath}")
             }
             if (lower.delete()) {
+                deletedAny = true
                 Log.i("LrcDebug", "LRC_DELETE path=${lower.absolutePath}")
             }
         }
+        return deletedAny
     }
 
     fun hashedFileNameForTrack(trackUriString: String): String {

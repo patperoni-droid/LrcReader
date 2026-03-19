@@ -148,8 +148,9 @@ fun QuickPlaylistsScreen(
     val playlists = remember(refreshKey, repoVersion) { PlaylistRepository.getPlaylists() }
 
     var internalSelected by rememberSaveable {
-        mutableStateOf<String?>(selectedPlaylist ?: playlists.firstOrNull())
+        mutableStateOf<String?>(selectedPlaylist ?: openedPlaylist ?: playlists.firstOrNull())
     }
+    val resolvedPlaylistSelection = internalSelected ?: selectedPlaylist ?: openedPlaylist ?: playlists.firstOrNull()
     val isMiniTunerVisible by MiniTunerVisibilityStore.state(context).collectAsState()
 
     val songs = remember { mutableStateListOf<String>() }
@@ -312,8 +313,8 @@ fun QuickPlaylistsScreen(
     }
 
     // si le parent force une playlist
-    LaunchedEffect(selectedPlaylist, openedPlaylist) {
-        val targetPlaylist = selectedPlaylist ?: openedPlaylist
+    LaunchedEffect(selectedPlaylist, openedPlaylist, playlists) {
+        val targetPlaylist = selectedPlaylist ?: openedPlaylist ?: playlists.firstOrNull()
         if (targetPlaylist != null) {
             if (targetPlaylist == internalSelected && songs.isNotEmpty()) {
                 Log.d("BOOTSTEP", "QuickPlaylists.parentTarget:skip duplicate target=$targetPlaylist size=${songs.size}")
@@ -749,7 +750,7 @@ fun QuickPlaylistsScreen(
 
             Spacer(Modifier.height(12.dp))
 
-            internalSelected?.let { currentPlaylist ->
+            resolvedPlaylistSelection?.let { currentPlaylist ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End

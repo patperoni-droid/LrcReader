@@ -993,6 +993,94 @@ fun PlayerScreen(
                             return@persistLines false
                         }
 
+                        val isSmpAccordsTrack = resolveSmpSongUnitTextTarget(
+                            context = context,
+                            trackUriString = lockedTrackUri,
+                            transportNameSelector = { it.files?.chords },
+                            fallbackName = "chords.lrc",
+                            requireExisting = false
+                        ) != null
+                        if (isSmpAccordsTrack) {
+                            val ioResult = withContext(Dispatchers.IO) {
+                                runCatching {
+                                    runAccordsSaveIo(
+                                        writeAccords = {
+                                            writeAccordsToSplByTrackUri(
+                                                context = context,
+                                                trackUriString = lockedTrackUri,
+                                                preferredLrcFileName = editingResolvedLrcFileName,
+                                                lines = lines.toList()
+                                            )
+                                        },
+                                        ensureLyricsTwin = { writtenName ->
+                                            val ensureResult = ensureLyricsFileExistsForTrack(
+                                                context = context,
+                                                trackUriString = lockedTrackUri,
+                                                preferredLrcFileName = writtenName
+                                            )
+                                            Log.d(
+                                                "LrcDebug",
+                                                "ACCORDS_ENSURE_LYRICS trackUri=$lockedTrackUri target=$writtenName result=$ensureResult"
+                                            )
+                                            ensureResult
+                                        }
+                                    )
+                                }.getOrElse {
+                                    com.patrick.lrcreader.core.AccordsIoResult(
+                                        success = false,
+                                        stage = "exception:${it::class.simpleName ?: "Unknown"}"
+                                    )
+                                }
+                            }
+                            if (!ioResult.success) {
+                                Log.e(
+                                    "LrcDebug",
+                                    buildAccordsIoFailureLog(
+                                        action = "save",
+                                        trackUri = lockedTrackUri,
+                                        io = ioResult
+                                    )
+                                )
+                                buildAccordsIoFailureFeedback(
+                                    context = context,
+                                    actionLabel = sAccordsActionSave,
+                                    io = ioResult
+                                )?.let { showAccordsIoFailureToast(it) }
+                                return@persistLines false
+                            }
+
+                            val reloadedRaw = withContext(Dispatchers.IO) {
+                                readAccordsFromSplByTrackUri(
+                                    context = context,
+                                    trackUriString = lockedTrackUri,
+                                    preferredLrcFileName = editingResolvedLrcFileName
+                                )
+                            }
+                            if (reloadedRaw == null) {
+                                Log.e("LrcDebug", "ACCORDS_SAVE_RELOAD_FAILED trackUri=$lockedTrackUri")
+                                showAccordsIoFailureToast(
+                                    buildAccordsIoFailureFeedback(
+                                        action = "save",
+                                        io = com.patrick.lrcreader.core.AccordsIoResult(
+                                            success = false,
+                                            stage = "reloadAccords"
+                                        )
+                                    ) ?: sAccordsActionSave
+                                )
+                                return@persistLines false
+                            }
+
+                            val reloadedParsed = if (reloadedRaw.isBlank()) emptyList() else parseLrc(reloadedRaw)
+                            persistedChordLines = reloadedParsed
+                            persistedHasChordsSource = true
+                            parsedChordLines = reloadedParsed
+                            hasChordsSource = true
+                            if (selectedViewMode == LyricsViewMode.CHORDS) {
+                                recomputeCurrentIndexForActiveView()
+                            }
+                            return@persistLines true
+                        }
+
                         val enqueued = accordsWriteQueue.submit(
                             AccordsWriteRequest(
                                 trackUriString = lockedTrackUri,
@@ -1017,57 +1105,66 @@ fun PlayerScreen(
                         LyricsMemoryCache.invalidate(trackUri)
                         Log.d(
                             "LrcDebug",
-                            "LYRICS_SAVE_ASYNC start trackUri=$trackUri lines=${lines.size}"
+                            "LYRICS_SAVE_CONFIRMED start trackUri=$trackUri lines=${lines.size}"
                         )
-                        scope.launch {
-                            val resolvedFileName = withContext(Dispatchers.IO) {
-                                runCatching {
-                                    LrcStorage.saveForTrack(
-                                        context = context,
-                                        trackUriString = trackUri,
-                                        lines = lines
-                                    )
-                                    LrcStorage.resolveOriginForTrack(
-                                        context = context,
-                                        trackUriString = trackUri
-                                    )?.fileName
-                                        ?: resolveExactLrcFileNameForTrack(
-                                            context = context,
-                                            trackUriString = trackUri,
-                                            preferredLrcFileName = preferredAtSave
-                                        )
-                                }.onFailure { error ->
-                                    Log.e(
-                                        "LrcDebug",
-                                        "LYRICS_SAVE_ASYNC failed trackUri=$trackUri",
-                                        error
-                                    )
-                                }.getOrNull()
-                            }
-
-                            if (!resolvedFileName.isNullOrBlank() && latestCurrentTrackUri == trackUri) {
-                                updateResolvedLyricsFileName(
-                                    resolvedFileName,
-                                    "source=LYRICS_SAVE"
+                        val saveOutcome = withContext(Dispatchers.IO) {
+                            runCatching {
+                                val saved = LrcStorage.saveForTrack(
+                                    context = context,
+                                    trackUriString = trackUri,
+                                    lines = lines
                                 )
-                            }
+                                if (!saved) {
+                                    return@runCatching null
+                                }
 
-                            if (!resolvedFileName.isNullOrBlank()) {
-                                launch(Dispatchers.IO) {
+                                val resolvedFileName = LrcStorage.resolveOriginForTrack(
+                                    context = context,
+                                    trackUriString = trackUri
+                                )?.fileName ?: resolveExactLrcFileNameForTrack(
+                                    context = context,
+                                    trackUriString = trackUri,
+                                    preferredLrcFileName = preferredAtSave
+                                )
+
+                                if (!resolvedFileName.isNullOrBlank()) {
                                     ensureAccordsFileExistsForTrack(
                                         context = context,
                                         trackUriString = trackUri,
                                         preferredLrcFileName = resolvedFileName
                                     )
                                 }
-                            }
 
-                            val elapsedMs = android.os.SystemClock.elapsedRealtime() - saveStartMs
-                            Log.d(
-                                "LrcDebug",
-                                "LYRICS_SAVE_ASYNC end trackUri=$trackUri durationMs=$elapsedMs resolved=$resolvedFileName"
+                                LyricsPersistOutcome(
+                                    resolvedFileName = resolvedFileName,
+                                    reloadedText = LrcStorage.loadForTrack(context, trackUri)
+                                )
+                            }.onFailure { error ->
+                                Log.e(
+                                    "LrcDebug",
+                                    "LYRICS_SAVE_CONFIRMED failed trackUri=$trackUri",
+                                    error
+                                )
+                            }.getOrNull()
+                        }
+
+                        if (saveOutcome == null || saveOutcome.reloadedText.isNullOrBlank()) {
+                            Log.e("LrcDebug", "LYRICS_SAVE_CONFIRMED reload_failed trackUri=$trackUri")
+                            return@persistLines false
+                        }
+
+                        if (!saveOutcome.resolvedFileName.isNullOrBlank() && latestCurrentTrackUri == trackUri) {
+                            updateResolvedLyricsFileName(
+                                saveOutcome.resolvedFileName,
+                                "source=LYRICS_SAVE"
                             )
                         }
+
+                        val elapsedMs = android.os.SystemClock.elapsedRealtime() - saveStartMs
+                        Log.d(
+                            "LrcDebug",
+                            "LYRICS_SAVE_CONFIRMED end trackUri=$trackUri durationMs=$elapsedMs resolved=${saveOutcome.resolvedFileName}"
+                        )
                     }
                     true
                 },
@@ -1084,6 +1181,87 @@ fun PlayerScreen(
                                 "ACCORDS_DELETE_BLOCKED trackChanged editingTrackUri=$editingTrackUri currentTrackUri=$currentTrackUri"
                             )
                             return@deletePersisted false
+                        }
+
+                        val isSmpAccordsTrack = resolveSmpSongUnitTextTarget(
+                            context = context,
+                            trackUriString = lockedTrackUri,
+                            transportNameSelector = { it.files?.chords },
+                            fallbackName = "chords.lrc",
+                            requireExisting = false
+                        ) != null
+                        if (isSmpAccordsTrack) {
+                            val initialIo = withContext(Dispatchers.IO) {
+                                runCatching {
+                                    runAccordsDeleteIo(
+                                        deleteAccords = {
+                                            deleteAccordsFromSplByTrackUri(
+                                                context = context,
+                                                trackUriString = lockedTrackUri,
+                                                preferredLrcFileName = editingResolvedLrcFileName
+                                            )
+                                        }
+                                    )
+                                }.getOrElse {
+                                    com.patrick.lrcreader.core.AccordsIoResult(
+                                        success = false,
+                                        stage = "exception:${it::class.simpleName ?: "Unknown"}"
+                                    )
+                                }
+                            }
+                            val ioResult = if (initialIo.success) {
+                                val remaining = withContext(Dispatchers.IO) {
+                                    readAccordsFromSplByTrackUri(
+                                        context = context,
+                                        trackUriString = lockedTrackUri,
+                                        preferredLrcFileName = editingResolvedLrcFileName
+                                    )
+                                }
+                                if (remaining == null) {
+                                    initialIo
+                                } else {
+                                    com.patrick.lrcreader.core.AccordsIoResult(
+                                        success = false,
+                                        stage = "reloadAccordsAfterDelete"
+                                    )
+                                }
+                            } else {
+                                initialIo
+                            }
+
+                            val previous = AccordsUiTruth(
+                                lines = persistedChordLines,
+                                hasSource = persistedHasChordsSource
+                            )
+                            val resolved = resolveAccordsUiTruthAfterDelete(
+                                previous = previous,
+                                io = ioResult
+                            )
+                            persistedChordLines = resolved.lines
+                            persistedHasChordsSource = resolved.hasSource
+                            parsedChordLines = resolved.lines
+                            hasChordsSource = resolved.hasSource
+                            if (selectedViewMode == LyricsViewMode.CHORDS) {
+                                recomputeCurrentIndexForActiveView()
+                            }
+
+                            if (!ioResult.success) {
+                                Log.e(
+                                    "LrcDebug",
+                                    buildAccordsIoFailureLog(
+                                        action = "delete",
+                                        trackUri = lockedTrackUri,
+                                        io = ioResult
+                                    )
+                                )
+                                buildAccordsIoFailureFeedback(
+                                    context = context,
+                                    actionLabel = sAccordsActionDelete,
+                                    io = ioResult
+                                )?.let { showAccordsIoFailureToast(it) }
+                                return@deletePersisted false
+                            }
+                            return@deletePersisted true
                         }
 
                         val ioResult = runCatching {
@@ -1140,10 +1318,17 @@ fun PlayerScreen(
                     }
 
                     currentTrackUri?.let { trackUri ->
-                        runCatching {
-                            LyricsMemoryCache.invalidate(trackUri)
-                            LrcStorage.deleteForTrack(context, trackUri)
+                        LyricsMemoryCache.invalidate(trackUri)
+                        val deleted = withContext(Dispatchers.IO) {
+                            runCatching {
+                                LrcStorage.deleteForTrack(context, trackUri)
+                                LrcStorage.loadForTrack(context, trackUri).isNullOrBlank()
+                            }.getOrDefault(false)
                         }
+                        if (deleted && latestCurrentTrackUri == trackUri) {
+                            updateResolvedLyricsFileName(null, "source=LYRICS_DELETE")
+                        }
+                        return@deletePersisted deleted
                     }
                     true
                 },
@@ -1679,6 +1864,11 @@ private data class LrcTextWithFileName(
 private data class SmpSongUnitTextTarget(
     val file: File,
     val fileName: String
+)
+
+private data class LyricsPersistOutcome(
+    val resolvedFileName: String?,
+    val reloadedText: String?
 )
 
 private data class AccordsWriteRequest(
