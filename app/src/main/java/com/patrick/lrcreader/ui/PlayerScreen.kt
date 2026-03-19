@@ -35,6 +35,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Tune
@@ -89,6 +90,7 @@ import com.patrick.lrcreader.core.resolveAccordsEditTargetTrack
 import com.patrick.lrcreader.core.resolveLyricsViewMode
 import com.patrick.lrcreader.core.lyrics.LyricsCacheEntry
 import com.patrick.lrcreader.smp.SmpConfig
+import com.patrick.lrcreader.smp.SmpAnnotationsStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -136,6 +138,7 @@ fun PlayerScreen(
     val sAccordsSaveQueueClosed = stringResource(R.string.player_accords_save_queue_closed)
     val sAccordsActionSave = stringResource(R.string.accords_action_save)
     val sAccordsActionDelete = stringResource(R.string.accords_action_delete)
+    val sDeleteLiveNote = stringResource(R.string.player_cd_delete_live_note)
 
     // 📝 Notes LIVE (création depuis le lecteur)
     var showAddNoteDialog by remember { mutableStateOf(false) }
@@ -168,13 +171,32 @@ fun PlayerScreen(
         }
     }
 
+    fun removeLiveNoteAndPersist(note: LiveNote) {
+        LiveNoteManager.remove(note)
+        activeLiveNote = null
+        val liveNotesSnapshot = LiveNoteManager.snapshot()
+        val trackUriForPersistence = currentTrackUri
+        scope.launch {
+            persistSmpLiveNotesForTrack(
+                context = context,
+                trackUriString = trackUriForPersistence,
+                notes = liveNotesSnapshot
+            )
+        }
+    }
+
     // ✅ "Niveau du titre" appliqué au moteur
     LaunchedEffect(currentTrackUri, currentTrackGainDb) {
         AudioEngine.applyTrackGainDb(currentTrackGainDb)
     }
 
     LaunchedEffect(currentTrackUri) {
-        LiveNoteManager.clear()
+        val loadedNotes = currentTrackUri?.let { trackUriString ->
+            withContext(Dispatchers.IO) {
+                loadSmpLiveNotesForTrack(context, trackUriString)
+            }
+        }.orEmpty()
+        LiveNoteManager.setNotes(loadedNotes)
         activeLiveNote = null
     }
     LaunchedEffect(isPlaying, currentTrackUri) {
@@ -1534,10 +1556,7 @@ fun PlayerScreen(
                                         .padding(top = 10.dp)
                                         .combinedClickable(
                                             onClick = {}, // rien au click simple
-                                            onLongClick = {
-                                                LiveNoteManager.remove(note)
-                                                activeLiveNote = null
-                                            }
+                                            onLongClick = { removeLiveNoteAndPersist(note) }
                                         )
                                         .background(
                                             Color(0xCC000000),
@@ -1550,11 +1569,27 @@ fun PlayerScreen(
                                         )
                                         .padding(horizontal = 14.dp, vertical = 10.dp)
                                 ) {
-                                    Text(
-                                        text = stringResource(R.string.player_live_note_chip, note.text),
-                                        color = Color(0xFFFFC107),
-                                        fontSize = 15.sp
-                                    )
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Text(
+                                            text = stringResource(R.string.player_live_note_chip, note.text),
+                                            color = Color(0xFFFFC107),
+                                            fontSize = 15.sp,
+                                            modifier = Modifier.weight(1f, fill = false)
+                                        )
+                                        IconButton(
+                                            onClick = { removeLiveNoteAndPersist(note) },
+                                            modifier = Modifier.size(28.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Delete,
+                                                contentDescription = sDeleteLiveNote,
+                                                tint = Color(0xFFFFC107)
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -1704,6 +1739,7 @@ fun PlayerScreen(
             confirmButton = {
                 TextButton(onClick = {
                     val text = noteDraftText.trim()
+                    val trackUriForPersistence = currentTrackUri
                     if (text.isNotEmpty()) {
                         val startMs = noteAnchorMs ?: getPositionMs()
                         val note = LiveNote(
@@ -1713,6 +1749,14 @@ fun PlayerScreen(
                         )
                         LiveNoteManager.addNote(note)
                         activeLiveNote = note
+                        val liveNotesSnapshot = LiveNoteManager.snapshot()
+                        scope.launch {
+                            persistSmpLiveNotesForTrack(
+                                context = context,
+                                trackUriString = trackUriForPersistence,
+                                notes = liveNotesSnapshot
+                            )
+                        }
                     }
 
                     if (wasPlayingBeforeNote) onIsPlayingChange(true)
@@ -1884,6 +1928,56 @@ private data class LyricsPersistOutcome(
     val resolvedFileName: String?,
     val reloadedText: String?
 )
+
+private fun loadSmpLiveNotesForTrack(
+    context: android.content.Context,
+    trackUriString: String
+): List<LiveNote> {
+    val target = resolveSmpAnnotationsTarget(
+        context = context,
+        trackUriString = trackUriString,
+        requireExisting = false
+    ) ?: return emptyList()
+    return SmpAnnotationsStore.read(target.file)
+}
+
+private suspend fun persistSmpLiveNotesForTrack(
+    context: android.content.Context,
+    trackUriString: String?,
+    notes: List<LiveNote>
+) {
+    if (trackUriString.isNullOrBlank()) {
+        return
+    }
+
+    val saved = withContext(Dispatchers.IO) {
+        resolveSmpAnnotationsTarget(
+            context = context,
+            trackUriString = trackUriString,
+            requireExisting = false
+        )?.let { target ->
+            SmpAnnotationsStore.write(target.file, notes)
+        }
+    }
+
+    if (saved == false) {
+        Log.w("LrcDebug", "ANNOTATIONS_SAVE_FAILED trackUri=$trackUriString")
+    }
+}
+
+private fun resolveSmpAnnotationsTarget(
+    context: android.content.Context,
+    trackUriString: String,
+    requireExisting: Boolean
+): SmpSongUnitTextTarget? {
+    return resolveSmpSongUnitTextTarget(
+        context = context,
+        trackUriString = trackUriString,
+        transportNameSelector = { it.files?.annotations },
+        fallbackName = SmpAnnotationsStore.ANNOTATIONS_FILE_NAME,
+        requireExisting = requireExisting
+    )
+}
 
 private data class AccordsWriteRequest(
     val trackUriString: String,

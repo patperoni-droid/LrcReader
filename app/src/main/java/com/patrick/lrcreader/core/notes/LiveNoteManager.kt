@@ -13,6 +13,10 @@ object LiveNoteManager {
         notes.add(note)
     }
 
+    fun snapshot(): List<LiveNote> {
+        return notes.toList()
+    }
+
     fun clear() {
         notes.clear()
     }

@@ -218,6 +218,7 @@
 
     <string name="player_next_track">Prochain: %1$s</string>
     <string name="player_live_note_chip">📝 %1$s</string>
+    <string name="player_cd_delete_live_note">Supprimer l’annotation live</string>
     <string name="player_hq_unavailable">HQ indisponible</string>
     <string name="player_hq_off_banner">HQ OFF (STUB) =&gt; audio dégradé, pitch/speed désactivés</string>
     <string name="player_add_note_title">Ajouter une note</string>

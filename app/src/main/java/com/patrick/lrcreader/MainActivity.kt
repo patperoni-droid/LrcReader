@@ -1448,6 +1448,10 @@ class MainActivity : AppCompatActivity() {
                     val restoredQuickPlaylist = SessionPrefs.getQuickPlaylist(ctx)
                     val restoredOpenedPlaylist = SessionPrefs.getOpenedPlaylist(ctx)
                     val (lastUri, lastPlaylist) = SessionPrefs.getLastSession(ctx)
+                    Log.d(
+                        "SMP_TRACE",
+                        "RESTORE playlistQuick=$restoredQuickPlaylist playlistOpened=$restoredOpenedPlaylist lastPlaylist=$lastPlaylist track=$lastUri uri=$lastUri source=SessionPrefs"
+                    )
 
                     restoredTabKey?.let { selectedTab = tabFromKey(it) }
                     selectedQuickPlaylist = restoredQuickPlaylist ?: lastPlaylist
@@ -1460,6 +1464,10 @@ class MainActivity : AppCompatActivity() {
                         val overrideText = withContext(Dispatchers.IO) {
                             LrcStorage.loadForTrack(ctx, lastUri)?.takeIf { it.isNotBlank() }
                         }
+                        Log.d(
+                            "SMP_TRACE",
+                            "RESTORE_LOAD uri=$lastUri playlist=$lastPlaylist loadedLyrics=${!overrideText.isNullOrBlank()} lyricsHash=${overrideText?.hashCode()}"
+                        )
                         parsedLines = if (overrideText != null) parseLrc(overrideText) else emptyList()
 
                         // IMPORTANT:

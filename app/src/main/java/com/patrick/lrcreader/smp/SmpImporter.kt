@@ -25,6 +25,7 @@ class SmpImporter(private val context: Context) {
         private const val TRACKS_DIR_NAME = "tracks"
         private const val CONFIG_FILE_NAME = "config.json"
         private const val WAVEFORM_FILE_NAME = "waveform.json"
+        private const val MIDI_TRACE_TAG = "SMP_MIDI_TRACE"
     }
 
     private data class PreservedSongTextFile(
@@ -70,6 +71,7 @@ class SmpImporter(private val context: Context) {
             val stableConfigId = sanitizeSongId(rawConfigId)
             val songId = stableConfigId ?: "song_${UUID.randomUUID()}"
             val destinationDir = File(tracksRoot, songId)
+            val existingMidiFile = File(destinationDir, SmpMidiCuesStore.MIDI_CUES_FILE_NAME)
             val preservedLyrics = capturePreservedLyrics(
                 destinationDir = destinationDir
             )
@@ -78,6 +80,10 @@ class SmpImporter(private val context: Context) {
                 Log.i(
                     TAG,
                     "Doublon SMP détecté: remplacement du morceau existant configId=$stableConfigId songId=$songId title=$title dir=${destinationDir.absolutePath}"
+                )
+                Log.d(
+                    MIDI_TRACE_TAG,
+                    "${if (existingMidiFile.isFile) "OVERWRITE" else "REIMPORT"} songId=$songId path=${existingMidiFile.absolutePath} exists=${existingMidiFile.isFile} incomingMidi=${extracted.midiFileName != null}"
                 )
             } else if (stableConfigId == null) {
                 val reason = if (rawConfigId.isNullOrBlank()) "config.id absent" else "config.id invalide"
