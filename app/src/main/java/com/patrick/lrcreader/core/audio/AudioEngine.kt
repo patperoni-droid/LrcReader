@@ -31,10 +31,15 @@ object AudioEngine {
     // Time-stretch mode (sécurité)
     // -----------------------------
     enum class TimeStretchMode { EXO, HQ }
+    private enum class PlayerPipeline { PURE_EXO, CUSTOM_ST_SINK }
+
+    // Diagnostic temporaire: mettre à null pour revenir au pipeline custom par défaut.
+    private val forcedDiagnosticPipeline: PlayerPipeline? = PlayerPipeline.PURE_EXO
 
     private val soundTouchProcessor = SoundTouchAudioProcessor()
     @Volatile private var timeStretchMode: TimeStretchMode = initialTimeStretchMode()
     @Volatile private var hqApplyPending = timeStretchMode == TimeStretchMode.HQ
+    @Volatile private var activePlayerPipeline: PlayerPipeline? = null
 
     // Dernières valeurs demandées (communes aux 2 modes)
     @Volatile private var currentSpeed: Float = 1f
@@ -80,6 +85,10 @@ object AudioEngine {
     }
 
     fun getTimeStretchMode(): TimeStretchMode = timeStretchMode
+
+    private fun resolveDesiredPlayerPipeline(): PlayerPipeline {
+        return forcedDiagnosticPipeline ?: PlayerPipeline.CUSTOM_ST_SINK
+    }
 
     // -----------------------------
     // Player / listeners
@@ -224,10 +233,10 @@ object AudioEngine {
         reason: String = ""
     ) {
         val p = exoPlayer ?: return
-        Log.d(TS_TAG, "TS_ACTIVE=$timeStretchMode speed=$speed pitch=$pitch reason=$reason")
         val s = speed.coerceIn(0.5f, 2.0f)
         val pi = pitch.coerceIn(0.5f, 2.0f)
         val isNeutral = abs(s - 1f) < 0.0005f && abs(pi - 1f) < 0.0005f
+        val pipeline = activePlayerPipeline ?: resolveDesiredPlayerPipeline()
 
         if (isNeutral) {
             hqApplyPending = false
@@ -238,7 +247,22 @@ object AudioEngine {
                 p.playbackParameters = PlaybackParameters(1f, 1f)
             }
 
-            Log.d(TS_TAG, "apply(BYPASS_NEUTRAL,$reason)")
+            Log.i(TS_TAG, "path=NEUTRAL_BYPASS pipeline=$pipeline mode=$timeStretchMode reason=$reason")
+            return
+        }
+
+        if (pipeline == PlayerPipeline.PURE_EXO) {
+            hqApplyPending = false
+            soundTouchProcessor.setEnabled(false)
+
+            val before = p.playbackParameters
+            val sameSpeed = abs(before.speed - s) < 0.0005f
+            val samePitch = abs(before.pitch - pi) < 0.0005f
+            if (!sameSpeed || !samePitch) {
+                p.playbackParameters = PlaybackParameters(s, pi)
+            }
+
+            Log.i(TS_TAG, "path=EXO pipeline=$pipeline mode=$timeStretchMode reason=$reason")
             return
         }
 
@@ -253,7 +277,7 @@ object AudioEngine {
                 if (!sameSpeed || !samePitch) {
                     p.playbackParameters = PlaybackParameters(s, pi)
                 }
-                Log.d(TS_TAG, "apply(EXO,$reason) s=$s p=$pi")
+                Log.i(TS_TAG, "path=EXO pipeline=$pipeline mode=$timeStretchMode reason=$reason")
             }
             TimeStretchMode.HQ -> {
                 val pitchSemi = ratioToSemitones(pi)
@@ -292,7 +316,7 @@ object AudioEngine {
                 }
 
                 hqApplyPending = false
-                Log.d(TS_TAG, "apply(HQ,$reason) via SoundTouch tempoRatio=$s pitchSemi=$pitchSemi")
+                Log.i(TS_TAG, "path=HQ pipeline=$pipeline mode=$timeStretchMode reason=$reason")
             }
         }
     }
@@ -359,35 +383,44 @@ object AudioEngine {
     fun getPlayer(context: Context, onNaturalEnd: () -> Unit): ExoPlayer {
         val appCtx = context.applicationContext
         onNaturalEndCallback = onNaturalEnd
+        val desiredPipeline = resolveDesiredPlayerPipeline()
 
         val p = exoPlayer ?: run {
-            val renderersFactory = object : DefaultRenderersFactory(appCtx) {
-                override fun buildAudioSink(
-                    context: Context,
-                    enableFloatOutput: Boolean,
-                    enableAudioTrackPlaybackParams: Boolean
-                ): AudioSink {
-                    return DefaultAudioSink.Builder(context)
-                        .setAudioProcessors(arrayOf(soundTouchProcessor))
-                        .setEnableFloatOutput(enableFloatOutput)
-                        .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
-                        .build()
+            val player = when (desiredPipeline) {
+                PlayerPipeline.PURE_EXO -> {
+                    ExoPlayer.Builder(appCtx).build()
+                }
+                PlayerPipeline.CUSTOM_ST_SINK -> {
+                    val renderersFactory = object : DefaultRenderersFactory(appCtx) {
+                        override fun buildAudioSink(
+                            context: Context,
+                            enableFloatOutput: Boolean,
+                            enableAudioTrackPlaybackParams: Boolean
+                        ): AudioSink {
+                            return DefaultAudioSink.Builder(context)
+                                .setAudioProcessors(arrayOf(soundTouchProcessor))
+                                .setEnableFloatOutput(enableFloatOutput)
+                                .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+                                .build()
+                        }
+                    }
+                        .setEnableAudioFloatOutput(false)
+                        .setEnableAudioTrackPlaybackParams(false)
+
+                    ExoPlayer.Builder(appCtx, renderersFactory).build()
                 }
             }
-                .setEnableAudioFloatOutput(false)
-                .setEnableAudioTrackPlaybackParams(false)
-
-            ExoPlayer.Builder(appCtx, renderersFactory)
-                .build()
-                .also { player ->
-                    val l = EmbeddedLyricsListener()
-                    player.addListener(l)
-                    embeddedLyricsListener = l
-                    exoPlayer = player
-                    if (BuildConfig.DEBUG) {
-                        Log.d(PLAYER_SMOKE_TAG, "BOOT")
-                    }
+            player.also { builtPlayer ->
+                val l = EmbeddedLyricsListener()
+                builtPlayer.addListener(l)
+                embeddedLyricsListener = l
+                exoPlayer = builtPlayer
+                activePlayerPipeline = desiredPipeline
+                Log.i(TS_TAG, "pipeline=$desiredPipeline")
+                if (BuildConfig.DEBUG) {
+                    Log.d(PLAYER_SMOKE_TAG, "BOOT")
                 }
+            }
         }
 
         // Offload désactivé
@@ -466,6 +499,7 @@ object AudioEngine {
         runCatching { soundTouchProcessor.reset() }
         runCatching { soundTouchProcessor.setEnabled(false) }
         hqApplyPending = false
+        activePlayerPipeline = null
 
         exoPlayer?.release()
         exoPlayer = null
