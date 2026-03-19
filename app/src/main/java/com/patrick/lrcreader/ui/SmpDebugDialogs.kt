@@ -41,10 +41,12 @@ import com.patrick.lrcreader.core.PlaylistRepository
 import com.patrick.lrcreader.core.buildSmpItem
 import com.patrick.lrcreader.core.findActiveLrcIndex
 import com.patrick.lrcreader.core.parseLrc
+import com.patrick.lrcreader.smp.MidiCue
 import com.patrick.lrcreader.smp.SmpConfig
 import com.patrick.lrcreader.smp.SmpExporter
 import com.patrick.lrcreader.smp.SmpImportedSongDetail
 import com.patrick.lrcreader.smp.SmpImporter
+import com.patrick.lrcreader.smp.SmpMidiCuesStore
 import com.patrick.lrcreader.smp.SongUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -86,6 +88,12 @@ private data class SmpRoundTripResult(
     val isSuccessful: Boolean
         get() = failureReason == null && checks.all { it.ok }
 }
+
+private data class SmpMidiDebugInfo(
+    val path: String?,
+    val exists: Boolean,
+    val cueCount: Int
+)
 
 @Composable
 fun SmpImportedSongsDialog(
@@ -177,6 +185,26 @@ fun SmpImportedSongDetailDialog(
     var isExporting by remember(detail.song.id) { mutableStateOf(false) }
     var isRoundTripRunning by remember(detail.song.id) { mutableStateOf(false) }
     var roundTripResult by remember(detail.song.id) { mutableStateOf<SmpRoundTripResult?>(null) }
+    var midiDebugInfo by remember(detail.song.id) {
+        mutableStateOf(
+            SmpMidiDebugInfo(
+                path = song.storageFolder?.let { File(it, SmpMidiCuesStore.MIDI_CUES_FILE_NAME).absolutePath }
+                    ?: song.midiPath,
+                exists = hasExistingFile(song.midiPath),
+                cueCount = 0
+            )
+        )
+    }
+
+    suspend fun reloadMidiDebugInfo() {
+        midiDebugInfo = withContext(Dispatchers.IO) {
+            readSmpMidiDebugInfo(song)
+        }
+    }
+
+    LaunchedEffect(song.id, song.storageFolder, song.midiPath) {
+        reloadMidiDebugInfo()
+    }
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
@@ -209,6 +237,9 @@ fun SmpImportedSongDetailDialog(
                         SmpDebugField(label = "chordsPath", value = song.chordsPath)
                         SmpDebugField(label = "annotationsPath", value = song.annotationsPath)
                         SmpDebugField(label = "midiPath", value = song.midiPath)
+                        SmpDebugField(label = "midiCuesPath", value = midiDebugInfo.path)
+                        SmpDebugField(label = "midiCuesExists", value = if (midiDebugInfo.exists) "oui" else "non")
+                        SmpDebugField(label = "midiCuesCount", value = midiDebugInfo.cueCount.toString())
                         SmpDebugField(label = "dmxPath", value = song.dmxPath)
                         SmpDebugField(label = "prompterPath", value = song.prompterPath)
                         SmpDebugField(label = "playback", value = formatPlayback(detail.playback))
@@ -334,6 +365,47 @@ fun SmpImportedSongDetailDialog(
                         }
                         TextButton(onClick = onDismiss) {
                             Text("Fermer")
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Button(
+                            onClick = {
+                                scope.launch {
+                                    val saved = withContext(Dispatchers.IO) {
+                                        SmpMidiCuesStore.write(
+                                            song,
+                                            listOf(
+                                                MidiCue(time = 5.0, type = "PC", value = 10, channel = 1),
+                                                MidiCue(time = 12.0, type = "CC", value = 64, channel = 1)
+                                            )
+                                        )
+                                    }
+                                    reloadMidiDebugInfo()
+                                    Toast.makeText(
+                                        context,
+                                        if (saved) "MIDI test créé" else "Création MIDI test échouée",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                            },
+                            enabled = !song.storageFolder.isNullOrBlank()
+                        ) {
+                            Text("Créer MIDI test")
+                        }
+                        Button(
+                            onClick = {
+                                scope.launch {
+                                    reloadMidiDebugInfo()
+                                    Toast.makeText(context, "MIDI cues relues", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            enabled = !song.storageFolder.isNullOrBlank()
+                        ) {
+                            Text("Relire MIDI cues")
                         }
                     }
                 }
@@ -582,6 +654,21 @@ private fun buildStorageFolderCheck(importedSong: SongUnit): SmpRoundTripCheck {
 
 private fun hasExistingFile(path: String?): Boolean {
     return !path.isNullOrBlank() && File(path).isFile
+}
+
+private fun readSmpMidiDebugInfo(song: SongUnit): SmpMidiDebugInfo {
+    val midiFile = song.storageFolder
+        ?.takeIf { it.isNotBlank() }
+        ?.let(::File)
+        ?.let { File(it, SmpMidiCuesStore.MIDI_CUES_FILE_NAME) }
+        ?: song.midiPath?.takeIf { it.isNotBlank() }?.let(::File)
+
+    val cues = SmpMidiCuesStore.read(song)
+    return SmpMidiDebugInfo(
+        path = midiFile?.absolutePath,
+        exists = midiFile?.isFile == true,
+        cueCount = cues.size
+    )
 }
 
 private fun isPathInsideStorageFolder(path: String?, storageFolder: String?): Boolean {
