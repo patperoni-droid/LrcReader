@@ -4,6 +4,7 @@ package com.patrick.lrcreader.exo
 
 
 import android.database.Cursor
+import android.content.Intent
 import android.provider.OpenableColumns
 import java.io.File
 import java.io.FileOutputStream
@@ -366,28 +367,34 @@ class MainActivity : AppCompatActivity() {
                     "SETUP_GATE",
                     "savedRoot=$savedRoot internal=$isInternalMode isDone=${BackupFolderPrefs.isDone(ctx)} hasPerm=$hasSetupPerm shouldShow=$shouldShowSetup"
                 )
+                var isSmpImportedSongsDialogOpen by remember { mutableStateOf(false) }
+                var smpImportedSongs by remember { mutableStateOf<List<com.patrick.lrcreader.smp.SongUnit>>(emptyList()) }
+                var smpSongsById by remember { mutableStateOf<Map<String, com.patrick.lrcreader.smp.SongUnit>>(emptyMap()) }
+                var selectedSmpImportedSongDetail by remember { mutableStateOf<SmpImportedSongDetail?>(null) }
+                var pendingPlaylistTrackTarget by remember { mutableStateOf<String?>(null) }
                 val smpImporter = remember(ctx) { SmpImporter(ctx) }
                 val smpLibraryScanner = remember(ctx) { SmpLibraryScanner(ctx) }
                 var smpCacheRefreshTick by remember { mutableIntStateOf(0) }
+
+                fun displayNameOf(uri: Uri): String {
+                    val cr = ctx.contentResolver
+                    var name = uri.lastPathSegment ?: "unknown"
+                    val c: Cursor? = cr.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+                    c?.use {
+                        if (it.moveToFirst()) {
+                            val idx = it.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                            if (idx >= 0) name = it.getString(idx)
+                        }
+                    }
+                    return name
+                }
+
                 val pickSmpFileLauncher = rememberLauncherForActivityResult(
                     contract = ActivityResultContracts.OpenDocument()
                 ) { uri ->
                     if (uri == null) {
                         Log.d("SMP", "Sélection du fichier .smp annulée")
                         return@rememberLauncherForActivityResult
-                    }
-
-                    fun displayNameOf(uri: Uri): String {
-                        val cr = ctx.contentResolver
-                        var name = uri.lastPathSegment ?: "unknown.smp"
-                        val c: Cursor? = cr.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
-                        c?.use {
-                            if (it.moveToFirst()) {
-                                val idx = it.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                                if (idx >= 0) name = it.getString(idx)
-                            }
-                        }
-                        return name
                     }
 
                     val pickedName = displayNameOf(uri)
@@ -418,6 +425,103 @@ class MainActivity : AppCompatActivity() {
                             Toast.makeText(ctx, toastMessage, Toast.LENGTH_SHORT).show()
                         }
                     }
+                }
+                val pickPlaylistTrackLauncher = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.OpenDocument()
+                ) { uri ->
+                    val targetPlaylist = pendingPlaylistTrackTarget?.trim()
+                    pendingPlaylistTrackTarget = null
+
+                    if (uri == null) {
+                        Log.d("PLAYLIST_ADD", "Sélection annulée")
+                        return@rememberLauncherForActivityResult
+                    }
+                    if (targetPlaylist.isNullOrEmpty()) {
+                        Log.w("PLAYLIST_ADD", "Aucune playlist cible pour le fichier sélectionné: uri=$uri")
+                        return@rememberLauncherForActivityResult
+                    }
+
+                    val pickedName = displayNameOf(uri)
+                    val pickedType = ctx.contentResolver.getType(uri)
+                    val isSmpFile = pickedName.endsWith(".smp", ignoreCase = true)
+                    val looksAudioFile = pickedType?.startsWith("audio/") == true || listOf(
+                        ".mp3",
+                        ".wav",
+                        ".flac",
+                        ".m4a",
+                        ".aac",
+                        ".ogg"
+                    ).any { pickedName.endsWith(it, ignoreCase = true) }
+
+                    if (!isSmpFile && !looksAudioFile) {
+                        Log.w(
+                            "PLAYLIST_ADD",
+                            "Fichier refusé: name=$pickedName type=$pickedType uri=$uri"
+                        )
+                        Toast.makeText(ctx, "Fichier non pris en charge", Toast.LENGTH_SHORT).show()
+                        return@rememberLauncherForActivityResult
+                    }
+
+                    if (isSmpFile) {
+                        scope.launch(Dispatchers.IO) {
+                            val importedSong = smpImporter.importSmp(uri)
+                            withContext(Dispatchers.Main) {
+                                if (importedSong != null) {
+                                    val smpMarker = buildSmpItem(importedSong.id)
+                                    PlaylistRepository.createIfNotExists(targetPlaylist)
+                                    PlaylistRepository.assignSongToPlaylist(targetPlaylist, smpMarker)
+                                    PlaylistRepository.renameSongInPlaylist(
+                                        playlistName = targetPlaylist,
+                                        uri = smpMarker,
+                                        newTitle = importedSong.title
+                                    )
+                                    smpSongsById = smpSongsById + (importedSong.id to importedSong)
+                                    smpCacheRefreshTick++
+                                    Log.i(
+                                        "PLAYLIST_ADD",
+                                        "SMP ajouté à la playlist: playlist=$targetPlaylist songId=${importedSong.id} title=${importedSong.title}"
+                                    )
+                                    Toast.makeText(ctx, "SMP ajouté à la playlist", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    Log.e(
+                                        "PLAYLIST_ADD",
+                                        "Import SMP échoué pour ajout playlist: name=$pickedName reason=${smpImporter.lastFailureReason ?: "inconnue"}"
+                                    )
+                                    Toast.makeText(ctx, "Import SMP échoué", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }
+                        return@rememberLauncherForActivityResult
+                    }
+
+                    runCatching {
+                        ctx.contentResolver.takePersistableUriPermission(
+                            uri,
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION
+                        )
+                    }.onFailure { error ->
+                        Log.w("PLAYLIST_ADD", "Permission persistante non obtenue pour $uri", error)
+                    }
+
+                    val trackUriString = uri.toString()
+                    val title = pickedName.substringBeforeLast('.', pickedName).trim().ifBlank { pickedName }
+                    PlaylistRepository.createIfNotExists(targetPlaylist)
+                    PlaylistRepository.assignSongToPlaylist(targetPlaylist, trackUriString)
+                    PlaylistRepository.renameSongInPlaylist(
+                        playlistName = targetPlaylist,
+                        uri = trackUriString,
+                        newTitle = title
+                    )
+                    runCatching {
+                        TitleAliasesStore.setTitleForTrack(ctx, trackUriString, title)
+                    }.onFailure { error ->
+                        Log.w("PLAYLIST_ADD", "Alias audio non enregistré: uri=$trackUriString", error)
+                    }
+                    Log.i(
+                        "PLAYLIST_ADD",
+                        "Audio ajouté à la playlist: playlist=$targetPlaylist name=$pickedName uri=$trackUriString"
+                    )
+                    Toast.makeText(ctx, "Morceau ajouté à la playlist", Toast.LENGTH_SHORT).show()
                 }
                 val pickAudioFilesLauncher = rememberLauncherForActivityResult(
                     contract = ActivityResultContracts.OpenMultipleDocuments()
@@ -652,10 +756,6 @@ class MainActivity : AppCompatActivity() {
                 var fillerMasterLevel by remember { mutableStateOf(0.6f) }
 
                 var isMixerPreviewOpen by remember { mutableStateOf(false) }
-                var isSmpImportedSongsDialogOpen by remember { mutableStateOf(false) }
-                var smpImportedSongs by remember { mutableStateOf<List<com.patrick.lrcreader.smp.SongUnit>>(emptyList()) }
-                var smpSongsById by remember { mutableStateOf<Map<String, com.patrick.lrcreader.smp.SongUnit>>(emptyMap()) }
-                var selectedSmpImportedSongDetail by remember { mutableStateOf<SmpImportedSongDetail?>(null) }
                 var textPrompterId by remember { mutableStateOf<String?>(null) }
 
                 // ✅ overlay states
@@ -1721,9 +1821,20 @@ class MainActivity : AppCompatActivity() {
                                         PlaybackCoordinator.clearNextTrack(reason = "ui")
                                     },
                                     onConsumeOpenPrompterSignal = { openPrompterSignal = 0 },
-                                        onRequestShowPlayer = {
-                                            setTabAndPersist(BottomTab.Player, reason = "quickPlaylistShowPlayer")
-                                        }
+                                    onRequestShowPlayer = {
+                                        setTabAndPersist(BottomTab.Player, reason = "quickPlaylistShowPlayer")
+                                    },
+                                    onAddTrackToPlaylist = { playlistName ->
+                                        pendingPlaylistTrackTarget = playlistName
+                                        pickPlaylistTrackLauncher.launch(
+                                            arrayOf(
+                                                "audio/*",
+                                                "application/zip",
+                                                "application/octet-stream",
+                                                "*/*"
+                                            )
+                                        )
+                                    }
                                     )
 
                                     is BottomTab.Library -> LibraryScreen(
