@@ -15,6 +15,7 @@ class SmpLibraryScanner(private val context: Context) {
         private const val TAG = "SMP"
         private const val TRACKS_DIR_NAME = "tracks"
         private const val CONFIG_FILE_NAME = "config.json"
+        private const val WAVEFORM_FILE_NAME = "waveform.json"
         private val AUDIO_FILE_NAMES = listOf(
             "audio.mp3",
             "audio.wav",
@@ -71,25 +72,59 @@ class SmpLibraryScanner(private val context: Context) {
     }
 
     private fun readSongUnit(songDir: File): SongUnit? {
-        val config = readConfig(songDir) ?: return null
+        val meta = SmpMetaStore.read(songDir)
+        val config = readConfig(songDir)
+        if (meta == null && config == null) {
+            return null
+        }
 
-        val audioFile = AUDIO_FILE_NAMES
+        val audioFile = resolveAudioFile(songDir, meta, config)
+
+        return SongUnit(
+            id = config?.id ?: songDir.name,
+            title = meta?.title ?: config?.title ?: songDir.name,
+            storageFolder = songDir.absolutePath,
+            audioPath = audioFile?.absolutePath,
+            lyricsPath = resolveOptionalPath(songDir, meta?.lyricsFile, "lyrics.lrc"),
+            chordsPath = resolveOptionalPath(songDir, meta?.chordsFile, "chords.lrc"),
+            waveformPath = resolveOptionalPath(songDir, meta?.waveformFile, WAVEFORM_FILE_NAME),
+            annotationsPath = resolveOptionalPath(songDir, meta?.annotationsFile, "annotations.json"),
+            midiPath = resolveOptionalPath(songDir, meta?.midiCuesFile, "midi_cues.json"),
+            dmxPath = resolveOptionalPath(songDir, meta?.dmxFile, "dmx.json"),
+            prompterPath = findPrompterPath(songDir)
+        )
+    }
+
+    private fun resolveAudioFile(songDir: File, meta: SmpMeta?, config: SmpConfig?): File? {
+        meta?.audioFile
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?.let { File(songDir, it) }
+            ?.takeIf { it.isFile }
+            ?.let { return it }
+
+        config?.files?.audio
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?.let { File(songDir, it) }
+            ?.takeIf { it.isFile }
+            ?.let { return it }
+
+        return AUDIO_FILE_NAMES
             .asSequence()
             .map { File(songDir, it) }
             .firstOrNull { it.isFile }
+    }
 
-        return SongUnit(
-            id = config.id ?: songDir.name,
-            title = config.title ?: songDir.name,
-            storageFolder = songDir.absolutePath,
-            audioPath = audioFile?.absolutePath,
-            lyricsPath = File(songDir, "lyrics.lrc").takeIf { it.isFile }?.absolutePath,
-            chordsPath = File(songDir, "chords.lrc").takeIf { it.isFile }?.absolutePath,
-            annotationsPath = File(songDir, "annotations.json").takeIf { it.isFile }?.absolutePath,
-            midiPath = File(songDir, "midi_cues.json").takeIf { it.isFile }?.absolutePath,
-            dmxPath = File(songDir, "dmx_cues.json").takeIf { it.isFile }?.absolutePath,
-            prompterPath = findPrompterPath(songDir)
-        )
+    private fun resolveOptionalPath(songDir: File, fileNameFromMeta: String?, fallbackName: String): String? {
+        fileNameFromMeta
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?.let { File(songDir, it) }
+            ?.takeIf { it.isFile }
+            ?.let { return it.absolutePath }
+
+        return File(songDir, fallbackName).takeIf { it.isFile }?.absolutePath
     }
 
     private fun findPrompterPath(songDir: File): String? {

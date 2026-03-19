@@ -24,6 +24,7 @@ class SmpImporter(private val context: Context) {
         private const val TAG = "SmpImporter"
         private const val TRACKS_DIR_NAME = "tracks"
         private const val CONFIG_FILE_NAME = "config.json"
+        private const val WAVEFORM_FILE_NAME = "waveform.json"
     }
 
     private data class PreservedSongTextFile(
@@ -120,11 +121,15 @@ class SmpImporter(private val context: Context) {
                 audioPath = audioPath,
                 lyricsPath = extracted.lyricsFileName?.let { File(destinationDir, it).absolutePath },
                 chordsPath = extracted.chordsFileName?.let { File(destinationDir, it).absolutePath },
+                waveformPath = extracted.waveformFileName?.let { File(destinationDir, it).absolutePath },
                 annotationsPath = extracted.annotationsFileName?.let { File(destinationDir, it).absolutePath },
                 midiPath = extracted.midiFileName?.let { File(destinationDir, it).absolutePath },
                 dmxPath = extracted.dmxFileName?.let { File(destinationDir, it).absolutePath },
                 prompterPath = extracted.prompterFileName?.let { File(destinationDir, it).absolutePath }
             )
+            if (!SmpMetaStore.write(songUnit)) {
+                Log.w(TAG, "Ecriture meta.json impossible après import songId=$songId dir=${destinationDir.absolutePath}")
+            }
 
             Log.d(
                 TAG,
@@ -221,6 +226,7 @@ class SmpImporter(private val context: Context) {
             audioFileName = extractedFiles.audioFileName,
             lyricsFileName = extractedFiles.lyricsFileName,
             chordsFileName = extractedFiles.chordsFileName,
+            waveformFileName = extractedFiles.waveformFileName,
             annotationsFileName = extractedFiles.annotationsFileName,
             midiFileName = extractedFiles.midiFileName,
             dmxFileName = extractedFiles.dmxFileName,
@@ -237,6 +243,7 @@ class SmpImporter(private val context: Context) {
             isAudioFile(fileName) -> fileName
             fileName == "lyrics.lrc" -> fileName
             fileName == "chords.lrc" -> fileName
+            fileName == WAVEFORM_FILE_NAME -> fileName
             fileName == "annotations.json" -> fileName
             fileName == "midi_cues.json" -> fileName
             fileName == "dmx_cues.json" -> fileName
@@ -473,6 +480,7 @@ class SmpImporter(private val context: Context) {
         val audioFileName: String?,
         val lyricsFileName: String?,
         val chordsFileName: String?,
+        val waveformFileName: String?,
         val annotationsFileName: String?,
         val midiFileName: String?,
         val dmxFileName: String?,
@@ -487,6 +495,8 @@ class SmpImporter(private val context: Context) {
         var lyricsFileName: String? = null
             private set
         var chordsFileName: String? = null
+            private set
+        var waveformFileName: String? = null
             private set
         var annotationsFileName: String? = null
             private set
@@ -503,6 +513,7 @@ class SmpImporter(private val context: Context) {
                 isAudioFile(fileName) -> audioFileName = fileName
                 fileName == "lyrics.lrc" -> lyricsFileName = fileName
                 fileName == "chords.lrc" -> chordsFileName = fileName
+                fileName == WAVEFORM_FILE_NAME -> waveformFileName = fileName
                 fileName == "annotations.json" -> annotationsFileName = fileName
                 fileName == "midi_cues.json" -> midiFileName = fileName
                 fileName == "dmx_cues.json" -> dmxFileName = fileName
@@ -514,6 +525,7 @@ class SmpImporter(private val context: Context) {
             return audioFileName != null ||
                 lyricsFileName != null ||
                 chordsFileName != null ||
+                waveformFileName != null ||
                 annotationsFileName != null ||
                 midiFileName != null ||
                 dmxFileName != null ||
