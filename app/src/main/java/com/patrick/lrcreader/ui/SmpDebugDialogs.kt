@@ -58,6 +58,7 @@ import java.io.File
 private const val SMP_PLAYER_TAG = "SMP_PLAYER"
 private const val SMP_DEBUG_TAG = "SMP"
 private const val SMP_TEST_TAG = "SMP_TEST"
+private const val SMP_MIDI_TRACE_TAG = "SMP_MIDI_TRACE"
 private const val SMP_PLAYER_POLL_MS = 75L
 private const val SMP_DEBUG_PLAYLIST_NAME = "SMP Debug"
 
@@ -196,14 +197,18 @@ fun SmpImportedSongDetailDialog(
         )
     }
 
-    suspend fun reloadMidiDebugInfo() {
+    suspend fun reloadMidiDebugInfo(reason: String) {
         midiDebugInfo = withContext(Dispatchers.IO) {
             readSmpMidiDebugInfo(song)
         }
+        Log.d(
+            SMP_MIDI_TRACE_TAG,
+            "DEBUG reason=$reason songId=${song.id} midiPath=${midiDebugInfo.path ?: "null"} count=${midiDebugInfo.cueCount}"
+        )
     }
 
     LaunchedEffect(song.id, song.storageFolder, song.midiPath) {
-        reloadMidiDebugInfo()
+        reloadMidiDebugInfo(reason = "DETAIL_OPEN")
     }
 
     Dialog(onDismissRequest = onDismiss) {
@@ -240,6 +245,54 @@ fun SmpImportedSongDetailDialog(
                         SmpDebugField(label = "midiCuesPath", value = midiDebugInfo.path)
                         SmpDebugField(label = "midiCuesExists", value = if (midiDebugInfo.exists) "oui" else "non")
                         SmpDebugField(label = "midiCuesCount", value = midiDebugInfo.cueCount.toString())
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                val saved = withContext(Dispatchers.IO) {
+                                    SmpMidiCuesStore.write(
+                                        song,
+                                        listOf(
+                                            MidiCue(time = 5.0, type = "PC", value = 10, channel = 1),
+                                            MidiCue(time = 12.0, type = "CC", value = 64, channel = 1)
+                                        )
+                                    )
+                                }
+                                reloadMidiDebugInfo(reason = "CREATE_TEST saved=$saved")
+                                Toast.makeText(
+                                    context,
+                                    if (saved) "MIDI test créé" else "Création MIDI test échouée",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        },
+                        enabled = !song.storageFolder.isNullOrBlank()
+                    ) {
+                        Text("Créer MIDI test")
+                    }
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                reloadMidiDebugInfo(reason = "RELOAD")
+                                Toast.makeText(context, "MIDI cues relues", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        enabled = !song.storageFolder.isNullOrBlank()
+                    ) {
+                        Text("Relire MIDI cues")
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                SelectionContainer {
+                    Column {
                         SmpDebugField(label = "dmxPath", value = song.dmxPath)
                         SmpDebugField(label = "prompterPath", value = song.prompterPath)
                         SmpDebugField(label = "playback", value = formatPlayback(detail.playback))
@@ -365,47 +418,6 @@ fun SmpImportedSongDetailDialog(
                         }
                         TextButton(onClick = onDismiss) {
                             Text("Fermer")
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Button(
-                            onClick = {
-                                scope.launch {
-                                    val saved = withContext(Dispatchers.IO) {
-                                        SmpMidiCuesStore.write(
-                                            song,
-                                            listOf(
-                                                MidiCue(time = 5.0, type = "PC", value = 10, channel = 1),
-                                                MidiCue(time = 12.0, type = "CC", value = 64, channel = 1)
-                                            )
-                                        )
-                                    }
-                                    reloadMidiDebugInfo()
-                                    Toast.makeText(
-                                        context,
-                                        if (saved) "MIDI test créé" else "Création MIDI test échouée",
-                                        Toast.LENGTH_SHORT
-                                    ).show()
-                                }
-                            },
-                            enabled = !song.storageFolder.isNullOrBlank()
-                        ) {
-                            Text("Créer MIDI test")
-                        }
-                        Button(
-                            onClick = {
-                                scope.launch {
-                                    reloadMidiDebugInfo()
-                                    Toast.makeText(context, "MIDI cues relues", Toast.LENGTH_SHORT).show()
-                                }
-                            },
-                            enabled = !song.storageFolder.isNullOrBlank()
-                        ) {
-                            Text("Relire MIDI cues")
                         }
                     }
                 }
