@@ -10,6 +10,7 @@ data class SongUnit(
     val waveformPath: String? = null,
     val annotationsPath: String?,
     val midiPath: String?,
+    val midiCues: List<MidiCue> = emptyList(),
     val dmxPath: String?,
     val prompterPath: String?
 )

@@ -79,6 +79,12 @@ class SmpLibraryScanner(private val context: Context) {
         }
 
         val audioFile = resolveAudioFile(songDir, meta, config)
+        val midiPath = resolveOptionalPath(songDir, meta?.midiCuesFile, "midi_cues.json")
+        val midiCues = if (midiPath != null) {
+            SmpMidiCuesStore.read(songDir)
+        } else {
+            emptyList()
+        }
 
         return SongUnit(
             id = config?.id ?: songDir.name,
@@ -89,7 +95,8 @@ class SmpLibraryScanner(private val context: Context) {
             chordsPath = resolveOptionalPath(songDir, meta?.chordsFile, "chords.lrc"),
             waveformPath = resolveOptionalPath(songDir, meta?.waveformFile, WAVEFORM_FILE_NAME),
             annotationsPath = resolveOptionalPath(songDir, meta?.annotationsFile, "annotations.json"),
-            midiPath = resolveOptionalPath(songDir, meta?.midiCuesFile, "midi_cues.json"),
+            midiPath = midiPath,
+            midiCues = midiCues,
             dmxPath = resolveOptionalPath(songDir, meta?.dmxFile, "dmx.json"),
             prompterPath = findPrompterPath(songDir)
         )

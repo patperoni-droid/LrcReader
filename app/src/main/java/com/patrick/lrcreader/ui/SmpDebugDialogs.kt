@@ -188,12 +188,7 @@ fun SmpImportedSongDetailDialog(
     var roundTripResult by remember(detail.song.id) { mutableStateOf<SmpRoundTripResult?>(null) }
     var midiDebugInfo by remember(detail.song.id) {
         mutableStateOf(
-            SmpMidiDebugInfo(
-                path = song.storageFolder?.let { File(it, SmpMidiCuesStore.MIDI_CUES_FILE_NAME).absolutePath }
-                    ?: song.midiPath,
-                exists = hasExistingFile(song.midiPath),
-                cueCount = 0
-            )
+            buildSmpMidiDebugInfo(song, song.midiCues)
         )
     }
 
@@ -669,13 +664,17 @@ private fun hasExistingFile(path: String?): Boolean {
 }
 
 private fun readSmpMidiDebugInfo(song: SongUnit): SmpMidiDebugInfo {
+    val cues = SmpMidiCuesStore.read(song)
+    return buildSmpMidiDebugInfo(song, cues)
+}
+
+private fun buildSmpMidiDebugInfo(song: SongUnit, cues: List<MidiCue>): SmpMidiDebugInfo {
     val midiFile = song.storageFolder
         ?.takeIf { it.isNotBlank() }
         ?.let(::File)
         ?.let { File(it, SmpMidiCuesStore.MIDI_CUES_FILE_NAME) }
         ?: song.midiPath?.takeIf { it.isNotBlank() }?.let(::File)
 
-    val cues = SmpMidiCuesStore.read(song)
     return SmpMidiDebugInfo(
         path = midiFile?.absolutePath,
         exists = midiFile?.isFile == true,
