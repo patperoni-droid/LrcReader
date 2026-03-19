@@ -26,6 +26,11 @@ class SmpImporter(private val context: Context) {
         private const val CONFIG_FILE_NAME = "config.json"
     }
 
+    private data class PreservedSongTextFile(
+        val fileName: String,
+        val bytes: ByteArray
+    )
+
     fun importSmp(uri: Uri): SongUnit? {
         lastFailureReason = null
 
@@ -64,6 +69,10 @@ class SmpImporter(private val context: Context) {
             val stableConfigId = sanitizeSongId(rawConfigId)
             val songId = stableConfigId ?: "song_${UUID.randomUUID()}"
             val destinationDir = File(tracksRoot, songId)
+            val preservedLyrics = capturePreservedLyrics(
+                destinationDir = destinationDir,
+                config = config
+            )
 
             if (stableConfigId != null && destinationDir.exists()) {
                 Log.i(
@@ -92,6 +101,10 @@ class SmpImporter(private val context: Context) {
             }
 
             importedDir = destinationDir
+            restorePreservedLyrics(
+                destinationDir = destinationDir,
+                preservedLyrics = preservedLyrics
+            )
             val audioPath = extracted.audioFileName?.let { File(destinationDir, it).absolutePath }
 
             restoreWaveformTrims(
@@ -367,6 +380,65 @@ class SmpImporter(private val context: Context) {
             Log.e(
                 TAG,
                 "Impossible de restaurer les trims SMP: songId=$songId title=$title audioUri=$audioUri",
+                error
+            )
+        }
+    }
+
+    private fun capturePreservedLyrics(
+        destinationDir: File,
+        config: SmpConfig
+    ): PreservedSongTextFile? {
+        if (!destinationDir.isDirectory) {
+            return null
+        }
+
+        val lyricsName = config.files?.lyrics?.trim()
+            .takeUnless { it.isNullOrBlank() }
+            ?: "lyrics.lrc"
+        val existingLyrics = File(destinationDir, lyricsName)
+        if (!existingLyrics.isFile) {
+            return null
+        }
+
+        return runCatching {
+            PreservedSongTextFile(
+                fileName = existingLyrics.name,
+                bytes = existingLyrics.readBytes()
+            )
+        }.onFailure { error ->
+            Log.e(
+                TAG,
+                "Impossible de préserver les paroles utilisateur avant remplacement: ${existingLyrics.absolutePath}",
+                error
+            )
+        }.getOrNull()
+    }
+
+    private fun restorePreservedLyrics(
+        destinationDir: File,
+        preservedLyrics: PreservedSongTextFile?
+    ) {
+        if (preservedLyrics == null) {
+            return
+        }
+
+        val targetFile = File(destinationDir, preservedLyrics.fileName)
+        runCatching {
+            targetFile.parentFile?.mkdirs()
+            FileOutputStream(targetFile).use { output ->
+                output.write(preservedLyrics.bytes)
+                output.flush()
+            }
+        }.onSuccess {
+            Log.i(
+                TAG,
+                "Paroles utilisateur préservées après réimport: ${targetFile.absolutePath}"
+            )
+        }.onFailure { error ->
+            Log.e(
+                TAG,
+                "Impossible de restaurer les paroles utilisateur après réimport: ${targetFile.absolutePath}",
                 error
             )
         }
