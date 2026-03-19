@@ -16,6 +16,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.ln
@@ -33,13 +36,13 @@ object AudioEngine {
     enum class TimeStretchMode { EXO, HQ }
     private enum class PlayerPipeline { PURE_EXO, CUSTOM_ST_SINK }
 
-    // Diagnostic temporaire: mettre à null pour revenir au pipeline custom par défaut.
-    private val forcedDiagnosticPipeline: PlayerPipeline? = PlayerPipeline.PURE_EXO
-
     private val soundTouchProcessor = SoundTouchAudioProcessor()
     @Volatile private var timeStretchMode: TimeStretchMode = initialTimeStretchMode()
     @Volatile private var hqApplyPending = timeStretchMode == TimeStretchMode.HQ
     @Volatile private var activePlayerPipeline: PlayerPipeline? = null
+    @Volatile private var playerAppContext: Context? = null
+    private val _playerEpoch = MutableStateFlow(0)
+    val playerEpoch: StateFlow<Int> = _playerEpoch.asStateFlow()
 
     // Dernières valeurs demandées (communes aux 2 modes)
     @Volatile private var currentSpeed: Float = 1f
@@ -86,8 +89,148 @@ object AudioEngine {
 
     fun getTimeStretchMode(): TimeStretchMode = timeStretchMode
 
-    private fun resolveDesiredPlayerPipeline(): PlayerPipeline {
-        return forcedDiagnosticPipeline ?: PlayerPipeline.CUSTOM_ST_SINK
+    private fun resolveDesiredPlayerPipeline(
+        speed: Float = currentSpeed,
+        pitch: Float = currentPitchRatio
+    ): PlayerPipeline {
+        val s = speed.coerceIn(0.5f, 2.0f)
+        val pi = pitch.coerceIn(0.5f, 2.0f)
+        val isNeutral = abs(s - 1f) < 0.0005f && abs(pi - 1f) < 0.0005f
+        if (isNeutral) return PlayerPipeline.PURE_EXO
+        return if (timeStretchMode == TimeStretchMode.HQ) {
+            PlayerPipeline.CUSTOM_ST_SINK
+        } else {
+            PlayerPipeline.PURE_EXO
+        }
+    }
+
+    private fun publishPlayerEpoch() {
+        _playerEpoch.value = _playerEpoch.value + 1
+    }
+
+    private fun buildPlayer(appCtx: Context, pipeline: PlayerPipeline): ExoPlayer {
+        val player = when (pipeline) {
+            PlayerPipeline.PURE_EXO -> {
+                ExoPlayer.Builder(appCtx).build()
+            }
+            PlayerPipeline.CUSTOM_ST_SINK -> {
+                val renderersFactory = object : DefaultRenderersFactory(appCtx) {
+                    override fun buildAudioSink(
+                        context: Context,
+                        enableFloatOutput: Boolean,
+                        enableAudioTrackPlaybackParams: Boolean
+                    ): AudioSink {
+                        return DefaultAudioSink.Builder(context)
+                            .setAudioProcessors(arrayOf(soundTouchProcessor))
+                            .setEnableFloatOutput(enableFloatOutput)
+                            .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+                            .build()
+                    }
+                }
+                    .setEnableAudioFloatOutput(false)
+                    .setEnableAudioTrackPlaybackParams(false)
+
+                ExoPlayer.Builder(appCtx, renderersFactory).build()
+            }
+        }
+
+        val l = EmbeddedLyricsListener()
+        player.addListener(l)
+        embeddedLyricsListener = l
+        exoPlayer = player
+        activePlayerPipeline = pipeline
+        endedListenerAdded = false
+        smokeLastPlaybackState = Player.STATE_IDLE
+        smokeLastIsPlaying = false
+
+        if (BuildConfig.DEBUG) {
+            Log.d(PLAYER_SMOKE_TAG, "BOOT")
+        }
+
+        return player
+    }
+
+    private data class PlayerSnapshot(
+        val mediaUri: String?,
+        val positionMs: Long,
+        val playWhenReady: Boolean
+    )
+
+    private fun snapshotPlayer(player: ExoPlayer): PlayerSnapshot {
+        return PlayerSnapshot(
+            mediaUri = player.currentMediaItem?.localConfiguration?.uri?.toString(),
+            positionMs = runCatching { player.currentPosition }.getOrDefault(0L),
+            playWhenReady = runCatching { player.playWhenReady || player.isPlaying }.getOrDefault(false)
+        )
+    }
+
+    private fun recreatePlayerForPipeline(targetPipeline: PlayerPipeline, reason: String): ExoPlayer? {
+        val appCtx = playerAppContext ?: return null
+        val current = exoPlayer ?: return null
+        if (activePlayerPipeline == targetPipeline) return current
+
+        val snapshot = snapshotPlayer(current)
+
+        runCatching { current.stop() }
+        runCatching { current.clearMediaItems() }
+        runCatching { current.release() }
+
+        exoPlayer = null
+        embeddedLyricsListener = null
+        endedListenerAdded = false
+
+        val rebuilt = buildPlayer(appCtx, targetPipeline)
+        ensureCorePlayerListener(rebuilt, appCtx)
+        Log.i(TS_TAG, "pipeline switch -> $targetPipeline reason=$reason")
+
+        snapshot.mediaUri?.let { uriString ->
+            rebuilt.setMediaItem(androidx.media3.common.MediaItem.fromUri(uriString))
+            rebuilt.prepare()
+            if (snapshot.positionMs > 0L) {
+                rebuilt.seekTo(snapshot.positionMs)
+            }
+            if (snapshot.playWhenReady) {
+                rebuilt.playWhenReady = true
+                rebuilt.play()
+            }
+        }
+
+        publishPlayerEpoch()
+        return rebuilt
+    }
+
+    private fun ensureCorePlayerListener(player: ExoPlayer, appCtx: Context) {
+        if (endedListenerAdded) return
+        endedListenerAdded = true
+        player.addListener(object : Player.Listener {
+            override fun onPlaybackStateChanged(state: Int) {
+                if (BuildConfig.DEBUG &&
+                    state == Player.STATE_READY &&
+                    smokeLastPlaybackState != Player.STATE_READY
+                ) {
+                    Log.d(PLAYER_SMOKE_TAG, "READY")
+                }
+                smokeLastPlaybackState = state
+                if (state == Player.STATE_READY) {
+                    retryPendingHqApply(reason = "listener:STATE_READY")
+                }
+                if (state == Player.STATE_ENDED) {
+                    onNaturalEndCallback?.invoke()
+                    FillerSoundManager.startIfConfigured(appCtx)
+                }
+            }
+
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                if (BuildConfig.DEBUG && isPlaying && !smokeLastIsPlaying) {
+                    Log.d(PLAYER_SMOKE_TAG, "PLAYING")
+                }
+                smokeLastIsPlaying = isPlaying
+            }
+
+            override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
+                retryPendingHqApply(reason = "listener:onTracksChanged")
+            }
+        })
     }
 
     // -----------------------------
@@ -232,11 +375,16 @@ object AudioEngine {
         pitch: Float = currentPitchRatio,
         reason: String = ""
     ) {
-        val p = exoPlayer ?: return
         val s = speed.coerceIn(0.5f, 2.0f)
         val pi = pitch.coerceIn(0.5f, 2.0f)
         val isNeutral = abs(s - 1f) < 0.0005f && abs(pi - 1f) < 0.0005f
-        val pipeline = activePlayerPipeline ?: resolveDesiredPlayerPipeline()
+        val desiredPipeline = resolveDesiredPlayerPipeline(speed = s, pitch = pi)
+        val p = when {
+            exoPlayer == null -> return
+            activePlayerPipeline != desiredPipeline -> recreatePlayerForPipeline(desiredPipeline, reason) ?: return
+            else -> exoPlayer ?: return
+        }
+        val pipeline = activePlayerPipeline ?: desiredPipeline
 
         if (isNeutral) {
             hqApplyPending = false
@@ -383,43 +531,13 @@ object AudioEngine {
     fun getPlayer(context: Context, onNaturalEnd: () -> Unit): ExoPlayer {
         val appCtx = context.applicationContext
         onNaturalEndCallback = onNaturalEnd
+        playerAppContext = appCtx
         val desiredPipeline = resolveDesiredPlayerPipeline()
 
         val p = exoPlayer ?: run {
-            val player = when (desiredPipeline) {
-                PlayerPipeline.PURE_EXO -> {
-                    ExoPlayer.Builder(appCtx).build()
-                }
-                PlayerPipeline.CUSTOM_ST_SINK -> {
-                    val renderersFactory = object : DefaultRenderersFactory(appCtx) {
-                        override fun buildAudioSink(
-                            context: Context,
-                            enableFloatOutput: Boolean,
-                            enableAudioTrackPlaybackParams: Boolean
-                        ): AudioSink {
-                            return DefaultAudioSink.Builder(context)
-                                .setAudioProcessors(arrayOf(soundTouchProcessor))
-                                .setEnableFloatOutput(enableFloatOutput)
-                                .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
-                                .build()
-                        }
-                    }
-                        .setEnableAudioFloatOutput(false)
-                        .setEnableAudioTrackPlaybackParams(false)
-
-                    ExoPlayer.Builder(appCtx, renderersFactory).build()
-                }
-            }
-            player.also { builtPlayer ->
-                val l = EmbeddedLyricsListener()
-                builtPlayer.addListener(l)
-                embeddedLyricsListener = l
-                exoPlayer = builtPlayer
-                activePlayerPipeline = desiredPipeline
-                Log.i(TS_TAG, "pipeline=$desiredPipeline")
-                if (BuildConfig.DEBUG) {
-                    Log.d(PLAYER_SMOKE_TAG, "BOOT")
-                }
+            buildPlayer(appCtx, desiredPipeline).also {
+                Log.i(TS_TAG, "pipeline create -> $desiredPipeline")
+                publishPlayerEpoch()
             }
         }
 
@@ -445,38 +563,7 @@ object AudioEngine {
         hqApplyPending = timeStretchMode == TimeStretchMode.HQ
         applySpeedPitchNow(reason = "getPlayerInit")
 
-        if (!endedListenerAdded) {
-            endedListenerAdded = true
-            p.addListener(object : Player.Listener {
-                override fun onPlaybackStateChanged(state: Int) {
-                    if (BuildConfig.DEBUG &&
-                        state == Player.STATE_READY &&
-                        smokeLastPlaybackState != Player.STATE_READY
-                    ) {
-                        Log.d(PLAYER_SMOKE_TAG, "READY")
-                    }
-                    smokeLastPlaybackState = state
-                    if (state == Player.STATE_READY) {
-                        retryPendingHqApply(reason = "listener:STATE_READY")
-                    }
-                    if (state == Player.STATE_ENDED) {
-                        onNaturalEndCallback?.invoke()
-                        FillerSoundManager.startIfConfigured(appCtx)
-                    }
-                }
-
-                override fun onIsPlayingChanged(isPlaying: Boolean) {
-                    if (BuildConfig.DEBUG && isPlaying && !smokeLastIsPlaying) {
-                        Log.d(PLAYER_SMOKE_TAG, "PLAYING")
-                    }
-                    smokeLastIsPlaying = isPlaying
-                }
-
-                override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
-                    retryPendingHqApply(reason = "listener:onTracksChanged")
-                }
-            })
-        }
+        ensureCorePlayerListener(p, appCtx)
 
         return p
     }
@@ -500,6 +587,7 @@ object AudioEngine {
         runCatching { soundTouchProcessor.setEnabled(false) }
         hqApplyPending = false
         activePlayerPipeline = null
+        playerAppContext = null
 
         exoPlayer?.release()
         exoPlayer = null

@@ -576,15 +576,15 @@ class MainActivity : AppCompatActivity() {
 // -------------------- FIN SETUP SPL --------------------
 
 
-
-                val exoPlayer = remember {
+                val audioPlayerEpoch by AudioEngine.playerEpoch.collectAsState()
+                val exoPlayer = remember(audioPlayerEpoch) {
                     mark("compose.AudioEngine.getPlayer:before")
                     val player = AudioEngine.getPlayer(ctx) {}
                     mark("compose.AudioEngine.getPlayer:after")
                     player
                 }
 
-                val embeddedLyricsListener = remember {
+                val embeddedLyricsListener = remember(audioPlayerEpoch) {
                     mark("compose.AudioEngine.getLyricsListener:before")
                     val listener = AudioEngine.getLyricsListener()
                     mark("compose.AudioEngine.getLyricsListener:after")
