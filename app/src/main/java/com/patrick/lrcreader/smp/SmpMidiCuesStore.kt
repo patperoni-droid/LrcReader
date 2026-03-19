@@ -3,23 +3,39 @@ package com.patrick.lrcreader.smp
 import android.content.Context
 import android.util.Log
 import java.io.File
+import java.security.MessageDigest
 
 object SmpMidiCuesStore {
 
     const val MIDI_CUES_FILE_NAME = "midi_cues.json"
     private const val TRACKS_DIR_NAME = "tracks"
     private const val TAG = "SmpMidiCuesStore"
+    private const val TRACE_TAG = "SMP_MIDI_TRACE"
 
     fun read(songDir: File): List<MidiCue> {
         val midiFile = File(songDir, MIDI_CUES_FILE_NAME)
         if (!midiFile.isFile) {
+            Log.d(
+                TRACE_TAG,
+                "LOAD songDir=${songDir.absolutePath} path=${midiFile.absolutePath} exists=false count=0 source=MISSING hash=null"
+            )
             return emptyList()
         }
 
         return runCatching {
-            MidiCue.listFromJsonOrEmpty(midiFile.readText(Charsets.UTF_8))
+            val rawJson = midiFile.readText(Charsets.UTF_8)
+            val cues = MidiCue.listFromJsonOrEmpty(rawJson)
+            Log.d(
+                TRACE_TAG,
+                "LOAD songDir=${songDir.absolutePath} path=${midiFile.absolutePath} exists=true count=${cues.size} source=FILE hash=${contentHash(rawJson)}"
+            )
+            cues
         }.getOrElse { error ->
             Log.e(TAG, "Lecture midi_cues.json impossible: ${midiFile.absolutePath}", error)
+            Log.d(
+                TRACE_TAG,
+                "LOAD songDir=${songDir.absolutePath} path=${midiFile.absolutePath} exists=true count=0 source=FILE_ERROR hash=null"
+            )
             emptyList()
         }
     }
@@ -30,15 +46,36 @@ object SmpMidiCuesStore {
     }
 
     fun read(songUnit: SongUnit): List<MidiCue> {
-        val midiFile = resolveMidiFile(songUnit) ?: return emptyList()
+        val midiFile = resolveMidiFile(songUnit)
+        if (midiFile == null) {
+            Log.d(
+                TRACE_TAG,
+                "LOAD songDir=${songUnit.storageFolder ?: "null"} path=null exists=false count=0 source=MISSING hash=null"
+            )
+            return emptyList()
+        }
         if (!midiFile.isFile) {
+            Log.d(
+                TRACE_TAG,
+                "LOAD songDir=${midiFile.parentFile?.absolutePath ?: "null"} path=${midiFile.absolutePath} exists=false count=0 source=MISSING hash=null"
+            )
             return emptyList()
         }
 
         return runCatching {
-            MidiCue.listFromJsonOrEmpty(midiFile.readText(Charsets.UTF_8))
+            val rawJson = midiFile.readText(Charsets.UTF_8)
+            val cues = MidiCue.listFromJsonOrEmpty(rawJson)
+            Log.d(
+                TRACE_TAG,
+                "LOAD songDir=${midiFile.parentFile?.absolutePath ?: "null"} path=${midiFile.absolutePath} exists=true count=${cues.size} source=FILE hash=${contentHash(rawJson)}"
+            )
+            cues
         }.getOrElse { error ->
             Log.e(TAG, "Lecture midi_cues.json impossible: ${midiFile.absolutePath}", error)
+            Log.d(
+                TRACE_TAG,
+                "LOAD songDir=${midiFile.parentFile?.absolutePath ?: "null"} path=${midiFile.absolutePath} exists=true count=0 source=FILE_ERROR hash=null"
+            )
             emptyList()
         }
     }
@@ -70,6 +107,7 @@ object SmpMidiCuesStore {
         val songDir = midiFile.parentFile ?: return false
         val tmpFile = File(songDir, "$MIDI_CUES_FILE_NAME.tmp")
         val rawJson = MidiCue.toJsonString(cues)
+        val existsBefore = midiFile.exists()
 
         return runCatching {
             songDir.mkdirs()
@@ -82,10 +120,18 @@ object SmpMidiCuesStore {
                 midiFile.writeText(rawJson, Charsets.UTF_8)
                 tmpFile.delete()
             }
+            Log.d(
+                TRACE_TAG,
+                "SAVE songDir=${songDir.absolutePath} path=${midiFile.absolutePath} existsBefore=$existsBefore existsAfter=${midiFile.exists()} size=${midiFile.length()} count=${cues.size} hash=${contentHash(rawJson)}"
+            )
             true
         }.getOrElse { error ->
             Log.e(TAG, "Ecriture midi_cues.json impossible: ${midiFile.absolutePath}", error)
             runCatching { tmpFile.delete() }
+            Log.d(
+                TRACE_TAG,
+                "SAVE songDir=${songDir.absolutePath} path=${midiFile.absolutePath} existsBefore=$existsBefore existsAfter=${midiFile.exists()} size=${midiFile.takeIf { it.exists() }?.length() ?: 0L} count=${cues.size} hash=${contentHash(rawJson)}"
+            )
             false
         }
     }
@@ -110,5 +156,15 @@ object SmpMidiCuesStore {
         val midiPath = songUnit.midiPath?.takeIf { it.isNotBlank() } ?: return null
         val midiFile = File(midiPath)
         return midiFile.takeIf { it.name.equals(MIDI_CUES_FILE_NAME, ignoreCase = true) }
+    }
+
+    private fun contentHash(raw: String): String {
+        return runCatching {
+            MessageDigest.getInstance("MD5")
+                .digest(raw.toByteArray(Charsets.UTF_8))
+                .joinToString(separator = "") { byte -> "%02x".format(byte) }
+        }.getOrElse {
+            raw.hashCode().toString()
+        }
     }
 }
