@@ -70,8 +70,7 @@ class SmpImporter(private val context: Context) {
             val songId = stableConfigId ?: "song_${UUID.randomUUID()}"
             val destinationDir = File(tracksRoot, songId)
             val preservedLyrics = capturePreservedLyrics(
-                destinationDir = destinationDir,
-                config = config
+                destinationDir = destinationDir
             )
 
             if (stableConfigId != null && destinationDir.exists()) {
@@ -385,18 +384,12 @@ class SmpImporter(private val context: Context) {
         }
     }
 
-    private fun capturePreservedLyrics(
-        destinationDir: File,
-        config: SmpConfig
-    ): PreservedSongTextFile? {
+    private fun capturePreservedLyrics(destinationDir: File): PreservedSongTextFile? {
         if (!destinationDir.isDirectory) {
             return null
         }
 
-        val lyricsName = config.files?.lyrics?.trim()
-            .takeUnless { it.isNullOrBlank() }
-            ?: "lyrics.lrc"
-        val existingLyrics = File(destinationDir, lyricsName)
+        val existingLyrics = File(destinationDir, "lyrics.lrc")
         if (!existingLyrics.isFile) {
             return null
         }

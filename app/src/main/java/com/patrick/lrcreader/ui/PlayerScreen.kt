@@ -2258,7 +2258,7 @@ private fun ensureLyricsFileExistsForTrack(
     resolveSmpSongUnitTextTarget(
         context = context,
         trackUriString = trackUriString,
-        transportNameSelector = { it.files?.lyrics },
+        transportNameSelector = { null },
         fallbackName = "lyrics.lrc",
         requireExisting = false
     )?.let { target ->
