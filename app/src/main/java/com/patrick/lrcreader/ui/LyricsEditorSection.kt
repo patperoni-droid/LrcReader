@@ -96,8 +96,8 @@ fun LyricsEditorSection(
     // ✅ callback sauvegarde
     onSaveSortedLines: (List<LrcLine>) -> Unit,
     onImportedLinesApplied: (List<LrcLine>) -> Unit,
-    onPersistLines: (List<LrcLine>) -> Boolean,
-    onDeletePersisted: () -> Boolean,
+    onPersistLines: suspend (List<LrcLine>) -> Boolean,
+    onDeletePersisted: suspend () -> Boolean,
     showImportButton: Boolean = true,
     mainTabLabelRes: Int = R.string.lyrics_editor_tab_lyrics,
     inputLabelRes: Int = R.string.lyrics_editor_input_label,
@@ -111,6 +111,7 @@ fun LyricsEditorSection(
     val scope = rememberCoroutineScope()
     val lazyListState = rememberLazyListState()
     var isImportBusy by remember { mutableStateOf(false) }
+    var isPersistBusy by remember { mutableStateOf(false) }
     var rawTextFieldValue by remember(currentTrackUri, showChordPalette) {
         mutableStateOf(
             TextFieldValue(
@@ -309,38 +310,45 @@ fun LyricsEditorSection(
 
     // 🔹 Enregistrer
     fun handleSave() {
+        if (isPersistBusy) return
         val simpleLines = rawToPlainLines(rawTextFieldValue.text)
-
-        if (simpleLines.isEmpty()) {
-            val deleted = onDeletePersisted()
-            if (!deleted) return
-            onEditingLinesChange(emptyList())
-            onRawLyricsTextChange("")
-            rawTextFieldValue = TextFieldValue("", TextRange(0))
-            onSaveSortedLines(emptyList())
-            return
-        }
-
-        val finalLines: List<LrcLine> = when (currentEditTab) {
-            0 -> {
-                if (editingLines.isEmpty()) {
-                    simpleLines.map { txt -> LrcLine(timeMs = 0L, text = txt) }
-                } else {
-                    mergeLyricsWithOldTimings(
-                        newLines = simpleLines,
-                        oldLines = editingLines
-                    )
+        scope.launch {
+            isPersistBusy = true
+            try {
+                if (simpleLines.isEmpty()) {
+                    val deleted = onDeletePersisted()
+                    if (!deleted) return@launch
+                    onEditingLinesChange(emptyList())
+                    onRawLyricsTextChange("")
+                    rawTextFieldValue = TextFieldValue("", TextRange(0))
+                    onSaveSortedLines(emptyList())
+                    return@launch
                 }
+
+                val finalLines: List<LrcLine> = when (currentEditTab) {
+                    0 -> {
+                        if (editingLines.isEmpty()) {
+                            simpleLines.map { txt -> LrcLine(timeMs = 0L, text = txt) }
+                        } else {
+                            mergeLyricsWithOldTimings(
+                                newLines = simpleLines,
+                                oldLines = editingLines
+                            )
+                        }
+                    }
+                    else -> editingLines.filter { it.text.isNotBlank() }
+                }
+
+                Log.d("LrcDebug", "EDITOR_SAVE currentTrackUri=$currentTrackUri lines=${finalLines.size}")
+
+                val persisted = onPersistLines(finalLines)
+                if (!persisted) return@launch
+
+                onSaveSortedLines(finalLines)
+            } finally {
+                isPersistBusy = false
             }
-            else -> editingLines.filter { it.text.isNotBlank() }
         }
-
-        Log.d("LrcDebug", "EDITOR_SAVE currentTrackUri=$currentTrackUri lines=${finalLines.size}")
-
-        val persisted = onPersistLines(finalLines)
-        if (!persisted) return
-
-        onSaveSortedLines(finalLines)
     }
 
     val importLauncher = rememberLauncherForActivityResult(
@@ -439,7 +447,7 @@ fun LyricsEditorSection(
 
             if (showImportButton) {
                 TextButton(
-                    enabled = currentTrackUri != null && !isImportBusy,
+                    enabled = currentTrackUri != null && !isImportBusy && !isPersistBusy,
                     onClick = {
                         importLauncher.launch(arrayOf("*/*"))
                     },
@@ -451,6 +459,7 @@ fun LyricsEditorSection(
 
             IconButton(
                 onClick = { handleSave() },
+                enabled = !isPersistBusy,
                 modifier = Modifier.padding(start = 4.dp)
             ) {
                 Icon(
