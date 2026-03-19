@@ -389,6 +389,39 @@ class MainActivity : AppCompatActivity() {
                     return name
                 }
 
+                fun displayNameCandidatesOf(uri: Uri): List<String> {
+                    val candidates = linkedSetOf<String>()
+                    val displayName = displayNameOf(uri).trim()
+                    if (displayName.isNotEmpty()) candidates += displayName
+                    val documentName = runCatching {
+                        DocumentFile.fromSingleUri(ctx, uri)?.name?.trim()
+                    }.getOrNull()
+                    if (!documentName.isNullOrEmpty()) candidates += documentName
+                    val lastPath = uri.lastPathSegment?.trim()
+                    if (!lastPath.isNullOrEmpty()) candidates += lastPath
+                    val rawUri = uri.toString().trim()
+                    if (rawUri.isNotEmpty()) candidates += rawUri
+                    return candidates.toList()
+                }
+
+                fun hasAnyExtension(candidates: List<String>, extensions: List<String>): Boolean {
+                    return candidates.any { candidate ->
+                        extensions.any { ext -> candidate.endsWith(ext, ignoreCase = true) }
+                    }
+                }
+
+                fun isLikelySmpSelection(
+                    mimeType: String?,
+                    nameCandidates: List<String>
+                ): Boolean {
+                    if (hasAnyExtension(nameCandidates, listOf(".smp"))) return true
+
+                    val cleanMime = mimeType?.trim()?.lowercase()
+                    return cleanMime == "application/zip" ||
+                        cleanMime == "application/x-zip-compressed" ||
+                        cleanMime == "application/octet-stream"
+                }
+
                 val pickSmpFileLauncher = rememberLauncherForActivityResult(
                     contract = ActivityResultContracts.OpenDocument()
                 ) { uri ->
@@ -443,20 +476,24 @@ class MainActivity : AppCompatActivity() {
 
                     val pickedName = displayNameOf(uri)
                     val pickedType = ctx.contentResolver.getType(uri)
-                    val isSmpFile = pickedName.endsWith(".smp", ignoreCase = true)
-                    val looksAudioFile = pickedType?.startsWith("audio/") == true || listOf(
+                    val nameCandidates = displayNameCandidatesOf(uri)
+                    val isSmpFile = isLikelySmpSelection(pickedType, nameCandidates)
+                    val looksAudioFile = pickedType?.startsWith("audio/") == true || hasAnyExtension(
+                        nameCandidates,
+                        listOf(
                         ".mp3",
                         ".wav",
                         ".flac",
                         ".m4a",
                         ".aac",
                         ".ogg"
-                    ).any { pickedName.endsWith(it, ignoreCase = true) }
+                        )
+                    )
 
                     if (!isSmpFile && !looksAudioFile) {
                         Log.w(
                             "PLAYLIST_ADD",
-                            "Fichier refusé: name=$pickedName type=$pickedType uri=$uri"
+                            "Fichier refusé: name=$pickedName type=$pickedType candidates=$nameCandidates uri=$uri"
                         )
                         Toast.makeText(ctx, "Fichier non pris en charge", Toast.LENGTH_SHORT).show()
                         return@rememberLauncherForActivityResult
