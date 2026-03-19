@@ -55,6 +55,7 @@ import com.patrick.lrcreader.core.parseLrc
 import com.patrick.lrcreader.core.parseChordPaletteInput
 import com.patrick.lrcreader.exo.BuildConfig
 import com.patrick.lrcreader.exo.R
+import com.patrick.lrcreader.smp.SmpMidiCueBridge
 import java.nio.ByteBuffer
 import java.nio.charset.Charset
 import java.nio.charset.CodingErrorAction
@@ -618,8 +619,11 @@ fun LyricsEditorSection(
                     }
 
                     val cuesForTrack = if (currentTrackUri != null) {
-                        CueMidiStore.getCuesForTrack(currentTrackUri)
-                    } else emptyList()
+                        SmpMidiCueBridge.getEditorCues(context, currentTrackUri, editingLines)
+                            ?: CueMidiStore.getCuesForTrack(currentTrackUri)
+                    } else {
+                        emptyList()
+                    }
 
                     LazyColumn(
                         state = lazyListState,
@@ -781,7 +785,15 @@ fun LyricsEditorSection(
                                             }
 
                                             if (enableCueEditing && currentTrackUri != null) {
-                                                CueMidiStore.deleteCue(trackUri = currentTrackUri, lineIndex = idx)
+                                                when (SmpMidiCueBridge.deleteCue(
+                                                    context = context,
+                                                    trackUriString = currentTrackUri,
+                                                    lines = editingLines,
+                                                    lineIndex = idx
+                                                )) {
+                                                    null -> CueMidiStore.deleteCue(trackUri = currentTrackUri, lineIndex = idx)
+                                                    else -> Unit
+                                                }
                                             }
 
                                             lineMenuIndex = null
@@ -801,6 +813,7 @@ fun LyricsEditorSection(
                     if (enableCueEditing && lineIndexEditing != null && currentTrackUri != null) {
                         CueMidiEditorPopup(
                             trackUri = currentTrackUri,
+                            lines = editingLines,
                             lineIndex = lineIndexEditing,
                             onClose = { editingCueLineIndex = null }
                         )

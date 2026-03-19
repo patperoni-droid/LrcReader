@@ -874,9 +874,16 @@ fun PlayerScreen(
                     newIndex != lastMidiIndex
                 ) {
                     lastMidiIndex = newIndex
-                    MidiCueDispatcher.onActiveLineChanged(
+                    val cue = MidiCueDispatcher.resolveCueForTrack(
+                        context = context,
+                        trackUri = currentTrackUri,
+                        lines = activeDisplayLines,
+                        lineIndex = newIndex
+                    )
+                    MidiCueDispatcher.onResolvedCueChanged(
                         trackUri = currentTrackUri,
                         lineIndex = newIndex,
+                        cue = cue,
                         positionMs = getPositionMs()
                     )
                 }
@@ -1492,9 +1499,16 @@ fun PlayerScreen(
                                         seekAndCenter(timeMs.toInt(), index)
                                         if (currentTrackUri != null) {
                                             lastMidiIndex = index
-                                            MidiCueDispatcher.onActiveLineChanged(
+                                            val cue = MidiCueDispatcher.resolveCueForTrack(
+                                                context = context,
+                                                trackUri = currentTrackUri,
+                                                lines = parsedLines,
+                                                lineIndex = index
+                                            )
+                                            MidiCueDispatcher.onResolvedCueChanged(
                                                 trackUri = currentTrackUri,
                                                 lineIndex = index,
+                                                cue = cue,
                                                 positionMs = getPositionMs()
                                             )
                                         }
