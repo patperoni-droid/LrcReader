@@ -1676,6 +1676,11 @@ private data class LrcTextWithFileName(
     val debugPath: String? = null
 )
 
+private data class SmpSongUnitTextTarget(
+    val file: File,
+    val fileName: String
+)
+
 private data class AccordsWriteRequest(
     val trackUriString: String,
     val preferredLrcFileName: String?,
@@ -1904,6 +1909,28 @@ private fun readAccordsFromSmpSongFolder(
     context: android.content.Context,
     trackUriString: String
 ): LrcTextWithFileName? {
+    val chordsTarget = resolveSmpSongUnitTextTarget(
+        context = context,
+        trackUriString = trackUriString,
+        transportNameSelector = { it.files?.chords },
+        fallbackName = "chords.lrc",
+        requireExisting = true
+    ) ?: return null
+    val text = runCatching { chordsTarget.file.readText(Charsets.UTF_8) }.getOrNull() ?: return null
+    return LrcTextWithFileName(
+        text = text,
+        fileName = chordsTarget.fileName,
+        debugPath = chordsTarget.file.absolutePath
+    )
+}
+
+private fun resolveSmpSongUnitTextTarget(
+    context: android.content.Context,
+    trackUriString: String,
+    transportNameSelector: (SmpConfig) -> String?,
+    fallbackName: String,
+    requireExisting: Boolean
+): SmpSongUnitTextTarget? {
     val trackUri = runCatching { Uri.parse(trackUriString) }.getOrNull() ?: return null
     if (trackUri.scheme != "file") return null
 
@@ -1933,17 +1960,15 @@ private fun readAccordsFromSmpSongFolder(
         return null
     }
 
-    val chordsName = config.files?.chords?.trim().takeUnless { it.isNullOrBlank() } ?: "chords.lrc"
-    val chordsFile = resolveSmpSongUnitChildFile(songDir, chordsName) ?: return null
-    if (!chordsFile.isFile) {
+    val transportName = transportNameSelector(config)?.trim().takeUnless { it.isNullOrBlank() } ?: fallbackName
+    val targetFile = resolveSmpSongUnitChildFile(songDir, transportName) ?: return null
+    if (requireExisting && !targetFile.isFile) {
         return null
     }
 
-    val text = runCatching { chordsFile.readText(Charsets.UTF_8) }.getOrNull() ?: return null
-    return LrcTextWithFileName(
-        text = text,
-        fileName = chordsFile.name,
-        debugPath = chordsFile.absolutePath
+    return SmpSongUnitTextTarget(
+        file = targetFile,
+        fileName = targetFile.name
     )
 }
 
@@ -1990,6 +2015,33 @@ private fun ensureAccordsFileExistsForTrack(
     trackUriString: String,
     preferredLrcFileName: String?
 ): Boolean {
+    resolveSmpSongUnitTextTarget(
+        context = context,
+        trackUriString = trackUriString,
+        transportNameSelector = { it.files?.chords },
+        fallbackName = "chords.lrc",
+        requireExisting = false
+    )?.let { target ->
+        if (target.file.isFile) {
+            Log.d(
+                "LrcDebug",
+                "ACCORDS_ENSURE_FILE trackUri=$trackUriString target=${target.fileName} result=${AccordsEnsureResult.ALREADY_EXISTS}"
+            )
+            return false
+        }
+        val created = runCatching {
+            target.file.parentFile?.mkdirs()
+            target.file.writeText("", Charsets.UTF_8)
+            true
+        }.getOrDefault(false)
+        val result = if (created) AccordsEnsureResult.CREATED else AccordsEnsureResult.FAILED
+        Log.d(
+            "LrcDebug",
+            "ACCORDS_ENSURE_FILE trackUri=$trackUriString target=${target.fileName} result=$result"
+        )
+        return created
+    }
+
     val exactName = resolveExactLrcFileNameForTrack(
         context = context,
         trackUriString = trackUriString,
@@ -2013,6 +2065,28 @@ private fun ensureLyricsFileExistsForTrack(
     trackUriString: String,
     preferredLrcFileName: String?
 ): AccordsEnsureResult {
+    resolveSmpSongUnitTextTarget(
+        context = context,
+        trackUriString = trackUriString,
+        transportNameSelector = { it.files?.lyrics },
+        fallbackName = "lyrics.lrc",
+        requireExisting = false
+    )?.let { target ->
+        if (target.file.isFile) {
+            return AccordsEnsureResult.ALREADY_EXISTS
+        }
+        val created = runCatching {
+            target.file.parentFile?.mkdirs()
+            target.file.writeText("", Charsets.UTF_8)
+            true
+        }.getOrDefault(false)
+        return if (created) {
+            AccordsEnsureResult.CREATED
+        } else {
+            AccordsEnsureResult.FAILED
+        }
+    }
+
     val exactName = resolveExactLrcFileNameForTrack(
         context = context,
         trackUriString = trackUriString,
@@ -2059,6 +2133,25 @@ private fun writeAccordsToSplByTrackUri(
     preferredLrcFileName: String?,
     lines: List<LrcLine>
 ): String? {
+    resolveSmpSongUnitTextTarget(
+        context = context,
+        trackUriString = trackUriString,
+        transportNameSelector = { it.files?.chords },
+        fallbackName = "chords.lrc",
+        requireExisting = false
+    )?.let { target ->
+        val ok = runCatching {
+            target.file.parentFile?.mkdirs()
+            target.file.writeText(linesToLrcText(lines), Charsets.UTF_8)
+            true
+        }.getOrDefault(false)
+        if (ok) {
+            Log.i("LrcDebug", "ACCORDS_SAVE path=${target.file.absolutePath}")
+            return target.fileName
+        }
+        return null
+    }
+
     val targetName = resolveExactLrcFileNameForTrack(
         context = context,
         trackUriString = trackUriString,
@@ -2084,6 +2177,20 @@ private fun deleteAccordsFromSplByTrackUri(
     trackUriString: String,
     preferredLrcFileName: String?
 ): Boolean {
+    resolveSmpSongUnitTextTarget(
+        context = context,
+        trackUriString = trackUriString,
+        transportNameSelector = { it.files?.chords },
+        fallbackName = "chords.lrc",
+        requireExisting = false
+    )?.let { target ->
+        val deleted = !target.file.exists() || target.file.delete()
+        if (deleted && !target.file.exists()) {
+            Log.i("LrcDebug", "ACCORDS_DELETE path=${target.file.absolutePath}")
+        }
+        return deleted
+    }
+
     val fallbackBaseName = baseNameFromTrackUriString(trackUriString)
     val candidates = linkedSetOf<String>().apply {
         preferredLrcFileName?.trim()?.takeIf { it.isNotBlank() }?.let { add(it) }

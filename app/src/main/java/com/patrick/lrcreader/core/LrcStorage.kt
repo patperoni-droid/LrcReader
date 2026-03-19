@@ -64,7 +64,7 @@ object LrcStorage {
 
     fun loadForTrack(context: Context, trackUriString: String): String? {
         if (trackUriString.isBlank()) return null
-        loadFromSmpSongFolder(context, trackUriString)?.let { resolved ->
+        resolveSmpLyricsTarget(context, trackUriString, requireExisting = true)?.let { resolved ->
             val text = runCatching { resolved.file.readText(Charsets.UTF_8) }.getOrNull()
             if (!text.isNullOrBlank()) {
                 cacheRecentResolvedOrigin(
@@ -174,6 +174,15 @@ object LrcStorage {
             return cached
         }
 
+        resolveSmpLyricsTarget(context, trackUriString, requireExisting = true)?.let { resolved ->
+            return TrackLrcOrigin(
+                source = "LRC_STORAGE_SMP",
+                fileName = resolved.fileName,
+                debugPath = resolved.file.absolutePath,
+                sourceType = "smp"
+            ).also { cacheRecentResolvedOrigin(trackUriString, it) }
+        }
+
         if (!safOnlyBackend) {
             val (upperDir, lowerDir) = internalSplLyricsDirs(context)
             val sidecar = sidecarNameForTrack(trackUriString)
@@ -256,6 +265,30 @@ object LrcStorage {
         val safOnlyBackend = isSafBackend(context)
         logLyricsBackend(context, safOnlyBackend)
 
+        resolveSmpLyricsTarget(context, trackUriString, requireExisting = false)?.let { resolved ->
+            val written = runCatching {
+                resolved.file.parentFile?.mkdirs()
+                resolved.file.writeText(text, Charsets.UTF_8)
+                true
+            }.getOrDefault(false)
+            if (written) {
+                cacheRecentResolvedOrigin(
+                    trackUriString,
+                    TrackLrcOrigin(
+                        source = "LRC_STORAGE_SMP",
+                        fileName = resolved.fileName,
+                        debugPath = resolved.file.absolutePath,
+                        sourceType = "smp"
+                    )
+                )
+                Log.i("LrcDebug", "LRC_SAVE path=${resolved.file.absolutePath}")
+            } else {
+                Log.w(TAG, "mode SMP save failed path=${resolved.file.absolutePath}")
+            }
+            Log.i(TAG, "mode SMP save file=$written len=${text.length} target=${resolved.fileName}")
+            return
+        }
+
         if (safOnlyBackend) {
             val safDir = getConfiguredSafDir(context)
             if (safDir == null) {
@@ -294,6 +327,16 @@ object LrcStorage {
         clearRecentResolvedOrigin(trackUriString)
         val safOnlyBackend = isSafBackend(context)
         logLyricsBackend(context, safOnlyBackend)
+
+        resolveSmpLyricsTarget(context, trackUriString, requireExisting = false)?.let { resolved ->
+            val deleted = !resolved.file.exists() || resolved.file.delete()
+            if (deleted && !resolved.file.exists()) {
+                Log.i("LrcDebug", "LRC_DELETE path=${resolved.file.absolutePath}")
+            } else {
+                Log.w(TAG, "mode SMP delete failed path=${resolved.file.absolutePath}")
+            }
+            return
+        }
 
         if (safOnlyBackend) {
             runCatching {
@@ -889,6 +932,14 @@ object LrcStorage {
     }
 
     private fun loadFromSmpSongFolder(context: Context, trackUriString: String): SmpResolvedLyrics? {
+        return resolveSmpLyricsTarget(context, trackUriString, requireExisting = true)
+    }
+
+    private fun resolveSmpLyricsTarget(
+        context: Context,
+        trackUriString: String,
+        requireExisting: Boolean
+    ): SmpResolvedLyrics? {
         val trackUri = runCatching { Uri.parse(trackUriString) }.getOrNull() ?: return null
         if (trackUri.scheme != "file") return null
 
@@ -920,7 +971,7 @@ object LrcStorage {
 
         val lyricsName = config.files?.lyrics?.trim().takeUnless { it.isNullOrBlank() } ?: "lyrics.lrc"
         val lyricsFile = resolveSongUnitChildFile(songDir, lyricsName) ?: return null
-        if (!lyricsFile.isFile) {
+        if (requireExisting && !lyricsFile.isFile) {
             return null
         }
 
