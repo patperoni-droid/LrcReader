@@ -64,6 +64,7 @@ object LrcStorage {
 
     fun loadForTrack(context: Context, trackUriString: String): String? {
         if (trackUriString.isBlank()) return null
+        val safOnlyBackend = isSafBackend(context)
         resolveSmpLyricsTarget(context, trackUriString, requireExisting = true)?.let { resolved ->
             val text = runCatching { resolved.file.readText(Charsets.UTF_8) }.getOrNull()
             if (!text.isNullOrBlank()) {
@@ -80,7 +81,6 @@ object LrcStorage {
                 return text
             }
         }
-        val safOnlyBackend = isSafBackend(context)
         LyricsPerf.mark(trackUriString, "lrc_storage_load_start", "backend=${if (safOnlyBackend) "SAF" else "INTERNAL"}")
         logLyricsBackend(context, safOnlyBackend)
         logTrackNameDiagnostics(context, trackUriString, stage = "LYRICS_LOAD")
@@ -978,8 +978,7 @@ object LrcStorage {
             return null
         }
 
-        val lyricsName = config.files?.lyrics?.trim().takeUnless { it.isNullOrBlank() } ?: "lyrics.lrc"
-        val lyricsFile = resolveSongUnitChildFile(songDir, lyricsName) ?: return null
+        val lyricsFile = resolveSongUnitChildFile(songDir, "lyrics.lrc") ?: return null
         if (requireExisting && !lyricsFile.isFile) {
             return null
         }
