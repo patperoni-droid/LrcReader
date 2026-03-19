@@ -164,6 +164,28 @@ object AudioEngine {
         )
     }
 
+    private fun armHqAfterRebuildIfNeeded(reason: String) {
+        val s = currentSpeed.coerceIn(0.5f, 2.0f)
+        val pi = currentPitchRatio.coerceIn(0.5f, 2.0f)
+        val isNeutral = abs(s - 1f) < 0.0005f && abs(pi - 1f) < 0.0005f
+        if (timeStretchMode != TimeStretchMode.HQ || isNeutral) {
+            hqApplyPending = false
+            return
+        }
+
+        val pitchSemi = ratioToSemitones(pi)
+        hqApplyPending = true
+        soundTouchProcessor.setEnabled(true)
+        soundTouchProcessor.setTempoRatioAndPitchSemi(
+            tempoRatio = s,
+            pitchSemi = pitchSemi
+        )
+        Log.i(
+            TS_TAG,
+            "hq arm after rebuild speed=$s pitch=$pi pitchSemi=$pitchSemi reason=$reason"
+        )
+    }
+
     private fun recreatePlayerForPipeline(targetPipeline: PlayerPipeline, reason: String): ExoPlayer? {
         val appCtx = playerAppContext ?: return null
         val current = exoPlayer ?: return null
@@ -182,6 +204,12 @@ object AudioEngine {
         val rebuilt = buildPlayer(appCtx, targetPipeline)
         ensureCorePlayerListener(rebuilt, appCtx)
         Log.i(TS_TAG, "pipeline switch -> $targetPipeline reason=$reason")
+
+        if (targetPipeline == PlayerPipeline.CUSTOM_ST_SINK) {
+            // Arm HQ before prepare/play so READY/TRACKS callbacks can latch
+            // the requested tempo/pitch on the rebuilt custom pipeline.
+            armHqAfterRebuildIfNeeded(reason = "rebuild:$reason")
+        }
 
         snapshot.mediaUri?.let { uriString ->
             rebuilt.setMediaItem(androidx.media3.common.MediaItem.fromUri(uriString))
