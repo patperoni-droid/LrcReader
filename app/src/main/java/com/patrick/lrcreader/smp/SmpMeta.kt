@@ -38,7 +38,7 @@ data class SmpMeta(
     }
 
     companion object {
-        private val SUPPORTED_AUDIO_EXTENSIONS = setOf("mp3", "wav", "flac", "m4a", "aac", "ogg")
+        private val SUPPORTED_AUDIO_EXTENSIONS = setOf("mp3", "wav", "wave", "flac", "m4a", "aac", "ogg")
 
         fun fromSongUnit(songUnit: SongUnit): SmpMeta {
             return SmpMeta(

@@ -44,7 +44,10 @@ private fun isPlayableByName(name: String): Boolean {
 private fun isSmpUri(uriString: String): Boolean = uriString.startsWith("smp://")
 private fun isJsonByName(name: String): Boolean = name.lowercase().endsWith(".json")
 private fun isLrcByName(name: String): Boolean = name.lowercase().endsWith(".lrc")
-private fun isMp3ByName(name: String): Boolean = name.lowercase().endsWith(".mp3")
+private fun isConvertibleToSmpByName(name: String): Boolean {
+    val lower = name.lowercase()
+    return lower.endsWith(".mp3") || lower.endsWith(".wav") || lower.endsWith(".wave")
+}
 
 @Composable
 fun LibraryList(
@@ -145,7 +148,7 @@ fun LibraryList(
                 val canOpenPlayer = canPlay || isPrompter || isSmp
                 val isJson = isJsonByName(entry.name)
                 val isLrc = isLrcByName(entry.name)
-                val isMp3 = isMp3ByName(entry.name)
+                val isConvertibleToSmp = isConvertibleToSmpByName(entry.name)
                 val titleAlias = if ((canPlay || isSmp) && !isPrompter) {
                     TitleAliasesStore.getTitleForTrack(context, uri.toString())
                         ?: PlaylistRepository.getAnyCustomTitleForUri(uri.toString())
@@ -295,7 +298,7 @@ fun LibraryList(
                                     )
                                 }
 
-                                if (isMp3) {
+                                if (isConvertibleToSmp) {
                                     DropdownMenuItem(
                                         text = {
                                             Text(stringResource(R.string.library_list_convert_to_smp), color = Color.White)

@@ -19,6 +19,7 @@ class SmpLibraryScanner(private val context: Context) {
         private val AUDIO_FILE_NAMES = listOf(
             "audio.mp3",
             "audio.wav",
+            "audio.wave",
             "audio.flac",
             "audio.m4a",
             "audio.aac",

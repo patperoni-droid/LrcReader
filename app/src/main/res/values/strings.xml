@@ -176,7 +176,7 @@
     <string name="library_converting_smp">Migration vers SMP…</string>
     <string name="library_convert_smp_success_single">Morceau migré vers SMP</string>
     <string name="library_convert_smp_failed_single">Migration SMP échouée</string>
-    <string name="library_convert_smp_no_mp3">Aucun MP3 à convertir dans ce dossier</string>
+    <string name="library_convert_smp_no_mp3">Aucun fichier audio compatible à convertir dans ce dossier</string>
     <string name="library_convert_smp_folder_summary">%1$d morceau(x) migré(s) vers SMP, %2$d échec(s)</string>
 
     <string name="common_save">Enregistrer</string>
