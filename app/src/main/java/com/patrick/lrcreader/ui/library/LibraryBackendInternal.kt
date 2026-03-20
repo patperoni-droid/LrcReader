@@ -12,6 +12,7 @@ import com.patrick.lrcreader.core.InternalStoragePaths
 import com.patrick.lrcreader.core.LibraryIndexCache
 import com.patrick.lrcreader.ui.LibraryEntry
 import com.patrick.lrcreader.ui.MoveResult
+import com.patrick.lrcreader.ui.isHiddenLibraryTransportFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -99,7 +100,9 @@ class LibraryBackendInternal(
     ): List<LibraryEntry> {
         if (folderUri.scheme != "file") return emptyList()
         val dir = File(folderUri.path ?: return emptyList())
-        val children = dir.listFiles()?.toList().orEmpty()
+        val children = dir.listFiles()
+            ?.filterNot { child -> child.isFile && isHiddenLibraryTransportFile(child.name) }
+            .orEmpty()
 
         return children
             .map { f ->
@@ -257,6 +260,7 @@ class LibraryBackendInternal(
         fun walk(dir: File, parentUri: String?) {
             val children = dir.listFiles()?.toList().orEmpty()
             children.forEach { f ->
+                if (!f.isDirectory && isHiddenLibraryTransportFile(f.name)) return@forEach
                 val uriStr = Uri.fromFile(f).toString()
                 out += LibraryIndexCache.CachedEntry(
                     uriString = uriStr,

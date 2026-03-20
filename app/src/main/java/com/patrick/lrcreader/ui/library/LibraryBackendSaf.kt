@@ -14,6 +14,7 @@ import com.patrick.lrcreader.exo.BuildConfig
 import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.ui.LibraryEntry
 import com.patrick.lrcreader.ui.MoveResult
+import com.patrick.lrcreader.ui.isHiddenLibraryTransportFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -165,7 +166,10 @@ class LibraryBackendSaf(
             )
         }
 
-        val fromIndex = LibraryIndexCache.childrenOf(indexAll, folderUri).map { e ->
+        val fromIndex = LibraryIndexCache.childrenOf(indexAll, folderUri)
+            .asSequence()
+            .filterNot { entry -> !entry.isDirectory && isHiddenLibraryTransportFile(entry.name) }
+            .map { e ->
             val isDj = e.isDirectory && e.name.equals("DJ", ignoreCase = true)
             if (isDj) {
                 asDjEntry(Uri.parse(e.uriString), e.name)
@@ -176,11 +180,15 @@ class LibraryBackendSaf(
                     isDirectory = e.isDirectory
                 )
             }
-        }.toMutableList()
+        }
+            .toMutableList()
 
         if (fromIndex.isEmpty()) {
             val real = folderDoc?.listFiles().orEmpty().mapNotNull { f ->
                 val n = f.name ?: return@mapNotNull null
+                if (!f.isDirectory && isHiddenLibraryTransportFile(n)) {
+                    return@mapNotNull null
+                }
                 if (f.isDirectory && n.equals("DJ", ignoreCase = true)) {
                     asDjEntry(f.uri, n)
                 } else {

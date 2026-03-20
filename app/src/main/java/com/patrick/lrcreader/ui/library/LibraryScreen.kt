@@ -32,13 +32,17 @@ import com.patrick.lrcreader.core.ImportAudioManager
 import com.patrick.lrcreader.core.LibraryIndexCache
 import com.patrick.lrcreader.core.PlaylistRepository
 import com.patrick.lrcreader.core.TextSongRepository
+import com.patrick.lrcreader.core.buildSmpItem
 import com.patrick.lrcreader.core.config.TitleAliasesStore
 import com.patrick.lrcreader.core.search.SearchEngine
 import com.patrick.lrcreader.exo.BuildConfig
 import com.patrick.lrcreader.exo.R
+import com.patrick.lrcreader.smp.SmpConverter
+import com.patrick.lrcreader.smp.SmpLibraryScanner
 import com.patrick.lrcreader.ui.LibraryEntry
 import com.patrick.lrcreader.ui.LibraryFolderCache
 import com.patrick.lrcreader.ui.clearPersistedUris
+import com.patrick.lrcreader.ui.isHiddenLibraryTransportFile
 import com.patrick.lrcreader.ui.theme.DarkBlueGradientBackground
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -48,8 +52,10 @@ import com.patrick.lrcreader.core.StorageModePrefs
 import java.io.File
 
 private val PROMPTER_FOLDER_URI: Uri = Uri.parse("spl-prompter://folder")
+private val SMP_FOLDER_URI: Uri = Uri.parse("spl-smp://folder")
 
 private fun isPrompterFolderUri(uri: Uri?): Boolean = uri?.scheme == "spl-prompter"
+private fun isSmpFolderUri(uri: Uri?): Boolean = uri?.scheme == "spl-smp"
 
 private fun extractPrompterId(uri: Uri): String? {
     val raw = uri.toString()
@@ -60,6 +66,10 @@ private fun extractPrompterId(uri: Uri): String? {
 @Composable
 fun LibraryScreen(
     modifier: Modifier = Modifier,
+    smpRefreshVersion: Int = 0,
+    lastImportedSmpSongId: String? = null,
+    onImportExternalSmp: () -> Unit,
+    onImportGeneratedSmp: suspend (Uri) -> com.patrick.lrcreader.smp.SongUnit?,
     onPlayFromLibrary: (String) -> Unit
 ) {
     val context = LocalContext.current
@@ -80,6 +90,7 @@ fun LibraryScreen(
     val sScanning = stringResource(R.string.library_scanning)
     val sMoving = stringResource(R.string.library_moving)
     val sImporting = stringResource(R.string.library_importing_music)
+    val sConvertingSmp = stringResource(R.string.library_converting_smp)
     val sDeleting = stringResource(R.string.library_deleting)
     val sRenaming = stringResource(R.string.library_renaming)
     val sLoading = stringResource(R.string.common_loading)
@@ -94,6 +105,10 @@ fun LibraryScreen(
     val sDeleteConfirmText = stringResource(R.string.library_delete_file_confirm_text)
     val sDeletePermanently = stringResource(R.string.library_list_delete_permanently)
     val sPrompterFolder = stringResource(R.string.main_menu_prompter)
+    val sSmpFolder = stringResource(R.string.library_smp_folder)
+    val sConvertSmpSingleSuccess = stringResource(R.string.library_convert_smp_success_single)
+    val sConvertSmpSingleFailed = stringResource(R.string.library_convert_smp_failed_single)
+    val sConvertSmpNoMp3 = stringResource(R.string.library_convert_smp_no_mp3)
 
     // State
     var showLrcEditor by remember { mutableStateOf(false) }
@@ -126,6 +141,9 @@ fun LibraryScreen(
 
     var indexAll by remember { mutableStateOf<List<LibraryIndexCache.CachedEntry>>(emptyList()) }
     var importTargetFolderUri by remember { mutableStateOf<Uri?>(null) }
+    val smpConverter = remember(context) { SmpConverter(context) }
+    val smpLibraryScanner = remember(context) { SmpLibraryScanner(context) }
+    var lastHandledImportedSmpRefresh by remember { mutableIntStateOf(-1) }
 
     fun buildPrompterEntries(): List<LibraryEntry> {
         return TextSongRepository.listAll(context).map { song ->
@@ -137,19 +155,48 @@ fun LibraryScreen(
         }
     }
 
+    fun buildSmpEntries(): List<LibraryEntry> {
+        return smpLibraryScanner.listSongs()
+            .map { song ->
+                val uriString = buildSmpItem(song.id)
+                val displayName = TitleAliasesStore.getTitleForTrack(context, uriString)
+                    ?: PlaylistRepository.getAnyCustomTitleForUri(uriString)
+                    ?: song.title.ifBlank { song.id }
+                LibraryEntry(
+                    uri = Uri.parse(uriString),
+                    name = displayName,
+                    isDirectory = false
+                )
+            }
+            .sortedBy { it.name.lowercase() }
+    }
+
     fun decorateEntriesForFolder(folderUri: Uri, source: List<LibraryEntry>): List<LibraryEntry> {
         if (isPrompterFolderUri(folderUri)) {
             return buildPrompterEntries()
+        }
+        if (isSmpFolderUri(folderUri)) {
+            return buildSmpEntries()
         }
 
         val root = backend.getRootUri()
         val isRootFolder = root != null && folderUri.toString() == root.toString()
         if (!isRootFolder) return source
 
+        val extraEntries = mutableListOf<LibraryEntry>()
         val alreadyHasPrompter = source.any { it.isDirectory && isPrompterFolderUri(it.uri) }
-        if (alreadyHasPrompter) return source
+        if (!alreadyHasPrompter) {
+            extraEntries += LibraryEntry(PROMPTER_FOLDER_URI, sPrompterFolder, isDirectory = true)
+        }
 
-        return (source + LibraryEntry(PROMPTER_FOLDER_URI, sPrompterFolder, isDirectory = true))
+        val alreadyHasSmp = source.any { it.isDirectory && isSmpFolderUri(it.uri) }
+        if (!alreadyHasSmp && buildSmpEntries().isNotEmpty()) {
+            extraEntries += LibraryEntry(SMP_FOLDER_URI, sSmpFolder, isDirectory = true)
+        }
+
+        if (extraEntries.isEmpty()) return source
+
+        return (source + extraEntries)
             .sortedWith(
                 compareByDescending<LibraryEntry> { it.isDirectory }
                     .thenBy { it.name.lowercase() }
@@ -160,7 +207,7 @@ fun LibraryScreen(
         if (useCache) {
             LibraryFolderCache.get(folderUri)?.let { return it }
         }
-        val fresh = if (isPrompterFolderUri(folderUri)) {
+        val fresh = if (isPrompterFolderUri(folderUri) || isSmpFolderUri(folderUri)) {
             emptyList()
         } else {
             backend.listFolder(
@@ -186,6 +233,28 @@ fun LibraryScreen(
                 LibraryFolderCache.put(folderToShow, decorated)
             }
         )
+    }
+
+    suspend fun refreshLibraryFolder(folderUri: Uri?) {
+        val root = backend.getRootUri() ?: return
+        val folderToShow = folderUri ?: root
+        runGlobalScan(
+            root = root,
+            folderToShow = folderToShow
+        )
+        currentFolderUri = folderToShow
+        entries = buildEntriesForFolder(folderToShow, useCache = false)
+    }
+
+    LaunchedEffect(smpRefreshVersion, currentFolderUri) {
+        val currentFolder = currentFolderUri ?: return@LaunchedEffect
+        val rootFolder = backend.getRootUri()
+        val shouldRefreshCurrentFolder =
+            isSmpFolderUri(currentFolder) ||
+                (rootFolder != null && currentFolder.toString() == rootFolder.toString())
+        if (!shouldRefreshCurrentFolder) return@LaunchedEffect
+        LibraryFolderCache.clear()
+        entries = buildEntriesForFolder(currentFolder, useCache = false)
     }
 
     fun removePrompterFromAllPlaylists(uriString: String) {
@@ -222,7 +291,7 @@ fun LibraryScreen(
         val indexedItem: SearchEngine.IndexedItem
     )
     val globalAudioEntries = remember(indexAll, titleAliasVersion) {
-        indexAll.filter { !it.isDirectory }.map {
+        indexAll.filter { !it.isDirectory && !isHiddenLibraryTransportFile(it.name) }.map {
             val alias = TitleAliasesStore.getTitleForTrack(context, it.uriString)
                 ?: PlaylistRepository.getAnyCustomTitleForUri(it.uriString)
             SearchableLibraryEntry(
@@ -239,10 +308,10 @@ fun LibraryScreen(
         val normalizedQuery = SearchEngine.normalize(searchQuery)
         if (normalizedQuery.isBlank()) {
             entries
-        } else if (isPrompterFolderUri(currentFolderUri)) {
+        } else if (isPrompterFolderUri(currentFolderUri) || isSmpFolderUri(currentFolderUri)) {
             val indexed = entries
                 .asSequence()
-                .filter { !it.isDirectory && it.uri.toString().startsWith("prompter://") }
+                .filter { !it.isDirectory }
                 .map { entry ->
                     SearchableLibraryEntry(
                         entry = entry,
@@ -276,7 +345,7 @@ fun LibraryScreen(
             val normalizedQuery = SearchEngine.normalize(searchQuery)
             val itemsBefore = when {
                 normalizedQuery.isBlank() -> entries.size
-                isPrompterFolderUri(currentFolderUri) -> entries.size
+                isPrompterFolderUri(currentFolderUri) || isSmpFolderUri(currentFolderUri) -> entries.size
                 else -> globalAudioEntries.size
             }
             val itemsAfter = filteredEntries.size
@@ -285,6 +354,33 @@ fun LibraryScreen(
                 "mode=LIBRARY query='$normalizedQuery' playlist=- itemsBefore=$itemsBefore itemsAfter=$itemsAfter"
             )
         }
+    }
+
+    LaunchedEffect(smpRefreshVersion, lastImportedSmpSongId) {
+        val importedSongId = lastImportedSmpSongId?.trim().takeUnless { it.isNullOrEmpty() } ?: return@LaunchedEffect
+        if (smpRefreshVersion == lastHandledImportedSmpRefresh) return@LaunchedEffect
+
+        val importedUriString = buildSmpItem(importedSongId)
+        val smpEntries = buildSmpEntries()
+        val isImportedSongVisible = smpEntries.any { it.uri.toString() == importedUriString }
+        if (!isImportedSongVisible) {
+            return@LaunchedEffect
+        }
+
+        lastHandledImportedSmpRefresh = smpRefreshVersion
+        currentFolderUri
+            ?.takeUnless { isSmpFolderUri(it) }
+            ?.let { currentFolder ->
+                if (folderStack.lastOrNull()?.toString() != currentFolder.toString()) {
+                    folderStack = folderStack + currentFolder
+                }
+            }
+
+        currentFolderUri = SMP_FOLDER_URI
+        LibraryFolderCache.clear()
+        entries = buildEntriesForFolder(SMP_FOLDER_URI, useCache = false)
+        searchQuery = ""
+        selectedSongs = emptySet()
     }
 
     val bottomBarHeight = 56.dp
@@ -609,12 +705,14 @@ fun LibraryScreen(
             }
 
             indexAll = backend.loadIndex()
-            val folderToShow = backend.chooseInitialFolder(root, indexAll)
+            val backendInitialFolder = backend.chooseInitialFolder(root, indexAll)
+            val folderToShow = root
             Log.i(
                 "LIB_SCAN_DIAG",
-                "mount root=$root indexSize=${indexAll.size} willFullScan=${indexAll.isEmpty()} folderToShow=$folderToShow"
+                "mount root=$root indexSize=${indexAll.size} willFullScan=${indexAll.isEmpty()} backendInitialFolder=$backendInitialFolder folderToShow=$folderToShow"
             )
             currentFolderUri = folderToShow
+            folderStack = emptyList()
 
             if (indexAll.isEmpty()) {
                 startLoading(sScanning, determinate = false)
@@ -643,6 +741,8 @@ fun LibraryScreen(
     val currentFolderName = currentFolderUri?.let { u ->
         if (isPrompterFolderUri(u)) {
             sPrompterFolder
+        } else if (isSmpFolderUri(u)) {
+            sSmpFolder
         } else if (u.scheme == "file") {
             java.io.File(u.path ?: "").name.ifBlank { "SPL_Music" }
         } else {
@@ -658,6 +758,11 @@ fun LibraryScreen(
 
         if (isPrompterFolderUri(u)) {
             Log.d("LIB_SAF", "virtualPrompterFolder=true (skip DocumentFile probes)")
+            return@LaunchedEffect
+        }
+
+        if (isSmpFolderUri(u)) {
+            Log.d("LIB_SAF", "virtualSmpFolder=true (skip DocumentFile probes)")
             return@LaunchedEffect
         }
 
@@ -724,8 +829,8 @@ fun LibraryScreen(
                 canGoBack = folderStack.isNotEmpty(),
 
                 onBack = {
+                    val parentUri = folderStack.lastOrNull() ?: backend.getRootUri()
                     val newStack = folderStack.dropLast(1)
-                    val parentUri = newStack.lastOrNull() ?: backend.getRootUri()
                     currentFolderUri = parentUri
                     entries = parentUri?.let { uri -> buildEntriesForFolder(uri) } ?: emptyList()
                     folderStack = newStack
@@ -741,7 +846,7 @@ fun LibraryScreen(
                         startLoading(sScanning, determinate = false)
                         try {
                             val folderToShow = currentFolderUri
-                                ?.takeUnless { isPrompterFolderUri(it) }
+                                ?.takeUnless { isPrompterFolderUri(it) || isSmpFolderUri(it) }
                                 ?: rootNow
                             runGlobalScan(
                                 root = rootNow,
@@ -774,8 +879,57 @@ fun LibraryScreen(
                 },
 
                 onImportBackingTracks = {
-                    importTargetFolderUri = currentFolderUri?.takeUnless { isPrompterFolderUri(it) }
+                    importTargetFolderUri = currentFolderUri?.takeUnless {
+                        isPrompterFolderUri(it) || isSmpFolderUri(it)
+                    }
                     importAudioLauncher.launch(arrayOf("audio/*"))
+                },
+
+                onConvertFolderToSmp = {
+                    val folderUri = currentFolderUri?.takeUnless {
+                        isPrompterFolderUri(it) || isSmpFolderUri(it)
+                    } ?: return@LibraryHeader
+
+                    scope.launch {
+                        startLoading(sConvertingSmp, determinate = false)
+                        try {
+                            val results = withContext(Dispatchers.IO) {
+                                smpConverter.convertFolder(folderUri)
+                            }
+
+                            if (results.isEmpty()) {
+                                Toast.makeText(context, sConvertSmpNoMp3, Toast.LENGTH_SHORT).show()
+                            } else {
+                                var successCount = 0
+                                var failureCount = 0
+                                results.forEach { result ->
+                                    val importedSong = result.getOrNull()?.let { outputUri ->
+                                        onImportGeneratedSmp(outputUri)
+                                    }
+                                    if (importedSong != null) {
+                                        successCount += 1
+                                    } else {
+                                        failureCount += 1
+                                    }
+                                }
+                                Toast.makeText(
+                                    context,
+                                    context.getString(
+                                        R.string.library_convert_smp_folder_summary,
+                                        successCount,
+                                        failureCount
+                                    ),
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        } finally {
+                            stopLoadingNice()
+                        }
+                    }
+                },
+
+                onImportSmp = {
+                    onImportExternalSmp()
                 }
             )
 
@@ -850,6 +1004,40 @@ fun LibraryScreen(
 
                                 lrcEditorText = readTextFromUri(lrcUri) ?: ""
                                 showLrcEditor = true
+                            },
+
+                            onConvertOneToSmp = { mp3Uri ->
+                                scope.launch {
+                                    startLoading(sConvertingSmp, determinate = false)
+                                    try {
+                                        val result = withContext(Dispatchers.IO) {
+                                            smpConverter.convertSingle(mp3Uri)
+                                        }
+                                        result.fold(
+                                            onSuccess = { outputUri ->
+                                                val importedSong = onImportGeneratedSmp(outputUri)
+                                                Toast.makeText(
+                                                    context,
+                                                    if (importedSong != null) {
+                                                        sConvertSmpSingleSuccess
+                                                    } else {
+                                                        sConvertSmpSingleFailed
+                                                    },
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                            },
+                                            onFailure = {
+                                                Toast.makeText(
+                                                    context,
+                                                    sConvertSmpSingleFailed,
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                            }
+                                        )
+                                    } finally {
+                                        stopLoadingNice()
+                                    }
+                                }
                             },
 
                             onAssignOne = { uri ->

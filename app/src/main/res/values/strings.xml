@@ -131,6 +131,8 @@
     <string name="library_header_choose_folder">Choisir un dossier</string>
     <string name="library_header_rescan">Rescan bibliothèque</string>
     <string name="library_header_import_music">Importer des musiques</string>
+    <string name="library_header_convert_folder_to_smp">Convertir dossier en SMP</string>
+    <string name="library_header_import_smp">Importer un fichier SMP</string>
     <string name="library_header_forget_folder">Oublier le dossier</string>
 
     <string name="library_assign_to_playlist_title">Ajouter à une playlist</string>
@@ -150,11 +152,13 @@
 
     <string name="library_list_cd_play">Lire (bibliothèque)</string>
     <string name="library_list_edit_lrc">Éditer ce .lrc</string>
+    <string name="library_list_convert_to_smp">Convertir en SMP</string>
     <string name="library_list_import_backup">Importer ce backup</string>
     <string name="library_list_assign_to_playlist">Attribuer à une playlist</string>
     <string name="library_list_move_to_folder">Déplacer vers un dossier</string>
     <string name="library_list_rename">Renommer</string>
     <string name="library_list_delete_permanently">Supprimer définitivement</string>
+    <string name="library_smp_folder">Morceaux SMP</string>
 
     <string name="library_delete_backing_track_title">Supprimer ce morceau ?</string>
     <string name="library_delete_audio_question">Morceau seul</string>
@@ -169,6 +173,11 @@
     <string name="search_start_typing">Commence à taper…</string>
 
     <string name="library_lrc_editing_title">Édition : %1$s</string>
+    <string name="library_converting_smp">Migration vers SMP…</string>
+    <string name="library_convert_smp_success_single">Morceau migré vers SMP</string>
+    <string name="library_convert_smp_failed_single">Migration SMP échouée</string>
+    <string name="library_convert_smp_no_mp3">Aucun MP3 à convertir dans ce dossier</string>
+    <string name="library_convert_smp_folder_summary">%1$d morceau(x) migré(s) vers SMP, %2$d échec(s)</string>
 
     <string name="common_save">Enregistrer</string>
 

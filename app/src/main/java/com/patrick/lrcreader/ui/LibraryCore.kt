@@ -231,6 +231,10 @@ fun scanAllFoldersOnce(context: Context, rootUri: Uri) {
     scanFolder(rootUri)
 }
 
+fun isHiddenLibraryTransportFile(name: String): Boolean {
+    return name.lowercase().endsWith(".smp")
+}
+
 private fun isAudioOrVideo(context: Context, uri: Uri, name: String): Boolean {
     // 1) MIME (le plus fiable via SAF)
     val mime = runCatching { context.contentResolver.getType(uri) }.getOrNull()

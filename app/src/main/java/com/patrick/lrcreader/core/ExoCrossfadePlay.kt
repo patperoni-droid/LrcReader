@@ -21,8 +21,10 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 
 private var lastEndListener: Player.Listener? = null
+private const val SMP_PLAY_TRACE_TAG = "SMP_PLAY_TRACE"
 
 fun exoCrossfadePlay(
     context: Context,
@@ -39,6 +41,10 @@ fun exoCrossfadePlay(
     fadeDurationMs: Long = 1000L
 ) {
     CoroutineScope(Dispatchers.Main).launch {
+        Log.d(
+            SMP_PLAY_TRACE_TAG,
+            "EXO_REQUEST uri=$uriString playlist=$playlistName token=$playToken currentMedia=${exoPlayer.currentMediaItem?.localConfiguration?.uri}"
+        )
 
         if (getCurrentToken() != playToken) return@launch
 
@@ -74,11 +80,20 @@ fun exoCrossfadePlay(
         val endListener = object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
                 if (getCurrentToken() != playToken) return
+                Log.d(
+                    SMP_PLAY_TRACE_TAG,
+                    "EXO_STATE uri=$uriString token=$playToken state=${stateName(state)} playWhenReady=${exoPlayer.playWhenReady} isPlaying=${exoPlayer.isPlaying} currentMedia=${exoPlayer.currentMediaItem?.localConfiguration?.uri}"
+                )
                 if (state == Player.STATE_ENDED) onNaturalEnd()
             }
 
             override fun onPlayerError(error: PlaybackException) {
                 if (getCurrentToken() != playToken) return
+                Log.e(
+                    SMP_PLAY_TRACE_TAG,
+                    "EXO_ERROR uri=$uriString token=$playToken code=${error.errorCodeName} message=${error.message} currentMedia=${exoPlayer.currentMediaItem?.localConfiguration?.uri}",
+                    error
+                )
                 onError()
             }
         }
@@ -96,9 +111,17 @@ fun exoCrossfadePlay(
         val playableUriString = withContext(Dispatchers.IO) {
             resolvePlayableUriString(context, uriString)
         }
+        Log.d(
+            SMP_PLAY_TRACE_TAG,
+            "EXO_RESOLVE uri=$uriString token=$playToken playable=$playableUriString"
+        )
 
         if (playableUriString == null) {
             Log.e("PlayUriCheck", "UNRESOLVABLE uri=$uriString")
+            Log.e(
+                SMP_PLAY_TRACE_TAG,
+                "EXO_UNRESOLVABLE uri=$uriString token=$playToken"
+            )
             onError()
             return@launch
         }
@@ -108,14 +131,26 @@ fun exoCrossfadePlay(
             PlaylistRepository.replaceSongUriEverywhere(oldUri = uriString, newUri = playableUriString)
         }
 
+        Log.d(
+            SMP_PLAY_TRACE_TAG,
+            "EXO_SET_MEDIA uri=$uriString token=$playToken media=$playableUriString"
+        )
         exoPlayer.setMediaItem(MediaItem.fromUri(playableUriString))
         exoPlayer.prepare()
+        Log.d(
+            SMP_PLAY_TRACE_TAG,
+            "EXO_PREPARE uri=$uriString token=$playToken state=${stateName(exoPlayer.playbackState)} playWhenReady=${exoPlayer.playWhenReady}"
+        )
 
         AudioEngine.reapplyMixNow()
         AudioEngine.debugVolumeTag("after prepare")
 
         PlaybackCoordinator.requestStartPlayer()
         exoPlayer.play()
+        Log.d(
+            SMP_PLAY_TRACE_TAG,
+            "EXO_PLAY uri=$uriString token=$playToken state=${stateName(exoPlayer.playbackState)} playWhenReady=${exoPlayer.playWhenReady} isPlaying=${exoPlayer.isPlaying}"
+        )
         onStart()
 
         val lyrics = embeddedLyricsListener.lyrics.filterNotNull().firstOrNull()
@@ -124,11 +159,27 @@ fun exoCrossfadePlay(
     }
 }
 
+private fun stateName(state: Int): String {
+    return when (state) {
+        Player.STATE_IDLE -> "IDLE"
+        Player.STATE_BUFFERING -> "BUFFERING"
+        Player.STATE_READY -> "READY"
+        Player.STATE_ENDED -> "ENDED"
+        else -> state.toString()
+    }
+}
+
 private fun resolvePlayableUriString(context: Context, uriString: String): String? {
 
     fun canOpen(u: String): Boolean {
         return runCatching {
             val uri = Uri.parse(u)
+            if (uri.scheme == "file") {
+                val file = File(uri.path ?: error("file path is null"))
+                if (!file.isFile) error("file does not exist")
+                if (!file.canRead()) error("file is not readable")
+                return@runCatching true
+            }
             context.contentResolver.openFileDescriptor(uri, "r")?.use { }
                 ?: error("openFileDescriptor returned null")
             true
