@@ -189,19 +189,39 @@ fun LibraryList(
                     // - sinon -> ouvre lecteur UNIQUEMENT si media
                     // - sinon -> si .lrc -> ouvre éditeur
                     // - sinon (json/etc) -> rien
-                    Text(
-                        text = displayName,
-                        color = Color.White,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                    Row(
                         modifier = Modifier
                             .weight(1f)
                             .clickable {
                                 if (selectionMode) onToggleSelect(uri)
                                 else if (canOpenPlayer) onOpenPlayer(uri)
                                 else if (isLrc) onOpenLrcEditor(uri)
+                            },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = displayName,
+                            color = Color.White,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        if (isSmp) {
+                            Spacer(Modifier.width(6.dp))
+                            Box(
+                                modifier = Modifier
+                                    .background(Color(0xFF2E7D32), shape = RoundedCornerShape(6.dp))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = "SMP",
+                                    color = Color.White,
+                                    fontSize = 10.sp
+                                )
                             }
-                    )
+                        }
+                    }
 
                     if (isPrompter) {
                         Box(
