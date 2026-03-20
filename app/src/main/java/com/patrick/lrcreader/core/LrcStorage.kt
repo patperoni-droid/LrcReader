@@ -65,8 +65,12 @@ object LrcStorage {
     fun loadForTrack(context: Context, trackUriString: String): String? {
         if (trackUriString.isBlank()) return null
         val safOnlyBackend = isSafBackend(context)
-        resolveSmpLyricsTarget(context, trackUriString, requireExisting = true)?.let { resolved ->
-            val text = runCatching { resolved.file.readText(Charsets.UTF_8) }.getOrNull()
+        resolveSmpLyricsTarget(context, trackUriString, requireExisting = false)?.let { resolved ->
+            val text = if (resolved.file.isFile) {
+                runCatching { resolved.file.readText(Charsets.UTF_8) }.getOrNull()
+            } else {
+                null
+            }
             if (!text.isNullOrBlank()) {
                 cacheRecentResolvedOrigin(
                     trackUriString,
@@ -80,6 +84,9 @@ object LrcStorage {
                 Log.d(TAG, "mode SMP load path=${resolved.file.absolutePath}")
                 return text
             }
+            clearRecentResolvedOrigin(trackUriString)
+            Log.d(TAG, "mode SMP load miss path=${resolved.file.absolutePath}")
+            return null
         }
         LyricsPerf.mark(trackUriString, "lrc_storage_load_start", "backend=${if (safOnlyBackend) "SAF" else "INTERNAL"}")
         logLyricsBackend(context, safOnlyBackend)
