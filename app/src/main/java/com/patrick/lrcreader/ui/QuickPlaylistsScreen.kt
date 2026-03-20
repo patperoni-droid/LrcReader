@@ -1054,6 +1054,8 @@ fun QuickPlaylistsScreen(
                                 }
                                 .trim()
 
+                            val smpSongId = getSmpSongId(uriString)
+
                             // 🔹 NOM D’AFFICHAGE
                             val _forceNotes = notesVersion
                             val displayName = if (uriString.startsWith("prompter://")) {
@@ -1072,7 +1074,6 @@ fun QuickPlaylistsScreen(
                                     textSong?.title?.takeIf { it.isNotBlank() } ?: baseNameClean
                                 }
                             } else {
-                                val smpSongId = getSmpSongId(uriString)
                                 if (smpSongId != null) {
                                     PlaylistRepository.getAnyCustomTitleForUri(uriString)
                                         ?: smpTitleById[smpSongId]
@@ -1174,6 +1175,7 @@ fun QuickPlaylistsScreen(
                                     )
                                 }
                                 val isPrompter = uriString.startsWith("prompter://")
+                                val isSmp = smpSongId != null
                                 val prefix = if (isPrompter) "📝 " else ""
                                 val playedTextColor = Color(0xFF9E9E9E)
                                 val normalTitleColor = when {
@@ -1186,10 +1188,7 @@ fun QuickPlaylistsScreen(
                                     customSongColor != null -> customSongColor
                                     else -> normalTitleColor
                                 }
-                                Text(
-                                    text = (prefix + displayName).uppercase(),
-                                    color = titleColor,
-                                    fontSize = 14.sp,
+                                Row(
                                     modifier = Modifier
                                         .weight(1f)
                                         .alpha(if (isPlayed) 0.6f else 1f)
@@ -1218,8 +1217,30 @@ fun QuickPlaylistsScreen(
                                                     selectedTrackKeys + uriString
                                                 }
                                             }
-                                        )
-                                )
+                                        ),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = (prefix + displayName).uppercase(),
+                                        color = titleColor,
+                                        fontSize = 14.sp,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    if (isSmp) {
+                                        Spacer(Modifier.width(6.dp))
+                                        Box(
+                                            modifier = Modifier
+                                                .background(Color(0xFF2E7D32), shape = RoundedCornerShape(6.dp))
+                                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                                        ) {
+                                            Text(
+                                                text = "SMP",
+                                                color = Color.White,
+                                                fontSize = 10.sp
+                                            )
+                                        }
+                                    }
+                                }
 
                                 if (isForcedNext) {
                                     Box(
