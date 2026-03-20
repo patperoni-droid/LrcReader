@@ -171,6 +171,7 @@ class SmpReader(private val context: Context) {
         private fun isAudioFile(fileName: String): Boolean {
             return fileName == "audio.mp3" ||
                 fileName == "audio.wav" ||
+                fileName == "audio.wave" ||
                 fileName == "audio.flac" ||
                 fileName == "audio.m4a" ||
                 fileName == "audio.aac" ||

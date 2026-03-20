@@ -22,7 +22,6 @@ class SmpConverter(private val context: Context) {
 
     companion object {
         private const val TAG = "SMP_CONVERTER"
-        private const val AUDIO_ENTRY_NAME = "audio.mp3"
         private const val LYRICS_ENTRY_NAME = "lyrics.lrc"
         private const val CONFIG_ENTRY_NAME = "config.json"
         private const val OUTPUT_MIME = "application/octet-stream"
@@ -40,12 +39,13 @@ class SmpConverter(private val context: Context) {
 
         return runCatching {
             val sourceName = resolveDisplayName(mp3Uri)
-            require(isMp3FileName(sourceName)) {
+            require(isSupportedAudioFileName(sourceName)) {
                 "Fichier non supporté pour conversion SMP: $sourceName"
             }
+            val audioEntryName = buildAudioEntryName(sourceName)
 
             val baseName = sourceName.substringBeforeLast('.').trim()
-                .ifBlank { throw IOException("Nom MP3 invalide: $sourceName") }
+                .ifBlank { throw IOException("Nom audio invalide: $sourceName") }
 
             val siblings = listSiblingEntries(mp3Uri)
             val outputName = "$baseName.smp"
@@ -71,7 +71,7 @@ class SmpConverter(private val context: Context) {
             }
 
             try {
-                val tempAudio = File(tempDir, AUDIO_ENTRY_NAME)
+                val tempAudio = File(tempDir, audioEntryName)
                 copyUriToFile(mp3Uri, tempAudio)
                 val stableSongId = buildStableSongId(tempAudio)
 
@@ -94,6 +94,7 @@ class SmpConverter(private val context: Context) {
                         buildMinimalConfigJson(
                             title = baseName,
                             songId = stableSongId,
+                            audioEntryName = audioEntryName,
                             hasLyrics = tempLyrics != null
                         ),
                         Charsets.UTF_8
@@ -104,6 +105,7 @@ class SmpConverter(private val context: Context) {
                 createArchive(
                     targetFile = tempArchive,
                     audioFile = tempAudio,
+                    audioEntryName = audioEntryName,
                     lyricsFile = tempLyrics,
                     configFile = tempConfig
                 )
@@ -135,7 +137,7 @@ class SmpConverter(private val context: Context) {
         return runCatching {
             val children = listFolderChildren(folderUri)
             children
-                .filter { !it.name.isBlank() && isMp3FileName(it.name) }
+                .filter { !it.name.isBlank() && isSupportedAudioFileName(it.name) }
                 .sortedBy { it.name.lowercase(Locale.ROOT) }
                 .map { child -> convertSingle(child.uri) }
         }.getOrElse { error ->
@@ -343,11 +345,12 @@ class SmpConverter(private val context: Context) {
     private fun createArchive(
         targetFile: File,
         audioFile: File,
+        audioEntryName: String,
         lyricsFile: File?,
         configFile: File
     ) {
         ZipOutputStream(FileOutputStream(targetFile).buffered()).use { zipOutput ->
-            writeFileEntry(zipOutput, audioFile, AUDIO_ENTRY_NAME)
+            writeFileEntry(zipOutput, audioFile, audioEntryName)
             if (lyricsFile != null) {
                 writeFileEntry(zipOutput, lyricsFile, LYRICS_ENTRY_NAME)
             }
@@ -370,13 +373,14 @@ class SmpConverter(private val context: Context) {
     private fun buildMinimalConfigJson(
         title: String,
         songId: String,
+        audioEntryName: String,
         hasLyrics: Boolean
     ): String {
         return JSONObject().apply {
             put("version", 1)
             put("id", songId)
             put("title", title)
-            put("audio", AUDIO_ENTRY_NAME)
+            put("audio", audioEntryName)
             if (hasLyrics) {
                 put("lyrics", LYRICS_ENTRY_NAME)
             }
@@ -421,7 +425,23 @@ class SmpConverter(private val context: Context) {
         return uri.lastPathSegment?.trim().orEmpty().ifBlank { "audio.mp3" }
     }
 
-    private fun isMp3FileName(name: String): Boolean {
-        return name.endsWith(".mp3", ignoreCase = true)
+    private fun isSupportedAudioFileName(name: String): Boolean {
+        return audioExtensionFor(name) != null
+    }
+
+    private fun buildAudioEntryName(sourceName: String): String {
+        val extension = audioExtensionFor(sourceName)
+            ?: throw IOException("Extension audio non supportée: $sourceName")
+        return "audio.$extension"
+    }
+
+    private fun audioExtensionFor(name: String): String? {
+        val lower = name.trim().lowercase(Locale.ROOT)
+        return when {
+            lower.endsWith(".mp3") -> "mp3"
+            lower.endsWith(".wav") -> "wav"
+            lower.endsWith(".wave") -> "wave"
+            else -> null
+        }
     }
 }
