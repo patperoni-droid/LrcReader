@@ -91,6 +91,7 @@ import com.patrick.lrcreader.core.config.PlaylistStateStore
 import com.patrick.lrcreader.core.config.TrackSettingsStore
 import com.patrick.lrcreader.core.config.TitleAliasesStore
 import com.patrick.lrcreader.exo.BuildConfig
+import com.patrick.lrcreader.smp.SmpLibraryScanner
 import kotlinx.coroutines.yield
 import java.net.URLDecoder
 
@@ -124,6 +125,7 @@ fun QuickPlaylistsScreen(
 ) {
 
     val context = LocalContext.current
+    val smpLibraryScanner = remember(context) { SmpLibraryScanner(context) }
     val sQuickplaylistsNewGroupDefault = stringResource(R.string.quickplaylists_group_new_default)
     var hasMicPermission by remember {
         mutableStateOf(
@@ -154,6 +156,21 @@ fun QuickPlaylistsScreen(
     val isMiniTunerVisible by MiniTunerVisibilityStore.state(context).collectAsState()
 
     val songs = remember { mutableStateListOf<String>() }
+    val smpSongIdsInPlaylist by remember {
+        derivedStateOf {
+            songs.mapNotNull { getSmpSongId(it) }.toSet()
+        }
+    }
+    val smpTitleById = remember(refreshKey, libraryLoadedSignal, repoVersion, smpSongIdsInPlaylist) {
+        if (smpSongIdsInPlaylist.isEmpty()) {
+            emptyMap()
+        } else {
+            smpLibraryScanner.listSongs()
+                .asSequence()
+                .filter { it.id in smpSongIdsInPlaylist }
+                .associate { it.id to it.title.ifBlank { it.id } }
+        }
+    }
     // ✅ Snapshot "ordre d'origine" (pour le bouton Réinitialiser)
     // - On le fixe au premier chargement d'une playlist
     // - Et on le met à jour quand TU réordonnes à la main (drag)
@@ -1058,6 +1075,7 @@ fun QuickPlaylistsScreen(
                                 val smpSongId = getSmpSongId(uriString)
                                 if (smpSongId != null) {
                                     PlaylistRepository.getAnyCustomTitleForUri(uriString)
+                                        ?: smpTitleById[smpSongId]
                                         ?: "SMP $smpSongId"
                                 } else {
                                     // 👉 Audio normal (alias global)
