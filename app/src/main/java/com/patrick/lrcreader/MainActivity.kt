@@ -95,6 +95,7 @@ class MainActivity : AppCompatActivity() {
         private const val MIN_TRACK_DB = -12
         private const val MAX_TRACK_DB = 0
         private const val SMP_PLAY_TRACE_TAG = "SMP_PLAY_TRACE"
+        private const val ENABLE_SMP_DEBUG_HOME_BUTTONS = false
         private val AUTO_RESTORE_BG_STARTED = AtomicBoolean(false)
         private val BACKUP_RESTORE_BG_STARTED = AtomicBoolean(false)
         private val DEFERRED_BOOTSTRAP_STARTED = AtomicBoolean(false)
@@ -1772,46 +1773,48 @@ class MainActivity : AppCompatActivity() {
                                                 setTabAndPersist(BottomTab.Tuner, reason = "homeOpenTuner")
                                             }
                                         )
-                                        Button(
-                                            onClick = {
-                                                scope.launch(Dispatchers.IO) {
-                                                    val songs = smpLibraryScanner.listSongs()
-                                                    Log.i("SMP", "SMP importés: count=${songs.size}")
-                                                    songs.forEach { song ->
-                                                        Log.i(
-                                                            "SMP",
-                                                            "SMP importé: songId=${song.id} title=${song.title} storageFolder=${song.storageFolder}"
-                                                        )
+                                        if (ENABLE_SMP_DEBUG_HOME_BUTTONS) {
+                                            Button(
+                                                onClick = {
+                                                    scope.launch(Dispatchers.IO) {
+                                                        val songs = smpLibraryScanner.listSongs()
+                                                        Log.i("SMP", "SMP importés: count=${songs.size}")
+                                                        songs.forEach { song ->
+                                                            Log.i(
+                                                                "SMP",
+                                                                "SMP importé: songId=${song.id} title=${song.title} storageFolder=${song.storageFolder}"
+                                                            )
+                                                        }
+                                                        withContext(Dispatchers.Main) {
+                                                            smpImportedSongs = songs
+                                                            smpSongsById = songs.associateBy { it.id }
+                                                            isSmpImportedSongsDialogOpen = true
+                                                            Toast.makeText(
+                                                                ctx,
+                                                                "SMP importés: ${songs.size}",
+                                                                Toast.LENGTH_SHORT
+                                                            ).show()
+                                                        }
                                                     }
-                                                    withContext(Dispatchers.Main) {
-                                                        smpImportedSongs = songs
-                                                        smpSongsById = songs.associateBy { it.id }
-                                                        isSmpImportedSongsDialogOpen = true
-                                                        Toast.makeText(
-                                                            ctx,
-                                                            "SMP importés: ${songs.size}",
-                                                            Toast.LENGTH_SHORT
-                                                        ).show()
-                                                    }
-                                                }
-                                            },
-                                            modifier = Modifier
-                                                .align(Alignment.BottomEnd)
-                                                .padding(end = 16.dp, bottom = 72.dp)
-                                        ) {
-                                            Text("Afficher SMP importés")
-                                        }
-                                        Button(
-                                            onClick = {
-                                                pickSmpFileLauncher.launch(
-                                                    arrayOf("application/zip", "application/octet-stream", "*/*")
-                                                )
-                                            },
-                                            modifier = Modifier
-                                                .align(Alignment.BottomEnd)
-                                                .padding(16.dp)
-                                        ) {
-                                            Text("Tester un fichier .smp")
+                                                },
+                                                modifier = Modifier
+                                                    .align(Alignment.BottomEnd)
+                                                    .padding(end = 16.dp, bottom = 72.dp)
+                                            ) {
+                                                Text("Afficher SMP importés")
+                                            }
+                                            Button(
+                                                onClick = {
+                                                    pickSmpFileLauncher.launch(
+                                                        arrayOf("application/zip", "application/octet-stream", "*/*")
+                                                    )
+                                                },
+                                                modifier = Modifier
+                                                    .align(Alignment.BottomEnd)
+                                                    .padding(16.dp)
+                                            ) {
+                                                Text("Tester un fichier .smp")
+                                            }
                                         }
                                     }
 
