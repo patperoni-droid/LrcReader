@@ -41,8 +41,10 @@ private fun isPlayableByName(name: String): Boolean {
             n.endsWith(".mov") || n.endsWith(".avi")
 }
 
+private fun isSmpUri(uriString: String): Boolean = uriString.startsWith("smp://")
 private fun isJsonByName(name: String): Boolean = name.lowercase().endsWith(".json")
 private fun isLrcByName(name: String): Boolean = name.lowercase().endsWith(".lrc")
+private fun isMp3ByName(name: String): Boolean = name.lowercase().endsWith(".mp3")
 
 @Composable
 fun LibraryList(
@@ -66,6 +68,7 @@ fun LibraryList(
 
     // ✅ ouvre l’éditeur LRC
     onOpenLrcEditor: (Uri) -> Unit,
+    onConvertOneToSmp: (Uri) -> Unit,
 
     onAssignOne: (Uri) -> Unit,
     onMoveOne: (Uri) -> Unit,
@@ -137,10 +140,13 @@ fun LibraryList(
                 var menuOpen by remember { mutableStateOf(false) }
 
                 val isPrompter = uriString.startsWith("prompter://")
+                val isSmp = isSmpUri(uriString)
                 val canPlay = isPlayableByName(entry.name)
+                val canOpenPlayer = canPlay || isPrompter || isSmp
                 val isJson = isJsonByName(entry.name)
                 val isLrc = isLrcByName(entry.name)
-                val titleAlias = if (canPlay && !isPrompter) {
+                val isMp3 = isMp3ByName(entry.name)
+                val titleAlias = if ((canPlay || isSmp) && !isPrompter) {
                     TitleAliasesStore.getTitleForTrack(context, uri.toString())
                         ?: PlaylistRepository.getAnyCustomTitleForUri(uri.toString())
                 } else {
@@ -192,8 +198,7 @@ fun LibraryList(
                             .weight(1f)
                             .clickable {
                                 if (selectionMode) onToggleSelect(uri)
-                                else if (canPlay) onOpenPlayer(uri)
-                                else if (isPrompter) onOpenPlayer(uri)
+                                else if (canOpenPlayer) onOpenPlayer(uri)
                                 else if (isLrc) onOpenLrcEditor(uri)
                             }
                     )
@@ -215,13 +220,14 @@ fun LibraryList(
                             onClick = {
                                 if (selectionMode) onToggleSelect(uri)
                                 else if (canPlay) onQuickPlay(uri)
+                                else if (isSmp) onOpenPlayer(uri)
                             },
                             modifier = Modifier.size(44.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.PlayArrow,
                                 contentDescription = stringResource(R.string.library_list_cd_play),
-                                tint = if (canPlay) accent else Color.White.copy(alpha = 0.25f),
+                                tint = if (canPlay || isSmp) accent else Color.White.copy(alpha = 0.25f),
                                 modifier = Modifier.size(26.dp)
                             )
                         }
@@ -269,6 +275,15 @@ fun LibraryList(
                                     )
                                 }
 
+                                if (isMp3) {
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(stringResource(R.string.library_list_convert_to_smp), color = Color.White)
+                                        },
+                                        onClick = { menuOpen = false; onConvertOneToSmp(uri) }
+                                    )
+                                }
+
                                 // ✅ uniquement pour les .json
                                 if (isJson) {
                                     DropdownMenuItem(
@@ -285,28 +300,32 @@ fun LibraryList(
                                     },
                                     onClick = { menuOpen = false; onAssignOne(uri) }
                                 )
-                                DropdownMenuItem(
-                                    text = {
-                                        Text(stringResource(R.string.library_list_move_to_folder), color = Color.White)
-                                    },
-                                    onClick = { menuOpen = false; onMoveOne(uri) }
-                                )
-                                if (canPlay) {
+                                if (!isSmp) {
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(stringResource(R.string.library_list_move_to_folder), color = Color.White)
+                                        },
+                                        onClick = { menuOpen = false; onMoveOne(uri) }
+                                    )
+                                }
+                                if (canPlay || isSmp) {
                                     DropdownMenuItem(
                                         text = { Text(stringResource(R.string.library_list_rename), color = Color.White) },
                                         onClick = { menuOpen = false; onRenameOne(entry) }
                                     )
                                 }
 
-                                DropdownMenuItem(
-                                    text = {
-                                        Text(
-                                            stringResource(R.string.library_list_delete_permanently),
-                                            color = Color(0xFFFF6464)
-                                        )
-                                    },
-                                    onClick = { menuOpen = false; onDeleteOne(uri) }
-                                )
+                                if (!isSmp) {
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                stringResource(R.string.library_list_delete_permanently),
+                                                color = Color(0xFFFF6464)
+                                            )
+                                        },
+                                        onClick = { menuOpen = false; onDeleteOne(uri) }
+                                    )
+                                }
                             }
                         }
                     }

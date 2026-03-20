@@ -94,6 +94,7 @@ class MainActivity : AppCompatActivity() {
         private const val DEFAULT_TRACK_GAIN_DB = -5
         private const val MIN_TRACK_DB = -12
         private const val MAX_TRACK_DB = 0
+        private const val SMP_PLAY_TRACE_TAG = "SMP_PLAY_TRACE"
         private val AUTO_RESTORE_BG_STARTED = AtomicBoolean(false)
         private val BACKUP_RESTORE_BG_STARTED = AtomicBoolean(false)
         private val DEFERRED_BOOTSTRAP_STARTED = AtomicBoolean(false)
@@ -372,6 +373,7 @@ class MainActivity : AppCompatActivity() {
                 var smpSongsById by remember { mutableStateOf<Map<String, com.patrick.lrcreader.smp.SongUnit>>(emptyMap()) }
                 var selectedSmpImportedSongDetail by remember { mutableStateOf<SmpImportedSongDetail?>(null) }
                 var pendingPlaylistTrackTarget by remember { mutableStateOf<String?>(null) }
+                var lastImportedSmpSongId by remember { mutableStateOf<String?>(null) }
                 val smpImporter = remember(ctx) { SmpImporter(ctx) }
                 val smpLibraryScanner = remember(ctx) { SmpLibraryScanner(ctx) }
                 var smpCacheRefreshTick by remember { mutableIntStateOf(0) }
@@ -422,6 +424,20 @@ class MainActivity : AppCompatActivity() {
                         cleanMime == "application/octet-stream"
                 }
 
+                suspend fun importSmpIntoApp(uri: Uri): com.patrick.lrcreader.smp.SongUnit? {
+                    val importedSong = withContext(Dispatchers.IO) {
+                        smpImporter.importSmp(uri)
+                    }
+                    if (importedSong != null) {
+                        withContext(Dispatchers.Main) {
+                            lastImportedSmpSongId = importedSong.id
+                            smpSongsById = smpSongsById + (importedSong.id to importedSong)
+                            smpCacheRefreshTick++
+                        }
+                    }
+                    return importedSong
+                }
+
                 val pickSmpFileLauncher = rememberLauncherForActivityResult(
                     contract = ActivityResultContracts.OpenDocument()
                 ) { uri ->
@@ -430,13 +446,22 @@ class MainActivity : AppCompatActivity() {
                         return@rememberLauncherForActivityResult
                     }
 
+                    runCatching {
+                        ctx.contentResolver.takePersistableUriPermission(
+                            uri,
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION
+                        )
+                    }.onFailure { error ->
+                        Log.w("SMP", "Permission persistante non obtenue pour $uri", error)
+                    }
+
                     val pickedName = displayNameOf(uri)
                     if (!pickedName.endsWith(".smp", ignoreCase = true)) {
                         Log.w("SMP", "Fichier sélectionné sans extension .smp: name=$pickedName uri=$uri")
                     }
 
-                    scope.launch(Dispatchers.IO) {
-                        val importedSong = smpImporter.importSmp(uri)
+                    scope.launch {
+                        val importedSong = importSmpIntoApp(uri)
                         val toastMessage = if (importedSong != null) {
                             Log.i(
                                 "SMP",
@@ -451,12 +476,7 @@ class MainActivity : AppCompatActivity() {
                             "Import SMP échoué"
                         }
 
-                        withContext(Dispatchers.Main) {
-                            if (importedSong != null) {
-                                smpCacheRefreshTick++
-                            }
-                            Toast.makeText(ctx, toastMessage, Toast.LENGTH_SHORT).show()
-                        }
+                        Toast.makeText(ctx, toastMessage, Toast.LENGTH_SHORT).show()
                     }
                 }
                 val pickPlaylistTrackLauncher = rememberLauncherForActivityResult(
@@ -1026,6 +1046,10 @@ class MainActivity : AppCompatActivity() {
                     val myToken = currentPlayToken + 1
                     currentPlayToken = myToken
                     trimAppliedForThisTrack = false
+                    Log.d(
+                        SMP_PLAY_TRACE_TAG,
+                        "PLAY_INTERNAL requestUri=$uriString playlist=$playlistName token=$myToken currentMedia=${exoPlayer.currentMediaItem?.localConfiguration?.uri}"
+                    )
 
                     val (loadedTrackGainDb, loadedTempo, loadedPitchSemi) = withContext(Dispatchers.IO) {
                         Triple(
@@ -1148,6 +1172,10 @@ class MainActivity : AppCompatActivity() {
                                     ?.uri
                                     ?.toString()
                                     ?: uriString
+                                Log.d(
+                                    SMP_PLAY_TRACE_TAG,
+                                    "PLAYER_ON_START requestedUri=$uriString activeUri=$activeUri playlist=$playlistName token=$myToken playWhenReady=${exoPlayer.playWhenReady} isPlaying=${exoPlayer.isPlaying} state=${exoPlayer.playbackState}"
+                                )
                                 LyricsPerf.mark(
                                     uriString,
                                     "player_on_start",
@@ -1204,6 +1232,10 @@ class MainActivity : AppCompatActivity() {
                             },
                             onError = {
                                 cancelTrimWatcher()
+                                val activeUri = exoPlayer.currentMediaItem
+                                    ?.localConfiguration
+                                    ?.uri
+                                    ?.toString()
                                 val nextArmed = PlaybackCoordinator.peekNextTrack() != null
                                 val durMs = runCatching { exoPlayer.duration }.getOrDefault(C.TIME_UNSET)
                                 val posMs = runCatching { exoPlayer.currentPosition }.getOrDefault(0L)
@@ -1212,6 +1244,10 @@ class MainActivity : AppCompatActivity() {
                                     durMs != C.TIME_UNSET &&
                                     posMs >= (durMs - 1500L).coerceAtLeast(0L)
                                 val treatAsEnded = nextArmed && nearEnd
+                                Log.d(
+                                    SMP_PLAY_TRACE_TAG,
+                                    "PLAYER_ON_ERROR requestedUri=$uriString activeUri=$activeUri playlist=$playlistName token=$myToken playWhenReady=${exoPlayer.playWhenReady} isPlaying=${exoPlayer.isPlaying} state=${exoPlayer.playbackState} pos=$posMs dur=$durMs nextArmed=$nextArmed treatAsEnded=$treatAsEnded"
+                                )
 
                                 if (BuildConfig.DEBUG) {
                                     if (treatAsEnded) {
@@ -1238,6 +1274,11 @@ class MainActivity : AppCompatActivity() {
                     }
 
                     if (result.isFailure) {
+                        Log.e(
+                            SMP_PLAY_TRACE_TAG,
+                            "PLAY_INTERNAL exception uri=$uriString playlist=$playlistName token=$myToken",
+                            result.exceptionOrNull()
+                        )
                         cancelTrimWatcher()
                         runCatching {
                             exoPlayer.stop()
@@ -1269,8 +1310,32 @@ class MainActivity : AppCompatActivity() {
                     playlistName: String?,
                     showToastOnFailure: Boolean = false
                 ): PlaybackRouter.Target.Audio? {
-                    val song = smpSongsById[songId]
+                    val cachedSong = smpSongsById[songId]
+                    Log.d(
+                        SMP_PLAY_TRACE_TAG,
+                        "RESOLVE_SMP start songId=$songId playlist=$playlistName cacheHit=${cachedSong != null}"
+                    )
+                    val song = cachedSong ?: run {
+                        val scannedSong = runCatching {
+                            smpLibraryScanner.findSongById(songId)
+                        }.getOrElse { error ->
+                            Log.w("SMP", "Lecture SMP impossible: scan échoué pour songId=$songId", error)
+                            null
+                        }
+                        if (scannedSong != null) {
+                            smpSongsById = smpSongsById + (scannedSong.id to scannedSong)
+                            Log.i(
+                                "SMP",
+                                "Lecture SMP: cache resynchronisé depuis le scanner songId=${scannedSong.id} title=${scannedSong.title}"
+                            )
+                        }
+                        scannedSong
+                    }
                     if (song == null) {
+                        Log.d(
+                            SMP_PLAY_TRACE_TAG,
+                            "RESOLVE_SMP miss songId=$songId playlist=$playlistName"
+                        )
                         Log.w("SMP", "Lecture SMP impossible: songId introuvable=$songId playlist=$playlistName")
                         if (showToastOnFailure) {
                             Toast.makeText(ctx, "Morceau SMP introuvable", Toast.LENGTH_SHORT).show()
@@ -1280,6 +1345,10 @@ class MainActivity : AppCompatActivity() {
 
                     val audioPath = song.audioPath
                     if (audioPath.isNullOrBlank()) {
+                        Log.d(
+                            SMP_PLAY_TRACE_TAG,
+                            "RESOLVE_SMP no_audio songId=${song.id} title=${song.title}"
+                        )
                         Log.w("SMP", "Lecture SMP impossible sans audio: songId=${song.id} title=${song.title}")
                         if (showToastOnFailure) {
                             Toast.makeText(ctx, "Ce SMP ne contient pas d'audio", Toast.LENGTH_SHORT).show()
@@ -1288,6 +1357,10 @@ class MainActivity : AppCompatActivity() {
                     }
 
                     val audioFile = File(audioPath)
+                    Log.d(
+                        SMP_PLAY_TRACE_TAG,
+                        "RESOLVE_SMP file songId=${song.id} audioPath=$audioPath exists=${audioFile.exists()} isFile=${audioFile.isFile} canRead=${audioFile.canRead()}"
+                    )
                     if (!audioFile.isFile) {
                         Log.w(
                             "SMP",
@@ -1300,6 +1373,10 @@ class MainActivity : AppCompatActivity() {
                     }
 
                     val resolvedUri = Uri.fromFile(audioFile).toString()
+                    Log.d(
+                        SMP_PLAY_TRACE_TAG,
+                        "RESOLVE_SMP ok songId=${song.id} resolvedUri=$resolvedUri playlist=$playlistName"
+                    )
                     runCatching {
                         TitleAliasesStore.setTitleForTrack(ctx, resolvedUri, song.title)
                     }.onFailure { error ->
@@ -1788,20 +1865,42 @@ class MainActivity : AppCompatActivity() {
                                         modifier = contentModifier,
                                         onPlaySong = { uri, playlistName, color ->
                                             stopChainPlayback()
+                                            Log.d(
+                                                SMP_PLAY_TRACE_TAG,
+                                                "PLAYLIST_TAP item=$uri playlist=$playlistName"
+                                            )
 
                                         when (val target = PlaybackRouter.resolve(uri, playlistName)) {
 
                                             is PlaybackRouter.Target.Prompter -> {
+                                                Log.d(
+                                                    SMP_PLAY_TRACE_TAG,
+                                                    "PLAYLIST_TARGET prompter id=${target.id} playlist=$playlistName"
+                                                )
                                                 textPrompterId = target.id
                                                 return@QuickPlaylistsScreen
                                             }
 
                                             is PlaybackRouter.Target.Audio,
                                             is PlaybackRouter.Target.Smp -> {
+                                                Log.d(
+                                                    SMP_PLAY_TRACE_TAG,
+                                                    "PLAYLIST_TARGET type=${target.javaClass.simpleName} value=$target"
+                                                )
                                                 val resolvedTarget = resolveAudioTarget(
                                                     target = target,
                                                     showToastOnFailure = true
-                                                ) ?: return@QuickPlaylistsScreen
+                                                ) ?: run {
+                                                    Log.d(
+                                                        SMP_PLAY_TRACE_TAG,
+                                                        "PLAYLIST_RESOLVED null item=$uri playlist=$playlistName target=$target"
+                                                    )
+                                                    return@QuickPlaylistsScreen
+                                                }
+                                                Log.d(
+                                                    SMP_PLAY_TRACE_TAG,
+                                                    "PLAYLIST_RESOLVED uri=${resolvedTarget.uri} playlist=${resolvedTarget.playlist}"
+                                                )
                                                 LyricsPerf.startOpen(
                                                     trackUriString = resolvedTarget.uri,
                                                     source = "quick_play_tap",
@@ -1831,6 +1930,10 @@ class MainActivity : AppCompatActivity() {
                                             }
 
                                             is PlaybackRouter.Target.Unknown -> {
+                                                Log.d(
+                                                    SMP_PLAY_TRACE_TAG,
+                                                    "PLAYLIST_TARGET unknown item=$uri playlist=$playlistName"
+                                                )
                                                 // rien
                                             }
                                         }
@@ -1884,14 +1987,47 @@ class MainActivity : AppCompatActivity() {
 
                                     is BottomTab.Library -> LibraryScreen(
                                         modifier = contentModifier,
+                                        smpRefreshVersion = smpCacheRefreshTick,
+                                        lastImportedSmpSongId = lastImportedSmpSongId,
+                                        onImportExternalSmp = {
+                                            pickSmpFileLauncher.launch(
+                                                arrayOf(
+                                                    "application/zip",
+                                                    "application/x-zip-compressed",
+                                                    "application/octet-stream",
+                                                    "*/*"
+                                                )
+                                            )
+                                        },
+                                        onImportGeneratedSmp = { uri ->
+                                            importSmpIntoApp(uri)
+                                        },
                                         onPlayFromLibrary = { uriString ->
+                                            Log.d(
+                                                SMP_PLAY_TRACE_TAG,
+                                                "LIBRARY_TAP item=$uriString"
+                                            )
                                             when (val target = PlaybackRouter.resolve(uriString, null)) {
                                                 is PlaybackRouter.Target.Audio,
                                                 is PlaybackRouter.Target.Smp -> {
+                                                    Log.d(
+                                                        SMP_PLAY_TRACE_TAG,
+                                                        "LIBRARY_TARGET type=${target.javaClass.simpleName} value=$target"
+                                                    )
                                                     val resolvedTarget = resolveAudioTarget(
                                                         target = target,
                                                         showToastOnFailure = true
-                                                    ) ?: return@LibraryScreen
+                                                    ) ?: run {
+                                                        Log.d(
+                                                            SMP_PLAY_TRACE_TAG,
+                                                            "LIBRARY_RESOLVED null item=$uriString target=$target"
+                                                        )
+                                                        return@LibraryScreen
+                                                    }
+                                                    Log.d(
+                                                        SMP_PLAY_TRACE_TAG,
+                                                        "LIBRARY_RESOLVED uri=${resolvedTarget.uri} playlist=${resolvedTarget.playlist}"
+                                                    )
                                                     stopChainPlayback()
                                                     LyricsPerf.startOpen(
                                                         trackUriString = resolvedTarget.uri,
@@ -1905,10 +2041,18 @@ class MainActivity : AppCompatActivity() {
                                                 }
 
                                                 is PlaybackRouter.Target.Prompter -> {
+                                                    Log.d(
+                                                        SMP_PLAY_TRACE_TAG,
+                                                        "LIBRARY_TARGET prompter id=${target.id}"
+                                                    )
                                                     textPrompterId = target.id
                                                 }
 
                                                 is PlaybackRouter.Target.Unknown -> {
+                                                    Log.d(
+                                                        SMP_PLAY_TRACE_TAG,
+                                                        "LIBRARY_TARGET unknown item=$uriString"
+                                                    )
                                                     // rien
                                                 }
                                             }

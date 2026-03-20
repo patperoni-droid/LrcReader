@@ -87,7 +87,7 @@ class SmpLibraryScanner(private val context: Context) {
         }
 
         return SongUnit(
-            id = config?.id ?: songDir.name,
+            id = songDir.name,
             title = meta?.title ?: config?.title ?: songDir.name,
             storageFolder = songDir.absolutePath,
             audioPath = audioFile?.absolutePath,
