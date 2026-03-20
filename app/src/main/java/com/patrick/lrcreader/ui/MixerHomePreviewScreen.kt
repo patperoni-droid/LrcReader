@@ -42,7 +42,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -62,7 +61,6 @@ import com.patrick.lrcreader.core.PlayerBusController
 import com.patrick.lrcreader.core.PlayerVolumePrefs
 import com.patrick.lrcreader.core.TunerEngine
 import com.patrick.lrcreader.core.TunerState
-import kotlinx.coroutines.launch
 import java.util.Locale
 
 /**
@@ -434,9 +432,6 @@ private fun MixerChannelColumn(
     useDecorativeMeter: Boolean = false,
     onLevelChange: (Float) -> Unit = {}
 ) {
-
-    val scope = rememberCoroutineScope()
-
     // IMPORTANT : lié à initialLevel pour pouvoir se resynchroniser
     var level by remember(initialLevel) { mutableFloatStateOf(initialLevel.coerceIn(0f, 1f)) }
     val infinite = rememberInfiniteTransition(label)
@@ -604,27 +599,20 @@ private fun MixerChannelColumn(
 
         Spacer(Modifier.height(12.dp))
 
-        // BOUTON (ICÔNE SEULE)
-        Card(
-            onClick = { scope.launch { onClick() } },
-            shape = RoundedCornerShape(12.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF2A2725)),
-            elevation = CardDefaults.cardElevation(4.dp),
+        // STOP rapide discret
+        IconButton(
+            onClick = onClick,
             modifier = Modifier
-                .fillMaxWidth()
-                .height(54.dp)
+                .size(38.dp)
+                .background(Color(0xFF2A2725), RoundedCornerShape(10.dp))
+                .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(10.dp))
         ) {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = faderColor,
-                    modifier = Modifier.size(28.dp)
-                )
-            }
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = faderColor,
+                modifier = Modifier.size(20.dp)
+            )
         }
     }
 }
