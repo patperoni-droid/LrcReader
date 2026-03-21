@@ -1032,101 +1032,122 @@ fun PlayerScreen(
                             fallbackName = "chords.lrc",
                             requireExisting = false
                         ) != null
-                        if (isSmpAccordsTrack) {
-                            val ioResult = withContext(Dispatchers.IO) {
-                                runCatching {
-                                    runAccordsSaveIo(
-                                        writeAccords = {
-                                            writeAccordsToSplByTrackUri(
-                                                context = context,
-                                                trackUriString = lockedTrackUri,
-                                                preferredLrcFileName = editingResolvedLrcFileName,
-                                                lines = lines.toList()
-                                            )
-                                        },
-                                        ensureLyricsTwin = { writtenName ->
-                                            val ensureResult = ensureLyricsFileExistsForTrack(
-                                                context = context,
-                                                trackUriString = lockedTrackUri,
-                                                preferredLrcFileName = writtenName
-                                            )
-                                            Log.d(
-                                                "LrcDebug",
-                                                "ACCORDS_ENSURE_LYRICS trackUri=$lockedTrackUri target=$writtenName result=$ensureResult"
-                                            )
-                                            ensureResult
-                                        }
-                                    )
-                                }.getOrElse {
-                                    com.patrick.lrcreader.core.AccordsIoResult(
-                                        success = false,
-                                        stage = "exception:${it::class.simpleName ?: "Unknown"}"
-                                    )
+                        val saveOutcome = withContext(Dispatchers.IO) {
+                            runCatching {
+                                val migration = if (isSmpAccordsTrack) {
+                                    null
+                                } else {
+                                    ensureSmpTrackForLyricsSave(lockedTrackUri)
                                 }
-                            }
-                            if (!ioResult.success) {
-                                Log.e(
-                                    "LrcDebug",
-                                    buildAccordsIoFailureLog(
-                                        action = "save",
-                                        trackUri = lockedTrackUri,
-                                        io = ioResult
-                                    )
-                                )
-                                buildAccordsIoFailureFeedback(
-                                    context = context,
-                                    actionLabel = sAccordsActionSave,
-                                    io = ioResult
-                                )?.let { showAccordsIoFailureToast(it) }
-                                return@persistLines false
-                            }
-
-                            val reloadedRaw = withContext(Dispatchers.IO) {
-                                readAccordsFromSplByTrackUri(
-                                    context = context,
-                                    trackUriString = lockedTrackUri,
-                                    preferredLrcFileName = editingResolvedLrcFileName
-                                )
-                            }
-                            if (reloadedRaw == null) {
-                                Log.e("LrcDebug", "ACCORDS_SAVE_RELOAD_FAILED trackUri=$lockedTrackUri")
-                                showAccordsIoFailureToast(
-                                    buildAccordsIoFailureFeedback(
-                                        action = "save",
+                                if (!isSmpAccordsTrack && migration == null) {
+                                    return@runCatching AccordsPersistOutcome(
+                                        trackUriString = lockedTrackUri,
+                                        migration = null,
                                         io = com.patrick.lrcreader.core.AccordsIoResult(
                                             success = false,
-                                            stage = "reloadAccords"
-                                        )
-                                    ) ?: sAccordsActionSave
-                                )
-                                return@persistLines false
-                            }
+                                            stage = "autoMigrate"
+                                        ),
+                                        reloadedText = null
+                                    )
+                                }
 
-                            val reloadedParsed = if (reloadedRaw.isBlank()) emptyList() else parseLrc(reloadedRaw)
-                            persistedChordLines = reloadedParsed
-                            persistedHasChordsSource = true
-                            parsedChordLines = reloadedParsed
-                            hasChordsSource = true
-                            if (selectedViewMode == LyricsViewMode.CHORDS) {
-                                recomputeCurrentIndexForActiveView()
+                                val targetTrackUri = migration?.trackUriString ?: lockedTrackUri
+                                val ioResult = runAccordsSaveIo(
+                                    writeAccords = {
+                                        writeAccordsToSplByTrackUri(
+                                            context = context,
+                                            trackUriString = targetTrackUri,
+                                            preferredLrcFileName = editingResolvedLrcFileName,
+                                            lines = lines.toList()
+                                        )
+                                    },
+                                    ensureLyricsTwin = { writtenName ->
+                                        val ensureResult = ensureLyricsFileExistsForTrack(
+                                            context = context,
+                                            trackUriString = targetTrackUri,
+                                            preferredLrcFileName = writtenName
+                                        )
+                                        Log.d(
+                                            "LrcDebug",
+                                            "ACCORDS_ENSURE_LYRICS trackUri=$targetTrackUri target=$writtenName result=$ensureResult"
+                                        )
+                                        ensureResult
+                                    }
+                                )
+                                if (!ioResult.success) {
+                                    return@runCatching AccordsPersistOutcome(
+                                        trackUriString = targetTrackUri,
+                                        migration = migration,
+                                        io = ioResult,
+                                        reloadedText = null
+                                    )
+                                }
+
+                                AccordsPersistOutcome(
+                                    trackUriString = targetTrackUri,
+                                    migration = migration,
+                                    io = ioResult,
+                                    reloadedText = readAccordsFromSplByTrackUri(
+                                        context = context,
+                                        trackUriString = targetTrackUri,
+                                        preferredLrcFileName = editingResolvedLrcFileName
+                                    )
+                                )
+                            }.getOrElse {
+                                AccordsPersistOutcome(
+                                    trackUriString = lockedTrackUri,
+                                    migration = null,
+                                    io = com.patrick.lrcreader.core.AccordsIoResult(
+                                        success = false,
+                                        stage = "exception:${it::class.simpleName ?: "Unknown"}"
+                                    ),
+                                    reloadedText = null
+                                )
                             }
-                            return@persistLines true
+                        }
+                        if (!saveOutcome.io.success) {
+                            Log.e(
+                                "LrcDebug",
+                                buildAccordsIoFailureLog(
+                                    action = "save",
+                                    trackUri = saveOutcome.trackUriString,
+                                    io = saveOutcome.io
+                                )
+                            )
+                            buildAccordsIoFailureFeedback(
+                                context = context,
+                                actionLabel = sAccordsActionSave,
+                                io = saveOutcome.io
+                            )?.let { showAccordsIoFailureToast(it) }
+                            return@persistLines false
                         }
 
-                        val enqueued = accordsWriteQueue.submit(
-                            AccordsWriteRequest(
-                                trackUriString = lockedTrackUri,
-                                preferredLrcFileName = editingResolvedLrcFileName,
-                                lines = lines.toList()
+                        val reloadedRaw = saveOutcome.reloadedText
+                        if (reloadedRaw == null) {
+                            Log.e("LrcDebug", "ACCORDS_SAVE_RELOAD_FAILED trackUri=${saveOutcome.trackUriString}")
+                            showAccordsIoFailureToast(
+                                buildAccordsIoFailureFeedback(
+                                    action = "save",
+                                    io = com.patrick.lrcreader.core.AccordsIoResult(
+                                        success = false,
+                                        stage = "reloadAccords"
+                                    )
+                                ) ?: sAccordsActionSave
                             )
-                        )
-                        if (!enqueued) {
-                            Log.w(
-                                "LrcDebug",
-                                "ACCORDS_SAVE_DROPPED queueClosed trackUri=$lockedTrackUri"
-                            )
-                            showAccordsIoFailureToast(sAccordsSaveQueueClosed)
                             return@persistLines false
+                        }
+
+                        val reloadedParsed = if (reloadedRaw.isBlank()) emptyList() else parseLrc(reloadedRaw)
+                        persistedChordLines = reloadedParsed
+                        persistedHasChordsSource = true
+                        parsedChordLines = reloadedParsed
+                        hasChordsSource = true
+                        saveOutcome.migration?.let {
+                            editingTrackUri = it.trackUriString
+                            onTrackPromotedToSmp(it)
+                        }
+                        if (selectedViewMode == LyricsViewMode.CHORDS) {
+                            recomputeCurrentIndexForActiveView()
                         }
                         return@persistLines true
                     }
@@ -1950,6 +1971,13 @@ private data class LyricsPersistOutcome(
     val trackUriString: String,
     val migration: SmpAutoMigrationResult?,
     val resolvedFileName: String?,
+    val reloadedText: String?
+)
+
+private data class AccordsPersistOutcome(
+    val trackUriString: String,
+    val migration: SmpAutoMigrationResult?,
+    val io: com.patrick.lrcreader.core.AccordsIoResult,
     val reloadedText: String?
 )
 
