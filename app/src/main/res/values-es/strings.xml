@@ -160,6 +160,8 @@
     <string name="library_list_move_to_folder">Mover a una carpeta</string>
     <string name="library_list_rename">Renombrar</string>
     <string name="library_list_delete_permanently">Eliminar permanentemente</string>
+    <string name="library_smp_folder">Backing Tracks</string>
+    <string name="library_legacy_backing_tracks_folder">Backing Tracks (legacy)</string>
 
     <string name="library_delete_backing_track_title">¿Eliminar esta pista?</string>
     <string name="library_delete_audio_question">Solo pista</string>
