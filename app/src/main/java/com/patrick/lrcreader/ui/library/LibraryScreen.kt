@@ -31,6 +31,7 @@ import com.patrick.lrcreader.core.BackupFolderPrefsInternal
 import com.patrick.lrcreader.core.BackupFolderPrefsSaf
 import com.patrick.lrcreader.core.DjFolderPrefs
 import com.patrick.lrcreader.core.ImportAudioManager
+import com.patrick.lrcreader.core.LegacyLibraryVisibilityPrefs
 import com.patrick.lrcreader.core.LibraryIndexCache
 import com.patrick.lrcreader.core.PlaylistRepository
 import com.patrick.lrcreader.core.TextSongRepository
@@ -61,10 +62,38 @@ private val SMP_FOLDER_URI: Uri = Uri.parse("spl-smp://folder")
 private fun isPrompterFolderUri(uri: Uri?): Boolean = uri?.scheme == "spl-prompter"
 private fun isSmpFolderUri(uri: Uri?): Boolean = uri?.scheme == "spl-smp"
 
+private val HIDDEN_LEGACY_FOLDER_NAMES = setOf(
+    "backingtracks",
+    "accords",
+    "audio",
+    "lyrics",
+    "midi",
+    "videos",
+    "export",
+    "exports",
+    "import",
+    "imports"
+)
+
 private fun extractPrompterId(uri: Uri): String? {
     val raw = uri.toString()
     if (!raw.startsWith("prompter://")) return null
     return raw.removePrefix("prompter://").ifBlank { null }
+}
+
+private fun shouldHideLegacyFolderName(name: String): Boolean {
+    return name.trim().lowercase() in HIDDEN_LEGACY_FOLDER_NAMES
+}
+
+private fun resolveFolderName(context: android.content.Context, uri: Uri): String? {
+    return when (uri.scheme) {
+        "file" -> File(uri.path ?: "").name.ifBlank { null }
+        else -> {
+            (DocumentFile.fromTreeUri(context, uri) ?: DocumentFile.fromSingleUri(context, uri))
+                ?.name
+                ?.takeIf { it.isNotBlank() }
+        }
+    }
 }
 
 @Composable
@@ -125,6 +154,8 @@ fun LibraryScreen(
     var lrcEditorText by remember { mutableStateOf("") }
 
     val storageMode = StorageModePrefs.get(context)
+    val legacyVisibilityVersion = LegacyLibraryVisibilityPrefs.version.intValue
+    val showOldWorldInLibrary = LegacyLibraryVisibilityPrefs.isOldWorldVisible(context)
 
     val backend: LibraryBackend = remember(storageMode) {
         when (storageMode) {
@@ -187,24 +218,35 @@ fun LibraryScreen(
             return buildSmpEntries()
         }
 
+        val visibleSource = if (showOldWorldInLibrary) {
+            source
+        } else {
+            source.filterNot { entry ->
+                entry.isDirectory &&
+                    !isPrompterFolderUri(entry.uri) &&
+                    !isSmpFolderUri(entry.uri) &&
+                    shouldHideLegacyFolderName(entry.name)
+            }
+        }
+
         val root = backend.getRootUri()
         val isRootFolder = root != null && folderUri.toString() == root.toString()
-        if (!isRootFolder) return source
+        if (!isRootFolder) return visibleSource
 
         val extraEntries = mutableListOf<LibraryEntry>()
-        val alreadyHasPrompter = source.any { it.isDirectory && isPrompterFolderUri(it.uri) }
+        val alreadyHasPrompter = visibleSource.any { it.isDirectory && isPrompterFolderUri(it.uri) }
         if (!alreadyHasPrompter) {
             extraEntries += LibraryEntry(PROMPTER_FOLDER_URI, sPrompterFolder, isDirectory = true)
         }
 
-        val alreadyHasSmp = source.any { it.isDirectory && isSmpFolderUri(it.uri) }
+        val alreadyHasSmp = visibleSource.any { it.isDirectory && isSmpFolderUri(it.uri) }
         if (!alreadyHasSmp && buildSmpEntries().isNotEmpty()) {
             extraEntries += LibraryEntry(SMP_FOLDER_URI, sSmpFolder, isDirectory = true)
         }
 
-        if (extraEntries.isEmpty()) return source
+        if (extraEntries.isEmpty()) return visibleSource
 
-        return (source + extraEntries)
+        return (visibleSource + extraEntries)
             .sortedWith(
                 compareByDescending<LibraryEntry> { it.isDirectory }
                     .thenBy { it.name.lowercase() }
@@ -263,6 +305,24 @@ fun LibraryScreen(
         if (!shouldRefreshCurrentFolder) return@LaunchedEffect
         LibraryFolderCache.clear()
         entries = buildEntriesForFolder(currentFolder, useCache = false)
+    }
+
+    LaunchedEffect(legacyVisibilityVersion, currentFolderUri, storageMode) {
+        LibraryFolderCache.clear()
+        val root = backend.getRootUri() ?: return@LaunchedEffect
+        val currentFolder = currentFolderUri ?: root
+
+        val shouldRedirectToRoot = !showOldWorldInLibrary &&
+            !isPrompterFolderUri(currentFolder) &&
+            !isSmpFolderUri(currentFolder) &&
+            resolveFolderName(context, currentFolder)
+                ?.let(::shouldHideLegacyFolderName) == true
+
+        val folderToShow = if (shouldRedirectToRoot) root else currentFolder
+        if (currentFolderUri?.toString() != folderToShow.toString()) {
+            currentFolderUri = folderToShow
+        }
+        entries = buildEntriesForFolder(folderToShow, useCache = false)
     }
 
     fun removePrompterFromAllPlaylists(uriString: String) {

@@ -42,6 +42,7 @@ import androidx.core.os.LocaleListCompat
 import com.patrick.lrcreader.core.AppLanguagePrefs
 import com.patrick.lrcreader.core.AutoReturnPrefs
 import com.patrick.lrcreader.core.BackupManager
+import com.patrick.lrcreader.core.LegacyLibraryVisibilityPrefs
 import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.smp.SmpAutoMigrationResult
 
@@ -127,6 +128,9 @@ private fun MoreRootScreen(
     // État du switch "retour auto"
     var autoReturnEnabled by remember {
         mutableStateOf(AutoReturnPrefs.isEnabled(context))
+    }
+    var showOldWorldInLibrary by remember {
+        mutableStateOf(LegacyLibraryVisibilityPrefs.isOldWorldVisible(context))
     }
 
     val currentLanguageLabel = when (selectedLanguageTag) {
@@ -247,6 +251,15 @@ private fun MoreRootScreen(
                         onCheckedChange = { enabled ->
                             autoReturnEnabled = enabled
                             AutoReturnPrefs.setEnabled(context, enabled)
+                        }
+                    )
+
+                    SwitchSettingItem(
+                        label = stringResource(R.string.more_show_old_world_library),
+                        checked = showOldWorldInLibrary,
+                        onCheckedChange = { enabled ->
+                            showOldWorldInLibrary = enabled
+                            LegacyLibraryVisibilityPrefs.setOldWorldVisible(context, enabled)
                         }
                     )
 
