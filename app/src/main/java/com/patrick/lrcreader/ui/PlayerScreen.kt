@@ -91,6 +91,7 @@ import com.patrick.lrcreader.core.resolveLyricsViewMode
 import com.patrick.lrcreader.core.lyrics.LyricsCacheEntry
 import com.patrick.lrcreader.smp.SmpConfig
 import com.patrick.lrcreader.smp.SmpAnnotationsStore
+import com.patrick.lrcreader.smp.SmpAutoMigrationResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -120,6 +121,8 @@ fun PlayerScreen(
     onTempoChange: (Float) -> Unit,
     pitchSemi: Int,
     onPitchSemiChange: (Int) -> Unit,
+    ensureSmpTrackForLyricsSave: suspend (String) -> SmpAutoMigrationResult? = { null },
+    onTrackPromotedToSmp: (SmpAutoMigrationResult) -> Unit = {},
     onRequestShowPlaylist: () -> Unit,
     getPositionMs: () -> Long,
     getDurationMs: () -> Long,
@@ -1131,6 +1134,13 @@ fun PlayerScreen(
                     currentTrackUri?.let { trackUri ->
                         val preferredAtSave = resolvedLyricsLrcFileName
                         val saveStartMs = android.os.SystemClock.elapsedRealtime()
+                        val isAlreadySmpTrack = resolveSmpSongUnitTextTarget(
+                            context = context,
+                            trackUriString = trackUri,
+                            transportNameSelector = { null },
+                            fallbackName = "lyrics.lrc",
+                            requireExisting = false
+                        ) != null
                         LyricsMemoryCache.invalidate(trackUri)
                         Log.d(
                             "LrcDebug",
@@ -1138,9 +1148,18 @@ fun PlayerScreen(
                         )
                         val saveOutcome = withContext(Dispatchers.IO) {
                             runCatching {
+                                val migration = if (isAlreadySmpTrack) {
+                                    null
+                                } else {
+                                    ensureSmpTrackForLyricsSave(trackUri)
+                                }
+                                val targetTrackUri = migration?.trackUriString ?: trackUri
+                                if (targetTrackUri != trackUri) {
+                                    LyricsMemoryCache.invalidate(targetTrackUri)
+                                }
                                 val saved = LrcStorage.saveForTrack(
                                     context = context,
-                                    trackUriString = trackUri,
+                                    trackUriString = targetTrackUri,
                                     lines = lines
                                 )
                                 if (!saved) {
@@ -1149,24 +1168,26 @@ fun PlayerScreen(
 
                                 val resolvedFileName = LrcStorage.resolveOriginForTrack(
                                     context = context,
-                                    trackUriString = trackUri
+                                    trackUriString = targetTrackUri
                                 )?.fileName ?: resolveExactLrcFileNameForTrack(
                                     context = context,
-                                    trackUriString = trackUri,
+                                    trackUriString = targetTrackUri,
                                     preferredLrcFileName = preferredAtSave
                                 )
 
                                 if (!resolvedFileName.isNullOrBlank()) {
                                     ensureAccordsFileExistsForTrack(
                                         context = context,
-                                        trackUriString = trackUri,
+                                        trackUriString = targetTrackUri,
                                         preferredLrcFileName = resolvedFileName
                                     )
                                 }
 
                                 LyricsPersistOutcome(
+                                    trackUriString = targetTrackUri,
+                                    migration = migration,
                                     resolvedFileName = resolvedFileName,
-                                    reloadedText = LrcStorage.loadForTrack(context, trackUri)
+                                    reloadedText = LrcStorage.loadForTrack(context, targetTrackUri)
                                 )
                             }.onFailure { error ->
                                 Log.e(
@@ -1182,7 +1203,12 @@ fun PlayerScreen(
                             return@persistLines false
                         }
 
-                        if (!saveOutcome.resolvedFileName.isNullOrBlank() && latestCurrentTrackUri == trackUri) {
+                        saveOutcome.migration?.let { onTrackPromotedToSmp(it) }
+
+                        if (
+                            !saveOutcome.resolvedFileName.isNullOrBlank() &&
+                            (latestCurrentTrackUri == trackUri || latestCurrentTrackUri == saveOutcome.trackUriString)
+                        ) {
                             updateResolvedLyricsFileName(
                                 saveOutcome.resolvedFileName,
                                 "source=LYRICS_SAVE"
@@ -1192,7 +1218,7 @@ fun PlayerScreen(
                         val elapsedMs = android.os.SystemClock.elapsedRealtime() - saveStartMs
                         Log.d(
                             "LrcDebug",
-                            "LYRICS_SAVE_CONFIRMED end trackUri=$trackUri durationMs=$elapsedMs resolved=${saveOutcome.resolvedFileName}"
+                            "LYRICS_SAVE_CONFIRMED end trackUri=${saveOutcome.trackUriString} originalTrackUri=$trackUri durationMs=$elapsedMs resolved=${saveOutcome.resolvedFileName} migrated=${saveOutcome.migration != null}"
                         )
                     }
                     true
@@ -1422,13 +1448,9 @@ fun PlayerScreen(
                             onOpenEditor = {
                                 editingTargetMode = selectedViewMode
                                 editingTrackUri = currentTrackUri
-                                editingResolvedLrcFileName = currentTrackUri?.let { trackUri ->
-                                    resolveExactLrcFileNameForTrack(
-                                        context = context,
-                                        trackUriString = trackUri,
-                                        preferredLrcFileName = resolvedLyricsLrcFileName
-                                    )
-                                }
+                                // Do not resolve the exact SAF lyrics file synchronously here:
+                                // opening the editor must stay on the UI thread and fast.
+                                editingResolvedLrcFileName = resolvedLyricsLrcFileName
                                 val sourceLines = if (editingTargetMode == LyricsViewMode.CHORDS) {
                                     parsedChordLines
                                 } else {
@@ -1925,6 +1947,8 @@ private data class SmpSongUnitTextTarget(
 )
 
 private data class LyricsPersistOutcome(
+    val trackUriString: String,
+    val migration: SmpAutoMigrationResult?,
     val resolvedFileName: String?,
     val reloadedText: String?
 )
