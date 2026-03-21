@@ -72,6 +72,7 @@ object TrackTempoPrefs {
                 startMs = currentConfig.playback?.trimStartMs,
                 endMs = currentConfig.playback?.trimEndMs,
                 tempo = tempo,
+                pitchSemi = currentConfig.playback?.pitchSemi,
                 volumeDb = currentConfig.playback?.volumeDb
             )
             val nextConfig = currentConfig.copy(playback = nextPlayback)

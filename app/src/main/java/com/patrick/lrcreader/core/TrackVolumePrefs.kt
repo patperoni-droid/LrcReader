@@ -69,6 +69,8 @@ object TrackVolumePrefs {
             val nextPlayback = SmpConfig.PlaybackConfig.fromStoredValues(
                 startMs = currentConfig.playback?.trimStartMs,
                 endMs = currentConfig.playback?.trimEndMs,
+                tempo = currentConfig.playback?.tempo,
+                pitchSemi = currentConfig.playback?.pitchSemi,
                 volumeDb = db
             )
             val nextConfig = currentConfig.copy(playback = nextPlayback)
