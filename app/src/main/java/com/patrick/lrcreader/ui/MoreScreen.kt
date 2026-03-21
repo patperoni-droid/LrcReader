@@ -43,6 +43,7 @@ import com.patrick.lrcreader.core.AppLanguagePrefs
 import com.patrick.lrcreader.core.AutoReturnPrefs
 import com.patrick.lrcreader.core.BackupManager
 import com.patrick.lrcreader.exo.R
+import com.patrick.lrcreader.smp.SmpAutoMigrationResult
 
 /* ─────────────────────────────
    Écran "Plus" (Paramètres)
@@ -52,7 +53,8 @@ fun MoreScreen(
     modifier: Modifier = Modifier,
     context: Context,
     onAfterImport: (BackupManager.LastPlayed?) -> Unit = {},
-    onOpenTuner: () -> Unit = {}     // callback pour l'accordeur
+    onOpenTuner: () -> Unit = {},     // callback pour l'accordeur
+    onWaveformTrackPromotedToSmp: (SmpAutoMigrationResult) -> Unit = {}
 ) {
     var current by remember { mutableStateOf(MoreSection.Root) }
     fun navigate(route: String) {
@@ -87,7 +89,8 @@ fun MoreScreen(
 
         MoreSection.WaveformPreview -> WaveformPreviewScreen(
             modifier = modifier,
-            onBack = { navigate("root") }
+            onBack = { navigate("root") },
+            onTrackPromotedToSmp = onWaveformTrackPromotedToSmp
         )
     }
 }
