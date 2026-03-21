@@ -29,6 +29,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import com.patrick.lrcreader.core.BackupFolderPrefs
 import com.patrick.lrcreader.core.BackupFolderPrefsInternal
 import com.patrick.lrcreader.core.BackupFolderPrefsSaf
+import com.patrick.lrcreader.core.BackupManager
 import com.patrick.lrcreader.core.DjFolderPrefs
 import com.patrick.lrcreader.core.ImportAudioManager
 import com.patrick.lrcreader.core.LegacyLibraryVisibilityPrefs
@@ -91,6 +92,11 @@ private fun isLegacyBackingTracksFolderName(name: String): Boolean {
         normalized.equals("BackingTrack", ignoreCase = true)
 }
 
+private fun isBackupFolderName(name: String): Boolean {
+    val normalized = name.trim().lowercase()
+    return normalized == "backup" || normalized == "backups"
+}
+
 private fun resolveFolderName(context: android.content.Context, uri: Uri): String? {
     return when (uri.scheme) {
         "file" -> File(uri.path ?: "").name.ifBlank { null }
@@ -108,6 +114,7 @@ fun LibraryScreen(
     reselectRootSignal: Int = 0,
     smpRefreshVersion: Int = 0,
     lastImportedSmpSongId: String? = null,
+    onAfterBackupImport: () -> Unit = {},
     onImportExternalSmp: () -> Unit,
     onImportGeneratedSmp: suspend (Uri) -> com.patrick.lrcreader.smp.SongUnit?,
     onPlayFromLibrary: (String) -> Unit
@@ -137,6 +144,11 @@ fun LibraryScreen(
     val sSearch = stringResource(R.string.common_search_placeholder)
     val sNoFolderHint = stringResource(R.string.library_no_folder_hint)
     val sNoFolderSelected = stringResource(R.string.library_no_folder_selected)
+    val sBackupImportAction = stringResource(R.string.library_list_import_backup)
+    val sBackupImporting = stringResource(R.string.backup_import_in_progress)
+    val sBackupImportSuccess = stringResource(R.string.backup_import_success)
+    val sBackupImportEmptyUnreadable = stringResource(R.string.backup_import_empty_unreadable)
+    val sBackupUnknownError = stringResource(R.string.backup_unknown_error)
     val sDjExcludedReason = stringResource(R.string.library_dj_excluded_reason)
     val sDeleteBackingTrackTitle = stringResource(R.string.library_delete_backing_track_title)
     val sDeleteFileTitle = stringResource(R.string.library_delete_file_title)
@@ -349,6 +361,8 @@ fun LibraryScreen(
 
     // dialogs state
     var showAssignDialog by remember { mutableStateOf(false) }
+    var pendingBackupImportUri by remember { mutableStateOf<Uri?>(null) }
+    var backupImportInProgress by remember { mutableStateOf(false) }
 
     // ✅ delete planifiée (audio + associés potentiels)
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
@@ -425,6 +439,12 @@ fun LibraryScreen(
                 .filter { it.indexedItem.id in filteredIds }
                 .map { it.entry }
         }
+    }
+
+    val canImportBackupJsonFromCurrentFolder = remember(context, currentFolderUri) {
+        currentFolderUri
+            ?.let { resolveFolderName(context, it) }
+            ?.let(::isBackupFolderName) == true
     }
     LaunchedEffect(searchQuery, globalAudioEntries.size, filteredEntries.size, currentFolderUri) {
         if (BuildConfig.DEBUG) {
@@ -600,6 +620,51 @@ fun LibraryScreen(
             context.getString(R.string.library_delete_partial_failure, failed, total),
             Toast.LENGTH_LONG
         ).show()
+    }
+
+    fun resolveEntryDisplayName(uri: Uri): String {
+        return runCatching {
+            DocumentFile.fromSingleUri(context, uri)?.name
+                ?: DocumentFile.fromTreeUri(context, uri)?.name
+                ?: uri.lastPathSegment
+        }.getOrNull()?.takeIf { it.isNotBlank() } ?: "backup.json"
+    }
+
+    suspend fun importBackupJson(uri: Uri) {
+        val fileLabel = resolveEntryDisplayName(uri)
+        backupImportInProgress = true
+        startLoading(sBackupImporting, determinate = false)
+        try {
+            val json = withContext(Dispatchers.IO) {
+                context.contentResolver.openInputStream(uri)
+                    ?.use { input -> input.readBytes().toString(Charsets.UTF_8) }
+            }
+
+            if (json.isNullOrBlank()) {
+                Toast.makeText(context, sBackupImportEmptyUnreadable, Toast.LENGTH_SHORT).show()
+                return
+            }
+
+            withContext(Dispatchers.IO) {
+                BackupManager.importState(context, json)
+                LibraryIndexCache.clear(context)
+            }
+            onAfterBackupImport()
+            Toast.makeText(context, sBackupImportSuccess, Toast.LENGTH_SHORT).show()
+            Log.i("BackupImport", "Import réussi depuis bibliothèque: file=$fileLabel uri=$uri")
+        } catch (error: Exception) {
+            val detail = error.message ?: sBackupUnknownError
+            Toast.makeText(
+                context,
+                context.getString(R.string.backup_import_failed, detail),
+                Toast.LENGTH_LONG
+            ).show()
+            Log.e("BackupImport", "Import échoué depuis bibliothèque: file=$fileLabel uri=$uri", error)
+        } finally {
+            backupImportInProgress = false
+            pendingBackupImportUri = null
+            stopLoadingNice()
+        }
     }
 
     // ---------- SAF launchers ----------
@@ -1062,6 +1127,7 @@ fun LibraryScreen(
                             rowBorder = rowBorder,
                             accent = accent,
                             bottomPadding = if (selectedSongs.isNotEmpty()) bottomBarHeight else 0.dp,
+                            canImportBackupJson = canImportBackupJsonFromCurrentFolder,
                             selectedSongs = selectedSongs,
 
                             onToggleSelect = { uri ->
@@ -1088,8 +1154,7 @@ fun LibraryScreen(
                             },
 
                             onImportBackupJson = { uri ->
-                                Log.d("BackupImport", "Import demandé pour $uri")
-                                // TODO: recâbler ton vrai import
+                                pendingBackupImportUri = uri
                             },
 
                             onOpenLrcEditor = { lrcUri ->
@@ -1289,6 +1354,45 @@ fun LibraryScreen(
                     selectedSongs = emptySet()
                 }
             )
+            if (pendingBackupImportUri != null) {
+                val importUri = pendingBackupImportUri!!
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = {
+                        if (backupImportInProgress) return@AlertDialog
+                        pendingBackupImportUri = null
+                    },
+                    title = {
+                        androidx.compose.material3.Text(sBackupImportAction)
+                    },
+                    text = {
+                        androidx.compose.material3.Text(resolveEntryDisplayName(importUri))
+                    },
+                    confirmButton = {
+                        androidx.compose.material3.TextButton(
+                            enabled = !backupImportInProgress,
+                            onClick = {
+                                if (backupImportInProgress) return@TextButton
+                                scope.launch {
+                                    importBackupJson(importUri)
+                                }
+                            }
+                        ) {
+                            androidx.compose.material3.Text(sBackupImportAction)
+                        }
+                    },
+                    dismissButton = {
+                        androidx.compose.material3.TextButton(
+                            enabled = !backupImportInProgress,
+                            onClick = {
+                                if (backupImportInProgress) return@TextButton
+                                pendingBackupImportUri = null
+                            }
+                        ) {
+                            androidx.compose.material3.Text(stringResource(R.string.common_cancel))
+                        }
+                    }
+                )
+            }
             // ✅ Nouveau dialog suppression : audio seul OU audio + fichiers associes
             if (showDeleteConfirmDialog && pendingDeletePlan != null) {
                 val deletePlan = pendingDeletePlan!!

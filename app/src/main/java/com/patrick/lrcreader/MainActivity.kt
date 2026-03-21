@@ -2092,6 +2092,7 @@ class MainActivity : AppCompatActivity() {
                                         reselectRootSignal = libraryTabReselectSignal,
                                         smpRefreshVersion = smpCacheRefreshTick,
                                         lastImportedSmpSongId = lastImportedSmpSongId,
+                                        onAfterBackupImport = { refreshKey++ },
                                         onImportExternalSmp = {
                                             pickSmpFileLauncher.launch(
                                                 arrayOf(

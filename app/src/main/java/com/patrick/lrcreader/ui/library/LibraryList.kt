@@ -56,6 +56,7 @@ fun LibraryList(
     rowBorder: Color,
     accent: Color,
     bottomPadding: Dp,
+    canImportBackupJson: Boolean,
     selectedSongs: Set<Uri>,
     onToggleSelect: (Uri) -> Unit,
     onOpenFolder: (LibraryEntry) -> Unit,
@@ -199,6 +200,7 @@ fun LibraryList(
                             .clickable {
                                 if (selectionMode) onToggleSelect(uri)
                                 else if (canOpenPlayer) onOpenPlayer(uri)
+                                else if (canImportBackupJson && isJson) onImportBackupJson(uri)
                                 else if (isLrc) onOpenLrcEditor(uri)
                             },
                         verticalAlignment = Alignment.CenterVertically
@@ -309,7 +311,7 @@ fun LibraryList(
                                 }
 
                                 // ✅ uniquement pour les .json
-                                if (isJson) {
+                                if (isJson && canImportBackupJson) {
                                     DropdownMenuItem(
                                         text = {
                                             Text(stringResource(R.string.library_list_import_backup), color = Color.White)
