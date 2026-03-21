@@ -174,14 +174,49 @@ fun PlayerScreen(
         }
     }
 
+    suspend fun persistLiveNotesWithAutoMigration(
+        trackUriString: String?,
+        notes: List<LiveNote>
+    ) {
+        if (trackUriString.isNullOrBlank()) {
+            return
+        }
+
+        val isAlreadySmpTrack = resolveSmpAnnotationsTarget(
+            context = context,
+            trackUriString = trackUriString,
+            requireExisting = false
+        ) != null
+        val migration = if (isAlreadySmpTrack) {
+            null
+        } else {
+            ensureSmpTrackForLyricsSave(trackUriString)
+        }
+        if (!isAlreadySmpTrack && migration == null) {
+            Log.w("LrcDebug", "ANNOTATIONS_SAVE_BLOCKED autoMigrate trackUri=$trackUriString")
+            return
+        }
+
+        val targetTrackUri = migration?.trackUriString ?: trackUriString
+        val saved = persistSmpLiveNotesForTrack(
+            context = context,
+            trackUriString = targetTrackUri,
+            notes = notes
+        )
+        if (!saved) {
+            return
+        }
+
+        migration?.let { onTrackPromotedToSmp(it) }
+    }
+
     fun removeLiveNoteAndPersist(note: LiveNote) {
         LiveNoteManager.remove(note)
         activeLiveNote = null
         val liveNotesSnapshot = LiveNoteManager.snapshot()
         val trackUriForPersistence = currentTrackUri
         scope.launch {
-            persistSmpLiveNotesForTrack(
-                context = context,
+            persistLiveNotesWithAutoMigration(
                 trackUriString = trackUriForPersistence,
                 notes = liveNotesSnapshot
             )
@@ -1794,8 +1829,7 @@ fun PlayerScreen(
                         activeLiveNote = note
                         val liveNotesSnapshot = LiveNoteManager.snapshot()
                         scope.launch {
-                            persistSmpLiveNotesForTrack(
-                                context = context,
+                            persistLiveNotesWithAutoMigration(
                                 trackUriString = trackUriForPersistence,
                                 notes = liveNotesSnapshot
                             )
@@ -1997,9 +2031,9 @@ private suspend fun persistSmpLiveNotesForTrack(
     context: android.content.Context,
     trackUriString: String?,
     notes: List<LiveNote>
-) {
+): Boolean {
     if (trackUriString.isNullOrBlank()) {
-        return
+        return false
     }
 
     val saved = withContext(Dispatchers.IO) {
@@ -2015,6 +2049,7 @@ private suspend fun persistSmpLiveNotesForTrack(
     if (saved == false) {
         Log.w("LrcDebug", "ANNOTATIONS_SAVE_FAILED trackUri=$trackUriString")
     }
+    return saved == true
 }
 
 private fun resolveSmpAnnotationsTarget(
