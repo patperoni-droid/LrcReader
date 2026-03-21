@@ -5,6 +5,7 @@ import android.net.Uri
 import android.util.Log
 import com.patrick.lrcreader.core.EditPrefs
 import com.patrick.lrcreader.core.EditSoundPrefs
+import com.patrick.lrcreader.core.TrackPitchPrefs
 import com.patrick.lrcreader.core.TrackTempoPrefs
 import com.patrick.lrcreader.core.TrackVolumePrefs
 import org.json.JSONObject
@@ -71,6 +72,7 @@ data class SmpConfig(
         val trimStartMs: Long?,
         val trimEndMs: Long?,
         val tempo: Float? = null,
+        val pitchSemi: Int? = null,
         val volumeDb: Int? = null
     ) {
         companion object {
@@ -78,6 +80,7 @@ data class SmpConfig(
                 startMs: Long?,
                 endMs: Long?,
                 tempo: Float? = null,
+                pitchSemi: Int? = null,
                 volumeDb: Int? = null
             ): PlaybackConfig? {
                 val trimStartMs = startMs?.takeIf { it > 0L }
@@ -85,14 +88,18 @@ data class SmpConfig(
                 val playbackTempo = tempo
                     ?.coerceIn(0.5f, 2.0f)
                     ?.takeIf { kotlin.math.abs(it - 1f) > 0.0005f }
+                val playbackPitchSemi = pitchSemi
+                    ?.coerceIn(-6, 6)
+                    ?.takeIf { it != 0 }
                 val playbackVolumeDb = volumeDb
-                if (trimStartMs == null && trimEndMs == null && playbackTempo == null && playbackVolumeDb == null) {
+                if (trimStartMs == null && trimEndMs == null && playbackTempo == null && playbackPitchSemi == null && playbackVolumeDb == null) {
                     return null
                 }
                 return PlaybackConfig(
                     trimStartMs = trimStartMs,
                     trimEndMs = trimEndMs,
                     tempo = playbackTempo,
+                    pitchSemi = playbackPitchSemi,
                     volumeDb = playbackVolumeDb
                 )
             }
@@ -106,7 +113,7 @@ data class SmpConfig(
         }
 
         fun toJsonOrNull(): JSONObject? {
-            if (trimStartMs == null && trimEndMs == null && tempo == null && volumeDb == null) {
+            if (trimStartMs == null && trimEndMs == null && tempo == null && pitchSemi == null && volumeDb == null) {
                 return null
             }
 
@@ -114,6 +121,7 @@ data class SmpConfig(
                 trimStartMs?.let { put("trimStartMs", it) }
                 trimEndMs?.let { put("trimEndMs", it) }
                 tempo?.let { put("tempo", it.toDouble()) }
+                pitchSemi?.let { put("pitchSemi", it) }
                 volumeDb?.let { put("volumeDb", it) }
             }
         }
@@ -177,11 +185,13 @@ data class SmpConfig(
             val trimStartMs = playbackJson.optNonNegativeLongOrNull("trimStartMs")
             val trimEndMs = playbackJson.optNonNegativeLongOrNull("trimEndMs")
             val tempo = playbackJson.optFloatOrNull("tempo")
+            val pitchSemi = playbackJson.optIntOrNull("pitchSemi")
             val volumeDb = playbackJson.optIntOrNull("volumeDb")
             return PlaybackConfig.fromStoredValues(
                 startMs = trimStartMs,
                 endMs = trimEndMs,
                 tempo = tempo,
+                pitchSemi = pitchSemi,
                 volumeDb = volumeDb
             )
         }
@@ -261,6 +271,7 @@ data class SmpConfig(
                 ?: return null
             val audioUri = Uri.fromFile(audioFile)
             val storedTempo = TrackTempoPrefs.getTempo(context, audioUri.toString())
+            val storedPitchSemi = TrackPitchPrefs.getSemi(context, audioUri.toString())
             val storedVolumeDb = TrackVolumePrefs.getDb(context, audioUri.toString())
 
             val currentEdit = EditSoundPrefs.get(context, audioUri)
@@ -270,6 +281,7 @@ data class SmpConfig(
                     endMs = currentEdit.endMs
                 )?.copy(
                     tempo = storedTempo,
+                    pitchSemi = storedPitchSemi,
                     volumeDb = storedVolumeDb
                 )
             }
@@ -279,6 +291,7 @@ data class SmpConfig(
                 startMs = legacyEdit?.startMs,
                 endMs = legacyEdit?.endMs,
                 tempo = storedTempo,
+                pitchSemi = storedPitchSemi,
                 volumeDb = storedVolumeDb
             )
         }

@@ -799,6 +799,8 @@ class MainActivity : AppCompatActivity() {
                 var currentTrackPitchSemi by remember { mutableStateOf(0) }
                 var trackTempoPersistJob by remember { mutableStateOf<Job?>(null) }
                 var pendingTempoPersistRequest by remember { mutableStateOf<Pair<String, Float>?>(null) }
+                var trackPitchPersistJob by remember { mutableStateOf<Job?>(null) }
+                var pendingPitchPersistRequest by remember { mutableStateOf<Pair<String, Int>?>(null) }
                 var isMoreMenuOpen by remember { mutableStateOf(false) }
                 var openNotesSignal by remember { mutableStateOf(0) }
                 var openPrompterSignal by remember { mutableIntStateOf(0) }
@@ -1910,7 +1912,40 @@ class MainActivity : AppCompatActivity() {
                                             val clamped = newSemi.coerceIn(-6, 6)
                                             currentTrackPitchSemi = clamped
                                             applyTempoAndPitchToPlayer(currentTrackTempo, currentTrackPitchSemi)
-                                            currentPlayingUri?.let { uri -> TrackPitchPrefs.saveSemi(ctx, uri, clamped) }
+                                            currentPlayingUri?.let { sourceUri ->
+                                                pendingPitchPersistRequest = sourceUri to clamped
+                                                if (trackPitchPersistJob?.isActive == true) return@PlayerScreen
+                                                trackPitchPersistJob = scope.launch {
+                                                    val resolvedTargets = mutableMapOf<String, Pair<String, SmpAutoMigrationResult?>>()
+                                                    while (true) {
+                                                        val request = pendingPitchPersistRequest ?: break
+                                                        pendingPitchPersistRequest = null
+
+                                                        val lockedSourceUri = request.first
+                                                        val semiToSave = request.second
+                                                        val resolvedTarget = resolvedTargets[lockedSourceUri] ?: run {
+                                                            val migration = withContext(Dispatchers.IO) {
+                                                                smpAutoMigration.migrateLegacyTrack(lockedSourceUri)
+                                                            }
+                                                            (migration?.trackUriString ?: lockedSourceUri) to migration
+                                                        }.also {
+                                                            resolvedTargets[lockedSourceUri] = it
+                                                        }
+
+                                                        withContext(Dispatchers.IO) {
+                                                            TrackPitchPrefs.saveSemi(ctx, resolvedTarget.first, semiToSave)
+                                                        }
+
+                                                        val migration = resolvedTarget.second
+                                                        if (migration != null && currentPlayingUri == lockedSourceUri) {
+                                                            currentPlayingUri = migration.trackUriString
+                                                            lastImportedSmpSongId = migration.song.id
+                                                            smpSongsById = smpSongsById + (migration.song.id to migration.song)
+                                                            smpCacheRefreshTick++
+                                                        }
+                                                    }
+                                                }
+                                            }
                                         },
                                         ensureSmpTrackForLyricsSave = { trackUriString ->
                                             smpAutoMigration.migrateLegacyTrack(trackUriString)
