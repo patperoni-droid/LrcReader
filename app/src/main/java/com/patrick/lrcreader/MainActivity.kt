@@ -764,6 +764,7 @@ class MainActivity : AppCompatActivity() {
                     mutableStateOf<BottomTab>(initialTabKey?.let { tabFromKey(it) } ?: BottomTab.Home)
                 }
                 val tabStateHolder = rememberSaveableStateHolder()
+                var libraryTabReselectSignal by remember { mutableIntStateOf(0) }
 
                 var closeMixSignal by remember { mutableIntStateOf(0) }
                 var sessionRestored by remember { mutableStateOf(false) }
@@ -2088,6 +2089,7 @@ class MainActivity : AppCompatActivity() {
 
                                     is BottomTab.Library -> LibraryScreen(
                                         modifier = contentModifier,
+                                        reselectRootSignal = libraryTabReselectSignal,
                                         smpRefreshVersion = smpCacheRefreshTick,
                                         lastImportedSmpSongId = lastImportedSmpSongId,
                                         onImportExternalSmp = {
@@ -2287,7 +2289,11 @@ class MainActivity : AppCompatActivity() {
                             text = { Text(stringResource(R.string.main_menu_library)) },
                             onClick = {
                                 isMoreMenuOpen = false
-                                setTabAndPersist(BottomTab.Library, reason = "menuLibrary")
+                                if (selectedTab is BottomTab.Library) {
+                                    libraryTabReselectSignal++
+                                } else {
+                                    setTabAndPersist(BottomTab.Library, reason = "menuLibrary")
+                                }
                                 // ✅ si on est sur “Fond sonore” (overlay), il faut le fermer sinon on reste bloqué dessus
                                 isFillerSettingsOpen = false
                                 isGlobalMixOpen = false

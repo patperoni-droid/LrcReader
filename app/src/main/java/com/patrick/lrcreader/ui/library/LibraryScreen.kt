@@ -99,6 +99,7 @@ private fun resolveFolderName(context: android.content.Context, uri: Uri): Strin
 @Composable
 fun LibraryScreen(
     modifier: Modifier = Modifier,
+    reselectRootSignal: Int = 0,
     smpRefreshVersion: Int = 0,
     lastImportedSmpSongId: String? = null,
     onImportExternalSmp: () -> Unit,
@@ -424,6 +425,20 @@ fun LibraryScreen(
                 "mode=LIBRARY query='$normalizedQuery' playlist=- itemsBefore=$itemsBefore itemsAfter=$itemsAfter"
             )
         }
+    }
+
+    LaunchedEffect(reselectRootSignal) {
+        if (reselectRootSignal == 0) return@LaunchedEffect
+        val root = backend.getRootUri() ?: return@LaunchedEffect
+        val currentFolder = currentFolderUri ?: root
+        if (currentFolder.toString() == root.toString()) return@LaunchedEffect
+
+        currentFolderUri = root
+        folderStack = emptyList()
+        searchQuery = ""
+        selectedSongs = emptySet()
+        LibraryFolderCache.clear()
+        entries = buildEntriesForFolder(root, useCache = false)
     }
 
     LaunchedEffect(smpRefreshVersion, lastImportedSmpSongId) {
