@@ -1846,7 +1846,23 @@ class MainActivity : AppCompatActivity() {
                                             val safeDb = clampTrackDb(db)
                                             currentTrackGainDb = safeDb
                                             AudioEngine.applyTrackGainDb(safeDb)
-                                            currentPlayingUri?.let { uri -> TrackVolumePrefs.saveDb(ctx, uri, safeDb) }
+                                            currentPlayingUri?.let { sourceUri ->
+                                                scope.launch {
+                                                    val migration = withContext(Dispatchers.IO) {
+                                                        smpAutoMigration.migrateLegacyTrack(sourceUri)
+                                                    }
+                                                    val targetUri = migration?.trackUriString ?: sourceUri
+                                                    withContext(Dispatchers.IO) {
+                                                        TrackVolumePrefs.saveDb(ctx, targetUri, safeDb)
+                                                    }
+                                                    if (migration != null && currentPlayingUri == sourceUri) {
+                                                        currentPlayingUri = migration.trackUriString
+                                                        lastImportedSmpSongId = migration.song.id
+                                                        smpSongsById = smpSongsById + (migration.song.id to migration.song)
+                                                        smpCacheRefreshTick++
+                                                    }
+                                                }
+                                            }
                                         },
                                         tempo = currentTrackTempo,
                                         onTempoChange = { newTempo ->
