@@ -338,17 +338,17 @@ fun LibraryList(
                                     )
                                 }
 
-                                if (!isSmp) {
-                                    DropdownMenuItem(
-                                        text = {
-                                            Text(
-                                                stringResource(R.string.library_list_delete_permanently),
-                                                color = Color(0xFFFF6464)
-                                            )
-                                        },
-                                        onClick = { menuOpen = false; onDeleteOne(uri) }
-                                    )
-                                }
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            stringResource(
+                                                if (isSmp) R.string.library_delete_action else R.string.library_list_delete_permanently
+                                            ),
+                                            color = Color(0xFFFF6464)
+                                        )
+                                    },
+                                    onClick = { menuOpen = false; onDeleteOne(uri) }
+                                )
                             }
                         }
                     }
