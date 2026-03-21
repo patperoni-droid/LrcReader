@@ -143,6 +143,7 @@
     <string name="library_delete_file_title">Eliminar archivo</string>
     <string name="library_delete_file_confirm_text">¿Eliminar este archivo permanentemente?</string>
     <string name="library_delete_action">Eliminar</string>
+    <string name="library_share_smp_failed">No se pudo compartir la canción SMP.</string>
     <string name="library_rename_title">Renombrar</string>
     <string name="library_new_name_label">Nuevo nombre</string>
 

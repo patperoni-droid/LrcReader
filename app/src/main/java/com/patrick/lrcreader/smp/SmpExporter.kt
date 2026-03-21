@@ -22,6 +22,19 @@ object SmpExporter {
         }
 
         val exportDir = File(exportsRoot, EXPORT_DIR_NAME)
+        return exportSongUnitToDirectory(context, songUnit, exportDir)
+    }
+
+    fun exportSongUnitToCacheSmp(context: Context, songUnit: SongUnit): File? {
+        val exportDir = File(context.cacheDir, EXPORT_DIR_NAME)
+        return exportSongUnitToDirectory(context, songUnit, exportDir)
+    }
+
+    private fun exportSongUnitToDirectory(
+        context: Context,
+        songUnit: SongUnit,
+        exportDir: File
+    ): File? {
         if (!exportDir.exists() && !exportDir.mkdirs()) {
             Log.e(TAG, "Export SMP impossible: création du dossier ${exportDir.absolutePath}")
             return null

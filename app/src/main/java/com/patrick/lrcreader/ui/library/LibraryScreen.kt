@@ -1,5 +1,6 @@
 package com.patrick.lrcreader.ui.library
 
+import android.content.Intent
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
@@ -20,6 +21,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import androidx.core.content.FileProvider
 import androidx.documentfile.provider.DocumentFile
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
@@ -39,6 +41,7 @@ import com.patrick.lrcreader.core.search.SearchEngine
 import com.patrick.lrcreader.exo.BuildConfig
 import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.smp.SmpConverter
+import com.patrick.lrcreader.smp.SmpExporter
 import com.patrick.lrcreader.smp.SmpLibraryScanner
 import com.patrick.lrcreader.ui.LibraryEntry
 import com.patrick.lrcreader.ui.LibraryFolderCache
@@ -108,6 +111,7 @@ fun LibraryScreen(
     val sDeleteSmpTitle = stringResource(R.string.library_delete_smp_title)
     val sDeleteSmpConfirmText = stringResource(R.string.library_delete_smp_confirm_text)
     val sDeleteSmpFailed = stringResource(R.string.library_delete_smp_failed)
+    val sShareSmpFailed = stringResource(R.string.library_share_smp_failed)
     val sPrompterFolder = stringResource(R.string.main_menu_prompter)
     val sSmpFolder = stringResource(R.string.library_smp_folder)
     val sConvertSmpSingleSuccess = stringResource(R.string.library_convert_smp_success_single)
@@ -1049,6 +1053,48 @@ fun LibraryScreen(
                             onAssignOne = { uri ->
                                 selectedSongs = setOf(uri)
                                 showAssignDialog = true
+                            },
+
+                            onShareOne = { uri ->
+                                val songId = getSmpSongId(uri.toString())
+                                if (songId == null) {
+                                    Toast.makeText(context, sShareSmpFailed, Toast.LENGTH_SHORT).show()
+                                    return@LibraryList
+                                }
+
+                                scope.launch {
+                                    startLoading(sLoading, determinate = false)
+                                    try {
+                                        val shareUri = withContext(Dispatchers.IO) {
+                                            val song = smpLibraryScanner.findSongById(songId) ?: return@withContext null
+                                            val exportedFile = SmpExporter.exportSongUnitToCacheSmp(context, song)
+                                                ?: return@withContext null
+                                            FileProvider.getUriForFile(
+                                                context,
+                                                "${context.packageName}.fileprovider",
+                                                exportedFile
+                                            )
+                                        }
+
+                                        if (shareUri == null) {
+                                            Toast.makeText(context, sShareSmpFailed, Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                                type = "application/octet-stream"
+                                                putExtra(Intent.EXTRA_STREAM, shareUri)
+                                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                            }
+                                            context.startActivity(
+                                                Intent.createChooser(
+                                                    shareIntent,
+                                                    context.getString(R.string.backup_share)
+                                                )
+                                            )
+                                        }
+                                    } finally {
+                                        stopLoadingNice()
+                                    }
+                                }
                             },
 
                             onMoveOne = { uri ->

@@ -74,6 +74,7 @@ fun LibraryList(
     onConvertOneToSmp: (Uri) -> Unit,
 
     onAssignOne: (Uri) -> Unit,
+    onShareOne: (Uri) -> Unit,
     onMoveOne: (Uri) -> Unit,
     onRenameOne: (LibraryEntry) -> Unit,
     onDeleteOne: (Uri) -> Unit
@@ -323,6 +324,14 @@ fun LibraryList(
                                     },
                                     onClick = { menuOpen = false; onAssignOne(uri) }
                                 )
+                                if (isSmp) {
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(stringResource(R.string.backup_share), color = Color.White)
+                                        },
+                                        onClick = { menuOpen = false; onShareOne(uri) }
+                                    )
+                                }
                                 if (!isSmp) {
                                     DropdownMenuItem(
                                         text = {
