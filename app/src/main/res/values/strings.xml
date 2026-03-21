@@ -141,6 +141,9 @@
     <string name="library_delete_file_title">Supprimer le fichier</string>
     <string name="library_delete_file_confirm_text">Supprimer définitivement ce fichier ?</string>
     <string name="library_delete_action">Supprimer</string>
+    <string name="library_delete_smp_title">Supprimer ce morceau SMP ?</string>
+    <string name="library_delete_smp_confirm_text">Supprimer uniquement le morceau SMP interne. Le fichier legacy source ne sera pas supprimé.</string>
+    <string name="library_delete_smp_failed">Suppression du morceau SMP impossible.</string>
     <string name="library_rename_title">Renommer</string>
     <string name="library_new_name_label">Nouveau nom</string>
 

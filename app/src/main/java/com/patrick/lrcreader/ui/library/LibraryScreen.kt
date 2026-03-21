@@ -33,6 +33,7 @@ import com.patrick.lrcreader.core.LibraryIndexCache
 import com.patrick.lrcreader.core.PlaylistRepository
 import com.patrick.lrcreader.core.TextSongRepository
 import com.patrick.lrcreader.core.buildSmpItem
+import com.patrick.lrcreader.core.getSmpSongId
 import com.patrick.lrcreader.core.config.TitleAliasesStore
 import com.patrick.lrcreader.core.search.SearchEngine
 import com.patrick.lrcreader.exo.BuildConfig
@@ -104,6 +105,9 @@ fun LibraryScreen(
     val sDeleteAudioPlusLrc = stringResource(R.string.library_delete_audio_plus_lrc)
     val sDeleteConfirmText = stringResource(R.string.library_delete_file_confirm_text)
     val sDeletePermanently = stringResource(R.string.library_list_delete_permanently)
+    val sDeleteSmpTitle = stringResource(R.string.library_delete_smp_title)
+    val sDeleteSmpConfirmText = stringResource(R.string.library_delete_smp_confirm_text)
+    val sDeleteSmpFailed = stringResource(R.string.library_delete_smp_failed)
     val sPrompterFolder = stringResource(R.string.main_menu_prompter)
     val sSmpFolder = stringResource(R.string.library_smp_folder)
     val sConvertSmpSingleSuccess = stringResource(R.string.library_convert_smp_success_single)
@@ -270,6 +274,8 @@ fun LibraryScreen(
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var pendingDeletePlan by remember { mutableStateOf<LibraryDeletePlan?>(null) }
     var deleteInProgress by remember { mutableStateOf(false) }
+    var pendingDeleteSmpUri by remember { mutableStateOf<Uri?>(null) }
+    var deleteSmpInProgress by remember { mutableStateOf(false) }
 
     var pendingMoveUri by remember { mutableStateOf<Uri?>(null) }
     var showMoveBrowser by remember { mutableStateOf(false) }
@@ -1088,24 +1094,29 @@ fun LibraryScreen(
                                         }
                                     }
                                 } else {
-                                    scope.launch {
-                                        val plan = runCatching {
-                                            backend.planDelete(
-                                                target = uri,
-                                                indexAll = indexAll
-                                            )
-                                        }.getOrElse {
-                                            LibraryDeletePlan(
-                                                target = LibraryDeleteItem(
-                                                    uri = uri,
-                                                    role = LibraryDeleteRole.FILE,
-                                                    displayName = uri.lastPathSegment ?: "file"
-                                                ),
-                                                associated = emptyList()
-                                            )
+                                    val smpSongId = getSmpSongId(uri.toString())
+                                    if (smpSongId != null) {
+                                        pendingDeleteSmpUri = uri
+                                    } else {
+                                        scope.launch {
+                                            val plan = runCatching {
+                                                backend.planDelete(
+                                                    target = uri,
+                                                    indexAll = indexAll
+                                                )
+                                            }.getOrElse {
+                                                LibraryDeletePlan(
+                                                    target = LibraryDeleteItem(
+                                                        uri = uri,
+                                                        role = LibraryDeleteRole.FILE,
+                                                        displayName = uri.lastPathSegment ?: "file"
+                                                    ),
+                                                    associated = emptyList()
+                                                )
+                                            }
+                                            pendingDeletePlan = plan
+                                            showDeleteConfirmDialog = true
                                         }
-                                        pendingDeletePlan = plan
-                                        showDeleteConfirmDialog = true
                                     }
                                 }
                             }
@@ -1221,6 +1232,75 @@ fun LibraryScreen(
                                 if (deleteInProgress) return@TextButton
                                 showDeleteConfirmDialog = false
                                 pendingDeletePlan = null
+                            }
+                        ) {
+                            androidx.compose.material3.Text(stringResource(R.string.common_cancel))
+                        }
+                    }
+                )
+            }
+
+            if (pendingDeleteSmpUri != null) {
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = {
+                        if (deleteSmpInProgress) return@AlertDialog
+                        pendingDeleteSmpUri = null
+                    },
+                    title = {
+                        androidx.compose.material3.Text(sDeleteSmpTitle)
+                    },
+                    text = {
+                        androidx.compose.material3.Text(sDeleteSmpConfirmText)
+                    },
+                    confirmButton = {
+                        androidx.compose.material3.TextButton(
+                            enabled = !deleteSmpInProgress,
+                            onClick = {
+                                if (deleteSmpInProgress) return@TextButton
+                                val deleteUri = pendingDeleteSmpUri ?: return@TextButton
+                                val songId = getSmpSongId(deleteUri.toString()) ?: return@TextButton
+                                scope.launch {
+                                    deleteSmpInProgress = true
+                                    startLoading(sDeleting, determinate = false)
+                                    try {
+                                        val deleted = withContext(Dispatchers.IO) {
+                                            val songDir = smpLibraryScanner.findSongById(songId)
+                                                ?.storageFolder
+                                                ?.takeIf { it.isNotBlank() }
+                                                ?.let(::File)
+                                                ?: File(context.filesDir, "tracks/$songId")
+                                            !songDir.exists() || songDir.deleteRecursively()
+                                        }
+                                        if (deleted) {
+                                            selectedSongs = selectedSongs - deleteUri
+                                            LibraryFolderCache.clear()
+                                            val folder = currentFolderUri
+                                            if (folder != null) {
+                                                entries = buildEntriesForFolder(folder, useCache = false)
+                                            }
+                                        } else {
+                                            Toast.makeText(context, sDeleteSmpFailed, Toast.LENGTH_SHORT).show()
+                                        }
+                                    } finally {
+                                        deleteSmpInProgress = false
+                                        pendingDeleteSmpUri = null
+                                        stopLoadingNice()
+                                    }
+                                }
+                            }
+                        ) {
+                            androidx.compose.material3.Text(
+                                stringResource(R.string.library_delete_action),
+                                color = Color(0xFFFF6464)
+                            )
+                        }
+                    },
+                    dismissButton = {
+                        androidx.compose.material3.TextButton(
+                            enabled = !deleteSmpInProgress,
+                            onClick = {
+                                if (deleteSmpInProgress) return@TextButton
+                                pendingDeleteSmpUri = null
                             }
                         ) {
                             androidx.compose.material3.Text(stringResource(R.string.common_cancel))
