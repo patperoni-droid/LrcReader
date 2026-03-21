@@ -5,6 +5,7 @@ import android.net.Uri
 import android.util.Log
 import com.patrick.lrcreader.core.EditPrefs
 import com.patrick.lrcreader.core.EditSoundPrefs
+import com.patrick.lrcreader.core.TrackVolumePrefs
 import org.json.JSONObject
 import java.io.File
 import java.util.Locale
@@ -67,18 +68,21 @@ data class SmpConfig(
 
     data class PlaybackConfig(
         val trimStartMs: Long?,
-        val trimEndMs: Long?
+        val trimEndMs: Long?,
+        val volumeDb: Int? = null
     ) {
         companion object {
-            fun fromStoredValues(startMs: Long?, endMs: Long?): PlaybackConfig? {
+            fun fromStoredValues(startMs: Long?, endMs: Long?, volumeDb: Int? = null): PlaybackConfig? {
                 val trimStartMs = startMs?.takeIf { it > 0L }
                 val trimEndMs = endMs?.takeIf { it > 0L }
-                if (trimStartMs == null && trimEndMs == null) {
+                val playbackVolumeDb = volumeDb
+                if (trimStartMs == null && trimEndMs == null && playbackVolumeDb == null) {
                     return null
                 }
                 return PlaybackConfig(
                     trimStartMs = trimStartMs,
-                    trimEndMs = trimEndMs
+                    trimEndMs = trimEndMs,
+                    volumeDb = playbackVolumeDb
                 )
             }
 
@@ -91,13 +95,14 @@ data class SmpConfig(
         }
 
         fun toJsonOrNull(): JSONObject? {
-            if (trimStartMs == null && trimEndMs == null) {
+            if (trimStartMs == null && trimEndMs == null && volumeDb == null) {
                 return null
             }
 
             return JSONObject().apply {
                 trimStartMs?.let { put("trimStartMs", it) }
                 trimEndMs?.let { put("trimEndMs", it) }
+                volumeDb?.let { put("volumeDb", it) }
             }
         }
     }
@@ -159,9 +164,11 @@ data class SmpConfig(
             val playbackJson = json.optJSONObject("playback") ?: return null
             val trimStartMs = playbackJson.optNonNegativeLongOrNull("trimStartMs")
             val trimEndMs = playbackJson.optNonNegativeLongOrNull("trimEndMs")
+            val volumeDb = playbackJson.optIntOrNull("volumeDb")
             return PlaybackConfig.fromStoredValues(
                 startMs = trimStartMs,
-                endMs = trimEndMs
+                endMs = trimEndMs,
+                volumeDb = volumeDb
             )
         }
 
@@ -209,25 +216,39 @@ data class SmpConfig(
             return parsed.takeIf { it >= 0L }
         }
 
+        private fun JSONObject.optIntOrNull(key: String): Int? {
+            if (!has(key) || isNull(key)) {
+                return null
+            }
+
+            return when (val rawValue = opt(key)) {
+                is Number -> rawValue.toInt()
+                is String -> rawValue.toIntOrNull()
+                else -> null
+            }
+        }
+
         private fun resolvePlaybackFromAudioPath(context: Context, audioPath: String?): PlaybackConfig? {
             val audioFile = audioPath
                 ?.takeIf { it.isNotBlank() }
                 ?.let(::File)
                 ?: return null
             val audioUri = Uri.fromFile(audioFile)
+            val storedVolumeDb = TrackVolumePrefs.getDb(context, audioUri.toString())
 
             val currentEdit = EditSoundPrefs.get(context, audioUri)
             if (currentEdit != null) {
                 return PlaybackConfig.fromWaveformEdit(
                     startMs = currentEdit.startMs,
                     endMs = currentEdit.endMs
-                )
+                )?.copy(volumeDb = storedVolumeDb)
             }
 
-            val legacyEdit = EditPrefs.getEdit(context, audioUri.toString()) ?: return null
+            val legacyEdit = EditPrefs.getEdit(context, audioUri.toString())
             return PlaybackConfig.fromStoredValues(
-                startMs = legacyEdit.startMs,
-                endMs = legacyEdit.endMs
+                startMs = legacyEdit?.startMs,
+                endMs = legacyEdit?.endMs,
+                volumeDb = storedVolumeDb
             )
         }
 
