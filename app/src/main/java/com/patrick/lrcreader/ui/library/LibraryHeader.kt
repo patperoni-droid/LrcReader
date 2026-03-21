@@ -18,6 +18,12 @@ import androidx.documentfile.provider.DocumentFile
 import com.patrick.lrcreader.exo.R
 import java.io.File
 
+private fun isLegacyBackingTracksFolderName(name: String): Boolean {
+    val normalized = name.trim()
+    return normalized.equals("BackingTracks", ignoreCase = true) ||
+        normalized.equals("BackingTrack", ignoreCase = true)
+}
+
 @Composable
 fun LibraryHeader(
     titleColor: Color,
@@ -38,15 +44,28 @@ fun LibraryHeader(
     val sNoFolderSelected = stringResource(R.string.library_no_folder_selected)
     val sPrompter = stringResource(R.string.main_menu_prompter)
     val sSmpFolder = stringResource(R.string.library_smp_folder)
+    val sLegacyBackingTracksFolder = stringResource(R.string.library_legacy_backing_tracks_folder)
 
-    val folderName = remember(currentFolderUri, sNoFolderSelected, sPrompter, sSmpFolder) {
+    val folderName = remember(
+        currentFolderUri,
+        sNoFolderSelected,
+        sPrompter,
+        sSmpFolder,
+        sLegacyBackingTracksFolder
+    ) {
         currentFolderUri?.let { u ->
             when (u.scheme) {
                 "spl-prompter" -> sPrompter
                 "spl-smp" -> sSmpFolder
-                "file" -> File(u.path ?: "").name.ifBlank { "SPL_Music" }
-                else -> (DocumentFile.fromTreeUri(context, u)
-                    ?: DocumentFile.fromSingleUri(context, u))?.name ?: "SPL_Music"
+                "file" -> {
+                    val rawName = File(u.path ?: "").name.ifBlank { "SPL_Music" }
+                    if (isLegacyBackingTracksFolderName(rawName)) sLegacyBackingTracksFolder else rawName
+                }
+                else -> {
+                    val rawName = (DocumentFile.fromTreeUri(context, u)
+                        ?: DocumentFile.fromSingleUri(context, u))?.name ?: "SPL_Music"
+                    if (isLegacyBackingTracksFolderName(rawName)) sLegacyBackingTracksFolder else rawName
+                }
             }
         } ?: sNoFolderSelected
     }

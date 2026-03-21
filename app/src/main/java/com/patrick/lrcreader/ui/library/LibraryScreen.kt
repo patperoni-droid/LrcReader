@@ -85,6 +85,12 @@ private fun shouldHideLegacyFolderName(name: String): Boolean {
     return name.trim().lowercase() in HIDDEN_LEGACY_FOLDER_NAMES
 }
 
+private fun isLegacyBackingTracksFolderName(name: String): Boolean {
+    val normalized = name.trim()
+    return normalized.equals("BackingTracks", ignoreCase = true) ||
+        normalized.equals("BackingTrack", ignoreCase = true)
+}
+
 private fun resolveFolderName(context: android.content.Context, uri: Uri): String? {
     return when (uri.scheme) {
         "file" -> File(uri.path ?: "").name.ifBlank { null }
@@ -144,6 +150,7 @@ fun LibraryScreen(
     val sShareSmpFailed = stringResource(R.string.library_share_smp_failed)
     val sPrompterFolder = stringResource(R.string.main_menu_prompter)
     val sSmpFolder = stringResource(R.string.library_smp_folder)
+    val sLegacyBackingTracksFolder = stringResource(R.string.library_legacy_backing_tracks_folder)
     val sConvertSmpSingleSuccess = stringResource(R.string.library_convert_smp_success_single)
     val sConvertSmpSingleFailed = stringResource(R.string.library_convert_smp_failed_single)
     val sConvertSmpNoMp3 = stringResource(R.string.library_convert_smp_no_mp3)
@@ -234,20 +241,28 @@ fun LibraryScreen(
         val isRootFolder = root != null && folderUri.toString() == root.toString()
         if (!isRootFolder) return visibleSource
 
+        val displaySource = visibleSource.map { entry ->
+            if (entry.isDirectory && isLegacyBackingTracksFolderName(entry.name)) {
+                entry.copy(name = sLegacyBackingTracksFolder)
+            } else {
+                entry
+            }
+        }
+
         val extraEntries = mutableListOf<LibraryEntry>()
-        val alreadyHasPrompter = visibleSource.any { it.isDirectory && isPrompterFolderUri(it.uri) }
+        val alreadyHasPrompter = displaySource.any { it.isDirectory && isPrompterFolderUri(it.uri) }
         if (!alreadyHasPrompter) {
             extraEntries += LibraryEntry(PROMPTER_FOLDER_URI, sPrompterFolder, isDirectory = true)
         }
 
-        val alreadyHasSmp = visibleSource.any { it.isDirectory && isSmpFolderUri(it.uri) }
+        val alreadyHasSmp = displaySource.any { it.isDirectory && isSmpFolderUri(it.uri) }
         if (!alreadyHasSmp && buildSmpEntries().isNotEmpty()) {
             extraEntries += LibraryEntry(SMP_FOLDER_URI, sSmpFolder, isDirectory = true)
         }
 
-        if (extraEntries.isEmpty()) return visibleSource
+        if (extraEntries.isEmpty()) return displaySource
 
-        return (visibleSource + extraEntries)
+        return (displaySource + extraEntries)
             .sortedWith(
                 compareByDescending<LibraryEntry> { it.isDirectory }
                     .thenBy { it.name.lowercase() }

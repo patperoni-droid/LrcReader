@@ -162,7 +162,8 @@
     <string name="library_list_move_to_folder">Déplacer vers un dossier</string>
     <string name="library_list_rename">Renommer</string>
     <string name="library_list_delete_permanently">Supprimer définitivement</string>
-    <string name="library_smp_folder">Morceaux SMP</string>
+    <string name="library_smp_folder">Backing Tracks</string>
+    <string name="library_legacy_backing_tracks_folder">Backing Tracks (legacy)</string>
 
     <string name="library_delete_backing_track_title">Supprimer ce morceau ?</string>
     <string name="library_delete_audio_question">Morceau seul</string>
