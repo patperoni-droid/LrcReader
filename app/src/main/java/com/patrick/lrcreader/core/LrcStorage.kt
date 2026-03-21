@@ -425,7 +425,7 @@ object LrcStorage {
             ?.takeIf { it.isDirectory && it.canRead() }
         Log.d(
             "LrcDebug",
-            "LYRICS_SAF_DIR explicitResolved=${explicitDir?.uri} explicitChildren=${explicitDir?.let { listChildNames(it, trackUriString, label = "explicit_dir_children") }}"
+            "LYRICS_SAF_DIR explicitResolved=${explicitDir?.uri}"
         )
         if (explicitDir != null) {
             LyricsPerf.mark(
@@ -649,7 +649,6 @@ object LrcStorage {
         val canonicalHashed = fileNameForTrack(trackUriString)
         val sidecar = sidecarNameForTrack(trackUriString)
         val files = listSafFiles(dir, trackUriString, label = "lyrics_lookup_files")
-        val children = files.map { "${it.name.orEmpty()}<file>" }
         Log.d(
             "LrcDebug",
             "LYRICS_LOOKUP_START trackUri=$trackUriString base=$base dir=${dir.uri}"
@@ -660,7 +659,7 @@ object LrcStorage {
         )
         Log.d(
             "LrcDebug",
-            "LYRICS_LOOKUP_CHILDREN dir=${dir.uri} childNames=$children"
+            "LYRICS_LOOKUP_CHILDREN dir=${dir.uri} fileCount=${files.size}"
         )
         if (!remembered.isNullOrBlank()) {
             val rememberedFile = findFileIgnoreCaseOrLrcTxt(files, remembered)

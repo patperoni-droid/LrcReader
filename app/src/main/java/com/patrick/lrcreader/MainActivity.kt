@@ -70,6 +70,8 @@ import com.patrick.lrcreader.core.config.PlaylistStateStore
 import com.patrick.lrcreader.core.config.TitleAliasesStore
 import com.patrick.lrcreader.core.config.TrackSettingsStore
 import com.patrick.lrcreader.smp.SmpImporter
+import com.patrick.lrcreader.smp.SmpAutoMigration
+import com.patrick.lrcreader.smp.SmpAutoMigrationResult
 import com.patrick.lrcreader.smp.SmpImportedSongDetail
 import com.patrick.lrcreader.smp.SmpLibraryScanner
 import com.patrick.lrcreader.ui.*
@@ -376,6 +378,7 @@ class MainActivity : AppCompatActivity() {
                 var pendingPlaylistTrackTarget by remember { mutableStateOf<String?>(null) }
                 var lastImportedSmpSongId by remember { mutableStateOf<String?>(null) }
                 val smpImporter = remember(ctx) { SmpImporter(ctx) }
+                val smpAutoMigration = remember(ctx) { SmpAutoMigration(ctx) }
                 val smpLibraryScanner = remember(ctx) { SmpLibraryScanner(ctx) }
                 var smpCacheRefreshTick by remember { mutableIntStateOf(0) }
 
@@ -1857,6 +1860,15 @@ class MainActivity : AppCompatActivity() {
                                             currentTrackPitchSemi = clamped
                                             applyTempoAndPitchToPlayer(currentTrackTempo, currentTrackPitchSemi)
                                             currentPlayingUri?.let { uri -> TrackPitchPrefs.saveSemi(ctx, uri, clamped) }
+                                        },
+                                        ensureSmpTrackForLyricsSave = { trackUriString ->
+                                            smpAutoMigration.migrateLegacyTrack(trackUriString)
+                                        },
+                                        onTrackPromotedToSmp = { migration: SmpAutoMigrationResult ->
+                                            currentPlayingUri = migration.trackUriString
+                                            lastImportedSmpSongId = migration.song.id
+                                            smpSongsById = smpSongsById + (migration.song.id to migration.song)
+                                            smpCacheRefreshTick++
                                         },
                                         onRequestShowPlaylist = { selectedTab = BottomTab.QuickPlaylists },
                                         getPositionMs = { exoPlayer.currentPosition },
