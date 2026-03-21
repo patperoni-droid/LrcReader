@@ -797,6 +797,8 @@ class MainActivity : AppCompatActivity() {
 
                 var currentTrackTempo by remember { mutableStateOf(1f) }
                 var currentTrackPitchSemi by remember { mutableStateOf(0) }
+                var trackTempoPersistJob by remember { mutableStateOf<Job?>(null) }
+                var pendingTempoPersistRequest by remember { mutableStateOf<Pair<String, Float>?>(null) }
                 var isMoreMenuOpen by remember { mutableStateOf(false) }
                 var openNotesSignal by remember { mutableStateOf(0) }
                 var openPrompterSignal by remember { mutableIntStateOf(0) }
@@ -1868,7 +1870,40 @@ class MainActivity : AppCompatActivity() {
                                         onTempoChange = { newTempo ->
                                             currentTrackTempo = newTempo
                                             applyTempoAndPitchToPlayer(currentTrackTempo, currentTrackPitchSemi)
-                                            currentPlayingUri?.let { uri -> TrackTempoPrefs.saveTempo(ctx, uri, newTempo) }
+                                            currentPlayingUri?.let { sourceUri ->
+                                                pendingTempoPersistRequest = sourceUri to newTempo
+                                                if (trackTempoPersistJob?.isActive == true) return@PlayerScreen
+                                                trackTempoPersistJob = scope.launch {
+                                                    val resolvedTargets = mutableMapOf<String, Pair<String, SmpAutoMigrationResult?>>()
+                                                    while (true) {
+                                                        val request = pendingTempoPersistRequest ?: break
+                                                        pendingTempoPersistRequest = null
+
+                                                        val lockedSourceUri = request.first
+                                                        val tempoToSave = request.second
+                                                        val resolvedTarget = resolvedTargets[lockedSourceUri] ?: run {
+                                                            val migration = withContext(Dispatchers.IO) {
+                                                                smpAutoMigration.migrateLegacyTrack(lockedSourceUri)
+                                                            }
+                                                            (migration?.trackUriString ?: lockedSourceUri) to migration
+                                                        }.also {
+                                                            resolvedTargets[lockedSourceUri] = it
+                                                        }
+
+                                                        withContext(Dispatchers.IO) {
+                                                            TrackTempoPrefs.saveTempo(ctx, resolvedTarget.first, tempoToSave)
+                                                        }
+
+                                                        val migration = resolvedTarget.second
+                                                        if (migration != null && currentPlayingUri == lockedSourceUri) {
+                                                            currentPlayingUri = migration.trackUriString
+                                                            lastImportedSmpSongId = migration.song.id
+                                                            smpSongsById = smpSongsById + (migration.song.id to migration.song)
+                                                            smpCacheRefreshTick++
+                                                        }
+                                                    }
+                                                }
+                                            }
                                         },
                                         pitchSemi = currentTrackPitchSemi,
                                         onPitchSemiChange = { newSemi ->
