@@ -23,32 +23,54 @@ class SmpAutoMigration(private val context: Context) {
     private val importer by lazy(LazyThreadSafetyMode.NONE) { SmpImporter(context) }
 
     suspend fun migrateLegacyTrack(trackUriString: String): SmpAutoMigrationResult? =
-        withContext(Dispatchers.IO) {
-            if (trackUriString.isBlank()) {
-                return@withContext null
-            }
-            if (isInternalSmpTrack(trackUriString)) {
-                return@withContext null
-            }
+        migrateLegacyTrackInternal(trackUriString, isolatedDocument = false)
 
-            val sourceUri = runCatching { Uri.parse(trackUriString) }.getOrNull()
-                ?: return@withContext null
-            if (sourceUri.scheme != "file" && sourceUri.scheme != "content") {
-                Log.w(TAG, "Migration SMP ignorée: URI non supportée trackUri=$trackUriString")
-                return@withContext null
-            }
+    suspend fun migrateLegacyTrackFromIsolatedDocument(trackUriString: String): SmpAutoMigrationResult? =
+        migrateLegacyTrackInternal(trackUriString, isolatedDocument = true)
 
-            val archiveUri = converter.convertSingle(sourceUri).getOrNull()
-            if (archiveUri == null) {
-                Log.w(TAG, "Migration SMP échouée à la conversion trackUri=$trackUriString")
-                return@withContext null
-            }
+    fun isInternalSmpTrackUri(trackUriString: String): Boolean {
+        return isInternalSmpTrack(trackUriString)
+    }
 
+    private suspend fun migrateLegacyTrackInternal(
+        trackUriString: String,
+        isolatedDocument: Boolean
+    ): SmpAutoMigrationResult? = withContext(Dispatchers.IO) {
+        if (trackUriString.isBlank()) {
+            return@withContext null
+        }
+        if (isInternalSmpTrack(trackUriString)) {
+            return@withContext null
+        }
+
+        val sourceUri = runCatching { Uri.parse(trackUriString) }.getOrNull()
+            ?: return@withContext null
+        if (sourceUri.scheme != "file" && sourceUri.scheme != "content") {
+            Log.w(TAG, "Migration SMP ignorée: URI non supportée trackUri=$trackUriString")
+            return@withContext null
+        }
+
+        val tempArchiveFile = if (isolatedDocument) {
+            converter.convertSingleToTempArchive(sourceUri).getOrNull()
+        } else {
+            null
+        }
+        val archiveUri = if (isolatedDocument) {
+            tempArchiveFile?.let { Uri.fromFile(it) }
+        } else {
+            converter.convertSingle(sourceUri).getOrNull()
+        }
+        if (archiveUri == null) {
+            Log.w(TAG, "Migration SMP échouée à la conversion trackUri=$trackUriString isolated=$isolatedDocument")
+            return@withContext null
+        }
+
+        try {
             val importedSong = importer.importSmp(archiveUri)
             if (importedSong == null) {
                 Log.w(
                     TAG,
-                    "Migration SMP échouée à l'import trackUri=$trackUriString reason=${importer.lastFailureReason}"
+                    "Migration SMP échouée à l'import trackUri=$trackUriString reason=${importer.lastFailureReason} isolated=$isolatedDocument"
                 )
                 return@withContext null
             }
@@ -72,14 +94,17 @@ class SmpAutoMigration(private val context: Context) {
 
             Log.i(
                 TAG,
-                "Migration SMP réussie trackUri=$trackUriString songId=${importedSong.id} uri=$resolvedTrackUri"
+                "Migration SMP réussie trackUri=$trackUriString songId=${importedSong.id} uri=$resolvedTrackUri isolated=$isolatedDocument"
             )
 
             SmpAutoMigrationResult(
                 song = importedSong,
                 trackUriString = resolvedTrackUri
             )
+        } finally {
+            tempArchiveFile?.delete()
         }
+    }
 
     private fun isInternalSmpTrack(trackUriString: String): Boolean {
         val trackUri = runCatching { Uri.parse(trackUriString) }.getOrNull() ?: return false

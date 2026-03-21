@@ -2177,6 +2177,11 @@ class MainActivity : AppCompatActivity() {
                                         onAfterImport = { refreshKey++ },
                                         onOpenTuner = {
                                             setTabAndPersist(BottomTab.Tuner, reason = "moreOpenTuner")
+                                        },
+                                        onWaveformTrackPromotedToSmp = { migration ->
+                                            lastImportedSmpSongId = migration.song.id
+                                            smpSongsById = smpSongsById + (migration.song.id to migration.song)
+                                            smpCacheRefreshTick++
                                         }
                                     )
 

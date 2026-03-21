@@ -32,6 +32,14 @@ class SmpConverter(private val context: Context) {
         val uri: Uri
     )
 
+    private data class PreparedArchive(
+        val outputName: String,
+        val archiveFile: File,
+        val tempDir: File,
+        val stableSongId: String,
+        val hasLyrics: Boolean
+    )
+
     fun convertSingle(mp3Uri: Uri): Result<Uri> {
         if (Looper.myLooper() == Looper.getMainLooper()) {
             Log.w(TAG, "convertSingle appelé sur le thread principal uri=$mp3Uri")
@@ -42,90 +50,65 @@ class SmpConverter(private val context: Context) {
             require(isSupportedAudioFileName(sourceName)) {
                 "Fichier non supporté pour conversion SMP: $sourceName"
             }
-            val audioEntryName = buildAudioEntryName(sourceName)
-
             val baseName = sourceName.substringBeforeLast('.').trim()
                 .ifBlank { throw IOException("Nom audio invalide: $sourceName") }
-
-            val siblings = listSiblingEntries(mp3Uri)
             val outputName = "$baseName.smp"
+            val siblings = listSiblingEntries(mp3Uri)
             val existingOutput = siblings.firstOrNull { it.name.equals(outputName, ignoreCase = true) }?.uri
             if (existingOutput != null) {
                 Log.i(TAG, "Conversion SMP réutilise un package existant source=$mp3Uri output=$existingOutput")
                 return@runCatching existingOutput
             }
 
-            val resolvedLyricsText = LrcStorage.loadForTrack(context, mp3Uri.toString())
-                ?.takeIf { it.isNotBlank() }
-            val lyricsUri = if (resolvedLyricsText == null) {
-                resolveLyricsSibling(baseName, siblings)
-            } else {
-                null
-            }
-            val tempDir = File(
-                context.cacheDir,
-                "smp_convert_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(8)}"
-            )
-            if (!tempDir.mkdirs()) {
-                throw IOException("Création du dossier temporaire impossible")
-            }
-
+            val prepared = prepareArchive(mp3Uri)
             try {
-                val tempAudio = File(tempDir, audioEntryName)
-                copyUriToFile(mp3Uri, tempAudio)
-                val stableSongId = buildStableSongId(tempAudio)
-
-                val tempLyrics = when {
-                    resolvedLyricsText != null -> {
-                        File(tempDir, LYRICS_ENTRY_NAME).also { file ->
-                            file.writeText(resolvedLyricsText, Charsets.UTF_8)
-                        }
-                    }
-
-                    lyricsUri != null -> {
-                        File(tempDir, LYRICS_ENTRY_NAME).also { copyUriToFile(lyricsUri, it) }
-                    }
-
-                    else -> null
-                }
-
-                val tempConfig = File(tempDir, CONFIG_ENTRY_NAME).also { configFile ->
-                    configFile.writeText(
-                        buildMinimalConfigJson(
-                            title = baseName,
-                            songId = stableSongId,
-                            audioEntryName = audioEntryName,
-                            hasLyrics = tempLyrics != null
-                        ),
-                        Charsets.UTF_8
-                    )
-                }
-
-                val tempArchive = File(tempDir, outputName)
-                createArchive(
-                    targetFile = tempArchive,
-                    audioFile = tempAudio,
-                    audioEntryName = audioEntryName,
-                    lyricsFile = tempLyrics,
-                    configFile = tempConfig
-                )
-
                 val resultUri = writeArchiveNextToSource(
                     sourceUri = mp3Uri,
-                    outputName = outputName,
-                    archiveFile = tempArchive
+                    outputName = prepared.outputName,
+                    archiveFile = prepared.archiveFile
                 )
 
                 Log.i(
                     TAG,
-                    "Conversion SMP terminée source=$mp3Uri output=$resultUri lyrics=${tempLyrics != null} songId=$stableSongId"
+                    "Conversion SMP terminée source=$mp3Uri output=$resultUri lyrics=${prepared.hasLyrics} songId=${prepared.stableSongId}"
                 )
                 resultUri
             } finally {
-                tempDir.deleteRecursively()
+                prepared.tempDir.deleteRecursively()
             }
         }.onFailure { error ->
             Log.e(TAG, "Conversion SMP échouée pour $mp3Uri", error)
+        }
+    }
+
+    fun convertSingleToTempArchive(mp3Uri: Uri): Result<File> {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            Log.w(TAG, "convertSingleToTempArchive appelé sur le thread principal uri=$mp3Uri")
+        }
+
+        return runCatching {
+            val prepared = prepareArchive(mp3Uri)
+            try {
+                val archiveFile = File(
+                    context.cacheDir,
+                    "smp_import_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(8)}.smp"
+                )
+                prepared.archiveFile.inputStream().buffered().use { input ->
+                    archiveFile.outputStream().buffered().use { output ->
+                        input.copyTo(output)
+                        output.flush()
+                    }
+                }
+                Log.i(
+                    TAG,
+                    "Conversion SMP temporaire terminée source=$mp3Uri output=${archiveFile.absolutePath} lyrics=${prepared.hasLyrics} songId=${prepared.stableSongId}"
+                )
+                archiveFile
+            } finally {
+                prepared.tempDir.deleteRecursively()
+            }
+        }.onFailure { error ->
+            Log.e(TAG, "Conversion SMP temporaire échouée pour $mp3Uri", error)
         }
     }
 
@@ -168,6 +151,80 @@ class SmpConverter(private val context: Context) {
                 null
             }
         }
+    }
+
+    private fun prepareArchive(sourceUri: Uri): PreparedArchive {
+        val sourceName = resolveDisplayName(sourceUri)
+        require(isSupportedAudioFileName(sourceName)) {
+            "Fichier non supporté pour conversion SMP: $sourceName"
+        }
+        val audioEntryName = buildAudioEntryName(sourceName)
+        val baseName = sourceName.substringBeforeLast('.').trim()
+            .ifBlank { throw IOException("Nom audio invalide: $sourceName") }
+
+        val siblings = listSiblingEntries(sourceUri)
+        val resolvedLyricsText = LrcStorage.loadForTrack(context, sourceUri.toString())
+            ?.takeIf { it.isNotBlank() }
+        val lyricsUri = if (resolvedLyricsText == null) {
+            resolveLyricsSibling(baseName, siblings)
+        } else {
+            null
+        }
+        val tempDir = File(
+            context.cacheDir,
+            "smp_convert_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(8)}"
+        )
+        if (!tempDir.mkdirs()) {
+            throw IOException("Création du dossier temporaire impossible")
+        }
+
+        val tempAudio = File(tempDir, audioEntryName)
+        copyUriToFile(sourceUri, tempAudio)
+        val stableSongId = buildStableSongId(tempAudio)
+
+        val tempLyrics = when {
+            resolvedLyricsText != null -> {
+                File(tempDir, LYRICS_ENTRY_NAME).also { file ->
+                    file.writeText(resolvedLyricsText, Charsets.UTF_8)
+                }
+            }
+
+            lyricsUri != null -> {
+                File(tempDir, LYRICS_ENTRY_NAME).also { copyUriToFile(lyricsUri, it) }
+            }
+
+            else -> null
+        }
+
+        val tempConfig = File(tempDir, CONFIG_ENTRY_NAME).also { configFile ->
+            configFile.writeText(
+                buildMinimalConfigJson(
+                    title = baseName,
+                    songId = stableSongId,
+                    audioEntryName = audioEntryName,
+                    hasLyrics = tempLyrics != null
+                ),
+                Charsets.UTF_8
+            )
+        }
+
+        val outputName = "$baseName.smp"
+        val tempArchive = File(tempDir, outputName)
+        createArchive(
+            targetFile = tempArchive,
+            audioFile = tempAudio,
+            audioEntryName = audioEntryName,
+            lyricsFile = tempLyrics,
+            configFile = tempConfig
+        )
+
+        return PreparedArchive(
+            outputName = outputName,
+            archiveFile = tempArchive,
+            tempDir = tempDir,
+            stableSongId = stableSongId,
+            hasLyrics = tempLyrics != null
+        )
     }
 
     private fun writeArchiveNextToSource(
@@ -291,7 +348,14 @@ class SmpConverter(private val context: Context) {
                 .orEmpty()
         }
 
-        val docId = DocumentsContract.getDocumentId(fileUri)
+        val treeDocId = runCatching { DocumentsContract.getTreeDocumentId(fileUri) }.getOrNull()
+        if (treeDocId == null) {
+            Log.i(TAG, "Sibling lookup ignoré: URI SAF non-tree uri=$fileUri")
+            return emptyList()
+        }
+
+        val docId = runCatching { DocumentsContract.getDocumentId(fileUri) }.getOrNull()
+            ?: return emptyList()
         val slash = docId.lastIndexOf('/')
         if (slash <= 0) {
             return emptyList()

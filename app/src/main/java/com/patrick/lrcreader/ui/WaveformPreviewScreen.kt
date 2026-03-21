@@ -78,13 +78,17 @@ import com.patrick.lrcreader.core.waveform.WaveformExtractor
 import com.patrick.lrcreader.core.waveform.WaveformPeaksCache
 import com.patrick.lrcreader.exo.BuildConfig
 import com.patrick.lrcreader.exo.R
+import com.patrick.lrcreader.smp.SmpAutoMigration
+import com.patrick.lrcreader.smp.SmpAutoMigrationResult
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.math.abs
 import kotlin.math.hypot
 import kotlin.math.max
@@ -105,7 +109,8 @@ fun WaveformPreviewScreen(
     modifier: Modifier = Modifier,
     onBack: () -> Unit,
     initialUri: Uri? = null,
-    initialName: String? = null
+    initialName: String? = null,
+    onTrackPromotedToSmp: (SmpAutoMigrationResult) -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -113,6 +118,7 @@ fun WaveformPreviewScreen(
     val exoPlayer = remember(appContext) {
         ExoPlayer.Builder(appContext).build().apply { playWhenReady = false }
     }
+    val smpAutoMigration = remember(appContext) { SmpAutoMigration(appContext) }
 
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
     var selectedName by remember { mutableStateOf("") }
@@ -297,6 +303,52 @@ fun WaveformPreviewScreen(
         WaveformSessionPrefs.savePlayhead(context, newPos)
         exoPlayer.seekTo(newPos.toLong())
         if (isPlayingWave) exoPlayer.play()
+    }
+
+    suspend fun saveWaveformTrimEdit(startMs: Int, endMs: Int, successMessage: String) {
+        val sourceUri = selectedUri ?: return
+        if (durationMs <= 0) return
+        val sourceWasInternalSmp = smpAutoMigration.isInternalSmpTrackUri(sourceUri.toString())
+
+        val persisted = withContext(Dispatchers.IO) {
+            val migration = smpAutoMigration.migrateLegacyTrackFromIsolatedDocument(sourceUri.toString())
+            val targetUri = migration?.trackUriString?.let(Uri::parse) ?: sourceUri
+            if (BuildConfig.DEBUG) {
+                val key = EditSoundPrefs.trimKeyForUri(targetUri)
+                Log.d(
+                    "TRIM",
+                    "save key=$key uri=$targetUri entryMs=$startMs exitMs=$endMs store=EditSoundPrefs"
+                )
+            }
+            EditSoundPrefs.save(
+                context = appContext,
+                uri = targetUri,
+                startMs = startMs,
+                endMs = endMs
+            )
+            Triple(targetUri, migration?.song?.title, migration)
+        }
+
+        val (targetUri, migratedTitle, migration) = persisted
+        if (targetUri.toString() != sourceUri.toString()) {
+            loadAudioUri(
+                uri = targetUri,
+                displayNameHint = migratedTitle ?: selectedName,
+                requestPersistable = false
+            )
+        }
+        migration?.let(onTrackPromotedToSmp)
+        val migrationSucceeded = migration != null || sourceWasInternalSmp
+        val toastMessage = if (migrationSucceeded) {
+            successMessage
+        } else {
+            "Réglages enregistrés localement. Migration SMP échouée."
+        }
+        Toast.makeText(
+            context,
+            toastMessage,
+            if (migrationSucceeded) Toast.LENGTH_SHORT else Toast.LENGTH_LONG
+        ).show()
     }
 
     val background = Brush.verticalGradient(
@@ -670,16 +722,16 @@ fun WaveformPreviewScreen(
                 ) {
                     TextButton(
                         onClick = {
-                            val uri = selectedUri ?: return@TextButton
+                            if (selectedUri == null) return@TextButton
                             if (durationMs <= 0) return@TextButton
                             outMs = durationMs
-                            EditSoundPrefs.save(
-                                context = context,
-                                uri = uri,
-                                startMs = inMs,
-                                endMs = 0
-                            )
-                            Toast.makeText(context, "Point de sortie supprimé ✅", Toast.LENGTH_SHORT).show()
+                            scope.launch {
+                                saveWaveformTrimEdit(
+                                    startMs = inMs,
+                                    endMs = 0,
+                                    successMessage = "Point de sortie supprimé ✅"
+                                )
+                            }
                         },
                         enabled = hasOutTrim,
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
@@ -689,22 +741,14 @@ fun WaveformPreviewScreen(
 
                     TextButton(
                         onClick = {
-                            val uri = selectedUri ?: return@TextButton
                             if (durationMs <= 0) return@TextButton
-                            if (BuildConfig.DEBUG) {
-                                val key = EditSoundPrefs.trimKeyForUri(uri)
-                                Log.d(
-                                    "TRIM",
-                                    "save key=$key uri=$uri entryMs=$inMs exitMs=$outMs store=EditSoundPrefs"
+                            scope.launch {
+                                saveWaveformTrimEdit(
+                                    startMs = inMs,
+                                    endMs = outMs,
+                                    successMessage = "Réglages enregistrés ✅"
                                 )
                             }
-                            EditSoundPrefs.save(
-                                context = context,
-                                uri = uri,
-                                startMs = inMs,
-                                endMs = outMs
-                            )
-                            Toast.makeText(context, "Réglages enregistrés ✅", Toast.LENGTH_SHORT).show()
                         },
                         enabled = selectedUri != null && durationMs > 0,
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)

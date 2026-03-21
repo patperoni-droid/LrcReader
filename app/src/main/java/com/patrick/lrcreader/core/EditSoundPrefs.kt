@@ -5,7 +5,9 @@ import android.net.Uri
 import android.provider.DocumentsContract
 import android.util.Log
 import com.patrick.lrcreader.core.config.ConfigJsonAtomicFileIo
+import com.patrick.lrcreader.smp.SmpConfig
 import org.json.JSONObject
+import java.io.File
 
 /**
  * Stocke, pour chaque fichier audio, les points d'entrée/sortie choisis
@@ -22,6 +24,8 @@ object EditSoundPrefs {
     private const val JSON_SCHEMA_VERSION = 1
     private const val JSON_KEY_SCHEMA_VERSION = "schemaVersion"
     private const val JSON_KEY_EDITS = "edits"
+    private const val TRACKS_DIR_NAME = "tracks"
+    private const val SMP_CONFIG_FILE_NAME = "config.json"
     private val cacheLock = Any()
     @Volatile
     private var cachedEdits: Map<String, EditInfo>? = null
@@ -76,6 +80,7 @@ object EditSoundPrefs {
         }
         persistPrefs(context, map)
         persistJson(context, map)
+        persistSmpPlaybackConfig(context, uri, startMs, endMs)
         updateCache(map)
     }
 
@@ -250,5 +255,59 @@ object EditSoundPrefs {
             .put(JSON_KEY_SCHEMA_VERSION, JSON_SCHEMA_VERSION)
             .put(JSON_KEY_EDITS, JSONObject())
             .toString(2)
+    }
+
+    private fun persistSmpPlaybackConfig(context: Context, uri: Uri, startMs: Int, endMs: Int) {
+        val configFile = resolveInternalSmpConfigFile(context, uri) ?: return
+        val songDir = configFile.parentFile ?: return
+        val tmpFile = File(songDir, "$SMP_CONFIG_FILE_NAME.tmp")
+
+        runCatching {
+            val currentConfig = SmpConfig.fromJsonOrNull(configFile.readText(Charsets.UTF_8))
+                ?: return
+            val nextPlayback = SmpConfig.PlaybackConfig.fromStoredValues(
+                startMs = startMs.toLong(),
+                endMs = endMs.toLong(),
+                tempo = currentConfig.playback?.tempo,
+                pitchSemi = currentConfig.playback?.pitchSemi,
+                volumeDb = currentConfig.playback?.volumeDb
+            )
+            val nextConfig = currentConfig.copy(playback = nextPlayback)
+            val rawJson = nextConfig.toJsonString()
+
+            songDir.mkdirs()
+            tmpFile.writeText(rawJson, Charsets.UTF_8)
+            if (configFile.exists() && !configFile.delete()) {
+                Log.w(TAG, "persistSmpPlaybackConfig delete failed path=${configFile.absolutePath}")
+            }
+            if (!tmpFile.renameTo(configFile)) {
+                tmpFile.writeText(rawJson, Charsets.UTF_8)
+                configFile.writeText(rawJson, Charsets.UTF_8)
+                tmpFile.delete()
+            }
+        }.onFailure { error ->
+            Log.w(TAG, "persistSmpPlaybackConfig failed path=${configFile.absolutePath}", error)
+            runCatching { tmpFile.delete() }
+        }
+    }
+
+    private fun resolveInternalSmpConfigFile(context: Context, uri: Uri): File? {
+        if (uri.scheme != "file") return null
+
+        val audioPath = uri.path?.takeIf { it.isNotBlank() } ?: return null
+        val audioFile = File(audioPath)
+        if (!audioFile.isFile || !audioFile.name.startsWith("audio.", ignoreCase = true)) {
+            return null
+        }
+
+        val songDir = runCatching { audioFile.parentFile?.canonicalFile }.getOrNull() ?: return null
+        val tracksRoot = runCatching {
+            File(context.filesDir, TRACKS_DIR_NAME).canonicalFile
+        }.getOrNull() ?: return null
+        if (songDir.parentFile?.canonicalFile != tracksRoot) {
+            return null
+        }
+
+        return File(songDir, SMP_CONFIG_FILE_NAME).takeIf { it.isFile }
     }
 }
