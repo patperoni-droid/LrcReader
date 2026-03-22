@@ -92,6 +92,8 @@ import com.patrick.lrcreader.core.lyrics.LyricsCacheEntry
 import com.patrick.lrcreader.smp.SmpConfig
 import com.patrick.lrcreader.smp.SmpAnnotationsStore
 import com.patrick.lrcreader.smp.SmpAutoMigrationResult
+import com.patrick.lrcreader.smp.SmpTimelineStore
+import com.patrick.lrcreader.smp.TimelineMarker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -142,6 +144,7 @@ fun PlayerScreen(
     val sAccordsActionSave = stringResource(R.string.accords_action_save)
     val sAccordsActionDelete = stringResource(R.string.accords_action_delete)
     val sDeleteLiveNote = stringResource(R.string.player_cd_delete_live_note)
+    val sTimelineSaveFailed = stringResource(R.string.timeline_save_failed)
 
     // 📝 Notes LIVE (création depuis le lecteur)
     var showAddNoteDialog by remember { mutableStateOf(false) }
@@ -153,6 +156,16 @@ fun PlayerScreen(
 
     // 🔊 Brancher ExoPlayer au bus principal (fader LECTEUR)
     var activeLiveNote by remember { mutableStateOf<LiveNote?>(null) }
+    var showTimelineDialog by remember { mutableStateOf(false) }
+    var timelineMarkers by remember(currentTrackUri) { mutableStateOf<List<TimelineMarker>>(emptyList()) }
+    val timelinePalette = remember {
+        listOf("REF", "Cplt", "Pont", "Solo", "Intro", "Outro")
+    }
+    val isCurrentTrackSmp = remember(context, currentTrackUri) {
+        currentTrackUri?.let { trackUri ->
+            resolveInternalSmpSongDir(context, trackUri) != null
+        } ?: false
+    }
     LaunchedEffect(exoPlayer) {
         PlayerBusController.attachPlayer(context, exoPlayer)
     }
@@ -236,6 +249,19 @@ fun PlayerScreen(
         }.orEmpty()
         LiveNoteManager.setNotes(loadedNotes)
         activeLiveNote = null
+    }
+    LaunchedEffect(currentTrackUri, isCurrentTrackSmp) {
+        showTimelineDialog = false
+        if (!isCurrentTrackSmp || currentTrackUri.isNullOrBlank()) {
+            timelineMarkers = emptyList()
+            return@LaunchedEffect
+        }
+
+        val trackUriString = currentTrackUri
+
+        timelineMarkers = withContext(Dispatchers.IO) {
+            loadSmpTimelineMarkersForTrack(context, trackUriString)
+        }
     }
     LaunchedEffect(isPlaying, currentTrackUri) {
         while (true) {
@@ -329,6 +355,69 @@ fun PlayerScreen(
 
     fun showAccordsIoFailureToast(message: String) {
         Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+    }
+
+    fun persistTimelineMarkers(
+        updatedMarkers: List<TimelineMarker>,
+        previousMarkers: List<TimelineMarker>
+    ) {
+        val trackUriForPersistence = currentTrackUri
+        timelineMarkers = updatedMarkers
+        scope.launch {
+            val saved = persistSmpTimelineMarkersForTrack(
+                context = context,
+                trackUriString = trackUriForPersistence,
+                markers = updatedMarkers
+            )
+            if (!saved) {
+                timelineMarkers = previousMarkers
+                Toast.makeText(context, sTimelineSaveFailed, Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    fun addTimelineMarker(label: String) {
+        if (!isCurrentTrackSmp) return
+        val trimmed = label.trim()
+        if (trimmed.isEmpty()) return
+
+        val previousMarkers = timelineMarkers
+        val updatedMarkers = (timelineMarkers + TimelineMarker(
+            timeMs = getPositionMs().coerceAtLeast(0L),
+            label = trimmed
+        )).sortedWith(
+            compareBy<TimelineMarker> { it.timeMs }
+                .thenBy { it.label }
+        )
+        persistTimelineMarkers(updatedMarkers, previousMarkers)
+    }
+
+    fun renameTimelineMarker(index: Int, label: String) {
+        if (!isCurrentTrackSmp || index !in timelineMarkers.indices) return
+        val trimmed = label.trim()
+        if (trimmed.isEmpty()) return
+
+        val previousMarkers = timelineMarkers
+        val updatedMarkers = timelineMarkers
+            .toMutableList()
+            .apply {
+                this[index] = this[index].copy(label = trimmed)
+            }
+            .sortedWith(
+                compareBy<TimelineMarker> { it.timeMs }
+                    .thenBy { it.label }
+            )
+        persistTimelineMarkers(updatedMarkers, previousMarkers)
+    }
+
+    fun deleteTimelineMarker(index: Int) {
+        if (!isCurrentTrackSmp || index !in timelineMarkers.indices) return
+
+        val previousMarkers = timelineMarkers
+        val updatedMarkers = timelineMarkers.toMutableList().apply {
+            removeAt(index)
+        }
+        persistTimelineMarkers(updatedMarkers, previousMarkers)
     }
 
     val latestCurrentTrackUri by rememberUpdatedState(currentTrackUri)
@@ -1522,6 +1611,12 @@ fun PlayerScreen(
                                 currentEditTab = 0
                                 isEditingLyrics = true
                             },
+                            showTimeline = isCurrentTrackSmp,
+                            onOpenTimeline = {
+                                if (isCurrentTrackSmp) {
+                                    showTimelineDialog = true
+                                }
+                            },
                             onAddLiveNote = {
                                 noteAnchorMs = getPositionMs()
                                 wasPlayingBeforeNote = isPlaying
@@ -1670,6 +1765,17 @@ fun PlayerScreen(
                                     }
                                 }
                             }
+                        }
+
+                        if (showTimelineDialog && isCurrentTrackSmp) {
+                            TimelineEditorDialog(
+                                markers = timelineMarkers,
+                                palette = timelinePalette,
+                                onDismiss = { showTimelineDialog = false },
+                                onAddMarker = { label -> addTimelineMarker(label) },
+                                onRenameMarker = { index, label -> renameTimelineMarker(index, label) },
+                                onDeleteMarker = { index -> deleteTimelineMarker(index) }
+                            )
                         }
 
                         TimeBar(
@@ -1921,6 +2027,8 @@ private fun ReaderHeader(
     onOpenMix: () -> Unit,
     showEditLyrics: Boolean,
     onOpenEditor: () -> Unit,
+    showTimeline: Boolean,
+    onOpenTimeline: () -> Unit,
     onAddLiveNote: () -> Unit,
 ) {
     Box(
@@ -1983,6 +2091,16 @@ private fun ReaderHeader(
                 }
             }
 
+            if (showTimeline) {
+                IconButton(onClick = onOpenTimeline) {
+                    Text(
+                        text = stringResource(R.string.player_timeline_short),
+                        color = Color(0xFF80CBC4),
+                        fontSize = 13.sp
+                    )
+                }
+            }
+
             IconButton(onClick = onAddLiveNote) {
                 Text(stringResource(R.string.player_add_note_icon), color = Color.White, fontSize = 16.sp)
             }
@@ -2027,6 +2145,18 @@ private fun loadSmpLiveNotesForTrack(
     return SmpAnnotationsStore.read(target.file)
 }
 
+private fun loadSmpTimelineMarkersForTrack(
+    context: android.content.Context,
+    trackUriString: String
+): List<TimelineMarker> {
+    val target = resolveSmpTimelineTarget(
+        context = context,
+        trackUriString = trackUriString,
+        requireExisting = false
+    ) ?: return emptyList()
+    return SmpTimelineStore.read(target.file)
+}
+
 private suspend fun persistSmpLiveNotesForTrack(
     context: android.content.Context,
     trackUriString: String?,
@@ -2052,6 +2182,31 @@ private suspend fun persistSmpLiveNotesForTrack(
     return saved == true
 }
 
+private suspend fun persistSmpTimelineMarkersForTrack(
+    context: android.content.Context,
+    trackUriString: String?,
+    markers: List<TimelineMarker>
+): Boolean {
+    if (trackUriString.isNullOrBlank()) {
+        return false
+    }
+
+    val saved = withContext(Dispatchers.IO) {
+        resolveSmpTimelineTarget(
+            context = context,
+            trackUriString = trackUriString,
+            requireExisting = false
+        )?.let { target ->
+            SmpTimelineStore.write(target.file, markers)
+        }
+    }
+
+    if (saved == false) {
+        Log.w("LrcDebug", "TIMELINE_SAVE_FAILED trackUri=$trackUriString")
+    }
+    return saved == true
+}
+
 private fun resolveSmpAnnotationsTarget(
     context: android.content.Context,
     trackUriString: String,
@@ -2063,6 +2218,22 @@ private fun resolveSmpAnnotationsTarget(
         transportNameSelector = { it.files?.annotations },
         fallbackName = SmpAnnotationsStore.ANNOTATIONS_FILE_NAME,
         requireExisting = requireExisting
+    )
+}
+
+private fun resolveSmpTimelineTarget(
+    context: android.content.Context,
+    trackUriString: String,
+    requireExisting: Boolean
+): SmpSongUnitTextTarget? {
+    val songDir = resolveInternalSmpSongDir(context, trackUriString) ?: return null
+    val timelineFile = File(songDir, SmpTimelineStore.TIMELINE_FILE_NAME)
+    if (requireExisting && !timelineFile.isFile) {
+        return null
+    }
+    return SmpSongUnitTextTarget(
+        file = timelineFile,
+        fileName = timelineFile.name
     )
 }
 
@@ -2355,6 +2526,28 @@ private fun resolveSmpSongUnitTextTarget(
         file = targetFile,
         fileName = targetFile.name
     )
+}
+
+private fun resolveInternalSmpSongDir(
+    context: android.content.Context,
+    trackUriString: String
+): File? {
+    val trackUri = runCatching { Uri.parse(trackUriString) }.getOrNull() ?: return null
+    if (trackUri.scheme != "file") return null
+
+    val audioPath = trackUri.path?.takeIf { it.isNotBlank() } ?: return null
+    val audioFile = File(audioPath)
+    if (!audioFile.isFile || !audioFile.name.startsWith("audio.", ignoreCase = true)) {
+        return null
+    }
+
+    val songDir = audioFile.parentFile?.canonicalFile ?: return null
+    val tracksRoot = File(context.filesDir, "tracks").canonicalFile
+    if (songDir.parentFile?.canonicalFile != tracksRoot) {
+        return null
+    }
+
+    return songDir.takeIf { File(it, "config.json").isFile }
 }
 
 private fun resolveSmpSongUnitChildFile(songDir: File, transportName: String): File? {
