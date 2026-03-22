@@ -2,10 +2,12 @@ package com.patrick.lrcreader.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -41,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.smp.TimelineMarker
+import kotlin.math.abs
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -48,6 +51,7 @@ fun TimelineEditorDialog(
     markers: List<TimelineMarker>,
     palette: List<String>,
     playerPositionMs: Long,
+    isPlaying: Boolean,
     onDismiss: () -> Unit,
     onAddPaletteTag: (String) -> Unit,
     onAddMarker: (String) -> Unit,
@@ -59,29 +63,56 @@ fun TimelineEditorDialog(
     var paletteDraft by remember { mutableStateOf("") }
     val lazyListState = rememberLazyListState()
     val safePlayerPositionMs = playerPositionMs.coerceAtLeast(0L)
+    var userScrolling by remember { mutableStateOf(false) }
+    var initialFocusDone by remember { mutableStateOf(false) }
     val activeMarkerIndex = remember(markers, safePlayerPositionMs) {
         markers.indexOfLast { marker -> marker.timeMs <= safePlayerPositionMs }
     }
 
-    LaunchedEffect(activeMarkerIndex, markers.size) {
-        if (activeMarkerIndex !in markers.indices) {
-            return@LaunchedEffect
-        }
+    suspend fun centerActiveMarker() {
+        if (activeMarkerIndex !in markers.indices) return
 
         val visible = lazyListState.layoutInfo.visibleItemsInfo
             .firstOrNull { item -> item.index == activeMarkerIndex }
-        if (visible != null) {
-            return@LaunchedEffect
+        if (visible == null) {
+            lazyListState.scrollToItem(activeMarkerIndex)
         }
 
-        val viewport = lazyListState.layoutInfo.viewportEndOffset -
-            lazyListState.layoutInfo.viewportStartOffset
-        val comfortableOffset = if (viewport > 0) -viewport / 4 else 0
-        runCatching {
-            lazyListState.animateScrollToItem(
-                index = activeMarkerIndex,
-                scrollOffset = comfortableOffset
-            )
+        val info = lazyListState.layoutInfo.visibleItemsInfo
+            .firstOrNull { item -> item.index == activeMarkerIndex }
+            ?: return
+        val start = lazyListState.layoutInfo.viewportStartOffset
+        val end = lazyListState.layoutInfo.viewportEndOffset
+        val viewportCenter = (start + end) / 2
+        val itemCenter = info.offset + info.size / 2
+        val delta = itemCenter - viewportCenter
+        if (abs(delta) > 1) {
+            lazyListState.scrollBy(delta.toFloat())
+        }
+    }
+
+    LaunchedEffect(lazyListState) {
+        while (true) {
+            userScrolling = lazyListState.isScrollInProgress
+            kotlinx.coroutines.delay(80L)
+        }
+    }
+
+    LaunchedEffect(activeMarkerIndex, markers.size) {
+        if (initialFocusDone) return@LaunchedEffect
+        if (activeMarkerIndex !in markers.indices) return@LaunchedEffect
+        centerActiveMarker()
+        initialFocusDone = true
+    }
+
+    LaunchedEffect(isPlaying, activeMarkerIndex, markers.size) {
+        if (!isPlaying) return@LaunchedEffect
+        if (activeMarkerIndex !in markers.indices) return@LaunchedEffect
+        while (true) {
+            if (!userScrolling) {
+                centerActiveMarker()
+            }
+            kotlinx.coroutines.delay(120L)
         }
     }
 
@@ -180,7 +211,8 @@ fun TimelineEditorDialog(
                         state = lazyListState,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(max = 320.dp)
+                            .heightIn(min = 280.dp, max = 420.dp),
+                        contentPadding = PaddingValues(top = 140.dp, bottom = 140.dp)
                     ) {
                         itemsIndexed(
                             items = markers,
