@@ -100,6 +100,8 @@ private fun isBackupFolderName(name: String): Boolean {
 private fun resolveFolderName(context: android.content.Context, uri: Uri): String? {
     return when (uri.scheme) {
         "file" -> File(uri.path ?: "").name.ifBlank { null }
+        "spl-prompter",
+        "spl-smp" -> null
         else -> {
             (DocumentFile.fromTreeUri(context, uri) ?: DocumentFile.fromSingleUri(context, uri))
                 ?.name
