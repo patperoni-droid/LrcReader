@@ -15,9 +15,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.automirrored.filled.StickyNote2
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.FlashOn
+import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -37,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.smp.TimelineMarker
+import com.patrick.lrcreader.smp.TimelineMarkerKind
 import kotlin.math.abs
 
 private const val TIMELINE_SLOT_MS = 1_000L
@@ -253,6 +257,13 @@ fun TimelineScrubColumn(
                                 modifier = Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
+                                if (entry.marker.kind != TimelineMarkerKind.TEXT) {
+                                    TimelineMarkerTypeIcon(
+                                        kind = entry.marker.kind,
+                                        tint = markerTypeTint(entry.marker.kind)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                }
                                 Text(
                                     text = entry.marker.label,
                                     color = if (isActiveMarker) Color(0xFF39D98A) else Color.White,
@@ -282,6 +293,34 @@ fun TimelineScrubColumn(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun TimelineMarkerTypeIcon(
+    kind: TimelineMarkerKind,
+    tint: Color
+) {
+    val imageVector = when (kind) {
+        TimelineMarkerKind.TEXT -> return
+        TimelineMarkerKind.MIDI -> Icons.Filled.GraphicEq
+        TimelineMarkerKind.NOTE -> Icons.AutoMirrored.Filled.StickyNote2
+        TimelineMarkerKind.DMX -> Icons.Filled.FlashOn
+    }
+
+    Icon(
+        imageVector = imageVector,
+        contentDescription = null,
+        tint = tint
+    )
+}
+
+private fun markerTypeTint(kind: TimelineMarkerKind): Color {
+    return when (kind) {
+        TimelineMarkerKind.TEXT -> Color.White
+        TimelineMarkerKind.MIDI -> Color(0xFF80CBC4)
+        TimelineMarkerKind.NOTE -> Color(0xFFFFF176)
+        TimelineMarkerKind.DMX -> Color(0xFFFFB74D)
     }
 }
 

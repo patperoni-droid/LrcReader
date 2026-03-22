@@ -95,6 +95,7 @@ import com.patrick.lrcreader.smp.SmpAnnotationsStore
 import com.patrick.lrcreader.smp.SmpAutoMigrationResult
 import com.patrick.lrcreader.smp.SmpTimelineStore
 import com.patrick.lrcreader.smp.TimelineMarker
+import com.patrick.lrcreader.smp.TimelineMarkerKind
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -377,7 +378,10 @@ fun PlayerScreen(
         }
     }
 
-    fun addTimelineMarker(label: String) {
+    fun addTimelineMarker(
+        label: String,
+        kind: TimelineMarkerKind = TimelineMarkerKind.TEXT
+    ) {
         if (!isCurrentTrackSmp) return
         val trimmed = label.trim()
         if (trimmed.isEmpty()) return
@@ -385,12 +389,21 @@ fun PlayerScreen(
         val previousMarkers = timelineMarkers
         val updatedMarkers = (timelineMarkers + TimelineMarker(
             timeMs = getPositionMs().coerceAtLeast(0L),
-            label = trimmed
+            label = trimmed,
+            kind = kind
         )).sortedWith(
             compareBy<TimelineMarker> { it.timeMs }
                 .thenBy { it.label }
         )
         persistTimelineMarkers(updatedMarkers, previousMarkers)
+    }
+
+    fun addTypedTimelineMarker(kind: TimelineMarkerKind) {
+        if (kind == TimelineMarkerKind.TEXT) return
+        addTimelineMarker(
+            label = kind.defaultLabel,
+            kind = kind
+        )
     }
 
     fun addTimelinePaletteTag(label: String) {
@@ -1574,6 +1587,7 @@ fun PlayerScreen(
                 seekToMs = seekToMs,
                 onAddPaletteTag = { label -> addTimelinePaletteTag(label) },
                 onAddMarker = { label -> addTimelineMarker(label) },
+                onAddTypedMarker = { kind -> addTypedTimelineMarker(kind) },
                 onRenameMarker = { index, label -> renameTimelineMarker(index, label) },
                 onDeleteMarker = { index -> deleteTimelineMarker(index) }
             )
