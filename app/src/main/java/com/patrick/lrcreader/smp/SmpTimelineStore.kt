@@ -35,7 +35,8 @@ object SmpTimelineStore {
                 } else {
                     TimelineMarker(
                         timeMs = marker.timeMs.coerceAtLeast(0L),
-                        label = label
+                        label = label,
+                        kind = marker.kind
                     )
                 }
             }
@@ -71,6 +72,9 @@ object SmpTimelineStore {
                     JSONObject().apply {
                         put("timeMs", marker.timeMs)
                         put("label", marker.label)
+                        if (marker.kind != TimelineMarkerKind.TEXT) {
+                            put("kind", marker.kind.storageValue)
+                        }
                     }
                 )
             }
@@ -101,7 +105,14 @@ object SmpTimelineStore {
                     add(
                         TimelineMarker(
                             timeMs = obj.optLong("timeMs").coerceAtLeast(0L),
-                            label = label
+                            label = label,
+                            kind = TimelineMarkerKind.fromStorageValue(
+                                raw = if (obj.has("kind") && !obj.isNull("kind")) {
+                                    obj.optString("kind")
+                                } else {
+                                    null
+                                }
+                            )
                         )
                     )
                 }

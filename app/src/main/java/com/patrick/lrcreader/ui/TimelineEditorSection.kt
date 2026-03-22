@@ -11,10 +11,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.automirrored.filled.StickyNote2
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
@@ -35,6 +38,7 @@ import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.smp.TimelineMarker
+import com.patrick.lrcreader.smp.TimelineMarkerKind
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -49,6 +53,7 @@ fun TimelineEditorSection(
     seekToMs: (Long) -> Unit,
     onAddPaletteTag: (String) -> Unit,
     onAddMarker: (String) -> Unit,
+    onAddTypedMarker: (TimelineMarkerKind) -> Unit,
     onRenameMarker: (Int, String) -> Unit,
     onDeleteMarker: (Int) -> Unit
 ) {
@@ -175,6 +180,55 @@ fun TimelineEditorSection(
             }
         }
 
+        Spacer(Modifier.height(12.dp))
+
+        Text(
+            text = stringResource(R.string.timeline_event_palette_title),
+            color = Color(0xFFB0BEC5),
+            fontSize = 12.sp
+        )
+        Spacer(Modifier.height(8.dp))
+
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            TimelineEventPaletteButton(
+                label = stringResource(R.string.timeline_event_midi),
+                icon = {
+                    Icon(
+                        imageVector = Icons.Filled.GraphicEq,
+                        contentDescription = null,
+                        tint = Color(0xFF80CBC4)
+                    )
+                },
+                onClick = { onAddTypedMarker(TimelineMarkerKind.MIDI) }
+            )
+            TimelineEventPaletteButton(
+                label = stringResource(R.string.timeline_event_note),
+                icon = {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.StickyNote2,
+                        contentDescription = null,
+                        tint = Color(0xFFFFF176)
+                    )
+                },
+                onClick = { onAddTypedMarker(TimelineMarkerKind.NOTE) }
+            )
+            TimelineEventPaletteButton(
+                label = stringResource(R.string.timeline_event_dmx),
+                icon = {
+                    Icon(
+                        imageVector = Icons.Filled.FlashOn,
+                        contentDescription = null,
+                        tint = Color(0xFFFFB74D)
+                    )
+                },
+                onClick = { onAddTypedMarker(TimelineMarkerKind.DMX) }
+            )
+        }
+
         Spacer(Modifier.height(16.dp))
 
         Row(
@@ -248,6 +302,19 @@ fun TimelineEditorSection(
             },
             containerColor = Color(0xFF222222)
         )
+    }
+}
+
+@Composable
+private fun TimelineEventPaletteButton(
+    label: String,
+    icon: @Composable () -> Unit,
+    onClick: () -> Unit
+) {
+    TextButton(onClick = onClick) {
+        icon()
+        Spacer(Modifier.width(6.dp))
+        Text(text = label, color = Color.White)
     }
 }
 
