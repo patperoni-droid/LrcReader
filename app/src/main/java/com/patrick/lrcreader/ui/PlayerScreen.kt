@@ -1782,6 +1782,7 @@ fun PlayerScreen(
                                 markers = timelineMarkers,
                                 palette = timelinePalette,
                                 playerPositionMs = (if (isDragging) dragPosMs else positionMs).toLong(),
+                                isPlaying = isPlaying,
                                 onDismiss = { showTimelineDialog = false },
                                 onAddPaletteTag = { label -> addTimelinePaletteTag(label) },
                                 onAddMarker = { label -> addTimelineMarker(label) },
