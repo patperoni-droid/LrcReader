@@ -1,13 +1,9 @@
 package com.patrick.lrcreader.ui
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -15,13 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipPrevious
@@ -31,7 +21,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -46,7 +35,6 @@ import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.smp.TimelineMarker
-import kotlin.math.abs
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -64,63 +52,10 @@ fun TimelineEditorSection(
     onRenameMarker: (Int, String) -> Unit,
     onDeleteMarker: (Int) -> Unit
 ) {
-    val lazyListState = rememberLazyListState()
     val safePositionMs = positionMs.coerceAtLeast(0).toLong()
     var renameIndex by remember(markers) { mutableStateOf<Int?>(null) }
     var renameText by remember(markers) { mutableStateOf("") }
     var paletteDraft by remember { mutableStateOf("") }
-    var userScrolling by remember { mutableStateOf(false) }
-    var initialFocusDone by remember(markers) { mutableStateOf(false) }
-    val activeMarkerIndex = remember(markers, safePositionMs) {
-        markers.indexOfLast { marker -> marker.timeMs <= safePositionMs }
-    }
-
-    suspend fun centerActiveMarker() {
-        if (activeMarkerIndex !in markers.indices) return
-
-        val visible = lazyListState.layoutInfo.visibleItemsInfo
-            .firstOrNull { item -> item.index == activeMarkerIndex }
-        if (visible == null) {
-            lazyListState.scrollToItem(activeMarkerIndex)
-        }
-
-        val info = lazyListState.layoutInfo.visibleItemsInfo
-            .firstOrNull { item -> item.index == activeMarkerIndex }
-            ?: return
-        val start = lazyListState.layoutInfo.viewportStartOffset
-        val end = lazyListState.layoutInfo.viewportEndOffset
-        val viewportCenter = (start + end) / 2
-        val itemCenter = info.offset + info.size / 2
-        val delta = itemCenter - viewportCenter
-        if (abs(delta) > 1) {
-            lazyListState.scrollBy(delta.toFloat())
-        }
-    }
-
-    LaunchedEffect(lazyListState) {
-        while (true) {
-            userScrolling = lazyListState.isScrollInProgress
-            kotlinx.coroutines.delay(80L)
-        }
-    }
-
-    LaunchedEffect(activeMarkerIndex, markers.size) {
-        if (initialFocusDone) return@LaunchedEffect
-        if (activeMarkerIndex !in markers.indices) return@LaunchedEffect
-        centerActiveMarker()
-        initialFocusDone = true
-    }
-
-    LaunchedEffect(isPlaying, activeMarkerIndex, markers.size) {
-        if (!isPlaying) return@LaunchedEffect
-        if (activeMarkerIndex !in markers.indices) return@LaunchedEffect
-        while (true) {
-            if (!userScrolling) {
-                centerActiveMarker()
-            }
-            kotlinx.coroutines.delay(120L)
-        }
-    }
 
     Column(
         modifier = Modifier
@@ -254,85 +189,25 @@ fun TimelineEditorSection(
             Spacer(Modifier.weight(1f))
             Text(
                 text = formatTimelineMarkerTime(safePositionMs),
-                color = if (activeMarkerIndex >= 0) Color(0xFF80CBC4) else Color(0xFFB0BEC5),
+                color = if (durationMs > 0) Color(0xFF80CBC4) else Color(0xFFB0BEC5),
                 fontSize = 12.sp
             )
         }
 
-        Spacer(Modifier.height(8.dp))
-
-        if (markers.isEmpty()) {
-            Text(
-                text = stringResource(R.string.timeline_empty_state),
-                color = Color.Gray,
-                modifier = Modifier.padding(16.dp)
-            )
-        } else {
-            LazyColumn(
-                state = lazyListState,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                contentPadding = PaddingValues(top = 140.dp, bottom = 140.dp)
-            ) {
-                itemsIndexed(
-                    items = markers,
-                    key = { _, marker -> "${marker.timeMs}:${marker.label}" }
-                ) { index, marker ->
-                    val isActive = index == activeMarkerIndex
-                    val rowShape = RoundedCornerShape(10.dp)
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(
-                                color = if (isActive) Color(0x2239D98A) else Color.Transparent,
-                                shape = rowShape
-                            )
-                            .border(
-                                width = if (isActive) 1.dp else 0.dp,
-                                color = if (isActive) Color(0xFF39D98A) else Color.Transparent,
-                                shape = rowShape
-                            )
-                            .padding(horizontal = 8.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = formatTimelineMarkerTime(marker.timeMs),
-                            color = if (isActive) Color(0xFF80CBC4) else Color(0xFFB0BEC5),
-                            fontSize = 12.sp,
-                            modifier = Modifier.width(74.dp)
-                        )
-                        Text(
-                            text = marker.label,
-                            color = if (isActive) Color(0xFF39D98A) else Color.White,
-                            fontSize = 15.sp,
-                            fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium,
-                            modifier = Modifier.weight(1f)
-                        )
-                        IconButton(
-                            onClick = {
-                                renameIndex = index
-                                renameText = marker.label
-                            }
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Edit,
-                                contentDescription = stringResource(R.string.timeline_cd_rename),
-                                tint = Color(0xFF80CBC4)
-                            )
-                        }
-                        IconButton(onClick = { onDeleteMarker(index) }) {
-                            Icon(
-                                imageVector = Icons.Filled.Delete,
-                                contentDescription = stringResource(R.string.timeline_cd_delete),
-                                tint = Color(0xFFFF8A80)
-                            )
-                        }
-                    }
-                }
-            }
-        }
+        TimelineScrubColumn(
+            modifier = Modifier.weight(1f),
+            markers = markers,
+            positionMs = positionMs,
+            durationMs = durationMs,
+            isPlaying = isPlaying,
+            onSeekToMs = seekToMs,
+            onEditMarker = { index ->
+                if (index !in markers.indices) return@TimelineScrubColumn
+                renameIndex = index
+                renameText = markers[index].label
+            },
+            onDeleteMarker = onDeleteMarker
+        )
     }
 
     val safeRenameIndex = renameIndex
