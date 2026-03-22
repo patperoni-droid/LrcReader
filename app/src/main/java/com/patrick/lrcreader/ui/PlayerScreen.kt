@@ -157,7 +157,7 @@ fun PlayerScreen(
 
     // 🔊 Brancher ExoPlayer au bus principal (fader LECTEUR)
     var activeLiveNote by remember { mutableStateOf<LiveNote?>(null) }
-    var showTimelineDialog by remember { mutableStateOf(false) }
+    var isEditingTimeline by remember { mutableStateOf(false) }
     var timelineMarkers by remember(currentTrackUri) { mutableStateOf<List<TimelineMarker>>(emptyList()) }
     var timelinePalette by remember(context) {
         mutableStateOf(TimelinePaletteStore.load(context))
@@ -252,7 +252,7 @@ fun PlayerScreen(
         activeLiveNote = null
     }
     LaunchedEffect(currentTrackUri, isCurrentTrackSmp) {
-        showTimelineDialog = false
+        isEditingTimeline = false
         if (!isCurrentTrackSmp || currentTrackUri.isNullOrBlank()) {
             timelineMarkers = emptyList()
             return@LaunchedEffect
@@ -1060,11 +1060,12 @@ fun PlayerScreen(
     }
 
     // ---------- Autoswitch playlist (-10s) ----------
-    LaunchedEffect(durationMs, positionMs, hasRequestedPlaylist, currentTrackUri, isEditingLyrics, autoReturnArmed) {
+    LaunchedEffect(durationMs, positionMs, hasRequestedPlaylist, currentTrackUri, isEditingLyrics, isEditingTimeline, autoReturnArmed) {
         val enabled = AutoReturnPrefs.isEnabled(context)
         if (enabled &&
             autoReturnArmed &&
             !isEditingLyrics &&
+            !isEditingTimeline &&
             !hasRequestedPlaylist &&
             durationMs > 0 &&
             positionMs > 3_000 &&
@@ -1561,6 +1562,21 @@ fun PlayerScreen(
                     null
                 }
             )
+        } else if (isEditingTimeline) {
+            TimelineEditorSection(
+                markers = timelineMarkers,
+                palette = timelinePalette,
+                isPlaying = isPlaying,
+                positionMs = positionMs,
+                durationMs = durationMs,
+                onCloseEditor = { isEditingTimeline = false },
+                onIsPlayingChange = onIsPlayingChange,
+                seekToMs = seekToMs,
+                onAddPaletteTag = { label -> addTimelinePaletteTag(label) },
+                onAddMarker = { label -> addTimelineMarker(label) },
+                onRenameMarker = { index, label -> renameTimelineMarker(index, label) },
+                onDeleteMarker = { index -> deleteTimelineMarker(index) }
+            )
         } else {
             Column(
                 modifier = Modifier
@@ -1624,7 +1640,7 @@ fun PlayerScreen(
                             showTimeline = isCurrentTrackSmp,
                             onOpenTimeline = {
                                 if (isCurrentTrackSmp) {
-                                    showTimelineDialog = true
+                                    isEditingTimeline = true
                                 }
                             },
                             onAddLiveNote = {
@@ -1776,21 +1792,6 @@ fun PlayerScreen(
                                 }
                             }
                         }
-
-                        if (showTimelineDialog && isCurrentTrackSmp) {
-                            TimelineEditorDialog(
-                                markers = timelineMarkers,
-                                palette = timelinePalette,
-                                playerPositionMs = (if (isDragging) dragPosMs else positionMs).toLong(),
-                                isPlaying = isPlaying,
-                                onDismiss = { showTimelineDialog = false },
-                                onAddPaletteTag = { label -> addTimelinePaletteTag(label) },
-                                onAddMarker = { label -> addTimelineMarker(label) },
-                                onRenameMarker = { index, label -> renameTimelineMarker(index, label) },
-                                onDeleteMarker = { index -> deleteTimelineMarker(index) }
-                            )
-                        }
-
                         TimeBar(
                             positionMs = if (isDragging) dragPosMs else positionMs,
                             durationMs = durationMs,
