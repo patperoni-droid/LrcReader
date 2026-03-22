@@ -244,11 +244,21 @@
     <string name="player_auto_return_button">-10</string>
     <string name="player_hq_tag">TS=HQ</string>
     <string name="player_add_note_icon">📝</string>
+    <string name="player_timeline_short">TL</string>
     <string name="player_accords_track_changed_blocked">Action bloquée: le morceau actif a changé pendant l’édition des accords.</string>
     <string name="player_accords_save_queue_closed">Accords: échec sauvegarde (queue fermée).</string>
     <string name="accords_action_save">sauvegarde</string>
     <string name="accords_action_delete">suppression</string>
     <string name="accords_error_action_with_stage">Accords: échec %1$s (%2$s).</string>
+    <string name="timeline_dialog_title">Timeline</string>
+    <string name="timeline_palette_title">Palette de repères</string>
+    <string name="timeline_markers_title">Repères posés</string>
+    <string name="timeline_empty_state">Aucun repère pour ce morceau SMP.</string>
+    <string name="timeline_rename_title">Renommer le repère</string>
+    <string name="timeline_rename_label">Libellé</string>
+    <string name="timeline_cd_rename">Renommer le repère</string>
+    <string name="timeline_cd_delete">Supprimer le repère</string>
+    <string name="timeline_save_failed">Timeline: sauvegarde impossible.</string>
 
     <!-- Setup install -->
     <string name="setup_title">Installation</string>
