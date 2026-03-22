@@ -252,6 +252,9 @@
     <string name="accords_error_action_with_stage">Accords: échec %1$s (%2$s).</string>
     <string name="timeline_dialog_title">Timeline</string>
     <string name="timeline_palette_title">Palette de repères</string>
+    <string name="timeline_palette_input_label">Nouveau tag</string>
+    <string name="timeline_palette_add_action">Ajouter</string>
+    <string name="timeline_palette_empty_state">Palette vide. Ajoutez vos repères de scène.</string>
     <string name="timeline_markers_title">Repères posés</string>
     <string name="timeline_empty_state">Aucun repère pour ce morceau SMP.</string>
     <string name="timeline_rename_title">Renommer le repère</string>

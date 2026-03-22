@@ -88,6 +88,7 @@ import com.patrick.lrcreader.core.buildAccordsIoFailureLog
 import com.patrick.lrcreader.core.resolveChordsLookupFileName
 import com.patrick.lrcreader.core.resolveAccordsEditTargetTrack
 import com.patrick.lrcreader.core.resolveLyricsViewMode
+import com.patrick.lrcreader.core.TimelinePaletteStore
 import com.patrick.lrcreader.core.lyrics.LyricsCacheEntry
 import com.patrick.lrcreader.smp.SmpConfig
 import com.patrick.lrcreader.smp.SmpAnnotationsStore
@@ -158,8 +159,8 @@ fun PlayerScreen(
     var activeLiveNote by remember { mutableStateOf<LiveNote?>(null) }
     var showTimelineDialog by remember { mutableStateOf(false) }
     var timelineMarkers by remember(currentTrackUri) { mutableStateOf<List<TimelineMarker>>(emptyList()) }
-    val timelinePalette = remember {
-        listOf("REF", "Cplt", "Pont", "Solo", "Intro", "Outro")
+    var timelinePalette by remember(context) {
+        mutableStateOf(TimelinePaletteStore.load(context))
     }
     val isCurrentTrackSmp = remember(context, currentTrackUri) {
         currentTrackUri?.let { trackUri ->
@@ -390,6 +391,15 @@ fun PlayerScreen(
                 .thenBy { it.label }
         )
         persistTimelineMarkers(updatedMarkers, previousMarkers)
+    }
+
+    fun addTimelinePaletteTag(label: String) {
+        val trimmed = label.trim()
+        if (trimmed.isEmpty()) return
+        timelinePalette = TimelinePaletteStore.save(
+            context = context,
+            tags = timelinePalette + trimmed
+        )
     }
 
     fun renameTimelineMarker(index: Int, label: String) {
@@ -1771,7 +1781,9 @@ fun PlayerScreen(
                             TimelineEditorDialog(
                                 markers = timelineMarkers,
                                 palette = timelinePalette,
+                                playerPositionMs = (if (isDragging) dragPosMs else positionMs).toLong(),
                                 onDismiss = { showTimelineDialog = false },
+                                onAddPaletteTag = { label -> addTimelinePaletteTag(label) },
                                 onAddMarker = { label -> addTimelineMarker(label) },
                                 onRenameMarker = { index, label -> renameTimelineMarker(index, label) },
                                 onDeleteMarker = { index -> deleteTimelineMarker(index) }
