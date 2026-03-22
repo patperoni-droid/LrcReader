@@ -1,5 +1,7 @@
 package com.patrick.lrcreader.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -13,6 +15,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
@@ -23,6 +27,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -42,13 +47,43 @@ import com.patrick.lrcreader.smp.TimelineMarker
 fun TimelineEditorDialog(
     markers: List<TimelineMarker>,
     palette: List<String>,
+    playerPositionMs: Long,
     onDismiss: () -> Unit,
+    onAddPaletteTag: (String) -> Unit,
     onAddMarker: (String) -> Unit,
     onRenameMarker: (Int, String) -> Unit,
     onDeleteMarker: (Int) -> Unit
 ) {
     var renameIndex by remember(markers) { mutableStateOf<Int?>(null) }
     var renameText by remember(markers) { mutableStateOf("") }
+    var paletteDraft by remember { mutableStateOf("") }
+    val lazyListState = rememberLazyListState()
+    val safePlayerPositionMs = playerPositionMs.coerceAtLeast(0L)
+    val activeMarkerIndex = remember(markers, safePlayerPositionMs) {
+        markers.indexOfLast { marker -> marker.timeMs <= safePlayerPositionMs }
+    }
+
+    LaunchedEffect(activeMarkerIndex, markers.size) {
+        if (activeMarkerIndex !in markers.indices) {
+            return@LaunchedEffect
+        }
+
+        val visible = lazyListState.layoutInfo.visibleItemsInfo
+            .firstOrNull { item -> item.index == activeMarkerIndex }
+        if (visible != null) {
+            return@LaunchedEffect
+        }
+
+        val viewport = lazyListState.layoutInfo.viewportEndOffset -
+            lazyListState.layoutInfo.viewportStartOffset
+        val comfortableOffset = if (viewport > 0) -viewport / 4 else 0
+        runCatching {
+            lazyListState.animateScrollToItem(
+                index = activeMarkerIndex,
+                scrollOffset = comfortableOffset
+            )
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -66,25 +101,73 @@ fun TimelineEditorDialog(
                     fontSize = 12.sp
                 )
                 Spacer(Modifier.height(8.dp))
-                FlowRow(
+                Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    palette.forEach { label ->
-                        TextButton(onClick = { onAddMarker(label) }) {
-                            Text(text = label, color = Color(0xFF80CBC4))
+                    OutlinedTextField(
+                        value = paletteDraft,
+                        onValueChange = { paletteDraft = it },
+                        label = { Text(stringResource(R.string.timeline_palette_input_label)) },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    TextButton(
+                        onClick = {
+                            val trimmed = paletteDraft.trim()
+                            if (trimmed.isNotEmpty()) {
+                                onAddPaletteTag(trimmed)
+                                paletteDraft = ""
+                            }
+                        }
+                    ) {
+                        Text(
+                            text = stringResource(R.string.timeline_palette_add_action),
+                            color = Color(0xFF80CBC4)
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(10.dp))
+
+                if (palette.isEmpty()) {
+                    Text(
+                        text = stringResource(R.string.timeline_palette_empty_state),
+                        color = Color.Gray
+                    )
+                } else {
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        palette.forEach { label ->
+                            TextButton(onClick = { onAddMarker(label) }) {
+                                Text(text = label, color = Color(0xFF80CBC4))
+                            }
                         }
                     }
                 }
 
                 Spacer(Modifier.height(16.dp))
 
-                Text(
-                    text = stringResource(R.string.timeline_markers_title),
-                    color = Color(0xFFB0BEC5),
-                    fontSize = 12.sp
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = stringResource(R.string.timeline_markers_title),
+                        color = Color(0xFFB0BEC5),
+                        fontSize = 12.sp
+                    )
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        text = formatTimelineMarkerTime(safePlayerPositionMs),
+                        color = if (activeMarkerIndex >= 0) Color(0xFF80CBC4) else Color(0xFFB0BEC5),
+                        fontSize = 12.sp
+                    )
+                }
                 Spacer(Modifier.height(8.dp))
 
                 if (markers.isEmpty()) {
@@ -94,28 +177,44 @@ fun TimelineEditorDialog(
                     )
                 } else {
                     LazyColumn(
+                        state = lazyListState,
                         modifier = Modifier
                             .fillMaxWidth()
                             .heightIn(max = 320.dp)
                     ) {
-                        itemsIndexed(markers) { index, marker ->
+                        itemsIndexed(
+                            items = markers,
+                            key = { _, marker -> "${marker.timeMs}:${marker.label}" }
+                        ) { index, marker ->
+                            val isActive = index == activeMarkerIndex
+                            val rowShape = RoundedCornerShape(10.dp)
+
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(vertical = 4.dp),
+                                    .background(
+                                        color = if (isActive) Color(0x2239D98A) else Color.Transparent,
+                                        shape = rowShape
+                                    )
+                                    .border(
+                                        width = if (isActive) 1.dp else 0.dp,
+                                        color = if (isActive) Color(0xFF39D98A) else Color.Transparent,
+                                        shape = rowShape
+                                    )
+                                    .padding(horizontal = 8.dp, vertical = 6.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
                                     text = formatTimelineMarkerTime(marker.timeMs),
-                                    color = Color(0xFFB0BEC5),
+                                    color = if (isActive) Color(0xFF80CBC4) else Color(0xFFB0BEC5),
                                     fontSize = 12.sp,
                                     modifier = Modifier.width(74.dp)
                                 )
                                 Text(
                                     text = marker.label,
-                                    color = Color.White,
+                                    color = if (isActive) Color(0xFF39D98A) else Color.White,
                                     fontSize = 15.sp,
-                                    fontWeight = FontWeight.Medium,
+                                    fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium,
                                     modifier = Modifier.weight(1f)
                                 )
                                 IconButton(
