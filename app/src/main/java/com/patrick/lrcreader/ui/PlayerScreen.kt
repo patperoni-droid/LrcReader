@@ -1842,7 +1842,7 @@ fun PlayerScreen(
                                         .padding(horizontal = 10.dp, vertical = 6.dp)
                                 ) {
                                     Text(
-                                        text = "CH ${sent.channel} / PC ${sent.program}",
+                                        text = sent.program.toString(),
                                         color = Color.Black,
                                         fontSize = 12.sp
                                     )
