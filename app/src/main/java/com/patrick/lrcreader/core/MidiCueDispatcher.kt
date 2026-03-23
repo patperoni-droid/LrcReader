@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.asStateFlow
 object MidiCueDispatcher {
 
     private const val TAG = "MidiCueDispatcher"
+    private const val TRACE_TAG = "MIDI_CUE_TRACE"
 
     // ✅ garde-fou début de morceau
     private const val START_GUARD_MS = 900L   // en dessous de 0.9s = on retarde
@@ -39,11 +40,19 @@ object MidiCueDispatcher {
 
         val last = lastLineByTrack[key]
         val isFirstForTrack = (last == null)
+        Log.d(
+            TRACE_TAG,
+            "DISPATCH_RESOLVE track=$key lineIndex=$lineIndex lastLine=$last isFirstForTrack=$isFirstForTrack positionMs=$positionMs cue=${formatCue(cue)}"
+        )
         if (last == lineIndex) return
         lastLineByTrack[key] = lineIndex
 
         if (cue == null) {
             Log.w(TAG, "Aucun CUE pour lineIndex=$lineIndex")
+            Log.d(
+                TRACE_TAG,
+                "DISPATCH_SKIP track=$key reason=no_cue lineIndex=$lineIndex lastLine=${lastLineByTrack[key]}"
+            )
             return
         }
 
@@ -53,6 +62,10 @@ object MidiCueDispatcher {
                 channel = cue.channel.coerceIn(1, 16),
                 program = cue.program.coerceIn(1, 128),
                 triggeredAtMs = SystemClock.elapsedRealtime()
+            )
+            Log.d(
+                TRACE_TAG,
+                "DISPATCH_TRIGGER track=$key lineIndex=$lineIndex cue=${formatCue(cue)} monitor=${formatTriggered(_lastTriggeredProgramChange.value)}"
             )
             MidiOutput.sendProgramChange(
                 channel = cue.channel,
@@ -76,6 +89,10 @@ object MidiCueDispatcher {
         if (positionMs < START_GUARD_MS) {
             val delayMs = (START_GUARD_MS - positionMs + EXTRA_PAD_MS).coerceAtMost(1200L)
             Log.w(TAG, "PC trop proche du début (pos=$positionMs ms) → delay=${delayMs}ms")
+            Log.d(
+                TRACE_TAG,
+                "DISPATCH_DELAY track=$key lineIndex=$lineIndex cue=${formatCue(cue)} positionMs=$positionMs delayMs=$delayMs"
+            )
             mainHandler.postDelayed({ doSend() }, delayMs)
         } else {
             doSend()
@@ -87,6 +104,10 @@ object MidiCueDispatcher {
 
         val cuesForTrack = CueMidiStore.getCuesForTrack(key)
         val cue = cuesForTrack.firstOrNull { it.lineIndex == lineIndex }
+        Log.d(
+            TRACE_TAG,
+            "DISPATCH_ACTIVE_LINE track=$key lineIndex=$lineIndex positionMs=$positionMs legacyCues=${formatCueList(cuesForTrack)} resolved=${formatCue(cue)}"
+        )
         onResolvedCueChanged(
             trackUri = key,
             lineIndex = lineIndex,
@@ -111,5 +132,23 @@ object MidiCueDispatcher {
         val key = trackUri?.takeIf { it.isNotBlank() } ?: return
         lastLineByTrack.remove(key)
         Log.d(TAG, "resetForTrack: $key")
+        Log.d(TRACE_TAG, "DISPATCH_RESET track=$key")
+    }
+
+    private fun formatCue(cue: CueMidi?): String {
+        return cue?.let {
+            "{lineIndex=${it.lineIndex},channel=${it.channel},program=${it.program}}"
+        } ?: "null"
+    }
+
+    private fun formatTriggered(event: TriggeredProgramChange?): String {
+        return event?.let {
+            "{track=${it.trackUri},channel=${it.channel},program=${it.program},triggeredAtMs=${it.triggeredAtMs}}"
+        } ?: "null"
+    }
+
+    private fun formatCueList(cues: List<CueMidi>): String {
+        if (cues.isEmpty()) return "[]"
+        return cues.joinToString(prefix = "[", postfix = "]") { cue -> formatCue(cue) }
     }
 }

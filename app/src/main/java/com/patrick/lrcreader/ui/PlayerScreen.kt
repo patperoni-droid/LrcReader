@@ -149,6 +149,7 @@ fun PlayerScreen(
     val sAccordsActionDelete = stringResource(R.string.accords_action_delete)
     val sDeleteLiveNote = stringResource(R.string.player_cd_delete_live_note)
     val sTimelineSaveFailed = stringResource(R.string.timeline_save_failed)
+    val midiCueTraceTag = "MIDI_CUE_TRACE"
 
     // 📝 Notes LIVE (création depuis le lecteur)
     var showAddNoteDialog by remember { mutableStateOf(false) }
@@ -1128,6 +1129,10 @@ fun PlayerScreen(
                         lines = activeDisplayLines,
                         lineIndex = newIndex
                     )
+                    Log.d(
+                        midiCueTraceTag,
+                        "PLAYER_RESOLVE track=$currentTrackUri newIndex=$newIndex lastMidiIndex=$lastMidiIndex positionMs=${getPositionMs()} cue=${cue?.let { "{lineIndex=${it.lineIndex},channel=${it.channel},program=${it.program}}" } ?: "null"}"
+                    )
                     MidiCueDispatcher.onResolvedCueChanged(
                         trackUri = currentTrackUri,
                         lineIndex = newIndex,
@@ -1146,6 +1151,13 @@ fun PlayerScreen(
             delay(200L)
             if (!isPlaying) delay(200L)
         }
+    }
+
+    LaunchedEffect(midiMonitorEvent, currentTrackUri) {
+        Log.d(
+            midiCueTraceTag,
+            "PLAYER_MONITOR track=${currentTrackUri ?: "null"} monitor=${midiMonitorEvent?.let { "{track=${it.trackUri},channel=${it.channel},program=${it.program},triggeredAtMs=${it.triggeredAtMs}}" } ?: "null"}"
+        )
     }
 
     // ---------- Autoswitch playlist (-10s) ----------

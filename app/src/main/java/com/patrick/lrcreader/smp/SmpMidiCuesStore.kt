@@ -11,6 +11,7 @@ object SmpMidiCuesStore {
     private const val TRACKS_DIR_NAME = "tracks"
     private const val TAG = "SmpMidiCuesStore"
     private const val TRACE_TAG = "SMP_MIDI_TRACE"
+    private const val DEBUG_TRACE_TAG = "MIDI_CUE_TRACE"
 
     fun read(songDir: File): List<MidiCue> {
         val midiFile = File(songDir, MIDI_CUES_FILE_NAME)
@@ -28,6 +29,10 @@ object SmpMidiCuesStore {
             Log.d(
                 TRACE_TAG,
                 "LOAD songDir=${songDir.absolutePath} path=${midiFile.absolutePath} exists=true count=${cues.size} source=FILE hash=${contentHash(rawJson)}"
+            )
+            Log.d(
+                DEBUG_TRACE_TAG,
+                "STORE_LOAD songDir=${songDir.absolutePath} path=${midiFile.absolutePath} cues=${formatCueList(cues)}"
             )
             cues
         }.getOrElse { error ->
@@ -68,6 +73,10 @@ object SmpMidiCuesStore {
             Log.d(
                 TRACE_TAG,
                 "LOAD songDir=${midiFile.parentFile?.absolutePath ?: "null"} path=${midiFile.absolutePath} exists=true count=${cues.size} source=FILE hash=${contentHash(rawJson)}"
+            )
+            Log.d(
+                DEBUG_TRACE_TAG,
+                "STORE_LOAD songDir=${midiFile.parentFile?.absolutePath ?: "null"} path=${midiFile.absolutePath} cues=${formatCueList(cues)}"
             )
             cues
         }.getOrElse { error ->
@@ -124,6 +133,10 @@ object SmpMidiCuesStore {
                 TRACE_TAG,
                 "SAVE songDir=${songDir.absolutePath} path=${midiFile.absolutePath} existsBefore=$existsBefore existsAfter=${midiFile.exists()} size=${midiFile.length()} count=${cues.size} hash=${contentHash(rawJson)}"
             )
+            Log.d(
+                DEBUG_TRACE_TAG,
+                "STORE_SAVE songDir=${songDir.absolutePath} path=${midiFile.absolutePath} cues=${formatCueList(cues)}"
+            )
             true
         }.getOrElse { error ->
             Log.e(TAG, "Ecriture midi_cues.json impossible: ${midiFile.absolutePath}", error)
@@ -165,6 +178,16 @@ object SmpMidiCuesStore {
                 .joinToString(separator = "") { byte -> "%02x".format(byte) }
         }.getOrElse {
             raw.hashCode().toString()
+        }
+    }
+
+    private fun formatCueList(cues: List<MidiCue>): String {
+        if (cues.isEmpty()) return "[]"
+        return cues.joinToString(
+            prefix = "[",
+            postfix = "]"
+        ) { cue ->
+            "{time=${cue.time},type=${cue.type},value=${cue.value},channel=${cue.channel}}"
         }
     }
 }
