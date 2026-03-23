@@ -2,6 +2,7 @@ package com.patrick.lrcreader.smp
 
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 import com.patrick.lrcreader.core.CueMidi
 import com.patrick.lrcreader.core.LrcLine
 import java.io.File
@@ -11,6 +12,7 @@ import kotlin.math.roundToLong
 object SmpMidiCueBridge {
 
     private const val TRACKS_DIR_NAME = "tracks"
+    private const val TRACE_TAG = "MIDI_CUE_TRACE"
 
     private val cacheLock = Any()
     private val midiCuesBySongDir: MutableMap<String, List<MidiCue>> = mutableMapOf()
@@ -25,9 +27,32 @@ object SmpMidiCueBridge {
         lines: List<LrcLine>
     ): List<CueMidi>? {
         val track = resolveSmpTrack(context, trackUriString) ?: return null
-        return loadMidiCues(track)
-            .mapNotNull { midiCue -> midiCue.toCueMidiOrNull(lines) }
+        val rawCues = loadMidiCues(track)
+        val projected = rawCues.mapNotNull { midiCue ->
+            val projectedCue = midiCue.toCueMidiOrNull(lines) ?: return@mapNotNull null
+            ProjectedCueTrace(
+                timeMs = midiCue.toTimeMs(),
+                lineIndex = projectedCue.lineIndex,
+                channel = projectedCue.channel,
+                program = projectedCue.program
+            )
+        }
+        val distinct = projected
             .distinctBy { it.lineIndex }
+            .map { cue ->
+                CueMidi(
+                    lineIndex = cue.lineIndex,
+                    channel = cue.channel,
+                    program = cue.program
+                )
+            }
+
+        Log.d(
+            TRACE_TAG,
+            "BRIDGE_EDITOR_CUES track=${track.songDir.name} raw=${formatMidiCueList(rawCues)} projected=${formatProjectedCueList(projected)} distinct=${formatCueMidiList(distinct)}"
+        )
+
+        return distinct
     }
 
     fun upsertCue(
@@ -117,13 +142,23 @@ object SmpMidiCueBridge {
 
     private fun loadMidiCues(track: SmpTrack): List<MidiCue> {
         synchronized(cacheLock) {
-            midiCuesBySongDir[track.songDir.absolutePath]?.let { return it }
+            midiCuesBySongDir[track.songDir.absolutePath]?.let { cached ->
+                Log.d(
+                    TRACE_TAG,
+                    "BRIDGE_CACHE_HIT songDir=${track.songDir.absolutePath} cues=${formatMidiCueList(cached)}"
+                )
+                return cached
+            }
         }
 
         val loaded = SmpMidiCuesStore.read(track.songDir)
         synchronized(cacheLock) {
             midiCuesBySongDir[track.songDir.absolutePath] = loaded
         }
+        Log.d(
+            TRACE_TAG,
+            "BRIDGE_CACHE_MISS songDir=${track.songDir.absolutePath} cues=${formatMidiCueList(loaded)}"
+        )
         return loaded
     }
 
@@ -217,4 +252,32 @@ object SmpMidiCueBridge {
     private data class SmpTrack(
         val songDir: File
     )
+
+    private data class ProjectedCueTrace(
+        val timeMs: Long,
+        val lineIndex: Int,
+        val channel: Int,
+        val program: Int
+    )
+
+    private fun formatMidiCueList(cues: List<MidiCue>): String {
+        if (cues.isEmpty()) return "[]"
+        return cues.joinToString(prefix = "[", postfix = "]") { cue ->
+            "{timeMs=${cue.toTimeMs()},type=${cue.type},value=${cue.value},channel=${cue.channel}}"
+        }
+    }
+
+    private fun formatProjectedCueList(cues: List<ProjectedCueTrace>): String {
+        if (cues.isEmpty()) return "[]"
+        return cues.joinToString(prefix = "[", postfix = "]") { cue ->
+            "{timeMs=${cue.timeMs},lineIndex=${cue.lineIndex},channel=${cue.channel},program=${cue.program}}"
+        }
+    }
+
+    private fun formatCueMidiList(cues: List<CueMidi>): String {
+        if (cues.isEmpty()) return "[]"
+        return cues.joinToString(prefix = "[", postfix = "]") { cue ->
+            "{lineIndex=${cue.lineIndex},channel=${cue.channel},program=${cue.program}}"
+        }
+    }
 }
