@@ -263,6 +263,7 @@
     <string name="timeline_empty_state">Aucun repère pour ce morceau SMP.</string>
     <string name="timeline_rename_title">Renommer le repère</string>
     <string name="timeline_rename_label">Libellé</string>
+    <string name="timeline_note_duration_label">Durée (secondes)</string>
     <string name="timeline_cd_rename">Renommer le repère</string>
     <string name="timeline_cd_delete">Supprimer le repère</string>
     <string name="timeline_save_failed">Timeline: sauvegarde impossible.</string>

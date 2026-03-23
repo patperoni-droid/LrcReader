@@ -33,10 +33,16 @@ object SmpTimelineStore {
                 if (label.isEmpty()) {
                     null
                 } else {
+                    val normalizedDurationMs = if (marker.kind == TimelineMarkerKind.NOTE) {
+                        marker.durationMs?.coerceAtLeast(1L)
+                    } else {
+                        null
+                    }
                     TimelineMarker(
                         timeMs = marker.timeMs.coerceAtLeast(0L),
                         label = label,
-                        kind = marker.kind
+                        kind = marker.kind,
+                        durationMs = normalizedDurationMs
                     )
                 }
             }
@@ -75,6 +81,9 @@ object SmpTimelineStore {
                         if (marker.kind != TimelineMarkerKind.TEXT) {
                             put("kind", marker.kind.storageValue)
                         }
+                        if (marker.kind == TimelineMarkerKind.NOTE && marker.durationMs != null) {
+                            put("durationMs", marker.durationMs)
+                        }
                     }
                 )
             }
@@ -101,18 +110,25 @@ object SmpTimelineStore {
                     if (label.isEmpty()) {
                         continue
                     }
+                    val kind = TimelineMarkerKind.fromStorageValue(
+                        raw = if (obj.has("kind") && !obj.isNull("kind")) {
+                            obj.optString("kind")
+                        } else {
+                            null
+                        }
+                    )
+                    val durationMs = if (kind == TimelineMarkerKind.NOTE && obj.has("durationMs") && !obj.isNull("durationMs")) {
+                        obj.optLong("durationMs").coerceAtLeast(1L)
+                    } else {
+                        null
+                    }
 
                     add(
                         TimelineMarker(
                             timeMs = obj.optLong("timeMs").coerceAtLeast(0L),
                             label = label,
-                            kind = TimelineMarkerKind.fromStorageValue(
-                                raw = if (obj.has("kind") && !obj.isNull("kind")) {
-                                    obj.optString("kind")
-                                } else {
-                                    null
-                                }
-                            )
+                            kind = kind,
+                            durationMs = durationMs
                         )
                     )
                 }
