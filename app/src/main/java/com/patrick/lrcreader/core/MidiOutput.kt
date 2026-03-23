@@ -7,7 +7,11 @@ import android.media.midi.MidiInputPort
 import android.media.midi.MidiManager
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 object MidiOutput {
 
@@ -16,9 +20,18 @@ object MidiOutput {
     private var midiManager: MidiManager? = null
     private var midiDevice: MidiDevice? = null
     private var inputPort: MidiInputPort? = null
+    private val _lastProgramChange = MutableStateFlow<SentProgramChange?>(null)
+    val lastProgramChange: StateFlow<SentProgramChange?> = _lastProgramChange.asStateFlow()
 
     // Pour éviter d’ouvrir 15 fois en même temps
     @Volatile private var opening = false
+
+    data class SentProgramChange(
+        val trackUri: String?,
+        val channel: Int,
+        val program: Int,
+        val sentAtMs: Long
+    )
 
     fun init(context: Context) {
         Log.d(TAG, "INIT CALLED ✅")
@@ -95,11 +108,15 @@ object MidiOutput {
             Log.e(TAG, "TEST BLE : erreur", e)
         }
     }
-    fun sendProgramChange(channel: Int, program: Int) {
+    fun sendProgramChange(
+        channel: Int,
+        program: Int,
+        trackUri: String? = null
+    ): Boolean {
         val port = inputPort
         if (port == null) {
             Log.w(TAG, "⚠️ sendProgramChange ignoré : port MIDI non prêt")
-            return
+            return false
         }
 
         val safeChannel = channel.coerceIn(1, 16) - 1
@@ -113,9 +130,19 @@ object MidiOutput {
 
         try {
             port.send(msg, 0, msg.size)
-            Log.d(TAG, "🎹 MIDI SENT → PC ch=${safeChannel + 1} prog=${safeProgram + 1}")
+            val sentChannel = safeChannel + 1
+            val sentProgram = safeProgram + 1
+            _lastProgramChange.value = SentProgramChange(
+                trackUri = trackUri?.takeIf { it.isNotBlank() },
+                channel = sentChannel,
+                program = sentProgram,
+                sentAtMs = SystemClock.elapsedRealtime()
+            )
+            Log.d(TAG, "🎹 MIDI SENT → PC ch=$sentChannel prog=$sentProgram")
+            return true
         } catch (e: Exception) {
             Log.e(TAG, "❌ Erreur envoi MIDI Program Change", e)
+            return false
         }
     }
 
@@ -125,6 +152,7 @@ object MidiOutput {
         inputPort = null
         midiDevice = null
         opening = false
+        _lastProgramChange.value = null
         Log.d(TAG, "Release OK")
     }
 }

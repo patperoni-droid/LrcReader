@@ -34,12 +34,20 @@ object MidiCueDispatcher {
         }
 
         fun doSend() {
-            MidiOutput.sendProgramChange(channel = cue.channel, program = cue.program)
+            MidiOutput.sendProgramChange(
+                channel = cue.channel,
+                program = cue.program,
+                trackUri = key
+            )
             Log.d(TAG, "PC envoyé: line=$lineIndex ch=${cue.channel} prog=${cue.program} pos=$positionMs")
 
             if (isFirstForTrack) {
                 mainHandler.postDelayed({
-                    MidiOutput.sendProgramChange(channel = cue.channel, program = cue.program)
+                    MidiOutput.sendProgramChange(
+                        channel = cue.channel,
+                        program = cue.program,
+                        trackUri = key
+                    )
                     Log.d(TAG, "PC renvoyé (warmup): line=$lineIndex ch=${cue.channel} prog=${cue.program}")
                 }, 200L)
             }
