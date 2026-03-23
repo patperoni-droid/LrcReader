@@ -11,6 +11,7 @@ import android.net.Uri
 import androidx.documentfile.provider.DocumentFile
 import com.patrick.lrcreader.core.BackupFolderPrefsSaf
 import com.patrick.lrcreader.core.LyricsPerf
+import com.patrick.lrcreader.core.MidiOutput
 import com.patrick.lrcreader.core.readSyltAsLrcFromUri
 import com.patrick.lrcreader.core.readUsltFromUri
 import androidx.compose.runtime.LaunchedEffect
@@ -136,6 +137,7 @@ fun PlayerScreen(
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val lastSentMidiProgramChange by MidiOutput.lastProgramChange.collectAsState()
     val isLaboBuild = remember(context.packageName) { context.packageName.endsWith(".labo") }
     val hqStatus = remember { SoundTouchBridge.logStatusOnce(reason = "PlayerScreen:init") }
     val isHqAvailable = hqStatus.available
@@ -174,6 +176,10 @@ fun PlayerScreen(
         currentTrackUri?.let { trackUri ->
             resolveInternalSmpSongDir(context, trackUri) != null
         } ?: false
+    }
+    val midiMonitorEvent = remember(lastSentMidiProgramChange, currentTrackUri) {
+        val trackUri = currentTrackUri?.takeIf { it.isNotBlank() } ?: return@remember null
+        lastSentMidiProgramChange?.takeIf { sent -> sent.trackUri == trackUri }
     }
     LaunchedEffect(exoPlayer) {
         PlayerBusController.attachPlayer(context, exoPlayer)
@@ -1897,6 +1903,30 @@ fun PlayerScreen(
                                             }
                                         }
                                     }
+                                }
+                            }
+
+                            midiMonitorEvent?.let { sent ->
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.TopEnd)
+                                        .padding(top = 10.dp, end = 10.dp)
+                                        .background(
+                                            Color(0xCC001A1A),
+                                            RoundedCornerShape(12.dp)
+                                        )
+                                        .border(
+                                            1.dp,
+                                            Color(0x334DFFFF),
+                                            RoundedCornerShape(12.dp)
+                                        )
+                                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                                ) {
+                                    Text(
+                                        text = "CH ${sent.channel} / PC ${sent.program}",
+                                        color = Color(0xFF80CBC4),
+                                        fontSize = 12.sp
+                                    )
                                 }
                             }
                         }
