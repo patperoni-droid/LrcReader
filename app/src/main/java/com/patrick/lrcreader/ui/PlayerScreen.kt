@@ -160,6 +160,7 @@ fun PlayerScreen(
     // 🔊 Brancher ExoPlayer au bus principal (fader LECTEUR)
     var activeLiveNote by remember { mutableStateOf<LiveNote?>(null) }
     var activeLiveNoteFromTimeline by remember { mutableStateOf(false) }
+    var lastLiveNoteTraceKey by remember(currentTrackUri) { mutableStateOf<String?>(null) }
     var isEditingTimeline by remember { mutableStateOf(false) }
     var timelineMarkers by remember(currentTrackUri) { mutableStateOf<List<TimelineMarker>>(emptyList()) }
     val projectedTimelineLiveNotes = remember(timelineMarkers) {
@@ -257,6 +258,7 @@ fun PlayerScreen(
         LiveNoteManager.setNotes(loadedNotes)
         activeLiveNote = null
         activeLiveNoteFromTimeline = false
+        lastLiveNoteTraceKey = null
     }
     LaunchedEffect(currentTrackUri, isCurrentTrackSmp) {
         isEditingTimeline = false
@@ -275,15 +277,43 @@ fun PlayerScreen(
         while (true) {
             if (isPlaying) {
                 val currentPositionMs = getPositionMs()
-                val annotationNote = LiveNoteManager.getActiveNote(currentPositionMs)
-                val timelineNote = projectedTimelineLiveNotes.firstOrNull { note ->
-                    currentPositionMs in note.timeMs..(note.timeMs + note.durationMs)
+                val activeAnnotationNotes = LiveNoteManager.snapshot().filter { note ->
+                    isLiveNoteActiveAt(note, currentPositionMs)
                 }
+                val annotationNote = LiveNoteManager.getActiveNote(currentPositionMs)
+                val activeTimelineNotes = projectedTimelineLiveNotes.filter { note ->
+                    isLiveNoteActiveAt(note, currentPositionMs)
+                }
+                val timelineNote = activeTimelineNotes.firstOrNull()
                 activeLiveNote = annotationNote ?: timelineNote
                 activeLiveNoteFromTimeline = annotationNote == null && timelineNote != null
+                val traceKey = buildLiveNoteTraceKey(
+                    activeAnnotationNotes = activeAnnotationNotes,
+                    chosenAnnotationNote = annotationNote,
+                    activeTimelineNotes = activeTimelineNotes,
+                    chosenTimelineNote = timelineNote,
+                    latestTimelineCandidate = activeTimelineNotes.maxByOrNull { note -> note.timeMs },
+                    finalChosenNote = activeLiveNote,
+                    finalFromTimeline = activeLiveNoteFromTimeline
+                )
+                val trace = buildLiveNoteTrace(
+                    positionMs = currentPositionMs,
+                    activeAnnotationNotes = activeAnnotationNotes,
+                    chosenAnnotationNote = annotationNote,
+                    activeTimelineNotes = activeTimelineNotes,
+                    chosenTimelineNote = timelineNote,
+                    latestTimelineCandidate = activeTimelineNotes.maxByOrNull { note -> note.timeMs },
+                    finalChosenNote = activeLiveNote,
+                    finalFromTimeline = activeLiveNoteFromTimeline
+                )
+                if (traceKey != lastLiveNoteTraceKey) {
+                    Log.d("LrcDebug", trace)
+                    lastLiveNoteTraceKey = traceKey
+                }
             } else {
                 activeLiveNote = null
                 activeLiveNoteFromTimeline = false
+                lastLiveNoteTraceKey = null
             }
             delay(200L)
         }
@@ -2323,6 +2353,102 @@ private fun projectTimelineNoteMarkers(markers: List<TimelineMarker>): List<Live
         }
         .sortedBy { it.timeMs }
         .toList()
+}
+
+private fun isLiveNoteActiveAt(note: LiveNote, positionMs: Long): Boolean {
+    return positionMs >= note.timeMs && positionMs < (note.timeMs + note.durationMs)
+}
+
+private fun buildLiveNoteTrace(
+    positionMs: Long,
+    activeAnnotationNotes: List<LiveNote>,
+    chosenAnnotationNote: LiveNote?,
+    activeTimelineNotes: List<LiveNote>,
+    chosenTimelineNote: LiveNote?,
+    latestTimelineCandidate: LiveNote?,
+    finalChosenNote: LiveNote?,
+    finalFromTimeline: Boolean
+): String {
+    return "LIVE_NOTE_TRACE${
+        buildLiveNoteTraceCore(
+            includePositionMs = positionMs,
+            activeAnnotationNotes = activeAnnotationNotes,
+            chosenAnnotationNote = chosenAnnotationNote,
+            activeTimelineNotes = activeTimelineNotes,
+            chosenTimelineNote = chosenTimelineNote,
+            latestTimelineCandidate = latestTimelineCandidate,
+            finalChosenNote = finalChosenNote,
+            finalFromTimeline = finalFromTimeline
+        )
+    }"
+}
+
+private fun buildLiveNoteTraceKey(
+    activeAnnotationNotes: List<LiveNote>,
+    chosenAnnotationNote: LiveNote?,
+    activeTimelineNotes: List<LiveNote>,
+    chosenTimelineNote: LiveNote?,
+    latestTimelineCandidate: LiveNote?,
+    finalChosenNote: LiveNote?,
+    finalFromTimeline: Boolean
+): String {
+    return buildLiveNoteTraceCore(
+        includePositionMs = null,
+        activeAnnotationNotes = activeAnnotationNotes,
+        chosenAnnotationNote = chosenAnnotationNote,
+        activeTimelineNotes = activeTimelineNotes,
+        chosenTimelineNote = chosenTimelineNote,
+        latestTimelineCandidate = latestTimelineCandidate,
+        finalChosenNote = finalChosenNote,
+        finalFromTimeline = finalFromTimeline
+    )
+}
+
+private fun buildLiveNoteTraceCore(
+    includePositionMs: Long?,
+    activeAnnotationNotes: List<LiveNote>,
+    chosenAnnotationNote: LiveNote?,
+    activeTimelineNotes: List<LiveNote>,
+    chosenTimelineNote: LiveNote?,
+    latestTimelineCandidate: LiveNote?,
+    finalChosenNote: LiveNote?,
+    finalFromTimeline: Boolean
+): String {
+    val finalSource = when {
+        finalChosenNote == null -> "none"
+        finalFromTimeline -> "timeline"
+        else -> "annotations"
+    }
+    return buildString {
+        includePositionMs?.let { pos -> append(" posMs=").append(pos) }
+        append(" annotationsActive=").append(describeLiveNoteList(activeAnnotationNotes))
+        append(" annotationChosen=").append(describeLiveNote(chosenAnnotationNote))
+        append(" timelineActive=").append(describeLiveNoteList(activeTimelineNotes))
+        append(" timelineChosen=").append(describeLiveNote(chosenTimelineNote))
+        append(" timelineLatest=").append(describeLiveNote(latestTimelineCandidate))
+        append(" finalSource=").append(finalSource)
+        append(" finalChosen=").append(describeLiveNote(finalChosenNote))
+    }
+}
+
+private fun describeLiveNoteList(notes: List<LiveNote>): String {
+    if (notes.isEmpty()) return "[]"
+    return notes.joinToString(
+        prefix = "[",
+        postfix = "]",
+        separator = ", "
+    ) { note ->
+        describeLiveNote(note)
+    }
+}
+
+private fun describeLiveNote(note: LiveNote?): String {
+    if (note == null) return "null"
+    return "{start=${note.timeMs},duration=${note.durationMs},end=${note.timeMs + note.durationMs},text=${note.text.quoteForTrace()}}"
+}
+
+private fun String.quoteForTrace(): String {
+    return "\"" + replace("\"", "\\\"") + "\""
 }
 
 private data class AccordsWriteRequest(
