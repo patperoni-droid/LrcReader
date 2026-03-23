@@ -22,9 +22,13 @@ object LiveNoteManager {
     }
 
     fun getActiveNote(positionMs: Long): LiveNote? {
-        return notes.firstOrNull { note ->
-            positionMs in note.timeMs..(note.timeMs + note.durationMs)
-        }
+        return notes
+            .asSequence()
+            .filter { note ->
+                positionMs >= note.timeMs &&
+                    positionMs < (note.timeMs + note.durationMs)
+            }
+            .maxByOrNull { note -> note.timeMs }
     }
     fun remove(note: LiveNote) {
         notes.remove(note)
