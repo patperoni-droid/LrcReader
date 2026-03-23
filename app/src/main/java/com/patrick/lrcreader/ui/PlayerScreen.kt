@@ -162,6 +162,7 @@ fun PlayerScreen(
     var activeLiveNoteFromTimeline by remember { mutableStateOf(false) }
     var lastLiveNoteTraceKey by remember(currentTrackUri) { mutableStateOf<String?>(null) }
     var isEditingTimeline by remember { mutableStateOf(false) }
+    var editingTimelineMidiMarkerIndex by remember(currentTrackUri) { mutableStateOf<Int?>(null) }
     var timelineMarkers by remember(currentTrackUri) { mutableStateOf<List<TimelineMarker>>(emptyList()) }
     val projectedTimelineLiveNotes = remember(timelineMarkers) {
         projectTimelineNoteMarkers(timelineMarkers)
@@ -262,6 +263,7 @@ fun PlayerScreen(
     }
     LaunchedEffect(currentTrackUri, isCurrentTrackSmp) {
         isEditingTimeline = false
+        editingTimelineMidiMarkerIndex = null
         if (!isCurrentTrackSmp || currentTrackUri.isNullOrBlank()) {
             timelineMarkers = emptyList()
             return@LaunchedEffect
@@ -271,6 +273,15 @@ fun PlayerScreen(
 
         timelineMarkers = withContext(Dispatchers.IO) {
             loadSmpTimelineMarkersForTrack(context, trackUriString)
+        }
+    }
+    LaunchedEffect(timelineMarkers, editingTimelineMidiMarkerIndex) {
+        val markerIndex = editingTimelineMidiMarkerIndex ?: return@LaunchedEffect
+        if (
+            markerIndex !in timelineMarkers.indices ||
+            timelineMarkers[markerIndex].kind != TimelineMarkerKind.MIDI
+        ) {
+            editingTimelineMidiMarkerIndex = null
         }
     }
     LaunchedEffect(isPlaying, currentTrackUri, projectedTimelineLiveNotes) {
@@ -1642,12 +1653,24 @@ fun PlayerScreen(
                 isPlaying = isPlaying,
                 positionMs = positionMs,
                 durationMs = durationMs,
-                onCloseEditor = { isEditingTimeline = false },
+                onCloseEditor = {
+                    editingTimelineMidiMarkerIndex = null
+                    isEditingTimeline = false
+                },
                 onIsPlayingChange = onIsPlayingChange,
                 seekToMs = seekToMs,
                 onAddPaletteTag = { label -> addTimelinePaletteTag(label) },
                 onAddMarker = { label -> addTimelineMarker(label) },
                 onAddTypedMarker = { kind -> addTypedTimelineMarker(kind) },
+                onEditMidiMarker = { index ->
+                    if (
+                        isCurrentTrackSmp &&
+                        index in timelineMarkers.indices &&
+                        timelineMarkers[index].kind == TimelineMarkerKind.MIDI
+                    ) {
+                        editingTimelineMidiMarkerIndex = index
+                    }
+                },
                 onRenameMarker = { index, label, markerDurationMs ->
                     renameTimelineMarker(index, label, markerDurationMs)
                 },
@@ -2062,6 +2085,22 @@ fun PlayerScreen(
                 }
             },
             containerColor = Color(0xFF222222)
+        )
+    }
+
+    val timelineMidiMarkerIndex = editingTimelineMidiMarkerIndex
+    val timelineMidiTrackUri = currentTrackUri?.takeIf { it.isNotBlank() }
+    if (
+        isEditingTimeline &&
+        timelineMidiMarkerIndex != null &&
+        timelineMidiMarkerIndex in timelineMarkers.indices &&
+        timelineMarkers[timelineMidiMarkerIndex].kind == TimelineMarkerKind.MIDI &&
+        timelineMidiTrackUri != null
+    ) {
+        TimelineMidiCueEditorPopup(
+            trackUri = timelineMidiTrackUri,
+            markerTimeMs = timelineMarkers[timelineMidiMarkerIndex].timeMs,
+            onClose = { editingTimelineMidiMarkerIndex = null }
         )
     }
 }

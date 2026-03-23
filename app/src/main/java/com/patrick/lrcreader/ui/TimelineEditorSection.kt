@@ -62,6 +62,7 @@ fun TimelineEditorSection(
     onAddPaletteTag: (String) -> Unit,
     onAddMarker: (String) -> Unit,
     onAddTypedMarker: (TimelineMarkerKind) -> Unit,
+    onEditMidiMarker: (Int) -> Unit,
     onRenameMarker: (Int, String, Long?) -> Unit,
     onDeleteMarker: (Int) -> Unit
 ) {
@@ -324,6 +325,10 @@ fun TimelineEditorSection(
             onSeekToMs = seekToMs,
             onEditMarker = { index ->
                 if (index !in markers.indices) return@TimelineScrubColumn
+                if (markers[index].kind == TimelineMarkerKind.MIDI) {
+                    onEditMidiMarker(index)
+                    return@TimelineScrubColumn
+                }
                 renameIndex = index
                 renameText = markers[index].label
                 renameDurationSeconds = if (markers[index].kind == TimelineMarkerKind.NOTE) {
