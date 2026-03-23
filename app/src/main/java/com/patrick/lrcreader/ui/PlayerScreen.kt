@@ -1787,10 +1787,11 @@ fun PlayerScreen(
                                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                                     ) {
                                         Text(
-                                            text = stringResource(R.string.player_live_note_chip, note.text),
+                                            text = note.text,
                                             color = Color(0xFFFFC107),
-                                            fontSize = 15.sp,
-                                            modifier = Modifier.weight(1f, fill = false)
+                                            fontSize = 16.sp,
+                                            lineHeight = 20.sp,
+                                            modifier = Modifier.widthIn(max = 320.dp)
                                         )
                                         IconButton(
                                             onClick = { removeLiveNoteAndPersist(note) },
