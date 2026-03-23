@@ -11,7 +11,6 @@ import android.net.Uri
 import androidx.documentfile.provider.DocumentFile
 import com.patrick.lrcreader.core.BackupFolderPrefsSaf
 import com.patrick.lrcreader.core.LyricsPerf
-import com.patrick.lrcreader.core.MidiOutput
 import com.patrick.lrcreader.core.readSyltAsLrcFromUri
 import com.patrick.lrcreader.core.readUsltFromUri
 import androidx.compose.runtime.LaunchedEffect
@@ -137,7 +136,7 @@ fun PlayerScreen(
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
-    val lastSentMidiProgramChange by MidiOutput.lastProgramChange.collectAsState()
+    val lastTriggeredMidiProgramChange by MidiCueDispatcher.lastTriggeredProgramChange.collectAsState()
     val isLaboBuild = remember(context.packageName) { context.packageName.endsWith(".labo") }
     val hqStatus = remember { SoundTouchBridge.logStatusOnce(reason = "PlayerScreen:init") }
     val isHqAvailable = hqStatus.available
@@ -177,9 +176,9 @@ fun PlayerScreen(
             resolveInternalSmpSongDir(context, trackUri) != null
         } ?: false
     }
-    val midiMonitorEvent = remember(lastSentMidiProgramChange, currentTrackUri) {
+    val midiMonitorEvent = remember(lastTriggeredMidiProgramChange, currentTrackUri) {
         val trackUri = currentTrackUri?.takeIf { it.isNotBlank() } ?: return@remember null
-        lastSentMidiProgramChange?.takeIf { sent -> sent.trackUri == trackUri }
+        lastTriggeredMidiProgramChange?.takeIf { sent -> sent.trackUri == trackUri }
     }
     LaunchedEffect(exoPlayer) {
         PlayerBusController.attachPlayer(context, exoPlayer)
