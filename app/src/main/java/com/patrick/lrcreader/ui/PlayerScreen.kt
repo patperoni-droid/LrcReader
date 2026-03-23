@@ -90,6 +90,7 @@ import com.patrick.lrcreader.core.resolveAccordsEditTargetTrack
 import com.patrick.lrcreader.core.resolveLyricsViewMode
 import com.patrick.lrcreader.core.TimelinePaletteStore
 import com.patrick.lrcreader.core.lyrics.LyricsCacheEntry
+import com.patrick.lrcreader.smp.DEFAULT_TIMELINE_NOTE_DURATION_MS
 import com.patrick.lrcreader.smp.SmpConfig
 import com.patrick.lrcreader.smp.SmpAnnotationsStore
 import com.patrick.lrcreader.smp.SmpAutoMigrationResult
@@ -392,17 +393,24 @@ fun PlayerScreen(
 
     fun addTimelineMarker(
         label: String,
-        kind: TimelineMarkerKind = TimelineMarkerKind.TEXT
+        kind: TimelineMarkerKind = TimelineMarkerKind.TEXT,
+        durationMs: Long? = null
     ) {
         if (!isCurrentTrackSmp) return
         val trimmed = label.trim()
         if (trimmed.isEmpty()) return
+        val normalizedDurationMs = if (kind == TimelineMarkerKind.NOTE) {
+            durationMs?.coerceAtLeast(1L) ?: DEFAULT_TIMELINE_NOTE_DURATION_MS
+        } else {
+            null
+        }
 
         val previousMarkers = timelineMarkers
         val updatedMarkers = (timelineMarkers + TimelineMarker(
             timeMs = getPositionMs().coerceAtLeast(0L),
             label = trimmed,
-            kind = kind
+            kind = kind,
+            durationMs = normalizedDurationMs
         )).sortedWith(
             compareBy<TimelineMarker> { it.timeMs }
                 .thenBy { it.label }
@@ -414,7 +422,8 @@ fun PlayerScreen(
         if (kind == TimelineMarkerKind.TEXT) return
         addTimelineMarker(
             label = kind.defaultLabel,
-            kind = kind
+            kind = kind,
+            durationMs = if (kind == TimelineMarkerKind.NOTE) DEFAULT_TIMELINE_NOTE_DURATION_MS else null
         )
     }
 
@@ -427,16 +436,25 @@ fun PlayerScreen(
         )
     }
 
-    fun renameTimelineMarker(index: Int, label: String) {
+    fun renameTimelineMarker(index: Int, label: String, durationMs: Long?) {
         if (!isCurrentTrackSmp || index !in timelineMarkers.indices) return
         val trimmed = label.trim()
         if (trimmed.isEmpty()) return
 
+        val marker = timelineMarkers[index]
+        val normalizedDurationMs = if (marker.kind == TimelineMarkerKind.NOTE) {
+            durationMs?.coerceAtLeast(1L) ?: DEFAULT_TIMELINE_NOTE_DURATION_MS
+        } else {
+            null
+        }
         val previousMarkers = timelineMarkers
         val updatedMarkers = timelineMarkers
             .toMutableList()
             .apply {
-                this[index] = this[index].copy(label = trimmed)
+                this[index] = this[index].copy(
+                    label = trimmed,
+                    durationMs = normalizedDurationMs
+                )
             }
             .sortedWith(
                 compareBy<TimelineMarker> { it.timeMs }
@@ -1600,7 +1618,9 @@ fun PlayerScreen(
                 onAddPaletteTag = { label -> addTimelinePaletteTag(label) },
                 onAddMarker = { label -> addTimelineMarker(label) },
                 onAddTypedMarker = { kind -> addTypedTimelineMarker(kind) },
-                onRenameMarker = { index, label -> renameTimelineMarker(index, label) },
+                onRenameMarker = { index, label, markerDurationMs ->
+                    renameTimelineMarker(index, label, markerDurationMs)
+                },
                 onDeleteMarker = { index -> deleteTimelineMarker(index) }
             )
         } else {
@@ -2286,8 +2306,6 @@ private fun resolveSmpTimelineTarget(
     )
 }
 
-private const val TIMELINE_NOTE_DEFAULT_DURATION_MS = 30_000L
-
 private fun projectTimelineNoteMarkers(markers: List<TimelineMarker>): List<LiveNote> {
     return markers.asSequence()
         .filter { it.kind == TimelineMarkerKind.NOTE }
@@ -2298,7 +2316,7 @@ private fun projectTimelineNoteMarkers(markers: List<TimelineMarker>): List<Live
             } else {
                 LiveNote(
                     timeMs = marker.timeMs.coerceAtLeast(0L),
-                    durationMs = TIMELINE_NOTE_DEFAULT_DURATION_MS,
+                    durationMs = marker.durationMs?.coerceAtLeast(1L) ?: DEFAULT_TIMELINE_NOTE_DURATION_MS,
                     text = text
                 )
             }

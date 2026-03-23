@@ -2,6 +2,7 @@ package com.patrick.lrcreader.ui
 
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -38,10 +39,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.exo.R
+import com.patrick.lrcreader.smp.DEFAULT_TIMELINE_NOTE_DURATION_MS
 import com.patrick.lrcreader.smp.TimelineMarker
 import com.patrick.lrcreader.smp.TimelineMarkerKind
 
@@ -59,12 +62,13 @@ fun TimelineEditorSection(
     onAddPaletteTag: (String) -> Unit,
     onAddMarker: (String) -> Unit,
     onAddTypedMarker: (TimelineMarkerKind) -> Unit,
-    onRenameMarker: (Int, String) -> Unit,
+    onRenameMarker: (Int, String, Long?) -> Unit,
     onDeleteMarker: (Int) -> Unit
 ) {
     val safePositionMs = positionMs.coerceAtLeast(0).toLong()
     var renameIndex by remember(markers) { mutableStateOf<Int?>(null) }
     var renameText by remember(markers) { mutableStateOf("") }
+    var renameDurationSeconds by remember(markers) { mutableStateOf("") }
     var paletteDraft by remember { mutableStateOf("") }
     val paletteNavigationIndexByLabel = remember(markers) { mutableStateMapOf<String, Int>() }
     val paletteNavigationIndexByKind = remember(markers) { mutableStateMapOf<TimelineMarkerKind, Int>() }
@@ -322,6 +326,12 @@ fun TimelineEditorSection(
                 if (index !in markers.indices) return@TimelineScrubColumn
                 renameIndex = index
                 renameText = markers[index].label
+                renameDurationSeconds = if (markers[index].kind == TimelineMarkerKind.NOTE) {
+                    val durationMs = markers[index].durationMs ?: DEFAULT_TIMELINE_NOTE_DURATION_MS
+                    (durationMs / 1_000L).toString()
+                } else {
+                    ""
+                }
             },
             onDeleteMarker = onDeleteMarker
         )
@@ -329,6 +339,8 @@ fun TimelineEditorSection(
 
     val safeRenameIndex = renameIndex
     if (safeRenameIndex != null && safeRenameIndex in markers.indices) {
+        val markerToEdit = markers[safeRenameIndex]
+        val isEditingNote = markerToEdit.kind == TimelineMarkerKind.NOTE
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { renameIndex = null },
             title = {
@@ -338,19 +350,40 @@ fun TimelineEditorSection(
                 )
             },
             text = {
-                OutlinedTextField(
-                    value = renameText,
-                    onValueChange = { renameText = it },
-                    label = { Text(stringResource(R.string.timeline_rename_label)) },
-                    singleLine = true
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(
+                        value = renameText,
+                        onValueChange = { renameText = it },
+                        label = { Text(stringResource(R.string.timeline_rename_label)) },
+                        singleLine = true
+                    )
+                    if (isEditingNote) {
+                        OutlinedTextField(
+                            value = renameDurationSeconds,
+                            onValueChange = { input ->
+                                renameDurationSeconds = input.filter { it.isDigit() }
+                            },
+                            label = { Text(stringResource(R.string.timeline_note_duration_label)) },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                        )
+                    }
+                }
             },
             confirmButton = {
                 TextButton(
                     onClick = {
                         val trimmed = renameText.trim()
                         if (trimmed.isNotEmpty()) {
-                            onRenameMarker(safeRenameIndex, trimmed)
+                            val updatedDurationMs = if (isEditingNote) {
+                                val seconds = renameDurationSeconds.toLongOrNull()
+                                    ?.coerceAtLeast(1L)
+                                    ?: (DEFAULT_TIMELINE_NOTE_DURATION_MS / 1_000L)
+                                seconds * 1_000L
+                            } else {
+                                null
+                            }
+                            onRenameMarker(safeRenameIndex, trimmed, updatedDurationMs)
                         }
                         renameIndex = null
                     }
