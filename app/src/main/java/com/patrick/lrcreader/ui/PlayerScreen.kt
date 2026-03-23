@@ -1824,6 +1824,30 @@ fun PlayerScreen(
                                     }
                                 )
                             }
+
+                            midiMonitorEvent?.let { sent ->
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.TopEnd)
+                                        .padding(top = 6.dp, end = 10.dp)
+                                        .background(
+                                            Color.White,
+                                            RoundedCornerShape(12.dp)
+                                        )
+                                        .border(
+                                            1.dp,
+                                            Color.Black.copy(alpha = 0.12f),
+                                            RoundedCornerShape(12.dp)
+                                        )
+                                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                                ) {
+                                    Text(
+                                        text = "CH ${sent.channel} / PC ${sent.program}",
+                                        color = Color.Black,
+                                        fontSize = 12.sp
+                                    )
+                                }
+                            }
                         }
 
                         Spacer(Modifier.height(8.dp))
@@ -1924,30 +1948,6 @@ fun PlayerScreen(
                                             }
                                         }
                                     }
-                                }
-                            }
-
-                            midiMonitorEvent?.let { sent ->
-                                Box(
-                                    modifier = Modifier
-                                        .align(Alignment.TopEnd)
-                                        .padding(top = 10.dp, end = 10.dp)
-                                        .background(
-                                            Color(0xCC001A1A),
-                                            RoundedCornerShape(12.dp)
-                                        )
-                                        .border(
-                                            1.dp,
-                                            Color(0x334DFFFF),
-                                            RoundedCornerShape(12.dp)
-                                        )
-                                        .padding(horizontal = 10.dp, vertical = 6.dp)
-                                ) {
-                                    Text(
-                                        text = "CH ${sent.channel} / PC ${sent.program}",
-                                        color = Color(0xFF80CBC4),
-                                        fontSize = 12.sp
-                                    )
                                 }
                             }
                         }
