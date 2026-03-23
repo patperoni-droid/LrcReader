@@ -158,8 +158,12 @@ fun PlayerScreen(
 
     // 🔊 Brancher ExoPlayer au bus principal (fader LECTEUR)
     var activeLiveNote by remember { mutableStateOf<LiveNote?>(null) }
+    var activeLiveNoteFromTimeline by remember { mutableStateOf(false) }
     var isEditingTimeline by remember { mutableStateOf(false) }
     var timelineMarkers by remember(currentTrackUri) { mutableStateOf<List<TimelineMarker>>(emptyList()) }
+    val projectedTimelineLiveNotes = remember(timelineMarkers) {
+        projectTimelineNoteMarkers(timelineMarkers)
+    }
     var timelinePalette by remember(context) {
         mutableStateOf(TimelinePaletteStore.load(context))
     }
@@ -251,6 +255,7 @@ fun PlayerScreen(
         }.orEmpty()
         LiveNoteManager.setNotes(loadedNotes)
         activeLiveNote = null
+        activeLiveNoteFromTimeline = false
     }
     LaunchedEffect(currentTrackUri, isCurrentTrackSmp) {
         isEditingTimeline = false
@@ -265,12 +270,19 @@ fun PlayerScreen(
             loadSmpTimelineMarkersForTrack(context, trackUriString)
         }
     }
-    LaunchedEffect(isPlaying, currentTrackUri) {
+    LaunchedEffect(isPlaying, currentTrackUri, projectedTimelineLiveNotes) {
         while (true) {
-            activeLiveNote = if (isPlaying) {
-                LiveNoteManager.getActiveNote(getPositionMs())
+            if (isPlaying) {
+                val currentPositionMs = getPositionMs()
+                val annotationNote = LiveNoteManager.getActiveNote(currentPositionMs)
+                val timelineNote = projectedTimelineLiveNotes.firstOrNull { note ->
+                    currentPositionMs in note.timeMs..(note.timeMs + note.durationMs)
+                }
+                activeLiveNote = annotationNote ?: timelineNote
+                activeLiveNoteFromTimeline = annotationNote == null && timelineNote != null
             } else {
-                null
+                activeLiveNote = null
+                activeLiveNoteFromTimeline = false
             }
             delay(200L)
         }
@@ -1767,9 +1779,15 @@ fun PlayerScreen(
                                     modifier = Modifier
                                         .align(Alignment.TopCenter)
                                         .padding(top = 10.dp)
-                                        .combinedClickable(
-                                            onClick = {}, // rien au click simple
-                                            onLongClick = { removeLiveNoteAndPersist(note) }
+                                        .then(
+                                            if (!activeLiveNoteFromTimeline) {
+                                                Modifier.combinedClickable(
+                                                    onClick = {}, // rien au click simple
+                                                    onLongClick = { removeLiveNoteAndPersist(note) }
+                                                )
+                                            } else {
+                                                Modifier
+                                            }
                                         )
                                         .background(
                                             Color(0xCC000000),
@@ -1793,15 +1811,17 @@ fun PlayerScreen(
                                             lineHeight = 20.sp,
                                             modifier = Modifier.widthIn(max = 320.dp)
                                         )
-                                        IconButton(
-                                            onClick = { removeLiveNoteAndPersist(note) },
-                                            modifier = Modifier.size(28.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Filled.Delete,
-                                                contentDescription = sDeleteLiveNote,
-                                                tint = Color(0xFFFFC107)
-                                            )
+                                        if (!activeLiveNoteFromTimeline) {
+                                            IconButton(
+                                                onClick = { removeLiveNoteAndPersist(note) },
+                                                modifier = Modifier.size(28.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.Delete,
+                                                    contentDescription = sDeleteLiveNote,
+                                                    tint = Color(0xFFFFC107)
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -2264,6 +2284,27 @@ private fun resolveSmpTimelineTarget(
         file = timelineFile,
         fileName = timelineFile.name
     )
+}
+
+private const val TIMELINE_NOTE_DEFAULT_DURATION_MS = 30_000L
+
+private fun projectTimelineNoteMarkers(markers: List<TimelineMarker>): List<LiveNote> {
+    return markers.asSequence()
+        .filter { it.kind == TimelineMarkerKind.NOTE }
+        .mapNotNull { marker ->
+            val text = marker.label.trim()
+            if (text.isEmpty()) {
+                null
+            } else {
+                LiveNote(
+                    timeMs = marker.timeMs.coerceAtLeast(0L),
+                    durationMs = TIMELINE_NOTE_DEFAULT_DURATION_MS,
+                    text = text
+                )
+            }
+        }
+        .sortedBy { it.timeMs }
+        .toList()
 }
 
 private data class AccordsWriteRequest(
