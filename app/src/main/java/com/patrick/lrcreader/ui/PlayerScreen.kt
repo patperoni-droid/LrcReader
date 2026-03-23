@@ -284,7 +284,7 @@ fun PlayerScreen(
                 val activeTimelineNotes = projectedTimelineLiveNotes.filter { note ->
                     isLiveNoteActiveAt(note, currentPositionMs)
                 }
-                val timelineNote = activeTimelineNotes.firstOrNull()
+                val timelineNote = activeTimelineNotes.maxByOrNull { note -> note.timeMs }
                 activeLiveNote = annotationNote ?: timelineNote
                 activeLiveNoteFromTimeline = annotationNote == null && timelineNote != null
                 val traceKey = buildLiveNoteTraceKey(
