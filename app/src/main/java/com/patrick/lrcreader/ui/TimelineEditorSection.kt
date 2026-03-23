@@ -27,6 +27,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
@@ -65,6 +67,8 @@ fun TimelineEditorSection(
     var renameText by remember(markers) { mutableStateOf("") }
     var paletteDraft by remember { mutableStateOf("") }
     val paletteNavigationIndexByLabel = remember(markers) { mutableStateMapOf<String, Int>() }
+    var focusRequestTimeMs by remember { mutableLongStateOf(-1L) }
+    var focusRequestToken by remember { mutableIntStateOf(0) }
 
     fun seekToNextPaletteMarker(label: String) {
         val trimmed = label.trim()
@@ -82,7 +86,10 @@ fun TimelineEditorSection(
         val nextIndex = paletteNavigationIndexByLabel[key] ?: 0
         val targetMarker = matchingMarkers[nextIndex % matchingMarkers.size]
         paletteNavigationIndexByLabel[key] = (nextIndex + 1) % matchingMarkers.size
-        runCatching { seekToMs(targetMarker.timeMs.coerceAtLeast(0L)) }
+        val targetTimeMs = targetMarker.timeMs.coerceAtLeast(0L)
+        focusRequestTimeMs = targetTimeMs
+        focusRequestToken += 1
+        runCatching { seekToMs(targetTimeMs) }
     }
 
     Column(
@@ -279,6 +286,8 @@ fun TimelineEditorSection(
             positionMs = positionMs,
             durationMs = durationMs,
             isPlaying = isPlaying,
+            focusRequestTimeMs = focusRequestTimeMs.takeIf { it >= 0L },
+            focusRequestToken = focusRequestToken,
             onSeekToMs = seekToMs,
             onEditMarker = { index ->
                 if (index !in markers.indices) return@TimelineScrubColumn
