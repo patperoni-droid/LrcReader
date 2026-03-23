@@ -4,9 +4,13 @@ package com.patrick.lrcreader.core
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import com.patrick.lrcreader.smp.SmpMidiCueBridge
 import com.patrick.lrcreader.core.LrcLine
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 object MidiCueDispatcher {
 
@@ -19,6 +23,16 @@ object MidiCueDispatcher {
     private val mainHandler = Handler(Looper.getMainLooper())
 
     private val lastLineByTrack: MutableMap<String, Int> = mutableMapOf()
+    private val _lastTriggeredProgramChange = MutableStateFlow<TriggeredProgramChange?>(null)
+    val lastTriggeredProgramChange: StateFlow<TriggeredProgramChange?> =
+        _lastTriggeredProgramChange.asStateFlow()
+
+    data class TriggeredProgramChange(
+        val trackUri: String,
+        val channel: Int,
+        val program: Int,
+        val triggeredAtMs: Long
+    )
 
     fun onResolvedCueChanged(trackUri: String?, lineIndex: Int, cue: CueMidi?, positionMs: Long) {
         val key = trackUri?.takeIf { it.isNotBlank() } ?: return
@@ -34,6 +48,12 @@ object MidiCueDispatcher {
         }
 
         fun doSend() {
+            _lastTriggeredProgramChange.value = TriggeredProgramChange(
+                trackUri = key,
+                channel = cue.channel.coerceIn(1, 16),
+                program = cue.program.coerceIn(1, 128),
+                triggeredAtMs = SystemClock.elapsedRealtime()
+            )
             MidiOutput.sendProgramChange(
                 channel = cue.channel,
                 program = cue.program,
