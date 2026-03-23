@@ -110,6 +110,24 @@ object SmpMidiCueBridge {
             }
     }
 
+    fun getRuntimeCues(
+        context: Context,
+        trackUriString: String?
+    ): List<MidiCue>? {
+        val track = resolveSmpTrack(context, trackUriString) ?: return null
+        val cues = loadMidiCues(track).sortedWith(
+            compareBy<MidiCue> { it.time }
+                .thenBy { it.channel }
+                .thenBy { it.type }
+                .thenBy { it.value }
+        )
+        Log.d(
+            TRACE_TAG,
+            "BRIDGE_RUNTIME_CUES track=${track.songDir.name} cues=${formatMidiCueList(cues)}"
+        )
+        return cues
+    }
+
     fun upsertCueAtTime(
         context: Context,
         trackUriString: String?,

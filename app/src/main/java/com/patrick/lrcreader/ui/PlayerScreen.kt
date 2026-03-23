@@ -1108,6 +1108,15 @@ fun PlayerScreen(
             val p = getPositionMs().toInt()
             if (!isDragging) positionMs = p
 
+            if (currentTrackUri != null && isCurrentTrackSmp) {
+                MidiCueDispatcher.onSmpPlaybackPosition(
+                    context = context,
+                    trackUri = currentTrackUri,
+                    positionMs = p.toLong(),
+                    isPlaying = isPlaying
+                )
+            }
+
             if (activeDisplayLines.isNotEmpty()) {
                 val totalOffsetMs = lyricsDelayMs + userOffsetMs
                 val posMs = (p.toLong() - totalOffsetMs).coerceAtLeast(0L)
@@ -1117,6 +1126,7 @@ fun PlayerScreen(
                 }
 
                 if (
+                    !isCurrentTrackSmp &&
                     selectedViewMode == LyricsViewMode.LYRICS &&
                     currentTrackUri != null &&
                     newIndex >= 0 &&
@@ -1834,7 +1844,7 @@ fun PlayerScreen(
                                     highlightColor = highlightColor,
                                     onLineClick = { index, timeMs ->
                                         seekAndCenter(timeMs.toInt(), index)
-                                        if (currentTrackUri != null) {
+                                        if (currentTrackUri != null && !isCurrentTrackSmp) {
                                             lastMidiIndex = index
                                             val cue = MidiCueDispatcher.resolveCueForTrack(
                                                 context = context,
