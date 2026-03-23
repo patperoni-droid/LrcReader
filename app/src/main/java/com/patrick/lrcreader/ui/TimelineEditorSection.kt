@@ -1,5 +1,7 @@
 package com.patrick.lrcreader.ui
 
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -26,6 +28,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -61,6 +64,26 @@ fun TimelineEditorSection(
     var renameIndex by remember(markers) { mutableStateOf<Int?>(null) }
     var renameText by remember(markers) { mutableStateOf("") }
     var paletteDraft by remember { mutableStateOf("") }
+    val paletteNavigationIndexByLabel = remember(markers) { mutableStateMapOf<String, Int>() }
+
+    fun seekToNextPaletteMarker(label: String) {
+        val trimmed = label.trim()
+        if (trimmed.isEmpty()) return
+
+        val matchingMarkers = markers.filter { marker ->
+            marker.kind == TimelineMarkerKind.TEXT &&
+                marker.label.equals(trimmed, ignoreCase = true)
+        }
+        if (matchingMarkers.isEmpty()) {
+            return
+        }
+
+        val key = trimmed.lowercase()
+        val nextIndex = paletteNavigationIndexByLabel[key] ?: 0
+        val targetMarker = matchingMarkers[nextIndex % matchingMarkers.size]
+        paletteNavigationIndexByLabel[key] = (nextIndex + 1) % matchingMarkers.size
+        runCatching { seekToMs(targetMarker.timeMs.coerceAtLeast(0L)) }
+    }
 
     Column(
         modifier = Modifier
@@ -173,9 +196,11 @@ fun TimelineEditorSection(
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 palette.forEach { label ->
-                    TextButton(onClick = { onAddMarker(label) }) {
-                        Text(text = label, color = Color(0xFF80CBC4))
-                    }
+                    TimelinePaletteTagButton(
+                        label = label,
+                        onClick = { onAddMarker(label) },
+                        onLongClick = { seekToNextPaletteMarker(label) }
+                    )
                 }
             }
         }
@@ -315,6 +340,29 @@ private fun TimelineEventPaletteButton(
         icon()
         Spacer(Modifier.width(6.dp))
         Text(text = label, color = Color.White)
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun TimelinePaletteTagButton(
+    label: String,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            )
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            color = Color(0xFF80CBC4)
+        )
     }
 }
 
