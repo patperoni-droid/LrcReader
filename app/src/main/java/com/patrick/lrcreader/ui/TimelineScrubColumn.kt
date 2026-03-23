@@ -3,6 +3,7 @@ package com.patrick.lrcreader.ui
 import android.os.SystemClock
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -264,7 +265,9 @@ fun TimelineScrubColumn(
                             val isActiveMarker = entry.index == activeMarkerIndex
 
                             Row(
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onEditMarker(entry.index) },
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 if (entry.marker.kind != TimelineMarkerKind.TEXT) {

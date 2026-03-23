@@ -6,6 +6,7 @@ import com.patrick.lrcreader.core.CueMidi
 import com.patrick.lrcreader.core.LrcLine
 import java.io.File
 import java.util.Locale
+import kotlin.math.roundToLong
 
 object SmpMidiCueBridge {
 
@@ -69,6 +70,49 @@ object SmpMidiCueBridge {
     ): CueMidi? {
         return getEditorCues(context, trackUriString, lines)
             ?.firstOrNull { it.lineIndex == lineIndex }
+    }
+
+    fun getCueAtTime(
+        context: Context,
+        trackUriString: String?,
+        timeMs: Long
+    ): MidiCue? {
+        val track = resolveSmpTrack(context, trackUriString) ?: return null
+        return loadMidiCues(track)
+            .firstOrNull { midiCue ->
+                midiCue.type.equals("PC", ignoreCase = true) &&
+                    midiCue.matchesTimeMs(timeMs)
+            }
+    }
+
+    fun upsertCueAtTime(
+        context: Context,
+        trackUriString: String?,
+        cue: MidiCue
+    ): Boolean? {
+        val track = resolveSmpTrack(context, trackUriString) ?: return null
+        val targetTimeMs = cue.toTimeMs()
+        val replacement = cue.copy(type = "PC")
+        val updated = loadMidiCues(track)
+            .filterNot { existing ->
+                existing.type.equals("PC", ignoreCase = true) &&
+                    existing.matchesTimeMs(targetTimeMs)
+            } + replacement
+
+        return saveMidiCues(track, updated)
+    }
+
+    fun deleteCueAtTime(
+        context: Context,
+        trackUriString: String?,
+        timeMs: Long
+    ): Boolean? {
+        val track = resolveSmpTrack(context, trackUriString) ?: return null
+        val updated = loadMidiCues(track).filterNot { midiCue ->
+            midiCue.type.equals("PC", ignoreCase = true) &&
+                midiCue.matchesTimeMs(timeMs)
+        }
+        return saveMidiCues(track, updated)
     }
 
     private fun loadMidiCues(track: SmpTrack): List<MidiCue> {
@@ -152,6 +196,14 @@ object SmpMidiCueBridge {
             value = program,
             channel = channel
         )
+    }
+
+    private fun MidiCue.matchesTimeMs(timeMs: Long): Boolean {
+        return toTimeMs() == timeMs.coerceAtLeast(0L)
+    }
+
+    private fun MidiCue.toTimeMs(): Long {
+        return (time * 1000.0).roundToLong().coerceAtLeast(0L)
     }
 
     private fun findNearestLineIndex(lines: List<LrcLine>, targetTimeMs: Long): Int? {
