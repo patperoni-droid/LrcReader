@@ -67,29 +67,55 @@ fun TimelineEditorSection(
     var renameText by remember(markers) { mutableStateOf("") }
     var paletteDraft by remember { mutableStateOf("") }
     val paletteNavigationIndexByLabel = remember(markers) { mutableStateMapOf<String, Int>() }
+    val paletteNavigationIndexByKind = remember(markers) { mutableStateMapOf<TimelineMarkerKind, Int>() }
     var focusRequestTimeMs by remember { mutableLongStateOf(-1L) }
     var focusRequestToken by remember { mutableIntStateOf(0) }
+
+    fun requestFocusAt(timeMs: Long) {
+        val targetTimeMs = timeMs.coerceAtLeast(0L)
+        focusRequestTimeMs = targetTimeMs
+        focusRequestToken += 1
+        runCatching { seekToMs(targetTimeMs) }
+    }
+
+    fun seekToNextMatchingMarker(
+        currentIndexProvider: () -> Int?,
+        nextIndexConsumer: (Int) -> Unit,
+        matcher: (TimelineMarker) -> Boolean
+    ) {
+        val matchingMarkers = markers.filter(matcher)
+        if (matchingMarkers.isEmpty()) {
+            return
+        }
+
+        val nextIndex = currentIndexProvider() ?: 0
+        val targetMarker = matchingMarkers[nextIndex % matchingMarkers.size]
+        nextIndexConsumer((nextIndex + 1) % matchingMarkers.size)
+        requestFocusAt(targetMarker.timeMs)
+    }
 
     fun seekToNextPaletteMarker(label: String) {
         val trimmed = label.trim()
         if (trimmed.isEmpty()) return
 
-        val matchingMarkers = markers.filter { marker ->
-            marker.kind == TimelineMarkerKind.TEXT &&
-                marker.label.equals(trimmed, ignoreCase = true)
-        }
-        if (matchingMarkers.isEmpty()) {
-            return
-        }
-
         val key = trimmed.lowercase()
-        val nextIndex = paletteNavigationIndexByLabel[key] ?: 0
-        val targetMarker = matchingMarkers[nextIndex % matchingMarkers.size]
-        paletteNavigationIndexByLabel[key] = (nextIndex + 1) % matchingMarkers.size
-        val targetTimeMs = targetMarker.timeMs.coerceAtLeast(0L)
-        focusRequestTimeMs = targetTimeMs
-        focusRequestToken += 1
-        runCatching { seekToMs(targetTimeMs) }
+        seekToNextMatchingMarker(
+            currentIndexProvider = { paletteNavigationIndexByLabel[key] },
+            nextIndexConsumer = { nextIndex -> paletteNavigationIndexByLabel[key] = nextIndex },
+            matcher = { marker ->
+                marker.kind == TimelineMarkerKind.TEXT &&
+                    marker.label.equals(trimmed, ignoreCase = true)
+            }
+        )
+    }
+
+    fun seekToNextTypedMarker(kind: TimelineMarkerKind) {
+        if (kind == TimelineMarkerKind.TEXT) return
+        seekToNextMatchingMarker(
+            currentIndexProvider = { paletteNavigationIndexByKind[kind] },
+            nextIndexConsumer = { nextIndex -> paletteNavigationIndexByKind[kind] = nextIndex },
+            matcher = { marker -> marker.kind == kind }
+        )
     }
 
     Column(
@@ -235,7 +261,8 @@ fun TimelineEditorSection(
                         tint = Color(0xFF80CBC4)
                     )
                 },
-                onClick = { onAddTypedMarker(TimelineMarkerKind.MIDI) }
+                onClick = { onAddTypedMarker(TimelineMarkerKind.MIDI) },
+                onLongClick = { seekToNextTypedMarker(TimelineMarkerKind.MIDI) }
             )
             TimelineEventPaletteButton(
                 label = stringResource(R.string.timeline_event_note),
@@ -246,7 +273,8 @@ fun TimelineEditorSection(
                         tint = Color(0xFFFFF176)
                     )
                 },
-                onClick = { onAddTypedMarker(TimelineMarkerKind.NOTE) }
+                onClick = { onAddTypedMarker(TimelineMarkerKind.NOTE) },
+                onLongClick = { seekToNextTypedMarker(TimelineMarkerKind.NOTE) }
             )
             TimelineEventPaletteButton(
                 label = stringResource(R.string.timeline_event_dmx),
@@ -257,7 +285,8 @@ fun TimelineEditorSection(
                         tint = Color(0xFFFFB74D)
                     )
                 },
-                onClick = { onAddTypedMarker(TimelineMarkerKind.DMX) }
+                onClick = { onAddTypedMarker(TimelineMarkerKind.DMX) },
+                onLongClick = { seekToNextTypedMarker(TimelineMarkerKind.DMX) }
             )
         }
 
@@ -339,13 +368,23 @@ fun TimelineEditorSection(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun TimelineEventPaletteButton(
     label: String,
     icon: @Composable () -> Unit,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
 ) {
-    TextButton(onClick = onClick) {
+    Row(
+        modifier = Modifier
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            )
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
         icon()
         Spacer(Modifier.width(6.dp))
         Text(text = label, color = Color.White)
