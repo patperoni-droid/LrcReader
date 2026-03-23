@@ -58,6 +58,8 @@ fun TimelineScrubColumn(
     positionMs: Int,
     durationMs: Int,
     isPlaying: Boolean,
+    focusRequestTimeMs: Long? = null,
+    focusRequestToken: Int = 0,
     onSeekToMs: (Long) -> Unit,
     onEditMarker: (Int) -> Unit,
     onDeleteMarker: (Int) -> Unit
@@ -175,6 +177,14 @@ fun TimelineScrubColumn(
             return@LaunchedEffect
         }
         centerSlot(currentSlotIndex)
+    }
+
+    LaunchedEffect(focusRequestToken, focusRequestTimeMs, slotCount) {
+        if (focusRequestToken <= 0) return@LaunchedEffect
+        val targetTimeMs = focusRequestTimeMs ?: return@LaunchedEffect
+        val targetSlotIndex = slotIndexFromTime(targetTimeMs)
+        if (targetSlotIndex !in 0 until slotCount) return@LaunchedEffect
+        centerSlot(targetSlotIndex)
     }
 
     LaunchedEffect(lazyListState, isPlaying, slotCount) {
