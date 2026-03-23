@@ -52,6 +52,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -1832,14 +1833,14 @@ fun PlayerScreen(
                                         .padding(top = 6.dp, end = 10.dp)
                                         .background(
                                             Color.White,
-                                            RoundedCornerShape(12.dp)
+                                            RectangleShape
                                         )
                                         .border(
                                             1.dp,
                                             Color.Black.copy(alpha = 0.12f),
-                                            RoundedCornerShape(12.dp)
+                                            RectangleShape
                                         )
-                                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                                        .padding(horizontal = 10.dp, vertical = 3.dp)
                                 ) {
                                     Text(
                                         text = sent.program.toString(),
