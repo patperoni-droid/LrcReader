@@ -189,7 +189,7 @@
     <!-- Backup -->
     <string name="backup_back">Retour</string>
     <string name="backup_section_export_title">Exporter</string>
-    <string name="backup_section_export_subtitle">Créer un fichier .json</string>
+    <string name="backup_section_export_subtitle">Créer un fichier .splbackup</string>
     <string name="backup_file_name_label">Nom du fichier</string>
     <string name="backup_internal_export_toast_success">Backup écrit dans Backups internes</string>
     <string name="backup_internal_export_toast_failed">Impossible d’écrire le backup</string>
@@ -210,6 +210,8 @@
     <string name="backup_internal_files_truncated">(%1$d fichiers) — j’affiche les 12 plus récents.</string>
     <string name="backup_save_toast_success">Sauvegarde enregistrée</string>
     <string name="backup_save_toast_failed">Impossible d’enregistrer</string>
+    <string name="backup_bundle_export_failed">Impossible d’exporter ces morceaux SMP :</string>
+    <string name="backup_bundle_export_missing_songs">Export bundle bloqué, morceaux SMP introuvables :</string>
     <string name="backup_import_success">Import réussi</string>
     <string name="backup_import_empty_unreadable">Fichier vide ou illisible</string>
     <string name="backup_import_failed">Échec de l’import (%1$s)</string>
