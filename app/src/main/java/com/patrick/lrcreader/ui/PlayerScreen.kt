@@ -66,11 +66,18 @@ import com.patrick.lrcreader.core.AccordsUiTruth
 import com.patrick.lrcreader.core.DisplayPrefs
 import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.core.LatestAccordsWriteQueue
+import com.patrick.lrcreader.core.LightIndicatorPrefs
 import com.patrick.lrcreader.core.LrcLine
 import com.patrick.lrcreader.core.LrcStorage
 import com.patrick.lrcreader.core.LyricsViewMode
 import com.patrick.lrcreader.core.MidiCueDispatcher
 import com.patrick.lrcreader.core.TrackLyricsViewPrefs
+import com.patrick.lrcreader.core.light.LightAction
+import com.patrick.lrcreader.core.light.LightCueAutoGenerator
+import com.patrick.lrcreader.core.light.LightCue
+import com.patrick.lrcreader.core.light.LightCueDispatcher
+import com.patrick.lrcreader.core.light.LightPreviewTestController
+import com.patrick.lrcreader.core.light.LightSceneState
 // ✅ On retire l’import pour éviter tout auto-import douteux
 // import com.patrick.lrcreader.core.PlaylistRepository
 import com.patrick.lrcreader.core.PlaybackCoordinator
@@ -95,6 +102,7 @@ import com.patrick.lrcreader.smp.DEFAULT_TIMELINE_NOTE_DURATION_MS
 import com.patrick.lrcreader.smp.SmpConfig
 import com.patrick.lrcreader.smp.SmpAnnotationsStore
 import com.patrick.lrcreader.smp.SmpAutoMigrationResult
+import com.patrick.lrcreader.smp.SmpLightCueBridge
 import com.patrick.lrcreader.smp.SmpTimelineStore
 import com.patrick.lrcreader.smp.TimelineMarker
 import com.patrick.lrcreader.smp.TimelineMarkerKind
@@ -137,7 +145,9 @@ fun PlayerScreen(
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val showLightIndicator = remember(context) { LightIndicatorPrefs.isEnabled(context) }
     val lastTriggeredMidiProgramChange by MidiCueDispatcher.lastTriggeredProgramChange.collectAsState()
+    val simulatedLightScene by LightCueDispatcher.sceneState.collectAsState()
     val isLaboBuild = remember(context.packageName) { context.packageName.endsWith(".labo") }
     val hqStatus = remember { SoundTouchBridge.logStatusOnce(reason = "PlayerScreen:init") }
     val isHqAvailable = hqStatus.available
@@ -150,6 +160,7 @@ fun PlayerScreen(
     val sAccordsActionDelete = stringResource(R.string.accords_action_delete)
     val sDeleteLiveNote = stringResource(R.string.player_cd_delete_live_note)
     val sTimelineSaveFailed = stringResource(R.string.timeline_save_failed)
+    val sLightGenerateFailed = stringResource(R.string.light_generate_failed)
     val midiCueTraceTag = "MIDI_CUE_TRACE"
 
     // 📝 Notes LIVE (création depuis le lecteur)
@@ -166,7 +177,11 @@ fun PlayerScreen(
     var lastLiveNoteTraceKey by remember(currentTrackUri) { mutableStateOf<String?>(null) }
     var isEditingTimeline by remember { mutableStateOf(false) }
     var editingTimelineMidiMarkerIndex by remember(currentTrackUri) { mutableStateOf<Int?>(null) }
+    var editingTimelineLightCueTimeMs by remember(currentTrackUri) { mutableStateOf<Long?>(null) }
+    var showLightGenerationDialog by remember(currentTrackUri) { mutableStateOf(false) }
+    var timelineLightPreviewPositionMs by remember(currentTrackUri) { mutableStateOf<Long?>(null) }
     var timelineMarkers by remember(currentTrackUri) { mutableStateOf<List<TimelineMarker>>(emptyList()) }
+    var timelineLightCues by remember(currentTrackUri) { mutableStateOf<List<LightCue>>(emptyList()) }
     val projectedTimelineLiveNotes = remember(timelineMarkers) {
         projectTimelineNoteMarkers(timelineMarkers)
     }
@@ -182,8 +197,37 @@ fun PlayerScreen(
         val trackUri = currentTrackUri?.takeIf { it.isNotBlank() } ?: return@remember null
         lastTriggeredMidiProgramChange?.takeIf { sent -> sent.trackUri == trackUri }
     }
+    val currentTrackLightScene = remember(simulatedLightScene, currentTrackUri) {
+        if (simulatedLightScene.trackUri == currentTrackUri) {
+            simulatedLightScene
+        } else {
+            LightSceneState.off(trackUri = currentTrackUri)
+        }
+    }
+    val timelineEditorEntries = remember(context, timelineMarkers, timelineLightCues) {
+        buildTimelineEditorEntries(
+            context = context,
+            timelineMarkers = timelineMarkers,
+            lightCues = timelineLightCues
+        )
+    }
+    val timelineEditorMarkers = remember(timelineEditorEntries) {
+        timelineEditorEntries.map { entry -> entry.marker }
+    }
+    var showLightTestDialog by remember { mutableStateOf(false) }
+    var hasLightCues by remember(currentTrackUri) { mutableStateOf(false) }
     LaunchedEffect(exoPlayer) {
         PlayerBusController.attachPlayer(context, exoPlayer)
+    }
+    LaunchedEffect(context) {
+        LightCueDispatcher.init(context)
+    }
+    LaunchedEffect(isPlaying) {
+        if (isPlaying) {
+            showLightTestDialog = false
+            LightPreviewTestController.stop()
+            timelineLightPreviewPositionMs = null
+        }
     }
 
     // 🔊 bus LECTEUR (réapplique le mix sur Exo)
@@ -268,11 +312,21 @@ fun PlayerScreen(
         activeLiveNoteFromTimeline = false
         lastLiveNoteTraceKey = null
     }
+    LaunchedEffect(currentTrackUri) {
+        hasLightCues = false
+        timelineLightCues = emptyList()
+        timelineLightPreviewPositionMs = null
+        LightCueDispatcher.resetGlobal()
+    }
     LaunchedEffect(currentTrackUri, isCurrentTrackSmp) {
         isEditingTimeline = false
         editingTimelineMidiMarkerIndex = null
+        editingTimelineLightCueTimeMs = null
+        showLightGenerationDialog = false
         if (!isCurrentTrackSmp || currentTrackUri.isNullOrBlank()) {
             timelineMarkers = emptyList()
+            timelineLightCues = emptyList()
+            hasLightCues = false
             return@LaunchedEffect
         }
 
@@ -281,6 +335,9 @@ fun PlayerScreen(
         timelineMarkers = withContext(Dispatchers.IO) {
             loadSmpTimelineMarkersForTrack(context, trackUriString)
         }
+        val loadedLightCues = loadSmpLightCuesForTrack(context, trackUriString)
+        timelineLightCues = loadedLightCues
+        hasLightCues = loadedLightCues.isNotEmpty()
     }
     LaunchedEffect(timelineMarkers, editingTimelineMidiMarkerIndex) {
         val markerIndex = editingTimelineMidiMarkerIndex ?: return@LaunchedEffect
@@ -482,6 +539,38 @@ fun PlayerScreen(
             context = context,
             tags = timelinePalette + trimmed
         )
+    }
+
+    fun refreshTimelineLightCues(trackUriString: String?, syncPositionMs: Long? = null) {
+        if (trackUriString.isNullOrBlank()) {
+            timelineLightCues = emptyList()
+            hasLightCues = false
+            timelineLightPreviewPositionMs = null
+            return
+        }
+        scope.launch {
+            val refreshed = loadSmpLightCuesForTrack(context, trackUriString)
+            timelineLightCues = refreshed
+            hasLightCues = refreshed.isNotEmpty()
+            val editedCue = syncPositionMs?.let { targetTimeMs ->
+                refreshed.firstOrNull { cue -> cue.timeMs == targetTimeMs.coerceAtLeast(0L) }
+            }
+            val targetSyncPositionMs = if (syncPositionMs != null) {
+                val previewOffsetMs = editedCue
+                    ?.fadeMs
+                    ?.coerceAtLeast(0L)
+                    ?.takeIf { it > 0L }
+                    ?.let { fadeMs -> min(fadeMs / 2L, 1_500L) }
+                    ?: 0L
+                syncPositionMs.coerceAtLeast(0L) + previewOffsetMs
+            } else {
+                getPositionMs().coerceAtLeast(0L)
+            }
+            timelineLightPreviewPositionMs = targetSyncPositionMs.takeIf {
+                isEditingTimeline && !isPlaying && syncPositionMs != null
+            }
+            LightCueDispatcher.syncToPosition(trackUriString, targetSyncPositionMs)
+        }
     }
 
     fun renameTimelineMarker(index: Int, label: String, durationMs: Long?) {
@@ -1091,6 +1180,13 @@ fun PlayerScreen(
         runCatching { seekToMs(seekPos.toLong()) }
         currentLrcIndex = targetIndex.coerceIn(0, max(activeDisplayLines.size - 1, 0))
         positionMs = seekPos
+        timelineLightPreviewPositionMs = null
+        if (currentTrackUri != null && hasLightCues) {
+            LightCueDispatcher.syncToPosition(
+                trackUri = currentTrackUri,
+                positionMs = seekPos.toLong()
+            )
+        }
 
         if (!isPlaying) {
             PlaybackCoordinator.onPlayerStart()
@@ -1114,6 +1210,14 @@ fun PlayerScreen(
                     context = context,
                     trackUri = currentTrackUri,
                     positionMs = p.toLong(),
+                    isPlaying = isPlaying
+                )
+            }
+            if (currentTrackUri != null && hasLightCues) {
+                val lightRuntimePositionMs = timelineLightPreviewPositionMs ?: p.toLong()
+                LightCueDispatcher.advance(
+                    trackUri = currentTrackUri,
+                    positionMs = lightRuntimePositionMs,
                     isPlaying = isPlaying
                 )
             }
@@ -1676,33 +1780,66 @@ fun PlayerScreen(
             )
         } else if (isEditingTimeline) {
             TimelineEditorSection(
-                markers = timelineMarkers,
+                markers = timelineEditorMarkers,
                 palette = timelinePalette,
                 isPlaying = isPlaying,
                 positionMs = positionMs,
                 durationMs = durationMs,
                 onCloseEditor = {
                     editingTimelineMidiMarkerIndex = null
+                    editingTimelineLightCueTimeMs = null
+                    showLightGenerationDialog = false
+                    timelineLightPreviewPositionMs = null
                     isEditingTimeline = false
                 },
                 onIsPlayingChange = onIsPlayingChange,
                 seekToMs = seekToMs,
                 onAddPaletteTag = { label -> addTimelinePaletteTag(label) },
                 onAddMarker = { label -> addTimelineMarker(label) },
-                onAddTypedMarker = { kind -> addTypedTimelineMarker(kind) },
-                onEditMidiMarker = { index ->
-                    if (
-                        isCurrentTrackSmp &&
-                        index in timelineMarkers.indices &&
-                        timelineMarkers[index].kind == TimelineMarkerKind.MIDI
-                    ) {
-                        editingTimelineMidiMarkerIndex = index
+                onAddTypedMarker = { kind ->
+                    if (kind == TimelineMarkerKind.DMX) {
+                        editingTimelineLightCueTimeMs = getPositionMs().coerceAtLeast(0L)
+                    } else {
+                        addTypedTimelineMarker(kind)
                     }
                 },
-                onRenameMarker = { index, label, markerDurationMs ->
-                    renameTimelineMarker(index, label, markerDurationMs)
+                onGenerateLights = {
+                    showLightGenerationDialog = true
                 },
-                onDeleteMarker = { index -> deleteTimelineMarker(index) }
+                onEditMidiMarker = onEditMidiMarker@ { index ->
+                    val entry = timelineEditorEntries.getOrNull(index) ?: return@onEditMidiMarker
+                    val source = entry.source as? TimelineEditorMarkerSource.Timeline ?: return@onEditMidiMarker
+                    if (isCurrentTrackSmp && source.index in timelineMarkers.indices) {
+                        editingTimelineMidiMarkerIndex = source.index
+                    }
+                },
+                onEditDmxMarker = onEditDmxMarker@ { index ->
+                    val entry = timelineEditorEntries.getOrNull(index) ?: return@onEditDmxMarker
+                    val source = entry.source as? TimelineEditorMarkerSource.Light ?: return@onEditDmxMarker
+                    editingTimelineLightCueTimeMs = source.timeMs
+                },
+                onRenameMarker = onRenameMarker@ { index, label, markerDurationMs ->
+                    val entry = timelineEditorEntries.getOrNull(index) ?: return@onRenameMarker
+                    val source = entry.source as? TimelineEditorMarkerSource.Timeline ?: return@onRenameMarker
+                    renameTimelineMarker(source.index, label, markerDurationMs)
+                },
+                onDeleteMarker = onDeleteMarker@ { index ->
+                    val entry = timelineEditorEntries.getOrNull(index) ?: return@onDeleteMarker
+                    when (val source = entry.source) {
+                        is TimelineEditorMarkerSource.Timeline -> deleteTimelineMarker(source.index)
+                        is TimelineEditorMarkerSource.Light -> {
+                            val trackUri = currentTrackUri ?: return@onDeleteMarker
+                            scope.launch {
+                                SmpLightCueBridge.deleteCueAtTime(
+                                    context = context,
+                                    trackUriString = trackUri,
+                                    timeMs = source.timeMs
+                                )
+                                refreshTimelineLightCues(trackUri, source.timeMs)
+                            }
+                        }
+                    }
+                }
             )
         } else {
             Column(
@@ -1951,6 +2088,44 @@ fun PlayerScreen(
                                     }
                                 }
                             }
+
+                            if (showLightIndicator && hasLightCues) {
+                                if (showLightTestDialog) {
+                                    LightTestDialog(
+                                        onRed = { LightPreviewTestController.showRed(currentTrackUri) },
+                                        onBlue = { LightPreviewTestController.showBlue(currentTrackUri) },
+                                        onGreen = { LightPreviewTestController.showGreen(currentTrackUri) },
+                                        onWhite = { LightPreviewTestController.showWhite(currentTrackUri) },
+                                        onStrobe = { LightPreviewTestController.showStrobe(currentTrackUri) },
+                                        onBlackout = { LightPreviewTestController.showBlackout(currentTrackUri) },
+                                        onOff = { LightPreviewTestController.showOff(currentTrackUri) },
+                                        onQuickTest = { LightPreviewTestController.runQuickTest(currentTrackUri) },
+                                        onClose = {
+                                            LightPreviewTestController.stop()
+                                            showLightTestDialog = false
+                                        },
+                                        modifier = Modifier
+                                            .align(Alignment.BottomStart)
+                                            .fillMaxWidth()
+                                            .padding(start = 14.dp, end = 86.dp, bottom = 14.dp)
+                                    )
+                                }
+
+                                LightSimulatorPreview(
+                                    sceneState = currentTrackLightScene,
+                                    enabled = !isPlaying,
+                                    onClick = {
+                                        LightPreviewTestController.prime(
+                                            trackUri = currentTrackUri,
+                                            sceneState = currentTrackLightScene
+                                        )
+                                        showLightTestDialog = true
+                                    },
+                                    modifier = Modifier
+                                        .align(Alignment.BottomEnd)
+                                        .padding(end = 14.dp, bottom = 14.dp)
+                                )
+                            }
                         }
                         TimeBar(
                             positionMs = if (isDragging) dragPosMs else positionMs,
@@ -1964,6 +2139,13 @@ fun PlayerScreen(
                                 val safe = min(max(newPos, 0), durationMs)
                                 runCatching { seekToMs(safe.toLong()) }
                                 positionMs = safe
+                                timelineLightPreviewPositionMs = null
+                                if (currentTrackUri != null && hasLightCues) {
+                                    LightCueDispatcher.syncToPosition(
+                                        trackUri = currentTrackUri,
+                                        positionMs = safe.toLong()
+                                    )
+                                }
                             },
                             highlightColor = highlightColor
                         )
@@ -1989,6 +2171,13 @@ fun PlayerScreen(
                             },
                             onPrev = {
                                 seekToMs(0L)
+                                timelineLightPreviewPositionMs = null
+                                if (currentTrackUri != null && hasLightCues) {
+                                    LightCueDispatcher.syncToPosition(
+                                        trackUri = currentTrackUri,
+                                        positionMs = 0L
+                                    )
+                                }
                                 if (!isPlaying) {
                                     PlaybackCoordinator.onPlayerStart()
                                     onIsPlayingChange(true)
@@ -1999,6 +2188,7 @@ fun PlayerScreen(
                                 val end = max(durationMs - 1, 0)
                                 seekToMs(end.toLong())
                                 onIsPlayingChange(false)
+                                LightCueDispatcher.resetGlobal()
                                 PlaybackCoordinator.onFillerStart()
                                 runCatching { FillerSoundManager.startIfConfigured(context) }
                             }
@@ -2155,6 +2345,57 @@ fun PlayerScreen(
             onClose = { editingTimelineMidiMarkerIndex = null }
         )
     }
+
+    val timelineLightCueTimeMs = editingTimelineLightCueTimeMs
+    val timelineLightTrackUri = currentTrackUri?.takeIf { it.isNotBlank() }
+    if (
+        isEditingTimeline &&
+        showLightGenerationDialog &&
+        timelineLightTrackUri != null
+    ) {
+        TimelineLightCueGenerationPopup(
+            durationMs = durationMs.toLong(),
+            onGenerate = { style, replaceExisting ->
+                val generated = LightCueAutoGenerator.generate(
+                    durationMs = durationMs.toLong(),
+                    style = style
+                )
+                scope.launch {
+                    val saved = withContext(Dispatchers.IO) {
+                        SmpLightCueBridge.saveCuesBatch(
+                            context = context,
+                            trackUriString = timelineLightTrackUri,
+                            cues = generated,
+                            replaceExisting = replaceExisting
+                        ) ?: false
+                    }
+                    if (saved) {
+                        refreshTimelineLightCues(timelineLightTrackUri)
+                        showLightGenerationDialog = false
+                    } else {
+                        Toast.makeText(context, sLightGenerateFailed, Toast.LENGTH_SHORT).show()
+                    }
+                }
+            },
+            onClose = { showLightGenerationDialog = false }
+        )
+    }
+    if (
+        isEditingTimeline &&
+        timelineLightCueTimeMs != null &&
+        timelineLightTrackUri != null
+    ) {
+        TimelineLightCueEditorPopup(
+            trackUri = timelineLightTrackUri,
+            markerTimeMs = timelineLightCueTimeMs,
+            onSaved = {
+                refreshTimelineLightCues(timelineLightTrackUri, timelineLightCueTimeMs)
+                editingTimelineLightCueTimeMs = null
+            },
+            onClose = { editingTimelineLightCueTimeMs = null }
+        )
+    }
+
 }
 
 @Composable
@@ -2345,6 +2586,13 @@ private fun loadSmpTimelineMarkersForTrack(
         requireExisting = false
     ) ?: return emptyList()
     return SmpTimelineStore.read(target.file)
+}
+
+private fun loadSmpLightCuesForTrack(
+    context: android.content.Context,
+    trackUriString: String
+): List<LightCue> {
+    return SmpLightCueBridge.getRuntimeCues(context, trackUriString).orEmpty()
 }
 
 private suspend fun persistSmpLiveNotesForTrack(
@@ -2540,6 +2788,74 @@ private fun describeLiveNote(note: LiveNote?): String {
 
 private fun String.quoteForTrace(): String {
     return "\"" + replace("\"", "\\\"") + "\""
+}
+
+private sealed interface TimelineEditorMarkerSource {
+    data class Timeline(val index: Int) : TimelineEditorMarkerSource
+    data class Light(val timeMs: Long) : TimelineEditorMarkerSource
+}
+
+private data class TimelineEditorMarkerEntry(
+    val marker: TimelineMarker,
+    val source: TimelineEditorMarkerSource
+)
+
+private fun buildTimelineEditorEntries(
+    context: android.content.Context,
+    timelineMarkers: List<TimelineMarker>,
+    lightCues: List<LightCue>
+): List<TimelineEditorMarkerEntry> {
+    val timelineEntries = timelineMarkers.mapIndexedNotNull { index, marker ->
+        if (marker.kind == TimelineMarkerKind.DMX) {
+            null
+        } else {
+            TimelineEditorMarkerEntry(
+                marker = marker,
+                source = TimelineEditorMarkerSource.Timeline(index = index)
+            )
+        }
+    }
+    val lightEntries = lightCues.map { cue ->
+        TimelineEditorMarkerEntry(
+            marker = TimelineMarker(
+                timeMs = cue.timeMs.coerceAtLeast(0L),
+                label = buildTimelineLightCueLabel(context, cue),
+                kind = TimelineMarkerKind.DMX
+            ),
+            source = TimelineEditorMarkerSource.Light(timeMs = cue.timeMs.coerceAtLeast(0L))
+        )
+    }
+
+    return (timelineEntries + lightEntries).sortedWith(
+        compareBy<TimelineEditorMarkerEntry> { entry -> entry.marker.timeMs }
+            .thenBy { entry ->
+                when (entry.source) {
+                    is TimelineEditorMarkerSource.Timeline -> 0
+                    is TimelineEditorMarkerSource.Light -> 1
+                }
+            }
+            .thenBy { entry -> entry.marker.label.lowercase() }
+    )
+}
+
+private fun buildTimelineLightCueLabel(
+    context: android.content.Context,
+    cue: LightCue
+): String {
+    return when (val action = cue.action) {
+        is LightAction.Color -> {
+            val colorLabel = when (action.argb) {
+                0xFFFF0000L -> context.getString(R.string.light_color_red)
+                0xFF0000FFL -> context.getString(R.string.light_color_blue)
+                0xFF00FF00L -> context.getString(R.string.light_color_green)
+                0xFFFFFFFFL -> context.getString(R.string.light_color_white)
+                else -> "#%06X".format(action.argb and 0x00FFFFFFL)
+            }
+            "${context.getString(R.string.light_cue_type_color)} $colorLabel"
+        }
+        LightAction.Blackout -> context.getString(R.string.light_cue_type_blackout)
+        is LightAction.Strobe -> context.getString(R.string.light_cue_type_strobe)
+    }
 }
 
 private data class AccordsWriteRequest(

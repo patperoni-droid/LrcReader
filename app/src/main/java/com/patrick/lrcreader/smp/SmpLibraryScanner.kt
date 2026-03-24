@@ -98,7 +98,7 @@ class SmpLibraryScanner(private val context: Context) {
             annotationsPath = resolveOptionalPath(songDir, meta?.annotationsFile, "annotations.json"),
             midiPath = midiPath,
             midiCues = midiCues,
-            dmxPath = resolveOptionalPath(songDir, meta?.dmxFile, "dmx.json"),
+            dmxPath = resolveDmxPath(songDir, meta?.dmxFile),
             prompterPath = findPrompterPath(songDir)
         )
     }
@@ -133,6 +133,23 @@ class SmpLibraryScanner(private val context: Context) {
             ?.let { return it.absolutePath }
 
         return File(songDir, fallbackName).takeIf { it.isFile }?.absolutePath
+    }
+
+    private fun resolveDmxPath(songDir: File, fileNameFromMeta: String?): String? {
+        fileNameFromMeta
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?.let { File(songDir, it) }
+            ?.takeIf { it.isFile }
+            ?.let { return it.absolutePath }
+
+        return listOf(
+            SmpLightCueStore.LIGHT_CUES_FILE_NAME,
+            SmpLightCueStore.LEGACY_LIGHT_CUES_FILE_NAME
+        ).asSequence()
+            .map { fileName -> File(songDir, fileName) }
+            .firstOrNull { file -> file.isFile }
+            ?.absolutePath
     }
 
     private fun findPrompterPath(songDir: File): String? {

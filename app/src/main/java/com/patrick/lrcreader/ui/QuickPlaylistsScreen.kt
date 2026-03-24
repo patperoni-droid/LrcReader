@@ -39,6 +39,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.MoreVert
@@ -64,8 +65,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -90,6 +94,7 @@ import com.patrick.lrcreader.core.TextSongRepository
 import com.patrick.lrcreader.core.config.PlaylistStateStore
 import com.patrick.lrcreader.core.config.TrackSettingsStore
 import com.patrick.lrcreader.core.config.TitleAliasesStore
+import com.patrick.lrcreader.core.search.SearchEngine
 import com.patrick.lrcreader.exo.BuildConfig
 import com.patrick.lrcreader.smp.SmpLibraryScanner
 import kotlinx.coroutines.yield
@@ -121,6 +126,7 @@ fun QuickPlaylistsScreen(
     onConsumeOpenPrompterSignal: () -> Unit = {},
     onRequestShowPlayer: () -> Unit = {},
     onAddTrackToPlaylist: (String) -> Unit = {},
+    searchToggleSignal: Int = 0,
     indexAll: List<LibraryIndexCache.CachedEntry> = emptyList() // ✅ propre + default
 ) {
 
@@ -181,8 +187,12 @@ fun QuickPlaylistsScreen(
     var currentListColor by remember { mutableStateOf(Color.White) } // ✅ plus de couleur "globale" de playlist
 
     var showMenu by remember { mutableStateOf(false) }
+    var playlistSearchQuery by rememberSaveable(internalSelected) { mutableStateOf("") }
+    var isSearchVisible by rememberSaveable(internalSelected) { mutableStateOf(false) }
 
     val listState = rememberLazyListState()
+    val searchFocusRequester = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
     val rowHeight = 56.dp
     val rowHeightPx = with(LocalDensity.current) { rowHeight.toPx() }
     val headerDropPaddingPx = with(LocalDensity.current) { 12.dp.toPx() }
@@ -579,13 +589,49 @@ fun QuickPlaylistsScreen(
         }
     }
 
-    val visibleRows by remember {
+    val normalizedPlaylistSearchQuery = remember(playlistSearchQuery) {
+        SearchEngine.normalize(playlistSearchQuery)
+    }
+    val searchableTitleByItem = remember(
+        context,
+        songs.toList(),
+        notesVersion,
+        titleAliasVersion,
+        repoVersion,
+        smpTitleById
+    ) {
+        songs.associateWith { item ->
+            buildQuickPlaylistSearchTitle(
+                context = context,
+                item = item,
+                smpTitleById = smpTitleById
+            )
+        }
+    }
+    val visibleRows by remember(normalizedPlaylistSearchQuery, collapsedGroupIds, searchableTitleByItem) {
         derivedStateOf {
-            songs.mapIndexedNotNull { realIndex, item ->
-                if (isGroupEnd(item)) return@mapIndexedNotNull null
-                if (isItemHiddenByCollapsedGroup(songs, realIndex, collapsedGroupIds)) return@mapIndexedNotNull null
-                VisiblePlaylistRow(realIndex = realIndex, item = item)
-            }
+            buildVisiblePlaylistRows(
+                songs = songs,
+                collapsedGroupIds = collapsedGroupIds,
+                normalizedQuery = normalizedPlaylistSearchQuery,
+                searchableTitleByItem = searchableTitleByItem
+            )
+        }
+    }
+    LaunchedEffect(isSearchVisible, internalSelected) {
+        if (isSearchVisible) {
+            searchFocusRequester.requestFocus()
+        }
+    }
+
+    LaunchedEffect(searchToggleSignal) {
+        if (searchToggleSignal == 0) return@LaunchedEffect
+        if (isSearchVisible) {
+            playlistSearchQuery = ""
+            isSearchVisible = false
+            focusManager.clearFocus(force = true)
+        } else {
+            isSearchVisible = true
         }
     }
     val miniTunerState: TunerState = if (isMiniTunerVisible) {
@@ -777,6 +823,35 @@ fun QuickPlaylistsScreen(
                     }
                 }
                 Spacer(Modifier.height(12.dp))
+            }
+
+            if (isSearchVisible) {
+                OutlinedTextField(
+                    value = playlistSearchQuery,
+                    onValueChange = { playlistSearchQuery = it },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(searchFocusRequester)
+                        .semantics { testTag = "quick_playlists_search" },
+                    placeholder = { Text(stringResource(R.string.common_search_placeholder)) },
+                    singleLine = true,
+                    trailingIcon = {
+                        IconButton(
+                            onClick = {
+                                playlistSearchQuery = ""
+                                isSearchVisible = false
+                                focusManager.clearFocus(force = true)
+                            }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Close,
+                                contentDescription = stringResource(R.string.common_cd_close)
+                            )
+                        }
+                    }
+                )
+
+                Spacer(Modifier.height(10.dp))
             }
 
             if (isMiniTunerVisible) {
@@ -2210,6 +2285,100 @@ private data class VisiblePlaylistRow(
     val realIndex: Int,
     val item: String
 )
+
+private fun buildVisiblePlaylistRows(
+    songs: List<String>,
+    collapsedGroupIds: Set<String>,
+    normalizedQuery: String,
+    searchableTitleByItem: Map<String, String>
+): List<VisiblePlaylistRow> {
+    val filtering = normalizedQuery.isNotBlank()
+
+    fun matches(item: String): Boolean {
+        if (!filtering) return true
+        val searchText = searchableTitleByItem[item].orEmpty()
+        return SearchEngine.normalize(searchText).contains(normalizedQuery)
+    }
+
+    return songs.mapIndexedNotNull { realIndex, item ->
+        if (isGroupEnd(item)) {
+            return@mapIndexedNotNull null
+        }
+
+        if (isGroupHeader(item)) {
+            val groupRange = findGroupRange(songs, realIndex)
+            val headerMatches = matches(item)
+            val childMatches = if (groupRange.isEmpty()) {
+                false
+            } else {
+                ((realIndex + 1)..groupRange.last).any { childIndex ->
+                    val child = songs[childIndex]
+                    !isGroupHeader(child) &&
+                        !isGroupEnd(child) &&
+                        matches(child)
+                }
+            }
+            if (!filtering || headerMatches || childMatches) {
+                VisiblePlaylistRow(realIndex = realIndex, item = item)
+            } else {
+                null
+            }
+        } else {
+            if (!filtering && isItemHiddenByCollapsedGroup(songs, realIndex, collapsedGroupIds)) {
+                return@mapIndexedNotNull null
+            }
+            if (matches(item)) {
+                VisiblePlaylistRow(realIndex = realIndex, item = item)
+            } else {
+                null
+            }
+        }
+    }
+}
+
+private fun buildQuickPlaylistSearchTitle(
+    context: Context,
+    item: String,
+    smpTitleById: Map<String, String>
+): String {
+    if (isGroupHeader(item)) {
+        return getGroupTitle(item)
+    }
+
+    if (item.startsWith("prompter://")) {
+        val idPart = item.removePrefix("prompter://")
+        val numericId = idPart.toLongOrNull()
+        return if (numericId != null) {
+            NotesRepository.get(context, numericId)?.title
+                ?.takeIf { it.isNotBlank() }
+                ?: context.getString(R.string.quickplaylists_text_fallback_title)
+        } else {
+            TextSongRepository.get(context, idPart)?.title
+                ?.takeIf { it.isNotBlank() }
+                ?: quickPlaylistFallbackName(item)
+        }
+    }
+
+    val smpSongId = getSmpSongId(item)
+    if (smpSongId != null) {
+        return PlaylistRepository.getAnyCustomTitleForUri(item)
+            ?: smpTitleById[smpSongId]
+            ?: "SMP $smpSongId"
+    }
+
+    return TitleAliasesStore.getTitleForTrack(context, item)
+        ?: PlaylistRepository.getAnyCustomTitleForUri(item)
+        ?: quickPlaylistFallbackName(item)
+}
+
+private fun quickPlaylistFallbackName(item: String): String {
+    val decoded = Uri.decode(item)
+    val tail = decoded.substringAfterLast('/')
+    val fromDocId = tail.substringAfterLast(':').substringAfterLast('/')
+    return fromDocId.ifBlank {
+        tail.ifBlank { decoded.ifBlank { item } }
+    }
+}
 
 internal fun findHeaderDropTargetKey(
     songs: List<String>,

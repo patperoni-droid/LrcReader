@@ -267,6 +267,25 @@
     <string name="timeline_cd_rename">Renommer le repère</string>
     <string name="timeline_cd_delete">Supprimer le repère</string>
     <string name="timeline_save_failed">Timeline: sauvegarde impossible.</string>
+    <string name="light_cue_timeline_dialog_title">CUE lumière (%1$s)</string>
+    <string name="light_cue_type_color">Couleur</string>
+    <string name="light_cue_type_strobe">Strobe</string>
+    <string name="light_cue_type_blackout">Blackout</string>
+    <string name="light_color_red">Rouge</string>
+    <string name="light_color_blue">Bleu</string>
+    <string name="light_color_green">Vert</string>
+    <string name="light_color_white">Blanc</string>
+    <string name="light_cue_intensity_label">Intensité (%)</string>
+    <string name="light_cue_fade_label">Fade (ms)</string>
+    <string name="light_cue_strobe_hz_label">Strobe (Hz)</string>
+    <string name="light_generate_action">Générer lumières</string>
+    <string name="light_generate_dialog_title">Générer une base lumière</string>
+    <string name="light_generate_style_label">Style</string>
+    <string name="light_generate_style_soft">Doux</string>
+    <string name="light_generate_style_standard">Standard</string>
+    <string name="light_generate_style_energetic">Énergique</string>
+    <string name="light_generate_replace_existing">Remplacer les lumières existantes</string>
+    <string name="light_generate_failed">Génération lumière impossible.</string>
 
     <!-- Setup install -->
     <string name="setup_title">Installation</string>
@@ -455,7 +474,17 @@
     <string name="more_item_test_bluetooth_midi">📶  Test Bluetooth MIDI</string>
     <string name="more_auto_return_playlist">Retour auto vers la playlist (10 s avant la fin)</string>
     <string name="more_show_old_world_library">Afficher l’ancien monde dans la bibliothèque</string>
+    <string name="more_show_light_indicator">Afficher le témoin lumière</string>
     <string name="more_footer_signature">Live in Pocket · LrcReader_EXO</string>
+    <string name="light_test_title">Test lumière</string>
+    <string name="light_test_red">Rouge</string>
+    <string name="light_test_blue">Bleu</string>
+    <string name="light_test_green">Vert</string>
+    <string name="light_test_white">Blanc</string>
+    <string name="light_test_strobe">Strobe</string>
+    <string name="light_test_blackout">Blackout</string>
+    <string name="light_test_off">Off</string>
+    <string name="light_test_quick">Test rapide</string>
 
     <!-- Global mix -->
     <string name="global_mix_title">Mixage général</string>

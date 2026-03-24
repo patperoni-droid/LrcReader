@@ -10,9 +10,15 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -114,6 +120,7 @@ private fun resolveFolderName(context: android.content.Context, uri: Uri): Strin
 fun LibraryScreen(
     modifier: Modifier = Modifier,
     reselectRootSignal: Int = 0,
+    searchToggleSignal: Int = 0,
     smpRefreshVersion: Int = 0,
     lastImportedSmpSongId: String? = null,
     onAfterBackupImport: () -> Unit = {},
@@ -124,6 +131,7 @@ fun LibraryScreen(
     val context = LocalContext.current
     Log.e("SIG_LIB", "SIG#0 TOP composable 2026-02-08 18:00 Z")
     val focusManager = LocalFocusManager.current
+    val searchFocusRequester = remember { FocusRequester() }
 
     // Palette analogique commune
     val titleColor = Color(0xFFFFF8E1)
@@ -387,57 +395,48 @@ fun LibraryScreen(
 
     // search
     var searchQuery by remember { mutableStateOf("") }
+    var isSearchVisible by remember { mutableStateOf(false) }
     val titleAliasVersion = TitleAliasesStore.version.intValue
     data class SearchableLibraryEntry(
         val entry: LibraryEntry,
         val indexedItem: SearchEngine.IndexedItem
     )
-    val globalAudioEntries = remember(indexAll, titleAliasVersion) {
-        indexAll.filter { !it.isDirectory && !isHiddenLibraryTransportFile(it.name) }.map {
-            val alias = TitleAliasesStore.getTitleForTrack(context, it.uriString)
-                ?: PlaylistRepository.getAnyCustomTitleForUri(it.uriString)
-            SearchableLibraryEntry(
-                entry = LibraryEntry(Uri.parse(it.uriString), it.name, false),
-                indexedItem = SearchEngine.index(
-                    id = it.uriString,
-                    displayTitle = alias ?: it.name,
-                    fallbackName = it.name
+    val searchableEntries = remember(entries, titleAliasVersion, context) {
+        entries
+            .asSequence()
+            .filterNot { entry ->
+                !entry.isDirectory && isHiddenLibraryTransportFile(entry.name)
+            }
+            .map { entry ->
+                val uriString = entry.uri.toString()
+                val displayTitle = if (!entry.isDirectory) {
+                    TitleAliasesStore.getTitleForTrack(context, uriString)
+                        ?: PlaylistRepository.getAnyCustomTitleForUri(uriString)
+                        ?: entry.name
+                } else {
+                    entry.name
+                }
+                SearchableLibraryEntry(
+                    entry = entry,
+                    indexedItem = SearchEngine.index(
+                        id = uriString,
+                        displayTitle = displayTitle,
+                        fallbackName = entry.name
+                    )
                 )
-            )
-        }
+            }
+            .toList()
     }
-    val filteredEntries = remember(searchQuery, entries, globalAudioEntries, currentFolderUri) {
+    val filteredEntries = remember(searchQuery, searchableEntries) {
         val normalizedQuery = SearchEngine.normalize(searchQuery)
         if (normalizedQuery.isBlank()) {
-            entries
-        } else if (isPrompterFolderUri(currentFolderUri) || isSmpFolderUri(currentFolderUri)) {
-            val indexed = entries
-                .asSequence()
-                .filter { !it.isDirectory }
-                .map { entry ->
-                    SearchableLibraryEntry(
-                        entry = entry,
-                        indexedItem = SearchEngine.index(
-                            id = entry.uri.toString(),
-                            displayTitle = entry.name,
-                            fallbackName = entry.name
-                        )
-                    )
-                }
-                .toList()
-            val filteredIds = SearchEngine.filter(
-                items = indexed.map { it.indexedItem },
-                query = searchQuery
-            ).asSequence().map { it.id }.toSet()
-            indexed
-                .filter { it.indexedItem.id in filteredIds }
-                .map { it.entry }
+            searchableEntries.map { it.entry }
         } else {
             val filteredIds = SearchEngine.filter(
-                items = globalAudioEntries.map { it.indexedItem },
+                items = searchableEntries.map { it.indexedItem },
                 query = searchQuery
             ).asSequence().map { it.id }.toSet()
-            globalAudioEntries
+            searchableEntries
                 .filter { it.indexedItem.id in filteredIds }
                 .map { it.entry }
         }
@@ -448,19 +447,32 @@ fun LibraryScreen(
             ?.let { resolveFolderName(context, it) }
             ?.let(::isBackupFolderName) == true
     }
-    LaunchedEffect(searchQuery, globalAudioEntries.size, filteredEntries.size, currentFolderUri) {
+    LaunchedEffect(searchQuery, searchableEntries.size, filteredEntries.size, currentFolderUri) {
         if (BuildConfig.DEBUG) {
             val normalizedQuery = SearchEngine.normalize(searchQuery)
-            val itemsBefore = when {
-                normalizedQuery.isBlank() -> entries.size
-                isPrompterFolderUri(currentFolderUri) || isSmpFolderUri(currentFolderUri) -> entries.size
-                else -> globalAudioEntries.size
-            }
+            val itemsBefore = searchableEntries.size
             val itemsAfter = filteredEntries.size
             Log.d(
                 "SEARCH_PROOF",
                 "mode=LIBRARY query='$normalizedQuery' playlist=- itemsBefore=$itemsBefore itemsAfter=$itemsAfter"
             )
+        }
+    }
+
+    LaunchedEffect(isSearchVisible) {
+        if (isSearchVisible) {
+            searchFocusRequester.requestFocus()
+        }
+    }
+
+    LaunchedEffect(searchToggleSignal) {
+        if (searchToggleSignal == 0) return@LaunchedEffect
+        if (isSearchVisible) {
+            searchQuery = ""
+            isSearchVisible = false
+            focusManager.clearFocus(force = true)
+        } else {
+            isSearchVisible = true
         }
     }
 
@@ -1113,15 +1125,34 @@ fun LibraryScreen(
 
                     Column(modifier = Modifier.fillMaxSize()) {
 
-                        OutlinedTextField(
-                            value = searchQuery,
-                            onValueChange = { searchQuery = it },
-                            modifier = Modifier.fillMaxWidth(0.85f).heightIn(min = 44.dp),
-                            placeholder = { Text(sSearch) },
-                            singleLine = true
-                        )
+                        if (isSearchVisible) {
+                            OutlinedTextField(
+                                value = searchQuery,
+                                onValueChange = { searchQuery = it },
+                                modifier = Modifier
+                                    .fillMaxWidth(0.85f)
+                                    .heightIn(min = 44.dp)
+                                    .focusRequester(searchFocusRequester),
+                                placeholder = { Text(sSearch) },
+                                singleLine = true,
+                                trailingIcon = {
+                                    IconButton(
+                                        onClick = {
+                                            searchQuery = ""
+                                            isSearchVisible = false
+                                            focusManager.clearFocus(force = true)
+                                        }
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Close,
+                                            contentDescription = stringResource(R.string.common_cd_close)
+                                        )
+                                    }
+                                }
+                            )
 
-                        Spacer(Modifier.height(8.dp))
+                            Spacer(Modifier.height(8.dp))
+                        }
 
                         LibraryList(
                             entries = filteredEntries,

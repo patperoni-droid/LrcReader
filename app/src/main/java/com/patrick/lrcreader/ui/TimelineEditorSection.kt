@@ -62,7 +62,9 @@ fun TimelineEditorSection(
     onAddPaletteTag: (String) -> Unit,
     onAddMarker: (String) -> Unit,
     onAddTypedMarker: (TimelineMarkerKind) -> Unit,
+    onGenerateLights: () -> Unit,
     onEditMidiMarker: (Int) -> Unit,
+    onEditDmxMarker: (Int) -> Unit,
     onRenameMarker: (Int, String, Long?) -> Unit,
     onDeleteMarker: (Int) -> Unit
 ) {
@@ -295,6 +297,16 @@ fun TimelineEditorSection(
             )
         }
 
+        TextButton(
+            onClick = onGenerateLights,
+            enabled = durationMs > 0
+        ) {
+            Text(
+                text = stringResource(R.string.light_generate_action),
+                color = if (durationMs > 0) Color(0xFF80CBC4) else Color(0xFFB0BEC5)
+            )
+        }
+
         Spacer(Modifier.height(16.dp))
 
         Row(
@@ -327,6 +339,10 @@ fun TimelineEditorSection(
                 if (index !in markers.indices) return@TimelineScrubColumn
                 if (markers[index].kind == TimelineMarkerKind.MIDI) {
                     onEditMidiMarker(index)
+                    return@TimelineScrubColumn
+                }
+                if (markers[index].kind == TimelineMarkerKind.DMX) {
+                    onEditDmxMarker(index)
                     return@TimelineScrubColumn
                 }
                 renameIndex = index
