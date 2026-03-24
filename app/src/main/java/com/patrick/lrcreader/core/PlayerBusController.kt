@@ -8,10 +8,7 @@ import com.patrick.lrcreader.core.audio.AudioEngine
 
 object PlayerBusController {
 
-    private var currentPlayer: ExoPlayer? = null
-
-    fun attachPlayer(context: Context, player: ExoPlayer) {
-        currentPlayer = player
+    fun attachPlayer(context: Context, _player: ExoPlayer) {
         applyCurrentVolume(context)
     }
 
@@ -21,9 +18,6 @@ object PlayerBusController {
         // Chef du mix
         AudioEngine.setPlayerBusLevel(uiLevel)
         AudioEngine.reapplyMixNow()
-
-        // Sécurité
-        runCatching { currentPlayer?.volume = uiLevel }
     }
 
     fun setUiLevelFromBusUi(context: Context, uiLevel: Float) {
@@ -32,8 +26,6 @@ object PlayerBusController {
 
         AudioEngine.setPlayerBusLevel(clamped)
         AudioEngine.reapplyMixNow()
-
-        runCatching { currentPlayer?.volume = clamped }
     }
 
     fun setUiLevel(context: Context, uiLevel: Float) {
