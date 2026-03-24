@@ -47,7 +47,6 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -782,6 +781,18 @@ fun QuickPlaylistsScreen(
                                 tint = Color(0xFFFFB74D)
                             )
                         }
+
+                        IconButton(
+                            onClick = {
+                                onAddTrackToPlaylist(internalSelected ?: return@IconButton)
+                            }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Folder,
+                                contentDescription = stringResource(R.string.quickplaylists_add_track_button),
+                                tint = Color(0xFF81C784)
+                            )
+                        }
                     }
 
                     IconButton(
@@ -812,18 +823,6 @@ fun QuickPlaylistsScreen(
             }
 
             Spacer(Modifier.height(12.dp))
-
-            resolvedPlaylistSelection?.let { currentPlaylist ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
-                ) {
-                    Button(onClick = { onAddTrackToPlaylist(currentPlaylist) }) {
-                        Text(stringResource(R.string.quickplaylists_add_track_button))
-                    }
-                }
-                Spacer(Modifier.height(12.dp))
-            }
 
             if (isSearchVisible) {
                 OutlinedTextField(
