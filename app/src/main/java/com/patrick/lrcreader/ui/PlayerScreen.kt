@@ -2498,12 +2498,6 @@ private fun ReaderHeader(
                 )
             }
 
-            Text(
-                text = stringResource(R.string.player_hq_tag),
-                color = Color(0xFFB3E5FC),
-                fontSize = 10.sp
-            )
-
             IconButton(onClick = onOpenMix) {
                 Icon(
                     imageVector = Icons.Filled.GraphicEq,
