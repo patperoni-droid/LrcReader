@@ -10,6 +10,7 @@ import android.widget.Toast
 import android.widget.Toast.LENGTH_SHORT
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.FileProvider
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -60,11 +61,13 @@ import com.patrick.lrcreader.core.BackupFolderPrefs
 import com.patrick.lrcreader.core.BackupManager
 import com.patrick.lrcreader.core.LibraryIndexCache
 import com.patrick.lrcreader.core.SplFolders
+import com.patrick.lrcreader.core.backup.BACKUP_BUNDLE_EXTENSION
+import com.patrick.lrcreader.core.backup.BackupBundleExportBuildResult
+import com.patrick.lrcreader.core.backup.BackupBundleExporter
+import com.patrick.lrcreader.core.backup.BackupBundleIo
 import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.getDisplayName
 import com.patrick.lrcreader.nowString
-import com.patrick.lrcreader.saveJsonToUri
-import com.patrick.lrcreader.shareJson
 import com.patrick.lrcreader.ui.theme.DarkBlueGradientBackground
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -94,10 +97,11 @@ fun BackupScreen(
     val scope = rememberCoroutineScope()
     val sImportSuccess = stringResource(R.string.backup_import_success)
     val sImportEmptyUnreadable = stringResource(R.string.backup_import_empty_unreadable)
-    val sSaveToastSuccess = stringResource(R.string.backup_save_toast_success)
     val sSaveToastFailed = stringResource(R.string.backup_save_toast_failed)
     val sInternalExportToastSuccess = stringResource(R.string.backup_internal_export_toast_success)
     val sInternalExportToastFailed = stringResource(R.string.backup_internal_export_toast_failed)
+    val sBundleExportFailed = stringResource(R.string.backup_bundle_export_failed)
+    val sBundleExportMissing = stringResource(R.string.backup_bundle_export_missing_songs)
     val sBackupsTip = "Conseil : sauvegarde dans le dossier Backups pour restaurer sur un autre appareil."
 
     // État dernier import
@@ -166,10 +170,7 @@ fun BackupScreen(
     }
 
     // nom de fichier export
-    var backupFileName by remember { mutableStateOf("lrc_backup.json") }
-
-    // on garde le json en mémoire le temps que l’utilisateur choisisse la cible
-    val saveLauncherJson = remember { mutableStateOf("") }
+    var backupFileName by remember { mutableStateOf("lrc_backup$BACKUP_BUNDLE_EXTENSION") }
 
     // Palette (garde ta charte)
     val onBg = Color(0xFFFFF8E1)
@@ -179,6 +180,36 @@ fun BackupScreen(
     val accent = Color(0xFFFFC107)
     val danger = Color(0xFFFF8A80)
     val ok = Color(0xFF6CFF9C)
+
+    fun formatBundleExportFailure(result: BackupBundleExportBuildResult): String? {
+        return when (result) {
+            is BackupBundleExportBuildResult.MissingReferencedSongs -> {
+                val detail = result.songIds.take(3).joinToString()
+                val suffix = if (result.songIds.size > 3) ", …" else ""
+                "$sBundleExportMissing $detail$suffix"
+            }
+            is BackupBundleExportBuildResult.SongExportFailed -> {
+                val detail = result.songIds.take(3).joinToString()
+                val suffix = if (result.songIds.size > 3) ", …" else ""
+                "$sBundleExportFailed $detail$suffix"
+            }
+            is BackupBundleExportBuildResult.Success -> null
+        }
+    }
+
+    suspend fun buildManualBundlePayloadOrNull() = when (
+        val result = withContext(Dispatchers.IO) {
+            BackupBundleExporter.buildManualBundlePayload(context, null, emptyList())
+        }
+    ) {
+        is BackupBundleExportBuildResult.Success -> result.payload
+        else -> {
+            formatBundleExportFailure(result)?.let { message ->
+                Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+            }
+            null
+        }
+    }
 
     // IMPORT via picker système (✅ non-bloquant)
     val fileLauncher = rememberLauncherForActivityResult(
@@ -247,12 +278,23 @@ fun BackupScreen(
 
     // EXPORT → "Enregistrer dans…"
     val saveLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument("application/json")
+        contract = ActivityResultContracts.CreateDocument("application/zip")
     ) { uri: Uri? ->
-        val jsonToSave = saveLauncherJson.value
-        if (uri != null && jsonToSave.isNotBlank()) {
-            val okSave = saveJsonToUri(context, uri, jsonToSave)
-            if (okSave) {
+        if (uri == null) return@rememberLauncherForActivityResult
+
+        scope.launch {
+            val payload = buildManualBundlePayloadOrNull() ?: return@launch
+            val saveSucceeded = withContext(Dispatchers.IO) {
+                runCatching {
+                    val output = context.contentResolver.openOutputStream(uri) ?: return@runCatching false
+                    output.use { stream ->
+                        BackupBundleIo.write(stream, payload)
+                    }
+                    true
+                }.getOrDefault(false)
+            }
+
+            if (saveSucceeded) {
                 Toast.makeText(
                     context,
                     "Backup enregistré. $sBackupsTip",
@@ -262,7 +304,6 @@ fun BackupScreen(
                 Toast.makeText(context, sSaveToastFailed, LENGTH_SHORT).show()
             }
         }
-        saveLauncherJson.value = ""
     }
 
     DarkBlueGradientBackground {
@@ -316,24 +357,28 @@ fun BackupScreen(
                 if (isInternalMode) {
                     FilledTonalButton(
                         onClick = {
-                            val json = BackupManager.exportState(context, null, emptyList())
                             val trimmed = backupFileName.trim().ifEmpty { "lrc_backup" }
-                            val finalName =
-                                if (trimmed.endsWith(".json", ignoreCase = true)) trimmed else "$trimmed.json"
+                            val finalName = ensureBundleFileName(trimmed)
 
                             val dir = SplFolders.backupsDirFile(context)
                             val target = File(dir, finalName)
 
-                            runCatching {
-                                target.writeText(json, Charsets.UTF_8)
-                                Toast.makeText(
-                                    context,
-                                    "$sInternalExportToastSuccess $sBackupsTip",
-                                    Toast.LENGTH_LONG
-                                ).show()
-                                refreshInternalBackups()
-                            }.onFailure {
-                                Toast.makeText(context, sInternalExportToastFailed, LENGTH_SHORT).show()
+                            scope.launch {
+                                val payload = buildManualBundlePayloadOrNull() ?: return@launch
+                                val exportSucceeded = withContext(Dispatchers.IO) {
+                                    BackupBundleIo.writeToFile(target, payload)
+                                }
+
+                                if (exportSucceeded) {
+                                    Toast.makeText(
+                                        context,
+                                        "$sInternalExportToastSuccess $sBackupsTip",
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                    refreshInternalBackups()
+                                } else {
+                                    Toast.makeText(context, sInternalExportToastFailed, LENGTH_SHORT).show()
+                                }
                             }
                         },
                         modifier = Modifier.fillMaxWidth(),
@@ -355,14 +400,8 @@ fun BackupScreen(
                 ) {
                     FilledTonalButton(
                         onClick = {
-                            val json = BackupManager.exportState(context, null, emptyList())
-                            saveLauncherJson.value = json
-
                             val trimmed = backupFileName.trim().ifEmpty { "lrc_backup" }
-                            val finalName =
-                                if (trimmed.endsWith(".json", ignoreCase = true)) trimmed
-                                else "$trimmed.json"
-
+                            val finalName = ensureBundleFileName(trimmed)
                             saveLauncher.launch(finalName)
                         },
                         modifier = Modifier.weight(1f),
@@ -379,14 +418,37 @@ fun BackupScreen(
 
                     FilledTonalButton(
                         onClick = {
-                            val json = BackupManager.exportState(context, null, emptyList())
-
                             val trimmed = backupFileName.trim().ifEmpty { "lrc_backup" }
-                            val finalName =
-                                if (trimmed.endsWith(".json", ignoreCase = true)) trimmed
-                                else "$trimmed.json"
+                            val finalName = ensureBundleFileName(trimmed)
 
-                            shareJson(context, finalName, json)
+                            scope.launch {
+                                val payload = buildManualBundlePayloadOrNull() ?: return@launch
+                                val shareUri = withContext(Dispatchers.IO) {
+                                    val cacheFile = File(context.cacheDir, finalName)
+                                    if (!BackupBundleIo.writeToFile(cacheFile, payload)) {
+                                        null
+                                    } else {
+                                        FileProvider.getUriForFile(
+                                            context,
+                                            context.packageName + ".fileprovider",
+                                            cacheFile
+                                        )
+                                    }
+                                }
+
+                                if (shareUri == null) {
+                                    Toast.makeText(context, sSaveToastFailed, LENGTH_SHORT).show()
+                                } else {
+                                    val intent = Intent(Intent.ACTION_SEND).apply {
+                                        type = "application/zip"
+                                        putExtra(Intent.EXTRA_STREAM, shareUri)
+                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    }
+                                    context.startActivity(
+                                        Intent.createChooser(intent, "Partager la sauvegarde")
+                                    )
+                                }
+                            }
                         },
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.filledTonalButtonColors(
@@ -556,6 +618,16 @@ fun BackupScreen(
         )
     }
 }
+
+private fun ensureBundleFileName(rawName: String): String {
+    val trimmed = rawName.trim().ifEmpty { "lrc_backup" }
+    return if (trimmed.endsWith(BACKUP_BUNDLE_EXTENSION, ignoreCase = true)) {
+        trimmed
+    } else {
+        "$trimmed$BACKUP_BUNDLE_EXTENSION"
+    }
+}
+
 
 @Composable
 private fun SectionCard(
