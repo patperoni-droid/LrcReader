@@ -62,6 +62,7 @@ import com.patrick.lrcreader.core.dj.DjEngine
 import com.patrick.lrcreader.core.exoCrossfadePlay
 import com.patrick.lrcreader.core.history.HistoryRepository
 import com.patrick.lrcreader.core.history.PlaySource
+import com.patrick.lrcreader.core.light.LightCueDispatcher
 import com.patrick.lrcreader.core.lyrics.LyricsMemoryCache
 import com.patrick.lrcreader.core.lyrics.LyricsResolver
 import com.patrick.lrcreader.core.config.MidiCuesConfigStore
@@ -826,6 +827,8 @@ class MainActivity : AppCompatActivity() {
 
                 // ✅ overlay states
                 var isSearchOpen by remember { mutableStateOf(false) }
+                var playlistSearchToggleSignal by remember { mutableIntStateOf(0) }
+                var librarySearchToggleSignal by remember { mutableIntStateOf(0) }
 
                 // ✅ MODE de recherche (PLAYER ou DJ)
                 var searchMode by remember { mutableStateOf(SearchMode.PLAYER) }
@@ -943,6 +946,7 @@ class MainActivity : AppCompatActivity() {
                 val onEnded = rememberUpdatedState {
                     cancelTrimWatcher()
                     isPlaying = false
+                    LightCueDispatcher.resetGlobal()
                     PlaybackCoordinator.onPlayerStop()
                     backingEndedSignal++
                 }
@@ -961,6 +965,7 @@ class MainActivity : AppCompatActivity() {
                     cancelTrimWatcher()
                     runCatching { exoPlayer.pause() }
                     isPlaying = false
+                    LightCueDispatcher.resetGlobal()
                     PlaybackCoordinator.onPlayerStop()
                 }
                 PlaybackCoordinator.stopDj = {
@@ -1276,6 +1281,7 @@ class MainActivity : AppCompatActivity() {
                                     onEnded.value.invoke()
                                 } else {
                                     isPlaying = false
+                                    LightCueDispatcher.resetGlobal()
                                     PlaybackCoordinator.onPlayerStop()
                                 }
                             }
@@ -1294,6 +1300,7 @@ class MainActivity : AppCompatActivity() {
                             exoPlayer.clearMediaItems()
                         }
                         isPlaying = false
+                        LightCueDispatcher.resetGlobal()
                         PlaybackCoordinator.onPlayerStop()
                     }
 
@@ -1639,6 +1646,18 @@ class MainActivity : AppCompatActivity() {
                                 isNotesOpen = false
                                 isFillerSettingsOpen = false
                                 isMoreMenuOpen = false
+
+                                if (selectedTab is BottomTab.QuickPlaylists) {
+                                    isSearchOpen = false
+                                    playlistSearchToggleSignal++
+                                    return@BottomTabsBar
+                                }
+
+                                if (selectedTab is BottomTab.Library) {
+                                    isSearchOpen = false
+                                    librarySearchToggleSignal++
+                                    return@BottomTabsBar
+                                }
 
                                 searchMode = when {
                                     selectedTab is BottomTab.Dj ->
@@ -2084,12 +2103,14 @@ class MainActivity : AppCompatActivity() {
                                                 "*/*"
                                             )
                                         )
-                                    }
+                                    },
+                                    searchToggleSignal = playlistSearchToggleSignal
                                     )
 
                                     is BottomTab.Library -> LibraryScreen(
                                         modifier = contentModifier,
                                         reselectRootSignal = libraryTabReselectSignal,
+                                        searchToggleSignal = librarySearchToggleSignal,
                                         smpRefreshVersion = smpCacheRefreshTick,
                                         lastImportedSmpSongId = lastImportedSmpSongId,
                                         onAfterBackupImport = { refreshKey++ },

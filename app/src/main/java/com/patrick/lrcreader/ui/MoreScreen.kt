@@ -43,6 +43,7 @@ import com.patrick.lrcreader.core.AppLanguagePrefs
 import com.patrick.lrcreader.core.AutoReturnPrefs
 import com.patrick.lrcreader.core.BackupManager
 import com.patrick.lrcreader.core.LegacyLibraryVisibilityPrefs
+import com.patrick.lrcreader.core.LightIndicatorPrefs
 import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.smp.SmpAutoMigrationResult
 
@@ -128,6 +129,9 @@ private fun MoreRootScreen(
     // État du switch "retour auto"
     var autoReturnEnabled by remember {
         mutableStateOf(AutoReturnPrefs.isEnabled(context))
+    }
+    var showLightIndicator by remember {
+        mutableStateOf(LightIndicatorPrefs.isEnabled(context))
     }
     var showOldWorldInLibrary by remember {
         mutableStateOf(LegacyLibraryVisibilityPrefs.isOldWorldVisible(context))
@@ -260,6 +264,15 @@ private fun MoreRootScreen(
                         onCheckedChange = { enabled ->
                             showOldWorldInLibrary = enabled
                             LegacyLibraryVisibilityPrefs.setOldWorldVisible(context, enabled)
+                        }
+                    )
+
+                    SwitchSettingItem(
+                        label = stringResource(R.string.more_show_light_indicator),
+                        checked = showLightIndicator,
+                        onCheckedChange = { enabled ->
+                            showLightIndicator = enabled
+                            LightIndicatorPrefs.setEnabled(context, enabled)
                         }
                     )
 

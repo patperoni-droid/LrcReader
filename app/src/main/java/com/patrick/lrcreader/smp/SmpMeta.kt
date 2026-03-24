@@ -14,7 +14,7 @@ data class SmpMeta(
     val waveformFile: String? = "waveform.json",
     val midiCuesFile: String? = "midi_cues.json",
     val annotationsFile: String? = "annotations.json",
-    val dmxFile: String? = "dmx.json",
+    val dmxFile: String? = SmpLightCueStore.LIGHT_CUES_FILE_NAME,
     val updatedAt: Long = System.currentTimeMillis()
 ) {
     fun toJson(): JSONObject {
@@ -49,7 +49,7 @@ data class SmpMeta(
                 waveformFile = resolveFixedFileName(songUnit.waveformPath, "waveform.json"),
                 midiCuesFile = resolveFixedFileName(songUnit.midiPath, "midi_cues.json"),
                 annotationsFile = resolveFixedFileName(songUnit.annotationsPath, "annotations.json"),
-                dmxFile = resolveFixedFileName(songUnit.dmxPath, "dmx.json")
+                dmxFile = resolveFixedFileName(songUnit.dmxPath, SmpLightCueStore.LIGHT_CUES_FILE_NAME)
             )
         }
 
@@ -70,7 +70,7 @@ data class SmpMeta(
                     waveformFile = json.optOptionalString("waveformFile") ?: "waveform.json",
                     midiCuesFile = json.optOptionalString("midiCuesFile") ?: "midi_cues.json",
                     annotationsFile = json.optOptionalString("annotationsFile") ?: "annotations.json",
-                    dmxFile = json.optOptionalString("dmxFile") ?: "dmx.json",
+                    dmxFile = json.optOptionalString("dmxFile") ?: SmpLightCueStore.LIGHT_CUES_FILE_NAME,
                     updatedAt = json.optLong("updatedAt", System.currentTimeMillis())
                 )
             }.getOrNull()
