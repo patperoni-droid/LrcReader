@@ -7,6 +7,12 @@ import org.junit.Test
 class BackupBundleImporterTest {
 
     @Test
+    fun isBundleFileName_acceptsSplbackupAndSplbackupZip() {
+        assertTrue(BackupBundleImporter.isBundleFileName("manual_restore.splbackup"))
+        assertTrue(BackupBundleImporter.isBundleFileName("manual_restore.splbackup.zip"))
+    }
+
+    @Test
     fun importBundleIfApplicable_importsSingleSmpAndReturnsImportedSongIds() {
         val payload = BackupBundlePayload(
             stateJson = """{"playlists":{"Live":["smp://song_001"]}}""",
