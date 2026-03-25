@@ -30,17 +30,26 @@ class LibraryBackendSaf(
     }
 
     override fun getRootUri(): Uri? {
-        val saved = BackupFolderPrefsSaf.getLibraryRootUri(context)
-            ?: BackupFolderPrefs.getLibraryRootUri(context)
+        val savedSaf = BackupFolderPrefsSaf.getLibraryRootUri(context)
+        val savedCompat = BackupFolderPrefs.getLibraryRootUri(context)
+        val saved = savedSaf ?: savedCompat
 
-        if (saved != null && saved.scheme != "file") return saved
+        if (saved != null && saved.scheme != "file") {
+            Log.i(tag, "getRootUri: use_saved savedSaf=$savedSaf savedCompat=$savedCompat resolved=$saved")
+            return saved
+        }
 
-        val setupTree = BackupFolderPrefsSaf.getSetupTreeUri(context)
-            ?: BackupFolderPrefs.getSetupTreeUri(context)
-            ?: return null
+        val setupTreeSaf = BackupFolderPrefsSaf.getSetupTreeUri(context)
+        val setupTreeCompat = BackupFolderPrefs.getSetupTreeUri(context)
+        val setupTree = setupTreeSaf ?: setupTreeCompat ?: return null
 
         val baseTree = DocumentFile.fromTreeUri(context, setupTree) ?: return null
         val spl = ensureDirSmart(baseTree, "SPL_Music", aliases = listOf("spl_music")) ?: return null
+
+        Log.i(
+            tag,
+            "getRootUri: resolve_from_setup setupTreeSaf=$setupTreeSaf setupTreeCompat=$setupTreeCompat baseTree=${baseTree.uri} spl=${spl.uri} baseChildren=${listChildNames(baseTree)}"
+        )
 
         BackupFolderPrefsSaf.saveLibraryRootUri(context, spl.uri)
         BackupFolderPrefs.saveLibraryRootUri(context, spl.uri)
@@ -65,7 +74,7 @@ class LibraryBackendSaf(
         }
 
         baseFoldersEnsured = true
-        Log.i(tag, "ensureBaseFolders root=${rootDoc.uri}")
+        Log.i(tag, "ensureBaseFolders root=${rootDoc.uri} rootChildrenBefore=${listChildNames(rootDoc)}")
 
         val backingTracks = ensureDirSmart(rootDoc, "BackingTracks", aliases = listOf("backingtracks", "backingtrack"))
         val backups = ensureDirSmart(rootDoc, "Backups", aliases = listOf("backups"))
@@ -75,6 +84,7 @@ class LibraryBackendSaf(
 
         if (backingTracks != null && backingTracks.isDirectory) {
             val audio = ensureDirSmart(backingTracks, "Audio", aliases = listOf("audio"))
+            val smp = ensureDirSmart(backingTracks, "SMP", aliases = listOf("smp"))
             val lyrics = ensureDirSmart(backingTracks, "Lyrics", aliases = listOf("lyrics"))
             val accords = ensureDirSmart(backingTracks, "Accords", aliases = listOf("accords"))
             val midi = ensureDirSmart(backingTracks, "Midi", aliases = listOf("midi"))
@@ -82,12 +92,12 @@ class LibraryBackendSaf(
 
             Log.i(
                 tag,
-                "BackingTracks dirs audio=${audio?.uri} lyrics=${lyrics?.uri} accords=${accords?.uri} midi=${midi?.uri} videos=${videos?.uri}"
+                "BackingTracks dirs audio=${audio?.uri} smp=${smp?.uri} lyrics=${lyrics?.uri} accords=${accords?.uri} midi=${midi?.uri} videos=${videos?.uri} backingChildren=${listChildNames(backingTracks)}"
             )
         }
 
         if (BuildConfig.DEBUG) {
-            Log.d(tag, "ensureBaseFolders: done root=${rootDoc.uri}")
+            Log.d(tag, "ensureBaseFolders: done root=${rootDoc.uri} rootChildrenAfter=${listChildNames(rootDoc)}")
         }
 
         BackupFolderPrefsSaf.saveLibraryRootUri(context, rootDoc.uri)
@@ -153,7 +163,7 @@ class LibraryBackendSaf(
 
         Log.i(
             tag,
-            "listFolder uri=$folderUri docExists=${folderDoc?.exists()} isDir=${folderDoc?.isDirectory} count=${runCatching { folderDoc?.listFiles()?.size }.getOrNull()}"
+            "listFolder uri=$folderUri name=${folderDoc?.name} docExists=${folderDoc?.exists()} isDir=${folderDoc?.isDirectory} count=${runCatching { folderDoc?.listFiles()?.size }.getOrNull()} children=${listChildNames(folderDoc)}"
         )
 
         fun asDjEntry(uri: Uri, name: String): LibraryEntry {
@@ -238,8 +248,7 @@ class LibraryBackendSaf(
             ?: root
 
         val rawDest = destFolderUri ?: currentFolderUri ?: root
-        val destDoc = DocumentFile.fromTreeUri(context, rawDest) ?: DocumentFile.fromSingleUri(context, rawDest)
-        val destFolder = if (destDoc != null && destDoc.isDirectory) rawDest else root
+        val destFolder = resolveAudioImportTarget(root = root, requestedDestination = rawDest) ?: root
 
         persistTreePermIfPossible(context, destFolder)
 
@@ -253,6 +262,32 @@ class LibraryBackendSaf(
         )
 
         return destFolder
+    }
+
+    private fun resolveAudioImportTarget(root: Uri, requestedDestination: Uri): Uri? {
+        fun asDoc(uri: Uri): DocumentFile? {
+            return DocumentFile.fromTreeUri(context, uri) ?: DocumentFile.fromSingleUri(context, uri)
+        }
+
+        val rootDoc = asDoc(root) ?: return requestedDestination
+        val requestedDoc = asDoc(requestedDestination)
+        val requestedName = requestedDoc?.name.orEmpty()
+        val shouldUseDefaultAudioFolder =
+            requestedDoc == null ||
+                !requestedDoc.isDirectory ||
+                requestedDestination.toString() == root.toString() ||
+                requestedName.equals("BackingTracks", ignoreCase = true) ||
+                requestedName.equals("BackingTrack", ignoreCase = true)
+
+        if (!shouldUseDefaultAudioFolder) {
+            return requestedDoc.uri
+        }
+
+        val backingTracks = ensureDirSmart(rootDoc, "BackingTracks", aliases = listOf("backingtracks", "backingtrack"))
+            ?: return requestedDestination
+        val audioDir = ensureDirSmart(backingTracks, "Audio", aliases = listOf("audio"))
+            ?: return requestedDestination
+        return audioDir.uri
     }
 
     override suspend fun rename(
@@ -446,5 +481,14 @@ class LibraryBackendSaf(
 
     private fun normalizeName(name: String?): String {
         return (name ?: "").trim().lowercase().replace(" ", "")
+    }
+
+    private fun listChildNames(parent: DocumentFile?): List<String> {
+        return runCatching {
+            parent?.listFiles()
+                ?.mapNotNull { child -> child.name }
+                ?.sorted()
+                .orEmpty()
+        }.getOrDefault(emptyList())
     }
 }

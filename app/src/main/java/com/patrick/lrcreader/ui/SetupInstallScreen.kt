@@ -3,6 +3,7 @@ package com.patrick.lrcreader.ui.library
 import android.content.Intent
 import android.net.Uri
 import android.provider.DocumentsContract
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -28,6 +29,8 @@ import com.patrick.lrcreader.core.StorageModePrefs
 import com.patrick.lrcreader.exo.R
 import kotlinx.coroutines.launch
 
+private const val SETUP_STORAGE_TAG = "SETUP_STORAGE"
+
 @Composable
 fun SetupInstallScreen(
     titleColor: Color,
@@ -52,6 +55,8 @@ fun SetupInstallScreen(
     // Handler : configure SPL_Music sous le dossier choisi (SAF normal)
     // --------------------------------------------
     fun handlePickedUri(uri: Uri) {
+        Log.i(SETUP_STORAGE_TAG, "setup:start backend=SAF pickedUri=$uri")
+
         // 1) Persist permissions
         persistTreePermIfPossible(context, uri)
 
@@ -59,14 +64,24 @@ fun SetupInstallScreen(
         BackupFolderPrefs.saveSetupTreeUri(context, uri)
 
         // 3) Create/find SPL_Music sous le dossier choisi
-        val baseTree = DocumentFile.fromTreeUri(context, uri) ?: return
+        val baseTree = DocumentFile.fromTreeUri(context, uri) ?: run {
+            Log.e(SETUP_STORAGE_TAG, "setup:base_tree_unresolved pickedUri=$uri")
+            return
+        }
+        Log.i(
+            SETUP_STORAGE_TAG,
+            "setup:base_tree uri=${baseTree.uri} children=${listChildNames(baseTree)}"
+        )
 
         val splRoot =
             baseTree.listFiles().firstOrNull {
                 it.isDirectory && it.name.equals("SPL_Music", ignoreCase = true)
             } ?: baseTree.createDirectory("SPL_Music")
 
-        if (splRoot == null || !splRoot.isDirectory) return
+        if (splRoot == null || !splRoot.isDirectory) {
+            Log.e(SETUP_STORAGE_TAG, "setup:spl_root_missing parent=${baseTree.uri}")
+            return
+        }
 
         // 4) Create/find sous-dossiers sans doublons
         fun ensureDirSmart(
@@ -83,13 +98,35 @@ fun SetupInstallScreen(
 
             parent.listFiles()
                 .firstOrNull { it.isDirectory && wanted.contains(norm(it.name ?: "")) }
-                ?.let { return it }
+                ?.let {
+                    Log.i(
+                        SETUP_STORAGE_TAG,
+                        "setup:dir_hit parent=${parent.uri} expected=$expectedName actual=${it.name} uri=${it.uri}"
+                    )
+                    return it
+                }
 
-            return parent.createDirectory(expectedName)
+            val created = parent.createDirectory(expectedName)
+            Log.i(
+                SETUP_STORAGE_TAG,
+                "setup:dir_create parent=${parent.uri} expected=$expectedName created=${created?.uri}"
+            )
+            return created
         }
 
-        ensureDirSmart(splRoot, "BackingTracks", aliases = listOf("BackingTrack"))
+        val backingTracksDir = ensureDirSmart(splRoot, "BackingTracks", aliases = listOf("BackingTrack"))
+        val audioDir = backingTracksDir?.let {
+            ensureDirSmart(it, "Audio", aliases = listOf("audio"))
+        }
+        val smpDir = backingTracksDir?.let {
+            ensureDirSmart(it, "SMP", aliases = listOf("smp"))
+        }
         val djDir = ensureDirSmart(splRoot, "DJ")
+
+        Log.i(
+            SETUP_STORAGE_TAG,
+            "setup:dirs splRoot=${splRoot.uri} backingTracks=${backingTracksDir?.uri} audio=${audioDir?.uri} smp=${smpDir?.uri} dj=${djDir?.uri} splChildren=${listChildNames(splRoot)} backingChildren=${listChildNames(backingTracksDir)}"
+        )
 
         // 5) Library root = SPL_Music (tree uri)
         BackupFolderPrefs.saveLibraryRootUri(context, splToTreeUri(splRoot.uri))
@@ -114,6 +151,7 @@ fun SetupInstallScreen(
 
         // ⚠️ Téléchargements = piège sur certains vieux téléphones
         if (uri.authority == "com.android.providers.downloads.documents") {
+            Log.w(SETUP_STORAGE_TAG, "setup:downloads_provider_detected pickedUri=$uri")
             pendingBadUri = uri
             showBadFolderDialog = true
             return@rememberLauncherForActivityResult
@@ -121,6 +159,7 @@ fun SetupInstallScreen(
 
         // ✅ Mode normal (SAF)
         StorageModePrefs.set(context, StorageModePrefs.Mode.SAF)
+        Log.i(SETUP_STORAGE_TAG, "setup:storage_mode=SAF pickedUri=$uri")
         handlePickedUri(uri)
     }
 
@@ -216,7 +255,15 @@ fun SetupInstallScreen(
                         StorageModePrefs.set(context, StorageModePrefs.Mode.INTERNAL)
 
                         val rootDir = InternalStoragePaths.ensureSplRoot(context)
+                        val backingTracksDir = java.io.File(rootDir, "BackingTracks").apply { mkdirs() }
+                        val audioDir = java.io.File(backingTracksDir, "Audio").apply { mkdirs() }
+                        val smpDir = java.io.File(backingTracksDir, "SMP").apply { mkdirs() }
                         val rootUri = Uri.fromFile(rootDir)
+
+                        Log.w(
+                            SETUP_STORAGE_TAG,
+                            "setup:storage_mode=INTERNAL root=${rootDir.absolutePath} backingTracks=${backingTracksDir.absolutePath} audio=${audioDir.absolutePath} smp=${smpDir.absolutePath} rootChildren=${rootDir.list()?.sorted()} backingChildren=${backingTracksDir.list()?.sorted()}"
+                        )
 
                         // ✅ IMPORTANT : marquer l’installation OK (sinon boucle)
                         BackupFolderPrefs.saveSetupTreeUri(context, rootUri)
@@ -388,4 +435,13 @@ private fun splToTreeUri(docUri: Uri): Uri {
     val authority = docUri.authority ?: return docUri
     val docId = runCatching { DocumentsContract.getDocumentId(docUri) }.getOrNull() ?: return docUri
     return DocumentsContract.buildTreeDocumentUri(authority, docId)
+}
+
+private fun listChildNames(parent: DocumentFile?): List<String> {
+    return runCatching {
+        parent?.listFiles()
+            ?.mapNotNull { child -> child.name }
+            ?.sorted()
+            .orEmpty()
+    }.getOrDefault(emptyList())
 }
