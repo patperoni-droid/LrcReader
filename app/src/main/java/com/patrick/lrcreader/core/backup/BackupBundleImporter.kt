@@ -47,10 +47,12 @@ sealed interface BackupBundleImportResult {
 object BackupBundleImporter {
 
     private const val TAG = "BACKUP_IMPORT"
+    private const val BUNDLE_ZIP_SUFFIX = "$BACKUP_BUNDLE_EXTENSION.zip"
 
     fun isBundleFileName(fileName: String?): Boolean {
         val trimmed = fileName?.trim().orEmpty()
-        return trimmed.endsWith(BACKUP_BUNDLE_EXTENSION, ignoreCase = true)
+        return trimmed.endsWith(BACKUP_BUNDLE_EXTENSION, ignoreCase = true) ||
+            trimmed.endsWith(BUNDLE_ZIP_SUFFIX, ignoreCase = true)
     }
 
     fun importBundleIfApplicable(

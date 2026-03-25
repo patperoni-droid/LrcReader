@@ -64,7 +64,11 @@ import com.patrick.lrcreader.core.SplFolders
 import com.patrick.lrcreader.core.backup.BACKUP_BUNDLE_EXTENSION
 import com.patrick.lrcreader.core.backup.BackupBundleExportBuildResult
 import com.patrick.lrcreader.core.backup.BackupBundleExporter
+import com.patrick.lrcreader.core.backup.BackupBundleImporter
 import com.patrick.lrcreader.core.backup.BackupBundleIo
+import com.patrick.lrcreader.core.backup.BackupBundlePayload
+import com.patrick.lrcreader.core.backup.BackupBundleRestorePreparationResult
+import com.patrick.lrcreader.core.backup.BackupBundleRestorePreparer
 import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.getDisplayName
 import com.patrick.lrcreader.nowString
@@ -80,11 +84,55 @@ import java.io.File
  * - Import : OpenDocument()
  * + ✅ INTERNAL : export/import direct dans SPL_Music/Backups (sans picker Android)
  */
+private data class BackupImportSelectionInfo(
+    val resolvedFileLabel: String,
+    val mimeType: String?,
+    val rawDisplayName: String?,
+    val documentFileName: String?,
+    val lastPathSegment: String?
+)
+
 private fun resolveBackupsInitialUri(context: Context): Uri? {
     val root = BackupFolderPrefs.getLibraryRootUri(context) ?: return null
     val rootDoc = DocumentFile.fromTreeUri(context, root) ?: return root
     val backups = rootDoc.findFile("Backups") ?: rootDoc.findFile("backups")
     return (backups?.takeIf { it.isDirectory }?.uri) ?: root
+}
+
+private fun resolveBackupImportSelectionInfo(
+    context: Context,
+    uri: Uri
+): BackupImportSelectionInfo {
+    val rawDisplayName = getDisplayName(context, uri)?.trim().takeUnless { it.isNullOrBlank() }
+    val documentFileName = runCatching {
+        DocumentFile.fromSingleUri(context, uri)?.name?.trim()
+    }.getOrNull().takeUnless { it.isNullOrBlank() }
+    val lastPathSegment = uri.lastPathSegment
+        ?.substringAfterLast('/')
+        ?.substringAfterLast(':')
+        ?.trim()
+        .takeUnless { it.isNullOrBlank() }
+    val mimeType = runCatching { context.contentResolver.getType(uri) }.getOrNull()
+
+    val baseName = rawDisplayName
+        ?: documentFileName
+        ?: lastPathSegment
+        ?: "backup"
+
+    val resolvedFileLabel = when {
+        BackupBundleImporter.isBundleFileName(baseName) -> baseName
+        mimeType.equals("application/zip", ignoreCase = true) -> ensureBundleFileName(baseName)
+        mimeType.equals("application/json", ignoreCase = true) && !baseName.endsWith(".json", ignoreCase = true) -> "$baseName.json"
+        else -> baseName
+    }
+
+    return BackupImportSelectionInfo(
+        resolvedFileLabel = resolvedFileLabel,
+        mimeType = mimeType,
+        rawDisplayName = rawDisplayName,
+        documentFileName = documentFileName,
+        lastPathSegment = lastPathSegment
+    )
 }
 
 @Composable
@@ -102,6 +150,10 @@ fun BackupScreen(
     val sInternalExportToastFailed = stringResource(R.string.backup_internal_export_toast_failed)
     val sBundleExportFailed = stringResource(R.string.backup_bundle_export_failed)
     val sBundleExportMissing = stringResource(R.string.backup_bundle_export_missing_songs)
+    val sBundleImportInvalid = stringResource(R.string.backup_bundle_import_invalid)
+    val sBundleImportSmpFailed = stringResource(R.string.backup_bundle_import_smp_failed)
+    val sBundleImportRemapFailed = stringResource(R.string.backup_bundle_import_remap_failed)
+    val sImportSuccessWithWarnings = stringResource(R.string.backup_import_success_with_warnings)
     val sBackupsTip = "Conseil : sauvegarde dans le dossier Backups pour restaurer sur un autre appareil."
 
     // État dernier import
@@ -119,18 +171,30 @@ fun BackupScreen(
     // ✅ Liste des backups internes (SPL_Music/Backups)
     var internalBackupFiles by remember { mutableStateOf<List<File>>(emptyList()) }
     var showInternalImportDialog by remember { mutableStateOf(false) }
+    var pendingSafBundlePayload by remember { mutableStateOf<BackupBundlePayload?>(null) }
+    var pendingSafBundleName by remember { mutableStateOf<String?>(null) }
 
     fun refreshInternalBackups() {
         if (!isInternalMode) return
         val dir = SplFolders.backupsDirFile(context)
         val list = dir.listFiles()
-            ?.filter { it.isFile && it.name.endsWith(".json", ignoreCase = true) }
+            ?.filter {
+                it.isFile && (
+                    it.name.endsWith(".json", ignoreCase = true) ||
+                        BackupBundleImporter.isBundleFileName(it.name)
+                    )
+            }
             ?.sortedByDescending { it.lastModified() }
             .orEmpty()
         internalBackupFiles = list
     }
 
-    suspend fun importBackupJsonText(json: String, fileLabel: String, source: String) {
+    suspend fun importBackupJsonText(
+        json: String,
+        fileLabel: String,
+        source: String,
+        successSummary: String = sImportSuccess
+    ) {
         val importStart = SystemClock.elapsedRealtime()
         var restoredLastPlayed: BackupManager.LastPlayed? = null
         withContext(Dispatchers.IO) {
@@ -148,7 +212,7 @@ fun BackupScreen(
 
         lastImportFile = fileLabel
         lastImportTime = nowString()
-        lastImportSummary = sImportSuccess
+        lastImportSummary = successSummary
         onAfterImport(restoredLastPlayed)
 
         val lp = restoredLastPlayed
@@ -211,6 +275,105 @@ fun BackupScreen(
         }
     }
 
+    fun formatBundleRestoreFailure(
+        result: BackupBundleRestorePreparationResult
+    ): String? {
+        return when (result) {
+            BackupBundleRestorePreparationResult.InvalidBundle -> sBundleImportInvalid
+            BackupBundleRestorePreparationResult.NotBundle -> null
+            is BackupBundleRestorePreparationResult.SmpImportFailed -> {
+                val detail = result.reason ?: context.getString(R.string.backup_unknown_error)
+                "$sBundleImportSmpFailed ${result.songId} ($detail)"
+            }
+            is BackupBundleRestorePreparationResult.RemapFailed -> {
+                val firstFailure = result.failures.firstOrNull()
+                val detail = if (firstFailure != null) {
+                    "${firstFailure.path}: ${firstFailure.reason}"
+                } else {
+                    context.getString(R.string.backup_unknown_error)
+                }
+                "$sBundleImportRemapFailed $detail"
+            }
+            is BackupBundleRestorePreparationResult.Success -> null
+        }
+    }
+
+    suspend fun importBackupBytes(
+        bytes: ByteArray?,
+        fileLabel: String,
+        source: String,
+        forceBundle: Boolean = false
+    ) {
+        if (bytes == null) {
+            lastImportSummary = sImportEmptyUnreadable
+            return
+        }
+
+        val effectiveFileLabel = if (forceBundle) {
+            ensureBundleFileName(fileLabel.ifBlank { "backup" })
+        } else {
+            fileLabel
+        }
+        val shouldImportAsBundle = forceBundle || BackupBundleImporter.isBundleFileName(effectiveFileLabel)
+
+        if (!shouldImportAsBundle) {
+            val json = withContext(Dispatchers.IO) {
+                val decodeStart = SystemClock.elapsedRealtime()
+                val text = bytes.toString(Charsets.UTF_8)
+                Log.i(
+                    importTag,
+                    "IMPORT_JSON step=decode_utf8 took=${SystemClock.elapsedRealtime() - decodeStart}ms source=$source file=$effectiveFileLabel chars=${text.length}"
+                )
+                text
+            }
+
+            if (json.isBlank()) {
+                lastImportSummary = sImportEmptyUnreadable
+                return
+            }
+
+            importBackupJsonText(json, effectiveFileLabel, source = source)
+            return
+        }
+
+        val prepareStart = SystemClock.elapsedRealtime()
+        val preparedRestore = withContext(Dispatchers.IO) {
+            val importResult = BackupBundleImporter.importBundleIfApplicable(
+                context = context,
+                fileName = effectiveFileLabel,
+                openInputStream = { bytes.inputStream() }
+            )
+            BackupBundleRestorePreparer.prepareStateJsonForRestore(importResult)
+        }
+        Log.i(
+            importTag,
+            "IMPORT_BUNDLE step=prepare_restore took=${SystemClock.elapsedRealtime() - prepareStart}ms source=$source file=$effectiveFileLabel forced=$forceBundle"
+        )
+
+        when (preparedRestore) {
+            is BackupBundleRestorePreparationResult.Success -> {
+                val successSummary = if (preparedRestore.warnings.isEmpty()) {
+                    sImportSuccess
+                } else {
+                    context.getString(
+                        R.string.backup_import_success_with_warnings,
+                        preparedRestore.warnings.size
+                    )
+                }
+                importBackupJsonText(
+                    json = preparedRestore.stateJson,
+                    fileLabel = effectiveFileLabel,
+                    source = "${source}_bundle",
+                    successSummary = successSummary
+                )
+            }
+            else -> {
+                lastImportSummary = formatBundleRestoreFailure(preparedRestore)
+                    ?: sImportEmptyUnreadable
+            }
+        }
+    }
+
     // IMPORT via picker système (✅ non-bloquant)
     val fileLauncher = rememberLauncherForActivityResult(
         contract = object : ActivityResultContracts.OpenDocument() {
@@ -245,26 +408,32 @@ fun BackupScreen(
                     )
                     data
                 }
-                val json = withContext(Dispatchers.IO) {
-                    val decodeStart = SystemClock.elapsedRealtime()
-                    val text = bytes?.toString(Charsets.UTF_8)
-                    Log.i(
-                        importTag,
-                        "IMPORT_JSON step=decode_utf8 took=${SystemClock.elapsedRealtime() - decodeStart}ms source=saf uri=$uri chars=${text?.length ?: 0}"
-                    )
-                    text
+                val selectionInfo = resolveBackupImportSelectionInfo(context, uri)
+                val bundleByName = BackupBundleImporter.isBundleFileName(selectionInfo.resolvedFileLabel)
+                val bundleByPayload = if (!bundleByName && bytes != null) {
+                    withContext(Dispatchers.IO) {
+                        BackupBundleIo.readOrNull(bytes.inputStream()) != null
+                    }
+                } else {
+                    false
                 }
-
-                if (json.isNullOrBlank()) {
-                    lastImportSummary = sImportEmptyUnreadable
-                    return@launch
+                val resolvedRoute = when {
+                    bundleByName || bundleByPayload -> "bundle"
+                    else -> "json"
                 }
-
-                // 2) Import en IO
-                importBackupJsonText(json, getDisplayName(context, uri) ?: "backup.json", source = "saf")
                 Log.i(
                     importTag,
-                    "IMPORT_JSON step=total_saf took=${SystemClock.elapsedRealtime() - importStart}ms uri=$uri"
+                    "IMPORT_FILE dispatch source=saf uri=$uri rawDisplayName=${selectionInfo.rawDisplayName} documentFileName=${selectionInfo.documentFileName} lastPathSegment=${selectionInfo.lastPathSegment} mime=${selectionInfo.mimeType} fileLabel=${selectionInfo.resolvedFileLabel} bundleByName=$bundleByName bundleByPayload=$bundleByPayload route=$resolvedRoute"
+                )
+                importBackupBytes(
+                    bytes = bytes,
+                    fileLabel = selectionInfo.resolvedFileLabel,
+                    source = "saf",
+                    forceBundle = bundleByPayload
+                )
+                Log.i(
+                    importTag,
+                    "IMPORT_FILE step=total_saf took=${SystemClock.elapsedRealtime() - importStart}ms uri=$uri file=${selectionInfo.resolvedFileLabel} route=$resolvedRoute"
                 )
             } catch (e: Exception) {
                 val detail = e.message ?: context.getString(R.string.backup_unknown_error)
@@ -280,18 +449,57 @@ fun BackupScreen(
     val saveLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/zip")
     ) { uri: Uri? ->
-        if (uri == null) return@rememberLauncherForActivityResult
+        if (uri == null) {
+            pendingSafBundlePayload = null
+            pendingSafBundleName = null
+            return@rememberLauncherForActivityResult
+        }
+
+        val payload = pendingSafBundlePayload
+        val requestedName = pendingSafBundleName
+        pendingSafBundlePayload = null
+        pendingSafBundleName = null
+
+        if (payload == null) {
+            Log.w(
+                importTag,
+                "EXPORT_BUNDLE step=missing_pending_payload uri=$uri requestedName=$requestedName"
+            )
+            Toast.makeText(context, sSaveToastFailed, LENGTH_SHORT).show()
+            return@rememberLauncherForActivityResult
+        }
 
         scope.launch {
-            val payload = buildManualBundlePayloadOrNull() ?: return@launch
+            val stateJsonBytes = payload.stateJson.toByteArray(Charsets.UTF_8).size
+            val smpCount = payload.smpFiles.size
+            Log.i(
+                importTag,
+                "EXPORT_BUNDLE step=start_saf_write uri=$uri requestedName=$requestedName stateJsonBytes=$stateJsonBytes smpCount=$smpCount"
+            )
             val saveSucceeded = withContext(Dispatchers.IO) {
                 runCatching {
-                    val output = context.contentResolver.openOutputStream(uri) ?: return@runCatching false
+                    val output = context.contentResolver.openOutputStream(uri)
+                    Log.i(
+                        importTag,
+                        "EXPORT_BUNDLE step=open_output_stream uri=$uri opened=${output != null}"
+                    )
+                    output ?: return@runCatching false
                     output.use { stream ->
                         BackupBundleIo.write(stream, payload)
                     }
+                    Log.i(
+                        importTag,
+                        "EXPORT_BUNDLE step=write_success uri=$uri stateJsonBytes=$stateJsonBytes smpCount=$smpCount"
+                    )
                     true
-                }.getOrDefault(false)
+                }.getOrElse { error ->
+                    Log.e(
+                        importTag,
+                        "EXPORT_BUNDLE step=write_failed uri=$uri stateJsonBytes=$stateJsonBytes smpCount=$smpCount",
+                        error
+                    )
+                    false
+                }
             }
 
             if (saveSucceeded) {
@@ -402,7 +610,13 @@ fun BackupScreen(
                         onClick = {
                             val trimmed = backupFileName.trim().ifEmpty { "lrc_backup" }
                             val finalName = ensureBundleFileName(trimmed)
-                            saveLauncher.launch(finalName)
+
+                            scope.launch {
+                                val payload = buildManualBundlePayloadOrNull() ?: return@launch
+                                pendingSafBundlePayload = payload
+                                pendingSafBundleName = finalName
+                                saveLauncher.launch(finalName)
+                            }
                         },
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.filledTonalButtonColors(
@@ -498,7 +712,7 @@ fun BackupScreen(
 
                 FilledTonalButton(
                     onClick = {
-                        fileLauncher.launch(arrayOf("application/json"))
+                        fileLauncher.launch(arrayOf("application/json", "application/zip", "application/octet-stream"))
                     },
                     colors = ButtonDefaults.filledTonalButtonColors(
                         containerColor = Color(0xFF3E3A2C),
@@ -574,22 +788,8 @@ fun BackupScreen(
                                                 )
                                                 data
                                             }
-                                            val json = withContext(Dispatchers.IO) {
-                                                val decodeStart = SystemClock.elapsedRealtime()
-                                                val text = bytes?.toString(Charsets.UTF_8)
-                                                Log.i(
-                                                    importTag,
-                                                    "IMPORT_JSON step=decode_utf8 took=${SystemClock.elapsedRealtime() - decodeStart}ms source=internal file=${f.name} chars=${text?.length ?: 0}"
-                                                )
-                                                text
-                                            }
-
-                                            if (!json.isNullOrBlank()) {
-                                                showInternalImportDialog = false
-                                                importBackupJsonText(json, f.name, source = "internal")
-                                            } else {
-                                                lastImportSummary = sImportEmptyUnreadable
-                                            }
+                                            showInternalImportDialog = false
+                                            importBackupBytes(bytes, fileLabel = f.name, source = "internal")
                                         } finally {
                                             isImporting = false
                                         }
@@ -621,10 +821,19 @@ fun BackupScreen(
 
 private fun ensureBundleFileName(rawName: String): String {
     val trimmed = rawName.trim().ifEmpty { "lrc_backup" }
-    return if (trimmed.endsWith(BACKUP_BUNDLE_EXTENSION, ignoreCase = true)) {
-        trimmed
+    val normalized = when {
+        trimmed.endsWith("$BACKUP_BUNDLE_EXTENSION.zip", ignoreCase = true) -> {
+            trimmed.dropLast(4)
+        }
+        trimmed.endsWith(".zip", ignoreCase = true) -> {
+            trimmed.dropLast(4)
+        }
+        else -> trimmed
+    }
+    return if (normalized.endsWith(BACKUP_BUNDLE_EXTENSION, ignoreCase = true)) {
+        normalized
     } else {
-        "$trimmed$BACKUP_BUNDLE_EXTENSION"
+        "$normalized$BACKUP_BUNDLE_EXTENSION"
     }
 }
 
