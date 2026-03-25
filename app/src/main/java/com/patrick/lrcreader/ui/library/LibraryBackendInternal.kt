@@ -25,23 +25,28 @@ class LibraryBackendInternal(
     override fun getRootUri(): Uri {
         val saved = BackupFolderPrefsInternal.getLibraryRootUri(context)
             ?: BackupFolderPrefs.getLibraryRootUri(context)
-        if (saved != null && saved.scheme == "file") return saved
+        if (saved != null && saved.scheme == "file") {
+            Log.i(tag, "getRootUri: use_saved uri=$saved")
+            return saved
+        }
 
         val root = Uri.fromFile(InternalStoragePaths.ensureSplRoot(context))
         BackupFolderPrefsInternal.saveLibraryRootUri(context, root)
         BackupFolderPrefs.saveLibraryRootUri(context, root)
+        Log.i(tag, "getRootUri: resolved_internal uri=$root")
         return root
     }
 
     override fun ensureBaseFolders() {
         val rootDir = File(getRootUri().path ?: return)
-        Log.i(tag, "ROOT path=${rootDir.absolutePath}")
+        Log.i(tag, "ensureBaseFolders rootPath=${rootDir.absolutePath}")
 
         val backingTracks = File(rootDir, "BackingTracks")
         val backups = File(rootDir, "Backups")
         val dj = File(rootDir, "DJ")
 
         val audio = File(backingTracks, "Audio")
+        val smp = File(backingTracks, "SMP")
         val lyrics = File(backingTracks, "Lyrics")
         val accords = File(backingTracks, "Accords")
         val midi = File(backingTracks, "Midi")
@@ -53,6 +58,7 @@ class LibraryBackendInternal(
         ensureDirWithLog(dj, "DJ")
 
         ensureDirWithLog(audio, "BackingTracks/Audio")
+        ensureDirWithLog(smp, "BackingTracks/SMP")
         ensureDirWithLog(lyrics, "BackingTracks/Lyrics")
         ensureDirWithLog(accords, "BackingTracks/Accords")
         ensureDirWithLog(midi, "BackingTracks/Midi")
@@ -61,6 +67,7 @@ class LibraryBackendInternal(
         Log.i(tag, "LIST root=${names(rootDir)}")
         Log.i(tag, "LIST BackingTracks=${names(backingTracks)}")
         Log.i(tag, "LIST Audio=${names(audio)}")
+        Log.i(tag, "LIST SMP=${names(smp)}")
         Log.i(tag, "LIST Lyrics=${names(lyrics)}")
     }
 
