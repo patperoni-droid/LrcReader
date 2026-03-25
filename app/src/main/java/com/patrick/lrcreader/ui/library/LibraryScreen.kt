@@ -19,6 +19,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -172,6 +173,7 @@ fun LibraryScreen(
     val sShareSmpFailed = stringResource(R.string.library_share_smp_failed)
     val sPrompterFolder = stringResource(R.string.main_menu_prompter)
     val sSmpFolder = stringResource(R.string.library_smp_folder)
+    val sSmpEmptyState = stringResource(R.string.library_smp_empty_state)
     val sLegacyBackingTracksFolder = stringResource(R.string.library_legacy_backing_tracks_folder)
     val sConvertSmpSingleSuccess = stringResource(R.string.library_convert_smp_success_single)
     val sConvertSmpSingleFailed = stringResource(R.string.library_convert_smp_failed_single)
@@ -278,7 +280,7 @@ fun LibraryScreen(
         }
 
         val alreadyHasSmp = displaySource.any { it.isDirectory && isSmpFolderUri(it.uri) }
-        if (!alreadyHasSmp && buildSmpEntries().isNotEmpty()) {
+        if (!alreadyHasSmp) {
             extraEntries += LibraryEntry(SMP_FOLDER_URI, sSmpFolder, isDirectory = true)
         }
 
@@ -1154,7 +1156,24 @@ fun LibraryScreen(
                             Spacer(Modifier.height(8.dp))
                         }
 
-                        LibraryList(
+                        val isEmptySmpFolder =
+                            currentFolderUri?.let(::isSmpFolderUri) == true && searchableEntries.isEmpty()
+
+                        if (isEmptySmpFolder) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(horizontal = 12.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = sSmpEmptyState,
+                                    color = subtitleColor,
+                                    fontSize = 13.sp
+                                )
+                            }
+                        } else {
+                            LibraryList(
                             entries = filteredEntries,
                             cardBg = cardBg,
                             rowBorder = rowBorder,
@@ -1355,6 +1374,7 @@ fun LibraryScreen(
                                 }
                             }
                         )
+                        }
                     }
 
                     if (selectedSongs.isNotEmpty()) {
