@@ -266,7 +266,16 @@ fun QuickPlaylistsScreen(
     }
 
     // recharge quand playlist ou notes changent
-    LaunchedEffect(internalSelected, refreshKey, notesVersion, repoVersion, libraryLoadedSignal, playlistsReady, titleAliasVersion) {
+    LaunchedEffect(
+        internalSelected,
+        refreshKey,
+        notesVersion,
+        repoVersion,
+        libraryLoadedSignal,
+        playlistsReady,
+        titleAliasVersion,
+        smpPlaybackUriById
+    ) {
         val pl = internalSelected
         Log.d(
             "BOOTSTEP",
@@ -338,10 +347,11 @@ fun QuickPlaylistsScreen(
                 var acc = 0L
                 for (u in listSnapshot) {
                     if (!isPlayableAudioItem(u)) continue
-                    val cached = durationCache[u]
+                    val durationSource = getSmpSongId(u)?.let { smpPlaybackUriById[it] } ?: u
+                    val cached = durationCache[durationSource]
                     val d = cached
-                        ?: (getAudioDurationMsQP(context, u) ?: 0L).also {
-                            durationCache[u] = it
+                        ?: (getAudioDurationMsQP(context, durationSource) ?: 0L).also {
+                            durationCache[durationSource] = it
                         }
                     acc += d
                 }
