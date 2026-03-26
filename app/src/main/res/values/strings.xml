@@ -130,7 +130,7 @@
     <string name="library_header_cd_actions">Actions</string>
     <string name="library_header_choose_folder">Choisir un dossier</string>
     <string name="library_header_rescan">Rescan bibliothèque</string>
-    <string name="library_header_import_music">Importer des musiques</string>
+    <string name="library_header_import_music">Ajouter des morceaux</string>
     <string name="library_header_convert_folder_to_smp">Convertir dossier en SMP</string>
     <string name="library_header_import_smp">Importer un fichier SMP</string>
     <string name="library_header_forget_folder">Oublier le dossier</string>
@@ -184,6 +184,19 @@
     <string name="library_convert_smp_failed_single">Migration SMP échouée</string>
     <string name="library_convert_smp_no_mp3">Aucun fichier audio compatible à convertir dans ce dossier</string>
     <string name="library_convert_smp_folder_summary">%1$d morceau(x) migré(s) vers SMP, %2$d échec(s)</string>
+    <string name="smp_batch_notice_title">Préparation live nécessaire</string>
+    <string name="smp_batch_notice_line_1">SPL doit préparer ces morceaux pour le live.</string>
+    <string name="smp_batch_notice_line_2">Cette étape est nécessaire uniquement la première fois.</string>
+    <string name="smp_batch_notice_line_3">Cela peut prendre quelques instants.</string>
+    <string name="smp_batch_notice_hide_next_time">Ne plus afficher</string>
+    <string name="smp_batch_notice_continue">Continuer</string>
+    <string name="smp_batch_progress_title">Préparation des morceaux…</string>
+    <string name="smp_batch_stage_converting">Conversion en SMP</string>
+    <string name="smp_batch_stage_importing">Import du morceau</string>
+    <string name="smp_batch_stage_playlist">Ajout à la playlist</string>
+    <string name="smp_batch_import_summary">%1$d morceau(x) prêt(s), %2$d échec(s)</string>
+    <string name="smp_batch_playlist_summary">%1$d morceau(x) ajouté(s), %2$d échec(s)</string>
+    <string name="smp_batch_unsupported_only">Aucun fichier pris en charge dans la sélection.</string>
 
     <string name="common_save">Enregistrer</string>
 
@@ -438,7 +451,7 @@
     <string name="quickplaylists_menu_insert_group_above">Insérer groupe au-dessus</string>
     <string name="quickplaylists_menu_remove_from_group">Retirer du groupe</string>
     <string name="quickplaylists_group_new_default">Nouveau groupe</string>
-    <string name="quickplaylists_add_track_button">Ajouter un morceau</string>
+    <string name="quickplaylists_add_track_button">Ajouter des morceaux</string>
     <string name="quickplaylists_edit_prompter_title">Éditer le prompteur ✅ TEST 2026</string>
     <string name="quickplaylists_new_prompter_title">Nouveau titre (prompteur 2026 )</string>
     <string name="quickplaylists_prompter_text_label">Texte du prompteur</string>
