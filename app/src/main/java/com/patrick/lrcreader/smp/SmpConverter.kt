@@ -8,7 +8,9 @@ import android.provider.OpenableColumns
 import android.util.Log
 import androidx.documentfile.provider.DocumentFile
 import com.patrick.lrcreader.core.BackupFolderPrefs
+import com.patrick.lrcreader.core.BackupFolderPrefsInternal
 import com.patrick.lrcreader.core.BackupFolderPrefsSaf
+import com.patrick.lrcreader.core.InternalStoragePaths
 import com.patrick.lrcreader.core.LrcStorage
 import org.json.JSONObject
 import java.io.File
@@ -79,6 +81,23 @@ class SmpConverter(private val context: Context) {
     }
 
     fun convertSingle(mp3Uri: Uri): Result<Uri> {
+        return convertSingleInternal(
+            mp3Uri = mp3Uri,
+            outputParentResolver = { uri -> resolveOutputParent(uri) }
+        )
+    }
+
+    fun convertSingleToLibrarySmp(mp3Uri: Uri): Result<Uri> {
+        return convertSingleInternal(
+            mp3Uri = mp3Uri,
+            outputParentResolver = { resolveManagedOutputParent() }
+        )
+    }
+
+    private fun convertSingleInternal(
+        mp3Uri: Uri,
+        outputParentResolver: (Uri) -> OutputParent
+    ): Result<Uri> {
         if (Looper.myLooper() == Looper.getMainLooper()) {
             Log.w(TAG, "convertSingle appelé sur le thread principal uri=$mp3Uri")
         }
@@ -91,7 +110,7 @@ class SmpConverter(private val context: Context) {
             val baseName = sourceName.substringBeforeLast('.').trim()
                 .ifBlank { throw IOException("Nom audio invalide: $sourceName") }
             val outputName = "$baseName.smp"
-            val outputParent = resolveOutputParent(mp3Uri)
+            val outputParent = outputParentResolver(mp3Uri)
             Log.i(
                 TAG,
                 "step=start_conversion sourceUri=$mp3Uri backend=${backendLabel(mp3Uri)} sourceName=$sourceName outputName=$outputName outputParent=${describeOutputParent(outputParent)}"
@@ -111,8 +130,8 @@ class SmpConverter(private val context: Context) {
                 "step=archive_prepared sourceUri=$mp3Uri outputName=${prepared.outputName} tempArchive=${prepared.archiveFile.absolutePath} lyrics=${prepared.hasLyrics} songId=${prepared.stableSongId}"
             )
             try {
-                val resultUri = writeArchiveNextToSource(
-                    sourceUri = mp3Uri,
+                val resultUri = writeArchiveToOutputParent(
+                    outputParent = outputParent,
                     outputName = prepared.outputName,
                     archiveFile = prepared.archiveFile
                 )
@@ -280,12 +299,12 @@ class SmpConverter(private val context: Context) {
         )
     }
 
-    private fun writeArchiveNextToSource(
-        sourceUri: Uri,
+    private fun writeArchiveToOutputParent(
+        outputParent: OutputParent,
         outputName: String,
         archiveFile: File
     ): Uri {
-        return when (val outputParent = resolveOutputParent(sourceUri)) {
+        return when (outputParent) {
             is OutputParent.FileParent -> {
                 writeArchiveToFileParent(
                     outputDir = outputParent.directory,
@@ -311,6 +330,29 @@ class SmpConverter(private val context: Context) {
         } else {
             OutputParent.SafParent(resolvePreferredSafOutputDir(sourceUri))
         }
+    }
+
+    private fun resolveManagedOutputParent(): OutputParent {
+        val fileRoot = listOfNotNull(
+            BackupFolderPrefsInternal.getLibraryRootUri(context),
+            BackupFolderPrefs.getLibraryRootUri(context)
+        ).firstOrNull { it.scheme == "file" }
+
+        if (fileRoot != null) {
+            val rootDir = File(fileRoot.path ?: "").takeIf { it.path.isNotBlank() }
+                ?: InternalStoragePaths.ensureSplRoot(context)
+            val backingTracksDir = File(rootDir, "BackingTracks").apply { mkdirs() }
+            val smpDir = File(backingTracksDir, "SMP").apply { mkdirs() }
+            return OutputParent.FileParent(smpDir)
+        }
+
+        val backingTracksDir = resolveWritableSafBackingTracksDir()
+            ?: throw IOException("BackingTracks SAF introuvable pour écriture SMP")
+        val smpDir = backingTracksDir.findFile("SMP")
+            ?: backingTracksDir.findFile("smp")
+            ?: backingTracksDir.createDirectory("SMP")
+            ?: throw IOException("Création du dossier SMP impossible dans ${backingTracksDir.uri}")
+        return OutputParent.SafParent(smpDir)
     }
 
     private fun resolvePreferredFileOutputDir(sourceFile: File): File {

@@ -42,6 +42,7 @@ import com.patrick.lrcreader.core.ImportAudioManager
 import com.patrick.lrcreader.core.LegacyLibraryVisibilityPrefs
 import com.patrick.lrcreader.core.LibraryIndexCache
 import com.patrick.lrcreader.core.PlaylistRepository
+import com.patrick.lrcreader.core.SmpPreparationNoticePrefs
 import com.patrick.lrcreader.core.TextSongRepository
 import com.patrick.lrcreader.core.buildSmpItem
 import com.patrick.lrcreader.core.getSmpSongId
@@ -49,11 +50,13 @@ import com.patrick.lrcreader.core.config.TitleAliasesStore
 import com.patrick.lrcreader.core.search.SearchEngine
 import com.patrick.lrcreader.exo.BuildConfig
 import com.patrick.lrcreader.exo.R
+import com.patrick.lrcreader.smp.SmpBatchImportProcessor
 import com.patrick.lrcreader.smp.SmpConverter
 import com.patrick.lrcreader.smp.SmpExporter
 import com.patrick.lrcreader.smp.SmpLibraryScanner
 import com.patrick.lrcreader.ui.LibraryEntry
 import com.patrick.lrcreader.ui.LibraryFolderCache
+import com.patrick.lrcreader.ui.SmpPreparationNoticeDialog
 import com.patrick.lrcreader.ui.clearPersistedUris
 import com.patrick.lrcreader.ui.isHiddenLibraryTransportFile
 import com.patrick.lrcreader.ui.theme.DarkBlueGradientBackground
@@ -69,6 +72,12 @@ private val SMP_FOLDER_URI: Uri = Uri.parse("spl-smp://folder")
 
 private fun isPrompterFolderUri(uri: Uri?): Boolean = uri?.scheme == "spl-prompter"
 private fun isSmpFolderUri(uri: Uri?): Boolean = uri?.scheme == "spl-smp"
+
+private data class PendingPlaylistAssignRequest(
+    val playlistName: String,
+    val directItemUris: List<String>,
+    val batchPlan: SmpBatchImportProcessor.BatchPlan?
+)
 
 private val HIDDEN_LEGACY_FOLDER_NAMES = setOf(
     "backingtracks",
@@ -127,6 +136,7 @@ fun LibraryScreen(
     onAfterBackupImport: () -> Unit = {},
     onImportExternalSmp: () -> Unit,
     onImportGeneratedSmp: suspend (Uri) -> com.patrick.lrcreader.smp.SongUnit?,
+    onImportGeneratedSmpFailureReason: () -> String? = { null },
     onPlayFromLibrary: (String) -> Unit
 ) {
     val context = LocalContext.current
@@ -178,6 +188,11 @@ fun LibraryScreen(
     val sConvertSmpSingleSuccess = stringResource(R.string.library_convert_smp_success_single)
     val sConvertSmpSingleFailed = stringResource(R.string.library_convert_smp_failed_single)
     val sConvertSmpNoMp3 = stringResource(R.string.library_convert_smp_no_mp3)
+    val sBatchPreparing = stringResource(R.string.smp_batch_progress_title)
+    val sBatchUnsupportedOnly = stringResource(R.string.smp_batch_unsupported_only)
+    val sBatchStageConverting = stringResource(R.string.smp_batch_stage_converting)
+    val sBatchStageImporting = stringResource(R.string.smp_batch_stage_importing)
+    val sBatchStagePlaylist = stringResource(R.string.smp_batch_stage_playlist)
 
     // State
     var showLrcEditor by remember { mutableStateOf(false) }
@@ -213,8 +228,75 @@ fun LibraryScreen(
     var indexAll by remember { mutableStateOf<List<LibraryIndexCache.CachedEntry>>(emptyList()) }
     var importTargetFolderUri by remember { mutableStateOf<Uri?>(null) }
     val smpConverter = remember(context) { SmpConverter(context) }
+    val smpBatchProcessor = remember(context) { SmpBatchImportProcessor(context, smpConverter) }
     val smpLibraryScanner = remember(context) { SmpLibraryScanner(context) }
     var lastHandledImportedSmpRefresh by remember { mutableIntStateOf(-1) }
+    var pendingDirectImportPlan by remember {
+        mutableStateOf<SmpBatchImportProcessor.BatchPlan?>(null)
+    }
+
+    fun batchProgressFraction(progress: SmpBatchImportProcessor.Progress): Float {
+        val total = progress.totalCount.coerceAtLeast(1)
+        val base = (progress.currentItemIndex - 1).coerceAtLeast(0).toFloat() / total.toFloat()
+        val stageOffset = when (progress.stage) {
+            SmpBatchImportProcessor.ProgressStage.CONVERTING -> 0.2f
+            SmpBatchImportProcessor.ProgressStage.IMPORTING -> 0.7f
+            SmpBatchImportProcessor.ProgressStage.ADDING_TO_PLAYLIST -> 0.9f
+        } / total.toFloat()
+        return (base + stageOffset).coerceIn(0f, 1f)
+    }
+
+    fun batchProgressLabel(progress: SmpBatchImportProcessor.Progress): String {
+        val stageLabel = when (progress.stage) {
+            SmpBatchImportProcessor.ProgressStage.CONVERTING -> sBatchStageConverting
+            SmpBatchImportProcessor.ProgressStage.IMPORTING -> sBatchStageImporting
+            SmpBatchImportProcessor.ProgressStage.ADDING_TO_PLAYLIST -> sBatchStagePlaylist
+        }
+        return "$stageLabel ${progress.currentItemIndex}/${progress.totalCount}\n${progress.displayName}"
+    }
+
+    fun runDirectBatchImport(plan: SmpBatchImportProcessor.BatchPlan) {
+        scope.launch {
+            loadingStartedAt = System.currentTimeMillis()
+            isLoading = true
+            moveLabel = sBatchPreparing
+            moveProgress = 0f
+            try {
+                val result = withContext(Dispatchers.IO) {
+                    smpBatchProcessor.process(
+                        plan = plan,
+                        importSmp = onImportGeneratedSmp,
+                        importFailureReasonProvider = onImportGeneratedSmpFailureReason,
+                        onProgress = { progress ->
+                            mainHandler.post {
+                                moveProgress = batchProgressFraction(progress)
+                                moveLabel = batchProgressLabel(progress)
+                            }
+                        }
+                    )
+                }
+
+                moveProgress = 1f
+                moveLabel = sBatchPreparing
+
+                val summaryMessage = context.getString(
+                    R.string.smp_batch_import_summary,
+                    result.successCount,
+                    result.failureCount
+                )
+                Toast.makeText(context, summaryMessage, Toast.LENGTH_SHORT).show()
+            } finally {
+                pendingDirectImportPlan = null
+                importTargetFolderUri = null
+                val elapsed = System.currentTimeMillis() - loadingStartedAt
+                val minMs = 500L
+                if (elapsed < minMs) delay(minMs - elapsed)
+                isLoading = false
+                moveProgress = null
+                moveLabel = null
+            }
+        }
+    }
 
     fun buildPrompterEntries(): List<LibraryEntry> {
         return TextSongRepository.listAll(context).map { song ->
@@ -373,6 +455,9 @@ fun LibraryScreen(
 
     // dialogs state
     var showAssignDialog by remember { mutableStateOf(false) }
+    var pendingAssignRequest by remember {
+        mutableStateOf<PendingPlaylistAssignRequest?>(null)
+    }
     var pendingBackupImportUri by remember { mutableStateOf<Uri?>(null) }
     var backupImportInProgress by remember { mutableStateOf(false) }
 
@@ -607,6 +692,133 @@ fun LibraryScreen(
         isLoading = false
         moveProgress = null
         moveLabel = null
+    }
+
+    fun runLibraryPlaylistAssignment(request: PendingPlaylistAssignRequest) {
+        scope.launch {
+            val hasBatchWork = request.batchPlan != null
+            if (hasBatchWork) {
+                startLoading(sBatchPreparing, determinate = true)
+                moveProgress = 0f
+            }
+
+            try {
+                PlaylistRepository.createIfNotExists(request.playlistName)
+
+                var successCount = 0
+                var failureCount = 0
+
+                request.directItemUris.forEach { itemUriString ->
+                    runCatching {
+                        PlaylistRepository.assignSongToPlaylist(request.playlistName, itemUriString)
+                    }.onSuccess {
+                        successCount += 1
+                        Log.i(
+                            "PLAYLIST_ASSIGN_LIB",
+                            "step=direct_assign playlist=${request.playlistName} item=$itemUriString"
+                        )
+                    }.onFailure { error ->
+                        failureCount += 1
+                        Log.e(
+                            "PLAYLIST_ASSIGN_LIB",
+                            "step=direct_assign_failed playlist=${request.playlistName} item=$itemUriString",
+                            error
+                        )
+                    }
+                }
+
+                request.batchPlan?.let { plan ->
+                    val result = withContext(Dispatchers.IO) {
+                        smpBatchProcessor.process(
+                            plan = plan,
+                            playlistName = request.playlistName,
+                            importSmp = onImportGeneratedSmp,
+                            importFailureReasonProvider = onImportGeneratedSmpFailureReason,
+                            addImportedSongToPlaylist = { targetPlaylist, importedSong ->
+                                withContext(Dispatchers.Main) {
+                                    runCatching {
+                                        val smpMarker = buildSmpItem(importedSong.id)
+                                        PlaylistRepository.createIfNotExists(targetPlaylist)
+                                        PlaylistRepository.assignSongToPlaylist(targetPlaylist, smpMarker)
+                                        PlaylistRepository.renameSongInPlaylist(
+                                            playlistName = targetPlaylist,
+                                            uri = smpMarker,
+                                            newTitle = importedSong.title
+                                        )
+                                    }
+                                }
+                            },
+                            onProgress = { progress ->
+                                mainHandler.post {
+                                    moveProgress = batchProgressFraction(progress)
+                                    moveLabel = batchProgressLabel(progress)
+                                }
+                            }
+                        )
+                    }
+                    successCount += result.successCount
+                    failureCount += result.failureCount
+                }
+
+                if (successCount == 0 && failureCount > 0 && request.directItemUris.isEmpty()) {
+                    Toast.makeText(context, sBatchUnsupportedOnly, Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(
+                        context,
+                        context.getString(
+                            R.string.smp_batch_playlist_summary,
+                            successCount,
+                            failureCount
+                        ),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            } finally {
+                pendingAssignRequest = null
+                if (hasBatchWork) {
+                    stopLoadingNice()
+                }
+            }
+        }
+    }
+
+    fun prepareLibraryPlaylistAssignment(playlistName: String, selection: Set<Uri>) {
+        scope.launch {
+            val directItemUris = mutableListOf<String>()
+            val batchUris = mutableListOf<Uri>()
+
+            selection.forEach { uri ->
+                val uriString = uri.toString()
+                when {
+                    uriString.startsWith("prompter://") -> directItemUris += uriString
+                    getSmpSongId(uriString) != null -> directItemUris += uriString
+                    else -> batchUris += uri
+                }
+            }
+
+            val batchPlan = if (batchUris.isNotEmpty()) {
+                withContext(Dispatchers.IO) { smpBatchProcessor.buildPlan(batchUris) }
+            } else {
+                null
+            }
+
+            val request = PendingPlaylistAssignRequest(
+                playlistName = playlistName,
+                directItemUris = directItemUris,
+                batchPlan = batchPlan
+            )
+
+            Log.i(
+                "PLAYLIST_ASSIGN_LIB",
+                "step=prepare playlist=$playlistName directCount=${directItemUris.size} batchCount=${batchPlan?.totalCount ?: 0} hasAudioToPrepare=${batchPlan?.hasAudioToPrepare == true}"
+            )
+
+            if (batchPlan?.hasAudioToPrepare == true && SmpPreparationNoticePrefs.shouldShow(context)) {
+                pendingAssignRequest = request
+            } else {
+                runLibraryPlaylistAssignment(request)
+            }
+        }
     }
 
     fun summarizeDeleteRoles(items: List<LibraryDeleteItem>): String {
@@ -861,26 +1073,19 @@ fun LibraryScreen(
         if (pickedUris.isNullOrEmpty()) return@rememberLauncherForActivityResult
 
         scope.launch {
-            startLoading(sImporting, determinate = false)
-            try {
-                val rootUri = backend.getRootUri() ?: return@launch
-                val folderToShow = backend.importAudio(
-                    pickedUris = pickedUris,
-                    destFolderUri = importTargetFolderUri,
-                    currentFolderUri = currentFolderUri
-                ) ?: return@launch
-
-                runGlobalScan(
-                    root = rootUri,
-                    folderToShow = folderToShow
-                )
-
-                currentFolderUri = folderToShow
-                entries = buildEntriesForFolder(folderToShow)
-
-            } finally {
+            val plan = withContext(Dispatchers.IO) {
+                smpBatchProcessor.buildPlan(pickedUris)
+            }
+            if (!plan.hasSupportedItems) {
                 importTargetFolderUri = null
-                stopLoadingNice()
+                Toast.makeText(context, sBatchUnsupportedOnly, Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+
+            if (plan.hasAudioToPrepare && SmpPreparationNoticePrefs.shouldShow(context)) {
+                pendingDirectImportPlan = plan
+            } else {
+                runDirectBatchImport(plan)
             }
         }
     }
@@ -1077,7 +1282,15 @@ fun LibraryScreen(
                     importTargetFolderUri = currentFolderUri?.takeUnless {
                         isPrompterFolderUri(it) || isSmpFolderUri(it)
                     }
-                    importAudioLauncher.launch(arrayOf("audio/*"))
+                    importAudioLauncher.launch(
+                        arrayOf(
+                            "audio/*",
+                            "application/zip",
+                            "application/x-zip-compressed",
+                            "application/octet-stream",
+                            "*/*"
+                        )
+                    )
                 },
 
                 onConvertFolderToSmp = {
@@ -1440,13 +1653,51 @@ fun LibraryScreen(
             }
 
             // ---------- dialogs ----------
+            SmpPreparationNoticeDialog(
+                show = pendingDirectImportPlan != null || pendingAssignRequest != null,
+                onDismiss = {
+                    when {
+                        pendingDirectImportPlan != null -> {
+                            pendingDirectImportPlan = null
+                            importTargetFolderUri = null
+                        }
+
+                        pendingAssignRequest != null -> {
+                            pendingAssignRequest = null
+                        }
+                    }
+                },
+                onContinue = { dontShowAgain ->
+                    if (dontShowAgain) {
+                        SmpPreparationNoticePrefs.setShouldShow(context, false)
+                    }
+                    when {
+                        pendingDirectImportPlan != null -> {
+                            val plan = pendingDirectImportPlan
+                            pendingDirectImportPlan = null
+                            if (plan != null) {
+                                runDirectBatchImport(plan)
+                            }
+                        }
+
+                        pendingAssignRequest != null -> {
+                            val request = pendingAssignRequest
+                            pendingAssignRequest = null
+                            if (request != null) {
+                                runLibraryPlaylistAssignment(request)
+                            }
+                        }
+                    }
+                }
+            )
             AssignDialog(
                 show = showAssignDialog,
-                selectedSongs = selectedSongs,
                 onDismiss = { showAssignDialog = false },
-                onAssignedDone = {
+                onPlaylistSelected = { playlistName ->
                     showAssignDialog = false
+                    val selection = selectedSongs
                     selectedSongs = emptySet()
+                    prepareLibraryPlaylistAssignment(playlistName, selection)
                 }
             )
             if (pendingBackupImportUri != null) {

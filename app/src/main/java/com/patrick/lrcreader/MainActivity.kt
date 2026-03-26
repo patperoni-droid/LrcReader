@@ -73,6 +73,8 @@ import com.patrick.lrcreader.core.config.TrackSettingsStore
 import com.patrick.lrcreader.smp.SmpImporter
 import com.patrick.lrcreader.smp.SmpAutoMigration
 import com.patrick.lrcreader.smp.SmpAutoMigrationResult
+import com.patrick.lrcreader.smp.SmpBatchImportProcessor
+import com.patrick.lrcreader.smp.SmpConverter
 import com.patrick.lrcreader.smp.SmpImportedSongDetail
 import com.patrick.lrcreader.smp.SmpLibraryScanner
 import com.patrick.lrcreader.ui.*
@@ -377,11 +379,46 @@ class MainActivity : AppCompatActivity() {
                 var smpSongsById by remember { mutableStateOf<Map<String, com.patrick.lrcreader.smp.SongUnit>>(emptyMap()) }
                 var selectedSmpImportedSongDetail by remember { mutableStateOf<SmpImportedSongDetail?>(null) }
                 var pendingPlaylistTrackTarget by remember { mutableStateOf<String?>(null) }
+                var pendingPlaylistBatchPlan by remember {
+                    mutableStateOf<SmpBatchImportProcessor.BatchPlan?>(null)
+                }
                 var lastImportedSmpSongId by remember { mutableStateOf<String?>(null) }
                 val smpImporter = remember(ctx) { SmpImporter(ctx) }
                 val smpAutoMigration = remember(ctx) { SmpAutoMigration(ctx) }
+                val smpBatchProcessor = remember(ctx) {
+                    SmpBatchImportProcessor(ctx, SmpConverter(ctx))
+                }
                 val smpLibraryScanner = remember(ctx) { SmpLibraryScanner(ctx) }
                 var smpCacheRefreshTick by remember { mutableIntStateOf(0) }
+                var playlistBatchProgressVisible by remember { mutableStateOf(false) }
+                var playlistBatchProgressValue by remember { mutableStateOf<Float?>(null) }
+                var playlistBatchProgressLabel by remember { mutableStateOf("") }
+                val sBatchUnsupportedOnly = stringResource(R.string.smp_batch_unsupported_only)
+                val sBatchPlaylistSummary = stringResource(R.string.smp_batch_playlist_summary)
+                val sBatchProgressTitle = stringResource(R.string.smp_batch_progress_title)
+                val sBatchStageConverting = stringResource(R.string.smp_batch_stage_converting)
+                val sBatchStageImporting = stringResource(R.string.smp_batch_stage_importing)
+                val sBatchStagePlaylist = stringResource(R.string.smp_batch_stage_playlist)
+
+                fun playlistBatchProgressFraction(progress: SmpBatchImportProcessor.Progress): Float {
+                    val total = progress.totalCount.coerceAtLeast(1)
+                    val base = (progress.currentItemIndex - 1).coerceAtLeast(0).toFloat() / total.toFloat()
+                    val stageOffset = when (progress.stage) {
+                        SmpBatchImportProcessor.ProgressStage.CONVERTING -> 0.2f
+                        SmpBatchImportProcessor.ProgressStage.IMPORTING -> 0.7f
+                        SmpBatchImportProcessor.ProgressStage.ADDING_TO_PLAYLIST -> 0.95f
+                    } / total.toFloat()
+                    return (base + stageOffset).coerceIn(0f, 1f)
+                }
+
+                fun formatPlaylistBatchProgressLabel(progress: SmpBatchImportProcessor.Progress): String {
+                    val stageLabel = when (progress.stage) {
+                        SmpBatchImportProcessor.ProgressStage.CONVERTING -> sBatchStageConverting
+                        SmpBatchImportProcessor.ProgressStage.IMPORTING -> sBatchStageImporting
+                        SmpBatchImportProcessor.ProgressStage.ADDING_TO_PLAYLIST -> sBatchStagePlaylist
+                    }
+                    return "$stageLabel ${progress.currentItemIndex}/${progress.totalCount}\n${progress.displayName}"
+                }
 
                 fun displayNameOf(uri: Uri): String {
                     val cr = ctx.contentResolver
@@ -443,6 +480,63 @@ class MainActivity : AppCompatActivity() {
                     return importedSong
                 }
 
+                fun runPlaylistBatchImport(
+                    playlistName: String,
+                    plan: SmpBatchImportProcessor.BatchPlan
+                ) {
+                    scope.launch {
+                        playlistBatchProgressVisible = true
+                        playlistBatchProgressValue = 0f
+                        playlistBatchProgressLabel = sBatchProgressTitle
+                        try {
+                            val result = withContext(Dispatchers.IO) {
+                                smpBatchProcessor.process(
+                                    plan = plan,
+                                    playlistName = playlistName,
+                                    importSmp = { uri -> importSmpIntoApp(uri) },
+                                    importFailureReasonProvider = { smpImporter.lastFailureReason },
+                                    addImportedSongToPlaylist = { targetPlaylist, importedSong ->
+                                        withContext(Dispatchers.Main) {
+                                            runCatching {
+                                                val smpMarker = buildSmpItem(importedSong.id)
+                                                PlaylistRepository.createIfNotExists(targetPlaylist)
+                                                PlaylistRepository.assignSongToPlaylist(targetPlaylist, smpMarker)
+                                                PlaylistRepository.renameSongInPlaylist(
+                                                    playlistName = targetPlaylist,
+                                                    uri = smpMarker,
+                                                    newTitle = importedSong.title
+                                                )
+                                            }
+                                        }
+                                    },
+                                    onProgress = { progress ->
+                                        runOnUiThread {
+                                            playlistBatchProgressValue = playlistBatchProgressFraction(progress)
+                                            playlistBatchProgressLabel = formatPlaylistBatchProgressLabel(progress)
+                                        }
+                                    }
+                                )
+                            }
+
+                            playlistBatchProgressValue = 1f
+                            playlistBatchProgressLabel = sBatchProgressTitle
+
+                            val message = ctx.getString(
+                                R.string.smp_batch_playlist_summary,
+                                result.successCount,
+                                result.failureCount
+                            )
+                            Toast.makeText(ctx, message, Toast.LENGTH_SHORT).show()
+                        } finally {
+                            pendingPlaylistTrackTarget = null
+                            pendingPlaylistBatchPlan = null
+                            playlistBatchProgressVisible = false
+                            playlistBatchProgressValue = null
+                            playlistBatchProgressLabel = ""
+                        }
+                    }
+                }
+
                 fun resolveBackingTracksAudioDir(rootFile: File): File {
                     val backingTracksDir = File(rootFile, "BackingTracks").apply { mkdirs() }
                     return File(backingTracksDir, "Audio").apply { mkdirs() }
@@ -500,105 +594,37 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
                 val pickPlaylistTrackLauncher = rememberLauncherForActivityResult(
-                    contract = ActivityResultContracts.OpenDocument()
-                ) { uri ->
+                    contract = ActivityResultContracts.OpenMultipleDocuments()
+                ) { uris ->
                     val targetPlaylist = pendingPlaylistTrackTarget?.trim()
-                    pendingPlaylistTrackTarget = null
 
-                    if (uri == null) {
+                    if (uris.isNullOrEmpty()) {
                         Log.d("PLAYLIST_ADD", "Sélection annulée")
+                        pendingPlaylistTrackTarget = null
                         return@rememberLauncherForActivityResult
                     }
                     if (targetPlaylist.isNullOrEmpty()) {
-                        Log.w("PLAYLIST_ADD", "Aucune playlist cible pour le fichier sélectionné: uri=$uri")
+                        Log.w("PLAYLIST_ADD", "Aucune playlist cible pour les fichiers sélectionnés")
+                        pendingPlaylistTrackTarget = null
                         return@rememberLauncherForActivityResult
                     }
 
-                    val pickedName = displayNameOf(uri)
-                    val pickedType = ctx.contentResolver.getType(uri)
-                    val nameCandidates = displayNameCandidatesOf(uri)
-                    val isSmpFile = isLikelySmpSelection(pickedType, nameCandidates)
-                    val looksAudioFile = pickedType?.startsWith("audio/") == true || hasAnyExtension(
-                        nameCandidates,
-                        listOf(
-                        ".mp3",
-                        ".wav",
-                        ".flac",
-                        ".m4a",
-                        ".aac",
-                        ".ogg"
-                        )
-                    )
-
-                    if (!isSmpFile && !looksAudioFile) {
-                        Log.w(
-                            "PLAYLIST_ADD",
-                            "Fichier refusé: name=$pickedName type=$pickedType candidates=$nameCandidates uri=$uri"
-                        )
-                        Toast.makeText(ctx, "Fichier non pris en charge", Toast.LENGTH_SHORT).show()
-                        return@rememberLauncherForActivityResult
-                    }
-
-                    if (isSmpFile) {
-                        scope.launch(Dispatchers.IO) {
-                            val importedSong = smpImporter.importSmp(uri)
-                            withContext(Dispatchers.Main) {
-                                if (importedSong != null) {
-                                    val smpMarker = buildSmpItem(importedSong.id)
-                                    PlaylistRepository.createIfNotExists(targetPlaylist)
-                                    PlaylistRepository.assignSongToPlaylist(targetPlaylist, smpMarker)
-                                    PlaylistRepository.renameSongInPlaylist(
-                                        playlistName = targetPlaylist,
-                                        uri = smpMarker,
-                                        newTitle = importedSong.title
-                                    )
-                                    smpSongsById = smpSongsById + (importedSong.id to importedSong)
-                                    smpCacheRefreshTick++
-                                    Log.i(
-                                        "PLAYLIST_ADD",
-                                        "SMP ajouté à la playlist: playlist=$targetPlaylist songId=${importedSong.id} title=${importedSong.title}"
-                                    )
-                                    Toast.makeText(ctx, "SMP ajouté à la playlist", Toast.LENGTH_SHORT).show()
-                                } else {
-                                    Log.e(
-                                        "PLAYLIST_ADD",
-                                        "Import SMP échoué pour ajout playlist: name=$pickedName reason=${smpImporter.lastFailureReason ?: "inconnue"}"
-                                    )
-                                    Toast.makeText(ctx, "Import SMP échoué", Toast.LENGTH_SHORT).show()
-                                }
-                            }
+                    scope.launch {
+                        val plan = withContext(Dispatchers.IO) {
+                            smpBatchProcessor.buildPlan(uris)
                         }
-                        return@rememberLauncherForActivityResult
-                    }
+                        if (!plan.hasSupportedItems) {
+                            pendingPlaylistTrackTarget = null
+                            Toast.makeText(ctx, sBatchUnsupportedOnly, Toast.LENGTH_SHORT).show()
+                            return@launch
+                        }
 
-                    runCatching {
-                        ctx.contentResolver.takePersistableUriPermission(
-                            uri,
-                            Intent.FLAG_GRANT_READ_URI_PERMISSION
-                        )
-                    }.onFailure { error ->
-                        Log.w("PLAYLIST_ADD", "Permission persistante non obtenue pour $uri", error)
+                        if (plan.hasAudioToPrepare && SmpPreparationNoticePrefs.shouldShow(ctx)) {
+                            pendingPlaylistBatchPlan = plan
+                        } else {
+                            runPlaylistBatchImport(targetPlaylist, plan)
+                        }
                     }
-
-                    val trackUriString = uri.toString()
-                    val title = pickedName.substringBeforeLast('.', pickedName).trim().ifBlank { pickedName }
-                    PlaylistRepository.createIfNotExists(targetPlaylist)
-                    PlaylistRepository.assignSongToPlaylist(targetPlaylist, trackUriString)
-                    PlaylistRepository.renameSongInPlaylist(
-                        playlistName = targetPlaylist,
-                        uri = trackUriString,
-                        newTitle = title
-                    )
-                    runCatching {
-                        TitleAliasesStore.setTitleForTrack(ctx, trackUriString, title)
-                    }.onFailure { error ->
-                        Log.w("PLAYLIST_ADD", "Alias audio non enregistré: uri=$trackUriString", error)
-                    }
-                    Log.i(
-                        "PLAYLIST_ADD",
-                        "Audio ajouté à la playlist: playlist=$targetPlaylist name=$pickedName uri=$trackUriString"
-                    )
-                    Toast.makeText(ctx, "Morceau ajouté à la playlist", Toast.LENGTH_SHORT).show()
                 }
                 val pickAudioFilesLauncher = rememberLauncherForActivityResult(
                     contract = ActivityResultContracts.OpenMultipleDocuments()
@@ -1756,6 +1782,30 @@ class MainActivity : AppCompatActivity() {
                             tabStateHolder.SaveableStateProvider(
                                 key = "tab_${tabKeyOf(selectedTab)}"
                             ) {
+                                SmpPreparationNoticeDialog(
+                                    show = pendingPlaylistBatchPlan != null,
+                                    onDismiss = {
+                                        pendingPlaylistBatchPlan = null
+                                        pendingPlaylistTrackTarget = null
+                                    },
+                                    onContinue = { dontShowAgain ->
+                                        if (dontShowAgain) {
+                                            SmpPreparationNoticePrefs.setShouldShow(ctx, false)
+                                        }
+                                        val playlistName = pendingPlaylistTrackTarget?.trim()
+                                        val plan = pendingPlaylistBatchPlan
+                                        pendingPlaylistBatchPlan = null
+                                        if (!playlistName.isNullOrEmpty() && plan != null) {
+                                            runPlaylistBatchImport(playlistName, plan)
+                                        }
+                                    }
+                                )
+                                SmpBatchProgressDialog(
+                                    show = playlistBatchProgressVisible,
+                                    title = sBatchProgressTitle,
+                                    label = playlistBatchProgressLabel,
+                                    progress = playlistBatchProgressValue
+                                )
                                 when (selectedTab) {
 
                                     is BottomTab.Home -> Box(
@@ -2107,6 +2157,7 @@ class MainActivity : AppCompatActivity() {
                                             arrayOf(
                                                 "audio/*",
                                                 "application/zip",
+                                                "application/x-zip-compressed",
                                                 "application/octet-stream",
                                                 "*/*"
                                             )
@@ -2147,6 +2198,9 @@ class MainActivity : AppCompatActivity() {
                                                 )
                                             }
                                             importedSong
+                                        },
+                                        onImportGeneratedSmpFailureReason = {
+                                            smpImporter.lastFailureReason
                                         },
                                         onPlayFromLibrary = { uriString ->
                                             Log.d(

@@ -136,7 +136,7 @@
     <string name="library_header_cd_actions">Actions</string>
     <string name="library_header_choose_folder">Choose a folder</string>
     <string name="library_header_rescan">Rescan library</string>
-    <string name="library_header_import_music">Import music</string>
+    <string name="library_header_import_music">Add tracks</string>
     <string name="library_header_forget_folder">Forget folder</string>
 
     <string name="library_assign_to_playlist_title">Add to a playlist</string>
@@ -179,6 +179,24 @@
     <string name="search_start_typing">Start typing…</string>
 
     <string name="library_lrc_editing_title">Editing: %1$s</string>
+    <string name="library_converting_smp">Migrating to SMP…</string>
+    <string name="library_convert_smp_success_single">Track migrated to SMP</string>
+    <string name="library_convert_smp_failed_single">SMP migration failed</string>
+    <string name="library_convert_smp_no_mp3">No compatible audio file to convert in this folder.</string>
+    <string name="library_convert_smp_folder_summary">%1$d track(s) migrated to SMP, %2$d failure(s)</string>
+    <string name="smp_batch_notice_title">Live preparation required</string>
+    <string name="smp_batch_notice_line_1">SPL needs to prepare these tracks for live use.</string>
+    <string name="smp_batch_notice_line_2">This step is only required the first time.</string>
+    <string name="smp_batch_notice_line_3">It may take a few moments.</string>
+    <string name="smp_batch_notice_hide_next_time">Do not show again</string>
+    <string name="smp_batch_notice_continue">Continue</string>
+    <string name="smp_batch_progress_title">Preparing tracks…</string>
+    <string name="smp_batch_stage_converting">Converting to SMP</string>
+    <string name="smp_batch_stage_importing">Importing track</string>
+    <string name="smp_batch_stage_playlist">Adding to playlist</string>
+    <string name="smp_batch_import_summary">%1$d track(s) ready, %2$d failure(s)</string>
+    <string name="smp_batch_playlist_summary">%1$d track(s) added, %2$d failure(s)</string>
+    <string name="smp_batch_unsupported_only">No supported file found in this selection.</string>
 
     <string name="common_save">Save</string>
 
@@ -405,7 +423,7 @@
     <string name="quickplaylists_menu_insert_group_above">Insert group above</string>
     <string name="quickplaylists_menu_remove_from_group">Remove from group</string>
     <string name="quickplaylists_group_new_default">New group</string>
-    <string name="quickplaylists_add_track_button">Add track / import SMP</string>
+    <string name="quickplaylists_add_track_button">Add tracks</string>
     <string name="quickplaylists_edit_prompter_title">Edit prompter ✅ TEST 2026</string>
     <string name="quickplaylists_new_prompter_title">New title (prompter 2026 )</string>
     <string name="quickplaylists_prompter_text_label">Prompter text</string>

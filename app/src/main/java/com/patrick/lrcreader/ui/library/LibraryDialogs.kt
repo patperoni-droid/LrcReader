@@ -29,9 +29,8 @@ import com.patrick.lrcreader.ui.LibraryEntry
 @Composable
 fun AssignDialog(
     show: Boolean,
-    selectedSongs: Set<Uri>,
     onDismiss: () -> Unit,
-    onAssignedDone: () -> Unit
+    onPlaylistSelected: (String) -> Unit
 ) {
     if (!show) return
 
@@ -51,12 +50,7 @@ fun AssignDialog(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(vertical = 6.dp)
-                                .clickable {
-                                    selectedSongs.forEach { u ->
-                                        PlaylistRepository.assignSongToPlaylist(plName, u.toString())
-                                    }
-                                    onAssignedDone()
-                                }
+                                .clickable { onPlaylistSelected(plName) }
                         )
                     }
                 }
