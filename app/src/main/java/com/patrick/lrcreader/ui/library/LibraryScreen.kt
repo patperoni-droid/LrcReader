@@ -39,7 +39,6 @@ import com.patrick.lrcreader.core.BackupFolderPrefsSaf
 import com.patrick.lrcreader.core.BackupManager
 import com.patrick.lrcreader.core.DjFolderPrefs
 import com.patrick.lrcreader.core.ImportAudioManager
-import com.patrick.lrcreader.core.LegacyLibraryVisibilityPrefs
 import com.patrick.lrcreader.core.LibraryIndexCache
 import com.patrick.lrcreader.core.PlaylistRepository
 import com.patrick.lrcreader.core.SmpPreparationNoticePrefs
@@ -102,15 +101,24 @@ private fun shouldHideLegacyFolderName(name: String): Boolean {
     return name.trim().lowercase() in HIDDEN_LEGACY_FOLDER_NAMES
 }
 
-private fun isLegacyBackingTracksFolderName(name: String): Boolean {
-    val normalized = name.trim()
-    return normalized.equals("BackingTracks", ignoreCase = true) ||
-        normalized.equals("BackingTrack", ignoreCase = true)
-}
-
 private fun isBackupFolderName(name: String): Boolean {
     val normalized = name.trim().lowercase()
     return normalized == "backup" || normalized == "backups"
+}
+
+private fun isConfigFolderName(name: String): Boolean {
+    return name.trim().equals("Config", ignoreCase = true)
+}
+
+private fun isDjFolderName(name: String): Boolean {
+    return name.trim().equals("DJ", ignoreCase = true)
+}
+
+private fun shouldHideFromMainLibrary(name: String): Boolean {
+    return shouldHideLegacyFolderName(name) ||
+        isBackupFolderName(name) ||
+        isConfigFolderName(name) ||
+        isDjFolderName(name)
 }
 
 private fun resolveFolderName(context: android.content.Context, uri: Uri): String? {
@@ -184,7 +192,6 @@ fun LibraryScreen(
     val sPrompterFolder = stringResource(R.string.main_menu_prompter)
     val sSmpFolder = stringResource(R.string.library_smp_folder)
     val sSmpEmptyState = stringResource(R.string.library_smp_empty_state)
-    val sLegacyBackingTracksFolder = stringResource(R.string.library_legacy_backing_tracks_folder)
     val sConvertSmpSingleSuccess = stringResource(R.string.library_convert_smp_success_single)
     val sConvertSmpSingleFailed = stringResource(R.string.library_convert_smp_failed_single)
     val sConvertSmpNoMp3 = stringResource(R.string.library_convert_smp_no_mp3)
@@ -201,8 +208,6 @@ fun LibraryScreen(
     var lrcEditorText by remember { mutableStateOf("") }
 
     val storageMode = StorageModePrefs.get(context)
-    val legacyVisibilityVersion = LegacyLibraryVisibilityPrefs.version.intValue
-    val showOldWorldInLibrary = LegacyLibraryVisibilityPrefs.isOldWorldVisible(context)
 
     val backend: LibraryBackend = remember(storageMode) {
         when (storageMode) {
@@ -332,43 +337,31 @@ fun LibraryScreen(
             return buildSmpEntries()
         }
 
-        val visibleSource = if (showOldWorldInLibrary) {
-            source
-        } else {
-            source.filterNot { entry ->
-                entry.isDirectory &&
-                    !isPrompterFolderUri(entry.uri) &&
-                    !isSmpFolderUri(entry.uri) &&
-                    shouldHideLegacyFolderName(entry.name)
-            }
+        val visibleSource = source.filterNot { entry ->
+            entry.isDirectory &&
+                !isPrompterFolderUri(entry.uri) &&
+                !isSmpFolderUri(entry.uri) &&
+                shouldHideFromMainLibrary(entry.name)
         }
 
         val root = backend.getRootUri()
         val isRootFolder = root != null && folderUri.toString() == root.toString()
         if (!isRootFolder) return visibleSource
 
-        val displaySource = visibleSource.map { entry ->
-            if (entry.isDirectory && isLegacyBackingTracksFolderName(entry.name)) {
-                entry.copy(name = sLegacyBackingTracksFolder)
-            } else {
-                entry
-            }
-        }
-
         val extraEntries = mutableListOf<LibraryEntry>()
-        val alreadyHasPrompter = displaySource.any { it.isDirectory && isPrompterFolderUri(it.uri) }
+        val alreadyHasPrompter = visibleSource.any { it.isDirectory && isPrompterFolderUri(it.uri) }
         if (!alreadyHasPrompter) {
             extraEntries += LibraryEntry(PROMPTER_FOLDER_URI, sPrompterFolder, isDirectory = true)
         }
 
-        val alreadyHasSmp = displaySource.any { it.isDirectory && isSmpFolderUri(it.uri) }
+        val alreadyHasSmp = visibleSource.any { it.isDirectory && isSmpFolderUri(it.uri) }
         if (!alreadyHasSmp) {
             extraEntries += LibraryEntry(SMP_FOLDER_URI, sSmpFolder, isDirectory = true)
         }
 
-        if (extraEntries.isEmpty()) return displaySource
+        if (extraEntries.isEmpty()) return visibleSource
 
-        return (displaySource + extraEntries)
+        return (visibleSource + extraEntries)
             .sortedWith(
                 compareByDescending<LibraryEntry> { it.isDirectory }
                     .thenBy { it.name.lowercase() }
@@ -429,16 +422,15 @@ fun LibraryScreen(
         entries = buildEntriesForFolder(currentFolder, useCache = false)
     }
 
-    LaunchedEffect(legacyVisibilityVersion, currentFolderUri, storageMode) {
+    LaunchedEffect(currentFolderUri, storageMode) {
         LibraryFolderCache.clear()
         val root = backend.getRootUri() ?: return@LaunchedEffect
         val currentFolder = currentFolderUri ?: root
 
-        val shouldRedirectToRoot = !showOldWorldInLibrary &&
-            !isPrompterFolderUri(currentFolder) &&
+        val shouldRedirectToRoot = !isPrompterFolderUri(currentFolder) &&
             !isSmpFolderUri(currentFolder) &&
             resolveFolderName(context, currentFolder)
-                ?.let(::shouldHideLegacyFolderName) == true
+                ?.let(::shouldHideFromMainLibrary) == true
 
         val folderToShow = if (shouldRedirectToRoot) root else currentFolder
         if (currentFolderUri?.toString() != folderToShow.toString()) {
