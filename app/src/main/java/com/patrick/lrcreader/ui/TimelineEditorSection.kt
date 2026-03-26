@@ -73,6 +73,7 @@ fun TimelineEditorSection(
     var renameText by remember(markers) { mutableStateOf("") }
     var renameDurationSeconds by remember(markers) { mutableStateOf("") }
     var paletteDraft by remember { mutableStateOf("") }
+    var showPaletteInput by remember { mutableStateOf(false) }
     val paletteNavigationIndexByLabel = remember(markers) { mutableStateMapOf<String, Int>() }
     val paletteNavigationIndexByKind = remember(markers) { mutableStateMapOf<TimelineMarkerKind, Int>() }
     var focusRequestTimeMs by remember { mutableLongStateOf(-1L) }
@@ -187,42 +188,55 @@ fun TimelineEditorSection(
             )
         }
 
-        Text(
-            text = stringResource(R.string.timeline_palette_title),
-            color = Color(0xFFB0BEC5),
-            fontSize = 12.sp
-        )
-        Spacer(Modifier.height(8.dp))
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            OutlinedTextField(
-                value = paletteDraft,
-                onValueChange = { paletteDraft = it },
-                label = { Text(stringResource(R.string.timeline_palette_input_label)) },
-                singleLine = true,
-                modifier = Modifier.weight(1f)
-            )
-            Spacer(Modifier.width(8.dp))
-            TextButton(
-                onClick = {
-                    val trimmed = paletteDraft.trim()
-                    if (trimmed.isNotEmpty()) {
-                        onAddPaletteTag(trimmed)
-                        paletteDraft = ""
+        if (showPaletteInput) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedTextField(
+                    value = paletteDraft,
+                    onValueChange = { paletteDraft = it },
+                    label = { Text(stringResource(R.string.timeline_palette_input_label)) },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(Modifier.width(8.dp))
+                TextButton(
+                    onClick = {
+                        val trimmed = paletteDraft.trim()
+                        if (trimmed.isNotEmpty()) {
+                            onAddPaletteTag(trimmed)
+                            paletteDraft = ""
+                            showPaletteInput = false
+                        }
                     }
+                ) {
+                    Text(
+                        text = stringResource(R.string.timeline_palette_add_action),
+                        color = Color(0xFF80CBC4)
+                    )
                 }
+                TextButton(
+                    onClick = {
+                        paletteDraft = ""
+                        showPaletteInput = false
+                    }
+                ) {
+                    Text(stringResource(R.string.common_cancel), color = Color(0xFFB0BEC5))
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+        } else {
+            TextButton(
+                onClick = { showPaletteInput = true }
             ) {
                 Text(
-                    text = stringResource(R.string.timeline_palette_add_action),
+                    text = "Ajouter un repère",
                     color = Color(0xFF80CBC4)
                 )
             }
+            Spacer(Modifier.height(6.dp))
         }
-
-        Spacer(Modifier.height(10.dp))
 
         if (palette.isEmpty()) {
             Text(
@@ -245,13 +259,6 @@ fun TimelineEditorSection(
             }
         }
 
-        Spacer(Modifier.height(12.dp))
-
-        Text(
-            text = stringResource(R.string.timeline_event_palette_title),
-            color = Color(0xFFB0BEC5),
-            fontSize = 12.sp
-        )
         Spacer(Modifier.height(8.dp))
 
         FlowRow(
@@ -307,17 +314,12 @@ fun TimelineEditorSection(
             )
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(10.dp))
 
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = stringResource(R.string.timeline_markers_title),
-                color = Color(0xFFB0BEC5),
-                fontSize = 12.sp
-            )
             Spacer(Modifier.weight(1f))
             Text(
                 text = formatTimelineMarkerTime(safePositionMs),
