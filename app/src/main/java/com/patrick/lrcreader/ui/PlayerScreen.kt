@@ -448,7 +448,14 @@ fun PlayerScreen(
     var editingTargetMode by remember { mutableStateOf(LyricsViewMode.LYRICS) }
     var editingResolvedLrcFileName by remember { mutableStateOf<String?>(null) }
     var showMixScreen by remember { mutableStateOf(false) }
-    LaunchedEffect(closeMixSignal) { showMixScreen = false }
+    LaunchedEffect(closeMixSignal) {
+        showMixScreen = false
+        isEditingTimeline = false
+        editingTimelineMidiMarkerIndex = null
+        editingTimelineLightCueTimeMs = null
+        showLightGenerationDialog = false
+        timelineLightPreviewPositionMs = null
+    }
 
     var rawLyricsText by remember(currentTrackUri) { mutableStateOf("") }
     var editingLines by remember(currentTrackUri) { mutableStateOf<List<LrcLine>>(emptyList()) }
