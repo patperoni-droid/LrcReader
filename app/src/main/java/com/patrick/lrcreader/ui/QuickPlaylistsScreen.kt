@@ -97,6 +97,7 @@ import com.patrick.lrcreader.core.search.SearchEngine
 import com.patrick.lrcreader.exo.BuildConfig
 import com.patrick.lrcreader.smp.SmpLibraryScanner
 import kotlinx.coroutines.yield
+import java.io.File
 import java.net.URLDecoder
 
 /**
@@ -166,15 +167,26 @@ fun QuickPlaylistsScreen(
             songs.mapNotNull { getSmpSongId(it) }.toSet()
         }
     }
-    val smpTitleById = remember(refreshKey, libraryLoadedSignal, repoVersion, smpSongIdsInPlaylist) {
+    val smpSongsById = remember(refreshKey, libraryLoadedSignal, repoVersion, smpSongIdsInPlaylist) {
         if (smpSongIdsInPlaylist.isEmpty()) {
             emptyMap()
         } else {
             smpLibraryScanner.listSongs()
                 .asSequence()
                 .filter { it.id in smpSongIdsInPlaylist }
-                .associate { it.id to it.title.ifBlank { it.id } }
+                .associateBy { it.id }
         }
+    }
+    val smpTitleById = remember(smpSongsById) {
+        smpSongsById.mapValues { (_, song) -> song.title.ifBlank { song.id } }
+    }
+    val smpPlaybackUriById = remember(smpSongsById) {
+        smpSongsById.values
+            .mapNotNull { song ->
+                val audioPath = song.audioPath?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                song.id to Uri.fromFile(File(audioPath)).toString()
+            }
+            .toMap()
     }
     // ✅ Snapshot "ordre d'origine" (pour le bouton Réinitialiser)
     // - On le fixe au premier chargement d'une playlist
@@ -1174,7 +1186,12 @@ fun QuickPlaylistsScreen(
                                 loadSongColor(context, pl, uriString)
                             }
 
-                            val isCurrentPlaying = currentPlayingUri == uriString
+                            val isCurrentPlaying =
+                                currentPlayingUri == uriString ||
+                                    (
+                                        smpSongId != null &&
+                                            smpPlaybackUriById[smpSongId] == currentPlayingUri
+                                        )
                             val isDraggingThis = draggingUri == uriString
                             val isChainedNext = nextChainedUri != null && uriString == nextChainedUri
                             val isForcedNext = nextTrackUri != null && uriString == nextTrackUri

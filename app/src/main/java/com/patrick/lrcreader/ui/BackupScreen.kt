@@ -146,6 +146,7 @@ fun BackupScreen(
     val sImportSuccess = stringResource(R.string.backup_import_success)
     val sImportEmptyUnreadable = stringResource(R.string.backup_import_empty_unreadable)
     val sSaveToastFailed = stringResource(R.string.backup_save_toast_failed)
+    val sSessionSaveSuccess = stringResource(R.string.backup_session_save_success)
     val sInternalExportToastSuccess = stringResource(R.string.backup_internal_export_toast_success)
     val sInternalExportToastFailed = stringResource(R.string.backup_internal_export_toast_failed)
     val sBundleExportFailed = stringResource(R.string.backup_bundle_export_failed)
@@ -173,17 +174,13 @@ fun BackupScreen(
     var showInternalImportDialog by remember { mutableStateOf(false) }
     var pendingSafBundlePayload by remember { mutableStateOf<BackupBundlePayload?>(null) }
     var pendingSafBundleName by remember { mutableStateOf<String?>(null) }
+    var pendingSessionBackupJson by remember { mutableStateOf<String?>(null) }
 
     fun refreshInternalBackups() {
         if (!isInternalMode) return
         val dir = SplFolders.backupsDirFile(context)
         val list = dir.listFiles()
-            ?.filter {
-                it.isFile && (
-                    it.name.endsWith(".json", ignoreCase = true) ||
-                        BackupBundleImporter.isBundleFileName(it.name)
-                    )
-            }
+            ?.filter { it.isFile && it.name.endsWith(".json", ignoreCase = true) }
             ?.sortedByDescending { it.lastModified() }
             .orEmpty()
         internalBackupFiles = list
@@ -273,6 +270,14 @@ fun BackupScreen(
             }
             null
         }
+    }
+
+    suspend fun buildSessionBackupJson(): String = withContext(Dispatchers.IO) {
+        BackupManager.exportState(
+            context = context,
+            lastPlayer = null,
+            libraryFolders = emptyList()
+        )
     }
 
     fun formatBundleRestoreFailure(
@@ -514,6 +519,47 @@ fun BackupScreen(
         }
     }
 
+    val sessionSaveLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri: Uri? ->
+        if (uri == null) {
+            pendingSessionBackupJson = null
+            return@rememberLauncherForActivityResult
+        }
+
+        val sessionJson = pendingSessionBackupJson
+        pendingSessionBackupJson = null
+
+        if (sessionJson == null) {
+            Log.w(importTag, "EXPORT_SESSION step=missing_pending_json uri=$uri")
+            Toast.makeText(context, sSaveToastFailed, LENGTH_SHORT).show()
+            return@rememberLauncherForActivityResult
+        }
+
+        scope.launch {
+            val saveSucceeded = withContext(Dispatchers.IO) {
+                runCatching {
+                    val output = context.contentResolver.openOutputStream(uri)
+                    output ?: return@runCatching false
+                    output.use { stream ->
+                        stream.write(sessionJson.toByteArray(Charsets.UTF_8))
+                        stream.flush()
+                    }
+                    true
+                }.getOrElse { error ->
+                    Log.e(importTag, "EXPORT_SESSION step=write_failed uri=$uri", error)
+                    false
+                }
+            }
+
+            if (saveSucceeded) {
+                Toast.makeText(context, sSessionSaveSuccess, Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(context, sSaveToastFailed, LENGTH_SHORT).show()
+            }
+        }
+    }
+
     DarkBlueGradientBackground {
         Column(
             Modifier
@@ -541,140 +587,29 @@ fun BackupScreen(
 
             Spacer(Modifier.height(10.dp))
 
-            // ─────────────────────────────────────────────────────────────
-            //  CARTE : EXPORT
-            // ─────────────────────────────────────────────────────────────
-            SectionCard(
-                title = stringResource(R.string.backup_section_export_title),
-                subtitle = stringResource(R.string.backup_section_export_subtitle),
-                accent = accent,
-                card = card,
-                border = cardBorder
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(card, shape = RoundedCornerShape(18.dp))
+                    .border(1.dp, cardBorder, RoundedCornerShape(18.dp))
+                    .padding(14.dp)
             ) {
-                OutlinedTextField(
-                    value = backupFileName,
-                    onValueChange = { backupFileName = it },
-                    label = { Text(stringResource(R.string.backup_file_name_label), fontSize = 12.sp) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                Spacer(Modifier.height(10.dp))
-
-                // ✅ INTERNAL export direct vers /SPL_Music/Backups
-                if (isInternalMode) {
-                    FilledTonalButton(
-                        onClick = {
-                            val trimmed = backupFileName.trim().ifEmpty { "lrc_backup" }
-                            val finalName = ensureBundleFileName(trimmed)
-
-                            val dir = SplFolders.backupsDirFile(context)
-                            val target = File(dir, finalName)
-
-                            scope.launch {
-                                val payload = buildManualBundlePayloadOrNull() ?: return@launch
-                                val exportSucceeded = withContext(Dispatchers.IO) {
-                                    BackupBundleIo.writeToFile(target, payload)
-                                }
-
-                                if (exportSucceeded) {
-                                    Toast.makeText(
-                                        context,
-                                        "$sInternalExportToastSuccess $sBackupsTip",
-                                        Toast.LENGTH_LONG
-                                    ).show()
-                                    refreshInternalBackups()
-                                } else {
-                                    Toast.makeText(context, sInternalExportToastFailed, LENGTH_SHORT).show()
-                                }
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.filledTonalButtonColors(
-                            containerColor = Color(0xFF2A3A2A),
-                            contentColor = Color.White
-                        ),
-                        shape = RoundedCornerShape(999.dp)
-                    ) {
-                        Text(stringResource(R.string.backup_export_to_internal), fontSize = 12.sp)
-                    }
-
-                    Spacer(Modifier.height(8.dp))
-                }
-
-                Row(
+                FilledTonalButton(
+                    onClick = {
+                        scope.launch {
+                            val sessionJson = buildSessionBackupJson()
+                            pendingSessionBackupJson = sessionJson
+                            sessionSaveLauncher.launch("session_backup.json")
+                        }
+                    },
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    colors = ButtonDefaults.filledTonalButtonColors(
+                        containerColor = Color(0xFF24405A),
+                        contentColor = Color.White
+                    ),
+                    shape = RoundedCornerShape(999.dp)
                 ) {
-                    FilledTonalButton(
-                        onClick = {
-                            val trimmed = backupFileName.trim().ifEmpty { "lrc_backup" }
-                            val finalName = ensureBundleFileName(trimmed)
-
-                            scope.launch {
-                                val payload = buildManualBundlePayloadOrNull() ?: return@launch
-                                pendingSafBundlePayload = payload
-                                pendingSafBundleName = finalName
-                                saveLauncher.launch(finalName)
-                            }
-                        },
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.filledTonalButtonColors(
-                            containerColor = Color(0xFF3E3A2C),
-                            contentColor = Color.White
-                        ),
-                        shape = RoundedCornerShape(999.dp)
-                    ) {
-                        Icon(Icons.Default.Description, contentDescription = null, tint = Color.White)
-                        Spacer(Modifier.width(8.dp))
-                        Text(stringResource(R.string.common_save), fontSize = 12.sp)
-                    }
-
-                    FilledTonalButton(
-                        onClick = {
-                            val trimmed = backupFileName.trim().ifEmpty { "lrc_backup" }
-                            val finalName = ensureBundleFileName(trimmed)
-
-                            scope.launch {
-                                val payload = buildManualBundlePayloadOrNull() ?: return@launch
-                                val shareUri = withContext(Dispatchers.IO) {
-                                    val cacheFile = File(context.cacheDir, finalName)
-                                    if (!BackupBundleIo.writeToFile(cacheFile, payload)) {
-                                        null
-                                    } else {
-                                        FileProvider.getUriForFile(
-                                            context,
-                                            context.packageName + ".fileprovider",
-                                            cacheFile
-                                        )
-                                    }
-                                }
-
-                                if (shareUri == null) {
-                                    Toast.makeText(context, sSaveToastFailed, LENGTH_SHORT).show()
-                                } else {
-                                    val intent = Intent(Intent.ACTION_SEND).apply {
-                                        type = "application/zip"
-                                        putExtra(Intent.EXTRA_STREAM, shareUri)
-                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                    }
-                                    context.startActivity(
-                                        Intent.createChooser(intent, "Partager la sauvegarde")
-                                    )
-                                }
-                            }
-                        },
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.filledTonalButtonColors(
-                            containerColor = Color(0xFF2A2A2A),
-                            contentColor = Color.White
-                        ),
-                        shape = RoundedCornerShape(999.dp)
-                    ) {
-                        Icon(Icons.Default.IosShare, contentDescription = null, tint = Color.White)
-                        Spacer(Modifier.width(8.dp))
-                        Text(stringResource(R.string.backup_share), fontSize = 12.sp)
-                    }
+                    Text(stringResource(R.string.backup_save_session_button), fontSize = 12.sp)
                 }
             }
 
@@ -712,7 +647,7 @@ fun BackupScreen(
 
                 FilledTonalButton(
                     onClick = {
-                        fileLauncher.launch(arrayOf("application/json", "application/zip", "application/octet-stream"))
+                        fileLauncher.launch(arrayOf("application/json"))
                     },
                     colors = ButtonDefaults.filledTonalButtonColors(
                         containerColor = Color(0xFF3E3A2C),
