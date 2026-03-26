@@ -35,7 +35,10 @@ class LibraryBackendSaf(
         val saved = savedSaf ?: savedCompat
 
         if (saved != null && saved.scheme != "file") {
-            Log.i(tag, "getRootUri: use_saved savedSaf=$savedSaf savedCompat=$savedCompat resolved=$saved")
+            Log.i(
+                tag,
+                "getRootUri: use_saved savedSaf=$savedSaf savedCompat=$savedCompat resolved=$saved authority=${saved.authority} treeId=${safeTreeDocumentId(saved)} docId=${safeDocumentId(saved)}"
+            )
             return saved
         }
 
@@ -48,7 +51,7 @@ class LibraryBackendSaf(
 
         Log.i(
             tag,
-            "getRootUri: resolve_from_setup setupTreeSaf=$setupTreeSaf setupTreeCompat=$setupTreeCompat baseTree=${baseTree.uri} spl=${spl.uri} baseChildren=${listChildNames(baseTree)}"
+            "getRootUri: resolve_from_setup setupTreeSaf=$setupTreeSaf setupTreeCompat=$setupTreeCompat setupAuthority=${setupTree.authority} setupTreeId=${safeTreeDocumentId(setupTree)} baseTree=${baseTree.uri} baseDocId=${safeDocumentId(baseTree.uri)} spl=${spl.uri} splDocId=${safeDocumentId(spl.uri)} baseChildren=${listChildNames(baseTree)}"
         )
 
         BackupFolderPrefsSaf.saveLibraryRootUri(context, spl.uri)
@@ -74,7 +77,10 @@ class LibraryBackendSaf(
         }
 
         baseFoldersEnsured = true
-        Log.i(tag, "ensureBaseFolders root=${rootDoc.uri} rootChildrenBefore=${listChildNames(rootDoc)}")
+        Log.i(
+            tag,
+            "ensureBaseFolders root=${rootDoc.uri} authority=${rootUri.authority} treeId=${safeTreeDocumentId(rootUri)} rootDocId=${safeDocumentId(rootDoc.uri)} rootChildrenBefore=${listChildNames(rootDoc)}"
+        )
 
         val backingTracks = ensureDirSmart(rootDoc, "BackingTracks", aliases = listOf("backingtracks", "backingtrack"))
         val backups = ensureDirSmart(rootDoc, "Backups", aliases = listOf("backups"))
@@ -92,7 +98,7 @@ class LibraryBackendSaf(
 
             Log.i(
                 tag,
-                "BackingTracks dirs audio=${audio?.uri} smp=${smp?.uri} lyrics=${lyrics?.uri} accords=${accords?.uri} midi=${midi?.uri} videos=${videos?.uri} backingChildren=${listChildNames(backingTracks)}"
+                "BackingTracks dirs backingUri=${backingTracks.uri} backingDocId=${safeDocumentId(backingTracks.uri)} audio=${audio?.uri} audioDocId=${audio?.uri?.let(::safeDocumentId)} smp=${smp?.uri} smpDocId=${smp?.uri?.let(::safeDocumentId)} lyrics=${lyrics?.uri} accords=${accords?.uri} midi=${midi?.uri} videos=${videos?.uri} backingChildren=${listChildNames(backingTracks)}"
             )
         }
 
@@ -481,6 +487,16 @@ class LibraryBackendSaf(
 
     private fun normalizeName(name: String?): String {
         return (name ?: "").trim().lowercase().replace(" ", "")
+    }
+
+    private fun safeTreeDocumentId(uri: Uri?): String? {
+        if (uri == null) return null
+        return runCatching { DocumentsContract.getTreeDocumentId(uri) }.getOrNull()
+    }
+
+    private fun safeDocumentId(uri: Uri?): String? {
+        if (uri == null) return null
+        return runCatching { DocumentsContract.getDocumentId(uri) }.getOrNull()
     }
 
     private fun listChildNames(parent: DocumentFile?): List<String> {

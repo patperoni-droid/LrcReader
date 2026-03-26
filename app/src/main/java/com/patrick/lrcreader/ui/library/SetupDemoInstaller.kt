@@ -131,6 +131,7 @@ private fun installDemoIntoInternalStorage(
     val rootDir = File(rootUri.path ?: error("internal_root_path_missing"))
     val backingTracks = File(rootDir, "BackingTracks").apply { mkdirs() }
     val audioDir = File(backingTracks, "audio").apply { mkdirs() }
+    File(backingTracks, "SMP").apply { mkdirs() }
     val lyricsDir = File(backingTracks, "Lyrics").apply { mkdirs() }
     val accordsDir = File(backingTracks, "Accords").apply { mkdirs() }
 
@@ -207,6 +208,8 @@ private fun installDemoIntoSafStorage(
     )
     val audioDir = ensureDirSmart(backingTracks, "audio", aliases = listOf("Audio"))
         ?: error("audio_dir_missing")
+    ensureDirSmart(backingTracks, "SMP", aliases = listOf("smp"))
+        ?: error("smp_dir_missing")
     val lyricsDir = ensureDirSmart(backingTracks, "Lyrics", aliases = listOf("lyrics"))
         ?: error("lyrics_dir_missing")
     val accordsDir = ensureDirSmart(backingTracks, "Accords", aliases = listOf("accords"))

@@ -762,12 +762,26 @@ fun LibraryScreen(
                         return parent.createDirectory(expectedName)
                     }
 
-                    ensureDirSmart(
+                    val backingTracksDir = ensureDirSmart(
                         context = context,
                         parent = splRoot,
                         expectedName = "BackingTracks",
                         aliases = listOf("BackingTrack")
                     )
+                    backingTracksDir?.let { backingTracks ->
+                        ensureDirSmart(
+                            context = context,
+                            parent = backingTracks,
+                            expectedName = "Audio",
+                            aliases = listOf("audio")
+                        )
+                        ensureDirSmart(
+                            context = context,
+                            parent = backingTracks,
+                            expectedName = "SMP",
+                            aliases = listOf("smp")
+                        )
+                    }
 
                     val djDir = ensureDirSmart(
                         context = context,
@@ -1225,6 +1239,10 @@ fun LibraryScreen(
 
                             onConvertOneToSmp = { mp3Uri ->
                                 scope.launch {
+                                    Log.i(
+                                        "SMP_CONVERT_FLOW",
+                                        "step=ui_start sourceUri=$mp3Uri backend=${if (mp3Uri.scheme == "file") "file" else "SAF"}"
+                                    )
                                     startLoading(sConvertingSmp, determinate = false)
                                     try {
                                         val result = withContext(Dispatchers.IO) {
@@ -1232,7 +1250,26 @@ fun LibraryScreen(
                                         }
                                         result.fold(
                                             onSuccess = { outputUri ->
+                                                Log.i(
+                                                    "SMP_CONVERT_FLOW",
+                                                    "step=conversion_ok sourceUri=$mp3Uri outputUri=$outputUri"
+                                                )
+                                                Log.i(
+                                                    "SMP_CONVERT_FLOW",
+                                                    "step=auto_import_call sourceUri=$mp3Uri outputUri=$outputUri"
+                                                )
                                                 val importedSong = onImportGeneratedSmp(outputUri)
+                                                if (importedSong != null) {
+                                                    Log.i(
+                                                        "SMP_CONVERT_FLOW",
+                                                        "step=auto_import_ok sourceUri=$mp3Uri outputUri=$outputUri songId=${importedSong.id} title=${importedSong.title}"
+                                                    )
+                                                } else {
+                                                    Log.e(
+                                                        "SMP_CONVERT_FLOW",
+                                                        "step=auto_import_failed sourceUri=$mp3Uri outputUri=$outputUri"
+                                                    )
+                                                }
                                                 Toast.makeText(
                                                     context,
                                                     if (importedSong != null) {
@@ -1243,7 +1280,12 @@ fun LibraryScreen(
                                                     Toast.LENGTH_SHORT
                                                 ).show()
                                             },
-                                            onFailure = {
+                                            onFailure = { error ->
+                                                Log.e(
+                                                    "SMP_CONVERT_FLOW",
+                                                    "step=conversion_failed_before_import sourceUri=$mp3Uri",
+                                                    error
+                                                )
                                                 Toast.makeText(
                                                     context,
                                                     sConvertSmpSingleFailed,

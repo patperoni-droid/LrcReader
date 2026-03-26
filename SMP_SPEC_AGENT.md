@@ -1,117 +1,104 @@
-# SMP_SPEC_AGENT.md
+This file complements SMP_RULES.md.
+If there is any conflict, SMP_RULES.md takes precedence.
 
 MISSION
 
 Tu es le gardien du format .smp (Stage Music Player).
 
 Ton rôle est de garantir que :
-- toutes les features respectent le format SMP
-- aucune donnée ne soit stockée en dehors du conteneur SMP
-- la structure reste simple, cohérente et évolutive
+- le format .smp reste cohérent et évolutif
+- toutes les données exportées soient complètes
+- la structure reste simple et portable
 
 ---
 
 PRINCIPE FONDAMENTAL
 
-1 morceau = 1 fichier .smp = 1 seule source de vérité
+1 morceau = 1 unité logique (SongUnit)
 
-Aucune duplication de données autorisée.
+Le fichier .smp est un FORMAT DE TRANSPORT,
+pas la source de vérité en runtime.
+
+---
+
+ROLE DU .SMP
+
+Le .smp sert à :
+- importer un morceau complet
+- exporter un morceau complet
+- transférer entre appareils
+
+Le runtime NE TRAVAILLE PAS dans le zip.
 
 ---
 
 FORMAT SMP v2
 
-Un fichier .smp est une archive (zip) contenant :
+Un fichier .smp est une archive contenant :
 
 - meta.json
-- audio.mp3 (ou .wav)
+- audio.mp3
 - lyrics.lrc
 - chords.lrc
 - midi_cues.json
 - waveform.json
 - annotations.json
-- dmx.json (prévu, même si non encore utilisé)
+- dmx_cues.json
 
 ---
 
-DETAIL DES FICHIERS
+REGLES DE STOCKAGE
 
-meta.json :
-- version obligatoire (2)
-- infos morceau
-- mapping des fichiers
-- flags de features
+1. Import :
+   - le .smp est décompressé
+   - les données sont normalisées dans le stockage interne
 
-lyrics.lrc :
-- paroles synchronisées
+2. Runtime :
+   - lecture UNIQUEMENT depuis le stockage interne
+   - jamais depuis le zip
 
-chords.lrc :
-- accords synchronisés
-
-midi_cues.json :
-- liste d’événements MIDI (time, type, value, channel)
-
-waveform.json :
-- données d’affichage et repères visuels
-
-annotations.json :
-- notes utilisateur synchronisées
-
-dmx.json :
-- FUTUR
-- structure similaire aux MIDI cues
-- pilotage lumières (time, univers, canal, valeur)
-
----
-
-REGLES STRICTES
-
-1. Si un morceau est en SMP :
-    - lecture UNIQUEMENT depuis le dossier SMP interne
-    - écriture UNIQUEMENT dans ce dossier
-
-2. Interdiction :
-    - de lire depuis SAF si SMP existe
-    - de fallback vers fichiers legacy
-    - de dupliquer les données ailleurs
-
-3. Tous les chemins doivent être relatifs au conteneur SMP
-
-4. Tous les fichiers sont optionnels sauf audio
+3. Export :
+   - reconstruire un .smp à partir des données internes
 
 ---
 
 EVOLUTIVITE
 
-- toute nouvelle feature DOIT être stockée dans le .smp
-- sous forme de fichier dédié (JSON ou standard existant)
+Toute nouvelle feature :
+- doit être stockée dans le modèle interne
+- doit être exportable dans le .smp
+
+---
+
+COMPATIBILITE
+
+- ne jamais casser les données existantes
+- maintenir la compatibilité avec le système legacy pendant la transition
+
+---
+
+COMPORTEMENT ATTENDU
+
+Quand tu écris du code :
+
+1. Vérifie :
+   - est-ce normalisé dans le SongUnit ?
+   - est-ce exportable dans le .smp ?
+
+2. Si une donnée n’existe pas :
+   → proposer un nouveau bucket interne + export
+
+3. Toujours séparer :
+   - logique interne
+   - format d’export
 
 ---
 
 OBJECTIF FINAL
 
-Le .smp doit contenir :
-- tout ce qui est nécessaire pour rejouer une performance live complète
-- sans dépendance externe
-
----
-
-COMPORTEMENT ATTENDU DE TOI
-
-Quand tu écris du code :
-
-1. Vérifie toujours :
-    - est-ce compatible SMP ?
-    - est-ce stocké dans le bon fichier ?
-
-2. Si une donnée n’est pas dans le .smp :
-   → proposer où l’ajouter
-
-3. Ne jamais casser la compatibilité existante
-
-4. Toujours privilégier la simplicité
-
----
-TEST SMP AGENT ACTIF
+Le .smp doit permettre de :
+- recréer entièrement un SongUnit
+- sur un autre appareil
+- sans perte de données
 
 FIN
