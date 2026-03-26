@@ -114,6 +114,8 @@ import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 
+private const val DEFAULT_TIMELINE_LIGHT_CUE_ARGB = 0xFFFF0000L
+
 @Composable
 fun PlayerScreen(
     modifier: Modifier = Modifier,
@@ -1798,7 +1800,27 @@ fun PlayerScreen(
                 onAddMarker = { label -> addTimelineMarker(label) },
                 onAddTypedMarker = { kind ->
                     if (kind == TimelineMarkerKind.DMX) {
-                        editingTimelineLightCueTimeMs = getPositionMs().coerceAtLeast(0L)
+                        val trackUri = currentTrackUri ?: return@TimelineEditorSection
+                        val cue = LightCue(
+                            timeMs = getPositionMs().coerceAtLeast(0L),
+                            action = LightAction.Color(argb = DEFAULT_TIMELINE_LIGHT_CUE_ARGB),
+                            intensity = 1f,
+                            fadeMs = 0L
+                        )
+                        scope.launch {
+                            val saved = withContext(Dispatchers.IO) {
+                                SmpLightCueBridge.upsertCueAtTime(
+                                    context = context,
+                                    trackUriString = trackUri,
+                                    cue = cue
+                                ) == true
+                            }
+                            if (saved) {
+                                refreshTimelineLightCues(trackUri)
+                            } else {
+                                Toast.makeText(context, sTimelineSaveFailed, Toast.LENGTH_SHORT).show()
+                            }
+                        }
                     } else {
                         addTypedTimelineMarker(kind)
                     }
