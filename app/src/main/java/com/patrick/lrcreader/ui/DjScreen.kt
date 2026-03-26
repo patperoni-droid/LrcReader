@@ -55,6 +55,7 @@ import java.io.File
 import kotlin.math.roundToInt
 
 private const val DJ_SIGNATURE_RECHECK_COOLDOWN_MS = 15_000L
+private const val DJ_FOLDER_TAG = "DJ_FOLDER"
 
 @Composable
 fun DjScreen(
@@ -271,6 +272,10 @@ fun DjScreen(
 
     suspend fun refreshDjState(forceSignatureCheck: Boolean) {
         val root = DjFolderPrefs.getOrAdoptFromLibraryRoot(context)
+        android.util.Log.i(
+            DJ_FOLDER_TAG,
+            "refreshDjState forceSignatureCheck=$forceSignatureCheck resolvedRoot=$root"
+        )
         syncBrowserToRoot(root)
 
         if (root == null) {
@@ -301,18 +306,36 @@ fun DjScreen(
         onResult = { uri ->
             if (uri == null) return@rememberLauncherForActivityResult
 
+            android.util.Log.i(DJ_FOLDER_TAG, "picker:selected uri=$uri")
+
             // 1) persister la permission SAF
+            var persistPermissionOk = false
             try {
                 context.contentResolver.takePersistableUriPermission(
                     uri,
                     Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
                 )
-            } catch (_: Exception) {}
+                persistPermissionOk = true
+            } catch (error: Exception) {
+                android.util.Log.w(
+                    DJ_FOLDER_TAG,
+                    "picker:persist_permission_failed uri=$uri reason=${error.message}",
+                    error
+                )
+            }
 
             val resolvedDjRoot = DjFolderPrefs.resolveFixedDjRootFromPickedTree(context, uri) ?: uri
+            android.util.Log.i(
+                DJ_FOLDER_TAG,
+                "picker:resolved picked=$uri persistPermissionOk=$persistPermissionOk resolved=$resolvedDjRoot"
+            )
 
             // 2) sauver la racine DJ + mettre à jour le browser
             DjFolderPrefs.save(context, resolvedDjRoot)
+            android.util.Log.i(
+                DJ_FOLDER_TAG,
+                "picker:saved saved=${DjFolderPrefs.get(context)}"
+            )
             syncBrowserToRoot(resolvedDjRoot)
             indexAll = emptyList()
             refreshFromIndex()

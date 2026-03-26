@@ -9,6 +9,7 @@ import org.json.JSONArray
 import java.io.File
 
 object DjFolderPrefs {
+    private const val TAG = "DJ_FOLDER"
     private const val PREF = "dj_folder_prefs"
 
     // ancien champ (on le garde pour compat)
@@ -49,6 +50,11 @@ object DjFolderPrefs {
         if (previousCurrent != null && previousCurrent != asString) {
             DjIndexCache.clear(context)
         }
+
+        android.util.Log.i(
+            TAG,
+            "save current=$asString previous=$previousCurrent allCount=${all.size}"
+        )
     }
 
     /**
@@ -74,17 +80,34 @@ object DjFolderPrefs {
      */
     fun getOrAdoptFromLibraryRoot(context: Context): Uri? {
         val current = get(context)
+        val currentInvalidReason = invalidDirectoryReason(context, current)
+        if (current != null && currentInvalidReason == null) {
+            android.util.Log.i(TAG, "getOrAdopt:use_current uri=$current")
+            return current
+        }
+        if (current != null) {
+            android.util.Log.w(
+                TAG,
+                "getOrAdopt:current_invalid uri=$current reason=$currentInvalidReason"
+            )
+        }
+
         val resolved = resolveDjFromLibraryRoot(context)
         if (resolved != null) {
             if (current?.toString() != resolved.toString()) {
                 save(context, resolved)
             }
+            android.util.Log.i(
+                TAG,
+                "getOrAdopt:adopt_from_library libraryRoot=${BackupFolderPrefs.getLibraryRootUri(context)} resolved=$resolved"
+            )
             return resolved
         }
 
-        if (isUsableDirectory(context, current)) {
-            return current
-        }
+        android.util.Log.w(
+            TAG,
+            "getOrAdopt:none current=$current currentInvalidReason=$currentInvalidReason libraryRoot=${BackupFolderPrefs.getLibraryRootUri(context)}"
+        )
 
         return null
     }
@@ -94,16 +117,18 @@ object DjFolderPrefs {
      * Si l'utilisateur choisit Documents ou SPL_Music, on descend automatiquement vers DJ.
      */
     fun resolveFixedDjRootFromPickedTree(context: Context, pickedUri: Uri): Uri? {
-        resolveDjFromLibraryRoot(context)?.let { return it }
+        android.util.Log.i(TAG, "resolvePicked:start pickedUri=$pickedUri")
 
         if (pickedUri.scheme == "file") {
             val base = File(pickedUri.path ?: return null)
             val target = when {
                 base.name.equals("DJ", ignoreCase = true) -> base
                 base.name.equals("SPL_Music", ignoreCase = true) -> File(base, "DJ")
-                else -> File(File(base, "SPL_Music"), "DJ")
+                File(base, "SPL_Music").isDirectory -> File(File(base, "SPL_Music"), "DJ")
+                else -> base
             }
             if (!target.exists()) target.mkdirs()
+            android.util.Log.i(TAG, "resolvePicked:file picked=$pickedUri resolved=${Uri.fromFile(target)}")
             return Uri.fromFile(target)
         }
 
@@ -111,20 +136,25 @@ object DjFolderPrefs {
             ?: DocumentFile.fromSingleUri(context, pickedUri)
             ?: return null
 
-        val splRoot = when {
-            pickedDoc.name.equals("DJ", ignoreCase = true) -> return pickedDoc.uri
-            pickedDoc.name.equals("SPL_Music", ignoreCase = true) -> pickedDoc
-            else -> pickedDoc.listFiles()
-                .firstOrNull { it.isDirectory && it.name.equals("SPL_Music", ignoreCase = true) }
-                ?: pickedDoc.createDirectory("SPL_Music")
-                ?: return null
+        val resolved = when {
+            pickedDoc.name.equals("DJ", ignoreCase = true) -> pickedDoc
+            pickedDoc.name.equals("SPL_Music", ignoreCase = true) ->
+                pickedDoc.findDirectoryCompat("DJ") ?: pickedDoc.createDirectory("DJ")
+            else -> {
+                val splRoot = pickedDoc.findDirectoryCompat("SPL_Music")
+                if (splRoot != null) {
+                    splRoot.findDirectoryCompat("DJ") ?: splRoot.createDirectory("DJ")
+                } else {
+                    pickedDoc
+                }
+            }
         }
 
-        val djRoot = splRoot.listFiles()
-            .firstOrNull { it.isDirectory && it.name.equals("DJ", ignoreCase = true) }
-            ?: splRoot.createDirectory("DJ")
-
-        return djRoot?.uri
+        android.util.Log.i(
+            TAG,
+            "resolvePicked:content pickedUri=$pickedUri pickedDoc=${pickedDoc.uri} pickedName=${pickedDoc.name} resolved=${resolved?.uri} resolvedName=${resolved?.name}"
+        )
+        return resolved?.uri
     }
 
     /**
@@ -236,19 +266,37 @@ object DjFolderPrefs {
     }
 
     private fun isUsableDirectory(context: Context, uri: Uri?): Boolean {
-        if (uri == null) return false
+        return invalidDirectoryReason(context, uri) == null
+    }
+
+    private fun invalidDirectoryReason(context: Context, uri: Uri?): String? {
+        if (uri == null) return "uri_null"
         if (uri.scheme == "file") {
-            val path = uri.path ?: return false
+            val path = uri.path ?: return "missing_file_path"
             val dir = File(path)
             if (!dir.exists()) dir.mkdirs()
-            return dir.isDirectory
+            return if (dir.isDirectory) null else "file_not_directory"
         }
 
-        val doc = DocumentFile.fromTreeUri(context, uri)
-            ?: DocumentFile.fromSingleUri(context, uri)
-            ?: return false
+        val treeDoc = DocumentFile.fromTreeUri(context, uri)
+        if (treeDoc != null) {
+            return if (runCatching { treeDoc.isDirectory }.getOrDefault(false)) {
+                null
+            } else {
+                "tree_not_directory"
+            }
+        }
 
-        return runCatching { doc.isDirectory }.getOrDefault(false)
+        val singleDoc = DocumentFile.fromSingleUri(context, uri)
+        if (singleDoc != null) {
+            return if (runCatching { singleDoc.isDirectory }.getOrDefault(false)) {
+                null
+            } else {
+                "single_not_directory"
+            }
+        }
+
+        return "documentfile_unresolved"
     }
 
     private fun resolveDjFromLibraryRoot(context: Context): Uri? {
@@ -270,6 +318,12 @@ object DjFolderPrefs {
             ?: runCatching { rootDoc.createDirectory("DJ") }.getOrNull()
 
         return djDoc?.uri
+    }
+
+    private fun DocumentFile.findDirectoryCompat(name: String): DocumentFile? {
+        return runCatching {
+            listFiles().firstOrNull { it.isDirectory && it.name.equals(name, ignoreCase = true) }
+        }.getOrNull()
     }
 
     private fun hasReadableTreeAccess(context: Context, targetTreeUri: Uri): Boolean {
