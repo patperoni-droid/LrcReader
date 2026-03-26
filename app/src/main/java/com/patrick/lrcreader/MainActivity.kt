@@ -443,6 +443,21 @@ class MainActivity : AppCompatActivity() {
                     return importedSong
                 }
 
+                fun resolveBackingTracksAudioDir(rootFile: File): File {
+                    val backingTracksDir = File(rootFile, "BackingTracks").apply { mkdirs() }
+                    return File(backingTracksDir, "Audio").apply { mkdirs() }
+                }
+
+                fun resolveBackingTracksAudioDoc(splRootDoc: DocumentFile): DocumentFile? {
+                    val backingTracksDoc = splRootDoc.findFile("BackingTracks")
+                        ?: splRootDoc.findFile("BackingTrack")
+                        ?: splRootDoc.createDirectory("BackingTracks")
+                        ?: return null
+                    return backingTracksDoc.findFile("Audio")
+                        ?: backingTracksDoc.findFile("audio")
+                        ?: backingTracksDoc.createDirectory("Audio")
+                }
+
                 val pickSmpFileLauncher = rememberLauncherForActivityResult(
                     contract = ActivityResultContracts.OpenDocument()
                 ) { uri ->
@@ -598,7 +613,7 @@ class MainActivity : AppCompatActivity() {
                             isImporting = true
                             try {
                                 val rootFile = File(savedRootNow!!.path!!)
-                                val audioDir = File(rootFile, "BackingTracks/audio").apply { mkdirs() }
+                                val audioDir = resolveBackingTracksAudioDir(rootFile)
 
                                 fun displayNameOf(uri: Uri): String {
                                     val cr = ctx.contentResolver
@@ -656,18 +671,10 @@ class MainActivity : AppCompatActivity() {
                         return@rememberLauncherForActivityResult
                     }
 
-                    val backingDoc = splRootDoc.findFile("BackingTracks") ?: run {
-                        android.util.Log.e("IMPORT", "BackingTracks introuvable")
+                    val audioDoc = resolveBackingTracksAudioDoc(splRootDoc) ?: run {
+                        android.util.Log.e("IMPORT", "BackingTracks/Audio introuvable")
                         return@rememberLauncherForActivityResult
                     }
-
-                    val audioDoc = backingDoc.findFile("audio") ?: run {
-                        android.util.Log.e("IMPORT", "BackingTracks/audio introuvable")
-                        return@rememberLauncherForActivityResult
-                    }
-
-                    // ✅ ImportAudioManager veut un TreeUri => on passe le TreeUri du dossier DESTINATION (= audio)
-                    val audioTreeUri = toTreeUri(audioDoc.uri)
 
                     scope.launch {
                         isImporting = true
@@ -677,8 +684,9 @@ class MainActivity : AppCompatActivity() {
                                     context = ctx,
                                     appRootTreeUri = setupTree, // ✅ LE TREE URI autorisé
                                     sourceUris = uris,
-                                    destFolderName = "BackingTracks/audio",
-                                    overwriteIfExists = false
+                                    destFolderName = "BackingTracks",
+                                    overwriteIfExists = false,
+                                    destFolderUri = audioDoc.uri
                                 )
                             }
 
@@ -2125,7 +2133,20 @@ class MainActivity : AppCompatActivity() {
                                             )
                                         },
                                         onImportGeneratedSmp = { uri ->
-                                            importSmpIntoApp(uri)
+                                            Log.i("SMP_CONVERT_FLOW", "step=main_auto_import_start outputUri=$uri")
+                                            val importedSong = importSmpIntoApp(uri)
+                                            if (importedSong != null) {
+                                                Log.i(
+                                                    "SMP_CONVERT_FLOW",
+                                                    "step=main_auto_import_ok outputUri=$uri songId=${importedSong.id} title=${importedSong.title}"
+                                                )
+                                            } else {
+                                                Log.e(
+                                                    "SMP_CONVERT_FLOW",
+                                                    "step=main_auto_import_failed outputUri=$uri reason=${smpImporter.lastFailureReason ?: "inconnue"}"
+                                                )
+                                            }
+                                            importedSong
                                         },
                                         onPlayFromLibrary = { uriString ->
                                             Log.d(
@@ -2198,6 +2219,7 @@ class MainActivity : AppCompatActivity() {
                                     is BottomTab.More -> MoreScreen(
                                         modifier = contentModifier,
                                         context = ctx,
+                                        currentWaveformTrackUri = currentPlayingUri,
                                         onAfterImport = { refreshKey++ },
                                         onOpenTuner = {
                                             setTabAndPersist(BottomTab.Tuner, reason = "moreOpenTuner")

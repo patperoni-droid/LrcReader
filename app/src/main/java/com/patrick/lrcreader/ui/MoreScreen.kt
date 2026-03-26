@@ -2,6 +2,7 @@ package com.patrick.lrcreader.ui
 
 import com.patrick.lrcreader.core.MidiOutput
 import android.content.Context
+import android.net.Uri
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -44,6 +45,7 @@ import com.patrick.lrcreader.core.AutoReturnPrefs
 import com.patrick.lrcreader.core.BackupManager
 import com.patrick.lrcreader.core.LegacyLibraryVisibilityPrefs
 import com.patrick.lrcreader.core.LightIndicatorPrefs
+import com.patrick.lrcreader.core.config.TitleAliasesStore
 import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.smp.SmpAutoMigrationResult
 
@@ -54,11 +56,23 @@ import com.patrick.lrcreader.smp.SmpAutoMigrationResult
 fun MoreScreen(
     modifier: Modifier = Modifier,
     context: Context,
+    currentWaveformTrackUri: String? = null,
     onAfterImport: (BackupManager.LastPlayed?) -> Unit = {},
     onOpenTuner: () -> Unit = {},     // callback pour l'accordeur
     onWaveformTrackPromotedToSmp: (SmpAutoMigrationResult) -> Unit = {}
 ) {
     var current by remember { mutableStateOf(MoreSection.Root) }
+    val waveformInitialUri = remember(currentWaveformTrackUri) {
+        currentWaveformTrackUri
+            ?.takeIf { it.isNotBlank() }
+            ?.let { trackUriString -> runCatching { Uri.parse(trackUriString) }.getOrNull() }
+    }
+    val waveformInitialName = remember(context, currentWaveformTrackUri) {
+        currentWaveformTrackUri
+            ?.takeIf { it.isNotBlank() }
+            ?.let { trackUriString -> TitleAliasesStore.getTitleForTrack(context, trackUriString) }
+    }
+
     fun navigate(route: String) {
         current = MoreSection.entries.firstOrNull { it.route == route } ?: MoreSection.Root
     }
@@ -92,6 +106,8 @@ fun MoreScreen(
         MoreSection.WaveformPreview -> WaveformPreviewScreen(
             modifier = modifier,
             onBack = { navigate("root") },
+            initialUri = waveformInitialUri,
+            initialName = waveformInitialName,
             onTrackPromotedToSmp = onWaveformTrackPromotedToSmp
         )
     }

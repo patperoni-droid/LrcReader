@@ -317,3 +317,155 @@
 ## SMP Forward Rules
 - For any work related to portable songs, import/export, track normalization, rename/move/delete coherence, or future song-folder storage, read `SMP_RULES.md` first.
 - `AGENTS.md` describes the current architecture; `SMP_RULES.md` describes the target song-unit model and coexistence constraints for `.smp`.
+
+
+## Timeline Is The Source Of Truth
+
+- The timeline is the central execution model of the app.
+- All time-based behaviors must be derived from playback position (`positionMs`).
+
+This includes:
+- lyrics display (LRC)
+- MIDI cues
+- future LightCue system
+- any time-synchronized feature
+
+Rules:
+- Do NOT gate runtime logic on UI state (e.g. active tab, visible screen).
+- Do NOT depend on derived indexes (e.g. lineIndex) if time-based data is available.
+- Always prefer direct time-based triggering.
+
+Principle:
+Time → decision → action
+
+
+## Intent vs Output Architecture
+
+The system must strictly separate:
+
+1. Intent layer
+  - user-defined data (MIDI cues, LightCue, etc.)
+  - time-based and portable
+
+2. Runtime engine
+  - timeline-driven triggering
+  - no knowledge of hardware
+
+3. Output layer
+  - MIDI dispatch
+  - future DMX / Art-Net
+  - simulator
+
+Rules:
+- No business logic must depend on output protocol (MIDI, DMX, etc.)
+- Output layers are replaceable adapters
+- Intent data must remain hardware-agnostic
+
+Principle:
+The app controls meaning, not devices.
+
+## LightCue System (Forward Architecture)
+
+A new system will be introduced for lighting control.
+
+Key points:
+- LightCue is equivalent to MIDI cues but for lighting
+- defined by:
+  - timeMs
+  - type (color, ambiance, effect)
+  - intensity
+  - fadeMs
+
+V1:
+- internal simulator only
+- no hardware dependency
+
+V2:
+- output via Art-Net (Wi-Fi)
+- mapping to DMX profiles
+
+Rules:
+- LightCue must follow the same timeline logic as MIDI
+- must NOT depend on lyrics lineIndex
+- must work fully without external hardware
+
+Goal:
+Provide a simple lighting system for musicians without exposing DMX complexity.
+
+## Mandatory Agent Consultation
+
+Before any non-trivial decision:
+
+- Read and respect:
+  - AGENTS.md
+  - SMP_RULES.md
+  - any SMP spec file
+
+- Ensure consistency with:
+  - current architecture
+  - SMP model
+  - live performance constraints
+
+Rules:
+- Do not introduce structural changes without validation
+- Prefer diagnostic before patch
+- Avoid assumptions when code can be inspected
+
+Principle:
+Codex sees → we validate → then we act
+
+
+⸻
+
+RÈGLES UX GLOBALES — COHÉRENCE INTERFACE
+
+RECHERCHE (TRÈS IMPORTANT)
+
+- Il existe un seul point d’entrée visible pour la recherche dans l’application :
+  la loupe du menu du bas.
+
+- Cette loupe est globale, mais son action dépend toujours de la page active.
+
+- Exemple :
+  - si la page active est Playlist → la recherche agit sur Playlist
+  - si la page active est Bibliothèque → la recherche agit sur Bibliothèque
+
+- Les écrans/pages ne doivent jamais ajouter leur propre loupe locale
+  sauf demande explicite du produit.
+
+- Une page peut afficher localement son champ de recherche,
+  mais uniquement en réponse à l’action déclenchée par la loupe globale.
+
+- Toute correction liée à la recherche doit respecter cette règle UX,
+  même si le problème semble local à une seule page.
+
+⸻
+
+COHÉRENCE DES POINTS D’ENTRÉE
+
+- Lorsqu’une action existe déjà comme point d’entrée global (ex : recherche),
+  il est interdit de créer un second point d’entrée local pour corriger un problème.
+
+- Toujours privilégier la cohérence globale de l’application
+  plutôt qu’une correction locale rapide.
+
+⸻
+
+COMMIT WORKFLOW
+
+- Tous les commits doivent être réalisés par Codex
+- L’utilisateur ne fait plus de commit manuel
+
+Règle :
+- Après chaque patch validé (tests OK + validation utilisateur),
+  Codex doit :
+  - proposer un commit
+  - limiter le commit aux fichiers concernés
+  - générer un message de commit propre
+
+- Le commit ne doit être exécuté qu’après validation explicite de l’utilisateur
+
+Objectif :
+- centraliser les commits
+- éviter les oublis
+- garder un historique propre et homogène

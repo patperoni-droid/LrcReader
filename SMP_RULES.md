@@ -290,3 +290,33 @@ ExternalSource -> Normalizer -> SongUnit -> Runtime Features -> Exporter
 - The song unit is the canonical object.
 - Import/export are format boundaries.
 - Rename/move/delete/edit/search/playback must preserve song coherence.
+
+## Time-Based Execution Model
+
+All dynamic behaviors attached to a song unit must be time-based.
+
+This includes:
+- MIDI cues
+- DMX cues
+- future automation features
+
+Rules:
+- All cues must be defined using `timeMs`
+- Runtime triggering must depend only on playback position
+- No cue system should depend on UI state or line index (lyrics/chords)
+
+Principle:
+Playback time is the only source of truth for execution.
+
+
+## Unified Cue Model
+
+All time-based actions must follow a unified cue model.
+
+Generic structure:
+
+```text
+Cue
+  timeMs: Long
+  type: String
+  payload: Map<String, Any>

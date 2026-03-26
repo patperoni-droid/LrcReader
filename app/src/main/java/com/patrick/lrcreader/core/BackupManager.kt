@@ -234,12 +234,17 @@ object BackupManager {
                 File(context.getExternalFilesDir(null), "SPL_Music")
             }
 
-            // ⚠️ chemin plus sûr que "BackingTracks/audio" en une string
-            val audioDir = File(File(rootFile, "BackingTracks"), "audio")
+            val backingTracksDir = File(rootFile, "BackingTracks")
+            val audioDirs = linkedSetOf(
+                File(backingTracksDir, "audio"),
+                File(backingTracksDir, "Audio")
+            )
 
-            if (audioDir.exists() && audioDir.isDirectory) {
-                audioDir.walkTopDown().forEach { f ->
-                    if (f.isFile) addVariants(f.name, Uri.fromFile(f).toString())
+            audioDirs.forEach { audioDir ->
+                if (audioDir.exists() && audioDir.isDirectory) {
+                    audioDir.walkTopDown().forEach { f ->
+                        if (f.isFile) addVariants(f.name, Uri.fromFile(f).toString())
+                    }
                 }
             }
             if (map.isNotEmpty()) return map

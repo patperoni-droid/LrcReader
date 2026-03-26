@@ -56,6 +56,10 @@ fun SetupInstallScreen(
     // --------------------------------------------
     fun handlePickedUri(uri: Uri) {
         Log.i(SETUP_STORAGE_TAG, "setup:start backend=SAF pickedUri=$uri")
+        Log.i(
+            SETUP_STORAGE_TAG,
+            "setup:picked authority=${uri.authority} treeId=${safeTreeDocumentId(uri)} docId=${safeDocumentId(uri)}"
+        )
 
         // 1) Persist permissions
         persistTreePermIfPossible(context, uri)
@@ -125,7 +129,7 @@ fun SetupInstallScreen(
 
         Log.i(
             SETUP_STORAGE_TAG,
-            "setup:dirs splRoot=${splRoot.uri} backingTracks=${backingTracksDir?.uri} audio=${audioDir?.uri} smp=${smpDir?.uri} dj=${djDir?.uri} splChildren=${listChildNames(splRoot)} backingChildren=${listChildNames(backingTracksDir)}"
+            "setup:dirs splRoot=${splRoot.uri} splDocId=${safeDocumentId(splRoot.uri)} backingTracks=${backingTracksDir?.uri} backingDocId=${backingTracksDir?.uri?.let(::safeDocumentId)} audio=${audioDir?.uri} audioDocId=${audioDir?.uri?.let(::safeDocumentId)} smp=${smpDir?.uri} smpDocId=${smpDir?.uri?.let(::safeDocumentId)} dj=${djDir?.uri} djDocId=${djDir?.uri?.let(::safeDocumentId)} splChildren=${listChildNames(splRoot)} backingChildren=${listChildNames(backingTracksDir)}"
         )
 
         // 5) Library root = SPL_Music (tree uri)
@@ -435,6 +439,16 @@ private fun splToTreeUri(docUri: Uri): Uri {
     val authority = docUri.authority ?: return docUri
     val docId = runCatching { DocumentsContract.getDocumentId(docUri) }.getOrNull() ?: return docUri
     return DocumentsContract.buildTreeDocumentUri(authority, docId)
+}
+
+private fun safeTreeDocumentId(uri: Uri?): String? {
+    if (uri == null) return null
+    return runCatching { DocumentsContract.getTreeDocumentId(uri) }.getOrNull()
+}
+
+private fun safeDocumentId(uri: Uri?): String? {
+    if (uri == null) return null
+    return runCatching { DocumentsContract.getDocumentId(uri) }.getOrNull()
 }
 
 private fun listChildNames(parent: DocumentFile?): List<String> {

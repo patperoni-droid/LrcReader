@@ -7,6 +7,8 @@ import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import android.util.Log
 import androidx.documentfile.provider.DocumentFile
+import com.patrick.lrcreader.core.BackupFolderPrefs
+import com.patrick.lrcreader.core.BackupFolderPrefsSaf
 import com.patrick.lrcreader.core.LrcStorage
 import org.json.JSONObject
 import java.io.File
@@ -40,6 +42,42 @@ class SmpConverter(private val context: Context) {
         val hasLyrics: Boolean
     )
 
+    private sealed interface OutputParent {
+        data class FileParent(val directory: File) : OutputParent
+        data class SafParent(val directory: DocumentFile) : OutputParent
+    }
+
+    private fun backendLabel(uri: Uri): String {
+        return if (uri.scheme == "file") "file" else "SAF"
+    }
+
+    private fun describeOutputParent(outputParent: OutputParent): String {
+        return when (outputParent) {
+            is OutputParent.FileParent -> {
+                "type=file path=${outputParent.directory.absolutePath}"
+            }
+
+            is OutputParent.SafParent -> {
+                "type=SAF name=${resolveDocumentName(outputParent.directory)} uri=${outputParent.directory.uri}"
+            }
+        }
+    }
+
+    private fun resolveDocumentName(document: DocumentFile?): String? {
+        if (document == null) return null
+        return document.name?.takeIf { it.isNotBlank() } ?: resolveDocumentName(document.uri)
+    }
+
+    private fun resolveDocumentName(uri: Uri?): String? {
+        if (uri == null) return null
+        val docId = runCatching { DocumentsContract.getDocumentId(uri) }.getOrNull()
+            ?: runCatching { DocumentsContract.getTreeDocumentId(uri) }.getOrNull()
+            ?: return null
+        val slashName = docId.substringAfterLast('/')
+        val colonName = slashName.substringAfterLast(':')
+        return colonName.ifBlank { slashName }.takeIf { it.isNotBlank() }
+    }
+
     fun convertSingle(mp3Uri: Uri): Result<Uri> {
         if (Looper.myLooper() == Looper.getMainLooper()) {
             Log.w(TAG, "convertSingle appelé sur le thread principal uri=$mp3Uri")
@@ -53,14 +91,25 @@ class SmpConverter(private val context: Context) {
             val baseName = sourceName.substringBeforeLast('.').trim()
                 .ifBlank { throw IOException("Nom audio invalide: $sourceName") }
             val outputName = "$baseName.smp"
-            val siblings = listSiblingEntries(mp3Uri)
-            val existingOutput = siblings.firstOrNull { it.name.equals(outputName, ignoreCase = true) }?.uri
+            val outputParent = resolveOutputParent(mp3Uri)
+            Log.i(
+                TAG,
+                "step=start_conversion sourceUri=$mp3Uri backend=${backendLabel(mp3Uri)} sourceName=$sourceName outputName=$outputName outputParent=${describeOutputParent(outputParent)}"
+            )
+            val existingOutput = findExistingOutput(outputParent, outputName)
             if (existingOutput != null) {
-                Log.i(TAG, "Conversion SMP réutilise un package existant source=$mp3Uri output=$existingOutput")
+                Log.i(
+                    TAG,
+                    "step=reuse_existing_output sourceUri=$mp3Uri outputName=$outputName outputUri=$existingOutput outputParent=${describeOutputParent(outputParent)}"
+                )
                 return@runCatching existingOutput
             }
 
             val prepared = prepareArchive(mp3Uri)
+            Log.i(
+                TAG,
+                "step=archive_prepared sourceUri=$mp3Uri outputName=${prepared.outputName} tempArchive=${prepared.archiveFile.absolutePath} lyrics=${prepared.hasLyrics} songId=${prepared.stableSongId}"
+            )
             try {
                 val resultUri = writeArchiveNextToSource(
                     sourceUri = mp3Uri,
@@ -70,14 +119,18 @@ class SmpConverter(private val context: Context) {
 
                 Log.i(
                     TAG,
-                    "Conversion SMP terminée source=$mp3Uri output=$resultUri lyrics=${prepared.hasLyrics} songId=${prepared.stableSongId}"
+                    "step=write_output_ok sourceUri=$mp3Uri outputName=${prepared.outputName} outputUri=$resultUri outputParent=${describeOutputParent(outputParent)} lyrics=${prepared.hasLyrics} songId=${prepared.stableSongId}"
                 )
                 resultUri
             } finally {
                 prepared.tempDir.deleteRecursively()
             }
         }.onFailure { error ->
-            Log.e(TAG, "Conversion SMP échouée pour $mp3Uri", error)
+            Log.e(
+                TAG,
+                "step=conversion_failed sourceUri=$mp3Uri backend=${backendLabel(mp3Uri)}",
+                error
+            )
         }
     }
 
@@ -232,29 +285,189 @@ class SmpConverter(private val context: Context) {
         outputName: String,
         archiveFile: File
     ): Uri {
+        return when (val outputParent = resolveOutputParent(sourceUri)) {
+            is OutputParent.FileParent -> {
+                writeArchiveToFileParent(
+                    outputDir = outputParent.directory,
+                    outputName = outputName,
+                    archiveFile = archiveFile
+                )
+            }
+
+            is OutputParent.SafParent -> {
+                writeArchiveToSafParent(
+                    outputDir = outputParent.directory,
+                    outputName = outputName,
+                    archiveFile = archiveFile
+                )
+            }
+        }
+    }
+
+    private fun resolveOutputParent(sourceUri: Uri): OutputParent {
         return if (sourceUri.scheme == "file") {
-            writeArchiveToFileParent(
-                sourceUri = sourceUri,
-                outputName = outputName,
-                archiveFile = archiveFile
-            )
+            val sourceFile = File(sourceUri.path ?: throw IOException("URI fichier invalide: $sourceUri"))
+            OutputParent.FileParent(resolvePreferredFileOutputDir(sourceFile))
         } else {
-            writeArchiveToSafParent(
-                sourceUri = sourceUri,
-                outputName = outputName,
-                archiveFile = archiveFile
-            )
+            OutputParent.SafParent(resolvePreferredSafOutputDir(sourceUri))
+        }
+    }
+
+    private fun resolvePreferredFileOutputDir(sourceFile: File): File {
+        val parentDir = sourceFile.parentFile ?: throw IOException("Dossier parent introuvable pour $sourceFile")
+        val backingTracksDir = parentDir.parentFile
+        val isAudioFolder =
+            parentDir.name.equals("Audio", ignoreCase = true) ||
+                parentDir.name.equals("audio", ignoreCase = true)
+
+        if (isAudioFolder && backingTracksDir != null &&
+            (backingTracksDir.name.equals("BackingTracks", ignoreCase = true) ||
+                backingTracksDir.name.equals("BackingTrack", ignoreCase = true))
+        ) {
+            val smpDir = File(backingTracksDir, "SMP")
+            if (!smpDir.exists() && !smpDir.mkdirs()) {
+                throw IOException("Création du dossier SMP impossible: ${smpDir.absolutePath}")
+            }
+            return smpDir
+        }
+
+        return parentDir
+    }
+
+    private fun resolvePreferredSafOutputDir(sourceUri: Uri): DocumentFile {
+        val parentDir = resolveSafAncestorDirectory(sourceUri, 1)
+            ?: throw IOException("Parent SAF introuvable pour $sourceUri")
+        val grandParentDir = resolveSafAncestorDirectory(sourceUri, 2)
+        val parentName = resolveDocumentName(parentDir)
+        val grandParentName = resolveDocumentName(grandParentDir)
+
+        val isAudioFolder =
+            parentName.equals("Audio", ignoreCase = true) ||
+                parentName.equals("audio", ignoreCase = true)
+        val isBackingTracksFolder =
+            grandParentName.equals("BackingTracks", ignoreCase = true) ||
+                grandParentName.equals("BackingTrack", ignoreCase = true)
+        var writableBackingTracksUri: Uri? = null
+
+        val chosenOutputParent = if (isAudioFolder && grandParentDir != null && isBackingTracksFolder) {
+            val writableBackingTracks = resolveWritableSafBackingTracksDir()
+            writableBackingTracksUri = writableBackingTracks?.uri
+            if (writableBackingTracks != null) {
+                writableBackingTracks.findFile("SMP")
+                    ?: writableBackingTracks.findFile("smp")
+                    ?: writableBackingTracks.createDirectory("SMP")
+                    ?: throw IOException("Création du dossier SMP impossible dans ${writableBackingTracks.uri}")
+            } else {
+                grandParentDir.findFile("SMP")
+                    ?: grandParentDir.findFile("smp")
+                    ?: grandParentDir.createDirectory("SMP")
+                    ?: throw IOException("Création du dossier SMP impossible dans ${grandParentDir.uri}")
+            }
+        } else {
+            parentDir
+        }
+
+        Log.i(
+            TAG,
+            "step=resolve_saf_output sourceUri=$sourceUri parentUri=${parentDir.uri} parentName=$parentName parentIsDir=${parentDir.isDirectory} grandParentUri=${grandParentDir?.uri} grandParentName=$grandParentName grandParentIsDir=${grandParentDir?.isDirectory} isAudioFolder=$isAudioFolder isBackingTracksFolder=$isBackingTracksFolder writableBackingTracks=$writableBackingTracksUri chosenOutputParent=${chosenOutputParent.uri} chosenOutputParentName=${resolveDocumentName(chosenOutputParent)}"
+        )
+
+        return chosenOutputParent
+    }
+
+    private fun resolveWritableSafBackingTracksDir(): DocumentFile? {
+        val splRoot = resolveWritableSafSplRootDir() ?: return null
+        return splRoot.findFile("BackingTracks")
+            ?: splRoot.findFile("BackingTrack")
+            ?: splRoot.createDirectory("BackingTracks")
+    }
+
+    private fun resolveWritableSafSplRootDir(): DocumentFile? {
+        val candidates = listOfNotNull(
+            BackupFolderPrefsSaf.getLibraryRootUri(context),
+            BackupFolderPrefs.getLibraryRootUri(context),
+            BackupFolderPrefsSaf.getSetupTreeUri(context),
+            BackupFolderPrefs.getSetupTreeUri(context)
+        )
+
+        candidates.forEach { candidateUri ->
+            val rootDoc = resolveWritableSafDirectory(candidateUri) ?: return@forEach
+            if (resolveDocumentName(rootDoc).equals("SPL_Music", ignoreCase = true)) {
+                return rootDoc
+            }
+
+            val splMusic = rootDoc.findFile("SPL_Music")
+                ?: rootDoc.findFile("spl_music")
+            if (splMusic?.isDirectory == true) {
+                return splMusic
+            }
+        }
+
+        return null
+    }
+
+    private fun resolveWritableSafDirectory(rootUri: Uri): DocumentFile? {
+        val directTree = DocumentFile.fromTreeUri(context, rootUri)
+        if (directTree?.isDirectory == true) return directTree
+
+        val normalizedTreeUri = normalizeAsTreeUri(rootUri)
+        val normalizedTree = normalizedTreeUri?.let { DocumentFile.fromTreeUri(context, it) }
+        if (normalizedTree?.isDirectory == true) return normalizedTree
+
+        val single = DocumentFile.fromSingleUri(context, rootUri)
+        if (single?.isDirectory == true) return single
+
+        return null
+    }
+
+    private fun normalizeAsTreeUri(uri: Uri): Uri? {
+        val authority = uri.authority ?: return null
+        val treeId = runCatching { DocumentsContract.getTreeDocumentId(uri) }.getOrNull()
+            ?: runCatching { DocumentsContract.getDocumentId(uri) }.getOrNull()
+            ?: return null
+        return DocumentsContract.buildTreeDocumentUri(authority, treeId)
+    }
+
+    private fun resolveSafAncestorDirectory(sourceUri: Uri, levelsUp: Int): DocumentFile? {
+        val docId = DocumentsContract.getDocumentId(sourceUri)
+        var currentDocId = docId
+        repeat(levelsUp) {
+            val slash = currentDocId.lastIndexOf('/')
+            if (slash <= 0) {
+                return null
+            }
+            currentDocId = currentDocId.substring(0, slash)
+        }
+        val authority = sourceUri.authority ?: return null
+        val ancestorTreeUri = DocumentsContract.buildTreeDocumentUri(authority, currentDocId)
+        return DocumentFile.fromTreeUri(context, ancestorTreeUri)
+    }
+
+    private fun findExistingOutput(outputParent: OutputParent, outputName: String): Uri? {
+        return when (outputParent) {
+            is OutputParent.FileParent -> {
+                File(outputParent.directory, outputName)
+                    .takeIf { it.exists() }
+                    ?.let(Uri::fromFile)
+            }
+
+            is OutputParent.SafParent -> {
+                outputParent.directory.listFiles()
+                    .firstOrNull { it.isFile && it.name.equals(outputName, ignoreCase = true) }
+                    ?.uri
+            }
         }
     }
 
     private fun writeArchiveToFileParent(
-        sourceUri: Uri,
+        outputDir: File,
         outputName: String,
         archiveFile: File
     ): Uri {
-        val sourceFile = File(sourceUri.path ?: throw IOException("URI fichier invalide: $sourceUri"))
-        val parentDir = sourceFile.parentFile ?: throw IOException("Dossier parent introuvable pour $sourceUri")
-        val outputFile = File(parentDir, outputName)
+        if (!outputDir.exists() && !outputDir.mkdirs()) {
+            throw IOException("Dossier sortie introuvable: ${outputDir.absolutePath}")
+        }
+        val outputFile = File(outputDir, outputName)
         if (outputFile.exists()) {
             throw IOException("Le fichier ${outputFile.name} existe déjà")
         }
@@ -270,25 +483,16 @@ class SmpConverter(private val context: Context) {
     }
 
     private fun writeArchiveToSafParent(
-        sourceUri: Uri,
+        outputDir: DocumentFile,
         outputName: String,
         archiveFile: File
     ): Uri {
-        val sourceDocId = DocumentsContract.getDocumentId(sourceUri)
-        val slash = sourceDocId.lastIndexOf('/')
-        if (slash <= 0) {
-            throw IOException("Parent SAF introuvable pour $sourceUri")
-        }
-
-        val parentDocId = sourceDocId.substring(0, slash)
-        val parentDocUri = DocumentsContract.buildDocumentUriUsingTree(sourceUri, parentDocId)
-
         val outputUri = DocumentsContract.createDocument(
             context.contentResolver,
-            parentDocUri,
+            outputDir.uri,
             OUTPUT_MIME,
             outputName
-        ) ?: throw IOException("Création du fichier SMP impossible dans $parentDocUri")
+        ) ?: throw IOException("Création du fichier SMP impossible dans ${outputDir.uri}")
 
         return try {
             archiveFile.inputStream().buffered().use { input ->
