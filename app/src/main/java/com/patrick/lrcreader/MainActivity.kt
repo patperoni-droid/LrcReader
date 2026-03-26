@@ -77,6 +77,7 @@ import com.patrick.lrcreader.smp.SmpBatchImportProcessor
 import com.patrick.lrcreader.smp.SmpConverter
 import com.patrick.lrcreader.smp.SmpImportedSongDetail
 import com.patrick.lrcreader.smp.SmpLibraryScanner
+import com.patrick.lrcreader.smp.SmpUserArchiveRebuilder
 import com.patrick.lrcreader.ui.*
 import com.patrick.lrcreader.ui.library.LibraryScreen
 import kotlinx.coroutines.channels.BufferOverflow
@@ -389,7 +390,9 @@ class MainActivity : AppCompatActivity() {
                     SmpBatchImportProcessor(ctx, SmpConverter(ctx))
                 }
                 val smpLibraryScanner = remember(ctx) { SmpLibraryScanner(ctx) }
+                val smpUserArchiveRebuilder = remember(ctx) { SmpUserArchiveRebuilder(ctx) }
                 var smpCacheRefreshTick by remember { mutableIntStateOf(0) }
+                var smpUserRebuildAttemptedForRoot by remember { mutableStateOf<String?>(null) }
                 var playlistBatchProgressVisible by remember { mutableStateOf(false) }
                 var playlistBatchProgressValue by remember { mutableStateOf<Float?>(null) }
                 var playlistBatchProgressLabel by remember { mutableStateOf("") }
@@ -873,6 +876,67 @@ class MainActivity : AppCompatActivity() {
                     smpSongsById = withContext(Dispatchers.IO) {
                         smpLibraryScanner.listSongs().associateBy { it.id }
                     }
+                }
+                LaunchedEffect(savedRoot, hasSetupPerm, isInternalMode, shouldShowSetup, configInitDoneForRoot) {
+                    val rootKey = savedRoot?.toString()
+                    val canUseStorage = rootKey != null &&
+                        !shouldShowSetup &&
+                        (isInternalMode || hasSetupPerm) &&
+                        configInitDoneForRoot == rootKey
+
+                    if (!canUseStorage) {
+                        return@LaunchedEffect
+                    }
+
+                    if (smpUserRebuildAttemptedForRoot == rootKey) {
+                        return@LaunchedEffect
+                    }
+                    smpUserRebuildAttemptedForRoot = rootKey
+
+                    val runtimeSongs = withContext(Dispatchers.IO) {
+                        smpLibraryScanner.listSongs()
+                    }
+                    if (runtimeSongs.isNotEmpty()) {
+                        Log.i(
+                            "SMP_REBUILD",
+                            "step=skip_runtime_not_empty root=$rootKey count=${runtimeSongs.size}"
+                        )
+                        return@LaunchedEffect
+                    }
+
+                    val userArchives = withContext(Dispatchers.IO) {
+                        smpUserArchiveRebuilder.listUserArchiveUris()
+                    }
+                    if (userArchives.isEmpty()) {
+                        Log.i("SMP_REBUILD", "step=skip_no_user_archives root=$rootKey")
+                        return@LaunchedEffect
+                    }
+
+                    Log.i(
+                        "SMP_REBUILD",
+                        "step=start root=$rootKey archiveCount=${userArchives.size}"
+                    )
+
+                    val rebuildResult = withContext(Dispatchers.IO) {
+                        smpUserArchiveRebuilder.rebuildFromUserArchives(userArchives)
+                    }
+
+                    val rebuiltSongs = withContext(Dispatchers.IO) {
+                        smpLibraryScanner.listSongs()
+                    }
+                    smpSongsById = rebuiltSongs.associateBy { it.id }
+
+                    rebuildResult.lastImportedSongId?.let { importedSongId ->
+                        lastImportedSmpSongId = importedSongId
+                    }
+                    if (rebuildResult.importedCount > 0) {
+                        smpCacheRefreshTick++
+                    }
+
+                    Log.i(
+                        "SMP_REBUILD",
+                        "step=done root=$rootKey archives=${rebuildResult.discoveredCount} imported=${rebuildResult.importedCount} failed=${rebuildResult.failedCount} runtimeCount=${rebuiltSongs.size}"
+                    )
                 }
                 LaunchedEffect(Unit) {
                     mark("compose.LibraryIndexCache.load(initial):before")
