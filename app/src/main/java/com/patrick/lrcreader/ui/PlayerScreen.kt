@@ -115,6 +115,7 @@ import kotlin.math.max
 import kotlin.math.min
 
 private const val DEFAULT_TIMELINE_LIGHT_CUE_ARGB = 0xFFFF0000L
+private const val DMX_PLAYBACK_POLL_INTERVAL_MS = 20L
 
 @Composable
 fun PlayerScreen(
@@ -1222,14 +1223,6 @@ fun PlayerScreen(
                     isPlaying = isPlaying
                 )
             }
-            if (currentTrackUri != null && hasLightCues) {
-                val lightRuntimePositionMs = timelineLightPreviewPositionMs ?: p.toLong()
-                LightCueDispatcher.advance(
-                    trackUri = currentTrackUri,
-                    positionMs = lightRuntimePositionMs,
-                    isPlaying = isPlaying
-                )
-            }
 
             if (activeDisplayLines.isNotEmpty()) {
                 val totalOffsetMs = lyricsDelayMs + userOffsetMs
@@ -1274,6 +1267,31 @@ fun PlayerScreen(
 
             delay(200L)
             if (!isPlaying) delay(200L)
+        }
+    }
+
+    LaunchedEffect(isPlaying, currentTrackUri, hasLightCues, timelineLightPreviewPositionMs) {
+        val trackUri = currentTrackUri ?: return@LaunchedEffect
+        if (!hasLightCues) return@LaunchedEffect
+
+        if (!isPlaying) {
+            val pausedPositionMs = timelineLightPreviewPositionMs ?: getPositionMs().coerceAtLeast(0L)
+            LightCueDispatcher.advance(
+                trackUri = trackUri,
+                positionMs = pausedPositionMs,
+                isPlaying = false
+            )
+            return@LaunchedEffect
+        }
+
+        while (true) {
+            val runtimePositionMs = timelineLightPreviewPositionMs ?: getPositionMs().coerceAtLeast(0L)
+            LightCueDispatcher.advance(
+                trackUri = trackUri,
+                positionMs = runtimePositionMs,
+                isPlaying = true
+            )
+            delay(DMX_PLAYBACK_POLL_INTERVAL_MS)
         }
     }
 
