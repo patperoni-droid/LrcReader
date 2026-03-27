@@ -1,7 +1,9 @@
 package com.patrick.lrcreader.core.light
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LightCueDispatcherTest {
@@ -141,5 +143,118 @@ class LightCueDispatcherTest {
             pausedScene.renderAtRealtime(10_000L),
             pausedScene.renderAtRealtime(11_000L)
         )
+    }
+
+    @Test
+    fun renderAtPosition_withoutDuration_keepsCurrentBehavior() {
+        val scene = LightSceneState(
+            trackUri = "file:///track",
+            previousColorArgb = LIGHT_OFF_COLOR_ARGB,
+            previousIntensity = 0f,
+            targetColorArgb = 0xFFFF0000L,
+            targetIntensity = 1f,
+            cuePositionMs = 1_000L,
+            fadeMs = 1_000L,
+            anchorPositionMs = 1_500L,
+            anchorRealtimeMs = 5_000L,
+            isPlaying = true,
+            playbackRate = 1f,
+            hasCue = true
+        )
+
+        val rendered = scene.renderAtPosition(1_500L)
+
+        assertEquals(0.5f, rendered.intensity, 0.0001f)
+        assertTrue(scene.hasAnimatedTransitionAt(1_500L))
+    }
+
+    @Test
+    fun renderAtPosition_withDuration_turnsOffAfterEnd() {
+        val runtime = LightCueRuntime()
+        val cues = listOf(
+            LightCue(
+                timeMs = 1_000L,
+                action = LightAction.Color(argb = 0xFFFF0000L),
+                intensity = 1f,
+                durationMs = 500L
+            )
+        )
+
+        val scene = runtime.syncToPosition(
+            trackUri = "file:///track",
+            cues = cues,
+            positionMs = 1_600L,
+            realtimeMs = 10_000L
+        )
+        val rendered = scene.renderAtPosition(1_600L)
+
+        assertEquals(LIGHT_OFF_COLOR_ARGB, rendered.colorArgb)
+        assertEquals(0f, rendered.intensity, 0.0001f)
+        assertFalse(scene.hasActiveStrobeAt(1_600L))
+    }
+
+    @Test
+    fun renderAtPosition_withFadeOut_fadesToBlackout() {
+        val runtime = LightCueRuntime()
+        val cues = listOf(
+            LightCue(
+                timeMs = 1_000L,
+                action = LightAction.Color(argb = 0xFFFF0000L),
+                intensity = 1f,
+                durationMs = 500L,
+                fadeOutMs = 500L
+            )
+        )
+
+        val scene = runtime.syncToPosition(
+            trackUri = "file:///track",
+            cues = cues,
+            positionMs = 1_750L,
+            realtimeMs = 10_000L
+        )
+        val rendered = scene.renderAtPosition(1_750L)
+
+        assertEquals(0.5f, rendered.intensity, 0.0001f)
+        assertTrue(scene.hasAnimatedTransitionAt(1_750L))
+    }
+
+    @Test
+    fun advance_newCueDuringTimedCue_newCueWins() {
+        val runtime = LightCueRuntime()
+        val cues = listOf(
+            LightCue(
+                timeMs = 1_000L,
+                action = LightAction.Color(argb = 0xFFFF0000L),
+                intensity = 1f,
+                durationMs = 1_000L,
+                fadeOutMs = 500L
+            ),
+            LightCue(
+                timeMs = 1_800L,
+                action = LightAction.Color(argb = 0xFF0000FFL),
+                intensity = 0.8f
+            )
+        )
+
+        runtime.advance(
+            trackUri = "file:///track",
+            cues = cues,
+            positionMs = 1_600L,
+            isPlaying = true,
+            realtimeMs = 10_000L
+        )
+
+        val scene = runtime.advance(
+            trackUri = "file:///track",
+            cues = cues,
+            positionMs = 1_850L,
+            isPlaying = true,
+            realtimeMs = 10_250L
+        )
+        val rendered = scene.renderAtPosition(1_850L)
+
+        assertEquals(1_800L, scene.cuePositionMs)
+        assertEquals(0xFF0000FFL, rendered.colorArgb)
+        assertEquals(0.8f, rendered.intensity, 0.0001f)
     }
 }

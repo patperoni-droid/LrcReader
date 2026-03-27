@@ -40,10 +40,9 @@ fun LightSimulatorPreview(
             val nowMs = SystemClock.elapsedRealtime()
             value = renderSimulatorState(sceneState, nowMs)
 
-            val fadeEndMs = sceneState.cuePositionMs + sceneState.fadeMs
             val effectivePositionMs = sceneState.estimatedPositionAt(nowMs)
-            val fadeActive = sceneState.isPlaying && sceneState.fadeMs > 0L && effectivePositionMs < fadeEndMs
-            val strobeActive = sceneState.isPlaying && sceneState.strobeHz != null
+            val fadeActive = sceneState.isPlaying && sceneState.hasAnimatedTransitionAt(effectivePositionMs)
+            val strobeActive = sceneState.isPlaying && sceneState.hasActiveStrobeAt(effectivePositionMs)
             if (!fadeActive && !strobeActive) {
                 break
             }
@@ -75,11 +74,11 @@ private fun renderSimulatorState(
     realtimeMs: Long
 ): RenderedLightState {
     val baseState = sceneState.copy(strobeHz = null).renderAtRealtime(realtimeMs)
-    if (sceneState.strobeHz == null || !sceneState.isPlaying) {
+    val effectivePositionMs = sceneState.estimatedPositionAt(realtimeMs)
+    if (!sceneState.isPlaying || !sceneState.hasActiveStrobeAt(effectivePositionMs)) {
         return baseState
     }
 
-    val effectivePositionMs = sceneState.estimatedPositionAt(realtimeMs)
     val elapsedSinceCueMs = (effectivePositionMs - sceneState.cuePositionMs).coerceAtLeast(0L)
     val blinkOn = ((elapsedSinceCueMs / SIMULATOR_STROBE_HALF_PERIOD_MS) % 2L) == 0L
     return if (blinkOn) {

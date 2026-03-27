@@ -359,6 +359,8 @@
     <string name="light_color_white">White</string>
     <string name="light_cue_intensity_label">Intensity (%)</string>
     <string name="light_cue_fade_label">Fade (ms)</string>
+    <string name="light_cue_duration_label">Auto off duration</string>
+    <string name="light_cue_fade_out_label">Fade out</string>
     <string name="light_cue_strobe_hz_label">Strobe (Hz)</string>
     <string name="light_generate_action">Generate lights</string>
     <string name="light_generate_dialog_title">Generate a light base</string>

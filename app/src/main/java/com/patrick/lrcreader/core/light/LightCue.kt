@@ -8,7 +8,9 @@ data class LightCue(
     val timeMs: Long,
     val action: LightAction,
     val intensity: Float = 1f,
-    val fadeMs: Long = 0L
+    val fadeMs: Long = 0L,
+    val durationMs: Long? = null,
+    val fadeOutMs: Long? = null
 ) {
     fun toJson(): JSONObject {
         return JSONObject().apply {
@@ -16,6 +18,8 @@ data class LightCue(
             put("action", action.storageType)
             put("intensity", intensity.coerceIn(0f, 1f).toDouble())
             put("fadeMs", fadeMs.coerceAtLeast(0L))
+            durationMs?.let { put("durationMs", it.coerceAtLeast(0L)) }
+            fadeOutMs?.let { put("fadeOutMs", it.coerceAtLeast(0L)) }
             when (action) {
                 is LightAction.Color -> put("argb", action.toStorageArgb())
                 LightAction.Blackout -> Unit
@@ -66,7 +70,13 @@ data class LightCue(
                 timeMs = json.optLong("timeMs").coerceAtLeast(0L),
                 action = action,
                 intensity = json.optDouble("intensity", 1.0).toFloat().coerceIn(0f, 1f),
-                fadeMs = json.optLong("fadeMs").coerceAtLeast(0L)
+                fadeMs = json.optLong("fadeMs").coerceAtLeast(0L),
+                durationMs = json.takeIf { it.has("durationMs") && !it.isNull("durationMs") }
+                    ?.optLong("durationMs")
+                    ?.coerceAtLeast(0L),
+                fadeOutMs = json.takeIf { it.has("fadeOutMs") && !it.isNull("fadeOutMs") }
+                    ?.optLong("fadeOutMs")
+                    ?.coerceAtLeast(0L)
             )
         }
     }

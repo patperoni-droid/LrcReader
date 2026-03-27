@@ -300,6 +300,8 @@ internal class LightCueRuntime {
             strobeHz = nextStrobeHz,
             cuePositionMs = cue.timeMs.coerceAtLeast(0L),
             fadeMs = cue.fadeMs.coerceAtLeast(0L),
+            durationMs = cue.durationMs?.coerceAtLeast(0L),
+            fadeOutMs = cue.fadeOutMs?.coerceAtLeast(0L),
             anchorPositionMs = currentPositionMs.coerceAtLeast(0L),
             anchorRealtimeMs = realtimeMs.coerceAtLeast(0L),
             isPlaying = isPlaying,
