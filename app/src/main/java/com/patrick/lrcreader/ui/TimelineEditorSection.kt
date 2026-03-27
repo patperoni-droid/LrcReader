@@ -65,6 +65,9 @@ fun TimelineEditorSection(
     onGenerateLights: () -> Unit,
     onEditMidiMarker: (Int) -> Unit,
     onEditDmxMarker: (Int) -> Unit,
+    canPasteDmxCue: Boolean,
+    onPasteDmxCueHere: () -> Unit,
+    onCopyDmxMarker: (Int) -> Unit,
     onRenameMarker: (Int, String, Long?) -> Unit,
     onDeleteMarker: (Int) -> Unit
 ) {
@@ -320,6 +323,15 @@ fun TimelineEditorSection(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            TextButton(
+                onClick = onPasteDmxCueHere,
+                enabled = canPasteDmxCue
+            ) {
+                Text(
+                    text = "Coller ici",
+                    color = if (canPasteDmxCue) Color(0xFFFFB74D) else Color(0xFFB0BEC5)
+                )
+            }
             Spacer(Modifier.weight(1f))
             Text(
                 text = formatTimelineMarkerTime(safePositionMs),
@@ -356,7 +368,8 @@ fun TimelineEditorSection(
                     ""
                 }
             },
-            onDeleteMarker = onDeleteMarker
+            onDeleteMarker = onDeleteMarker,
+            onCopyDmxMarker = onCopyDmxMarker
         )
     }
 

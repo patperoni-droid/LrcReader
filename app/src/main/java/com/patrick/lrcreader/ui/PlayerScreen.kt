@@ -185,6 +185,7 @@ fun PlayerScreen(
     var timelineLightPreviewPositionMs by remember(currentTrackUri) { mutableStateOf<Long?>(null) }
     var timelineMarkers by remember(currentTrackUri) { mutableStateOf<List<TimelineMarker>>(emptyList()) }
     var timelineLightCues by remember(currentTrackUri) { mutableStateOf<List<LightCue>>(emptyList()) }
+    var timelineDmxClipboard by remember { mutableStateOf<TimelineDmxClipboard?>(null) }
     val projectedTimelineLiveNotes = remember(timelineMarkers) {
         projectTimelineNoteMarkers(timelineMarkers)
     }
@@ -216,6 +217,11 @@ fun PlayerScreen(
     }
     val timelineEditorMarkers = remember(timelineEditorEntries) {
         timelineEditorEntries.map { entry -> entry.marker }
+    }
+    val canPasteTimelineDmxCue = remember(currentTrackUri, timelineDmxClipboard) {
+        val current = currentTrackUri?.trim().orEmpty()
+        val clipboard = timelineDmxClipboard
+        clipboard != null && current.isNotBlank() && clipboard.trackUri == current
     }
     var showLightTestDialog by remember { mutableStateOf(false) }
     var hasLightCues by remember(currentTrackUri) { mutableStateOf(false) }
@@ -1865,6 +1871,54 @@ fun PlayerScreen(
                     val source = entry.source as? TimelineEditorMarkerSource.Light ?: return@onEditDmxMarker
                     editingTimelineLightCueTimeMs = source.timeMs
                 },
+                canPasteDmxCue = canPasteTimelineDmxCue,
+                onPasteDmxCueHere = {
+                    val trackUri = currentTrackUri ?: return@TimelineEditorSection
+                    val clipboard = timelineDmxClipboard
+                        ?.takeIf { it.trackUri == trackUri }
+                        ?: return@TimelineEditorSection
+                    val cueToPaste = clipboard.cue.copy(
+                        timeMs = getPositionMs().coerceAtLeast(0L)
+                    )
+                    scope.launch {
+                        val saved = withContext(Dispatchers.IO) {
+                            SmpLightCueBridge.upsertCueAtTime(
+                                context = context,
+                                trackUriString = trackUri,
+                                cue = cueToPaste
+                            ) == true
+                        }
+                        if (saved) {
+                            refreshTimelineLightCues(trackUri)
+                            Toast.makeText(context, "1 repère DMX collé", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(context, sTimelineSaveFailed, Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                },
+                onCopyDmxMarker = onCopyDmxMarker@ { index ->
+                    val trackUri = currentTrackUri ?: return@onCopyDmxMarker
+                    val entry = timelineEditorEntries.getOrNull(index) ?: return@onCopyDmxMarker
+                    val source = entry.source as? TimelineEditorMarkerSource.Light ?: return@onCopyDmxMarker
+                    scope.launch {
+                        val cue = withContext(Dispatchers.IO) {
+                            SmpLightCueBridge.getCueAtTime(
+                                context = context,
+                                trackUriString = trackUri,
+                                timeMs = source.timeMs
+                            )
+                        }
+                        if (cue != null) {
+                            timelineDmxClipboard = TimelineDmxClipboard(
+                                trackUri = trackUri,
+                                cue = cue
+                            )
+                            Toast.makeText(context, "1 repère DMX copié", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(context, "Copie du repère DMX impossible.", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                },
                 onRenameMarker = onRenameMarker@ { index, label, markerDurationMs ->
                     val entry = timelineEditorEntries.getOrNull(index) ?: return@onRenameMarker
                     val source = entry.source as? TimelineEditorMarkerSource.Timeline ?: return@onRenameMarker
@@ -2839,6 +2893,11 @@ private sealed interface TimelineEditorMarkerSource {
 private data class TimelineEditorMarkerEntry(
     val marker: TimelineMarker,
     val source: TimelineEditorMarkerSource
+)
+
+private data class TimelineDmxClipboard(
+    val trackUri: String,
+    val cue: LightCue
 )
 
 private fun buildTimelineEditorEntries(

@@ -3,6 +3,8 @@ package com.patrick.lrcreader.ui
 import android.os.SystemClock
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
@@ -52,6 +54,7 @@ private data class IndexedTimelineMarker(
     val marker: TimelineMarker
 )
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun TimelineScrubColumn(
     modifier: Modifier = Modifier,
@@ -63,7 +66,8 @@ fun TimelineScrubColumn(
     focusRequestToken: Int = 0,
     onSeekToMs: (Long) -> Unit,
     onEditMarker: (Int) -> Unit,
-    onDeleteMarker: (Int) -> Unit
+    onDeleteMarker: (Int) -> Unit,
+    onCopyDmxMarker: (Int) -> Unit
 ) {
     val lazyListState = rememberLazyListState()
     val safeDurationMs = durationMs.coerceAtLeast(0).toLong()
@@ -263,11 +267,21 @@ fun TimelineScrubColumn(
                     ) {
                         slotMarkers.forEach { entry ->
                             val isActiveMarker = entry.index == activeMarkerIndex
+                            val rowInteractionModifier = if (entry.marker.kind == TimelineMarkerKind.DMX) {
+                                Modifier
+                                    .fillMaxWidth()
+                                    .combinedClickable(
+                                        onClick = { onEditMarker(entry.index) },
+                                        onLongClick = { onCopyDmxMarker(entry.index) }
+                                    )
+                            } else {
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onEditMarker(entry.index) }
+                            }
 
                             Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { onEditMarker(entry.index) },
+                                modifier = rowInteractionModifier,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 if (entry.marker.kind != TimelineMarkerKind.TEXT) {
