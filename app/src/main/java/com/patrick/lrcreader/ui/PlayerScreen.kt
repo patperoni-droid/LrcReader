@@ -1871,6 +1871,8 @@ fun PlayerScreen(
                     val source = entry.source as? TimelineEditorMarkerSource.Light ?: return@onEditDmxMarker
                     editingTimelineLightCueTimeMs = source.timeMs
                 },
+                showLightPreview = showLightIndicator && hasLightCues,
+                lightPreviewSceneState = currentTrackLightScene,
                 canPasteDmxCue = canPasteTimelineDmxCue,
                 onPasteDmxCueHere = {
                     val trackUri = currentTrackUri ?: return@TimelineEditorSection

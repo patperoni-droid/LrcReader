@@ -43,6 +43,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.core.FillerSoundManager
+import com.patrick.lrcreader.core.light.LightSceneState
 import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.smp.DEFAULT_TIMELINE_NOTE_DURATION_MS
 import com.patrick.lrcreader.smp.TimelineMarker
@@ -65,6 +66,8 @@ fun TimelineEditorSection(
     onGenerateLights: () -> Unit,
     onEditMidiMarker: (Int) -> Unit,
     onEditDmxMarker: (Int) -> Unit,
+    showLightPreview: Boolean,
+    lightPreviewSceneState: LightSceneState,
     canPasteDmxCue: Boolean,
     onPasteDmxCueHere: () -> Unit,
     onCopyDmxMarker: (Int) -> Unit,
@@ -371,6 +374,19 @@ fun TimelineEditorSection(
             onDeleteMarker = onDeleteMarker,
             onCopyDmxMarker = onCopyDmxMarker
         )
+
+        if (showLightPreview) {
+            Spacer(Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End
+            ) {
+                LightSimulatorPreview(
+                    sceneState = lightPreviewSceneState,
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
+            }
+        }
     }
 
     val safeRenameIndex = renameIndex
