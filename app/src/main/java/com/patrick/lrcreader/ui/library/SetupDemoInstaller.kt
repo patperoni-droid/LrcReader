@@ -11,7 +11,9 @@ import com.patrick.lrcreader.core.BackupManager
 import com.patrick.lrcreader.core.LibraryIndexCache
 import com.patrick.lrcreader.core.LibrarySnapshot
 import com.patrick.lrcreader.core.PlaylistRepository
+import com.patrick.lrcreader.core.buildSmpItem
 import com.patrick.lrcreader.exo.BuildConfig
+import com.patrick.lrcreader.smp.SmpImporter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -31,12 +33,17 @@ private data class DemoInstallPaths(
     val importedAudioUris: List<String>
 )
 
+private data class DemoImportedSong(
+    val playlistItemUri: String
+)
+
 suspend fun installDemoLibrary(context: Context): DemoInstallResult = withContext(Dispatchers.IO) {
     var stage = "start"
     try {
         val rootUri = BackupFolderPrefs.getLibraryRootUri(context)
             ?: error("library_root_missing")
         val backendType = if (rootUri.scheme == "file") "INTERNAL" else "SAF"
+        val smpImporter = SmpImporter(context)
         Log.i(
             TAG,
             "installDemoLibrary:start flavor=${BuildConfig.FLAVOR} buildType=${BuildConfig.BUILD_TYPE} debug=${BuildConfig.DEBUG} backend=$backendType rootUri=$rootUri"
@@ -44,9 +51,17 @@ suspend fun installDemoLibrary(context: Context): DemoInstallResult = withContex
 
         stage = "copy_demo_files"
         val installPaths = if (rootUri.scheme == "file") {
-            installDemoIntoInternalStorage(context, rootUri)
+            installDemoIntoInternalStorage(
+                context = context,
+                rootUri = rootUri,
+                smpImporter = smpImporter
+            )
         } else {
-            installDemoIntoSafStorage(context, rootUri)
+            installDemoIntoSafStorage(
+                context = context,
+                rootUri = rootUri,
+                smpImporter = smpImporter
+            )
         }
         val copyRootUri = installPaths.copyRootUri
         val audioFolderUri = installPaths.audioFolderUri
@@ -61,13 +76,11 @@ suspend fun installDemoLibrary(context: Context): DemoInstallResult = withContex
             TAG,
             "playlist:start name=$DEMO_PLAYLIST_NAME existingCount=${PlaylistRepository.getAllSongsRaw(DEMO_PLAYLIST_NAME).size} importedCount=${importedAudioUris.size}"
         )
-        val existingOrder = PlaylistRepository.getAllSongsRaw(DEMO_PLAYLIST_NAME)
         PlaylistRepository.createIfNotExists(DEMO_PLAYLIST_NAME)
-        importedAudioUris.forEach { uri -> PlaylistRepository.assignSongToPlaylist(DEMO_PLAYLIST_NAME, uri) }
-        PlaylistRepository.updatePlayListOrder(
-            DEMO_PLAYLIST_NAME,
-            mergeDemoPlaylistOrder(importedAudioUris, existingOrder)
-        )
+        importedAudioUris.forEach { itemUri ->
+            PlaylistRepository.assignSongToPlaylist(DEMO_PLAYLIST_NAME, itemUri)
+        }
+        PlaylistRepository.updatePlayListOrder(DEMO_PLAYLIST_NAME, importedAudioUris)
         Log.i(
             TAG,
             "playlist:end name=$DEMO_PLAYLIST_NAME finalCount=${PlaylistRepository.getAllSongsRaw(DEMO_PLAYLIST_NAME).size}"
@@ -126,62 +139,42 @@ suspend fun installDemoLibrary(context: Context): DemoInstallResult = withContex
 
 private fun installDemoIntoInternalStorage(
     context: Context,
-    rootUri: Uri
+    rootUri: Uri,
+    smpImporter: SmpImporter
 ): DemoInstallPaths {
     val rootDir = File(rootUri.path ?: error("internal_root_path_missing"))
     val backingTracks = File(rootDir, "BackingTracks").apply { mkdirs() }
-    val audioDir = File(backingTracks, "audio").apply { mkdirs() }
-    File(backingTracks, "SMP").apply { mkdirs() }
-    val lyricsDir = File(backingTracks, "Lyrics").apply { mkdirs() }
-    val accordsDir = File(backingTracks, "Accords").apply { mkdirs() }
+    val smpDir = File(backingTracks, "SMP").apply { mkdirs() }
 
     val assetManager = context.assets
-    val audioNames = listDemoAssetFiles(assetManager.list("demo/audio"))
-    audioNames.forEach { name ->
+    val importedSongs = listDemoSmpAssetFiles(assetManager.list("demo/smp")).map { name ->
+        val destination = File(smpDir, name)
         copyAssetToFile(
             context = context,
-            assetPath = "demo/audio/$name",
-            destination = File(audioDir, name),
-            logicalType = "audio",
+            assetPath = "demo/smp/$name",
+            destination = destination,
+            logicalType = "smp",
             mime = mimeTypeForAsset(name),
-            targetLabel = audioDir.absolutePath
+            targetLabel = smpDir.absolutePath
         )
-    }
-
-    listDemoAssetFiles(assetManager.list("demo/lyrics")).forEach { name ->
-        copyAssetToFile(
-            context = context,
-            assetPath = "demo/lyrics/$name",
-            destination = File(lyricsDir, name),
-            logicalType = "lyrics",
-            mime = mimeTypeForAsset(name),
-            targetLabel = lyricsDir.absolutePath
-        )
-    }
-
-    listDemoAssetFiles(assetManager.list("demo/Accords")).forEach { name ->
-        copyAssetToFile(
-            context = context,
-            assetPath = "demo/Accords/$name",
-            destination = File(accordsDir, name),
-            logicalType = "accords",
-            mime = mimeTypeForAsset(name),
-            targetLabel = accordsDir.absolutePath
+        importCopiedDemoSmp(
+            smpImporter = smpImporter,
+            archiveUri = Uri.fromFile(destination),
+            assetName = name
         )
     }
 
     return DemoInstallPaths(
         copyRootUri = rootUri,
-        audioFolderUri = Uri.fromFile(audioDir),
-        importedAudioUris = audioNames.map { name ->
-            Uri.fromFile(File(audioDir, name)).toString()
-        }
+        audioFolderUri = null,
+        importedAudioUris = importedSongs.map { song -> song.playlistItemUri }
     )
 }
 
 private fun installDemoIntoSafStorage(
     context: Context,
-    rootUri: Uri
+    rootUri: Uri,
+    smpImporter: SmpImporter
 ): DemoInstallPaths {
     val setupTreeUri = BackupFolderPrefsSaf.getSetupTreeUri(context)
         ?: BackupFolderPrefs.getSetupTreeUri(context)
@@ -206,51 +199,41 @@ private fun installDemoIntoSafStorage(
         TAG,
         "resolve:BackingTracks root=${splRoot.uri} result=${backingTracks.uri} children=${listChildNames(splRoot)}"
     )
-    val audioDir = ensureDirSmart(backingTracks, "audio", aliases = listOf("Audio"))
-        ?: error("audio_dir_missing")
-    ensureDirSmart(backingTracks, "SMP", aliases = listOf("smp"))
+    val smpDir = ensureDirSmart(backingTracks, "SMP", aliases = listOf("smp"))
         ?: error("smp_dir_missing")
-    val lyricsDir = ensureDirSmart(backingTracks, "Lyrics", aliases = listOf("lyrics"))
-        ?: error("lyrics_dir_missing")
-    val accordsDir = ensureDirSmart(backingTracks, "Accords", aliases = listOf("accords"))
-        ?: error("accords_dir_missing")
 
     val assetManager = context.assets
-    val audioNames = listDemoAssetFiles(assetManager.list("demo/audio"))
-    val importedAudioUris = audioNames.map { name ->
-        copyAssetToDocumentFile(
+    val importedSongs = listDemoSmpAssetFiles(assetManager.list("demo/smp")).map { name ->
+        val copiedUri = copyAssetToDocumentFile(
             context = context,
-            assetPath = "demo/audio/$name",
-            targetDir = audioDir,
+            assetPath = "demo/smp/$name",
+            targetDir = smpDir,
             fileName = name,
-            logicalType = "audio"
+            logicalType = "smp"
         )
-    }
-
-    listDemoAssetFiles(assetManager.list("demo/lyrics")).forEach { name ->
-        copyAssetToDocumentFile(
-            context = context,
-            assetPath = "demo/lyrics/$name",
-            targetDir = lyricsDir,
-            fileName = name,
-            logicalType = "lyrics"
-        )
-    }
-
-    listDemoAssetFiles(assetManager.list("demo/Accords")).forEach { name ->
-        copyAssetToDocumentFile(
-            context = context,
-            assetPath = "demo/Accords/$name",
-            targetDir = accordsDir,
-            fileName = name,
-            logicalType = "accords"
+        importCopiedDemoSmp(
+            smpImporter = smpImporter,
+            archiveUri = Uri.parse(copiedUri),
+            assetName = name
         )
     }
 
     return DemoInstallPaths(
         copyRootUri = splRoot.uri,
-        audioFolderUri = audioDir.uri,
-        importedAudioUris = importedAudioUris
+        audioFolderUri = null,
+        importedAudioUris = importedSongs.map { song -> song.playlistItemUri }
+    )
+}
+
+private fun importCopiedDemoSmp(
+    smpImporter: SmpImporter,
+    archiveUri: Uri,
+    assetName: String
+): DemoImportedSong {
+    val importedSong = smpImporter.importSmp(archiveUri)
+        ?: error("demo_smp_import_failed:$assetName:${smpImporter.lastFailureReason ?: "unknown"}")
+    return DemoImportedSong(
+        playlistItemUri = buildSmpItem(importedSong.id)
     )
 }
 
@@ -428,6 +411,13 @@ internal fun listDemoAssetFiles(names: Array<String>?): List<String> {
     return names.orEmpty()
         .filter { it.isNotBlank() && !it.startsWith(".") }
         .sorted()
+}
+
+private fun listDemoSmpAssetFiles(names: Array<String>?): List<String> {
+    val smpFiles = listDemoAssetFiles(names)
+        .filter { it.endsWith(".smp", ignoreCase = true) }
+    require(smpFiles.isNotEmpty()) { "demo_smp_assets_missing" }
+    return smpFiles
 }
 
 internal fun mergeDemoPlaylistOrder(demoUris: List<String>, existingUris: List<String>): List<String> {

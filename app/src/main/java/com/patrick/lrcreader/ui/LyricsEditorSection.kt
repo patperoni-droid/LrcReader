@@ -11,6 +11,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.*
@@ -34,6 +35,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextRange
@@ -127,7 +129,6 @@ fun LyricsEditorSection(
     var pendingCapturedLine by remember { mutableStateOf<LrcLine?>(null) }
     var highlightedCapturedIndex by remember { mutableStateOf<Int?>(null) }
 
-    var editingCueLineIndex by remember { mutableStateOf<Int?>(null) }
     var lineMenuIndex by remember { mutableStateOf<Int?>(null) }
     var lineMenuText by remember { mutableStateOf("") }
     val displayedPalette = paletteChords
@@ -694,17 +695,14 @@ fun LyricsEditorSection(
                                                 Color.White
                                             },
                                             fontSize = 16.sp,
-                                            modifier = Modifier.combinedClickable(
-                                                onClick = {
-                                                    if (enableCueEditing) {
-                                                        editingCueLineIndex = index
+                                            modifier = Modifier.pointerInput(index, line.text) {
+                                                detectTapGestures(
+                                                    onLongPress = {
+                                                        lineMenuIndex = index
+                                                        lineMenuText = line.text
                                                     }
-                                                },
-                                                onLongClick = {
-                                                    lineMenuIndex = index
-                                                    lineMenuText = line.text
-                                                }
-                                            )
+                                                )
+                                            }
                                         )
                                     }
 
@@ -805,17 +803,6 @@ fun LyricsEditorSection(
                                     }
                                 }
                             }
-                        )
-                    }
-
-                    // ✅ Popup édition CUE MIDI
-                    val lineIndexEditing = editingCueLineIndex
-                    if (enableCueEditing && lineIndexEditing != null && currentTrackUri != null) {
-                        CueMidiEditorPopup(
-                            trackUri = currentTrackUri,
-                            lines = editingLines,
-                            lineIndex = lineIndexEditing,
-                            onClose = { editingCueLineIndex = null }
                         )
                     }
                 } // <-- ferme Column onglet Synchro
