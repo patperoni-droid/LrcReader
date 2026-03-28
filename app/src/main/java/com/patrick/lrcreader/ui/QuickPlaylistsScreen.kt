@@ -438,6 +438,7 @@ fun QuickPlaylistsScreen(
         saveManualOrder(context, playlist, snapshot)
         if (overwriteOriginal) {
             overwriteOriginalOrder(context, playlist, snapshot)
+            originalOrderByPlaylist[playlist] = snapshot
         }
     }
 
@@ -457,7 +458,7 @@ fun QuickPlaylistsScreen(
         val pl = internalSelected ?: return
         val movedUris = moveTracksOutOfGroup(items = songs, trackUris = targets)
         if (movedUris.isNotEmpty()) {
-            persistSongsOrder(pl)
+            persistSongsOrder(pl, overwriteOriginal = true)
             selectedTrackKeys = selectedTrackKeys - movedUris
         }
     }
@@ -784,11 +785,14 @@ fun QuickPlaylistsScreen(
                                 PlaylistRepository.resetPlayedFor(pl)
 
                                 // 2) ✅ on restaure l'ordre d'origine (persistant)
-                                val original = loadOriginalOrder(context, pl)
+                                val original = originalOrderByPlaylist[pl]
+                                    ?.takeIf { it.isNotEmpty() }
+                                    ?: loadOriginalOrder(context, pl)
                                     ?: PlaylistRepository.getSongsFor(pl)
 
                                 PlaylistRepository.updatePlayListOrder(pl, original)
                                 saveManualOrder(context, pl, original)
+                                originalOrderByPlaylist[pl] = original
 
                                 // 3) UI
                                 songs.clear()
@@ -1122,7 +1126,7 @@ fun QuickPlaylistsScreen(
                                                         val headerIndex = songs.indexOf(uriString)
                                                         if (removeGroupAtHeader(songs, headerIndex)) {
                                                             collapsedGroupIds = collapsedGroupIds - headerKey
-                                                            persistSongsOrder(pl)
+                                                            persistSongsOrder(pl, overwriteOriginal = true)
                                                         }
                                                     }
                                                     menuOpen = false
@@ -1445,7 +1449,7 @@ fun QuickPlaylistsScreen(
                                                         if (end != null) {
                                                             songs.add(index + 1, end)
                                                         }
-                                                        persistSongsOrder(pl)
+                                                        persistSongsOrder(pl, overwriteOriginal = true)
                                                         renameGroupTarget = header
                                                         renameGroupText = getGroupTitle(header)
                                                     }
@@ -1646,7 +1650,7 @@ fun QuickPlaylistsScreen(
             val index = songs.indexOf(target)
             if (index >= 0 && isGroupHeader(songs[index])) {
                 songs[index] = renameGroupHeader(songs[index], newTitle)
-                persistSongsOrder(pl)
+                persistSongsOrder(pl, overwriteOriginal = true)
             }
             renameGroupTarget = null
         }
@@ -1704,7 +1708,7 @@ fun QuickPlaylistsScreen(
                                         headerKey = option.headerKey
                                     )
                                     if (movedCount > 0) {
-                                        persistSongsOrder(pl)
+                                        persistSongsOrder(pl, overwriteOriginal = true)
                                         selectedTrackKeys = emptySet()
                                     }
                                 }
