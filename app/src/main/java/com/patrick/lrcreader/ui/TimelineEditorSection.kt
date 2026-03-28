@@ -4,6 +4,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -192,6 +193,18 @@ fun TimelineEditorSection(
                 color = Color.LightGray,
                 fontSize = 12.sp
             )
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            if (!showPaletteInput) {
+                TextButton(onClick = { showPaletteInput = true }) {
+                    Text(
+                        text = "Ajouter un repère",
+                        color = Color(0xFF80CBC4),
+                        fontSize = 12.sp
+                    )
+                }
+            }
         }
 
         if (showPaletteInput) {
@@ -232,24 +245,9 @@ fun TimelineEditorSection(
                 }
             }
             Spacer(Modifier.height(8.dp))
-        } else {
-            TextButton(
-                onClick = { showPaletteInput = true }
-            ) {
-                Text(
-                    text = "Ajouter un repère",
-                    color = Color(0xFF80CBC4)
-                )
-            }
-            Spacer(Modifier.height(6.dp))
         }
 
-        if (palette.isEmpty()) {
-            Text(
-                text = stringResource(R.string.timeline_palette_empty_state),
-                color = Color.Gray
-            )
-        } else {
+        if (palette.isNotEmpty()) {
             FlowRow(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -343,47 +341,49 @@ fun TimelineEditorSection(
             )
         }
 
-        TimelineScrubColumn(
-            modifier = Modifier.weight(1f),
-            markers = markers,
-            positionMs = positionMs,
-            durationMs = durationMs,
-            isPlaying = isPlaying,
-            focusRequestTimeMs = focusRequestTimeMs.takeIf { it >= 0L },
-            focusRequestToken = focusRequestToken,
-            onSeekToMs = seekToMs,
-            onEditMarker = { index ->
-                if (index !in markers.indices) return@TimelineScrubColumn
-                if (markers[index].kind == TimelineMarkerKind.MIDI) {
-                    onEditMidiMarker(index)
-                    return@TimelineScrubColumn
-                }
-                if (markers[index].kind == TimelineMarkerKind.DMX) {
-                    onEditDmxMarker(index)
-                    return@TimelineScrubColumn
-                }
-                renameIndex = index
-                renameText = markers[index].label
-                renameDurationSeconds = if (markers[index].kind == TimelineMarkerKind.NOTE) {
-                    val durationMs = markers[index].durationMs ?: DEFAULT_TIMELINE_NOTE_DURATION_MS
-                    (durationMs / 1_000L).toString()
-                } else {
-                    ""
-                }
-            },
-            onDeleteMarker = onDeleteMarker,
-            onCopyDmxMarker = onCopyDmxMarker
-        )
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+        ) {
+            TimelineScrubColumn(
+                modifier = Modifier.fillMaxSize(),
+                markers = markers,
+                positionMs = positionMs,
+                durationMs = durationMs,
+                isPlaying = isPlaying,
+                focusRequestTimeMs = focusRequestTimeMs.takeIf { it >= 0L },
+                focusRequestToken = focusRequestToken,
+                onSeekToMs = seekToMs,
+                onEditMarker = { index ->
+                    if (index !in markers.indices) return@TimelineScrubColumn
+                    if (markers[index].kind == TimelineMarkerKind.MIDI) {
+                        onEditMidiMarker(index)
+                        return@TimelineScrubColumn
+                    }
+                    if (markers[index].kind == TimelineMarkerKind.DMX) {
+                        onEditDmxMarker(index)
+                        return@TimelineScrubColumn
+                    }
+                    renameIndex = index
+                    renameText = markers[index].label
+                    renameDurationSeconds = if (markers[index].kind == TimelineMarkerKind.NOTE) {
+                        val durationMs = markers[index].durationMs ?: DEFAULT_TIMELINE_NOTE_DURATION_MS
+                        (durationMs / 1_000L).toString()
+                    } else {
+                        ""
+                    }
+                },
+                onDeleteMarker = onDeleteMarker,
+                onCopyDmxMarker = onCopyDmxMarker
+            )
 
-        if (showLightPreview) {
-            Spacer(Modifier.height(8.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End
-            ) {
+            if (showLightPreview) {
                 LightSimulatorPreview(
                     sceneState = lightPreviewSceneState,
-                    modifier = Modifier.padding(bottom = 4.dp)
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 8.dp, bottom = 12.dp)
                 )
             }
         }
