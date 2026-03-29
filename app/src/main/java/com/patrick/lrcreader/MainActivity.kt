@@ -36,6 +36,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
@@ -1713,75 +1714,81 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
 
+                val imeBottomPadding = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
+                val shouldHideBottomBarForPlayerIme =
+                    selectedTab is BottomTab.Player && imeBottomPadding > 0.dp
+
                 Scaffold(
                     containerColor = Color.Black,
                     bottomBar = {
-                        BottomTabsBar(
-                            selected = selectedTab,
-                            onSelected = { tab ->
+                        if (!shouldHideBottomBarForPlayerIme) {
+                            BottomTabsBar(
+                                selected = selectedTab,
+                                onSelected = { tab ->
 
-                                // ✅ fermer les overlays quand on change d'onglet
-                                if (tab !is BottomTab.Filler) isFillerSettingsOpen = false
-                                if (tab !is BottomTab.Search) isSearchOpen = false
-                                isMoreMenuOpen = false
+                                    // ✅ fermer les overlays quand on change d'onglet
+                                    if (tab !is BottomTab.Filler) isFillerSettingsOpen = false
+                                    if (tab !is BottomTab.Search) isSearchOpen = false
+                                    isMoreMenuOpen = false
 
-                                // ✅ sortir du prompteur dès qu'on touche la bottom bar
-                                textPrompterId = null
+                                    // ✅ sortir du prompteur dès qu'on touche la bottom bar
+                                    textPrompterId = null
 
-                                // ✅ sortir de “Mes notes” dès qu'on touche la bottom bar
-                                isNotesOpen = false
+                                    // ✅ sortir de “Mes notes” dès qu'on touche la bottom bar
+                                    isNotesOpen = false
 
-                                // ✅ "Fond sonore" = overlay
-                                if (tab is BottomTab.Filler) {
-                                    isFillerSettingsOpen = true
-                                } else {
-                                    setTabAndPersist(tab, reason = "bottomTabSelect")
+                                    // ✅ "Fond sonore" = overlay
+                                    if (tab is BottomTab.Filler) {
+                                        isFillerSettingsOpen = true
+                                    } else {
+                                        setTabAndPersist(tab, reason = "bottomTabSelect")
+                                    }
+                                },
+                                onSearchClick = {
+                                    // ✅ fermer ce qui doit se fermer quand on ouvre la recherche
+                                    textPrompterId = null
+                                    isNotesOpen = false
+                                    isFillerSettingsOpen = false
+                                    isMoreMenuOpen = false
+
+                                    if (selectedTab is BottomTab.QuickPlaylists) {
+                                        isSearchOpen = false
+                                        playlistSearchToggleSignal++
+                                        return@BottomTabsBar
+                                    }
+
+                                    if (selectedTab is BottomTab.Library) {
+                                        isSearchOpen = false
+                                        librarySearchToggleSignal++
+                                        return@BottomTabsBar
+                                    }
+
+                                    searchMode = when {
+                                        selectedTab is BottomTab.Dj ->
+                                            SearchMode.DJ
+
+                                        selectedTab is BottomTab.QuickPlaylists &&
+                                                !selectedQuickPlaylist.isNullOrBlank() ->
+                                            SearchMode.PLAYLIST
+
+                                        else ->
+                                            SearchMode.PLAYER
+                                    }
+
+                                    isSearchOpen = true
+                                },
+                                onMoreClick = {
+                                    textPrompterId = null
+                                    isMoreMenuOpen = true
+                                },
+                                onPlayerReselect = {
+                                    // ✅ C'EST ICI LE FIX :
+                                    // même si selectedTab est déjà Player, on demande explicitement au PlayerScreen
+                                    // de fermer Track Console et revenir à l'écran lecteur.
+                                    closeMixSignal++
                                 }
-                            },
-                            onSearchClick = {
-                                // ✅ fermer ce qui doit se fermer quand on ouvre la recherche
-                                textPrompterId = null
-                                isNotesOpen = false
-                                isFillerSettingsOpen = false
-                                isMoreMenuOpen = false
-
-                                if (selectedTab is BottomTab.QuickPlaylists) {
-                                    isSearchOpen = false
-                                    playlistSearchToggleSignal++
-                                    return@BottomTabsBar
-                                }
-
-                                if (selectedTab is BottomTab.Library) {
-                                    isSearchOpen = false
-                                    librarySearchToggleSignal++
-                                    return@BottomTabsBar
-                                }
-
-                                searchMode = when {
-                                    selectedTab is BottomTab.Dj ->
-                                        SearchMode.DJ
-
-                                    selectedTab is BottomTab.QuickPlaylists &&
-                                            !selectedQuickPlaylist.isNullOrBlank() ->
-                                        SearchMode.PLAYLIST
-
-                                    else ->
-                                        SearchMode.PLAYER
-                                }
-
-                                isSearchOpen = true
-                            },
-                            onMoreClick = {
-                                textPrompterId = null
-                                isMoreMenuOpen = true
-                            },
-                            onPlayerReselect = {
-                                // ✅ C'EST ICI LE FIX :
-                                // même si selectedTab est déjà Player, on demande explicitement au PlayerScreen
-                                // de fermer Track Console et revenir à l'écran lecteur.
-                                closeMixSignal++
-                            }
-                        )
+                            )
+                        }
                     }
                 ) { innerPadding ->
 
