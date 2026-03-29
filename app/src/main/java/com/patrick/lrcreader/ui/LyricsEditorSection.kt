@@ -115,6 +115,7 @@ fun LyricsEditorSection(
     val lazyListState = rememberLazyListState()
     var isImportBusy by remember { mutableStateOf(false) }
     var isPersistBusy by remember { mutableStateOf(false) }
+    var showTimingsInLyricsTab by remember(currentTrackUri) { mutableStateOf(false) }
     var rawTextFieldValue by remember(currentTrackUri, showChordPalette) {
         mutableStateOf(
             TextFieldValue(
@@ -148,6 +149,14 @@ fun LyricsEditorSection(
             .map { line -> line.trim().replace(INLINE_LRC_TIME_TAG_REGEX, "").trim() }
             .filter { it.isNotEmpty() }
 
+    val timingPreviewText = remember(rawTextFieldValue.text, editingLines) {
+        buildLyricsTimingPreviewText(
+            rawText = rawTextFieldValue.text,
+            existingLines = editingLines
+        )
+    }
+    val hasTimedLines = remember(editingLines) { editingLines.any { it.timeMs > 0L } }
+
     fun updatePalette(raw: String, persist: Boolean) {
         paletteInput = raw
         paletteChords = parseChordPaletteInput(raw)
@@ -159,6 +168,44 @@ fun LyricsEditorSection(
                 ChordPaletteStore.saveRaw(context, key, raw)
             }
         }
+    }
+
+    fun applyLinesToRawDraft(lines: List<LrcLine>) {
+        val nextRaw = lines.joinToString("\n") { it.text }
+        rawTextFieldValue = TextFieldValue(
+            text = nextRaw,
+            selection = TextRange(nextRaw.length)
+        )
+        onRawLyricsTextChange(nextRaw)
+    }
+
+    fun buildLinesFromRawDraft(): List<LrcLine> {
+        val simpleLines = rawToPlainLines(rawTextFieldValue.text)
+        if (simpleLines.isEmpty()) return emptyList()
+        return if (editingLines.isEmpty()) {
+            simpleLines.map { text -> LrcLine(timeMs = 0L, text = text) }
+        } else {
+            mergeLyricsWithOldTimings(
+                newLines = simpleLines,
+                oldLines = editingLines
+            )
+        }
+    }
+
+    fun switchEditTab(targetTab: Int) {
+        if (targetTab == currentEditTab) return
+
+        when (targetTab) {
+            1 -> {
+                val normalizedLines = buildLinesFromRawDraft()
+                onEditingLinesChange(normalizedLines)
+            }
+            0 -> {
+                applyLinesToRawDraft(editingLines)
+            }
+        }
+
+        onCurrentEditTabChange(targetTab)
     }
 
     fun insertChordFromPalette(chord: String) {
@@ -434,14 +481,12 @@ fun LyricsEditorSection(
                 ) {
                     Tab(
                         selected = currentEditTab == 0,
-                        onClick = { onCurrentEditTabChange(0) },
+                        onClick = { switchEditTab(0) },
                         text = { Text(stringResource(mainTabLabelRes)) }
                     )
                     Tab(
                         selected = currentEditTab == 1,
-                        onClick = {
-                            onCurrentEditTabChange(1)
-                        },
+                        onClick = { switchEditTab(1) },
                         text = { Text(stringResource(R.string.lyrics_editor_tab_sync)) }
                     )
                 }
@@ -504,26 +549,68 @@ fun LyricsEditorSection(
                         }
                     }
 
-                    OutlinedTextField(
-                        value = rawTextFieldValue,
-                        onValueChange = { value ->
-                            rawTextFieldValue = value
-                            onRawLyricsTextChange(value.text)
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
-                        textStyle = androidx.compose.ui.text.TextStyle(
-                            color = Color.White,
-                            fontSize = 16.sp
-                        ),
-                        label = {
-                            Text(
-                                stringResource(inputLabelRes),
-                                color = Color.LightGray
-                            )
+                    if (hasTimedLines) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            TextButton(
+                                onClick = { showTimingsInLyricsTab = !showTimingsInLyricsTab }
+                            ) {
+                                Text(
+                                    text = if (showTimingsInLyricsTab) {
+                                        "Masquer les timings"
+                                    } else {
+                                        "Afficher les timings"
+                                    },
+                                    color = Color(0xFF80CBC4),
+                                    fontSize = 12.sp
+                                )
+                            }
                         }
-                    )
+                    }
+
+                    if (showTimingsInLyricsTab) {
+                        OutlinedTextField(
+                            value = timingPreviewText,
+                            onValueChange = {},
+                            readOnly = true,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f),
+                            textStyle = androidx.compose.ui.text.TextStyle(
+                                color = Color.White,
+                                fontSize = 16.sp
+                            ),
+                            label = {
+                                Text(
+                                    stringResource(inputLabelRes),
+                                    color = Color.LightGray
+                                )
+                            }
+                        )
+                    } else {
+                        OutlinedTextField(
+                            value = rawTextFieldValue,
+                            onValueChange = { value ->
+                                rawTextFieldValue = value
+                                onRawLyricsTextChange(value.text)
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f),
+                            textStyle = androidx.compose.ui.text.TextStyle(
+                                color = Color.White,
+                                fontSize = 16.sp
+                            ),
+                            label = {
+                                Text(
+                                    stringResource(inputLabelRes),
+                                    color = Color.LightGray
+                                )
+                            }
+                        )
+                    }
                 }
             }
 
@@ -901,6 +988,35 @@ private fun mergeLyricsWithOldTimings(
     }
 
     return result
+}
+
+private fun buildLyricsTimingPreviewText(
+    rawText: String,
+    existingLines: List<LrcLine>
+): String {
+    val plainLines = rawText
+        .lines()
+        .map { line -> line.trim().replace(INLINE_LRC_TIME_TAG_REGEX, "").trim() }
+        .filter { it.isNotEmpty() }
+
+    if (plainLines.isEmpty()) return ""
+
+    val previewLines = if (existingLines.isEmpty()) {
+        plainLines.map { text -> LrcLine(timeMs = 0L, text = text) }
+    } else {
+        mergeLyricsWithOldTimings(
+            newLines = plainLines,
+            oldLines = existingLines
+        )
+    }
+
+    return previewLines.joinToString("\n") { line ->
+        if (line.timeMs > 0L) {
+            "[${formatLrcTime(line.timeMs)}] ${line.text}"
+        } else {
+            line.text
+        }
+    }
 }
 
 private suspend fun readImportedLrcText(context: Context, uri: Uri): String? = withContext(Dispatchers.IO) {
