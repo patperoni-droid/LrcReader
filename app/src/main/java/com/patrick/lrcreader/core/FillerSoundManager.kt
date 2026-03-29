@@ -5,7 +5,6 @@ import android.media.MediaPlayer
 import android.media.audiofx.Visualizer
 import android.net.Uri
 import android.os.SystemClock
-import android.provider.DocumentsContract
 import android.util.Log
 import android.widget.Toast
 import androidx.documentfile.provider.DocumentFile
@@ -15,6 +14,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.io.File
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.sqrt
@@ -68,49 +68,52 @@ object FillerSoundManager {
     private fun internalStart(context: Context) {
         currentVolume = FillerSoundPrefs.getFillerVolume(context)
 
-        val folderUriRaw = FillerSoundPrefs.getFillerFolder(context)
-        if (folderUriRaw != null) {
-
-            // ✅ normalise en DOCUMENT Uri (cohérent avec le cache DJ)
-            val folderUri = normalizeToDocumentUri(context, folderUriRaw)
-
-            if (folderUri == null) {
-                Toast.makeText(context, "Dossier fond sonore invalide (hors DJ ?)", Toast.LENGTH_SHORT).show()
-                return
-            }
-
-            val built: List<Uri> = if (
-                folderPlaylist.isNotEmpty() &&
-                currentFolderUri != null &&
-                currentFolderUri == folderUri
-            ) {
-                folderPlaylist
+        val folderUri = FillerSoundPrefs.getFillerFolder(context)
+        if (folderUri != null) {
+            if (!isFolderUriReadable(context, folderUri)) {
+                folderPlaylist = emptyList()
+                currentFolderUri = null
+                advanceOnNextStart = false
+                FillerSoundPrefs.clearFillerFolder(context)
+                Toast.makeText(context, "Dossier fond sonore invalide.", Toast.LENGTH_SHORT).show()
             } else {
-                val fresh = buildPlaylistFromFolderOptimized(context, folderUri)
-                if (fresh.isEmpty()) {
+                val built: List<Uri> = if (
+                    folderPlaylist.isNotEmpty() &&
+                    currentFolderUri != null &&
+                    currentFolderUri == folderUri
+                ) {
+                    folderPlaylist
+                } else {
+                    val fresh = buildPlaylistFromFolderDirect(context, folderUri)
+                    if (fresh.isEmpty()) {
+                        advanceOnNextStart = false
+                        Toast.makeText(context, "Aucun MP3/WAV trouvé dans ce dossier", Toast.LENGTH_SHORT).show()
+                        return
+                    }
+                    folderPlaylist = fresh
+                    currentFolderUri = folderUri
+                    folderIndex = if (fresh.size == 1) 0 else Random.nextInt(fresh.size)
+                    fresh
+                }
+
+                if (built.isNotEmpty() && advanceOnNextStart) {
+                    if (built.size > 1) folderIndex = (folderIndex + 1) % built.size
                     advanceOnNextStart = false
-                    Toast.makeText(context, "Aucun MP3/WAV trouvé dans ce dossier", Toast.LENGTH_SHORT).show()
+                }
+
+                val folderStartSucceeded = runCatching {
+                    startFromFolderIndex(context, folderIndex)
+                }.onFailure { error ->
+                    error.printStackTrace()
+                    folderPlaylist = emptyList()
+                    currentFolderUri = null
+                    FillerSoundPrefs.clearFillerFolder(context)
+                    Toast.makeText(context, "Impossible de lire le dossier", Toast.LENGTH_SHORT).show()
+                }.isSuccess
+                if (folderStartSucceeded) {
                     return
                 }
-                folderPlaylist = fresh
-                currentFolderUri = folderUri
-                folderIndex = if (fresh.size == 1) 0 else Random.nextInt(fresh.size)
-                fresh
             }
-
-            if (built.isNotEmpty() && advanceOnNextStart) {
-                if (built.size > 1) folderIndex = (folderIndex + 1) % built.size
-                advanceOnNextStart = false
-            }
-
-            try {
-                startFromFolderIndex(context, folderIndex)
-            } catch (e: Exception) {
-                e.printStackTrace()
-                FillerSoundPrefs.clear(context)
-                Toast.makeText(context, "Impossible de lire le dossier", Toast.LENGTH_SHORT).show()
-            }
-            return
         }
 
         val fileUri = FillerSoundPrefs.getFillerUri(context) ?: return
@@ -239,140 +242,67 @@ object FillerSoundManager {
         return name.endsWith(".mp3", true) || name.endsWith(".wav", true)
     }
 
-    /**
-     * ✅ Normalise un Uri en DOCUMENT Uri.
-     * - si on reçoit un TREE Uri → converti en DOCUMENT Uri racine
-     * - si c'est déjà un DOCUMENT Uri → retourne tel quel
-     */
-    /**
-     * ✅ Normalise un Uri en DOCUMENT Uri.
-     * - si on reçoit un TREE Uri → converti en DOCUMENT Uri racine du tree
-     * - si on reçoit déjà un DOCUMENT Uri (même s'il contient /tree/.../document/...) → on le garde tel quel
-     */
-    /**
-     * ✅ Normalise un Uri en DOCUMENT Uri (API 23 compatible).
-     *
-     * Règles :
-     * - TREE pur :  content://.../tree/xxx
-     * - DOCUMENT :  content://.../tree/xxx/document/yyy  → on ne touche PAS
-     */
-    private fun normalizeToDocumentUri(context: Context, anyUri: Uri): Uri? {
-        return runCatching {
-            val path = anyUri.path ?: return anyUri
-
-            val isTreeOnly =
-                path.contains("/tree/") && !path.contains("/document/")
-
-            if (isTreeOnly) {
-                val treeId = DocumentsContract.getTreeDocumentId(anyUri)
-                DocumentsContract.buildDocumentUriUsingTree(anyUri, treeId)
-            } else {
-                anyUri
-            }
-        }.getOrNull()
+    private fun isFolderUriReadable(context: Context, folderUri: Uri): Boolean {
+        return if (folderUri.scheme == "file") {
+            File(folderUri.path ?: return false).isDirectory
+        } else {
+            openFolderDocument(context, folderUri)?.isDirectory == true
+        }
     }
 
-    /**
-     * ✅ Fallback SAF fiable :
-     * on part du TREE DJ (permission), puis on descend jusqu'au dossier choisi (documentId),
-     * puis on scanne.
-     */
-    private fun buildPlaylistFromFolderFallbackDjTree(context: Context, folderDocUri: Uri): List<Uri> {
-        val djTree = DjFolderPrefs.get(context) ?: return emptyList()
-        val djRootTreeDoc = DocumentFile.fromTreeUri(context, djTree) ?: return emptyList()
+    private fun openFolderDocument(context: Context, folderUri: Uri): DocumentFile? {
+        return DocumentFile.fromTreeUri(context, folderUri)
+            ?: DocumentFile.fromSingleUri(context, folderUri)
+    }
 
-        val targetDocId = runCatching { DocumentsContract.getDocumentId(folderDocUri) }.getOrNull()
-            ?: return emptyList()
+    private fun buildPlaylistFromFolderDirect(
+        context: Context,
+        folderUri: Uri
+    ): List<Uri> {
+        if (folderUri.scheme == "file") {
+            val rootDir = File(folderUri.path ?: return emptyList())
+            if (!rootDir.isDirectory) return emptyList()
 
-        fun findByDocId(root: DocumentFile): DocumentFile? {
-            val rootId = runCatching { DocumentsContract.getDocumentId(root.uri) }.getOrNull()
-            if (rootId == targetDocId) return root
-
-            val queue = ArrayDeque<DocumentFile>()
-            queue.addLast(root)
-            while (queue.isNotEmpty()) {
-                val dir = queue.removeFirst()
-                dir.listFiles().forEach { f ->
-                    if (f.isDirectory) {
-                        val id = runCatching { DocumentsContract.getDocumentId(f.uri) }.getOrNull()
-                        if (id == targetDocId) return f
-                        queue.addLast(f)
+            val out = ArrayList<Pair<String, Uri>>(256)
+            fun walk(dir: File) {
+                dir.listFiles()
+                    ?.sortedBy { child -> child.name.lowercase(Locale.ROOT) }
+                    .orEmpty()
+                    .forEach { child ->
+                        if (child.isDirectory) {
+                            walk(child)
+                        } else if (isAudioName(child.name)) {
+                            out.add(child.name to Uri.fromFile(child))
+                        }
                     }
-                }
             }
-            return null
+
+            walk(rootDir)
+            return out.sortedBy { it.first.lowercase(Locale.ROOT) }.map { it.second }
         }
 
-        val startDir = findByDocId(djRootTreeDoc) ?: return emptyList()
+        val rootDoc = openFolderDocument(context, folderUri) ?: return emptyList()
+        if (!rootDoc.isDirectory) return emptyList()
 
         val out = ArrayList<Pair<String, Uri>>(256)
         fun walk(dir: DocumentFile) {
-            dir.listFiles().forEach { f ->
-                if (f.isDirectory) walk(f)
-                else {
-                    val name = f.name ?: ""
-                    if (name.isNotBlank() && isAudioName(name)) {
-                        out.add(name to f.uri)
+            runCatching { dir.listFiles() }
+                .getOrDefault(emptyArray())
+                .sortedBy { child -> (child.name ?: "").lowercase(Locale.ROOT) }
+                .forEach { child ->
+                    if (child.isDirectory) {
+                        walk(child)
+                    } else {
+                        val name = child.name ?: ""
+                        if (name.isNotBlank() && isAudioName(name)) {
+                            out.add(name to child.uri)
+                        }
                     }
                 }
-            }
         }
 
-        walk(startDir)
-        return out.sortedBy { it.first.lowercase() }.map { it.second }
-    }
-
-    private fun buildPlaylistFromFolderOptimized(
-        context: Context,
-        folderDocUri: Uri
-    ): List<Uri> {
-        val djTree = DjFolderPrefs.get(context) ?: return emptyList()
-
-        // ✅ règle : folder doit être dans DJ (comparaison docId)
-        val isInsideDj = runCatching {
-            val djTreeId = DocumentsContract.getTreeDocumentId(djTree)         // ex: primary:.../DJ
-            val folderDocId = DocumentsContract.getDocumentId(folderDocUri)    // ex: primary:.../DJ/...
-            folderDocId == djTreeId || folderDocId.startsWith("$djTreeId/")
-        }.getOrDefault(false)
-
-        if (!isInsideDj) return emptyList()
-
-        val all = DjIndexCache.load(context).orEmpty()
-        if (all.isEmpty()) {
-            // ✅ fallback propre (via TREE DJ)
-            return buildPlaylistFromFolderFallbackDjTree(context, folderDocUri)
-        }
-
-        val rootKey = folderDocUri.toString()
-        val childrenByParent = all.groupBy { it.parentUriString }
-
-        val queue = ArrayDeque<String>()
-        queue.addLast(rootKey)
-
-        val out = ArrayList<Pair<String, Uri>>(256)
-
-        while (queue.isNotEmpty()) {
-            val parentKey = queue.removeFirst()
-            val kids = childrenByParent[parentKey].orEmpty()
-
-            for (e in kids) {
-                if (e.isDirectory) {
-                    queue.addLast(e.uriString)
-                } else {
-                    val name = e.name
-                    if (name.isNotBlank() && isAudioName(name)) {
-                        out.add(name to Uri.parse(e.uriString))
-                    }
-                }
-            }
-        }
-
-        if (out.isEmpty()) {
-            // ✅ si le cache DJ ne contient pas ce sous-arbre -> fallback TREE DJ
-            return buildPlaylistFromFolderFallbackDjTree(context, folderDocUri)
-        }
-
-        return out.sortedBy { it.first.lowercase() }.map { it.second }
+        walk(rootDoc)
+        return out.sortedBy { it.first.lowercase(Locale.ROOT) }.map { it.second }
     }
 
     private fun startFromFolderIndex(context: Context, index: Int) {

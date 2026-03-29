@@ -3,7 +3,6 @@ package com.patrick.lrcreader.ui
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.os.Build
 import android.provider.DocumentsContract
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -28,17 +27,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.documentfile.provider.DocumentFile
 import com.patrick.lrcreader.core.BackupFolderPrefs
-import com.patrick.lrcreader.core.DjFolderPrefs
-import com.patrick.lrcreader.core.DjIndexCache
 import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.core.FillerSoundPrefs
 import com.patrick.lrcreader.exo.R
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlin.math.pow
 
 private fun defaultDocumentsTreeUriOrNull(): Uri? {
@@ -88,22 +82,6 @@ fun FillerSoundScreen(
             val docId = DocumentsContract.getDocumentId(u)
             DocumentsContract.buildTreeDocumentUri(u.authority, docId)
         }.getOrElse { u }
-    }
-
-    fun openPickerDocumentFile(u: Uri?): DocumentFile? {
-        if (u == null) return null
-        return runCatching {
-            val isTree = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                DocumentsContract.isTreeUri(u)
-            } else {
-                (u.path ?: "").contains("/tree/")
-            }
-            if (isTree) {
-                DocumentFile.fromTreeUri(context, u)
-            } else {
-                DocumentFile.fromSingleUri(context, u)
-            }
-        }.getOrNull()
     }
 
     // ✅ Racine Music persistée par Bibliothèque
@@ -175,36 +153,26 @@ fun FillerSoundScreen(
     var isStarting by remember { mutableStateOf(false) }
     var startJob by remember { mutableStateOf<Job?>(null) }
 
-    // ✅ Scan DJ (indépendant du playback)
-    var isDjScanning by remember { mutableStateOf(false) }
-    var djScanProgressText by remember {
-        mutableStateOf(context.getString(R.string.filler_scan_dj_running))
-    }
-
     // Picker
-    var showFolderPicker by remember { mutableStateOf(false) }
     var folderPickSlotIndex by remember { mutableStateOf<Int?>(null) }
-    var showDjInfoDialog by remember { mutableStateOf(false) }
-    var pendingSlotIndex by remember { mutableStateOf<Int?>(null) }
 
     // Dialog de renommage
     var slotToRenameIndex by remember { mutableStateOf<Int?>(null) }
     var renameText by remember { mutableStateOf("") }
 
-    // ─────────────────────────────────────────────────────────────
-    //  1) Autorisation + scan DJ (1ère fois)
-    // ─────────────────────────────────────────────────────────────
     // ✅ Hint d’ouverture : essayer d’ouvrir directement dans "Documents"
     // (Android peut l’ignorer selon le téléphone, mais quand il l’accepte ça évite le piège "Téléchargements")
     val initialDocumentsUri = remember { defaultDocumentsTreeUriOrNull() }
-    val pickDjFolderLauncher = rememberLauncherForActivityResult(
+    val pickFillerFolderLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree(),
         onResult = { picked ->
-            if (picked == null) return@rememberLauncherForActivityResult
+            if (picked == null) {
+                folderPickSlotIndex = null
+                return@rememberLauncherForActivityResult
+            }
 
             val treeUri = normalizeToTreeUri(picked) ?: picked
 
-            // permission persistante
             try {
                 context.contentResolver.takePersistableUriPermission(
                     treeUri,
@@ -213,48 +181,21 @@ fun FillerSoundScreen(
             } catch (_: Exception) {
             }
 
-            val resolvedDjRoot = DjFolderPrefs.resolveFixedDjRootFromPickedTree(context, treeUri) ?: treeUri
+            val idx = folderPickSlotIndex
+            if (idx != null && idx in slots.indices) {
+                val newSlot = slots[idx].copy(folderUri = treeUri)
+                slots[idx] = newSlot
+                AmbiancePrefs.saveSlot(context, newSlot)
+                selectedIndex = idx
 
-            // ✅ on enregistre la racine DJ (partagée avec l’écran DJ)
-            DjFolderPrefs.save(context, resolvedDjRoot)
-            DjFolderPrefs.setScanned(context, false)
-
-            // ✅ feedback immédiat (sinon l’utilisateur reclique)
-            isDjScanning = true
-            djScanProgressText = context.getString(R.string.filler_scan_dj_long)
-
-            scope.launch {
-                try {
-                    val newDjIndex = withContext(Dispatchers.IO) {
-                        buildDjFullIndex(context, resolvedDjRoot)
-                    }
-                    DjIndexCache.save(context, newDjIndex)
-                    withContext(Dispatchers.IO) {
-                        computeDjFolderSignature(context, resolvedDjRoot)
-                    }?.let { signature ->
-                        DjIndexCache.saveScanMeta(
-                            context = context,
-                            rootUri = resolvedDjRoot,
-                            signature = signature.hash,
-                            rootLastModifiedMs = signature.rootLastModifiedMs,
-                            itemCount = signature.itemCount
-                        )
-                    }
-                    DjFolderPrefs.setScanned(context, true)
-
-                    // ✅ ouvrir le picker seulement quand le scan est terminé
-                    showFolderPicker = true
-                } catch (t: Throwable) {
-                    android.util.Log.e("DJ_SCAN", "Scan DJ crash: ${t.message}", t)
-                    Toast.makeText(
-                        context,
-                        context.getString(R.string.filler_dj_scan_error),
-                        Toast.LENGTH_SHORT
-                    ).show()
-                } finally {
-                    isDjScanning = false
-                }
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.filler_folder_linked, newSlot.name),
+                    Toast.LENGTH_SHORT
+                ).show()
             }
+
+            folderPickSlotIndex = null
         }
     )
 
@@ -376,7 +317,7 @@ fun FillerSoundScreen(
                     fontSize = 11.sp
                 )
 
-                if (isStarting || isDjScanning) {
+                if (isStarting) {
                     Spacer(Modifier.height(6.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         CircularProgressIndicator(
@@ -386,10 +327,7 @@ fun FillerSoundScreen(
                         )
                         Spacer(modifier = Modifier.padding(start = 8.dp))
                         Text(
-                            text = if (isDjScanning)
-                                stringResource(R.string.filler_scan_dj_wait_end)
-                            else
-                                stringResource(R.string.filler_starting),
+                            text = stringResource(R.string.filler_starting),
                             color = sub,
                             fontSize = 11.sp
                         )
@@ -575,28 +513,8 @@ fun FillerSoundScreen(
                         modifier = Modifier
                             .padding(end = 4.dp)
                             .clickable {
-                                if (isDjScanning) {
-                                    Toast.makeText(
-                                        context,
-                                        context.getString(R.string.filler_dj_scan_wait),
-                                        Toast.LENGTH_SHORT
-                                    ).show()
-                                    return@clickable
-                                }
-
-                                pendingSlotIndex = index
-
-                                val djRoot = DjFolderPrefs.getOrAdoptFromLibraryRoot(context)
-                                val djCache = DjIndexCache.load(context).orEmpty()
-                                val needScan =
-                                    (djRoot == null) || djCache.isEmpty() || !DjFolderPrefs.isScanned(context)
-
-                                if (needScan) {
-                                    showDjInfoDialog = true
-                                } else {
-                                    folderPickSlotIndex = index
-                                    showFolderPicker = true
-                                }
+                                folderPickSlotIndex = index
+                                pickFillerFolderLauncher.launch(initialDocumentsUri)
                             }
                     )
 
@@ -625,201 +543,6 @@ fun FillerSoundScreen(
         }
 
         Spacer(Modifier.height(8.dp))
-    }
-
-    if (showDjInfoDialog) {
-        AlertDialog(
-            onDismissRequest = { showDjInfoDialog = false },
-            title = { Text(stringResource(R.string.filler_dj_required_title), color = onBg) },
-            text = {
-                Text(
-                    stringResource(R.string.filler_dj_required_text),
-                    color = sub,
-                    fontSize = 12.sp
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    showDjInfoDialog = false
-                    folderPickSlotIndex = pendingSlotIndex
-                    pickDjFolderLauncher.launch(initialDocumentsUri)
-                }) { Text(stringResource(R.string.filler_choose_dj), color = onBg) }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    showDjInfoDialog = false
-                    pendingSlotIndex = null
-                }) { Text(stringResource(R.string.common_cancel), color = sub) }
-            },
-            containerColor = Color(0xFF222222)
-        )
-    }
-
-    // ───────────────────────────────────────────────
-    //  PICKER DOSSIER (SAF direct, navigation DocumentFile)
-    // ───────────────────────────────────────────────
-    if (showFolderPicker) {
-
-        val djRootForPicker = DjFolderPrefs.getResolvedUriForPicker(context)
-
-        val rootDoc: DocumentFile? = remember(showFolderPicker, djRootForPicker) {
-            openPickerDocumentFile(djRootForPicker)
-        }
-
-        LaunchedEffect(rootDoc) {
-            android.util.Log.e("DJ_PICKER", "djRootForPicker=$djRootForPicker")
-            android.util.Log.e("DJ_PICKER", "rootDoc=${rootDoc?.uri} name=${rootDoc?.name}")
-            android.util.Log.e("DJ_PICKER", "childrenCount=${rootDoc?.listFiles()?.size ?: -1}")
-        }
-
-        var pickerDoc by remember(showFolderPicker, rootDoc) { mutableStateOf<DocumentFile?>(rootDoc) }
-        var pickerStack by remember(showFolderPicker, rootDoc) { mutableStateOf<List<DocumentFile>>(emptyList()) }
-
-        val pickerEntries: List<DocumentFile> = remember(pickerDoc) {
-            val cur = pickerDoc ?: return@remember emptyList()
-            cur.listFiles()
-                .filter { it.isDirectory }
-                .filter { !it.name.isNullOrBlank() }
-                .filter { !(it.name ?: "").startsWith(".") }
-                .sortedBy { (it.name ?: "").lowercase() }
-        }
-
-        AlertDialog(
-            onDismissRequest = {
-                showFolderPicker = false
-                folderPickSlotIndex = null
-                pickerDoc = rootDoc
-                pickerStack = emptyList()
-            },
-            title = { Text(stringResource(R.string.filler_picker_title), color = onBg) },
-            text = {
-                if (djRootForPicker == null || rootDoc == null) {
-                    Column {
-                        Text(
-                            stringResource(R.string.filler_dj_missing),
-                            color = sub,
-                            fontSize = 12.sp
-                        )
-                        Spacer(Modifier.height(10.dp))
-                        Text(
-                            text = stringResource(R.string.filler_choose_dj),
-                            color = accent,
-                            fontSize = 12.sp,
-                            modifier = Modifier.clickable {
-                                pendingSlotIndex = folderPickSlotIndex ?: pendingSlotIndex
-                                showFolderPicker = false
-                                showDjInfoDialog = true
-                            }
-                        )
-                    }
-                } else {
-                    Column(Modifier.verticalScroll(rememberScrollState())) {
-
-                        Text(
-                            text = stringResource(
-                                R.string.filler_current_folder,
-                                pickerDoc?.name ?: "(racine)"
-                            ),
-                            color = sub,
-                            fontSize = 11.sp
-                        )
-
-                        if (pickerStack.isNotEmpty()) {
-                            Text(
-                                text = stringResource(R.string.filler_back),
-                                color = accent,
-                                fontSize = 12.sp,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 8.dp)
-                                    .clickable {
-                                        val newStack = pickerStack.dropLast(1)
-                                        val parent = newStack.lastOrNull() ?: rootDoc
-                                        pickerStack = newStack
-                                        pickerDoc = parent
-                                    }
-                            )
-                        }
-
-                        Text(
-                            text = stringResource(R.string.filler_choose_this),
-                            color = Color(0xFFB388FF),
-                            fontSize = 12.sp,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 8.dp)
-                                .clickable {
-                                    val idx = folderPickSlotIndex
-                                    val chosenDoc = pickerDoc
-
-                                    if (idx != null && chosenDoc != null && idx in slots.indices) {
-
-                                        // ✅ IMPORTANT : on stocke un TREE URI (pas un document URI),
-                                        // sinon plus tard DocumentFile.fromTreeUri(...) / lecture peuvent foirer
-                                        val chosenTreeUri = normalizeToTreeUri(chosenDoc.uri) ?: chosenDoc.uri
-
-                                        // ✅ Bonus sécurité : on tente de persister aussi sur le sous-dossier choisi
-                                        try {
-                                            context.contentResolver.takePersistableUriPermission(
-                                                chosenTreeUri,
-                                                Intent.FLAG_GRANT_READ_URI_PERMISSION
-                                            )
-                                        } catch (_: Exception) {
-                                        }
-
-                                        val newSlot = slots[idx].copy(folderUri = chosenTreeUri)
-                                        slots[idx] = newSlot
-                                        AmbiancePrefs.saveSlot(context, newSlot)
-                                        selectedIndex = idx
-
-                                        Toast.makeText(
-                                            context,
-                                            context.getString(R.string.filler_folder_linked, newSlot.name),
-                                            Toast.LENGTH_SHORT
-                                        ).show()
-                                    }
-
-                                    showFolderPicker = false
-                                    folderPickSlotIndex = null
-                                    pickerDoc = rootDoc
-                                    pickerStack = emptyList()
-                                }
-                        )
-
-                        Spacer(Modifier.height(6.dp))
-
-                        if (pickerEntries.isEmpty()) {
-                            Text(stringResource(R.string.filler_no_subfolder), color = sub, fontSize = 12.sp)
-                        } else {
-                            pickerEntries.forEach { f ->
-                                val name = f.name ?: context.getString(R.string.filler_no_name)
-                                Text(
-                                    text = "📁 $name",
-                                    color = onBg,
-                                    fontSize = 12.sp,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 6.dp)
-                                        .clickable {
-                                            pickerDoc?.let { pickerStack = pickerStack + it }
-                                            pickerDoc = f
-                                        }
-                                )
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    showFolderPicker = false
-                    folderPickSlotIndex = null
-                    pickerDoc = rootDoc
-                    pickerStack = emptyList()
-                }) { Text(stringResource(R.string.common_close), color = onBg) }
-            },
-            containerColor = Color(0xFF222222)
-        )
     }
 
     // ───────────────────────────────────────────────

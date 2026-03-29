@@ -43,6 +43,13 @@ object FillerSoundPrefs {
         return Uri.parse(s)
     }
 
+    fun clearFillerFolder(context: Context) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .remove(KEY_FOLDER_URI)
+            .apply()
+    }
+
     // ---------- clear tout ----------
     fun clear(context: Context) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
