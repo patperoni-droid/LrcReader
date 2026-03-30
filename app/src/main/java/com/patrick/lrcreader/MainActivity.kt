@@ -296,37 +296,38 @@ class MainActivity : AppCompatActivity() {
 
                 var isImporting by remember { mutableStateOf(false) }
                 val scope = rememberCoroutineScope()
-// On ne se base PAS uniquement sur l'URI (Android peut restaurer),
-// on se base sur un flag explicite "setup_done".
-                val savedRoot = remember(setupTick) {
-                    mark("compose.BackupFolderPrefs.getLibraryRootUri:before")
-                    val uri = BackupFolderPrefs.getLibraryRootUri(ctx)
-                    mark("compose.BackupFolderPrefs.getLibraryRootUri:after uri=$uri")
-                    uri
+                val workspaceSnapshot = remember(setupTick) {
+                    mark("compose.WorkspaceResolver.resolve:before")
+                    WorkspaceResolver.resolve(ctx).also { snapshot ->
+                        mark(
+                            "compose.WorkspaceResolver.resolve:after status=${snapshot.status} mode=${snapshot.mode} root=${snapshot.workspaceRootUri} setupTree=${snapshot.setupTreeUri}"
+                        )
+                    }
                 }
-                val isInternalMode = remember(savedRoot, setupTick) {
-                    // Mode interne = root en file:// (fallback vieux tel)
-                    savedRoot != null && savedRoot.scheme == "file"
-                }
-
+                val savedRoot = workspaceSnapshot.workspaceRootUri
+                val isInternalMode = workspaceSnapshot.status == WorkspaceResolver.Status.INTERNAL_LEGACY
                 val isSetupDone = remember(setupTick, isInternalMode) {
                     BackupFolderPrefs.isDone(ctx) || isInternalMode
                 }
-
-// ✅ IMPORTANT : en mode interne, on ne demande PAS de permission SAF
-                val hasSetupPerm = remember(setupTick, isInternalMode) {
-                    if (isInternalMode) true else BackupFolderPrefs.hasValidSetupTreePermission(ctx)
+                val hasSetupPerm = remember(workspaceSnapshot.status) {
+                    when (workspaceSnapshot.status) {
+                        WorkspaceResolver.Status.UNCONFIGURED,
+                        WorkspaceResolver.Status.PERMISSION_MISSING -> false
+                        else -> true
+                    }
                 }
-
-                val shouldShowSetup = forceSetup || !isSetupDone || !hasSetupPerm
+                val canUseWorkspace = remember(workspaceSnapshot.status) {
+                    workspaceSnapshot.isUsable
+                }
+                val shouldShowSetup = forceSetup || !canUseWorkspace
                 var configInitDoneForRoot by remember { mutableStateOf<String?>(null) }
                 var legacyTrimByUri by remember { mutableStateOf<Map<String, EditPrefs.EditData>>(emptyMap()) }
 
-                LaunchedEffect(savedRoot, hasSetupPerm, isInternalMode) {
-                    val canUseStorage = isInternalMode || hasSetupPerm
+                LaunchedEffect(savedRoot, canUseWorkspace, workspaceSnapshot.status) {
+                    val canUseStorage = canUseWorkspace
                     val rootKey = savedRoot?.toString()
                     mark(
-                        "compose.ensureInitialized.effect:start savedRoot=$savedRoot canUseStorage=$canUseStorage doneFor=$configInitDoneForRoot"
+                        "compose.ensureInitialized.effect:start savedRoot=$savedRoot canUseStorage=$canUseStorage workspaceStatus=${workspaceSnapshot.status} doneFor=$configInitDoneForRoot"
                     )
 
                     if (savedRoot == null || !canUseStorage) {
@@ -376,7 +377,7 @@ class MainActivity : AppCompatActivity() {
 
                 android.util.Log.d(
                     "SETUP_GATE",
-                    "savedRoot=$savedRoot internal=$isInternalMode isDone=${BackupFolderPrefs.isDone(ctx)} hasPerm=$hasSetupPerm shouldShow=$shouldShowSetup"
+                    "workspaceStatus=${workspaceSnapshot.status} detail=${workspaceSnapshot.detail} savedRoot=$savedRoot setupTree=${workspaceSnapshot.setupTreeUri} internal=$isInternalMode isDone=${BackupFolderPrefs.isDone(ctx)} hasPerm=$hasSetupPerm shouldShow=$shouldShowSetup"
                 )
                 var isSmpImportedSongsDialogOpen by remember { mutableStateOf(false) }
                 var smpImportedSongs by remember { mutableStateOf<List<com.patrick.lrcreader.smp.SongUnit>>(emptyList()) }
