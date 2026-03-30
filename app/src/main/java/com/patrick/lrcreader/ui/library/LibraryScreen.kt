@@ -68,9 +68,28 @@ import java.io.File
 
 private val PROMPTER_FOLDER_URI: Uri = Uri.parse("spl-prompter://folder")
 private val SMP_FOLDER_URI: Uri = Uri.parse("spl-smp://folder")
+private const val LIB_SMP_TRACE_TAG = "LIB_SMP_TRACE"
 
 private fun isPrompterFolderUri(uri: Uri?): Boolean = uri?.scheme == "spl-prompter"
 private fun isSmpFolderUri(uri: Uri?): Boolean = uri?.scheme == "spl-smp"
+
+private fun summarizeLibraryEntries(entries: List<LibraryEntry>, limit: Int = 20): String {
+    val rendered = entries.take(limit).joinToString(", ") { entry ->
+        val type = if (entry.isDirectory) "dir" else "file"
+        "$type:${entry.name}:${entry.uri}"
+    }
+    return if (entries.size > limit) "[$rendered, ...]" else "[$rendered]"
+}
+
+private fun summarizeSmpSongs(
+    songs: List<com.patrick.lrcreader.smp.SongUnit>,
+    limit: Int = 20
+): String {
+    val rendered = songs.take(limit).joinToString(", ") { song ->
+        "${song.id}:${song.title}"
+    }
+    return if (songs.size > limit) "[$rendered, ...]" else "[$rendered]"
+}
 
 private data class PendingPlaylistAssignRequest(
     val playlistName: String,
@@ -141,6 +160,8 @@ fun LibraryScreen(
     searchToggleSignal: Int = 0,
     smpRefreshVersion: Int = 0,
     lastImportedSmpSongId: String? = null,
+    lastImportedSmpRefreshVersion: Int = -1,
+    onConsumeImportedSmpAutoOpen: () -> Unit = {},
     onAfterBackupImport: () -> Unit = {},
     onImportExternalSmp: () -> Unit,
     onImportGeneratedSmp: suspend (Uri) -> com.patrick.lrcreader.smp.SongUnit?,
@@ -235,6 +256,7 @@ fun LibraryScreen(
     val smpConverter = remember(context) { SmpConverter(context) }
     val smpBatchProcessor = remember(context) { SmpBatchImportProcessor(context, smpConverter) }
     val smpLibraryScanner = remember(context) { SmpLibraryScanner(context) }
+    var initialLoadDone by remember { mutableStateOf(false) }
     var lastHandledImportedSmpRefresh by remember { mutableIntStateOf(-1) }
     var pendingDirectImportPlan by remember {
         mutableStateOf<SmpBatchImportProcessor.BatchPlan?>(null)
@@ -314,7 +336,12 @@ fun LibraryScreen(
     }
 
     fun buildSmpEntries(): List<LibraryEntry> {
-        return smpLibraryScanner.listSongs()
+        val songs = smpLibraryScanner.listSongs()
+        Log.i(
+            LIB_SMP_TRACE_TAG,
+            "step=build_smp_entries songsCount=${songs.size} songs=${summarizeSmpSongs(songs)}"
+        )
+        val entries = songs
             .map { song ->
                 val uriString = buildSmpItem(song.id)
                 val displayName = TitleAliasesStore.getTitleForTrack(context, uriString)
@@ -327,13 +354,26 @@ fun LibraryScreen(
                 )
             }
             .sortedBy { it.name.lowercase() }
+        Log.i(
+            LIB_SMP_TRACE_TAG,
+            "step=build_smp_entries_done entriesCount=${entries.size} entries=${summarizeLibraryEntries(entries)}"
+        )
+        return entries
     }
 
     fun decorateEntriesForFolder(folderUri: Uri, source: List<LibraryEntry>): List<LibraryEntry> {
         if (isPrompterFolderUri(folderUri)) {
+            Log.i(
+                LIB_SMP_TRACE_TAG,
+                "step=decorate_entries folder=$folderUri mode=virtual_prompter sourceCount=${source.size}"
+            )
             return buildPrompterEntries()
         }
         if (isSmpFolderUri(folderUri)) {
+            Log.i(
+                LIB_SMP_TRACE_TAG,
+                "step=decorate_entries folder=$folderUri mode=virtual_smp sourceCount=${source.size}"
+            )
             return buildSmpEntries()
         }
 
@@ -346,7 +386,13 @@ fun LibraryScreen(
 
         val root = backend.getRootUri()
         val isRootFolder = root != null && folderUri.toString() == root.toString()
-        if (!isRootFolder) return visibleSource
+        if (!isRootFolder) {
+            Log.i(
+                LIB_SMP_TRACE_TAG,
+                "step=decorate_entries folder=$folderUri root=$root isRoot=false sourceCount=${source.size} visibleCount=${visibleSource.size}"
+            )
+            return visibleSource
+        }
 
         val extraEntries = mutableListOf<LibraryEntry>()
         val alreadyHasPrompter = visibleSource.any { it.isDirectory && isPrompterFolderUri(it.uri) }
@@ -359,18 +405,35 @@ fun LibraryScreen(
             extraEntries += LibraryEntry(SMP_FOLDER_URI, sSmpFolder, isDirectory = true)
         }
 
-        if (extraEntries.isEmpty()) return visibleSource
+        if (extraEntries.isEmpty()) {
+            Log.i(
+                LIB_SMP_TRACE_TAG,
+                "step=decorate_root_entries folder=$folderUri root=$root sourceCount=${source.size} visibleCount=${visibleSource.size} alreadyHasPrompter=$alreadyHasPrompter alreadyHasSmp=$alreadyHasSmp extraCount=0 hasVirtualSmp=${visibleSource.any { isSmpFolderUri(it.uri) }} entries=${summarizeLibraryEntries(visibleSource)}"
+            )
+            return visibleSource
+        }
 
-        return (visibleSource + extraEntries)
+        val decorated = (visibleSource + extraEntries)
             .sortedWith(
                 compareByDescending<LibraryEntry> { it.isDirectory }
                     .thenBy { it.name.lowercase() }
             )
+        Log.i(
+            LIB_SMP_TRACE_TAG,
+            "step=decorate_root_entries folder=$folderUri root=$root sourceCount=${source.size} visibleCount=${visibleSource.size} alreadyHasPrompter=$alreadyHasPrompter alreadyHasSmp=$alreadyHasSmp extraCount=${extraEntries.size} hasVirtualSmp=${decorated.any { isSmpFolderUri(it.uri) }} entries=${summarizeLibraryEntries(decorated)}"
+        )
+        return decorated
     }
 
     fun buildEntriesForFolder(folderUri: Uri, useCache: Boolean = true): List<LibraryEntry> {
         if (useCache) {
-            LibraryFolderCache.get(folderUri)?.let { return it }
+            LibraryFolderCache.get(folderUri)?.let { cached ->
+                Log.i(
+                    LIB_SMP_TRACE_TAG,
+                    "step=build_entries cache=hit folder=$folderUri root=${backend.getRootUri()} count=${cached.size} hasVirtualSmp=${cached.any { isSmpFolderUri(it.uri) }} entries=${summarizeLibraryEntries(cached)}"
+                )
+                return cached
+            }
         }
         val fresh = if (isPrompterFolderUri(folderUri) || isSmpFolderUri(folderUri)) {
             emptyList()
@@ -383,6 +446,10 @@ fun LibraryScreen(
         }
         val decorated = decorateEntriesForFolder(folderUri, fresh)
         LibraryFolderCache.put(folderUri, decorated)
+        Log.i(
+            LIB_SMP_TRACE_TAG,
+            "step=build_entries cache=miss folder=$folderUri root=${backend.getRootUri()} freshCount=${fresh.size} decoratedCount=${decorated.size} hasVirtualSmp=${decorated.any { isSmpFolderUri(it.uri) }} entries=${summarizeLibraryEntries(decorated)}"
+        )
         return decorated
     }
 
@@ -417,15 +484,33 @@ fun LibraryScreen(
         val shouldRefreshCurrentFolder =
             isSmpFolderUri(currentFolder) ||
                 (rootFolder != null && currentFolder.toString() == rootFolder.toString())
-        if (!shouldRefreshCurrentFolder) return@LaunchedEffect
+        Log.i(
+            LIB_SMP_TRACE_TAG,
+            "step=effect_refresh_current_start smpRefreshVersion=$smpRefreshVersion currentFolderUri=$currentFolder root=$rootFolder shouldRefresh=$shouldRefreshCurrentFolder entriesSize=${entries.size}"
+        )
+        if (!shouldRefreshCurrentFolder) {
+            Log.i(
+                LIB_SMP_TRACE_TAG,
+                "step=effect_refresh_current_skip smpRefreshVersion=$smpRefreshVersion currentFolderUri=$currentFolder root=$rootFolder"
+            )
+            return@LaunchedEffect
+        }
         LibraryFolderCache.clear()
         entries = buildEntriesForFolder(currentFolder, useCache = false)
+        Log.i(
+            LIB_SMP_TRACE_TAG,
+            "step=effect_refresh_current_done smpRefreshVersion=$smpRefreshVersion currentFolderUri=$currentFolder root=$rootFolder entriesSize=${entries.size} entries=${summarizeLibraryEntries(entries)}"
+        )
     }
 
     LaunchedEffect(currentFolderUri, storageMode) {
         LibraryFolderCache.clear()
         val root = backend.getRootUri() ?: return@LaunchedEffect
         val currentFolder = currentFolderUri ?: root
+        Log.i(
+            LIB_SMP_TRACE_TAG,
+            "step=effect_folder_change_start storageMode=$storageMode currentFolderUri=$currentFolderUri root=$root entriesSize=${entries.size}"
+        )
 
         val shouldRedirectToRoot = !isPrompterFolderUri(currentFolder) &&
             !isSmpFolderUri(currentFolder) &&
@@ -437,6 +522,10 @@ fun LibraryScreen(
             currentFolderUri = folderToShow
         }
         entries = buildEntriesForFolder(folderToShow, useCache = false)
+        Log.i(
+            LIB_SMP_TRACE_TAG,
+            "step=effect_folder_change_done storageMode=$storageMode currentFolderUri=$currentFolderUri root=$root folderToShow=$folderToShow entriesSize=${entries.size} entries=${summarizeLibraryEntries(entries)}"
+        )
     }
 
     fun removePrompterFromAllPlaylists(uriString: String) {
@@ -520,6 +609,14 @@ fun LibraryScreen(
                 .map { it.entry }
         }
     }
+    val entriesSummary = remember(entries) { summarizeLibraryEntries(entries) }
+    val filteredEntriesSummary = remember(filteredEntries) { summarizeLibraryEntries(filteredEntries) }
+    LaunchedEffect(currentFolderUri, searchQuery, entriesSummary, filteredEntriesSummary) {
+        Log.i(
+            LIB_SMP_TRACE_TAG,
+            "step=ui_entries_snapshot currentFolderUri=$currentFolderUri root=${backend.getRootUri()} searchQuery=$searchQuery entriesCount=${entries.size} filteredCount=${filteredEntries.size} hasVirtualSmpInEntries=${entries.any { isSmpFolderUri(it.uri) }} hasVirtualSmpInFiltered=${filteredEntries.any { isSmpFolderUri(it.uri) }} entries=$entriesSummary filtered=$filteredEntriesSummary"
+        )
+    }
 
     val canImportBackupJsonFromCurrentFolder = remember(context, currentFolderUri) {
         currentFolderUri
@@ -569,18 +666,61 @@ fun LibraryScreen(
         entries = buildEntriesForFolder(root, useCache = false)
     }
 
-    LaunchedEffect(smpRefreshVersion, lastImportedSmpSongId) {
-        val importedSongId = lastImportedSmpSongId?.trim().takeUnless { it.isNullOrEmpty() } ?: return@LaunchedEffect
-        if (smpRefreshVersion == lastHandledImportedSmpRefresh) return@LaunchedEffect
+    LaunchedEffect(initialLoadDone, smpRefreshVersion, lastImportedSmpSongId, lastImportedSmpRefreshVersion) {
+        Log.i(
+            LIB_SMP_TRACE_TAG,
+            "step=effect_imported_smp_start initialLoadDone=$initialLoadDone smpRefreshVersion=$smpRefreshVersion requestVersion=$lastImportedSmpRefreshVersion lastImportedSmpSongId=$lastImportedSmpSongId currentFolderUri=$currentFolderUri entriesSize=${entries.size}"
+        )
+        if (!initialLoadDone) {
+            Log.i(
+                LIB_SMP_TRACE_TAG,
+                "step=effect_imported_smp_skip reason=initial_load_not_done smpRefreshVersion=$smpRefreshVersion"
+            )
+            return@LaunchedEffect
+        }
+        val importedSongId = lastImportedSmpSongId?.trim().takeUnless { it.isNullOrEmpty() } ?: run {
+            Log.i(
+                LIB_SMP_TRACE_TAG,
+                "step=effect_imported_smp_skip reason=no_imported_song_id smpRefreshVersion=$smpRefreshVersion"
+            )
+            return@LaunchedEffect
+        }
+        if (lastImportedSmpRefreshVersion < 0) {
+            Log.i(
+                LIB_SMP_TRACE_TAG,
+                "step=effect_imported_smp_skip reason=no_request_version smpRefreshVersion=$smpRefreshVersion"
+            )
+            return@LaunchedEffect
+        }
+        if (lastImportedSmpRefreshVersion != smpRefreshVersion) {
+            Log.i(
+                LIB_SMP_TRACE_TAG,
+                "step=effect_imported_smp_skip reason=request_version_mismatch smpRefreshVersion=$smpRefreshVersion requestVersion=$lastImportedSmpRefreshVersion"
+            )
+            onConsumeImportedSmpAutoOpen()
+            return@LaunchedEffect
+        }
+        if (lastImportedSmpRefreshVersion == lastHandledImportedSmpRefresh) {
+            Log.i(
+                LIB_SMP_TRACE_TAG,
+                "step=effect_imported_smp_skip reason=already_handled smpRefreshVersion=$smpRefreshVersion requestVersion=$lastImportedSmpRefreshVersion lastHandled=$lastHandledImportedSmpRefresh"
+            )
+            onConsumeImportedSmpAutoOpen()
+            return@LaunchedEffect
+        }
 
         val importedUriString = buildSmpItem(importedSongId)
         val smpEntries = buildSmpEntries()
         val isImportedSongVisible = smpEntries.any { it.uri.toString() == importedUriString }
         if (!isImportedSongVisible) {
+            Log.i(
+                LIB_SMP_TRACE_TAG,
+                "step=effect_imported_smp_skip reason=imported_song_not_visible importedSongId=$importedSongId smpEntriesCount=${smpEntries.size}"
+            )
             return@LaunchedEffect
         }
 
-        lastHandledImportedSmpRefresh = smpRefreshVersion
+        lastHandledImportedSmpRefresh = lastImportedSmpRefreshVersion
         currentFolderUri
             ?.takeUnless { isSmpFolderUri(it) }
             ?.let { currentFolder ->
@@ -594,6 +734,11 @@ fun LibraryScreen(
         entries = buildEntriesForFolder(SMP_FOLDER_URI, useCache = false)
         searchQuery = ""
         selectedSongs = emptySet()
+        onConsumeImportedSmpAutoOpen()
+        Log.i(
+            LIB_SMP_TRACE_TAG,
+            "step=effect_imported_smp_done initialLoadDone=$initialLoadDone smpRefreshVersion=$smpRefreshVersion requestVersion=$lastImportedSmpRefreshVersion currentFolderUri=$currentFolderUri entriesSize=${entries.size} entries=${summarizeLibraryEntries(entries)}"
+        )
     }
 
     val bottomBarHeight = 56.dp
@@ -1086,6 +1231,11 @@ fun LibraryScreen(
     Log.e("SIG_LIB", "SIG#1 JUST BEFORE LaunchedEffect 2026-02-08 18:00 Z")
     LaunchedEffect(Unit) {
         Log.e("SIG_LIB", "SIG#2 ENTER LaunchedEffect(Unit)")
+        Log.i(
+            LIB_SMP_TRACE_TAG,
+            "step=effect_initial_load_start currentFolderUri=$currentFolderUri initialLoadDone=$initialLoadDone entriesSize=${entries.size}"
+        )
+        initialLoadDone = false
         try {
             backend.ensureBaseFolders()
             val root = backend.getRootUri()
@@ -1093,6 +1243,10 @@ fun LibraryScreen(
             if (root == null) {
                 currentFolderUri = null
                 entries = emptyList()
+                Log.i(
+                    LIB_SMP_TRACE_TAG,
+                    "step=effect_initial_load_no_root currentFolderUri=$currentFolderUri initialLoadDone=$initialLoadDone"
+                )
                 return@LaunchedEffect
             }
 
@@ -1121,6 +1275,12 @@ fun LibraryScreen(
             }
         } catch (t: Throwable) {
             Log.e("SIG_LIB", "LaunchedEffect CRASH", t)
+        } finally {
+            initialLoadDone = true
+            Log.i(
+                LIB_SMP_TRACE_TAG,
+                "step=effect_initial_load_done currentFolderUri=$currentFolderUri initialLoadDone=$initialLoadDone entriesSize=${entries.size} entries=${summarizeLibraryEntries(entries)}"
+            )
         }
     }
 
@@ -1223,6 +1383,10 @@ fun LibraryScreen(
                 onBack = {
                     val parentUri = folderStack.lastOrNull() ?: backend.getRootUri()
                     val newStack = folderStack.dropLast(1)
+                    Log.i(
+                        LIB_SMP_TRACE_TAG,
+                        "step=navigation_back from=$currentFolderUri to=$parentUri stackBefore=${folderStack.size} stackAfter=${newStack.size}"
+                    )
                     currentFolderUri = parentUri
                     entries = parentUri?.let { uri -> buildEntriesForFolder(uri) } ?: emptyList()
                     folderStack = newStack
@@ -1408,6 +1572,10 @@ fun LibraryScreen(
 
                             onOpenFolder = { entry ->
                                 if (entry.disabled) return@LibraryList
+                                Log.i(
+                                    LIB_SMP_TRACE_TAG,
+                                    "step=navigation_open_folder from=$currentFolderUri to=${entry.uri} name=${entry.name} stackBefore=${folderStack.size}"
+                                )
                                 currentFolderUri?.let { folderStack = folderStack + it }
                                 currentFolderUri = entry.uri
                                 entries = buildEntriesForFolder(entry.uri)

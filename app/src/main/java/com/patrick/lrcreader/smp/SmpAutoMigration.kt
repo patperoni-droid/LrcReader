@@ -20,7 +20,7 @@ class SmpAutoMigration(private val context: Context) {
     }
 
     private val converter by lazy(LazyThreadSafetyMode.NONE) { SmpConverter(context) }
-    private val importer by lazy(LazyThreadSafetyMode.NONE) { SmpImporter(context) }
+    private val secureImportPipeline by lazy(LazyThreadSafetyMode.NONE) { SmpSecureImportPipeline(context) }
 
     suspend fun migrateLegacyTrack(trackUriString: String): SmpAutoMigrationResult? =
         migrateLegacyTrackInternal(trackUriString, isolatedDocument = false)
@@ -66,11 +66,12 @@ class SmpAutoMigration(private val context: Context) {
         }
 
         try {
-            val importedSong = importer.importSmp(archiveUri)
+            val importResult = secureImportPipeline.import(archiveUri)
+            val importedSong = importResult.importedSong
             if (importedSong == null) {
                 Log.w(
                     TAG,
-                    "Migration SMP échouée à l'import trackUri=$trackUriString reason=${importer.lastFailureReason} isolated=$isolatedDocument"
+                    "Migration SMP échouée à l'import trackUri=$trackUriString reason=${importResult.failureReason} isolated=$isolatedDocument"
                 )
                 return@withContext null
             }

@@ -78,6 +78,7 @@ import com.patrick.lrcreader.smp.SmpBatchImportProcessor
 import com.patrick.lrcreader.smp.SmpConverter
 import com.patrick.lrcreader.smp.SmpImportedSongDetail
 import com.patrick.lrcreader.smp.SmpLibraryScanner
+import com.patrick.lrcreader.smp.SmpSecureImportPipeline
 import com.patrick.lrcreader.smp.SmpUserArchiveRebuilder
 import com.patrick.lrcreader.ui.*
 import com.patrick.lrcreader.ui.library.LibraryScreen
@@ -86,6 +87,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.pow
 
 class MainActivity : AppCompatActivity() {
@@ -385,7 +387,10 @@ class MainActivity : AppCompatActivity() {
                     mutableStateOf<SmpBatchImportProcessor.BatchPlan?>(null)
                 }
                 var lastImportedSmpSongId by remember { mutableStateOf<String?>(null) }
+                var lastImportedSmpRefreshVersion by remember { mutableIntStateOf(-1) }
+                val lastSmpImportFailureReason = remember { AtomicReference<String?>(null) }
                 val smpImporter = remember(ctx) { SmpImporter(ctx) }
+                val smpSecureImportPipeline = remember(ctx) { SmpSecureImportPipeline(ctx) }
                 val smpAutoMigration = remember(ctx) { SmpAutoMigration(ctx) }
                 val smpBatchProcessor = remember(ctx) {
                     SmpBatchImportProcessor(ctx, SmpConverter(ctx))
@@ -471,15 +476,21 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 suspend fun importSmpIntoApp(uri: Uri): com.patrick.lrcreader.smp.SongUnit? {
-                    val importedSong = withContext(Dispatchers.IO) {
-                        smpImporter.importSmp(uri)
+                    lastSmpImportFailureReason.set(null)
+                    val importResult = withContext(Dispatchers.IO) {
+                        smpSecureImportPipeline.import(uri, smpImporter)
                     }
-                    if (importedSong != null) {
-                        withContext(Dispatchers.Main) {
-                            lastImportedSmpSongId = importedSong.id
-                            smpSongsById = smpSongsById + (importedSong.id to importedSong)
-                            smpCacheRefreshTick++
-                        }
+                    lastSmpImportFailureReason.set(importResult.failureReason)
+
+                    val importedSong = importResult.importedSong ?: run {
+                        return null
+                    }
+
+                    withContext(Dispatchers.Main) {
+                        smpSongsById = smpSongsById + (importedSong.id to importedSong)
+                        smpCacheRefreshTick++
+                        lastImportedSmpSongId = importedSong.id
+                        lastImportedSmpRefreshVersion = smpCacheRefreshTick
                     }
                     return importedSong
                 }
@@ -498,7 +509,9 @@ class MainActivity : AppCompatActivity() {
                                     plan = plan,
                                     playlistName = playlistName,
                                     importSmp = { uri -> importSmpIntoApp(uri) },
-                                    importFailureReasonProvider = { smpImporter.lastFailureReason },
+                                    importFailureReasonProvider = {
+                                        lastSmpImportFailureReason.get() ?: smpImporter.lastFailureReason
+                                    },
                                     addImportedSongToPlaylist = { targetPlaylist, importedSong ->
                                         withContext(Dispatchers.Main) {
                                             runCatching {
@@ -587,11 +600,14 @@ class MainActivity : AppCompatActivity() {
                             )
                             "Import SMP réussi"
                         } else {
+                            val failureReason = lastSmpImportFailureReason.get()
+                                ?: smpImporter.lastFailureReason
+                                ?: "inconnue"
                             Log.e(
                                 "SMP",
-                                "Import SMP échoué: name=$pickedName reason=${smpImporter.lastFailureReason ?: "inconnue"}"
+                                "Import SMP échoué: name=$pickedName reason=$failureReason"
                             )
-                            "Import SMP échoué"
+                            "Import SMP échoué: $failureReason"
                         }
 
                         Toast.makeText(ctx, toastMessage, Toast.LENGTH_SHORT).show()
@@ -885,11 +901,18 @@ class MainActivity : AppCompatActivity() {
                         (isInternalMode || hasSetupPerm) &&
                         configInitDoneForRoot == rootKey
 
+                    Log.i(
+                        "SMP_TRACE",
+                        "step=rebuild_gate rootKey=$rootKey savedRoot=$savedRoot canUseStorage=$canUseStorage shouldShowSetup=$shouldShowSetup hasSetupPerm=$hasSetupPerm isInternalMode=$isInternalMode configInitDoneForRoot=$configInitDoneForRoot"
+                    )
+
                     if (!canUseStorage) {
+                        Log.i("SMP_TRACE", "step=rebuild_gate_skip rootKey=$rootKey reason=storage_not_ready")
                         return@LaunchedEffect
                     }
 
                     if (smpUserRebuildAttemptedForRoot == rootKey) {
+                        Log.i("SMP_TRACE", "step=rebuild_gate_skip rootKey=$rootKey reason=already_attempted")
                         return@LaunchedEffect
                     }
                     smpUserRebuildAttemptedForRoot = rootKey
@@ -897,46 +920,129 @@ class MainActivity : AppCompatActivity() {
                     val runtimeSongs = withContext(Dispatchers.IO) {
                         smpLibraryScanner.listSongs()
                     }
-                    if (runtimeSongs.isNotEmpty()) {
+                    val runtimeSongIds = runtimeSongs.map { it.id }.sorted()
+                    Log.i(
+                        "SMP_TRACE",
+                        "step=runtime_before_sync rootKey=$rootKey count=${runtimeSongs.size} songIds=${runtimeSongIds.joinToString(prefix = "[", postfix = "]", limit = 20, truncated = "...")}"
+                    )
+
+                    if (runtimeSongs.isEmpty()) {
+                        Log.i("SMP_TRACE", "step=global_rebuild_mode rootKey=$rootKey")
+                        val userArchives = withContext(Dispatchers.IO) {
+                            smpUserArchiveRebuilder.listUserArchiveUris()
+                        }
+                        if (userArchives.isEmpty()) {
+                            Log.i("SMP_REBUILD", "step=skip_no_user_archives root=$rootKey")
+                            Log.i("SMP_TRACE", "step=global_rebuild_skip rootKey=$rootKey reason=no_archives")
+                            return@LaunchedEffect
+                        }
+
                         Log.i(
                             "SMP_REBUILD",
-                            "step=skip_runtime_not_empty root=$rootKey count=${runtimeSongs.size}"
+                            "step=start root=$rootKey archiveCount=${userArchives.size}"
+                        )
+
+                        val rebuildResult = withContext(Dispatchers.IO) {
+                            smpUserArchiveRebuilder.rebuildFromUserArchives(userArchives)
+                        }
+
+                        val rebuiltSongs = withContext(Dispatchers.IO) {
+                            smpLibraryScanner.listSongs()
+                        }
+                        smpSongsById = rebuiltSongs.associateBy { it.id }
+                        Log.i(
+                            "SMP_TRACE",
+                            "step=runtime_after_global_rebuild rootKey=$rootKey count=${rebuiltSongs.size} songIds=${rebuiltSongs.map { it.id }.sorted().joinToString(prefix = "[", postfix = "]", limit = 20, truncated = "...")}"
+                        )
+
+                        if (rebuildResult.importedCount > 0) {
+                            smpCacheRefreshTick++
+                        }
+
+                        Log.i(
+                            "SMP_REBUILD",
+                            "step=done root=$rootKey archives=${rebuildResult.discoveredCount} imported=${rebuildResult.importedCount} failed=${rebuildResult.failedCount} runtimeCount=${rebuiltSongs.size}"
                         )
                         return@LaunchedEffect
                     }
 
-                    val userArchives = withContext(Dispatchers.IO) {
-                        smpUserArchiveRebuilder.listUserArchiveUris()
+                    Log.i("SMP_TRACE", "step=partial_sync_mode rootKey=$rootKey runtimeCount=${runtimeSongs.size}")
+                    val runtimeSongIdsSet = runtimeSongIds.toSet()
+                    val archiveCandidates = withContext(Dispatchers.IO) {
+                        smpUserArchiveRebuilder.listUserArchiveCandidates()
                     }
-                    if (userArchives.isEmpty()) {
-                        Log.i("SMP_REBUILD", "step=skip_no_user_archives root=$rootKey")
+                    if (archiveCandidates.isEmpty()) {
+                        Log.i(
+                            "SMP_REBUILD",
+                            "step=partial_skip_no_user_archives root=$rootKey runtimeCount=${runtimeSongs.size}"
+                        )
+                        Log.i("SMP_TRACE", "step=partial_sync_skip rootKey=$rootKey reason=no_archives")
+                        return@LaunchedEffect
+                    }
+
+                    val partialPlan = SmpUserArchiveRebuilder.buildPartialSyncPlan(
+                        runtimeSongIds = runtimeSongIdsSet,
+                        candidates = archiveCandidates
+                    )
+                    Log.i(
+                        "SMP_TRACE",
+                        "step=partial_plan_summary rootKey=$rootKey archiveCount=${archiveCandidates.size} importCount=${partialPlan.importCount} skippedInvalid=${partialPlan.skippedInvalidArchives.size} skippedDuplicate=${partialPlan.skippedDuplicateSongIds.size}"
+                    )
+
+                    partialPlan.skippedInvalidArchives.forEach { archiveUri ->
+                        Log.i(
+                            "SMP_REBUILD",
+                            "step=partial_skip_invalid_id root=$rootKey uri=$archiveUri"
+                        )
+                    }
+                    partialPlan.skippedDuplicateSongIds.forEach { songId ->
+                        Log.i(
+                            "SMP_REBUILD",
+                            "step=partial_skip_duplicate_id root=$rootKey songId=$songId"
+                        )
+                    }
+
+                    if (partialPlan.importCount == 0) {
+                        Log.i(
+                            "SMP_REBUILD",
+                            "step=partial_done root=$rootKey archives=${archiveCandidates.size} imported=0 failed=0 skippedInvalid=${partialPlan.skippedInvalidArchives.size} skippedDuplicate=${partialPlan.skippedDuplicateSongIds.size} runtimeCount=${runtimeSongs.size}"
+                        )
                         return@LaunchedEffect
                     }
 
                     Log.i(
                         "SMP_REBUILD",
-                        "step=start root=$rootKey archiveCount=${userArchives.size}"
+                        "step=partial_sync_start root=$rootKey archiveCount=${archiveCandidates.size} missingCount=${partialPlan.importCount} runtimeCount=${runtimeSongs.size}"
                     )
+                    partialPlan.archivesToImport.forEach { candidate ->
+                        Log.i(
+                            "SMP_REBUILD",
+                            "step=partial_import root=$rootKey songId=${candidate.stableSongId} uri=${candidate.archiveUri}"
+                        )
+                    }
 
                     val rebuildResult = withContext(Dispatchers.IO) {
-                        smpUserArchiveRebuilder.rebuildFromUserArchives(userArchives)
+                        smpUserArchiveRebuilder.rebuildFromUserArchives(
+                            partialPlan.archivesToImport.map { it.archiveUri }
+                        )
                     }
 
                     val rebuiltSongs = withContext(Dispatchers.IO) {
                         smpLibraryScanner.listSongs()
                     }
                     smpSongsById = rebuiltSongs.associateBy { it.id }
+                    Log.i(
+                        "SMP_TRACE",
+                        "step=runtime_after_partial_sync rootKey=$rootKey count=${rebuiltSongs.size} songIds=${rebuiltSongs.map { it.id }.sorted().joinToString(prefix = "[", postfix = "]", limit = 20, truncated = "...")}"
+                    )
 
-                    rebuildResult.lastImportedSongId?.let { importedSongId ->
-                        lastImportedSmpSongId = importedSongId
-                    }
                     if (rebuildResult.importedCount > 0) {
                         smpCacheRefreshTick++
                     }
 
                     Log.i(
                         "SMP_REBUILD",
-                        "step=done root=$rootKey archives=${rebuildResult.discoveredCount} imported=${rebuildResult.importedCount} failed=${rebuildResult.failedCount} runtimeCount=${rebuiltSongs.size}"
+                        "step=partial_done root=$rootKey archives=${archiveCandidates.size} imported=${rebuildResult.importedCount} failed=${rebuildResult.failedCount} skippedInvalid=${partialPlan.skippedInvalidArchives.size} skippedDuplicate=${partialPlan.skippedDuplicateSongIds.size} runtimeCount=${rebuiltSongs.size}"
                     )
                 }
                 LaunchedEffect(Unit) {
@@ -2010,7 +2116,6 @@ class MainActivity : AppCompatActivity() {
                                                     }
                                                     if (migration != null && currentPlayingUri == sourceUri) {
                                                         currentPlayingUri = migration.trackUriString
-                                                        lastImportedSmpSongId = migration.song.id
                                                         smpSongsById = smpSongsById + (migration.song.id to migration.song)
                                                         smpCacheRefreshTick++
                                                     }
@@ -2048,7 +2153,6 @@ class MainActivity : AppCompatActivity() {
                                                         val migration = resolvedTarget.second
                                                         if (migration != null && currentPlayingUri == lockedSourceUri) {
                                                             currentPlayingUri = migration.trackUriString
-                                                            lastImportedSmpSongId = migration.song.id
                                                             smpSongsById = smpSongsById + (migration.song.id to migration.song)
                                                             smpCacheRefreshTick++
                                                         }
@@ -2088,7 +2192,6 @@ class MainActivity : AppCompatActivity() {
                                                         val migration = resolvedTarget.second
                                                         if (migration != null && currentPlayingUri == lockedSourceUri) {
                                                             currentPlayingUri = migration.trackUriString
-                                                            lastImportedSmpSongId = migration.song.id
                                                             smpSongsById = smpSongsById + (migration.song.id to migration.song)
                                                             smpCacheRefreshTick++
                                                         }
@@ -2101,7 +2204,6 @@ class MainActivity : AppCompatActivity() {
                                         },
                                         onTrackPromotedToSmp = { migration: SmpAutoMigrationResult ->
                                             currentPlayingUri = migration.trackUriString
-                                            lastImportedSmpSongId = migration.song.id
                                             smpSongsById = smpSongsById + (migration.song.id to migration.song)
                                             smpCacheRefreshTick++
                                         },
@@ -2243,6 +2345,11 @@ class MainActivity : AppCompatActivity() {
                                         searchToggleSignal = librarySearchToggleSignal,
                                         smpRefreshVersion = smpCacheRefreshTick,
                                         lastImportedSmpSongId = lastImportedSmpSongId,
+                                        lastImportedSmpRefreshVersion = lastImportedSmpRefreshVersion,
+                                        onConsumeImportedSmpAutoOpen = {
+                                            lastImportedSmpSongId = null
+                                            lastImportedSmpRefreshVersion = -1
+                                        },
                                         onAfterBackupImport = { refreshKey++ },
                                         onImportExternalSmp = {
                                             pickSmpFileLauncher.launch(
@@ -2265,13 +2372,13 @@ class MainActivity : AppCompatActivity() {
                                             } else {
                                                 Log.e(
                                                     "SMP_CONVERT_FLOW",
-                                                    "step=main_auto_import_failed outputUri=$uri reason=${smpImporter.lastFailureReason ?: "inconnue"}"
+                                                    "step=main_auto_import_failed outputUri=$uri reason=${lastSmpImportFailureReason.get() ?: smpImporter.lastFailureReason ?: "inconnue"}"
                                                 )
                                             }
                                             importedSong
                                         },
                                         onImportGeneratedSmpFailureReason = {
-                                            smpImporter.lastFailureReason
+                                            lastSmpImportFailureReason.get() ?: smpImporter.lastFailureReason
                                         },
                                         onPlayFromLibrary = { uriString ->
                                             Log.d(
@@ -2350,7 +2457,6 @@ class MainActivity : AppCompatActivity() {
                                             setTabAndPersist(BottomTab.Tuner, reason = "moreOpenTuner")
                                         },
                                         onWaveformTrackPromotedToSmp = { migration ->
-                                            lastImportedSmpSongId = migration.song.id
                                             smpSongsById = smpSongsById + (migration.song.id to migration.song)
                                             smpCacheRefreshTick++
                                         }

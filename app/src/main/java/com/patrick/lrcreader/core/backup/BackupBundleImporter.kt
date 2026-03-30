@@ -3,14 +3,16 @@ package com.patrick.lrcreader.core.backup
 import android.content.Context
 import android.net.Uri
 import android.util.Log
-import com.patrick.lrcreader.smp.SmpImporter
+import androidx.documentfile.provider.DocumentFile
+import com.patrick.lrcreader.smp.SmpSecureImportPipeline
 import java.io.File
 import java.io.InputStream
 
 data class BackupBundleImportedSong(
     val bundleSongId: String,
     val importedSongId: String,
-    val storageFolder: String? = null
+    val storageFolder: String? = null,
+    val durableArchiveUri: String? = null
 )
 
 sealed interface BackupBundleSmpImportResult {
@@ -71,7 +73,7 @@ object BackupBundleImporter {
                 importSmpFile(context, smpFile)
             },
             rollbackImportedSong = { importedSong ->
-                rollbackImportedSong(importedSong)
+                rollbackImportedSong(context, importedSong)
             }
         )
     }
@@ -125,17 +127,19 @@ object BackupBundleImporter {
 
         return try {
             tempFile.writeBytes(smpFile.bytes)
-            val importer = SmpImporter(context)
-            val importedSong = importer.importSmp(Uri.fromFile(tempFile))
+            val secureImportPipeline = SmpSecureImportPipeline(context)
+            val importResult = secureImportPipeline.import(Uri.fromFile(tempFile))
+            val importedSong = importResult.importedSong
                 ?: return BackupBundleSmpImportResult.Failure(
-                    reason = importer.lastFailureReason
+                    reason = importResult.failureReason
                 )
 
             BackupBundleSmpImportResult.Success(
                 importedSong = BackupBundleImportedSong(
                     bundleSongId = smpFile.songId,
                     importedSongId = importedSong.id,
-                    storageFolder = importedSong.storageFolder
+                    storageFolder = importedSong.storageFolder,
+                    durableArchiveUri = importResult.durableArchiveUri?.toString()
                 )
             )
         } catch (t: Throwable) {
@@ -160,15 +164,36 @@ object BackupBundleImporter {
         }.getOrNull()
     }
 
-    private fun rollbackImportedSong(importedSong: BackupBundleImportedSong) {
-        val storageFolder = importedSong.storageFolder ?: return
-        val targetDir = File(storageFolder)
-        if (!targetDir.exists()) return
-        val deleted = runCatching { targetDir.deleteRecursively() }.getOrDefault(false)
-        if (!deleted) {
+    private fun rollbackImportedSong(context: Context, importedSong: BackupBundleImportedSong) {
+        val storageFolder = importedSong.storageFolder
+        if (storageFolder != null) {
+            val targetDir = File(storageFolder)
+            if (targetDir.exists()) {
+                val deleted = runCatching { targetDir.deleteRecursively() }.getOrDefault(false)
+                if (!deleted) {
+                    Log.w(
+                        TAG,
+                        "BUNDLE_IMPORT rollback_failed bundleSongId=${importedSong.bundleSongId} importedSongId=${importedSong.importedSongId} dir=$storageFolder"
+                    )
+                }
+            }
+        }
+
+        val archiveUriString = importedSong.durableArchiveUri ?: return
+        val archiveUri = runCatching { Uri.parse(archiveUriString) }.getOrNull() ?: return
+        val archiveDeleted = when (archiveUri.scheme) {
+            "file" -> archiveUri.path?.let { path -> File(path).delete() } == true
+            else -> {
+                val document = DocumentFile.fromSingleUri(context, archiveUri)
+                (document?.delete() == true) || runCatching {
+                    context.contentResolver.delete(archiveUri, null, null) > 0
+                }.getOrDefault(false)
+            }
+        }
+        if (!archiveDeleted) {
             Log.w(
                 TAG,
-                "BUNDLE_IMPORT rollback_failed bundleSongId=${importedSong.bundleSongId} importedSongId=${importedSong.importedSongId} dir=$storageFolder"
+                "BUNDLE_IMPORT rollback_archive_failed bundleSongId=${importedSong.bundleSongId} importedSongId=${importedSong.importedSongId} archiveUri=$archiveUri"
             )
         }
     }

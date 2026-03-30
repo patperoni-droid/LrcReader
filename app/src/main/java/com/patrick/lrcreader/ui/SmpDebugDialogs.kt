@@ -45,7 +45,7 @@ import com.patrick.lrcreader.smp.MidiCue
 import com.patrick.lrcreader.smp.SmpConfig
 import com.patrick.lrcreader.smp.SmpExporter
 import com.patrick.lrcreader.smp.SmpImportedSongDetail
-import com.patrick.lrcreader.smp.SmpImporter
+import com.patrick.lrcreader.smp.SmpSecureImportPipeline
 import com.patrick.lrcreader.smp.SmpMidiCuesStore
 import com.patrick.lrcreader.smp.SongUnit
 import kotlinx.coroutines.Dispatchers
@@ -529,10 +529,11 @@ private fun runSmpRoundTripTest(
         )
     }
 
-    val importer = SmpImporter(context)
-    val importedSong = importer.importSmp(Uri.fromFile(exportedFile))
+    val secureImportPipeline = SmpSecureImportPipeline(context)
+    val importResult = secureImportPipeline.import(Uri.fromFile(exportedFile))
+    val importedSong = importResult.importedSong
     if (importedSong == null) {
-        val reason = importer.lastFailureReason ?: "import SMP impossible"
+        val reason = importResult.failureReason ?: "import SMP impossible"
         Log.e(
             SMP_TEST_TAG,
             "Round-trip SMP impossible: import KO songId=${sourceSong.id} exportPath=${exportedFile.absolutePath} reason=$reason"

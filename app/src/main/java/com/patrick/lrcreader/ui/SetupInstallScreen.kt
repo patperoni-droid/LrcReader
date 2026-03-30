@@ -77,10 +77,17 @@ fun SetupInstallScreen(
             "setup:base_tree uri=${baseTree.uri} children=${listChildNames(baseTree)}"
         )
 
-        val splRoot =
+        val splRoot = if (shouldUsePickedFolderAsSplRoot(baseTree.name, listChildNames(baseTree))) {
+            Log.i(
+                SETUP_STORAGE_TAG,
+                "setup:use_picked_folder_as_spl_root uri=${baseTree.uri} name=${baseTree.name}"
+            )
+            baseTree
+        } else {
             baseTree.listFiles().firstOrNull {
                 it.isDirectory && it.name.equals("SPL_Music", ignoreCase = true)
             } ?: baseTree.createDirectory("SPL_Music")
+        }
 
         if (splRoot == null || !splRoot.isDirectory) {
             Log.e(SETUP_STORAGE_TAG, "setup:spl_root_missing parent=${baseTree.uri}")
@@ -439,6 +446,30 @@ private fun splToTreeUri(docUri: Uri): Uri {
     val authority = docUri.authority ?: return docUri
     val docId = runCatching { DocumentsContract.getDocumentId(docUri) }.getOrNull() ?: return docUri
     return DocumentsContract.buildTreeDocumentUri(authority, docId)
+}
+
+internal fun shouldUsePickedFolderAsSplRoot(
+    folderName: String?,
+    childNames: List<String>
+): Boolean {
+    if (normalizeSetupFolderToken(folderName) == "splmusic") {
+        return true
+    }
+
+    val normalizedChildren = childNames.map(::normalizeSetupFolderToken)
+    return normalizedChildren.any { child ->
+        child == "backingtracks" || child == "backingtrack"
+    }
+}
+
+private fun normalizeSetupFolderToken(rawValue: String?): String {
+    return rawValue
+        .orEmpty()
+        .trim()
+        .lowercase()
+        .replace("_", "")
+        .replace(" ", "")
+        .replace(Regex("\\(\\d+\\)$"), "")
 }
 
 private fun safeTreeDocumentId(uri: Uri?): String? {

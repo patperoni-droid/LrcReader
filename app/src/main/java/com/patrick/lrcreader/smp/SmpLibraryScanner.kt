@@ -13,6 +13,7 @@ class SmpLibraryScanner(private val context: Context) {
 
     companion object {
         private const val TAG = "SMP"
+        private const val TRACE_TAG = "SMP_TRACE"
         private const val TRACKS_DIR_NAME = "tracks"
         private const val CONFIG_FILE_NAME = "config.json"
         private const val WAVEFORM_FILE_NAME = "waveform.json"
@@ -31,16 +32,31 @@ class SmpLibraryScanner(private val context: Context) {
         val tracksRoot = File(context.filesDir, TRACKS_DIR_NAME)
         if (!tracksRoot.exists() || !tracksRoot.isDirectory) {
             Log.d(TAG, "Aucun dossier SMP importé: ${tracksRoot.absolutePath}")
+            Log.i(TRACE_TAG, "step=runtime_scan_empty_root path=${tracksRoot.absolutePath}")
             return emptyList()
         }
 
-        return tracksRoot.listFiles()
+        val songDirs = tracksRoot.listFiles()
             .orEmpty()
             .asSequence()
             .filter { it.isDirectory && !it.name.startsWith(".") }
+            .toList()
+
+        Log.i(
+            TRACE_TAG,
+            "step=runtime_scan_start path=${tracksRoot.absolutePath} dirNames=${songDirs.map { it.name }.sorted().joinToString(prefix = "[", postfix = "]", limit = 20, truncated = "...")}"
+        )
+
+        val songs = songDirs
             .mapNotNull { songDir -> readSongUnit(songDir) }
             .sortedBy { it.title.lowercase() }
             .toList()
+
+        Log.i(
+            TRACE_TAG,
+            "step=runtime_scan_done path=${tracksRoot.absolutePath} count=${songs.size} songIds=${songs.map { it.id }.sorted().joinToString(prefix = "[", postfix = "]", limit = 20, truncated = "...")}"
+        )
+        return songs
     }
 
     fun findSongById(songId: String): SongUnit? {
@@ -76,6 +92,7 @@ class SmpLibraryScanner(private val context: Context) {
         val meta = SmpMetaStore.read(songDir)
         val config = readConfig(songDir)
         if (meta == null && config == null) {
+            Log.i(TRACE_TAG, "step=runtime_song_skip dir=${songDir.absolutePath} reason=no_meta_and_no_config")
             return null
         }
 
@@ -87,7 +104,7 @@ class SmpLibraryScanner(private val context: Context) {
             emptyList()
         }
 
-        return SongUnit(
+        val songUnit = SongUnit(
             id = songDir.name,
             title = meta?.title ?: config?.title ?: songDir.name,
             storageFolder = songDir.absolutePath,
@@ -101,6 +118,11 @@ class SmpLibraryScanner(private val context: Context) {
             dmxPath = resolveDmxPath(songDir, meta?.dmxFile),
             prompterPath = findPrompterPath(songDir)
         )
+        Log.i(
+            TRACE_TAG,
+            "step=runtime_song_accept dir=${songDir.absolutePath} songId=${songUnit.id} title=${songUnit.title}"
+        )
+        return songUnit
     }
 
     private fun resolveAudioFile(songDir: File, meta: SmpMeta?, config: SmpConfig?): File? {
@@ -171,6 +193,7 @@ class SmpLibraryScanner(private val context: Context) {
         val configFile = File(songDir, CONFIG_FILE_NAME)
         if (!configFile.isFile) {
             Log.w(TAG, "Dossier SMP ignoré sans config.json: ${songDir.absolutePath}")
+            Log.i(TRACE_TAG, "step=runtime_config_missing dir=${songDir.absolutePath}")
             return null
         }
 
@@ -178,9 +201,11 @@ class SmpLibraryScanner(private val context: Context) {
             SmpConfig.fromJsonOrNull(configFile.readText(Charsets.UTF_8))
         }.getOrElse { error ->
             Log.e(TAG, "Lecture config.json impossible: ${configFile.absolutePath}", error)
+            Log.e(TRACE_TAG, "step=runtime_config_read_failed path=${configFile.absolutePath}", error)
             null
         } ?: run {
             Log.w(TAG, "Dossier SMP ignoré avec config.json invalide: ${songDir.absolutePath}")
+            Log.i(TRACE_TAG, "step=runtime_config_invalid dir=${songDir.absolutePath}")
             null
         }
     }

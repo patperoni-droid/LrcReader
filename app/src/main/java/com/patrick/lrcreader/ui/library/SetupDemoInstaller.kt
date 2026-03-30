@@ -13,7 +13,7 @@ import com.patrick.lrcreader.core.LibrarySnapshot
 import com.patrick.lrcreader.core.PlaylistRepository
 import com.patrick.lrcreader.core.buildSmpItem
 import com.patrick.lrcreader.exo.BuildConfig
-import com.patrick.lrcreader.smp.SmpImporter
+import com.patrick.lrcreader.smp.SmpSecureImportPipeline
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -43,7 +43,7 @@ suspend fun installDemoLibrary(context: Context): DemoInstallResult = withContex
         val rootUri = BackupFolderPrefs.getLibraryRootUri(context)
             ?: error("library_root_missing")
         val backendType = if (rootUri.scheme == "file") "INTERNAL" else "SAF"
-        val smpImporter = SmpImporter(context)
+        val secureImportPipeline = SmpSecureImportPipeline(context)
         Log.i(
             TAG,
             "installDemoLibrary:start flavor=${BuildConfig.FLAVOR} buildType=${BuildConfig.BUILD_TYPE} debug=${BuildConfig.DEBUG} backend=$backendType rootUri=$rootUri"
@@ -54,13 +54,13 @@ suspend fun installDemoLibrary(context: Context): DemoInstallResult = withContex
             installDemoIntoInternalStorage(
                 context = context,
                 rootUri = rootUri,
-                smpImporter = smpImporter
+                secureImportPipeline = secureImportPipeline
             )
         } else {
             installDemoIntoSafStorage(
                 context = context,
                 rootUri = rootUri,
-                smpImporter = smpImporter
+                secureImportPipeline = secureImportPipeline
             )
         }
         val copyRootUri = installPaths.copyRootUri
@@ -140,7 +140,7 @@ suspend fun installDemoLibrary(context: Context): DemoInstallResult = withContex
 private fun installDemoIntoInternalStorage(
     context: Context,
     rootUri: Uri,
-    smpImporter: SmpImporter
+    secureImportPipeline: SmpSecureImportPipeline
 ): DemoInstallPaths {
     val rootDir = File(rootUri.path ?: error("internal_root_path_missing"))
     val backingTracks = File(rootDir, "BackingTracks").apply { mkdirs() }
@@ -158,7 +158,7 @@ private fun installDemoIntoInternalStorage(
             targetLabel = smpDir.absolutePath
         )
         importCopiedDemoSmp(
-            smpImporter = smpImporter,
+            secureImportPipeline = secureImportPipeline,
             archiveUri = Uri.fromFile(destination),
             assetName = name
         )
@@ -174,7 +174,7 @@ private fun installDemoIntoInternalStorage(
 private fun installDemoIntoSafStorage(
     context: Context,
     rootUri: Uri,
-    smpImporter: SmpImporter
+    secureImportPipeline: SmpSecureImportPipeline
 ): DemoInstallPaths {
     val setupTreeUri = BackupFolderPrefsSaf.getSetupTreeUri(context)
         ?: BackupFolderPrefs.getSetupTreeUri(context)
@@ -212,7 +212,7 @@ private fun installDemoIntoSafStorage(
             logicalType = "smp"
         )
         importCopiedDemoSmp(
-            smpImporter = smpImporter,
+            secureImportPipeline = secureImportPipeline,
             archiveUri = Uri.parse(copiedUri),
             assetName = name
         )
@@ -226,12 +226,13 @@ private fun installDemoIntoSafStorage(
 }
 
 private fun importCopiedDemoSmp(
-    smpImporter: SmpImporter,
+    secureImportPipeline: SmpSecureImportPipeline,
     archiveUri: Uri,
     assetName: String
 ): DemoImportedSong {
-    val importedSong = smpImporter.importSmp(archiveUri)
-        ?: error("demo_smp_import_failed:$assetName:${smpImporter.lastFailureReason ?: "unknown"}")
+    val importResult = secureImportPipeline.import(archiveUri)
+    val importedSong = importResult.importedSong
+        ?: error("demo_smp_import_failed:$assetName:${importResult.failureReason ?: "unknown"}")
     return DemoImportedSong(
         playlistItemUri = buildSmpItem(importedSong.id)
     )

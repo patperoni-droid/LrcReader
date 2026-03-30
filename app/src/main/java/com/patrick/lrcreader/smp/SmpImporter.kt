@@ -22,6 +22,7 @@ class SmpImporter(private val context: Context) {
 
     companion object {
         private const val TAG = "SmpImporter"
+        private const val TRACE_TAG = "SMP_TRACE"
         private const val TRACKS_DIR_NAME = "tracks"
         private const val CONFIG_FILE_NAME = "config.json"
         private const val WAVEFORM_FILE_NAME = "waveform.json"
@@ -39,14 +40,20 @@ class SmpImporter(private val context: Context) {
         if (Looper.myLooper() == Looper.getMainLooper()) {
             lastFailureReason = "appel sur le thread principal"
             Log.w(TAG, "importSmp refusé sur le thread principal uri=$uri")
+            Log.w(TRACE_TAG, "step=import_failed uri=$uri reason=main_thread")
             return null
         }
 
         val displayName = resolveDisplayName(uri)
         val tracksRoot = File(context.filesDir, TRACKS_DIR_NAME)
+        Log.i(
+            TRACE_TAG,
+            "step=import_start uri=$uri displayName=$displayName tracksRoot=${tracksRoot.absolutePath}"
+        )
         if (!tracksRoot.exists() && !tracksRoot.mkdirs()) {
             lastFailureReason = "création du dossier tracks impossible"
             Log.e(TAG, "Impossible de créer le dossier tracks: ${tracksRoot.absolutePath}")
+            Log.e(TRACE_TAG, "step=import_failed uri=$uri reason=tracks_root_create_failed path=${tracksRoot.absolutePath}")
             return null
         }
 
@@ -57,6 +64,7 @@ class SmpImporter(private val context: Context) {
         if (!stagingDir.mkdirs()) {
             lastFailureReason = "création du dossier temporaire impossible"
             Log.e(TAG, "Impossible de créer le dossier temporaire: ${stagingDir.absolutePath}")
+            Log.e(TRACE_TAG, "step=import_failed uri=$uri reason=staging_create_failed path=${stagingDir.absolutePath}")
             return null
         }
 
@@ -71,6 +79,10 @@ class SmpImporter(private val context: Context) {
             val stableConfigId = sanitizeSongId(rawConfigId)
             val songId = stableConfigId ?: "song_${UUID.randomUUID()}"
             val destinationDir = File(tracksRoot, songId)
+            Log.i(
+                TRACE_TAG,
+                "step=import_resolved uri=$uri displayName=$displayName rawConfigId=${rawConfigId ?: "null"} stableSongId=${stableConfigId ?: "invalid_or_absent"} finalSongId=$songId destinationDir=${destinationDir.absolutePath}"
+            )
             val existingMidiFile = File(destinationDir, SmpMidiCuesStore.MIDI_CUES_FILE_NAME)
             val preservedLyrics = capturePreservedLyrics(
                 destinationDir = destinationDir
@@ -96,12 +108,14 @@ class SmpImporter(private val context: Context) {
             if (destinationDir.exists() && !deleteRecursivelyIfExists(destinationDir)) {
                 lastFailureReason = "écrasement du dossier existant impossible"
                 Log.e(TAG, "Impossible d'écraser le dossier existant: ${destinationDir.absolutePath}")
+                Log.e(TRACE_TAG, "step=import_failed uri=$uri reason=destination_delete_failed destinationDir=${destinationDir.absolutePath}")
                 return null
             }
 
             if (!moveStagingToDestination(stagingDir = stagingDir, destinationDir = destinationDir)) {
                 lastFailureReason = "finalisation de l'import impossible"
                 Log.e(TAG, "Impossible de finaliser l'import vers ${destinationDir.absolutePath}")
+                Log.e(TRACE_TAG, "step=import_failed uri=$uri reason=move_to_destination_failed destinationDir=${destinationDir.absolutePath}")
                 deleteRecursivelyIfExists(destinationDir)
                 return null
             }
@@ -141,10 +155,15 @@ class SmpImporter(private val context: Context) {
                 TAG,
                 "Import .smp terminé: name=$displayName songId=$songId dir=${destinationDir.absolutePath}"
             )
+            Log.i(
+                TRACE_TAG,
+                "step=import_success uri=$uri songId=$songId title=$title destinationDir=${destinationDir.absolutePath}"
+            )
             return songUnit
         } catch (e: Exception) {
             lastFailureReason = "exception pendant l'import"
             Log.e(TAG, "Erreur pendant l'import du .smp name=$displayName uri=$uri", e)
+            Log.e(TRACE_TAG, "step=import_failed uri=$uri reason=exception", e)
             return null
         } finally {
             if (importedDir == null) {
@@ -200,17 +219,20 @@ class SmpImporter(private val context: Context) {
             } ?: run {
                 lastFailureReason = "uri inaccessible"
                 Log.e(TAG, "Uri inaccessible pour l'import .smp uri=$uri")
+                Log.e(TRACE_TAG, "step=import_extract_failed uri=$uri reason=uri_inaccessible")
                 return null
             }
         } catch (e: Exception) {
             lastFailureReason = "zip corrompu ou illisible"
             Log.e(TAG, "Zip .smp corrompu ou illisible uri=$uri", e)
+            Log.e(TRACE_TAG, "step=import_extract_failed uri=$uri reason=zip_invalid", e)
             return null
         }
 
         if (!extractedFiles.hasConfig) {
             lastFailureReason = "config.json absent"
             Log.e(TAG, "Import .smp impossible: config.json absent")
+            Log.e(TRACE_TAG, "step=import_extract_failed uri=$uri reason=config_missing")
             return null
         }
 
@@ -218,6 +240,7 @@ class SmpImporter(private val context: Context) {
         if (config == null) {
             lastFailureReason = "config.json invalide"
             Log.e(TAG, "Import .smp impossible: config.json invalide")
+            Log.e(TRACE_TAG, "step=import_extract_failed uri=$uri reason=config_invalid")
             return null
         }
 

@@ -551,6 +551,13 @@ object BackupManager {
      * 2) fallback : libraryRootUri/Backups
      * 3) fallback : SplFolders.backupsDir(context)
      */
+    private fun findDirectoryIgnoreCase(parent: DocumentFile, names: List<String>): DocumentFile? {
+        val wanted = names.map { it.trim().lowercase() }.toSet()
+        return parent.listFiles().firstOrNull { child ->
+            child.isDirectory && child.name.orEmpty().trim().lowercase() in wanted
+        }
+    }
+
     private fun resolveBackupDirFromLibraryRoot(context: Context): DocumentFile? {
         val root = BackupFolderPrefs.getLibraryRootUri(context) ?: return null
         if (root.scheme == "file") return null
@@ -559,10 +566,19 @@ object BackupManager {
             ?: DocumentFile.fromSingleUri(context, root)
             ?: return null
 
-        val backups = rootDoc.findFile("Backups")
-            ?: rootDoc.findFile("backups")
+        if (!rootDoc.isDirectory) {
+            return null
+        }
 
-        return backups?.takeIf { it.isDirectory } ?: rootDoc.takeIf { it.isDirectory }
+        val rootName = rootDoc.name.orEmpty().trim()
+        if (rootName.equals("Backups", ignoreCase = true)) {
+            return rootDoc.takeIf { it.canWrite() }
+        }
+
+        val backups = findDirectoryIgnoreCase(rootDoc, listOf("Backups", "backups"))
+            ?: rootDoc.createDirectory("Backups")
+
+        return backups?.takeIf { it.isDirectory && it.canWrite() }
     }
 
     private fun getBackupDir(context: Context): DocumentFile? {
@@ -606,31 +622,32 @@ object BackupManager {
             libraryFolders = emptyList()
         )
 
-        // ✅ MODE INTERNAL : write with File()
-        val root = BackupFolderPrefs.getLibraryRootUri(context)
-        if (root != null && root.scheme == "file") {
+        val safDir = getBackupDir(context)
+        if (safDir != null && safDir.canWrite()) {
             try {
-                val dir = getBackupDirFile(context)
-                val outFile = File(dir, DEFAULT_BACKUP_FILE)
-                outFile.writeText(json, Charsets.UTF_8)
+                val existing = safDir.findFile(DEFAULT_BACKUP_FILE)
+                val target = when {
+                    existing != null && existing.isFile -> existing
+                    else -> safDir.createFile("application/json", DEFAULT_BACKUP_FILE)
+                } ?: return
+
+                context.contentResolver.openOutputStream(target.uri, "w")?.use { out ->
+                    out.write(json.toByteArray(Charsets.UTF_8))
+                    out.flush()
+                }
+                return
             } catch (e: Exception) {
-                Log.e("BACKUP", "autoSave INTERNAL failed", e)
+                Log.e("BACKUP", "autoSave SAF durable-first failed", e)
             }
-            return
         }
 
-        // ✅ MODE SAF
-        val dir = getBackupDir(context) ?: return
-
-        val existing = dir.findFile(DEFAULT_BACKUP_FILE)
-        val target = when {
-            existing != null && existing.isFile -> existing
-            else -> dir.createFile("application/json", DEFAULT_BACKUP_FILE)
-        } ?: return
-
-        context.contentResolver.openOutputStream(target.uri, "w")?.use { out ->
-            out.write(json.toByteArray(Charsets.UTF_8))
-            out.flush()
+        // ✅ Fallback fichier legacy
+        try {
+            val dir = getBackupDirFile(context)
+            val outFile = File(dir, DEFAULT_BACKUP_FILE)
+            outFile.writeText(json, Charsets.UTF_8)
+        } catch (e: Exception) {
+            Log.e("BACKUP", "autoSave INTERNAL failed", e)
         }
     }
 
@@ -642,36 +659,34 @@ object BackupManager {
         context: Context,
         onLastPlayed: (LastPlayed?) -> Unit = {}
     ): Boolean {
+        val safDir = getBackupDir(context)
+        if (safDir != null) {
+            val file = safDir.findFile(DEFAULT_BACKUP_FILE)
+            if (file != null && file.isFile) {
+                val json = try {
+                    context.contentResolver.openInputStream(file.uri)?.use { input ->
+                        input.readBytes().toString(Charsets.UTF_8)
+                    }
+                } catch (_: Exception) {
+                    null
+                }
 
-        // ✅ MODE INTERNAL : read with File()
-        val root = BackupFolderPrefs.getLibraryRootUri(context)
-        if (root != null && root.scheme == "file") {
-            return try {
-                val dir = getBackupDirFile(context)
-                val f = File(dir, DEFAULT_BACKUP_FILE)
-                if (!f.exists() || !f.isFile) return false
-                val json = f.readText(Charsets.UTF_8)
-                importState(context, json, onLastPlayed)
-                true
-            } catch (_: Exception) {
-                false
+                if (json != null) {
+                    return try {
+                        importState(context, json, onLastPlayed)
+                        true
+                    } catch (_: Exception) {
+                        false
+                    }
+                }
             }
         }
 
-        // ✅ MODE SAF : read DocumentFile
-        val dir = getBackupDir(context) ?: return false
-        val file = dir.findFile(DEFAULT_BACKUP_FILE) ?: return false
-        if (!file.isFile) return false
-
-        val json = try {
-            context.contentResolver.openInputStream(file.uri)?.use { input ->
-                input.readBytes().toString(Charsets.UTF_8)
-            }
-        } catch (_: Exception) {
-            null
-        } ?: return false
-
         return try {
+            val dir = getBackupDirFile(context)
+            val f = File(dir, DEFAULT_BACKUP_FILE)
+            if (!f.exists() || !f.isFile) return false
+            val json = f.readText(Charsets.UTF_8)
             importState(context, json, onLastPlayed)
             true
         } catch (_: Exception) {
