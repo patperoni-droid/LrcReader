@@ -3,6 +3,7 @@ package com.patrick.lrcreader.ui.library
 import android.content.Context
 import android.net.Uri
 import android.os.Handler
+import android.os.SystemClock
 import android.provider.DocumentsContract
 import android.util.Log
 import androidx.documentfile.provider.DocumentFile
@@ -10,6 +11,7 @@ import com.patrick.lrcreader.core.BackupFolderPrefs
 import com.patrick.lrcreader.core.BackupFolderPrefsSaf
 import com.patrick.lrcreader.core.ImportAudioManager
 import com.patrick.lrcreader.core.LibraryIndexCache
+import com.patrick.lrcreader.core.WorkspaceResolver
 import com.patrick.lrcreader.exo.BuildConfig
 import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.ui.LibraryEntry
@@ -17,19 +19,78 @@ import com.patrick.lrcreader.ui.MoveResult
 import com.patrick.lrcreader.ui.isHiddenLibraryTransportFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.util.concurrent.atomic.AtomicInteger
 
 class LibraryBackendSaf(
-    private val context: Context
+    private val context: Context,
+    private val resolvedWorkspaceSnapshot: WorkspaceResolver.Snapshot? = null
 ) : LibraryBackend {
 
     private val tag = "LIB_SAF"
+    private val perfTag = "LIB_SAF_PERF_TRACE"
 
     companion object {
         @Volatile
-        private var baseFoldersEnsured = false
+        private var baseFoldersEnsuredForRoot: String? = null
+        private val getRootCallCounter = AtomicInteger(0)
+        private val ensureBaseFoldersCallCounter = AtomicInteger(0)
     }
 
     override fun getRootUri(): Uri? {
+        val callId = getRootCallCounter.incrementAndGet()
+        val startMs = SystemClock.elapsedRealtime()
+        Log.i(perfTag, "step=get_root_start call=$callId timeMs=$startMs")
+        fun finish(source: String, result: Uri?, detail: String? = null): Uri? {
+            val durationMs = SystemClock.elapsedRealtime() - startMs
+            Log.i(
+                perfTag,
+                "step=get_root_done call=$callId durationMs=$durationMs source=$source result=$result detail=$detail"
+            )
+            return result
+        }
+
+        val providedSnapshot = resolvedWorkspaceSnapshot
+        val providedRoot = providedSnapshot?.workspaceRootUri
+        if (
+            providedSnapshot?.mode == com.patrick.lrcreader.core.StorageModePrefs.Mode.SAF &&
+            providedSnapshot.isUsable &&
+            providedRoot != null &&
+            providedRoot.scheme != "file"
+        ) {
+            return finish(
+                source = "provided_snapshot",
+                result = providedRoot,
+                detail = "status=${providedSnapshot.status}"
+            )
+        }
+
+        // Legacy fallback: keep one local resolution path if the screen did not receive
+        // a usable snapshot, but avoid calling it on the hot path when the snapshot exists.
+        val workspaceSnapshot = WorkspaceResolver.resolve(context)
+        val resolvedRoot = workspaceSnapshot.workspaceRootUri
+        if (
+            workspaceSnapshot.mode == com.patrick.lrcreader.core.StorageModePrefs.Mode.SAF &&
+            workspaceSnapshot.isUsable &&
+            resolvedRoot != null &&
+            resolvedRoot.scheme != "file"
+        ) {
+            Log.i(
+                tag,
+                "getRootUri: use_workspace_resolver status=${workspaceSnapshot.status} detail=${workspaceSnapshot.detail} resolved=$resolvedRoot authority=${resolvedRoot.authority} treeId=${safeTreeDocumentId(resolvedRoot)} docId=${safeDocumentId(resolvedRoot)}"
+            )
+            if (BackupFolderPrefsSaf.getLibraryRootUri(context)?.toString() != resolvedRoot.toString()) {
+                BackupFolderPrefsSaf.saveLibraryRootUri(context, resolvedRoot)
+            }
+            if (BackupFolderPrefs.getLibraryRootUri(context)?.toString() != resolvedRoot.toString()) {
+                BackupFolderPrefs.saveLibraryRootUri(context, resolvedRoot)
+            }
+            return finish(
+                source = "fallback_workspace_resolver",
+                result = resolvedRoot,
+                detail = "status=${workspaceSnapshot.status}"
+            )
+        }
+
         val savedSaf = BackupFolderPrefsSaf.getLibraryRootUri(context)
         val savedCompat = BackupFolderPrefs.getLibraryRootUri(context)
         val saved = savedSaf ?: savedCompat
@@ -39,15 +100,26 @@ class LibraryBackendSaf(
                 tag,
                 "getRootUri: use_saved savedSaf=$savedSaf savedCompat=$savedCompat resolved=$saved authority=${saved.authority} treeId=${safeTreeDocumentId(saved)} docId=${safeDocumentId(saved)}"
             )
-            return saved
+            return finish(source = "saved_root", result = saved)
         }
 
         val setupTreeSaf = BackupFolderPrefsSaf.getSetupTreeUri(context)
         val setupTreeCompat = BackupFolderPrefs.getSetupTreeUri(context)
-        val setupTree = setupTreeSaf ?: setupTreeCompat ?: return null
+        val setupTree = setupTreeSaf ?: setupTreeCompat ?: return finish(
+            source = "no_root_available",
+            result = null
+        )
 
-        val baseTree = DocumentFile.fromTreeUri(context, setupTree) ?: return null
-        val spl = ensureDirSmart(baseTree, "SPL_Music", aliases = listOf("spl_music")) ?: return null
+        val baseTree = DocumentFile.fromTreeUri(context, setupTree) ?: return finish(
+            source = "setup_tree_unresolved",
+            result = null,
+            detail = "setupTree=$setupTree"
+        )
+        val spl = ensureDirSmart(baseTree, "SPL_Music", aliases = listOf("spl_music")) ?: return finish(
+            source = "setup_tree_missing_spl",
+            result = null,
+            detail = "setupTree=$setupTree"
+        )
 
         Log.i(
             tag,
@@ -56,27 +128,41 @@ class LibraryBackendSaf(
 
         BackupFolderPrefsSaf.saveLibraryRootUri(context, spl.uri)
         BackupFolderPrefs.saveLibraryRootUri(context, spl.uri)
-        return spl.uri
+        return finish(source = "resolved_from_setup", result = spl.uri)
     }
 
     override fun ensureBaseFolders() {
-        if (baseFoldersEnsured) {
-            Log.d(tag, "ensureBaseFolders: skip (already ensured)")
-            return
-        }
-
+        val callId = ensureBaseFoldersCallCounter.incrementAndGet()
+        val startMs = SystemClock.elapsedRealtime()
+        Log.i(perfTag, "step=ensure_base_folders_start call=$callId timeMs=$startMs")
         val rootUri = getRootUri() ?: run {
             Log.w(tag, "ensureBaseFolders: rootUri=null")
+            val durationMs = SystemClock.elapsedRealtime() - startMs
+            Log.i(perfTag, "step=ensure_base_folders_end call=$callId durationMs=$durationMs root=null result=no_root")
+            return
+        }
+        val rootKey = rootUri.toString()
+        if (baseFoldersEnsuredForRoot == rootKey) {
+            Log.d(tag, "ensureBaseFolders: skip (already ensured) root=$rootKey")
+            val durationMs = SystemClock.elapsedRealtime() - startMs
+            Log.i(
+                perfTag,
+                "step=ensure_base_folders_end call=$callId durationMs=$durationMs root=$rootKey result=skip_already_ensured"
+            )
             return
         }
 
         val rootDoc = DocumentFile.fromTreeUri(context, rootUri) ?: DocumentFile.fromSingleUri(context, rootUri)
         if (rootDoc == null || !rootDoc.isDirectory) {
             Log.w(tag, "ensureBaseFolders: invalid root uri=$rootUri")
+            val durationMs = SystemClock.elapsedRealtime() - startMs
+            Log.i(
+                perfTag,
+                "step=ensure_base_folders_end call=$callId durationMs=$durationMs root=$rootKey result=invalid_root"
+            )
             return
         }
 
-        baseFoldersEnsured = true
         Log.i(
             tag,
             "ensureBaseFolders root=${rootDoc.uri} authority=${rootUri.authority} treeId=${safeTreeDocumentId(rootUri)} rootDocId=${safeDocumentId(rootDoc.uri)} rootChildrenBefore=${listChildNames(rootDoc)}"
@@ -106,8 +192,14 @@ class LibraryBackendSaf(
             Log.d(tag, "ensureBaseFolders: done root=${rootDoc.uri} rootChildrenAfter=${listChildNames(rootDoc)}")
         }
 
+        baseFoldersEnsuredForRoot = rootKey
         BackupFolderPrefsSaf.saveLibraryRootUri(context, rootDoc.uri)
         BackupFolderPrefs.saveLibraryRootUri(context, rootDoc.uri)
+        val durationMs = SystemClock.elapsedRealtime() - startMs
+        Log.i(
+            perfTag,
+            "step=ensure_base_folders_end call=$callId durationMs=$durationMs root=$rootKey result=done"
+        )
     }
 
     override fun chooseInitialFolder(root: Uri, indexAll: List<LibraryIndexCache.CachedEntry>): Uri {

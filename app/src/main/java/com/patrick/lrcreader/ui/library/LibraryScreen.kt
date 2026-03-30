@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.provider.DocumentsContract
 import android.util.Log
 import android.widget.Toast
@@ -43,6 +44,7 @@ import com.patrick.lrcreader.core.LibraryIndexCache
 import com.patrick.lrcreader.core.PlaylistRepository
 import com.patrick.lrcreader.core.SmpPreparationNoticePrefs
 import com.patrick.lrcreader.core.TextSongRepository
+import com.patrick.lrcreader.core.WorkspaceResolver
 import com.patrick.lrcreader.core.buildSmpItem
 import com.patrick.lrcreader.core.getSmpSongId
 import com.patrick.lrcreader.core.config.TitleAliasesStore
@@ -65,10 +67,18 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.patrick.lrcreader.core.StorageModePrefs
 import java.io.File
+import java.util.concurrent.atomic.AtomicInteger
 
 private val PROMPTER_FOLDER_URI: Uri = Uri.parse("spl-prompter://folder")
 private val SMP_FOLDER_URI: Uri = Uri.parse("spl-smp://folder")
 private const val LIB_SMP_TRACE_TAG = "LIB_SMP_TRACE"
+private const val LIBRARY_PERF_TRACE_TAG = "LIBRARY_PERF_TRACE"
+private val buildEntriesPerfCounter = AtomicInteger(0)
+private val initialLoadEffectPerfCounter = AtomicInteger(0)
+private val refreshCurrentEffectPerfCounter = AtomicInteger(0)
+private val folderChangeEffectPerfCounter = AtomicInteger(0)
+private val importedSmpEffectPerfCounter = AtomicInteger(0)
+private val uiEntriesSnapshotPerfCounter = AtomicInteger(0)
 
 private fun isPrompterFolderUri(uri: Uri?): Boolean = uri?.scheme == "spl-prompter"
 private fun isSmpFolderUri(uri: Uri?): Boolean = uri?.scheme == "spl-smp"
@@ -156,12 +166,15 @@ private fun resolveFolderName(context: android.content.Context, uri: Uri): Strin
 @Composable
 fun LibraryScreen(
     modifier: Modifier = Modifier,
+    workspaceSnapshot: WorkspaceResolver.Snapshot,
+    workspaceVersion: Int = 0,
     reselectRootSignal: Int = 0,
     searchToggleSignal: Int = 0,
     smpRefreshVersion: Int = 0,
     lastImportedSmpSongId: String? = null,
     lastImportedSmpRefreshVersion: Int = -1,
     onConsumeImportedSmpAutoOpen: () -> Unit = {},
+    onWorkspaceChanged: () -> Unit = {},
     onAfterBackupImport: () -> Unit = {},
     onImportExternalSmp: () -> Unit,
     onImportGeneratedSmp: suspend (Uri) -> com.patrick.lrcreader.smp.SongUnit?,
@@ -228,19 +241,21 @@ fun LibraryScreen(
     var lrcEditorName by remember { mutableStateOf("") }
     var lrcEditorText by remember { mutableStateOf("") }
 
-    val storageMode = StorageModePrefs.get(context)
+    val storageMode = workspaceSnapshot.mode
 
-    val backend: LibraryBackend = remember(storageMode) {
+    val backend: LibraryBackend = remember(workspaceVersion, storageMode) {
         when (storageMode) {
             StorageModePrefs.Mode.INTERNAL -> LibraryBackendInternal(context)
-            StorageModePrefs.Mode.SAF -> LibraryBackendSaf(context)
-            else -> LibraryBackendSaf(context) // sécurité si un jour il y a une 3e valeur / null / migration
+            StorageModePrefs.Mode.SAF -> LibraryBackendSaf(context, workspaceSnapshot)
+            else -> LibraryBackendSaf(context, workspaceSnapshot) // sécurité si un jour il y a une 3e valeur / null / migration
         }
     }
 
     Log.e("SIG_LIB", "BOOT storageMode=$storageMode backend=${backend.javaClass.simpleName}")
 
-    val initialFolder = remember(storageMode) { backend.getRootUri() }
+    val initialFolder = remember(workspaceVersion, storageMode, workspaceSnapshot.workspaceRootUri) {
+        backend.getRootUri()
+    }
     var currentFolderUri by remember { mutableStateOf<Uri?>(initialFolder) }
     var folderStack by remember { mutableStateOf<List<Uri>>(emptyList()) }
     var entries by remember { mutableStateOf<List<LibraryEntry>>(emptyList()) }
@@ -425,12 +440,29 @@ fun LibraryScreen(
         return decorated
     }
 
-    fun buildEntriesForFolder(folderUri: Uri, useCache: Boolean = true): List<LibraryEntry> {
+    fun buildEntriesForFolder(
+        folderUri: Uri,
+        useCache: Boolean = true,
+        currentFolderForLog: Uri? = currentFolderUri,
+        indexSnapshot: List<LibraryIndexCache.CachedEntry> = indexAll
+    ): List<LibraryEntry> {
+        val callId = buildEntriesPerfCounter.incrementAndGet()
+        val startMs = SystemClock.elapsedRealtime()
+        val rootUri = backend.getRootUri()
+        Log.i(
+            LIBRARY_PERF_TRACE_TAG,
+            "step=build_entries_start call=$callId timeMs=$startMs folder=$folderUri useCache=$useCache currentFolderUri=$currentFolderForLog root=$rootUri"
+        )
         if (useCache) {
             LibraryFolderCache.get(folderUri)?.let { cached ->
+                val durationMs = SystemClock.elapsedRealtime() - startMs
+                Log.i(
+                    LIBRARY_PERF_TRACE_TAG,
+                    "step=build_entries_done call=$callId durationMs=$durationMs folder=$folderUri cache=hit count=${cached.size}"
+                )
                 Log.i(
                     LIB_SMP_TRACE_TAG,
-                    "step=build_entries cache=hit folder=$folderUri root=${backend.getRootUri()} count=${cached.size} hasVirtualSmp=${cached.any { isSmpFolderUri(it.uri) }} entries=${summarizeLibraryEntries(cached)}"
+                    "step=build_entries cache=hit folder=$folderUri root=$rootUri count=${cached.size} hasVirtualSmp=${cached.any { isSmpFolderUri(it.uri) }} entries=${summarizeLibraryEntries(cached)}"
                 )
                 return cached
             }
@@ -440,17 +472,70 @@ fun LibraryScreen(
         } else {
             backend.listFolder(
                 folderUri = folderUri,
-                indexAll = indexAll,
+                indexAll = indexSnapshot,
                 djExcludedReason = sDjExcludedReason
             )
         }
         val decorated = decorateEntriesForFolder(folderUri, fresh)
         LibraryFolderCache.put(folderUri, decorated)
+        val durationMs = SystemClock.elapsedRealtime() - startMs
+        Log.i(
+            LIBRARY_PERF_TRACE_TAG,
+            "step=build_entries_done call=$callId durationMs=$durationMs folder=$folderUri cache=miss freshCount=${fresh.size} decoratedCount=${decorated.size}"
+        )
         Log.i(
             LIB_SMP_TRACE_TAG,
-            "step=build_entries cache=miss folder=$folderUri root=${backend.getRootUri()} freshCount=${fresh.size} decoratedCount=${decorated.size} hasVirtualSmp=${decorated.any { isSmpFolderUri(it.uri) }} entries=${summarizeLibraryEntries(decorated)}"
+            "step=build_entries cache=miss folder=$folderUri root=$rootUri freshCount=${fresh.size} decoratedCount=${decorated.size} hasVirtualSmp=${decorated.any { isSmpFolderUri(it.uri) }} entries=${summarizeLibraryEntries(decorated)}"
         )
         return decorated
+    }
+
+    fun applyEntriesIfCurrent(folderUri: Uri, newEntries: List<LibraryEntry>) {
+        if (currentFolderUri?.toString() != folderUri.toString()) return
+        if (entries == newEntries) return
+        entries = newEntries
+    }
+
+    fun showCachedEntries(folderUri: Uri): Boolean {
+        val cached = LibraryFolderCache.get(folderUri) ?: return false
+        applyEntriesIfCurrent(folderUri, cached)
+        Log.i(
+            LIBRARY_PERF_TRACE_TAG,
+            "step=folder_cache_hit_immediate timeMs=${SystemClock.elapsedRealtime()} folder=$folderUri count=${cached.size}"
+        )
+        return true
+    }
+
+    suspend fun loadFolderEntriesAsync(
+        folderUri: Uri,
+        forceRefresh: Boolean = false,
+        clearVisibleOnMiss: Boolean = false
+    ): List<LibraryEntry> {
+        if (forceRefresh) {
+            LibraryFolderCache.remove(folderUri)
+        } else {
+            LibraryFolderCache.get(folderUri)?.let { cached ->
+                applyEntriesIfCurrent(folderUri, cached)
+                return cached
+            }
+        }
+
+        if (clearVisibleOnMiss) {
+            applyEntriesIfCurrent(folderUri, emptyList())
+        }
+
+        val indexSnapshot = indexAll
+        val currentFolderForLog = currentFolderUri
+        val loaded = withContext(Dispatchers.IO) {
+            buildEntriesForFolder(
+                folderUri = folderUri,
+                useCache = !forceRefresh,
+                currentFolderForLog = currentFolderForLog,
+                indexSnapshot = indexSnapshot
+            )
+        }
+        applyEntriesIfCurrent(folderUri, loaded)
+        return loaded
     }
 
     suspend fun runGlobalScan(root: Uri, folderToShow: Uri) {
@@ -461,7 +546,7 @@ fun LibraryScreen(
             onIndexAll = { indexAll = it },
             onEntries = {
                 val decorated = decorateEntriesForFolder(folderToShow, it)
-                entries = decorated
+                applyEntriesIfCurrent(folderToShow, decorated)
                 LibraryFolderCache.put(folderToShow, decorated)
             }
         )
@@ -470,16 +555,36 @@ fun LibraryScreen(
     suspend fun refreshLibraryFolder(folderUri: Uri?) {
         val root = backend.getRootUri() ?: return
         val folderToShow = folderUri ?: root
+        currentFolderUri = folderToShow
         runGlobalScan(
             root = root,
             folderToShow = folderToShow
         )
-        currentFolderUri = folderToShow
-        entries = buildEntriesForFolder(folderToShow, useCache = false)
     }
 
-    LaunchedEffect(smpRefreshVersion, currentFolderUri) {
-        val currentFolder = currentFolderUri ?: return@LaunchedEffect
+    LaunchedEffect(smpRefreshVersion) {
+        val callId = refreshCurrentEffectPerfCounter.incrementAndGet()
+        val startMs = SystemClock.elapsedRealtime()
+        Log.i(
+            LIBRARY_PERF_TRACE_TAG,
+            "step=effect_refresh_current_launch call=$callId timeMs=$startMs smpRefreshVersion=$smpRefreshVersion currentFolderUri=$currentFolderUri"
+        )
+        if (!initialLoadDone) {
+            val durationMs = SystemClock.elapsedRealtime() - startMs
+            Log.i(
+                LIBRARY_PERF_TRACE_TAG,
+                "step=effect_refresh_current_end call=$callId durationMs=$durationMs result=skip_initial_load_not_done"
+            )
+            return@LaunchedEffect
+        }
+        val currentFolder = currentFolderUri ?: run {
+            val durationMs = SystemClock.elapsedRealtime() - startMs
+            Log.i(
+                LIBRARY_PERF_TRACE_TAG,
+                "step=effect_refresh_current_end call=$callId durationMs=$durationMs result=skip_no_current_folder"
+            )
+            return@LaunchedEffect
+        }
         val rootFolder = backend.getRootUri()
         val shouldRefreshCurrentFolder =
             isSmpFolderUri(currentFolder) ||
@@ -489,14 +594,26 @@ fun LibraryScreen(
             "step=effect_refresh_current_start smpRefreshVersion=$smpRefreshVersion currentFolderUri=$currentFolder root=$rootFolder shouldRefresh=$shouldRefreshCurrentFolder entriesSize=${entries.size}"
         )
         if (!shouldRefreshCurrentFolder) {
+            val durationMs = SystemClock.elapsedRealtime() - startMs
+            Log.i(
+                LIBRARY_PERF_TRACE_TAG,
+                "step=effect_refresh_current_end call=$callId durationMs=$durationMs result=skip currentFolderUri=$currentFolder root=$rootFolder"
+            )
             Log.i(
                 LIB_SMP_TRACE_TAG,
                 "step=effect_refresh_current_skip smpRefreshVersion=$smpRefreshVersion currentFolderUri=$currentFolder root=$rootFolder"
             )
             return@LaunchedEffect
         }
-        LibraryFolderCache.clear()
-        entries = buildEntriesForFolder(currentFolder, useCache = false)
+        loadFolderEntriesAsync(
+            folderUri = currentFolder,
+            forceRefresh = true
+        )
+        val durationMs = SystemClock.elapsedRealtime() - startMs
+        Log.i(
+            LIBRARY_PERF_TRACE_TAG,
+            "step=effect_refresh_current_end call=$callId durationMs=$durationMs result=done currentFolderUri=$currentFolder root=$rootFolder entriesSize=${entries.size}"
+        )
         Log.i(
             LIB_SMP_TRACE_TAG,
             "step=effect_refresh_current_done smpRefreshVersion=$smpRefreshVersion currentFolderUri=$currentFolder root=$rootFolder entriesSize=${entries.size} entries=${summarizeLibraryEntries(entries)}"
@@ -504,8 +621,28 @@ fun LibraryScreen(
     }
 
     LaunchedEffect(currentFolderUri, storageMode) {
-        LibraryFolderCache.clear()
-        val root = backend.getRootUri() ?: return@LaunchedEffect
+        val callId = folderChangeEffectPerfCounter.incrementAndGet()
+        val startMs = SystemClock.elapsedRealtime()
+        Log.i(
+            LIBRARY_PERF_TRACE_TAG,
+            "step=effect_folder_change_launch call=$callId timeMs=$startMs storageMode=$storageMode currentFolderUri=$currentFolderUri"
+        )
+        if (!initialLoadDone) {
+            val durationMs = SystemClock.elapsedRealtime() - startMs
+            Log.i(
+                LIBRARY_PERF_TRACE_TAG,
+                "step=effect_folder_change_end call=$callId durationMs=$durationMs result=skip_initial_load_not_done storageMode=$storageMode"
+            )
+            return@LaunchedEffect
+        }
+        val root = backend.getRootUri() ?: run {
+            val durationMs = SystemClock.elapsedRealtime() - startMs
+            Log.i(
+                LIBRARY_PERF_TRACE_TAG,
+                "step=effect_folder_change_end call=$callId durationMs=$durationMs result=skip_no_root storageMode=$storageMode"
+            )
+            return@LaunchedEffect
+        }
         val currentFolder = currentFolderUri ?: root
         Log.i(
             LIB_SMP_TRACE_TAG,
@@ -520,8 +657,24 @@ fun LibraryScreen(
         val folderToShow = if (shouldRedirectToRoot) root else currentFolder
         if (currentFolderUri?.toString() != folderToShow.toString()) {
             currentFolderUri = folderToShow
+            val durationMs = SystemClock.elapsedRealtime() - startMs
+            Log.i(
+                LIBRARY_PERF_TRACE_TAG,
+                "step=effect_folder_change_end call=$callId durationMs=$durationMs storageMode=$storageMode result=redirect root=$root folderToShow=$folderToShow"
+            )
+            return@LaunchedEffect
         }
-        entries = buildEntriesForFolder(folderToShow, useCache = false)
+        if (!showCachedEntries(folderToShow)) {
+            loadFolderEntriesAsync(
+                folderUri = folderToShow,
+                clearVisibleOnMiss = true
+            )
+        }
+        val durationMs = SystemClock.elapsedRealtime() - startMs
+        Log.i(
+            LIBRARY_PERF_TRACE_TAG,
+            "step=effect_folder_change_end call=$callId durationMs=$durationMs storageMode=$storageMode root=$root folderToShow=$folderToShow entriesSize=${entries.size}"
+        )
         Log.i(
             LIB_SMP_TRACE_TAG,
             "step=effect_folder_change_done storageMode=$storageMode currentFolderUri=$currentFolderUri root=$root folderToShow=$folderToShow entriesSize=${entries.size} entries=${summarizeLibraryEntries(entries)}"
@@ -612,6 +765,11 @@ fun LibraryScreen(
     val entriesSummary = remember(entries) { summarizeLibraryEntries(entries) }
     val filteredEntriesSummary = remember(filteredEntries) { summarizeLibraryEntries(filteredEntries) }
     LaunchedEffect(currentFolderUri, searchQuery, entriesSummary, filteredEntriesSummary) {
+        val callId = uiEntriesSnapshotPerfCounter.incrementAndGet()
+        Log.i(
+            LIBRARY_PERF_TRACE_TAG,
+            "step=ui_entries_snapshot call=$callId timeMs=${SystemClock.elapsedRealtime()} currentFolderUri=$currentFolderUri entriesCount=${entries.size} filteredCount=${filteredEntries.size}"
+        )
         Log.i(
             LIB_SMP_TRACE_TAG,
             "step=ui_entries_snapshot currentFolderUri=$currentFolderUri root=${backend.getRootUri()} searchQuery=$searchQuery entriesCount=${entries.size} filteredCount=${filteredEntries.size} hasVirtualSmpInEntries=${entries.any { isSmpFolderUri(it.uri) }} hasVirtualSmpInFiltered=${filteredEntries.any { isSmpFolderUri(it.uri) }} entries=$entriesSummary filtered=$filteredEntriesSummary"
@@ -662,16 +820,33 @@ fun LibraryScreen(
         folderStack = emptyList()
         searchQuery = ""
         selectedSongs = emptySet()
-        LibraryFolderCache.clear()
-        entries = buildEntriesForFolder(root, useCache = false)
+        if (!showCachedEntries(root)) {
+            scope.launch {
+                loadFolderEntriesAsync(
+                    folderUri = root,
+                    clearVisibleOnMiss = true
+                )
+            }
+        }
     }
 
     LaunchedEffect(initialLoadDone, smpRefreshVersion, lastImportedSmpSongId, lastImportedSmpRefreshVersion) {
+        val callId = importedSmpEffectPerfCounter.incrementAndGet()
+        val startMs = SystemClock.elapsedRealtime()
+        Log.i(
+            LIBRARY_PERF_TRACE_TAG,
+            "step=effect_imported_smp_launch call=$callId timeMs=$startMs initialLoadDone=$initialLoadDone smpRefreshVersion=$smpRefreshVersion requestVersion=$lastImportedSmpRefreshVersion songId=$lastImportedSmpSongId"
+        )
         Log.i(
             LIB_SMP_TRACE_TAG,
             "step=effect_imported_smp_start initialLoadDone=$initialLoadDone smpRefreshVersion=$smpRefreshVersion requestVersion=$lastImportedSmpRefreshVersion lastImportedSmpSongId=$lastImportedSmpSongId currentFolderUri=$currentFolderUri entriesSize=${entries.size}"
         )
         if (!initialLoadDone) {
+            val durationMs = SystemClock.elapsedRealtime() - startMs
+            Log.i(
+                LIBRARY_PERF_TRACE_TAG,
+                "step=effect_imported_smp_end call=$callId durationMs=$durationMs result=skip_initial_load_not_done"
+            )
             Log.i(
                 LIB_SMP_TRACE_TAG,
                 "step=effect_imported_smp_skip reason=initial_load_not_done smpRefreshVersion=$smpRefreshVersion"
@@ -679,6 +854,11 @@ fun LibraryScreen(
             return@LaunchedEffect
         }
         val importedSongId = lastImportedSmpSongId?.trim().takeUnless { it.isNullOrEmpty() } ?: run {
+            val durationMs = SystemClock.elapsedRealtime() - startMs
+            Log.i(
+                LIBRARY_PERF_TRACE_TAG,
+                "step=effect_imported_smp_end call=$callId durationMs=$durationMs result=skip_no_song_id"
+            )
             Log.i(
                 LIB_SMP_TRACE_TAG,
                 "step=effect_imported_smp_skip reason=no_imported_song_id smpRefreshVersion=$smpRefreshVersion"
@@ -686,6 +866,11 @@ fun LibraryScreen(
             return@LaunchedEffect
         }
         if (lastImportedSmpRefreshVersion < 0) {
+            val durationMs = SystemClock.elapsedRealtime() - startMs
+            Log.i(
+                LIBRARY_PERF_TRACE_TAG,
+                "step=effect_imported_smp_end call=$callId durationMs=$durationMs result=skip_no_request_version"
+            )
             Log.i(
                 LIB_SMP_TRACE_TAG,
                 "step=effect_imported_smp_skip reason=no_request_version smpRefreshVersion=$smpRefreshVersion"
@@ -693,6 +878,11 @@ fun LibraryScreen(
             return@LaunchedEffect
         }
         if (lastImportedSmpRefreshVersion != smpRefreshVersion) {
+            val durationMs = SystemClock.elapsedRealtime() - startMs
+            Log.i(
+                LIBRARY_PERF_TRACE_TAG,
+                "step=effect_imported_smp_end call=$callId durationMs=$durationMs result=skip_request_version_mismatch"
+            )
             Log.i(
                 LIB_SMP_TRACE_TAG,
                 "step=effect_imported_smp_skip reason=request_version_mismatch smpRefreshVersion=$smpRefreshVersion requestVersion=$lastImportedSmpRefreshVersion"
@@ -701,6 +891,11 @@ fun LibraryScreen(
             return@LaunchedEffect
         }
         if (lastImportedSmpRefreshVersion == lastHandledImportedSmpRefresh) {
+            val durationMs = SystemClock.elapsedRealtime() - startMs
+            Log.i(
+                LIBRARY_PERF_TRACE_TAG,
+                "step=effect_imported_smp_end call=$callId durationMs=$durationMs result=skip_already_handled"
+            )
             Log.i(
                 LIB_SMP_TRACE_TAG,
                 "step=effect_imported_smp_skip reason=already_handled smpRefreshVersion=$smpRefreshVersion requestVersion=$lastImportedSmpRefreshVersion lastHandled=$lastHandledImportedSmpRefresh"
@@ -713,6 +908,11 @@ fun LibraryScreen(
         val smpEntries = buildSmpEntries()
         val isImportedSongVisible = smpEntries.any { it.uri.toString() == importedUriString }
         if (!isImportedSongVisible) {
+            val durationMs = SystemClock.elapsedRealtime() - startMs
+            Log.i(
+                LIBRARY_PERF_TRACE_TAG,
+                "step=effect_imported_smp_end call=$callId durationMs=$durationMs result=skip_imported_song_not_visible songId=$importedSongId smpEntriesCount=${smpEntries.size}"
+            )
             Log.i(
                 LIB_SMP_TRACE_TAG,
                 "step=effect_imported_smp_skip reason=imported_song_not_visible importedSongId=$importedSongId smpEntriesCount=${smpEntries.size}"
@@ -730,11 +930,20 @@ fun LibraryScreen(
             }
 
         currentFolderUri = SMP_FOLDER_URI
-        LibraryFolderCache.clear()
-        entries = buildEntriesForFolder(SMP_FOLDER_URI, useCache = false)
+        LibraryFolderCache.remove(SMP_FOLDER_URI)
+        loadFolderEntriesAsync(
+            folderUri = SMP_FOLDER_URI,
+            forceRefresh = true,
+            clearVisibleOnMiss = true
+        )
         searchQuery = ""
         selectedSongs = emptySet()
         onConsumeImportedSmpAutoOpen()
+        val durationMs = SystemClock.elapsedRealtime() - startMs
+        Log.i(
+            LIBRARY_PERF_TRACE_TAG,
+            "step=effect_imported_smp_end call=$callId durationMs=$durationMs result=done currentFolderUri=$currentFolderUri entriesSize=${entries.size}"
+        )
         Log.i(
             LIB_SMP_TRACE_TAG,
             "step=effect_imported_smp_done initialLoadDone=$initialLoadDone smpRefreshVersion=$smpRefreshVersion requestVersion=$lastImportedSmpRefreshVersion currentFolderUri=$currentFolderUri entriesSize=${entries.size} entries=${summarizeLibraryEntries(entries)}"
@@ -1049,10 +1258,13 @@ fun LibraryScreen(
 
                     val baseTree = DocumentFile.fromTreeUri(context, uri) ?: return@launch
 
-                    val splRoot =
+                    val splRoot = if (shouldUsePickedFolderAsSplRoot(baseTree.name, listChildNames(baseTree))) {
+                        baseTree
+                    } else {
                         baseTree.listFiles().firstOrNull {
                             it.isDirectory && it.name.equals("SPL_Music", ignoreCase = true)
                         } ?: baseTree.createDirectory("SPL_Music")
+                    }
 
                     if (splRoot == null || !splRoot.isDirectory) return@launch
 
@@ -1137,13 +1349,11 @@ fun LibraryScreen(
                         parent = splRoot,
                         expectedName = "DJ"
                     )
-// ✅ IMPORTANT : on garde l'URI "document" renvoyée par DocumentFile.
-// Les treeUri "fabriqués" peuvent donner exists=false / listFiles=0.
-                    // --- SPL_Music (docUri) ---
-                    val splDocUri: Uri = splRoot.uri
+                    val splDocUri: Uri = splToTreeUri(splRoot.uri)
 
 // Permission persistée sur le tree choisi (uri du picker)
                     persistTreePermIfPossible(context, uri)
+                    BackupFolderPrefs.setDone(context, true)
                     BackupFolderPrefs.saveLibraryRootUri(context, splDocUri)
                     BackupFolderPrefsSaf.saveLibraryRootUri(context, splDocUri)
 
@@ -1151,7 +1361,7 @@ fun LibraryScreen(
                     folderStack = emptyList()
 
                     if (djDir != null) {
-                        DjFolderPrefs.save(context, djDir.uri)
+                        DjFolderPrefs.save(context, splToTreeUri(djDir.uri))
                     }
 
 // --- rescan ---
@@ -1159,6 +1369,7 @@ fun LibraryScreen(
                         root = splDocUri,
                         folderToShow = splDocUri
                     )
+                    onWorkspaceChanged()
 
                 } finally {
                     stopLoadingNice()
@@ -1229,23 +1440,33 @@ fun LibraryScreen(
 
     // ---------- initial load ----------
     Log.e("SIG_LIB", "SIG#1 JUST BEFORE LaunchedEffect 2026-02-08 18:00 Z")
-    LaunchedEffect(Unit) {
+    LaunchedEffect(workspaceVersion) {
+        val callId = initialLoadEffectPerfCounter.incrementAndGet()
+        val startMs = SystemClock.elapsedRealtime()
+        var effectResult = "done"
         Log.e("SIG_LIB", "SIG#2 ENTER LaunchedEffect(Unit)")
         Log.i(
+            LIBRARY_PERF_TRACE_TAG,
+            "step=effect_initial_load_launch call=$callId timeMs=$startMs workspaceVersion=$workspaceVersion workspaceStatus=${workspaceSnapshot.status} workspaceRoot=${workspaceSnapshot.workspaceRootUri}"
+        )
+        Log.i(
             LIB_SMP_TRACE_TAG,
-            "step=effect_initial_load_start currentFolderUri=$currentFolderUri initialLoadDone=$initialLoadDone entriesSize=${entries.size}"
+            "step=effect_initial_load_start workspaceVersion=$workspaceVersion workspaceStatus=${workspaceSnapshot.status} workspaceRoot=${workspaceSnapshot.workspaceRootUri} currentFolderUri=$currentFolderUri initialLoadDone=$initialLoadDone entriesSize=${entries.size}"
         )
         initialLoadDone = false
         try {
-            backend.ensureBaseFolders()
+            withContext(Dispatchers.IO) {
+                backend.ensureBaseFolders()
+            }
             val root = backend.getRootUri()
 
             if (root == null) {
+                effectResult = "no_root"
                 currentFolderUri = null
                 entries = emptyList()
                 Log.i(
                     LIB_SMP_TRACE_TAG,
-                    "step=effect_initial_load_no_root currentFolderUri=$currentFolderUri initialLoadDone=$initialLoadDone"
+                    "step=effect_initial_load_no_root workspaceVersion=$workspaceVersion workspaceStatus=${workspaceSnapshot.status} currentFolderUri=$currentFolderUri initialLoadDone=$initialLoadDone"
                 )
                 return@LaunchedEffect
             }
@@ -1271,15 +1492,24 @@ fun LibraryScreen(
                     stopLoadingNice()
                 }
             } else {
-                entries = buildEntriesForFolder(folderToShow)
+                loadFolderEntriesAsync(
+                    folderUri = folderToShow,
+                    clearVisibleOnMiss = true
+                )
             }
         } catch (t: Throwable) {
+            effectResult = "crash"
             Log.e("SIG_LIB", "LaunchedEffect CRASH", t)
         } finally {
             initialLoadDone = true
+            val durationMs = SystemClock.elapsedRealtime() - startMs
+            Log.i(
+                LIBRARY_PERF_TRACE_TAG,
+                "step=effect_initial_load_end call=$callId durationMs=$durationMs result=$effectResult currentFolderUri=$currentFolderUri entriesSize=${entries.size}"
+            )
             Log.i(
                 LIB_SMP_TRACE_TAG,
-                "step=effect_initial_load_done currentFolderUri=$currentFolderUri initialLoadDone=$initialLoadDone entriesSize=${entries.size} entries=${summarizeLibraryEntries(entries)}"
+                "step=effect_initial_load_done workspaceVersion=$workspaceVersion workspaceStatus=${workspaceSnapshot.status} currentFolderUri=$currentFolderUri initialLoadDone=$initialLoadDone entriesSize=${entries.size} entries=${summarizeLibraryEntries(entries)}"
             )
         }
     }
@@ -1302,47 +1532,7 @@ fun LibraryScreen(
             doc?.name ?: "SPL_Music"
         }
     } ?: sNoFolderSelected
-    // ✅ DEBUG SAF : voir ce que l'appli croit être le dossier courant
-    LaunchedEffect(currentFolderUri) {
-        val u = currentFolderUri ?: return@LaunchedEffect
-        Log.d("LIB_SAF", "currentFolderUri=$u")
-        Log.d("LIB_SAF", "savedRootUri=${BackupFolderPrefs.getLibraryRootUri(context)}")
-
-        if (isPrompterFolderUri(u)) {
-            Log.d("LIB_SAF", "virtualPrompterFolder=true (skip DocumentFile probes)")
-            return@LaunchedEffect
-        }
-
-        if (isSmpFolderUri(u)) {
-            Log.d("LIB_SAF", "virtualSmpFolder=true (skip DocumentFile probes)")
-            return@LaunchedEffect
-        }
-
-        if (u.scheme == "file") {
-            val f = File(u.path ?: "")
-            Log.d("LIB_FILE", "exists=${f.exists()} isDir=${f.isDirectory} name=${f.name} children=${f.listFiles()?.size}")
-            return@LaunchedEffect
-        }
-
-        val treeDoc = DocumentFile.fromTreeUri(context, u)
-        val singleDoc = DocumentFile.fromSingleUri(context, u)
-
-        Log.d("LIB_SAF", "fromTreeUri exists=${treeDoc?.exists()} isDir=${treeDoc?.isDirectory} name=${treeDoc?.name}")
-        Log.d("LIB_SAF", "fromSingleUri exists=${singleDoc?.exists()} isDir=${singleDoc?.isDirectory} name=${singleDoc?.name}")
-
-        val listTree = runCatching { treeDoc?.listFiles()?.size }.getOrNull()
-        val listSingle = runCatching { singleDoc?.listFiles()?.size }.getOrNull()
-        Log.d("LIB_SAF", "listFiles(tree)=$listTree  listFiles(single)=$listSingle")
-    }
-    val isSetupDone = when (StorageModePrefs.get(context)) {
-        StorageModePrefs.Mode.INTERNAL -> true
-        else -> {
-            // ✅ SAF : on considère le setup OK dès que la permission du "setup tree" est valide.
-            // Le libraryRootUri (SPL_Music) peut être une URI différente et ne pas matcher persistedUriPermissions à l'identique,
-            // ce qui créait une boucle.
-            BackupFolderPrefs.hasValidSetupTreePermission(context)
-        }
-    }
+    val isSetupDone = workspaceSnapshot.isUsable
     if (!isSetupDone) {
         DarkBlueGradientBackground {
             SetupInstallScreen(
@@ -1350,9 +1540,18 @@ fun LibraryScreen(
                 subtitleColor = subtitleColor,
                 accent = accent,
                 onSetupDone = {
+                    BackupFolderPrefs.setDone(context, true)
+                    onWorkspaceChanged()
                     val root = backend.getRootUri()
                     currentFolderUri = root
-                    if (root != null) entries = buildEntriesForFolder(root)
+                    if (root != null) {
+                        scope.launch {
+                            loadFolderEntriesAsync(
+                                folderUri = root,
+                                clearVisibleOnMiss = true
+                            )
+                        }
+                    }
                 },
                 onImportNow = {
                     importTargetFolderUri = backend.getRootUri()
@@ -1364,7 +1563,17 @@ fun LibraryScreen(
                     indexAll = backend.loadIndex()
                     val targetFolder = result.audioFolderUri ?: backend.getRootUri()
                     currentFolderUri = targetFolder
-                    entries = targetFolder?.let { buildEntriesForFolder(it, useCache = false) }.orEmpty()
+                    if (targetFolder == null) {
+                        entries = emptyList()
+                    } else {
+                        scope.launch {
+                            loadFolderEntriesAsync(
+                                folderUri = targetFolder,
+                                forceRefresh = true,
+                                clearVisibleOnMiss = true
+                            )
+                        }
+                    }
                 }
             )
         }
@@ -1388,7 +1597,11 @@ fun LibraryScreen(
                         "step=navigation_back from=$currentFolderUri to=$parentUri stackBefore=${folderStack.size} stackAfter=${newStack.size}"
                     )
                     currentFolderUri = parentUri
-                    entries = parentUri?.let { uri -> buildEntriesForFolder(uri) } ?: emptyList()
+                    if (parentUri == null) {
+                        entries = emptyList()
+                    } else if (!showCachedEntries(parentUri)) {
+                        entries = emptyList()
+                    }
                     folderStack = newStack
                     selectedSongs = emptySet()
                 },
@@ -1408,10 +1621,6 @@ fun LibraryScreen(
                                 root = rootNow,
                                 folderToShow = folderToShow
                             )
-
-                            currentFolderUri?.let { folder ->
-                                entries = buildEntriesForFolder(folder)
-                            }
                         } finally {
                             stopLoadingNice()
                         }
@@ -1432,6 +1641,7 @@ fun LibraryScreen(
                     selectedSongs = emptySet()
                     folderStack = emptyList()
                     LibraryFolderCache.clear()
+                    onWorkspaceChanged()
                 },
 
                 onImportBackingTracks = {
@@ -1578,7 +1788,9 @@ fun LibraryScreen(
                                 )
                                 currentFolderUri?.let { folderStack = folderStack + it }
                                 currentFolderUri = entry.uri
-                                entries = buildEntriesForFolder(entry.uri)
+                                if (!showCachedEntries(entry.uri)) {
+                                    entries = emptyList()
+                                }
                                 searchQuery = ""
                                 selectedSongs = emptySet()
                             },

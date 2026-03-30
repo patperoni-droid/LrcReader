@@ -442,7 +442,7 @@ fun SetupInstallScreen(
 
 // ---------------- HELPERS (TOP-LEVEL) ----------------
 
-private fun splToTreeUri(docUri: Uri): Uri {
+internal fun splToTreeUri(docUri: Uri): Uri {
     val authority = docUri.authority ?: return docUri
     val docId = runCatching { DocumentsContract.getDocumentId(docUri) }.getOrNull() ?: return docUri
     return DocumentsContract.buildTreeDocumentUri(authority, docId)
@@ -482,7 +482,7 @@ private fun safeDocumentId(uri: Uri?): String? {
     return runCatching { DocumentsContract.getDocumentId(uri) }.getOrNull()
 }
 
-private fun listChildNames(parent: DocumentFile?): List<String> {
+internal fun listChildNames(parent: DocumentFile?): List<String> {
     return runCatching {
         parent?.listFiles()
             ?.mapNotNull { child -> child.name }

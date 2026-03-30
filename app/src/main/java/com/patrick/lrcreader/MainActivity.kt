@@ -2342,6 +2342,8 @@ class MainActivity : AppCompatActivity() {
 
                                     is BottomTab.Library -> LibraryScreen(
                                         modifier = contentModifier,
+                                        workspaceSnapshot = workspaceSnapshot,
+                                        workspaceVersion = setupTick,
                                         reselectRootSignal = libraryTabReselectSignal,
                                         searchToggleSignal = librarySearchToggleSignal,
                                         smpRefreshVersion = smpCacheRefreshTick,
@@ -2350,6 +2352,10 @@ class MainActivity : AppCompatActivity() {
                                         onConsumeImportedSmpAutoOpen = {
                                             lastImportedSmpSongId = null
                                             lastImportedSmpRefreshVersion = -1
+                                        },
+                                        onWorkspaceChanged = {
+                                            forceSetup = false
+                                            setupTick++
                                         },
                                         onAfterBackupImport = { refreshKey++ },
                                         onImportExternalSmp = {

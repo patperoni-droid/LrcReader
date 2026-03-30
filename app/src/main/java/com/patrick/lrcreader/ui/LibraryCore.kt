@@ -24,6 +24,10 @@ object LibraryFolderCache {
         cache[uri.toString()] = list
     }
 
+    fun remove(uri: Uri) {
+        cache.remove(uri.toString())
+    }
+
     fun clear() = cache.clear()
 }
 
