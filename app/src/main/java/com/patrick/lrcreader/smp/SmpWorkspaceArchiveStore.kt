@@ -1,0 +1,685 @@
+package com.patrick.lrcreader.smp
+
+import android.content.Context
+import android.net.Uri
+import android.provider.DocumentsContract
+import android.util.Log
+import androidx.documentfile.provider.DocumentFile
+import com.patrick.lrcreader.core.BackupFolderPrefs
+import com.patrick.lrcreader.core.BackupFolderPrefsInternal
+import com.patrick.lrcreader.core.BackupFolderPrefsSaf
+import java.io.File
+
+object SmpWorkspaceArchiveStore {
+
+    data class PersistResult(
+        val archiveUri: Uri?,
+        val failureReason: String? = null
+    )
+
+    internal data class FilePersistResult(
+        val archiveFile: File?,
+        val failureReason: String? = null
+    )
+
+    private data class NormalizationScan<T>(
+        val supersededArchives: List<T>,
+        val unresolvedCount: Int
+    )
+
+    private const val TAG = "SMP_ARCHIVE"
+    private const val SAF_TRACE_TAG = "SMP_SAF_CLEANUP_TRACE"
+    private const val SAF_ARCHIVE_MIME = "application/octet-stream"
+    private const val BACKING_TRACKS_DIR_NAME = "BackingTracks"
+    private const val SMP_DIR_NAME = "SMP"
+    private val FORBIDDEN_ARCHIVE_NAME_CHARS = Regex("[\\u0000-\\u001F<>:\"/\\\\|?*]+")
+
+    fun persistNormalizedArchive(context: Context, songUnit: SongUnit): PersistResult {
+        val songId = songUnit.id.trim()
+        if (songId.isEmpty()) {
+            return PersistResult(
+                archiveUri = null,
+                failureReason = "songId SMP manquant pour l'archive durable"
+            )
+        }
+
+        val tempArchive = SmpExporter.exportSongUnitToCacheSmp(context, songUnit)
+            ?: return PersistResult(
+                archiveUri = null,
+                failureReason = "export SMP temporaire impossible"
+            )
+
+        return try {
+            writeArchiveToWorkspace(
+                context = context,
+                songUnit = songUnit,
+                songId = songId,
+                tempArchive = tempArchive
+            )
+        } finally {
+            if (tempArchive.exists() && !tempArchive.delete()) {
+                logWarn("Suppression du cache SMP impossible: ${tempArchive.absolutePath}")
+            }
+        }
+    }
+
+    private fun writeArchiveToWorkspace(
+        context: Context,
+        songUnit: SongUnit,
+        songId: String,
+        tempArchive: File
+    ): PersistResult {
+        val targetName = buildDurableArchiveFileName(songUnit)
+        val fileTargetDir = resolveWritableFileSmpDir(context)
+        if (fileTargetDir != null) {
+            return writeArchiveToFileDir(
+                targetDir = fileTargetDir,
+                songId = songId,
+                targetName = targetName,
+                tempArchive = tempArchive
+            )
+        }
+
+        val safTargetDir = resolveWritableSafSmpDir(context)
+            ?: return PersistResult(
+                archiveUri = null,
+                failureReason = "dossier workspace BackingTracks/SMP introuvable"
+            )
+
+        return writeArchiveToSafDir(
+            context = context,
+            targetDir = safTargetDir,
+            songId = songId,
+            targetName = targetName,
+            tempArchive = tempArchive
+        )
+    }
+
+    internal fun buildDurableArchiveFileName(songUnit: SongUnit): String {
+        val songId = songUnit.id.trim()
+        val sanitizedTitle = sanitizeDurableArchiveTitle(songUnit.title)
+        return if (sanitizedTitle.isNullOrBlank()) {
+            "$songId.smp"
+        } else {
+            "$sanitizedTitle [$songId].smp"
+        }
+    }
+
+    internal fun isSupportedArchiveFileName(fileName: String): Boolean {
+        val normalized = fileName.trim().lowercase()
+        return normalized.endsWith(".smp") || normalized.endsWith(".smp.zip")
+    }
+
+    internal fun writeArchiveToFileDir(
+        targetDir: File,
+        songId: String,
+        targetName: String,
+        tempArchive: File
+    ): PersistResult {
+        val result = writeArchiveToFileDirInternal(
+            targetDir = targetDir,
+            songId = songId,
+            targetName = targetName,
+            tempArchive = tempArchive
+        )
+        return PersistResult(
+            archiveUri = result.archiveFile?.let { Uri.fromFile(it) },
+            failureReason = result.failureReason
+        )
+    }
+
+    internal fun writeArchiveToFileDirInternal(
+        targetDir: File,
+        songId: String,
+        targetName: String,
+        tempArchive: File
+    ): FilePersistResult {
+        if (!targetDir.exists() && !targetDir.mkdirs()) {
+            return FilePersistResult(
+                archiveFile = null,
+                failureReason = "création du dossier SMP impossible: ${targetDir.absolutePath}"
+            )
+        }
+
+        val targetFile = File(targetDir, targetName)
+        val partFile = File(targetDir, "$targetName.part")
+        val normalizationScan = scanSupersededFileArchives(
+            targetDir = targetDir,
+            songId = songId,
+            targetName = targetName
+        )
+
+        if (partFile.exists() && !partFile.delete()) {
+            return FilePersistResult(
+                archiveFile = null,
+                failureReason = "suppression du fichier temporaire impossible: ${partFile.absolutePath}"
+            )
+        }
+
+        return try {
+            tempArchive.inputStream().buffered().use { input ->
+                partFile.outputStream().buffered().use { output ->
+                    input.copyTo(output)
+                    output.flush()
+                }
+            }
+
+            if (targetFile.exists() && !targetFile.isFile) {
+                partFile.delete()
+                return FilePersistResult(
+                    archiveFile = null,
+                    failureReason = "un dossier bloque l'archive SMP cible: ${targetFile.absolutePath}"
+                )
+            }
+
+            val finalized = if (targetFile.exists()) {
+                runCatching {
+                    partFile.copyTo(targetFile, overwrite = true)
+                    true
+                }.getOrDefault(false)
+            } else {
+                partFile.renameTo(targetFile) || runCatching {
+                    partFile.copyTo(targetFile, overwrite = true)
+                    true
+                }.getOrDefault(false)
+            }
+
+            if (!finalized) {
+                partFile.delete()
+                return FilePersistResult(
+                    archiveFile = null,
+                    failureReason = "finalisation de l'archive SMP impossible: ${targetFile.absolutePath}"
+                )
+            }
+
+            if (partFile.exists() && !partFile.delete()) {
+                logWarn("Suppression du .part SMP impossible: ${partFile.absolutePath}")
+            }
+
+            normalizationScan.supersededArchives.forEach { staleFile ->
+                if (staleFile.exists() && !staleFile.delete()) {
+                    logWarn("Suppression archive SMP obsolète impossible: ${staleFile.absolutePath}")
+                }
+            }
+
+            logInfo(
+                "step=normalize_done backend=file songId=$songId kept=${targetFile.absolutePath} removed=${normalizationScan.supersededArchives.size} skippedUnresolved=${normalizationScan.unresolvedCount}"
+            )
+            logInfo("Archive SMP durable écrite backend=file path=${targetFile.absolutePath}")
+            FilePersistResult(archiveFile = targetFile)
+        } catch (error: Exception) {
+            logError("Ecriture archive SMP durable impossible backend=file dir=${targetDir.absolutePath}", error)
+            partFile.delete()
+            FilePersistResult(
+                archiveFile = null,
+                failureReason = "écriture de l'archive SMP impossible dans ${targetDir.absolutePath}"
+            )
+        }
+    }
+
+    private fun writeArchiveToSafDir(
+        context: Context,
+        targetDir: DocumentFile,
+        songId: String,
+        targetName: String,
+        tempArchive: File
+    ): PersistResult {
+        traceSafDirectorySnapshot(
+            context = context,
+            targetDir = targetDir,
+            step = "initial_scan_before_write",
+            resolveSongIds = false
+        )
+        val existing = findChildIgnoreCase(targetDir, targetName)
+        traceSafInfo(
+            "step=write_start dir=${targetDir.uri} targetSongId=$songId targetName=$targetName existingName=${existing?.name.orEmpty()} existingUri=${existing?.uri} existingIsFile=${existing?.isFile}"
+        )
+        if (existing != null && !existing.isFile) {
+            traceSafWarn(
+                "step=write_blocked_by_directory dir=${targetDir.uri} targetSongId=$songId targetName=$targetName existingUri=${existing.uri}"
+            )
+            return PersistResult(
+                archiveUri = null,
+                failureReason = "un dossier bloque l'archive SMP cible: ${existing.uri}"
+            )
+        }
+
+        val normalizationScan = scanSupersededSafArchives(
+            context = context,
+            targetDir = targetDir,
+            songId = songId,
+            targetName = targetName
+        ).let { scan ->
+            scan.copy(
+                supersededArchives = scan.supersededArchives.filterNot { stale ->
+                    existing != null && stale.uri == existing.uri
+                }
+            )
+        }
+        traceSafInfo(
+            "step=cleanup_plan targetSongId=$songId targetName=$targetName duplicates=${summarizeDocuments(normalizationScan.supersededArchives)} duplicatesCount=${normalizationScan.supersededArchives.size} unresolvedCount=${normalizationScan.unresolvedCount}"
+        )
+
+        val targetFile = existing ?: createSafArchiveTarget(targetDir, targetName)
+        if (targetFile == null) {
+            traceSafWarn(
+                "step=write_target_create_failed dir=${targetDir.uri} targetSongId=$songId targetName=$targetName"
+            )
+            return PersistResult(
+                archiveUri = null,
+                failureReason = "création de l'archive SMP impossible dans ${targetDir.uri}"
+            )
+        }
+        traceSafInfo(
+            "step=write_target_ready requestedName=$targetName actualName=${targetFile.name.orEmpty()} targetUri=${targetFile.uri} reusedExisting=${existing != null}"
+        )
+
+        return try {
+            context.contentResolver.openOutputStream(targetFile.uri, "wt")?.use { output ->
+                tempArchive.inputStream().buffered().use { input ->
+                    input.copyTo(output)
+                    output.flush()
+                }
+            } ?: return PersistResult(
+                archiveUri = null,
+                failureReason = "flux d'écriture SAF indisponible pour ${targetFile.uri}"
+            )
+            traceSafInfo(
+                "step=write_success targetSongId=$songId requestedName=$targetName actualName=${targetFile.name.orEmpty()} targetUri=${targetFile.uri}"
+            )
+
+            normalizationScan.supersededArchives.forEach { staleFile ->
+                traceSafInfo(
+                    "step=delete_attempt targetSongId=$songId name=${staleFile.name.orEmpty()} uri=${staleFile.uri}"
+                )
+                val deleted = staleFile.delete()
+                val stillListed = targetDir.listFiles().any { listed ->
+                    listed.uri == staleFile.uri
+                }
+                traceSafInfo(
+                    "step=delete_result targetSongId=$songId name=${staleFile.name.orEmpty()} uri=${staleFile.uri} deleteResult=$deleted stillListedAfterDelete=$stillListed"
+                )
+                if (!deleted) {
+                    logWarn("Suppression archive SMP SAF obsolète impossible: ${staleFile.uri}")
+                    traceSafWarn(
+                        "step=delete_failed targetSongId=$songId name=${staleFile.name.orEmpty()} uri=${staleFile.uri} stillListedAfterDelete=$stillListed"
+                    )
+                }
+            }
+
+            traceSafDirectorySnapshot(
+                context = context,
+                targetDir = targetDir,
+                step = "final_state_after_cleanup",
+                resolveSongIds = true
+            )
+
+            logInfo(
+                "step=normalize_done backend=saf songId=$songId kept=${targetFile.uri} removed=${normalizationScan.supersededArchives.size} skippedUnresolved=${normalizationScan.unresolvedCount}"
+            )
+            logInfo("Archive SMP durable écrite backend=saf uri=${targetFile.uri}")
+            PersistResult(archiveUri = targetFile.uri)
+        } catch (error: Exception) {
+            traceSafWarn(
+                "step=write_failed dir=${targetDir.uri} targetSongId=$songId targetName=$targetName message=${error.message ?: "unknown"} type=${error.javaClass.simpleName}",
+                error
+            )
+            logError("Ecriture archive SMP durable impossible backend=saf dir=${targetDir.uri}", error)
+            PersistResult(
+                archiveUri = null,
+                failureReason = "écriture SAF de l'archive SMP impossible dans ${targetDir.uri}"
+            )
+        }
+    }
+
+    private fun resolveWritableFileSmpDir(context: Context): File? {
+        val fileRootUri = listOfNotNull(
+            BackupFolderPrefsInternal.getLibraryRootUri(context),
+            BackupFolderPrefs.getLibraryRootUri(context)
+        ).firstOrNull { it.scheme == "file" } ?: return null
+
+        val rootPath = fileRootUri.path?.takeIf { it.isNotBlank() } ?: return null
+        val rootDir = File(rootPath)
+        val splRoot = when {
+            File(rootDir, BACKING_TRACKS_DIR_NAME).isDirectory -> rootDir
+            File(rootDir, "SPL_Music").isDirectory -> File(rootDir, "SPL_Music")
+            else -> rootDir
+        }
+
+        val backingTracksDir = File(splRoot, BACKING_TRACKS_DIR_NAME)
+        if (!backingTracksDir.exists() && !backingTracksDir.mkdirs()) {
+            logWarn("Création BackingTracks impossible backend=file root=${splRoot.absolutePath}")
+            return null
+        }
+
+        val smpDir = File(backingTracksDir, SMP_DIR_NAME)
+        if (!smpDir.exists() && !smpDir.mkdirs()) {
+            logWarn("Création SMP impossible backend=file root=${splRoot.absolutePath}")
+            return null
+        }
+
+        return smpDir
+    }
+
+    private fun resolveWritableSafSmpDir(context: Context): DocumentFile? {
+        val splRoot = resolveWritableSafSplRootDir(context) ?: return null
+        val backingTracks = findDirectoryIgnoreCase(splRoot, listOf(BACKING_TRACKS_DIR_NAME, "BackingTrack"))
+            ?: splRoot.createDirectory(BACKING_TRACKS_DIR_NAME)
+            ?: return null
+
+        return findDirectoryIgnoreCase(backingTracks, listOf(SMP_DIR_NAME, "smp"))
+            ?: backingTracks.createDirectory(SMP_DIR_NAME)
+    }
+
+    private fun resolveWritableSafSplRootDir(context: Context): DocumentFile? {
+        val candidates = listOfNotNull(
+            BackupFolderPrefsSaf.getLibraryRootUri(context),
+            BackupFolderPrefs.getLibraryRootUri(context),
+            BackupFolderPrefsSaf.getSetupTreeUri(context),
+            BackupFolderPrefs.getSetupTreeUri(context)
+        )
+
+        candidates.forEach { candidateUri ->
+            val rootDir = resolveWritableSafDirectory(context, candidateUri) ?: return@forEach
+
+            if (findDirectoryIgnoreCase(rootDir, listOf(BACKING_TRACKS_DIR_NAME, "BackingTrack")) != null) {
+                return rootDir
+            }
+
+            val splMusic = findDirectoryIgnoreCase(rootDir, listOf("SPL_Music", "spl_music"))
+            if (splMusic != null) {
+                return splMusic
+            }
+        }
+
+        return null
+    }
+
+    private fun resolveWritableSafDirectory(context: Context, rootUri: Uri): DocumentFile? {
+        val directTree = DocumentFile.fromTreeUri(context, rootUri)
+        if (directTree?.isDirectory == true) return directTree
+
+        val normalizedTree = normalizeAsTreeUri(rootUri)?.let { treeUri ->
+            DocumentFile.fromTreeUri(context, treeUri)
+        }
+        if (normalizedTree?.isDirectory == true) return normalizedTree
+
+        val single = DocumentFile.fromSingleUri(context, rootUri)
+        if (single?.isDirectory == true) return single
+
+        return null
+    }
+
+    private fun findDirectoryIgnoreCase(parent: DocumentFile, candidates: List<String>): DocumentFile? {
+        val wanted = candidates.map { it.trim().lowercase() }.toSet()
+        return parent.listFiles().firstOrNull { child ->
+            child.isDirectory && child.name.orEmpty().trim().lowercase() in wanted
+        }
+    }
+
+    private fun findChildIgnoreCase(parent: DocumentFile, targetName: String): DocumentFile? {
+        val wanted = targetName.trim().lowercase()
+        return parent.listFiles().firstOrNull { child ->
+            child.name.orEmpty().trim().lowercase() == wanted
+        }
+    }
+
+    private fun scanSupersededFileArchives(
+        targetDir: File,
+        songId: String,
+        targetName: String
+    ): NormalizationScan<File> {
+        var unresolvedCount = 0
+        val supersededArchives = targetDir.listFiles()
+            .orEmpty()
+            .filter { file ->
+                file.isFile &&
+                    isSupportedArchiveFileName(file.name) &&
+                    !file.name.equals(targetName, ignoreCase = true)
+            }
+            .filter { file ->
+                when (val resolvedSongId = readStableSongId(file)) {
+                    null -> {
+                        unresolvedCount += 1
+                        logInfo("step=normalize_skip_unresolved backend=file file=${file.absolutePath}")
+                        false
+                    }
+
+                    else -> resolvedSongId == songId
+                }
+            }
+        return NormalizationScan(
+            supersededArchives = supersededArchives,
+            unresolvedCount = unresolvedCount
+        )
+    }
+
+    private fun scanSupersededSafArchives(
+        context: Context,
+        targetDir: DocumentFile,
+        songId: String,
+        targetName: String
+    ): NormalizationScan<DocumentFile> {
+        var unresolvedCount = 0
+        val unresolvedArchives = mutableListOf<DocumentFile>()
+        val children = targetDir.listFiles().toList()
+        traceSafInfo("step=initial_scan dir=${targetDir.uri} totalChildren=${children.size}")
+        val supersededArchives = children.mapNotNull { child ->
+            val childName = child.name.orEmpty()
+            val extension = detectExtension(childName)
+            val isCandidate = child.isFile &&
+                isSupportedArchiveFileName(childName) &&
+                !childName.equals(targetName, ignoreCase = true)
+            traceSafInfo(
+                "step=scan_child dir=${targetDir.uri} name=$childName uri=${child.uri} isFile=${child.isFile} extension=$extension candidate=$isCandidate reason=${scanDecisionReason(child, childName, targetName)}"
+            )
+            if (!isCandidate) {
+                return@mapNotNull null
+            }
+
+            when (val resolvedSongId = readStableSongId(context, child)) {
+                null -> {
+                    unresolvedCount += 1
+                    unresolvedArchives += child
+                    logInfo("step=normalize_skip_unresolved backend=saf file=${child.uri}")
+                    traceSafInfo(
+                        "step=scan_song_id_unresolved dir=${targetDir.uri} name=$childName uri=${child.uri}"
+                    )
+                    null
+                }
+
+                else -> {
+                    val duplicate = resolvedSongId == songId
+                    traceSafInfo(
+                        "step=scan_song_id_resolved dir=${targetDir.uri} name=$childName uri=${child.uri} resolvedSongId=$resolvedSongId duplicate=$duplicate"
+                    )
+                    child.takeIf { duplicate }
+                }
+            }
+        }
+        traceSafInfo(
+            "step=scan_plan_result dir=${targetDir.uri} targetSongId=$songId targetName=$targetName duplicates=${summarizeDocuments(supersededArchives)} unresolved=${summarizeDocuments(unresolvedArchives)}"
+        )
+        return NormalizationScan(
+            supersededArchives = supersededArchives,
+            unresolvedCount = unresolvedCount
+        )
+    }
+
+    private fun readStableSongId(file: File): String? {
+        return runCatching {
+            file.inputStream().buffered().use { input ->
+                SmpArchiveSongIdResolver.readStableSongId(input)
+            }
+        }.getOrElse { error ->
+            logWarn("Lecture songId archive SMP impossible backend=file path=${file.absolutePath}", error)
+            null
+        }
+    }
+
+    private fun readStableSongId(context: Context, document: DocumentFile): String? {
+        val name = document.name.orEmpty()
+        traceSafInfo("step=song_id_read_start name=$name uri=${document.uri}")
+        val result = runCatching {
+            context.contentResolver.openInputStream(document.uri)?.use { input ->
+                SmpArchiveSongIdResolver.readStableSongId(input)
+            } ?: run {
+                traceSafWarn("step=song_id_read_failed name=$name uri=${document.uri} reason=input_stream_null")
+                null
+            }
+        }.getOrElse { error ->
+            traceSafWarn(
+                "step=song_id_read_failed name=$name uri=${document.uri} reason=${error.javaClass.simpleName}:${error.message ?: "unknown"}",
+                error
+            )
+            logWarn("Lecture songId archive SMP impossible backend=saf uri=${document.uri}", error)
+            null
+        }
+        traceSafInfo(
+            "step=song_id_read_done name=$name uri=${document.uri} songId=${result ?: "unresolved"}"
+        )
+        return result
+    }
+
+    private fun sanitizeDurableArchiveTitle(rawTitle: String?): String? {
+        return rawTitle.orEmpty()
+            .trim()
+            .replace(FORBIDDEN_ARCHIVE_NAME_CHARS, "_")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+            .trim('.', ' ')
+            .takeIf { it.isNotBlank() }
+    }
+
+    private fun logInfo(message: String) {
+        runCatching { Log.i(TAG, message) }
+    }
+
+    private fun logWarn(message: String) {
+        runCatching { Log.w(TAG, message) }
+    }
+
+    private fun logWarn(message: String, error: Throwable) {
+        runCatching { Log.w(TAG, message, error) }
+    }
+
+    private fun logError(message: String, error: Throwable? = null) {
+        runCatching {
+            if (error != null) {
+                Log.e(TAG, message, error)
+            } else {
+                Log.e(TAG, message)
+            }
+        }
+    }
+
+    private fun normalizeAsTreeUri(uri: Uri): Uri? {
+        val authority = uri.authority ?: return null
+        val treeId = runCatching { DocumentsContract.getTreeDocumentId(uri) }.getOrNull()
+            ?: runCatching { DocumentsContract.getDocumentId(uri) }.getOrNull()
+            ?: return null
+        return DocumentsContract.buildTreeDocumentUri(authority, treeId)
+    }
+
+    private fun traceSafDirectorySnapshot(
+        context: Context,
+        targetDir: DocumentFile,
+        step: String,
+        resolveSongIds: Boolean
+    ) {
+        val children = runCatching { targetDir.listFiles().toList() }.getOrElse { error ->
+            traceSafWarn("step=$step dir=${targetDir.uri} reason=list_failed:${error.message ?: "unknown"}", error)
+            emptyList()
+        }
+        traceSafInfo("step=$step dir=${targetDir.uri} totalChildren=${children.size} resolveSongIds=$resolveSongIds")
+        children.forEach { child ->
+            val name = child.name.orEmpty()
+            val extension = detectExtension(name)
+            val resolvedSongId = if (resolveSongIds && child.isFile && isSupportedArchiveFileName(name)) {
+                readStableSongId(context, child) ?: "unresolved"
+            } else {
+                "not_requested"
+            }
+            traceSafInfo(
+                "step=${step}_child dir=${targetDir.uri} name=$name uri=${child.uri} isFile=${child.isFile} extension=$extension songId=$resolvedSongId"
+            )
+        }
+    }
+
+    private fun scanDecisionReason(
+        child: DocumentFile,
+        childName: String,
+        targetName: String
+    ): String {
+        return when {
+            !child.isFile -> "ignored_not_file"
+            !isSupportedArchiveFileName(childName) -> "ignored_not_smp"
+            childName.equals(targetName, ignoreCase = true) -> "ignored_target_name"
+            else -> "candidate"
+        }
+    }
+
+    private fun detectExtension(name: String): String {
+        return name.substringAfterLast('.', "").ifBlank { "<none>" }
+    }
+
+    private fun summarizeDocuments(documents: List<DocumentFile>): String {
+        if (documents.isEmpty()) return "[]"
+        return documents.joinToString(
+            prefix = "[",
+            postfix = "]"
+        ) { document ->
+            "${document.name.orEmpty()}|${document.uri}"
+        }
+    }
+
+    private fun traceSafInfo(message: String) {
+        runCatching { Log.i(SAF_TRACE_TAG, message) }
+    }
+
+    private fun traceSafWarn(message: String, error: Throwable? = null) {
+        runCatching {
+            if (error != null) {
+                Log.w(SAF_TRACE_TAG, message, error)
+            } else {
+                Log.w(SAF_TRACE_TAG, message)
+            }
+        }
+    }
+
+    private fun createSafArchiveTarget(targetDir: DocumentFile, targetName: String): DocumentFile? {
+        val created = targetDir.createFile(SAF_ARCHIVE_MIME, targetName) ?: return null
+        val createdName = created.name.orEmpty()
+        traceSafInfo(
+            "step=create_target requestedName=$targetName actualName=$createdName createdUri=${created.uri} mime=$SAF_ARCHIVE_MIME"
+        )
+        if (createdName.equals(targetName, ignoreCase = true)) {
+            return created
+        }
+
+        traceSafWarn(
+            "step=create_target_needs_rename requestedName=$targetName actualName=$createdName createdUri=${created.uri}"
+        )
+        val renamed = runCatching { created.renameTo(targetName) }.getOrDefault(false)
+        val resolved = findChildIgnoreCase(targetDir, targetName)
+        traceSafInfo(
+            "step=create_target_rename_result requestedName=$targetName initialName=$createdName createdUri=${created.uri} renameResult=$renamed resolvedUri=${resolved?.uri} resolvedName=${resolved?.name.orEmpty()}"
+        )
+        if (resolved?.isFile == true) {
+            return resolved
+        }
+
+        if (created.name.orEmpty().equals(targetName, ignoreCase = true) && created.isFile) {
+            return created
+        }
+
+        runCatching {
+            if (!created.delete()) {
+                traceSafWarn(
+                    "step=create_target_cleanup_failed requestedName=$targetName createdUri=${created.uri} createdName=${created.name.orEmpty()}"
+                )
+            }
+        }
+        return null
+    }
+}

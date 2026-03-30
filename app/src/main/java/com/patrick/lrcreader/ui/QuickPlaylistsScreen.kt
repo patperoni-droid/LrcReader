@@ -1299,17 +1299,15 @@ fun QuickPlaylistsScreen(
                                         .alpha(if (isPlayed) 0.6f else 1f)
                                         .combinedClickable(
                                             onClick = {
-                                                val pl = internalSelected ?: return@combinedClickable
+                                                val currentPlaylist = internalSelected
+                                                    ?: return@combinedClickable
                                                 // ✅ IMPORTANT : on capture l'ordre "d'origine" AVANT que le système
                                                 // ne pousse une chanson jouée en bas.
                                                 // Persistant => ça survit au redémarrage.
-                                                saveOriginalOrderIfMissing(context, pl, songs.toList())
-                                                // ✅ On arme le suivi "10s de lecture réelle"
-                                                PlaylistRepository.setNowPlaying(pl, uriString)
-
+                                                saveOriginalOrderIfMissing(context, currentPlaylist, songs.toList())
                                                 // ✅ Lance le player
-                                                onPlaySong(uriString, pl, Color.White) // ✅ ne teinte plus le lecteur / paroles
-                                                // ⚠️ IMPORTANT : on NE rappelle PAS onSelectedPlaylistChange(pl) ici,
+                                                onPlaySong(uriString, currentPlaylist, Color.White) // ✅ ne teinte plus le lecteur / paroles
+                                                // ⚠️ IMPORTANT : on NE rappelle PAS onSelectedPlaylistChange(currentPlaylist) ici,
                                                 // sinon le parent peut recharger la playlist immédiatement (LaunchedEffect),
                                                 // ce qui donne l'impression que le titre "descend direct".
                                                 onRequestShowPlayer()
