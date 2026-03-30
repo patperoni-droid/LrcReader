@@ -21,12 +21,236 @@ object BackupManager {
 
     private const val IMPORT_LOG_TAG = "BACKUP_IMPORT"
     private const val BOOT_TAG = "BOOTSTEP"
+    private const val AUTO_BACKUP_TAG = "AUTO_BACKUP"
 
     data class LastPlayed(
         val uri: String,
         val playlistName: String?,
         val positionMs: Long
     )
+
+    private fun logAutoBackupInfo(message: String) {
+        runCatching { Log.i(AUTO_BACKUP_TAG, message) }
+    }
+
+    private fun logAutoBackupWarn(message: String) {
+        runCatching { Log.w(AUTO_BACKUP_TAG, message) }
+    }
+
+    enum class AutoBackupCode {
+        SUCCESS,
+        FAILED_NO_WORKSPACE,
+        FAILED_ROOT_UNRESOLVED,
+        FAILED_NOT_WRITABLE,
+        FAILED_CREATE_DIRECTORY,
+        FAILED_CREATE_FILE,
+        FAILED_OPEN_STREAM,
+        FAILED_EXCEPTION
+    }
+
+    enum class AutoBackupWorkerAction {
+        SUCCESS,
+        FAILURE,
+        RETRY
+    }
+
+    data class AutoBackupResult(
+        val code: AutoBackupCode,
+        val workspaceStatus: WorkspaceResolver.Status?,
+        val workspaceRootUri: Uri?,
+        val targetDirUri: Uri? = null,
+        val targetFileUri: Uri? = null,
+        val detail: String? = null
+    ) {
+        val isSuccess: Boolean
+            get() = code == AutoBackupCode.SUCCESS
+    }
+
+    internal interface AutoBackupWriter {
+        fun writeSaf(
+            context: Context,
+            snapshot: WorkspaceResolver.Snapshot,
+            rootUri: Uri,
+            fileName: String,
+            json: String
+        ): AutoBackupResult
+
+        fun writeFile(
+            snapshot: WorkspaceResolver.Snapshot,
+            rootUri: Uri,
+            fileName: String,
+            json: String
+        ): AutoBackupResult
+    }
+
+    private object WorkspaceAutoBackupWriter : AutoBackupWriter {
+        override fun writeSaf(
+            context: Context,
+            snapshot: WorkspaceResolver.Snapshot,
+            rootUri: Uri,
+            fileName: String,
+            json: String
+        ): AutoBackupResult {
+            val rootDoc = DocumentFile.fromTreeUri(context, rootUri)
+                ?: DocumentFile.fromSingleUri(context, rootUri)
+                ?: return autoBackupFailure(
+                    code = AutoBackupCode.FAILED_ROOT_UNRESOLVED,
+                    snapshot = snapshot,
+                    detail = "root DocumentFile unresolved"
+                )
+
+            if (!rootDoc.exists() || !rootDoc.isDirectory) {
+                return autoBackupFailure(
+                    code = AutoBackupCode.FAILED_ROOT_UNRESOLVED,
+                    snapshot = snapshot,
+                    detail = "root is not a readable directory"
+                )
+            }
+
+            val backupsDir = if (rootDoc.name.orEmpty().trim().equals("Backups", ignoreCase = true)) {
+                rootDoc
+            } else {
+                findDirectoryIgnoreCase(rootDoc, listOf("Backups", "backups"))
+                    ?: rootDoc.createDirectory("Backups")
+                    ?: return autoBackupFailure(
+                        code = AutoBackupCode.FAILED_CREATE_DIRECTORY,
+                        snapshot = snapshot,
+                        detail = "Backups directory create returned null"
+                    )
+            }
+
+            if (!backupsDir.isDirectory || !backupsDir.canWrite()) {
+                return autoBackupFailure(
+                    code = AutoBackupCode.FAILED_NOT_WRITABLE,
+                    snapshot = snapshot,
+                    targetDirUri = backupsDir.uri,
+                    detail = "Backups directory not writable"
+                )
+            }
+
+            val existing = backupsDir.findFile(fileName)
+            val target = when {
+                existing != null && existing.isFile -> existing
+                else -> backupsDir.createFile("application/json", fileName)
+            } ?: return autoBackupFailure(
+                code = AutoBackupCode.FAILED_CREATE_FILE,
+                snapshot = snapshot,
+                targetDirUri = backupsDir.uri,
+                detail = "createFile returned null for $fileName"
+            )
+
+            val output = try {
+                context.contentResolver.openOutputStream(target.uri, "w")
+            } catch (error: Exception) {
+                return autoBackupFailure(
+                    code = AutoBackupCode.FAILED_EXCEPTION,
+                    snapshot = snapshot,
+                    targetDirUri = backupsDir.uri,
+                    targetFileUri = target.uri,
+                    detail = "openOutputStream exception: ${error.javaClass.simpleName}: ${error.message}"
+                )
+            }
+
+            if (output == null) {
+                return autoBackupFailure(
+                    code = AutoBackupCode.FAILED_OPEN_STREAM,
+                    snapshot = snapshot,
+                    targetDirUri = backupsDir.uri,
+                    targetFileUri = target.uri,
+                    detail = "openOutputStream returned null"
+                )
+            }
+
+            return try {
+                output.use { out ->
+                    out.write(json.toByteArray(Charsets.UTF_8))
+                    out.flush()
+                }
+                autoBackupSuccess(
+                    snapshot = snapshot,
+                    targetDirUri = backupsDir.uri,
+                    targetFileUri = target.uri,
+                    detail = "durable SAF backup written"
+                )
+            } catch (error: Exception) {
+                autoBackupFailure(
+                    code = AutoBackupCode.FAILED_EXCEPTION,
+                    snapshot = snapshot,
+                    targetDirUri = backupsDir.uri,
+                    targetFileUri = target.uri,
+                    detail = "write exception: ${error.javaClass.simpleName}: ${error.message}"
+                )
+            }
+        }
+
+        override fun writeFile(
+            snapshot: WorkspaceResolver.Snapshot,
+            rootUri: Uri,
+            fileName: String,
+            json: String
+        ): AutoBackupResult {
+            val rootPath = rootUri.path
+            if (rootPath.isNullOrBlank()) {
+                return autoBackupFailure(
+                    code = AutoBackupCode.FAILED_ROOT_UNRESOLVED,
+                    snapshot = snapshot,
+                    detail = "file root path missing"
+                )
+            }
+
+            val rootDir = File(rootPath)
+            if (!rootDir.exists() || !rootDir.isDirectory) {
+                return autoBackupFailure(
+                    code = AutoBackupCode.FAILED_ROOT_UNRESOLVED,
+                    snapshot = snapshot,
+                    detail = "file root missing or not directory"
+                )
+            }
+
+            val backupsDir = if (rootDir.name.equals("Backups", ignoreCase = true)) {
+                rootDir
+            } else {
+                File(rootDir, "Backups").also { dir ->
+                    if (!dir.exists() && !dir.mkdirs()) {
+                        return autoBackupFailure(
+                            code = AutoBackupCode.FAILED_CREATE_DIRECTORY,
+                            snapshot = snapshot,
+                            targetDirUri = Uri.fromFile(dir),
+                            detail = "Backups directory mkdirs failed"
+                        )
+                    }
+                }
+            }
+
+            if (!backupsDir.isDirectory || !backupsDir.canWrite()) {
+                return autoBackupFailure(
+                    code = AutoBackupCode.FAILED_NOT_WRITABLE,
+                    snapshot = snapshot,
+                    targetDirUri = Uri.fromFile(backupsDir),
+                    detail = "file Backups directory not writable"
+                )
+            }
+
+            return try {
+                val outFile = File(backupsDir, fileName)
+                outFile.writeText(json, Charsets.UTF_8)
+                autoBackupSuccess(
+                    snapshot = snapshot,
+                    targetDirUri = Uri.fromFile(backupsDir),
+                    targetFileUri = Uri.fromFile(outFile),
+                    detail = "durable file backup written"
+                )
+            } catch (error: Exception) {
+                autoBackupFailure(
+                    code = AutoBackupCode.FAILED_EXCEPTION,
+                    snapshot = snapshot,
+                    targetDirUri = Uri.fromFile(backupsDir),
+                    targetFileUri = Uri.fromFile(File(backupsDir, fileName)),
+                    detail = "file write exception: ${error.javaClass.simpleName}: ${error.message}"
+                )
+            }
+        }
+    }
 
     fun exportState(
         context: Context,
@@ -615,40 +839,117 @@ object BackupManager {
     /**
      * Sauvegarde automatique dans un fichier fixe DEFAULT_BACKUP_FILE.
      */
-    fun autoSaveToDefaultBackupFile(context: Context) {
-        val json = exportState(
+    fun autoSaveToDefaultBackupFile(context: Context): AutoBackupResult {
+        return autoSaveToDefaultBackupFile(
+            context = context,
+            snapshotOverride = null,
+            writer = WorkspaceAutoBackupWriter
+        )
+    }
+
+    internal fun autoSaveToDefaultBackupFile(
+        context: Context,
+        snapshotOverride: WorkspaceResolver.Snapshot?,
+        writer: AutoBackupWriter,
+        jsonOverride: String? = null
+    ): AutoBackupResult {
+        val snapshot = snapshotOverride ?: WorkspaceResolver.resolve(context)
+        logAutoBackupInfo(
+            "step=start workspaceStatus=${snapshot.status} workspaceRoot=${snapshot.workspaceRootUri} setupTree=${snapshot.setupTreeUri}"
+        )
+
+        if (!snapshot.isUsable || snapshot.workspaceRootUri == null) {
+            return autoBackupFailure(
+                code = AutoBackupCode.FAILED_NO_WORKSPACE,
+                snapshot = snapshot,
+                detail = "workspace not usable"
+            )
+        }
+
+        val json = jsonOverride ?: exportState(
             context = context,
             lastPlayer = null,
             libraryFolders = emptyList()
         )
 
-        val safDir = getBackupDir(context)
-        if (safDir != null && safDir.canWrite()) {
-            try {
-                val existing = safDir.findFile(DEFAULT_BACKUP_FILE)
-                val target = when {
-                    existing != null && existing.isFile -> existing
-                    else -> safDir.createFile("application/json", DEFAULT_BACKUP_FILE)
-                } ?: return
+        val rootUri = snapshot.workspaceRootUri
+        return when (rootUri.scheme) {
+            "content" -> writer.writeSaf(
+                context = context,
+                snapshot = snapshot,
+                rootUri = rootUri,
+                fileName = DEFAULT_BACKUP_FILE,
+                json = json
+            )
 
-                context.contentResolver.openOutputStream(target.uri, "w")?.use { out ->
-                    out.write(json.toByteArray(Charsets.UTF_8))
-                    out.flush()
-                }
-                return
-            } catch (e: Exception) {
-                Log.e("BACKUP", "autoSave SAF durable-first failed", e)
-            }
-        }
+            "file" -> writer.writeFile(
+                snapshot = snapshot,
+                rootUri = rootUri,
+                fileName = DEFAULT_BACKUP_FILE,
+                json = json
+            )
 
-        // ✅ Fallback fichier legacy
-        try {
-            val dir = getBackupDirFile(context)
-            val outFile = File(dir, DEFAULT_BACKUP_FILE)
-            outFile.writeText(json, Charsets.UTF_8)
-        } catch (e: Exception) {
-            Log.e("BACKUP", "autoSave INTERNAL failed", e)
+            else -> autoBackupFailure(
+                code = AutoBackupCode.FAILED_ROOT_UNRESOLVED,
+                snapshot = snapshot,
+                detail = "unsupported root scheme=${rootUri.scheme}"
+            )
         }
+    }
+
+    internal fun workerActionForAutoBackup(result: AutoBackupResult): AutoBackupWorkerAction {
+        return when (result.code) {
+            AutoBackupCode.SUCCESS -> AutoBackupWorkerAction.SUCCESS
+            AutoBackupCode.FAILED_NO_WORKSPACE,
+            AutoBackupCode.FAILED_ROOT_UNRESOLVED,
+            AutoBackupCode.FAILED_NOT_WRITABLE -> AutoBackupWorkerAction.FAILURE
+
+            AutoBackupCode.FAILED_CREATE_DIRECTORY,
+            AutoBackupCode.FAILED_CREATE_FILE,
+            AutoBackupCode.FAILED_OPEN_STREAM,
+            AutoBackupCode.FAILED_EXCEPTION -> AutoBackupWorkerAction.RETRY
+        }
+    }
+
+    private fun autoBackupSuccess(
+        snapshot: WorkspaceResolver.Snapshot,
+        targetDirUri: Uri?,
+        targetFileUri: Uri?,
+        detail: String
+    ): AutoBackupResult {
+        val result = AutoBackupResult(
+            code = AutoBackupCode.SUCCESS,
+            workspaceStatus = snapshot.status,
+            workspaceRootUri = snapshot.workspaceRootUri,
+            targetDirUri = targetDirUri,
+            targetFileUri = targetFileUri,
+            detail = detail
+        )
+        logAutoBackupInfo(
+            "step=success workspaceStatus=${result.workspaceStatus} workspaceRoot=${result.workspaceRootUri} targetDir=${result.targetDirUri} targetFile=${result.targetFileUri} detail=${result.detail}"
+        )
+        return result
+    }
+
+    private fun autoBackupFailure(
+        code: AutoBackupCode,
+        snapshot: WorkspaceResolver.Snapshot,
+        targetDirUri: Uri? = null,
+        targetFileUri: Uri? = null,
+        detail: String
+    ): AutoBackupResult {
+        val result = AutoBackupResult(
+            code = code,
+            workspaceStatus = snapshot.status,
+            workspaceRootUri = snapshot.workspaceRootUri,
+            targetDirUri = targetDirUri,
+            targetFileUri = targetFileUri,
+            detail = detail
+        )
+        logAutoBackupWarn(
+            "step=failure code=${result.code} workspaceStatus=${result.workspaceStatus} workspaceRoot=${result.workspaceRootUri} targetDir=${result.targetDirUri} targetFile=${result.targetFileUri} detail=${result.detail}"
+        )
+        return result
     }
 
     /**
