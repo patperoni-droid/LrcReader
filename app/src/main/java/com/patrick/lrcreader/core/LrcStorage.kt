@@ -32,10 +32,27 @@ object LrcStorage {
         val fileName: String
     )
 
+    private data class WorkspaceFolderSpec(
+        val preferredName: String,
+        val aliasName: String,
+        val stageKey: String
+    )
+
     private const val TAG = "LRC_STORAGE"
-    private const val CACHE_DIR = "lrc_cache"
+    private const val WORKSPACE_LOG_TAG = "LRC_WORKSPACE"
     private const val CANONICAL_PREF = "lrc_storage_canonical"
     private const val RECENT_ORIGIN_CACHE_MAX = 32
+
+    private val lyricsFolderSpec = WorkspaceFolderSpec(
+        preferredName = "Lyrics",
+        aliasName = "lyrics",
+        stageKey = "lyrics"
+    )
+    private val accordsFolderSpec = WorkspaceFolderSpec(
+        preferredName = "Accords",
+        aliasName = "accords",
+        stageKey = "accords"
+    )
 
     private val recentResolvedOrigins = object : LinkedHashMap<String, TrackLrcOrigin>(
         RECENT_ORIGIN_CACHE_MAX,
@@ -145,18 +162,16 @@ object LrcStorage {
         }
 
         // ✅ 1) MODE INTERNE SPL EN PRIORITÉ (BackingTracks/Lyrics)
-        Log.i(TAG, "mode INTERNAL SPL load root=${getInternalSplRoot(context).absolutePath}")
+        val internalRoot = getInternalSplRoot(context)
+        if (internalRoot == null) {
+            clearRecentResolvedOrigin(trackUriString)
+            Log.w(TAG, "mode INTERNAL SPL load blocked: workspace root unavailable")
+            return null
+        }
+        Log.i(TAG, "mode INTERNAL SPL load root=${internalRoot.absolutePath}")
         loadFromInternalSplFolder(context, trackUriString)?.let { txt ->
             if (txt.isNotBlank()) {
                 Log.d(TAG, "mode INTERNAL SPL load hit FILE")
-                return txt
-            }
-        }
-
-        // fallback : cache interne
-        loadFromInternalCache(context, trackUriString)?.let { txt ->
-            if (txt.isNotBlank()) {
-                Log.d(TAG, "mode INTERNAL SPL load hit INTERNAL_CACHE")
                 return txt
             }
         }
@@ -191,7 +206,8 @@ object LrcStorage {
         }
 
         if (!safOnlyBackend) {
-            val (upperDir, lowerDir) = internalSplLyricsDirs(context)
+            val dirs = internalSplLyricsDirs(context, createIfMissing = false) ?: return null
+            val (upperDir, lowerDir) = dirs
             val sidecar = sidecarNameForTrack(trackUriString)
 
             val upper = File(upperDir, sidecar)
@@ -209,15 +225,6 @@ object LrcStorage {
                     source = "LRC_STORAGE_INTERNAL_SPL_LOWER",
                     fileName = lower.name,
                     debugPath = lower.absolutePath
-                ).also { cacheRecentResolvedOrigin(trackUriString, it) }
-            }
-
-            val cache = internalFile(context, trackUriString)
-            if (cache.exists() && cache.isFile) {
-                return TrackLrcOrigin(
-                    source = "LRC_STORAGE_INTERNAL_CACHE",
-                    fileName = cache.name,
-                    debugPath = cache.absolutePath
                 ).also { cacheRecentResolvedOrigin(trackUriString, it) }
             }
 
@@ -262,10 +269,6 @@ object LrcStorage {
     }
 
     fun saveForTrack(context: Context, trackUriString: String, lines: List<LrcLine>): Boolean {
-        Log.e(
-            "DEBUG_ROOT_URI",
-            "BackupFolderPrefs rootUri = ${BackupFolderPrefs.getLibraryRootUri(context)}"
-        )
         if (trackUriString.isBlank()) return false
         clearRecentResolvedOrigin(trackUriString)
         val text = linesToLrcText(lines)
@@ -297,7 +300,7 @@ object LrcStorage {
         }
 
         if (safOnlyBackend) {
-            val safDir = getConfiguredSafDir(context)
+            val safDir = getConfiguredSafDir(context, trackUriString, createIfMissing = true)
             if (safDir == null) {
                 Log.w(TAG, "mode SAF save blocked: SAF dir unavailable")
                 return false
@@ -308,7 +311,19 @@ object LrcStorage {
             val okConfigured = !savedPath.isNullOrBlank()
             if (okConfigured) {
                 rememberCanonicalFileName(context, trackUriString, targetFileName)
+                logWorkspaceSuccess(
+                    stage = "save_saf_lyrics",
+                    snapshot = resolveWorkspaceSnapshot(context),
+                    finalPath = savedPath
+                )
                 Log.i("LrcDebug", "LRC_SAVE path=$savedPath")
+            } else {
+                logWorkspaceFailure(
+                    stage = "save_saf_lyrics",
+                    snapshot = resolveWorkspaceSnapshot(context),
+                    finalPath = "${safDir.uri}/$targetFileName",
+                    error = "write_failed"
+                )
             }
             Log.i(TAG, "mode SAF save configured=$okConfigured len=${text.length} file=$targetFileName")
             return okConfigured
@@ -316,15 +331,20 @@ object LrcStorage {
 
         // ✅ MODE INTERNE SPL : écrit dans BackingTracks/Lyrics/<base>.lrc
         if (!safOnlyBackend) {
-            Log.i(TAG, "mode INTERNAL SPL save root=${getInternalSplRoot(context).absolutePath}")
-            val okFile = saveToInternalSplFolder(context, trackUriString, text)
-            val okInternal = saveToInternalCache(context, trackUriString, text)
-            if (okFile) {
-                val (upperDir, _) = internalSplLyricsDirs(context)
-                val outFile = File(upperDir, sidecarNameForTrack(trackUriString))
-                Log.i("LrcDebug", "LRC_SAVE path=${outFile.absolutePath}")
+            val internalRoot = getInternalSplRoot(context)
+            if (internalRoot == null) {
+                Log.w(TAG, "mode INTERNAL SPL save blocked: workspace root unavailable")
+                return false
             }
-            Log.i(TAG, "mode INTERNAL SPL save file=$okFile internalCache=$okInternal len=${text.length}")
+            Log.i(TAG, "mode INTERNAL SPL save root=${internalRoot.absolutePath}")
+            val okFile = saveToInternalSplFolder(context, trackUriString, text)
+            if (okFile) {
+                internalSplLyricsDirs(context, createIfMissing = false)?.first?.let { upperDir ->
+                    val outFile = File(upperDir, sidecarNameForTrack(trackUriString))
+                    Log.i("LrcDebug", "LRC_SAVE path=${outFile.absolutePath}")
+                }
+            }
+            Log.i(TAG, "mode INTERNAL SPL save file=$okFile len=${text.length}")
             return okFile
         }
         return false
@@ -366,6 +386,11 @@ object LrcStorage {
                         val deleted = runCatching { doc.delete() }.getOrDefault(false)
                         if (deleted) {
                             deletedAny = true
+                            logWorkspaceSuccess(
+                                stage = "delete_saf_lyrics",
+                                snapshot = resolveWorkspaceSnapshot(context),
+                                finalPath = doc.uri.toString()
+                            )
                             Log.i("LrcDebug", "LRC_DELETE path=${doc.uri}")
                         }
                     }
@@ -376,32 +401,235 @@ object LrcStorage {
             return deletedAny
         }
 
-        // cache interne
+        // INTERNAL SPL sidecar
         var deletedAny = false
         runCatching {
-            val cache = internalFile(context, trackUriString)
-            if (cache.delete()) {
-                deletedAny = true
-                Log.i("LrcDebug", "LRC_DELETE path=${cache.absolutePath}")
-            }
-        }
-
-        // INTERNAL SPL sidecar
-        runCatching {
-            val (upperDir, lowerDir) = internalSplLyricsDirs(context)
+            val dirs = internalSplLyricsDirs(context, createIfMissing = false)
+                ?: return@runCatching
+            val (upperDir, lowerDir) = dirs
             val sidecar = sidecarNameForTrack(trackUriString)
             val upper = File(upperDir, sidecar)
             val lower = File(lowerDir, sidecar)
             if (upper.delete()) {
                 deletedAny = true
+                logWorkspaceSuccess(
+                    stage = "delete_internal_lyrics",
+                    snapshot = resolveWorkspaceSnapshot(context),
+                    finalPath = upper.absolutePath
+                )
                 Log.i("LrcDebug", "LRC_DELETE path=${upper.absolutePath}")
             }
             if (lower.delete()) {
                 deletedAny = true
+                logWorkspaceSuccess(
+                    stage = "delete_internal_lyrics",
+                    snapshot = resolveWorkspaceSnapshot(context),
+                    finalPath = lower.absolutePath
+                )
                 Log.i("LrcDebug", "LRC_DELETE path=${lower.absolutePath}")
             }
         }
         return deletedAny
+    }
+
+    fun isSmpRuntimeTrack(context: Context, trackUriString: String): Boolean {
+        if (trackUriString.isBlank()) return false
+        return resolveSmpRuntimeSongDir(context, trackUriString) != null
+    }
+
+    fun currentWorkspaceScopeKey(context: Context): String? {
+        return resolveWorkspaceSnapshot(context).workspaceRootUri?.toString()
+    }
+
+    fun isWorkspaceSaf(context: Context): Boolean {
+        return isSafBackend(context)
+    }
+
+    fun loadAccordsForTrack(
+        context: Context,
+        trackUriString: String,
+        preferredLrcFileName: String?
+    ): String? {
+        if (trackUriString.isBlank()) return null
+        resolveSmpAccordsTarget(context, trackUriString, requireExisting = false)?.let { resolved ->
+            val text = if (resolved.file.isFile) {
+                runCatching { resolved.file.readText(Charsets.UTF_8) }.getOrNull()
+            } else {
+                null
+            }
+            if (text != null) {
+                Log.d(TAG, "mode SMP accords load path=${resolved.file.absolutePath}")
+                return text
+            }
+            return null
+        }
+
+        val targetNames = resolveAccordsReadTargetNames(trackUriString, preferredLrcFileName)
+        if (targetNames.isEmpty()) return null
+        val safOnlyBackend = isSafBackend(context)
+        logLyricsBackend(context, safOnlyBackend)
+        logTrackNameDiagnostics(context, trackUriString, stage = "ACCORDS_LOAD")
+
+        if (safOnlyBackend) {
+            val safDir = getConfiguredSafAccordsDir(context, trackUriString, createIfMissing = false)
+                ?: return null
+            val resolved = resolveSafFileByNames(safDir, targetNames)
+                ?: return null
+            return readSafText(context, resolved, trackUriString)
+        }
+
+        val dirs = internalSplAccordsDirs(context, createIfMissing = false) ?: return null
+        return readFromInternalDirsByNames(
+            context = context,
+            dirs = dirs,
+            targetNames = targetNames,
+            stageKey = accordsFolderSpec.stageKey
+        )
+    }
+
+    fun saveAccordsForTrack(
+        context: Context,
+        trackUriString: String,
+        preferredLrcFileName: String?,
+        lines: List<LrcLine>
+    ): String? {
+        if (trackUriString.isBlank()) return null
+        val text = linesToLrcText(lines)
+        resolveSmpAccordsTarget(context, trackUriString, requireExisting = false)?.let { resolved ->
+            val written = runCatching {
+                resolved.file.parentFile?.mkdirs()
+                resolved.file.writeText(text, Charsets.UTF_8)
+                true
+            }.getOrDefault(false)
+            if (written) {
+                Log.i("LrcDebug", "ACCORDS_SAVE path=${resolved.file.absolutePath}")
+                return resolved.fileName
+            }
+            Log.w(TAG, "mode SMP accords save failed path=${resolved.file.absolutePath}")
+            return null
+        }
+
+        val targetName = resolveAccordsFileNameForTrack(context, trackUriString, preferredLrcFileName)
+        if (targetName.isBlank()) return null
+        val safOnlyBackend = isSafBackend(context)
+        logLyricsBackend(context, safOnlyBackend)
+
+        if (safOnlyBackend) {
+            val safDir = getConfiguredSafAccordsDir(context, trackUriString, createIfMissing = true)
+                ?: return null
+            val savedPath = saveToConfiguredFolder(context, safDir, targetName, text)
+            if (!savedPath.isNullOrBlank()) {
+                logWorkspaceSuccess(
+                    stage = "save_saf_accords",
+                    snapshot = resolveWorkspaceSnapshot(context),
+                    finalPath = savedPath
+                )
+                return targetName
+            }
+            logWorkspaceFailure(
+                stage = "save_saf_accords",
+                snapshot = resolveWorkspaceSnapshot(context),
+                finalPath = "${safDir.uri}/$targetName",
+                error = "write_failed"
+            )
+            return null
+        }
+
+        val dirs = internalSplAccordsDirs(context, createIfMissing = true) ?: return null
+        return if (
+            saveToInternalDirsByName(
+                context = context,
+                dirs = dirs,
+                targetName = targetName,
+                text = text,
+                stageKey = accordsFolderSpec.stageKey
+            )
+        ) {
+            targetName
+        } else {
+            null
+        }
+    }
+
+    fun deleteAccordsForTrack(
+        context: Context,
+        trackUriString: String,
+        preferredLrcFileName: String?
+    ): Boolean {
+        if (trackUriString.isBlank()) return false
+        resolveSmpAccordsTarget(context, trackUriString, requireExisting = false)?.let { resolved ->
+            val deleted = !resolved.file.exists() || resolved.file.delete()
+            if (deleted && !resolved.file.exists()) {
+                Log.i("LrcDebug", "ACCORDS_DELETE path=${resolved.file.absolutePath}")
+            }
+            return deleted
+        }
+
+        val targetNames = resolveAccordsDeleteTargetNames(trackUriString, preferredLrcFileName)
+        if (targetNames.isEmpty()) return false
+        val safOnlyBackend = isSafBackend(context)
+        logLyricsBackend(context, safOnlyBackend)
+
+        if (safOnlyBackend) {
+            val safDir = getConfiguredSafAccordsDir(context, trackUriString, createIfMissing = false)
+                ?: return false
+            var deletedAny = false
+            targetNames.forEach { name ->
+                findFileIgnoreCase(safDir, name)?.let { doc ->
+                    val deleted = runCatching { doc.delete() }.getOrDefault(false)
+                    if (deleted) {
+                        deletedAny = true
+                        logWorkspaceSuccess(
+                            stage = "delete_saf_accords",
+                            snapshot = resolveWorkspaceSnapshot(context),
+                            finalPath = doc.uri.toString()
+                        )
+                    }
+                }
+            }
+            return deletedAny
+        }
+
+        val dirs = internalSplAccordsDirs(context, createIfMissing = false) ?: return false
+        return deleteFromInternalDirsByNames(
+            context = context,
+            dirs = dirs,
+            targetNames = targetNames,
+            stageKey = accordsFolderSpec.stageKey
+        )
+    }
+
+    fun ensureAccordsFileForTrack(
+        context: Context,
+        trackUriString: String,
+        preferredLrcFileName: String?
+    ): AccordsEnsureResult {
+        if (trackUriString.isBlank()) return AccordsEnsureResult.FAILED
+        val existing = loadAccordsForTrack(context, trackUriString, preferredLrcFileName)
+        if (existing != null) return AccordsEnsureResult.ALREADY_EXISTS
+        return if (saveAccordsForTrack(context, trackUriString, preferredLrcFileName, emptyList()) != null) {
+            AccordsEnsureResult.CREATED
+        } else {
+            AccordsEnsureResult.FAILED
+        }
+    }
+
+    fun ensureLyricsFileForTrack(
+        context: Context,
+        trackUriString: String,
+        preferredLrcFileName: String?
+    ): AccordsEnsureResult {
+        if (trackUriString.isBlank()) return AccordsEnsureResult.FAILED
+        val existing = resolveOriginForTrack(context, trackUriString)
+        if (existing != null) return AccordsEnsureResult.ALREADY_EXISTS
+        return if (saveForTrack(context, trackUriString, emptyList()) ) {
+            preferredLrcFileName?.trim()?.takeIf { it.isNotBlank() }?.let {
+                rememberCanonicalFileName(context, trackUriString, it)
+            }
+            AccordsEnsureResult.CREATED
+        } else {
+            AccordsEnsureResult.FAILED
+        }
     }
 
     fun hashedFileNameForTrack(trackUriString: String): String {
@@ -412,147 +640,142 @@ object LrcStorage {
     // SAF (dossier configuré)
     // ------------------------------------------------------------
 
-    private fun getConfiguredSafDir(context: Context, trackUriString: String? = null): DocumentFile? {
-        val configuredStartMs = SystemClock.elapsedRealtime()
-        val explicitPrefUri = LyricsFolderPrefs.get(context)
-        Log.d("LrcDebug", "LYRICS_SAF_DIR explicitPrefUri=$explicitPrefUri")
-        val explicitDir = explicitPrefUri
-            ?.takeIf { it.scheme == "content" }
-            ?.let { folderUri ->
-                DocumentFile.fromTreeUri(context, folderUri)
-                    ?: DocumentFile.fromSingleUri(context, folderUri)
-            }
-            ?.takeIf { it.isDirectory && it.canRead() }
-        Log.d(
-            "LrcDebug",
-            "LYRICS_SAF_DIR explicitResolved=${explicitDir?.uri}"
+    private fun getConfiguredSafDir(
+        context: Context,
+        trackUriString: String? = null,
+        createIfMissing: Boolean = false
+    ): DocumentFile? {
+        return getConfiguredSafDirForSpec(
+            context = context,
+            trackUriString = trackUriString,
+            createIfMissing = createIfMissing,
+            spec = lyricsFolderSpec
         )
-        if (explicitDir != null) {
-            LyricsPerf.mark(
-                trackUriString,
-                "saf_configured_dir_done",
-                "ms=${SystemClock.elapsedRealtime() - configuredStartMs} mode=explicit dir=${explicitDir.uri}"
-            )
-            return explicitDir
-        }
+    }
 
-        val fallbackDir = resolveSafLyricsDirFromLibraryRoot(context, trackUriString)
-        if (fallbackDir != null) {
-            Log.i(TAG, "mode SAF fallback lyrics dir=${fallbackDir.uri}")
-            LyricsFolderPrefs.save(context, fallbackDir.uri)
-        }
+    private fun getConfiguredSafAccordsDir(
+        context: Context,
+        trackUriString: String? = null,
+        createIfMissing: Boolean = false
+    ): DocumentFile? {
+        return getConfiguredSafDirForSpec(
+            context = context,
+            trackUriString = trackUriString,
+            createIfMissing = createIfMissing,
+            spec = accordsFolderSpec
+        )
+    }
+
+    private fun getConfiguredSafDirForSpec(
+        context: Context,
+        trackUriString: String? = null,
+        createIfMissing: Boolean = false,
+        spec: WorkspaceFolderSpec
+    ): DocumentFile? {
+        val configuredStartMs = SystemClock.elapsedRealtime()
+        val dir = resolveSafTextDirFromWorkspace(context, trackUriString, createIfMissing, spec)
         LyricsPerf.mark(
             trackUriString,
             "saf_configured_dir_done",
-            "ms=${SystemClock.elapsedRealtime() - configuredStartMs} mode=fallback dir=${fallbackDir?.uri}"
+            "ms=${SystemClock.elapsedRealtime() - configuredStartMs} mode=workspace dir=${dir?.uri} bucket=${spec.stageKey}"
         )
-        return fallbackDir
+        return dir
     }
 
-    private fun resolveSafLyricsDirFromLibraryRoot(context: Context, trackUriString: String? = null): DocumentFile? {
+    private fun resolveSafTextDirFromWorkspace(
+        context: Context,
+        trackUriString: String? = null,
+        createIfMissing: Boolean = false,
+        spec: WorkspaceFolderSpec
+    ): DocumentFile? {
         val resolveStartMs = SystemClock.elapsedRealtime()
-        val requestedRootUri = BackupFolderPrefsSaf.getLibraryRootUri(context)
-            ?: BackupFolderPrefs.getLibraryRootUri(context)
-            ?: return null
-        Log.d("LrcDebug", "LYRICS_SAF_DIR fallbackRoot=$requestedRootUri")
-        if (requestedRootUri.scheme != "content") return null
-        val rootDoc = resolveActualSafSplRoot(context, requestedRootUri, trackUriString) ?: return null
+        val snapshot = resolveWorkspaceSnapshot(context)
+        val requestedRootUri = snapshot.workspaceRootUri
+        if (
+            snapshot.mode != StorageModePrefs.Mode.SAF ||
+            !snapshot.isUsable ||
+            requestedRootUri == null ||
+            requestedRootUri.scheme != "content"
+        ) {
+            logWorkspaceFailure(
+                stage = "resolve_saf_lyrics_dir",
+                snapshot = snapshot,
+                error = "workspace_root_unavailable"
+            )
+            return null
+        }
+        val rootDoc = resolveRootDocument(context, requestedRootUri, trackUriString)
+            ?.takeIf { it.isDirectory && it.canRead() }
+            ?: run {
+                logWorkspaceFailure(
+                    stage = "resolve_saf_root_doc",
+                    snapshot = snapshot,
+                    error = "workspace_root_unreadable"
+                )
+                return null
+            }
         Log.d(
             "LrcDebug",
-            "LYRICS_SAF_DIR fallbackResolvedRoot=${rootDoc.uri} rootChildren=${listChildNames(rootDoc, trackUriString, label = "fallback_root_children")}"
+            "LYRICS_SAF_DIR workspaceResolvedRoot=${rootDoc.uri} rootChildren=${listChildNames(rootDoc, trackUriString, label = "workspace_root_children")}"
         )
-        if (!rootDoc.isDirectory || !rootDoc.canRead()) return null
 
-        val backingTracks = findDirByAliases(
-            parent = rootDoc,
-            aliases = listOf("BackingTracks", "BackingTrack"),
-            trackUriString = trackUriString,
-            stage = "resolve_backing_tracks"
-        )
+        val backingTracks = if (createIfMissing) {
+            ensureDirByAliases(
+                parent = rootDoc,
+                preferredName = "BackingTracks",
+                aliases = listOf("BackingTrack"),
+                trackUriString = trackUriString,
+                stage = "ensure_backing_tracks"
+            )
+        } else {
+            findDirByAliases(
+                parent = rootDoc,
+                aliases = listOf("BackingTracks", "BackingTrack"),
+                trackUriString = trackUriString,
+                stage = "resolve_backing_tracks"
+            )
+        }
         Log.d(
             "LrcDebug",
-            "LYRICS_SAF_DIR backingTracks=${backingTracks?.uri} rootChildren=${listChildNames(rootDoc, trackUriString, label = "fallback_root_children_repeat")}"
+            "LYRICS_SAF_DIR backingTracks=${backingTracks?.uri} rootChildren=${listChildNames(rootDoc, trackUriString, label = "workspace_root_children_repeat")}"
         )
         val safeBackingTracks = backingTracks ?: return null
-        val lyricsDir = findDirByAliases(
-            parent = safeBackingTracks,
-            aliases = listOf("Lyrics", "lyrics"),
-            trackUriString = trackUriString,
-            stage = "resolve_lyrics_dir"
-        )
+        val targetDir = if (createIfMissing) {
+            ensureDirByAliases(
+                parent = safeBackingTracks,
+                preferredName = spec.preferredName,
+                aliases = listOf(spec.aliasName),
+                trackUriString = trackUriString,
+                stage = "ensure_${spec.stageKey}_dir"
+            )
+        } else {
+            findDirByAliases(
+                parent = safeBackingTracks,
+                aliases = listOf(spec.preferredName, spec.aliasName),
+                trackUriString = trackUriString,
+                stage = "resolve_${spec.stageKey}_dir"
+            )
+        }
         Log.d(
             "LrcDebug",
-            "LYRICS_SAF_DIR resolvedLyricsDir=${lyricsDir?.uri} backingChildren=${listChildNames(safeBackingTracks, trackUriString, label = "backing_tracks_children")}"
+            "LYRICS_SAF_DIR resolvedTargetDir=${targetDir?.uri} backingChildren=${listChildNames(safeBackingTracks, trackUriString, label = "backing_tracks_children")}"
         )
-        val safeLyricsDir = lyricsDir ?: return null
+        val safeTargetDir = targetDir ?: return null
         Log.d(
             "LrcDebug",
-            "LYRICS_SAF_DIR children=${listChildNames(safeLyricsDir, trackUriString, label = "lyrics_dir_children")}"
+            "LYRICS_SAF_DIR children=${listChildNames(safeTargetDir, trackUriString, label = "${spec.stageKey}_dir_children")}"
         )
         LyricsPerf.mark(
             trackUriString,
             "saf_fallback_dir_done",
-            "ms=${SystemClock.elapsedRealtime() - resolveStartMs} root=${rootDoc.uri} lyricsDir=${safeLyricsDir.uri}"
+            "ms=${SystemClock.elapsedRealtime() - resolveStartMs} root=${rootDoc.uri} dir=${safeTargetDir.uri} bucket=${spec.stageKey}"
         )
-        return safeLyricsDir.takeIf { it.isDirectory && it.canRead() }
-    }
-
-    private fun resolveActualSafSplRoot(context: Context, requestedRootUri: Uri, trackUriString: String? = null): DocumentFile? {
-        val rootResolveStartMs = SystemClock.elapsedRealtime()
-        val requestedRootDoc = resolveRootDocument(context, requestedRootUri, trackUriString)
-            ?.takeIf { it.isDirectory && it.canRead() }
-        if (requestedRootDoc != null && matchesDirAlias(requestedRootDoc, listOf("SPL_Music", "spl_music"))) {
-            LyricsPerf.mark(
-                trackUriString,
-                "saf_root_resolve_done",
-                "ms=${SystemClock.elapsedRealtime() - rootResolveStartMs} source=requested root=${requestedRootDoc.uri}"
-            )
-            return requestedRootDoc
-        }
-
-        val setupTreeUri = BackupFolderPrefsSaf.getSetupTreeUri(context)
-            ?: BackupFolderPrefs.getSetupTreeUri(context)
-        Log.d("LrcDebug", "LYRICS_SAF_DIR setupTreeUri=$setupTreeUri")
-        val setupRootDoc = setupTreeUri
-            ?.takeIf { it.scheme == "content" }
-            ?.let { resolveRootDocument(context, it, trackUriString) }
-            ?.takeIf { it.isDirectory && it.canRead() }
-        Log.d(
-            "LrcDebug",
-            "LYRICS_SAF_DIR setupResolved=${setupRootDoc?.uri} setupChildren=${setupRootDoc?.let { listChildNames(it, trackUriString, label = "setup_root_children") }}"
+        logWorkspaceSuccess(
+            stage = "resolve_saf_${spec.stageKey}_dir",
+            snapshot = snapshot,
+            finalPath = safeTargetDir.uri.toString()
         )
-        if (setupRootDoc != null) {
-            if (matchesDirAlias(setupRootDoc, listOf("SPL_Music", "spl_music"))) {
-                LyricsPerf.mark(
-                    trackUriString,
-                    "saf_root_resolve_done",
-                    "ms=${SystemClock.elapsedRealtime() - rootResolveStartMs} source=setup_root root=${setupRootDoc.uri}"
-                )
-                return setupRootDoc
-            }
-            val splRoot = findDirByAliases(
-                parent = setupRootDoc,
-                aliases = listOf("SPL_Music", "spl_music"),
-                trackUriString = trackUriString,
-                stage = "resolve_setup_spl_root"
-            )
-            Log.d("LrcDebug", "LYRICS_SAF_DIR setupSplRoot=${splRoot?.uri}")
-            if (splRoot != null && splRoot.isDirectory && splRoot.canRead()) {
-                LyricsPerf.mark(
-                    trackUriString,
-                    "saf_root_resolve_done",
-                    "ms=${SystemClock.elapsedRealtime() - rootResolveStartMs} source=setup_child root=${splRoot.uri}"
-                )
-                return splRoot
-            }
-        }
-
-        LyricsPerf.mark(
-            trackUriString,
-            "saf_root_resolve_done",
-            "ms=${SystemClock.elapsedRealtime() - rootResolveStartMs} source=requested_fallback root=${requestedRootDoc?.uri}"
-        )
-        return requestedRootDoc
+        return safeTargetDir.takeIf { it.isDirectory && it.canRead() }
     }
 
     private fun findDirByAliases(
@@ -573,6 +796,29 @@ object LrcStorage {
             "stage=$stage ms=${SystemClock.elapsedRealtime() - listStartMs} dir=${parent.uri} childCount=${children.size} result=${result?.uri}"
         )
         return result
+    }
+
+    private fun ensureDirByAliases(
+        parent: DocumentFile,
+        preferredName: String,
+        aliases: List<String>,
+        trackUriString: String? = null,
+        stage: String = "ensure_dir_by_aliases"
+    ): DocumentFile? {
+        findDirByAliases(
+            parent = parent,
+            aliases = listOf(preferredName) + aliases,
+            trackUriString = trackUriString,
+            stage = stage
+        )?.let { return it }
+
+        val created = runCatching { parent.createDirectory(preferredName) }.getOrNull()
+        LyricsPerf.mark(
+            trackUriString,
+            "saf_create_dir_done",
+            "stage=$stage parent=${parent.uri} name=$preferredName created=${created?.uri}"
+        )
+        return created?.takeIf { it.isDirectory && it.canRead() }
     }
 
     private fun matchesDirAlias(dir: DocumentFile, aliases: List<String>): Boolean {
@@ -782,6 +1028,17 @@ object LrcStorage {
         return fileNameForTrack(trackUriString)
     }
 
+    private fun resolveSafFileByNames(
+        dir: DocumentFile,
+        targetNames: List<String>
+    ): DocumentFile? {
+        val files = listSafFiles(dir)
+        targetNames.forEach { name ->
+            findFileIgnoreCaseOrLrcTxt(files, name)?.let { return it }
+        }
+        return null
+    }
+
     private fun saveToConfiguredFolder(
         context: Context,
         dir: DocumentFile,
@@ -805,10 +1062,24 @@ object LrcStorage {
 
     private fun readSafText(context: Context, file: DocumentFile, trackUriString: String? = null): String? {
         val readStartMs = SystemClock.elapsedRealtime()
+        val snapshot = resolveWorkspaceSnapshot(context)
         val text = runCatching {
             context.contentResolver.openInputStream(file.uri)
                 ?.bufferedReader(Charsets.UTF_8)
                 ?.use { it.readText() }
+        }.onSuccess {
+            logWorkspaceSuccess(
+                stage = "read_saf_lyrics",
+                snapshot = snapshot,
+                finalPath = file.uri.toString()
+            )
+        }.onFailure {
+            logWorkspaceFailure(
+                stage = "read_saf_lyrics",
+                snapshot = snapshot,
+                finalPath = file.uri.toString(),
+                error = "read_failed"
+            )
         }.getOrNull()
         LyricsPerf.mark(
             trackUriString,
@@ -946,6 +1217,40 @@ object LrcStorage {
             .getString(md5(trackUriString), null)
     }
 
+    private fun resolveAccordsReadTargetNames(
+        trackUriString: String,
+        preferredLrcFileName: String?
+    ): List<String> {
+        val preferred = preferredLrcFileName?.trim().orEmpty()
+        if (preferred.isNotBlank()) return listOf(preferred)
+        val sidecar = sidecarNameForTrack(trackUriString)
+        val hashed = fileNameForTrack(trackUriString)
+        return linkedSetOf(sidecar, hashed).toList()
+    }
+
+    private fun resolveAccordsDeleteTargetNames(
+        trackUriString: String,
+        preferredLrcFileName: String?
+    ): Set<String> {
+        return linkedSetOf<String>().apply {
+            preferredLrcFileName?.trim()?.takeIf { it.isNotBlank() }?.let { add(it) }
+            add(fileNameForTrack(trackUriString))
+            add(sidecarNameForTrack(trackUriString))
+        }
+    }
+
+    private fun resolveAccordsFileNameForTrack(
+        context: Context,
+        trackUriString: String,
+        preferredLrcFileName: String?
+    ): String {
+        preferredLrcFileName?.trim()?.takeIf { it.isNotBlank() }?.let { return it }
+        resolveOriginForTrack(context, trackUriString)?.fileName
+            ?.takeIf { it.isNotBlank() }
+            ?.let { return it }
+        return fileNameForTrack(trackUriString)
+    }
+
     private fun loadFromSmpSongFolder(context: Context, trackUriString: String): SmpResolvedLyrics? {
         return resolveSmpLyricsTarget(context, trackUriString, requireExisting = true)
     }
@@ -955,6 +1260,58 @@ object LrcStorage {
         trackUriString: String,
         requireExisting: Boolean
     ): SmpResolvedLyrics? {
+        return resolveSmpTextTarget(
+            context = context,
+            trackUriString = trackUriString,
+            transportNameSelector = { null },
+            fallbackName = "lyrics.lrc",
+            requireExisting = requireExisting
+        )
+    }
+
+    private fun resolveSmpAccordsTarget(
+        context: Context,
+        trackUriString: String,
+        requireExisting: Boolean
+    ): SmpResolvedLyrics? {
+        return resolveSmpTextTarget(
+            context = context,
+            trackUriString = trackUriString,
+            transportNameSelector = { it.files?.chords },
+            fallbackName = "chords.lrc",
+            requireExisting = requireExisting
+        )
+    }
+
+    private fun resolveSmpTextTarget(
+        context: Context,
+        trackUriString: String,
+        transportNameSelector: (SmpConfig) -> String?,
+        fallbackName: String,
+        requireExisting: Boolean
+    ): SmpResolvedLyrics? {
+        val songDir = resolveSmpRuntimeSongDir(context, trackUriString) ?: return null
+        val configFile = File(songDir, "config.json")
+        val config = runCatching {
+            SmpConfig.fromJsonOrNull(configFile.readText(Charsets.UTF_8))
+        }.getOrNull() ?: return null
+
+        val transportName = transportNameSelector(config)?.trim().takeUnless { it.isNullOrBlank() } ?: fallbackName
+        val targetFile = resolveSongUnitChildFile(songDir, transportName) ?: return null
+        if (requireExisting && !targetFile.isFile) {
+            return null
+        }
+
+        return SmpResolvedLyrics(
+            file = targetFile,
+            fileName = targetFile.name
+        )
+    }
+
+    private fun resolveSmpRuntimeSongDir(
+        context: Context,
+        trackUriString: String
+    ): File? {
         val trackUri = runCatching { Uri.parse(trackUriString) }.getOrNull() ?: return null
         if (trackUri.scheme != "file") return null
 
@@ -984,15 +1341,7 @@ object LrcStorage {
             return null
         }
 
-        val lyricsFile = resolveSongUnitChildFile(songDir, "lyrics.lrc") ?: return null
-        if (requireExisting && !lyricsFile.isFile) {
-            return null
-        }
-
-        return SmpResolvedLyrics(
-            file = lyricsFile,
-            fileName = lyricsFile.name
-        )
+        return songDir
     }
 
     private fun resolveSongUnitChildFile(songDir: File, transportName: String): File? {
@@ -1025,37 +1374,115 @@ object LrcStorage {
     // ------------------------------------------------------------
 
     private fun isSafBackend(context: Context): Boolean {
-        return BackupFolderPrefs.getLibraryRootUri(context)?.scheme == "content"
+        val snapshot = WorkspaceResolver.resolve(context)
+        return snapshot.mode == StorageModePrefs.Mode.SAF
     }
 
     private fun logLyricsBackend(context: Context, safOnlyBackend: Boolean) {
-        val rootUri = BackupFolderPrefs.getLibraryRootUri(context)
-        if (safOnlyBackend) {
-            Log.d("LrcDebug", "LYRICS_BACKEND SAF rootUri=$rootUri")
-        } else {
-            Log.d("LrcDebug", "LYRICS_BACKEND APP_PRIVATE rootUri=$rootUri")
-        }
+        val snapshot = resolveWorkspaceSnapshot(context)
+        logWorkspaceSuccess(
+            stage = if (safOnlyBackend) "backend_saf" else "backend_file",
+            snapshot = snapshot,
+            finalPath = snapshot.workspaceRootUri?.toString()
+        )
     }
 
-    private fun getInternalSplRoot(context: Context): File {
-        val rootUri = BackupFolderPrefs.getLibraryRootUri(context)
-        val fromPrefs = if (rootUri?.scheme == "file" && !rootUri.path.isNullOrBlank()) {
-            File(rootUri.path!!)
-        } else null
+    private fun getInternalSplRoot(context: Context): File? {
+        val snapshot = resolveWorkspaceSnapshot(context)
+        val rootUri = snapshot.workspaceRootUri
+        if (
+            snapshot.mode != StorageModePrefs.Mode.INTERNAL ||
+            !snapshot.isUsable ||
+            rootUri == null ||
+            rootUri.scheme != "file" ||
+            rootUri.path.isNullOrBlank()
+        ) {
+            logWorkspaceFailure(
+                stage = "resolve_internal_root",
+                snapshot = snapshot,
+                error = "workspace_root_unavailable"
+            )
+            return null
+        }
 
-        val root = fromPrefs ?: File(context.getExternalFilesDir(null), "SPL_Music")
-        if (!root.exists()) root.mkdirs()
+        val root = runCatching { File(rootUri.path!!).canonicalFile }.getOrNull()
+        if (root == null || !root.exists() || !root.isDirectory) {
+            logWorkspaceFailure(
+                stage = "resolve_internal_root",
+                snapshot = snapshot,
+                finalPath = root?.absolutePath,
+                error = "workspace_root_unreadable"
+            )
+            return null
+        }
+        logWorkspaceSuccess(
+            stage = "resolve_internal_root",
+            snapshot = snapshot,
+            finalPath = root.absolutePath
+        )
         return root
     }
 
-    private fun internalSplLyricsDirs(context: Context): Pair<File, File> {
-        val backingTracks = File(getInternalSplRoot(context), "BackingTracks")
-        if (!backingTracks.exists()) backingTracks.mkdirs()
+    private fun internalSplLyricsDirs(
+        context: Context,
+        createIfMissing: Boolean
+    ): Pair<File, File>? {
+        return internalSplDirs(context, createIfMissing, lyricsFolderSpec)
+    }
 
-        val upper = File(backingTracks, "Lyrics")
-        val lower = File(backingTracks, "lyrics")
-        if (!upper.exists()) upper.mkdirs()
-        if (!lower.exists()) lower.mkdirs()
+    private fun internalSplAccordsDirs(
+        context: Context,
+        createIfMissing: Boolean
+    ): Pair<File, File>? {
+        return internalSplDirs(context, createIfMissing, accordsFolderSpec)
+    }
+
+    private fun internalSplDirs(
+        context: Context,
+        createIfMissing: Boolean,
+        spec: WorkspaceFolderSpec
+    ): Pair<File, File>? {
+        val snapshot = resolveWorkspaceSnapshot(context)
+        val root = getInternalSplRoot(context) ?: return null
+        val backingTracks = sequenceOf(
+            File(root, "BackingTracks"),
+            File(root, "BackingTrack")
+        ).firstOrNull { it.exists() && it.isDirectory }
+            ?: if (createIfMissing) {
+                File(root, "BackingTracks").apply { mkdirs() }
+            } else {
+                null
+            }
+            ?: run {
+                logWorkspaceFailure(
+                    stage = "resolve_internal_${spec.stageKey}_dir",
+                    snapshot = snapshot,
+                    finalPath = root.absolutePath,
+                    error = "backing_tracks_missing"
+                )
+                return null
+            }
+        val upper = File(backingTracks, spec.preferredName)
+        val lower = File(backingTracks, spec.aliasName)
+        if (createIfMissing) {
+            if (!upper.exists()) upper.mkdirs()
+            if (!lower.exists()) lower.mkdirs()
+        }
+        if ((!upper.exists() || !upper.isDirectory) && (!lower.exists() || !lower.isDirectory)) {
+            logWorkspaceFailure(
+                stage = "resolve_internal_${spec.stageKey}_dir",
+                snapshot = snapshot,
+                finalPath = backingTracks.absolutePath,
+                error = "${spec.stageKey}_dir_unavailable"
+            )
+            return null
+        }
+        logWorkspaceSuccess(
+            stage = "resolve_internal_${spec.stageKey}_dir",
+            snapshot = snapshot,
+            finalPath = upper.takeIf { it.exists() && it.isDirectory }?.absolutePath
+                ?: lower.takeIf { it.exists() && it.isDirectory }?.absolutePath
+        )
         return upper to lower
     }
 
@@ -1065,55 +1492,146 @@ object LrcStorage {
     }
 
     private fun loadFromInternalSplFolder(context: Context, trackUriString: String): String? {
-        val (upperDir, lowerDir) = internalSplLyricsDirs(context)
-        val name = sidecarNameForTrack(trackUriString)
-
-        val upper = File(upperDir, name)
-        if (upper.exists() && upper.isFile) {
-            Log.d(TAG, "mode INTERNAL SPL load path=${upper.absolutePath}")
-            return runCatching { upper.readText(Charsets.UTF_8) }.getOrNull()
-        }
-
-        val lower = File(lowerDir, name)
-        if (lower.exists() && lower.isFile) {
-            Log.d(TAG, "mode INTERNAL SPL load path=${lower.absolutePath}")
-            return runCatching { lower.readText(Charsets.UTF_8) }.getOrNull()
-        }
-
-        return null
+        return readFromInternalDirsByNames(
+            context = context,
+            dirs = internalSplLyricsDirs(context, createIfMissing = false) ?: return null,
+            targetNames = listOf(sidecarNameForTrack(trackUriString)),
+            stageKey = lyricsFolderSpec.stageKey
+        )
     }
 
     private fun saveToInternalSplFolder(context: Context, trackUriString: String, text: String): Boolean {
-        val (upperDir, _) = internalSplLyricsDirs(context)
-        val outFile = File(upperDir, sidecarNameForTrack(trackUriString))
+        return saveToInternalDirsByName(
+            context = context,
+            dirs = internalSplLyricsDirs(context, createIfMissing = true) ?: return false,
+            targetName = sidecarNameForTrack(trackUriString),
+            text = text,
+            stageKey = lyricsFolderSpec.stageKey
+        )
+    }
+
+    private fun readFromInternalDirsByNames(
+        context: Context,
+        dirs: Pair<File, File>,
+        targetNames: List<String>,
+        stageKey: String
+    ): String? {
+        val cleanTargetNames = targetNames.map { it.trim() }.filter { it.isNotBlank() }
+        if (cleanTargetNames.isEmpty()) return null
+        val (upperDir, lowerDir) = dirs
+        val candidates = cleanTargetNames.flatMap { name ->
+            listOf(File(upperDir, name), File(lowerDir, name))
+        }
+        candidates.firstOrNull { it.exists() && it.isFile }?.let { file ->
+            Log.d(TAG, "mode INTERNAL ${stageKey.uppercase()} load path=${file.absolutePath}")
+            return runCatching { file.readText(Charsets.UTF_8) }
+                .onSuccess {
+                    logWorkspaceSuccess(
+                        stage = "load_internal_$stageKey",
+                        snapshot = resolveWorkspaceSnapshot(context),
+                        finalPath = file.absolutePath
+                    )
+                }
+                .onFailure {
+                    logWorkspaceFailure(
+                        stage = "load_internal_$stageKey",
+                        snapshot = resolveWorkspaceSnapshot(context),
+                        finalPath = file.absolutePath,
+                        error = "read_failed"
+                    )
+                }
+                .getOrNull()
+        }
+        return null
+    }
+
+    private fun saveToInternalDirsByName(
+        context: Context,
+        dirs: Pair<File, File>,
+        targetName: String,
+        text: String,
+        stageKey: String
+    ): Boolean {
+        val cleanTargetName = targetName.trim()
+        if (cleanTargetName.isBlank()) return false
+        val (upperDir, _) = dirs
+        val outFile = File(upperDir, cleanTargetName)
         return runCatching {
             outFile.writeText(text, Charsets.UTF_8)
-            Log.d(TAG, "mode INTERNAL SPL save path=${outFile.absolutePath}")
+            logWorkspaceSuccess(
+                stage = "save_internal_$stageKey",
+                snapshot = resolveWorkspaceSnapshot(context),
+                finalPath = outFile.absolutePath
+            )
+            Log.d(TAG, "mode INTERNAL ${stageKey.uppercase()} save path=${outFile.absolutePath}")
             true
+        }.onFailure {
+            logWorkspaceFailure(
+                stage = "save_internal_$stageKey",
+                snapshot = resolveWorkspaceSnapshot(context),
+                finalPath = outFile.absolutePath,
+                error = "write_failed"
+            )
         }.getOrDefault(false)
     }
 
-    // ------------------------------------------------------------
-    // Cache interne : context.filesDir/lrc_cache
-    // ------------------------------------------------------------
-
-    private fun internalFile(context: Context, trackUriString: String): File {
-        val dir = File(context.filesDir, CACHE_DIR)
-        if (!dir.exists()) dir.mkdirs()
-        return File(dir, fileNameForTrack(trackUriString))
+    private fun deleteFromInternalDirsByNames(
+        context: Context,
+        dirs: Pair<File, File>,
+        targetNames: Set<String>,
+        stageKey: String
+    ): Boolean {
+        val cleanTargetNames = targetNames.map { it.trim() }.filter { it.isNotBlank() }
+        if (cleanTargetNames.isEmpty()) return false
+        val (upperDir, lowerDir) = dirs
+        var deletedAny = false
+        cleanTargetNames.forEach { name ->
+            listOf(File(upperDir, name), File(lowerDir, name)).forEach { file ->
+                if (file.delete()) {
+                    deletedAny = true
+                    logWorkspaceSuccess(
+                        stage = "delete_internal_$stageKey",
+                        snapshot = resolveWorkspaceSnapshot(context),
+                        finalPath = file.absolutePath
+                    )
+                }
+            }
+        }
+        return deletedAny
     }
 
-    private fun loadFromInternalCache(context: Context, trackUriString: String): String? {
-        val f = internalFile(context, trackUriString)
-        if (!f.exists() || !f.isFile) return null
-        return runCatching { f.readText(Charsets.UTF_8) }.getOrNull()
+    private fun resolveWorkspaceSnapshot(context: Context): WorkspaceResolver.Snapshot {
+        return WorkspaceResolver.resolve(context)
     }
 
-    private fun saveToInternalCache(context: Context, trackUriString: String, text: String): Boolean {
-        return runCatching {
-            internalFile(context, trackUriString).writeText(text, Charsets.UTF_8)
-            true
-        }.getOrDefault(false)
+    private fun logWorkspaceSuccess(
+        stage: String,
+        snapshot: WorkspaceResolver.Snapshot,
+        finalPath: String?
+    ) {
+        Log.i(
+            WORKSPACE_LOG_TAG,
+            "stage=$stage mode=${workspaceModeLabel(snapshot)} status=${snapshot.status} root=${snapshot.workspaceRootUri} path=$finalPath error=null detail=${snapshot.detail}"
+        )
+    }
+
+    private fun logWorkspaceFailure(
+        stage: String,
+        snapshot: WorkspaceResolver.Snapshot,
+        finalPath: String? = null,
+        error: String
+    ) {
+        Log.w(
+            WORKSPACE_LOG_TAG,
+            "stage=$stage mode=${workspaceModeLabel(snapshot)} status=${snapshot.status} root=${snapshot.workspaceRootUri} path=$finalPath error=$error detail=${snapshot.detail}"
+        )
+    }
+
+    private fun workspaceModeLabel(snapshot: WorkspaceResolver.Snapshot): String {
+        return when (snapshot.mode) {
+            StorageModePrefs.Mode.SAF -> "SAF"
+            StorageModePrefs.Mode.INTERNAL -> "FILE"
+        }
     }
 
     // ------------------------------------------------------------

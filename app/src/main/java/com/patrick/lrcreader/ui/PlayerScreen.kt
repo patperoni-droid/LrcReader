@@ -4,12 +4,8 @@ package com.patrick.lrcreader.ui
 
 import android.util.Log
 import android.widget.Toast
-import android.provider.MediaStore
 import java.io.File
-import android.provider.DocumentsContract
 import android.net.Uri
-import androidx.documentfile.provider.DocumentFile
-import com.patrick.lrcreader.core.BackupFolderPrefsSaf
 import com.patrick.lrcreader.core.LyricsPerf
 import com.patrick.lrcreader.core.readSyltAsLrcFromUri
 import com.patrick.lrcreader.core.readUsltFromUri
@@ -60,7 +56,6 @@ import androidx.compose.ui.unit.sp
 import androidx.media3.exoplayer.ExoPlayer
 import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.core.AutoReturnPrefs
-import com.patrick.lrcreader.core.BackupFolderPrefs
 import com.patrick.lrcreader.core.AccordsEnsureResult
 import com.patrick.lrcreader.core.AccordsUiTruth
 import com.patrick.lrcreader.core.DisplayPrefs
@@ -116,6 +111,7 @@ import kotlin.math.min
 
 private const val DEFAULT_TIMELINE_LIGHT_CUE_ARGB = 0xFFFF0000L
 private const val DMX_PLAYBACK_POLL_INTERVAL_MS = 20L
+private const val PLAYER_LRC_TAG = "PLAYER_LRC"
 
 @Composable
 fun PlayerScreen(
@@ -194,7 +190,7 @@ fun PlayerScreen(
     }
     val isCurrentTrackSmp = remember(context, currentTrackUri) {
         currentTrackUri?.let { trackUri ->
-            resolveInternalSmpSongDir(context, trackUri) != null
+            LrcStorage.isSmpRuntimeTrack(context, trackUri)
         } ?: false
     }
     val midiMonitorEvent = remember(lastTriggeredMidiProgramChange, currentTrackUri) {
@@ -633,42 +629,34 @@ fun PlayerScreen(
         LatestAccordsWriteQueue<AccordsWriteRequest>(
             scope = scope
         ) { request ->
-            val preflightStage = resolveAccordsSafWritePreflightStage(context)
-            val ioResult = if (!preflightStage.isNullOrBlank()) {
+            val ioResult = runCatching {
+                runAccordsSaveIo(
+                    writeAccords = {
+                        writeAccordsToSplByTrackUri(
+                            context = context,
+                            trackUriString = request.trackUriString,
+                            preferredLrcFileName = request.preferredLrcFileName,
+                            lines = request.lines
+                        )
+                    },
+                    ensureLyricsTwin = { writtenName ->
+                        val ensureResult = ensureLyricsFileExistsForTrack(
+                            context = context,
+                            trackUriString = request.trackUriString,
+                            preferredLrcFileName = writtenName
+                        )
+                        Log.d(
+                            PLAYER_LRC_TAG,
+                            "ensure_lyrics_twin trackUri=${request.trackUriString} target=$writtenName result=$ensureResult"
+                        )
+                        ensureResult
+                    }
+                )
+            }.getOrElse {
                 com.patrick.lrcreader.core.AccordsIoResult(
                     success = false,
-                    stage = preflightStage
+                    stage = "exception:${it::class.simpleName ?: "Unknown"}"
                 )
-            } else {
-                runCatching {
-                    runAccordsSaveIo(
-                        writeAccords = {
-                            writeAccordsToSplByTrackUri(
-                                context = context,
-                                trackUriString = request.trackUriString,
-                                preferredLrcFileName = request.preferredLrcFileName,
-                                lines = request.lines
-                            )
-                        },
-                        ensureLyricsTwin = { writtenName ->
-                            val ensureResult = ensureLyricsFileExistsForTrack(
-                                context = context,
-                                trackUriString = request.trackUriString,
-                                preferredLrcFileName = writtenName
-                            )
-                            Log.d(
-                                "LrcDebug",
-                                "ACCORDS_ENSURE_LYRICS trackUri=${request.trackUriString} target=$writtenName result=$ensureResult"
-                            )
-                            ensureResult
-                        }
-                    )
-                }.getOrElse {
-                    com.patrick.lrcreader.core.AccordsIoResult(
-                        success = false,
-                        stage = "exception:${it::class.simpleName ?: "Unknown"}"
-                    )
-                }
             }
 
             scope.launch {
@@ -774,9 +762,7 @@ fun PlayerScreen(
             return@LaunchedEffect
         }
 
-        val cacheScopeKey = (BackupFolderPrefsSaf.getLibraryRootUri(context)
-            ?: BackupFolderPrefs.getLibraryRootUri(context))
-            ?.toString()
+        val cacheScopeKey = LrcStorage.currentWorkspaceScopeKey(context)
         LyricsMemoryCache.updateScope(cacheScopeKey)
         val cachedLyrics = LyricsMemoryCache.get(currentTrackUri)
         if (cachedLyrics != null) {
@@ -790,7 +776,7 @@ fun PlayerScreen(
 
         val trackUri = runCatching { Uri.parse(currentTrackUri) }.getOrNull()
         val audioBase = baseNameFromTrackUriString(currentTrackUri)
-        val preferExternalLyricsFirst = BackupFolderPrefs.getLibraryRootUri(context)?.scheme == "content"
+        val preferExternalLyricsFirst = LrcStorage.isWorkspaceSaf(context)
         resolvedSource = "NONE"
         Log.d("LrcDebug", "TRACK uriString=$currentTrackUri")
         Log.d("LrcDebug", "TRACK uriParsed=$trackUri scheme=${trackUri?.scheme} authority=${trackUri?.authority}")
@@ -841,6 +827,7 @@ fun PlayerScreen(
 
         suspend fun tryStoredLyrics(): Boolean {
             val storedLoadStartMs = android.os.SystemClock.elapsedRealtime()
+            Log.d(PLAYER_LRC_TAG, "load_lyrics trackUri=$currentTrackUri")
             val stored = withContext(Dispatchers.IO) {
                 LrcStorage.loadForTrack(context, currentTrackUri)
             }
@@ -901,7 +888,12 @@ fun PlayerScreen(
             val sidecarReadStartMs = android.os.SystemClock.elapsedRealtime()
             val sidecarLrcResult: LrcTextWithFileName? = if (trackUri != null) {
                 withContext(Dispatchers.IO) {
-                    runCatching { readSidecarLrcSmart(context, trackUri) }.getOrNull()
+                    runCatching {
+                        readSidecarLrcSmart(
+                            context = context,
+                            trackUriString = currentTrackUri
+                        )
+                    }.getOrNull()
                 }
             } else null
             LyricsPerf.mark(
@@ -1409,13 +1401,7 @@ fun PlayerScreen(
                             return@persistLines false
                         }
 
-                        val isSmpAccordsTrack = resolveSmpSongUnitTextTarget(
-                            context = context,
-                            trackUriString = lockedTrackUri,
-                            transportNameSelector = { it.files?.chords },
-                            fallbackName = "chords.lrc",
-                            requireExisting = false
-                        ) != null
+                        val isSmpAccordsTrack = LrcStorage.isSmpRuntimeTrack(context, lockedTrackUri)
                         val saveOutcome = withContext(Dispatchers.IO) {
                             runCatching {
                                 val migration = if (isSmpAccordsTrack) {
@@ -1539,13 +1525,7 @@ fun PlayerScreen(
                     currentTrackUri?.let { trackUri ->
                         val preferredAtSave = resolvedLyricsLrcFileName
                         val saveStartMs = android.os.SystemClock.elapsedRealtime()
-                        val isAlreadySmpTrack = resolveSmpSongUnitTextTarget(
-                            context = context,
-                            trackUriString = trackUri,
-                            transportNameSelector = { null },
-                            fallbackName = "lyrics.lrc",
-                            requireExisting = false
-                        ) != null
+                        val isAlreadySmpTrack = LrcStorage.isSmpRuntimeTrack(context, trackUri)
                         LyricsMemoryCache.invalidate(trackUri)
                         Log.d(
                             "LrcDebug",
@@ -1562,6 +1542,10 @@ fun PlayerScreen(
                                 if (targetTrackUri != trackUri) {
                                     LyricsMemoryCache.invalidate(targetTrackUri)
                                 }
+                                Log.d(
+                                    PLAYER_LRC_TAG,
+                                    "save_lyrics trackUri=$targetTrackUri lines=${lines.size}"
+                                )
                                 val saved = LrcStorage.saveForTrack(
                                     context = context,
                                     trackUriString = targetTrackUri,
@@ -1643,13 +1627,7 @@ fun PlayerScreen(
                             return@deletePersisted false
                         }
 
-                        val isSmpAccordsTrack = resolveSmpSongUnitTextTarget(
-                            context = context,
-                            trackUriString = lockedTrackUri,
-                            transportNameSelector = { it.files?.chords },
-                            fallbackName = "chords.lrc",
-                            requireExisting = false
-                        ) != null
+                        val isSmpAccordsTrack = LrcStorage.isSmpRuntimeTrack(context, lockedTrackUri)
                         if (isSmpAccordsTrack) {
                             val initialIo = withContext(Dispatchers.IO) {
                                 runCatching {
@@ -1781,6 +1759,7 @@ fun PlayerScreen(
                         LyricsMemoryCache.invalidate(trackUri)
                         val deleted = withContext(Dispatchers.IO) {
                             runCatching {
+                                Log.d(PLAYER_LRC_TAG, "delete_lyrics trackUri=$trackUri")
                                 LrcStorage.deleteForTrack(context, trackUri)
                                 LrcStorage.loadForTrack(context, trackUri).isNullOrBlank()
                             }.getOrDefault(false)
@@ -2638,7 +2617,7 @@ private fun ReaderHeader(
 
 private data class LrcTextWithFileName(
     val text: String,
-    val fileName: String,
+    val fileName: String?,
     val debugPath: String? = null
 )
 
@@ -2966,140 +2945,21 @@ private data class AccordsWriteRequest(
     val lines: List<LrcLine>
 )
 
-private fun readSidecarLrcNearTrack(context: android.content.Context, trackUri: Uri): LrcTextWithFileName? {
-    // trackUri = content://com.android.externalstorage.documents/tree/.../document/...
-    val docId = runCatching { DocumentsContract.getDocumentId(trackUri) }.getOrNull() ?: return null
-
-    // docId ressemble à: primary:Documents/SPL_Music/BackingTracks/audio/RED RED WINE-31.wav
-    val slash = docId.lastIndexOf('/')
-    if (slash <= 0) return null
-
-    val parentDocId = docId.substring(0, slash)
-    val fileName = docId.substring(slash + 1)
-    val baseName = fileName.substringBeforeLast('.', fileName).trim()
-
-    if (baseName.isBlank()) return null
-
-    // On cherche un .lrc avec le même nom de base
-    val targetLrcName = "$baseName.lrc"
-
-    val cr = context.contentResolver
-
-    // ✅ IMPORTANT : childrenUri doit être construit avec le TREE uri (trackUri), pas avec parentUri
-    val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(
-        trackUri,
-        parentDocId
-    )
-
-    val projection = arrayOf(
-        DocumentsContract.Document.COLUMN_DOCUMENT_ID,
-        DocumentsContract.Document.COLUMN_DISPLAY_NAME
-    )
-
-    cr.query(childrenUri, projection, null, null, null)?.use { c ->
-        val idCol = c.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
-        val nameCol = c.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
-
-        while (c.moveToNext()) {
-            val childId = c.getString(idCol)
-            val childName = (c.getString(nameCol) ?: "")
-
-            if (childName.equals(targetLrcName, ignoreCase = true)) {
-                // ✅ Pour ouvrir le fichier, on reconstruit une URI document via le TREE
-                val lrcUri = DocumentsContract.buildDocumentUriUsingTree(trackUri, childId)
-                val text = cr.openInputStream(lrcUri)
-                    ?.bufferedReader(Charsets.UTF_8)
-                    ?.use { it.readText() }
-                    ?: return null
-                return LrcTextWithFileName(
-                    text = text,
-                    fileName = childName,
-                    debugPath = lrcUri.toString()
-                )
-            }
-        }
-    }
-
-    // 🔥 NOUVEAU fallback : si le .lrc n’est pas "à côté", on tente SPL_Music/BackingTracks/lyrics
-    return readLrcFromSplLyricsByBaseNameWithMatch(context, baseName)
-}
-
-private fun readSidecarLrcSmart(context: android.content.Context, trackUri: Uri): LrcTextWithFileName? {
-    // 1) Si c’est un SAF tree (DocumentsContract) : on utilise la méthode SAF
-    val isDoc = runCatching { DocumentsContract.isDocumentUri(context, trackUri) }.getOrDefault(false)
-    if (isDoc) {
-        // readSidecarLrcNearTrack inclut maintenant le fallback SPL_Music/lyrics
-        return readSidecarLrcNearTrack(context, trackUri)
-    }
-
-    // 2) Si c’est un MediaStore content://media/... : essayer d’obtenir un chemin fichier
-    if (trackUri.scheme == "content" && trackUri.authority == MediaStore.AUTHORITY) {
-        val path = queryMediaStoreDataPath(context, trackUri)
-        if (!path.isNullOrBlank()) {
-            // readSidecarFromFilePath inclut maintenant le fallback SPL_Music/lyrics
-            return readSidecarFromFilePath(context, path)
-        }
-        return null
-    }
-
-    // 3) Si c’est file://... : chemin direct
-    if (trackUri.scheme == "file") {
-        val path = trackUri.path
-        if (!path.isNullOrBlank()) return readSidecarFromFilePath(context, path)
-    }
-
-    return null
-}
-
-/**
- * Ancien comportement : chercher "<base>.lrc" dans le même dossier que l’audio.
- * 🔥 NOUVEAU : si pas trouvé, on tente SPL_Music/BackingTracks/lyrics et /Lyrics.
- */
-private fun readSidecarFromFilePath(context: android.content.Context, mp3Path: String): LrcTextWithFileName? {
-    val mp3File = File(mp3Path)
-    if (!mp3File.exists()) return null
-
-    val base = mp3File.nameWithoutExtension.trim()
-    if (base.isBlank()) return null
-
-    val lrcFile = File(mp3File.parentFile, "$base.lrc")
-    if (lrcFile.exists() && lrcFile.isFile) {
-        val text = runCatching { lrcFile.readText(Charsets.UTF_8) }.getOrNull() ?: return null
-        return LrcTextWithFileName(
-            text = text,
-            fileName = lrcFile.name,
-            debugPath = lrcFile.absolutePath
-        )
-    }
-
-    // 🔥 fallback SPL_Music/BackingTracks/lyrics
-    return readLrcFromSplLyricsByBaseNameWithMatch(context, base)
-}
-
-/**
- * 🔥 NOUVEAU : lecture .lrc dans
- * /Android/data/<package>/files/SPL_Music/BackingTracks/lyrics/<base>.lrc
- * + fallback /Lyrics (différence de casse)
- *
- * But : vieux téléphone => tu stockes les .lrc séparés dans BackingTracks/lyrics.
- * Aucun impact sur le téléphone concert si ce dossier n’existe pas.
- */
-private fun readLrcFromSplLyricsByBaseName(
+private fun readSidecarLrcSmart(
     context: android.content.Context,
-    baseName: String
-): String? {
-    return readLrcFromSplLyricsByBaseNameWithMatch(context, baseName)?.text
-}
-
-private fun readLrcFromSplLyricsByBaseNameWithMatch(
-    context: android.content.Context,
-    baseName: String
+    trackUriString: String?
 ): LrcTextWithFileName? {
-    return readLrcFromSplFolderByBaseName(
-        context = context,
-        baseName = baseName,
-        folderAliases = listOf("lyrics", "Lyrics"),
-        ensureFolderName = "Lyrics"
+    val safeTrackUri = trackUriString?.trim().orEmpty()
+    if (safeTrackUri.isBlank()) return null
+    Log.d(PLAYER_LRC_TAG, "load_lyrics_fallback trackUri=$safeTrackUri")
+    val text = LrcStorage.loadForTrack(context, safeTrackUri) ?: return null
+    val origin = runCatching {
+        LrcStorage.resolveOriginForTrack(context, safeTrackUri)
+    }.getOrNull()
+    return LrcTextWithFileName(
+        text = text,
+        fileName = origin?.fileName,
+        debugPath = origin?.debugPath
     )
 }
 
@@ -3108,98 +2968,14 @@ private fun readAccordsFromSplByTrackUri(
     trackUriString: String,
     preferredLrcFileName: String?
 ): String? {
-    val smpAccords = readAccordsFromSmpSongFolder(context, trackUriString)
-    if (smpAccords != null) {
-        Log.d(
-            "LrcDebug",
-            "ACCORDS_LOOKUP hit SMP fileName=${smpAccords.fileName} path=${smpAccords.debugPath}"
-        )
-        Log.d("LrcDebug", "CHORDS_SOURCE_TYPE smp")
-        return smpAccords.text
-    }
-
-    LrcStorage.logTrackNameDiagnostics(context, trackUriString, stage = "ACCORDS_LOOKUP")
-    val fallbackBaseName = baseNameFromTrackUriString(trackUriString)
     Log.d(
-        "LrcDebug",
-        "ACCORDS_LOOKUP start uri=$trackUriString audioBaseName=$fallbackBaseName preferredLyricsFileName=$preferredLrcFileName"
+        PLAYER_LRC_TAG,
+        "load_accords trackUri=$trackUriString preferred=$preferredLrcFileName"
     )
-    val preferredTarget = resolveChordsLookupFileName(
-        exactLyricsFileName = preferredLrcFileName,
-        fallbackBaseName = fallbackBaseName
-    )
-    if (preferredTarget.isBlank()) return null
-    Log.d("LrcDebug", "ACCORDS_LOOKUP target=$preferredTarget")
-
-    val byPreferred = readLrcFromSplFolderByFileName(
-        context = context,
-        targetName = preferredTarget,
-        folderAliases = listOf("Accords", "accords"),
-        ensureFolderName = "Accords",
-        debugLookupLabel = "ACCORDS_LOOKUP"
-    )
-    if (byPreferred != null) {
-        val sourceType = if (!preferredLrcFileName.isNullOrBlank()) "canonical" else "legacy"
-        Log.d("LrcDebug", "CHORDS_SOURCE_TYPE $sourceType")
-        return byPreferred.text
-    }
-
-    if (!preferredLrcFileName.isNullOrBlank()) {
-        Log.d(
-            "LrcDebug",
-            "ACCORDS_LOOKUP miss preferred=$preferredTarget reason=no_match_for_runtime_resolved_lyrics_filename"
-        )
-        return null
-    }
-
-    val hashedTarget = LrcStorage.hashedFileNameForTrack(trackUriString)
-    val byHashedFallback = readLrcFromSplFolderByFileName(
-        context = context,
-        targetName = hashedTarget,
-        folderAliases = listOf("Accords", "accords"),
-        ensureFolderName = "Accords",
-        debugLookupLabel = "ACCORDS_LOOKUP_HASH_FALLBACK"
-    )
-    if (byHashedFallback != null) {
-        Log.d("LrcDebug", "ACCORDS_LOOKUP hit hashedFallback target=$hashedTarget")
-        Log.d("LrcDebug", "CHORDS_SOURCE_TYPE canonical")
-        return byHashedFallback.text
-    }
-
-    if (fallbackBaseName.isBlank()) return null
-    Log.d(
-        "LrcDebug",
-        "ACCORDS_LOOKUP fallback_to_audio_base fallbackBaseName=$fallbackBaseName reason=no_runtime_resolved_lyrics_filename"
-    )
-    val byBaseFallback = readLrcFromSplFolderByBaseName(
-        context = context,
-        baseName = fallbackBaseName,
-        folderAliases = listOf("Accords", "accords"),
-        ensureFolderName = "Accords",
-        debugLookupLabel = "ACCORDS_LOOKUP_FALLBACK"
-    )
-    if (byBaseFallback != null) {
-        Log.d("LrcDebug", "CHORDS_SOURCE_TYPE legacy")
-    }
-    return byBaseFallback?.text
-}
-
-private fun readAccordsFromSmpSongFolder(
-    context: android.content.Context,
-    trackUriString: String
-): LrcTextWithFileName? {
-    val chordsTarget = resolveSmpSongUnitTextTarget(
+    return LrcStorage.loadAccordsForTrack(
         context = context,
         trackUriString = trackUriString,
-        transportNameSelector = { it.files?.chords },
-        fallbackName = "chords.lrc",
-        requireExisting = true
-    ) ?: return null
-    val text = runCatching { chordsTarget.file.readText(Charsets.UTF_8) }.getOrNull() ?: return null
-    return LrcTextWithFileName(
-        text = text,
-        fileName = chordsTarget.fileName,
-        debugPath = chordsTarget.file.absolutePath
+        preferredLrcFileName = preferredLrcFileName
     )
 }
 
@@ -3316,46 +3092,18 @@ private fun ensureAccordsFileExistsForTrack(
     trackUriString: String,
     preferredLrcFileName: String?
 ): Boolean {
-    resolveSmpSongUnitTextTarget(
-        context = context,
-        trackUriString = trackUriString,
-        transportNameSelector = { it.files?.chords },
-        fallbackName = "chords.lrc",
-        requireExisting = false
-    )?.let { target ->
-        if (target.file.isFile) {
-            Log.d(
-                "LrcDebug",
-                "ACCORDS_ENSURE_FILE trackUri=$trackUriString target=${target.fileName} result=${AccordsEnsureResult.ALREADY_EXISTS}"
-            )
-            return false
-        }
-        val created = runCatching {
-            target.file.parentFile?.mkdirs()
-            target.file.writeText("", Charsets.UTF_8)
-            true
-        }.getOrDefault(false)
-        val result = if (created) AccordsEnsureResult.CREATED else AccordsEnsureResult.FAILED
-        Log.d(
-            "LrcDebug",
-            "ACCORDS_ENSURE_FILE trackUri=$trackUriString target=${target.fileName} result=$result"
-        )
-        return created
-    }
-
     val exactName = resolveExactLrcFileNameForTrack(
         context = context,
         trackUriString = trackUriString,
         preferredLrcFileName = preferredLrcFileName
     )
-    val ensureResult = ensureLrcFileExistsInFolder(
+    val ensureResult = LrcStorage.ensureAccordsFileForTrack(
         context = context,
-        targetName = exactName,
-        folderAliases = listOf("Accords", "accords"),
-        ensureFolderName = "Accords"
+        trackUriString = trackUriString,
+        preferredLrcFileName = preferredLrcFileName
     )
     Log.d(
-        "LrcDebug",
+        PLAYER_LRC_TAG,
         "ACCORDS_ENSURE_FILE trackUri=$trackUriString target=$exactName result=$ensureResult"
     )
     return ensureResult == AccordsEnsureResult.CREATED
@@ -3366,66 +3114,16 @@ private fun ensureLyricsFileExistsForTrack(
     trackUriString: String,
     preferredLrcFileName: String?
 ): AccordsEnsureResult {
-    resolveSmpSongUnitTextTarget(
-        context = context,
-        trackUriString = trackUriString,
-        transportNameSelector = { null },
-        fallbackName = "lyrics.lrc",
-        requireExisting = false
-    )?.let { target ->
-        if (target.file.isFile) {
-            return AccordsEnsureResult.ALREADY_EXISTS
-        }
-        val created = runCatching {
-            target.file.parentFile?.mkdirs()
-            target.file.writeText("", Charsets.UTF_8)
-            true
-        }.getOrDefault(false)
-        return if (created) {
-            AccordsEnsureResult.CREATED
-        } else {
-            AccordsEnsureResult.FAILED
-        }
-    }
-
-    val exactName = resolveExactLrcFileNameForTrack(
+    val ensureResult = LrcStorage.ensureLyricsFileForTrack(
         context = context,
         trackUriString = trackUriString,
         preferredLrcFileName = preferredLrcFileName
     )
-    return ensureLrcFileExistsInFolder(
-        context = context,
-        targetName = exactName,
-        folderAliases = listOf("Lyrics", "lyrics"),
-        ensureFolderName = "Lyrics"
+    Log.d(
+        PLAYER_LRC_TAG,
+        "ensure_lyrics trackUri=$trackUriString preferred=$preferredLrcFileName result=$ensureResult"
     )
-}
-
-private fun ensureLrcFileExistsInFolder(
-    context: android.content.Context,
-    targetName: String,
-    folderAliases: List<String>,
-    ensureFolderName: String
-): AccordsEnsureResult {
-    val exists = readLrcFromSplFolderByFileName(
-        context = context,
-        targetName = targetName,
-        folderAliases = folderAliases,
-        ensureFolderName = ensureFolderName
-    ) != null
-    if (exists) return AccordsEnsureResult.ALREADY_EXISTS
-    val created = writeLrcToSplFolderByFileName(
-        context = context,
-        targetName = targetName,
-        folderAliases = folderAliases,
-        ensureFolderName = ensureFolderName,
-        text = ""
-    )
-    return if (created) {
-        AccordsEnsureResult.CREATED
-    } else {
-        AccordsEnsureResult.FAILED
-    }
+    return ensureResult
 }
 
 private fun writeAccordsToSplByTrackUri(
@@ -3434,43 +3132,16 @@ private fun writeAccordsToSplByTrackUri(
     preferredLrcFileName: String?,
     lines: List<LrcLine>
 ): String? {
-    resolveSmpSongUnitTextTarget(
+    Log.d(
+        PLAYER_LRC_TAG,
+        "save_accords trackUri=$trackUriString preferred=$preferredLrcFileName lines=${lines.size}"
+    )
+    return LrcStorage.saveAccordsForTrack(
         context = context,
         trackUriString = trackUriString,
-        transportNameSelector = { it.files?.chords },
-        fallbackName = "chords.lrc",
-        requireExisting = false
-    )?.let { target ->
-        val ok = runCatching {
-            target.file.parentFile?.mkdirs()
-            target.file.writeText(linesToLrcText(lines), Charsets.UTF_8)
-            true
-        }.getOrDefault(false)
-        if (ok) {
-            Log.i("LrcDebug", "ACCORDS_SAVE path=${target.file.absolutePath}")
-            return target.fileName
-        }
-        return null
-    }
-
-    val targetName = resolveExactLrcFileNameForTrack(
-        context = context,
-        trackUriString = trackUriString,
-        preferredLrcFileName = preferredLrcFileName
+        preferredLrcFileName = preferredLrcFileName,
+        lines = lines
     )
-    if (targetName.isBlank()) return null
-    val ok = writeLrcToSplFolderByFileName(
-        context = context,
-        targetName = targetName,
-        folderAliases = listOf("Accords", "accords"),
-        ensureFolderName = "Accords",
-        text = linesToLrcText(lines)
-    )
-    if (ok) {
-        Log.i("LrcDebug", "ACCORDS_SAVE path=BackingTracks/Accords/$targetName")
-        return targetName
-    }
-    return null
 }
 
 private fun deleteAccordsFromSplByTrackUri(
@@ -3478,31 +3149,14 @@ private fun deleteAccordsFromSplByTrackUri(
     trackUriString: String,
     preferredLrcFileName: String?
 ): Boolean {
-    resolveSmpSongUnitTextTarget(
+    Log.d(
+        PLAYER_LRC_TAG,
+        "delete_accords trackUri=$trackUriString preferred=$preferredLrcFileName"
+    )
+    return LrcStorage.deleteAccordsForTrack(
         context = context,
         trackUriString = trackUriString,
-        transportNameSelector = { it.files?.chords },
-        fallbackName = "chords.lrc",
-        requireExisting = false
-    )?.let { target ->
-        val deleted = !target.file.exists() || target.file.delete()
-        if (deleted && !target.file.exists()) {
-            Log.i("LrcDebug", "ACCORDS_DELETE path=${target.file.absolutePath}")
-        }
-        return deleted
-    }
-
-    val fallbackBaseName = baseNameFromTrackUriString(trackUriString)
-    val candidates = linkedSetOf<String>().apply {
-        preferredLrcFileName?.trim()?.takeIf { it.isNotBlank() }?.let { add(it) }
-        add(LrcStorage.hashedFileNameForTrack(trackUriString))
-        fallbackBaseName.trim().takeIf { it.isNotBlank() }?.let { add("$it.lrc") }
-    }
-    if (candidates.isEmpty()) return false
-    return deleteLrcFromSplFolderByFileNames(
-        context = context,
-        fileNames = candidates,
-        folderAliases = listOf("Accords", "accords")
+        preferredLrcFileName = preferredLrcFileName
     )
 }
 
@@ -3520,588 +3174,10 @@ private fun linesToLrcText(lines: List<LrcLine>): String {
     }.trim()
 }
 
-private fun writeLrcToSplFolderByFileName(
-    context: android.content.Context,
-    targetName: String,
-    folderAliases: List<String>,
-    ensureFolderName: String,
-    text: String
-): Boolean {
-    val cleanTargetName = targetName.trim()
-    if (cleanTargetName.isBlank()) return false
-    val rootUri = resolveRequestedChordsRootUri(context)
-    val safOnlyBackend = shouldUseSafBackendForChords(rootUri)
-    logChordsBackend(rootUri, safOnlyBackend)
-    Log.d("LrcDebug", "ACCORDS_WRITE_START target=$cleanTargetName rootUri=$rootUri")
-
-    if (!safOnlyBackend) {
-        val fileRoots = linkedSetOf<File>().apply {
-            if (rootUri?.scheme == "file" && !rootUri.path.isNullOrBlank()) {
-                add(File(rootUri.path!!))
-            }
-            val externalRoot = context.getExternalFilesDir(null)
-            if (externalRoot != null) {
-                val appPrivateSplRoot = File(externalRoot, "SPL_Music")
-                if (!appPrivateSplRoot.exists()) {
-                    val created = appPrivateSplRoot.mkdirs()
-                    Log.d(
-                        "LrcDebug",
-                        "ACCORDS_WRITE_APP_PRIVATE_ROOT create path=${appPrivateSplRoot.absolutePath} success=$created"
-                    )
-                }
-                add(appPrivateSplRoot)
-            } else {
-                Log.w("LrcDebug", "ACCORDS_WRITE_APP_PRIVATE_ROOT unavailable externalFilesDir=null")
-            }
-        }
-
-        for (root in fileRoots) {
-            if (!root.exists()) {
-                Log.d("LrcDebug", "ACCORDS_WRITE_FILE skip_root_not_found root=${root.absolutePath}")
-                continue
-            }
-            val backingTracks = File(root, "BackingTracks")
-            val backingTrack = File(root, "BackingTrack")
-            val backingRoot = when {
-                backingTracks.exists() -> backingTracks
-                backingTrack.exists() -> backingTrack
-                else -> backingTracks
-            }
-            if (!backingRoot.exists()) {
-                val backingCreated = backingRoot.mkdirs()
-                Log.d(
-                    "LrcDebug",
-                    "ACCORDS_WRITE_FILE ensure_backing_root path=${backingRoot.absolutePath} success=$backingCreated"
-                )
-            }
-            val targetFolder = folderAliases
-                .asSequence()
-                .map { File(backingRoot, it) }
-                .firstOrNull { it.exists() && it.isDirectory }
-                ?: File(backingRoot, ensureFolderName).apply { if (!exists()) mkdirs() }
-            val outFile = File(targetFolder, cleanTargetName)
-            Log.d(
-                "LrcDebug",
-                "ACCORDS_WRITE_FILE root=${root.absolutePath} folder=${targetFolder.absolutePath} file=${outFile.absolutePath}"
-            )
-            val ok = runCatching {
-                outFile.writeText(text, Charsets.UTF_8)
-                true
-            }.onFailure { error ->
-                Log.e("LrcDebug", "ACCORDS_WRITE_FILE exception file=${outFile.absolutePath}", error)
-            }.getOrDefault(false)
-            if (ok) {
-                Log.i("LrcDebug", "ACCORDS_WRITE_FILE success file=${outFile.absolutePath}")
-                return true
-            }
-            Log.w("LrcDebug", "ACCORDS_WRITE_FILE failed file=${outFile.absolutePath}")
-        }
-    }
-
-    if (safOnlyBackend) {
-        val rootDoc = resolveActualSafSplRootForChords(
-            context = context,
-            requestedRootUri = rootUri,
-            stage = "WRITE"
-        )
-        if (rootDoc == null || !rootDoc.isDirectory) {
-            Log.w("LrcDebug", "ACCORDS_WRITE_SAF invalid_root rootUri=$rootUri")
-        } else {
-            Log.d("LrcDebug", "ACCORDS_WRITE_SAF rootDoc=${rootDoc.uri}")
-            val backingDirs = findDirsByAliases(
-                parent = rootDoc,
-                aliases = listOf("BackingTracks", "BackingTrack")
-            ).toMutableList()
-            if (backingDirs.isEmpty()) {
-                val ensured = ensureOrFindDir(
-                    parent = rootDoc,
-                    preferredName = "BackingTracks",
-                    aliases = listOf("BackingTracks", "BackingTrack")
-                )
-                Log.d(
-                    "LrcDebug",
-                    "ACCORDS_WRITE_SAF ensure_backing_dir root=${rootDoc.uri} success=${ensured != null} dir=${ensured?.uri}"
-                )
-                ensured?.let { backingDirs.add(it) }
-            }
-
-            backingDirs.forEach { backing ->
-                val targetFolder = findDirsByAliases(backing, folderAliases).firstOrNull()
-                    ?: ensureOrFindDir(
-                        parent = backing,
-                        preferredName = ensureFolderName,
-                        aliases = folderAliases
-                    )
-                    ?: return@forEach
-                Log.d("LrcDebug", "ACCORDS_WRITE_SAF folder=${targetFolder.uri} target=$cleanTargetName")
-
-                val existingFileDoc = targetFolder.listFiles().firstOrNull { child ->
-                    child.isFile && (child.name ?: "").equals(cleanTargetName, ignoreCase = true)
-                }
-                if (existingFileDoc != null) {
-                    Log.d("LrcDebug", "ACCORDS_WRITE_SAF reusing_file uri=${existingFileDoc.uri}")
-                }
-                val fileDoc = existingFileDoc ?: targetFolder.createFile("application/octet-stream", cleanTargetName)
-                if (existingFileDoc == null) {
-                    Log.d(
-                        "LrcDebug",
-                        "ACCORDS_WRITE_SAF create_file folder=${targetFolder.uri} success=${fileDoc != null} uri=${fileDoc?.uri}"
-                    )
-                }
-
-                if (fileDoc != null) {
-                    val ok = runCatching {
-                        val output = context.contentResolver.openOutputStream(fileDoc.uri, "w")
-                        val hasStream = output != null
-                        Log.d("LrcDebug", "ACCORDS_WRITE_SAF open_output uri=${fileDoc.uri} success=$hasStream")
-                        output?.use { out ->
-                            out.write(text.toByteArray(Charsets.UTF_8))
-                            out.flush()
-                        }
-                        hasStream
-                    }.onFailure { error ->
-                        Log.e("LrcDebug", "ACCORDS_WRITE_SAF exception uri=${fileDoc.uri}", error)
-                    }.getOrDefault(false)
-                    if (ok) {
-                        Log.i("LrcDebug", "ACCORDS_WRITE_SAF success uri=${fileDoc.uri}")
-                        return true
-                    }
-                    Log.w("LrcDebug", "ACCORDS_WRITE_SAF failed uri=${fileDoc.uri}")
-                } else {
-                    Log.w(
-                        "LrcDebug",
-                        "ACCORDS_WRITE_SAF create_file_failed folder=${targetFolder.uri} target=$cleanTargetName"
-                    )
-                }
-            }
-        }
-    }
-    Log.e("LrcDebug", "ACCORDS_WRITE_FAIL target=$cleanTargetName rootUri=$rootUri")
-    return false
-}
-
-private fun resolveAccordsSafWritePreflightStage(context: android.content.Context): String? {
-    val rootUri = BackupFolderPrefs.getLibraryRootUri(context) ?: return null
-    if (rootUri.scheme != "content") return null
-    val hasWritePermission = hasPersistedWritePermissionForUri(context, rootUri)
-    if (hasWritePermission) return null
-
-    val persistedSnapshot = context.contentResolver.persistedUriPermissions.joinToString(separator = ", ") { p ->
-        "${p.uri}(r=${p.isReadPermission},w=${p.isWritePermission})"
-    }
-    Log.e(
-        "LrcDebug",
-        "ACCORDS_SAVE_PREFLIGHT_FAIL stage=safNoWritePermission rootUri=$rootUri persisted=[$persistedSnapshot]"
-    )
-    return "safNoWritePermission"
-}
-
-private fun hasPersistedWritePermissionForUri(
-    context: android.content.Context,
-    targetUri: Uri
-): Boolean {
-    val targetNorm = normalizeAsTreeUriForPermission(targetUri) ?: targetUri
-    val targetTreeId = extractTreeDocumentIdForPermission(targetNorm)
-        ?: extractTreeDocumentIdForPermission(targetUri)
-    return context.contentResolver.persistedUriPermissions.any { permission ->
-        val permissionNorm = normalizeAsTreeUriForPermission(permission.uri) ?: permission.uri
-        if (!permission.isWritePermission) return@any false
-
-        val exactRootMatch = permissionNorm == targetNorm
-        if (exactRootMatch) {
-            Log.d(
-                "LrcDebug",
-                "ACCORDS_SAVE_PREFLIGHT_PERMISSION_MATCH type=exact target=$targetNorm permission=${permissionNorm}"
-            )
-            return@any true
-        }
-
-        val permissionTreeId = extractTreeDocumentIdForPermission(permissionNorm)
-            ?: extractTreeDocumentIdForPermission(permission.uri)
-        val parentTreeMatch = !targetTreeId.isNullOrBlank() &&
-            !permissionTreeId.isNullOrBlank() &&
-            (targetTreeId == permissionTreeId || targetTreeId.startsWith("$permissionTreeId/"))
-        if (parentTreeMatch) {
-            Log.d(
-                "LrcDebug",
-                "ACCORDS_SAVE_PREFLIGHT_PERMISSION_MATCH type=parentTree targetTreeId=$targetTreeId permissionTreeId=$permissionTreeId target=$targetNorm permission=${permissionNorm}"
-            )
-        }
-        parentTreeMatch
-    }
-}
-
-private fun normalizeAsTreeUriForPermission(uri: Uri): Uri? {
-    val authority = uri.authority ?: return null
-    val treeId = runCatching { DocumentsContract.getTreeDocumentId(uri) }.getOrNull()
-        ?: runCatching { DocumentsContract.getDocumentId(uri) }.getOrNull()
-        ?: return null
-    return DocumentsContract.buildTreeDocumentUri(authority, treeId)
-}
-
-private fun extractTreeDocumentIdForPermission(uri: Uri): String? {
-    return runCatching { DocumentsContract.getTreeDocumentId(uri) }.getOrNull()
-        ?: runCatching { DocumentsContract.getDocumentId(uri) }.getOrNull()
-}
-
-private fun deleteLrcFromSplFolderByFileNames(
-    context: android.content.Context,
-    fileNames: Set<String>,
-    folderAliases: List<String>
-): Boolean {
-    val cleanNames = fileNames.map { it.trim() }.filter { it.isNotBlank() }.toSet()
-    if (cleanNames.isEmpty()) return false
-    var deleted = false
-    val rootUri = resolveRequestedChordsRootUri(context)
-    val safOnlyBackend = shouldUseSafBackendForChords(rootUri)
-    logChordsBackend(rootUri, safOnlyBackend)
-
-    if (!safOnlyBackend) {
-        val fileRoots = linkedSetOf<File>().apply {
-            if (rootUri?.scheme == "file" && !rootUri.path.isNullOrBlank()) {
-                add(File(rootUri.path!!))
-            }
-            add(File(context.getExternalFilesDir(null), "SPL_Music"))
-        }
-
-        for (root in fileRoots) {
-            if (!root.exists()) continue
-            val backingRoots = linkedSetOf(File(root, "BackingTracks"), File(root, "BackingTrack"))
-            for (backingRoot in backingRoots) {
-                for (alias in folderAliases) {
-                    val folder = File(backingRoot, alias)
-                    for (name in cleanNames) {
-                        val candidate = File(folder, name)
-                        if (candidate.exists() && candidate.isFile) {
-                            val didDelete = runCatching { candidate.delete() }.getOrDefault(false)
-                            if (didDelete) {
-                                Log.i("LrcDebug", "ACCORDS_DELETE path=${candidate.absolutePath}")
-                            }
-                            deleted = didDelete || deleted
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    if (safOnlyBackend) {
-        val rootDoc = resolveActualSafSplRootForChords(
-            context = context,
-            requestedRootUri = rootUri,
-            stage = "DELETE"
-        )
-        if (rootDoc != null && rootDoc.isDirectory) {
-            val backingDirs = findDirsByAliases(
-                parent = rootDoc,
-                aliases = listOf("BackingTracks", "BackingTrack")
-            )
-            backingDirs.forEach { backing ->
-                val targetFolders = findDirsByAliases(backing, folderAliases)
-                targetFolders.forEach { targetFolder ->
-                    targetFolder.listFiles().forEach { child ->
-                        if (child.isFile && cleanNames.any { it.equals(child.name, ignoreCase = true) }) {
-                            val didDelete = runCatching { child.delete() }.getOrDefault(false)
-                            if (didDelete) {
-                                Log.i("LrcDebug", "ACCORDS_DELETE path=${child.uri}")
-                            }
-                            deleted = didDelete || deleted
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    return deleted
-}
-
-private fun readLrcFromSplFolderByBaseName(
-    context: android.content.Context,
-    baseName: String,
-    folderAliases: List<String>,
-    ensureFolderName: String? = null,
-    debugLookupLabel: String? = null
-): LrcTextWithFileName? {
-    val b = baseName.trim()
-    if (b.isBlank()) return null
-    return readLrcFromSplFolderByFileName(
-        context = context,
-        targetName = "$b.lrc",
-        folderAliases = folderAliases,
-        ensureFolderName = ensureFolderName,
-        debugLookupLabel = debugLookupLabel
-    )
-}
-
-private fun readLrcFromSplFolderByFileName(
-    context: android.content.Context,
-    targetName: String,
-    folderAliases: List<String>,
-    ensureFolderName: String? = null,
-    debugLookupLabel: String? = null
-): LrcTextWithFileName? {
-    val cleanTargetName = targetName.trim()
-    if (cleanTargetName.isBlank()) return null
-    val rootUri = resolveRequestedChordsRootUri(context)
-    val safOnlyBackend = shouldUseSafBackendForChords(rootUri)
-    logChordsBackend(rootUri, safOnlyBackend)
-
-    // INTERNAL (file://) + fallback app-private SPL
-    if (!safOnlyBackend) {
-        val fileRoots = linkedSetOf<File>().apply {
-            if (rootUri?.scheme == "file" && !rootUri.path.isNullOrBlank()) {
-                add(File(rootUri.path!!))
-            }
-            add(File(context.getExternalFilesDir(null), "SPL_Music"))
-        }
-
-        for (root in fileRoots) {
-            if (!root.exists()) continue
-
-            val backingTracks = File(root, "BackingTracks")
-            val backingTrack = File(root, "BackingTrack")
-            val backingRoots = linkedSetOf(backingTracks, backingTrack)
-
-            if (ensureFolderName != null) {
-                val ensureParent = when {
-                    backingTracks.exists() -> backingTracks
-                    backingTrack.exists() -> backingTrack
-                    else -> backingTracks
-                }
-                if (!ensureParent.exists()) ensureParent.mkdirs()
-                val ensure = File(ensureParent, ensureFolderName)
-                if (!ensure.exists()) ensure.mkdirs()
-            }
-
-            for (backingRoot in backingRoots) {
-                for (alias in folderAliases) {
-                    val candidate = File(File(backingRoot, alias), cleanTargetName)
-                    if (!debugLookupLabel.isNullOrBlank()) {
-                        Log.d("LrcDebug", "$debugLookupLabel candidate_file=${candidate.absolutePath}")
-                    }
-                    if (candidate.exists() && candidate.isFile) {
-                        val text = runCatching { candidate.readText(Charsets.UTF_8) }.getOrNull() ?: return null
-                        if (!debugLookupLabel.isNullOrBlank()) {
-                            Log.d("LrcDebug", "$debugLookupLabel hit_file=${candidate.absolutePath}")
-                        }
-                        return LrcTextWithFileName(
-                            text = text,
-                            fileName = candidate.name,
-                            debugPath = candidate.absolutePath
-                        )
-                    }
-                }
-            }
-        }
-    }
-
-    // SAF (content://)
-    if (safOnlyBackend) {
-        val rootDoc = resolveActualSafSplRootForChords(
-            context = context,
-            requestedRootUri = rootUri,
-            stage = "READ"
-        ) ?: return null
-        if (rootDoc != null && rootDoc.isDirectory) {
-            val backingDirs = findDirsByAliases(
-                parent = rootDoc,
-                aliases = listOf("BackingTracks", "BackingTrack")
-            )
-                .toMutableList()
-
-            if (backingDirs.isEmpty()) {
-                ensureOrFindDir(
-                    parent = rootDoc,
-                    preferredName = "BackingTracks",
-                    aliases = listOf("BackingTracks", "BackingTrack")
-                )?.let { backingDirs.add(it) }
-            }
-
-            backingDirs.forEach { backing ->
-                val targetFolders = findDirsByAliases(backing, folderAliases).toMutableList()
-
-                if (targetFolders.isEmpty()) {
-                    ensureOrFindDir(
-                        parent = backing,
-                        preferredName = ensureFolderName ?: folderAliases.first(),
-                        aliases = folderAliases
-                    )?.let { targetFolders.add(it) }
-                }
-
-                targetFolders.forEach { targetFolder ->
-                    if (!debugLookupLabel.isNullOrBlank()) {
-                        Log.d(
-                            "LrcDebug",
-                            "$debugLookupLabel candidate_saf_folder=${targetFolder.uri} target=$cleanTargetName"
-                        )
-                    }
-                    val fileDoc = targetFolder.listFiles().firstOrNull { child ->
-                        child.isFile && (child.name ?: "").equals(cleanTargetName, ignoreCase = true)
-                    }
-
-                    if (fileDoc != null) {
-                        val text = runCatching {
-                            context.contentResolver.openInputStream(fileDoc.uri)
-                                ?.bufferedReader(Charsets.UTF_8)
-                                ?.use { it.readText() }
-                        }.getOrNull() ?: return null
-                        return LrcTextWithFileName(
-                            text = text,
-                            fileName = fileDoc.name ?: cleanTargetName,
-                            debugPath = fileDoc.uri.toString()
-                        )
-                    }
-                }
-            }
-        }
-    }
-
-    return null
-}
-
-private fun shouldUseSafBackendForChords(rootUri: Uri?): Boolean {
-    return rootUri?.scheme == "content"
-}
-
-private fun logChordsBackend(rootUri: Uri?, safOnlyBackend: Boolean) {
-    if (safOnlyBackend) {
-        Log.d("LrcDebug", "CHORDS_BACKEND SAF rootUri=$rootUri")
-    } else {
-        Log.d("LrcDebug", "CHORDS_BACKEND APP_PRIVATE rootUri=$rootUri")
-    }
-}
-
-private fun resolveRequestedChordsRootUri(context: android.content.Context): Uri? {
-    return BackupFolderPrefsSaf.getLibraryRootUri(context)
-        ?: BackupFolderPrefs.getLibraryRootUri(context)
-}
-
-private fun resolveActualSafSplRootForChords(
-    context: android.content.Context,
-    requestedRootUri: Uri?,
-    stage: String
-): DocumentFile? {
-    val safeRequestedRootUri = requestedRootUri?.takeIf { it.scheme == "content" } ?: return null
-    Log.d("LrcDebug", "CHORDS_SAF_ROOT stage=$stage requested=$safeRequestedRootUri")
-
-    val requestedRootDoc = resolveChordRootDocument(context, safeRequestedRootUri)
-        ?.takeIf { it.isDirectory && it.canRead() }
-    Log.d(
-        "LrcDebug",
-        "CHORDS_SAF_ROOT stage=$stage requestedResolved=${requestedRootDoc?.uri} requestedChildren=${requestedRootDoc?.let { listChordChildNames(it) }}"
-    )
-    if (requestedRootDoc != null && matchesChordDirAlias(requestedRootDoc, listOf("SPL_Music", "spl_music"))) {
-        Log.d("LrcDebug", "CHORDS_SAF_ROOT stage=$stage finalResolved=${requestedRootDoc.uri}")
-        return requestedRootDoc
-    }
-
-    val setupTreeUri = BackupFolderPrefsSaf.getSetupTreeUri(context)
-        ?: BackupFolderPrefs.getSetupTreeUri(context)
-    Log.d("LrcDebug", "CHORDS_SAF_ROOT stage=$stage setupTreeUri=$setupTreeUri")
-    val setupRootDoc = setupTreeUri
-        ?.takeIf { it.scheme == "content" }
-        ?.let { resolveChordRootDocument(context, it) }
-        ?.takeIf { it.isDirectory && it.canRead() }
-    Log.d(
-        "LrcDebug",
-        "CHORDS_SAF_ROOT stage=$stage setupResolved=${setupRootDoc?.uri} setupChildren=${setupRootDoc?.let { listChordChildNames(it) }}"
-    )
-    if (setupRootDoc != null) {
-        if (matchesChordDirAlias(setupRootDoc, listOf("SPL_Music", "spl_music"))) {
-            Log.d("LrcDebug", "CHORDS_SAF_ROOT stage=$stage finalResolved=${setupRootDoc.uri}")
-            return setupRootDoc
-        }
-        val splRoot = findDirsByAliases(setupRootDoc, listOf("SPL_Music", "spl_music")).firstOrNull()
-        Log.d("LrcDebug", "CHORDS_SAF_ROOT stage=$stage setupSplRoot=${splRoot?.uri}")
-        if (splRoot != null && splRoot.isDirectory && splRoot.canRead()) {
-            Log.d("LrcDebug", "CHORDS_SAF_ROOT stage=$stage finalResolved=${splRoot.uri}")
-            return splRoot
-        }
-    }
-
-    Log.d("LrcDebug", "CHORDS_SAF_ROOT stage=$stage finalResolved=${requestedRootDoc?.uri}")
-    return requestedRootDoc
-}
-
-private fun resolveChordRootDocument(
-    context: android.content.Context,
-    rootUri: Uri
-): DocumentFile? {
-    val directTree = DocumentFile.fromTreeUri(context, rootUri)
-    if (directTree?.isDirectory == true) return directTree
-
-    val normalizedTreeUri = normalizeAsTreeUriForPermission(rootUri)
-    val normalizedTree = normalizedTreeUri?.let { DocumentFile.fromTreeUri(context, it) }
-    if (normalizedTree?.isDirectory == true) return normalizedTree
-
-    val single = DocumentFile.fromSingleUri(context, rootUri)
-    if (single?.isDirectory == true) return single
-
-    Log.w(
-        "LrcDebug",
-        "CHORDS_SAF_ROOT resolve_failed request=$rootUri directTree=${directTree?.uri} normalizedTree=$normalizedTreeUri single=${single?.uri}"
-    )
-    return directTree ?: normalizedTree ?: single
-}
-
-private fun matchesChordDirAlias(dir: DocumentFile, aliases: List<String>): Boolean {
-    val normalizedAliases = aliases.map { normalizeDirName(it) }.toSet()
-    return normalizedAliases.contains(normalizeDirName(dir.name.orEmpty()))
-}
-
-private fun listChordChildNames(dir: DocumentFile): List<String> {
-    return runCatching {
-        dir.listFiles().map { child ->
-            val kind = if (child.isDirectory) "dir" else "file"
-            "${child.name.orEmpty()}<$kind>"
-        }
-    }.getOrDefault(emptyList())
-}
-
-private fun ensureOrFindDir(
-    parent: DocumentFile,
-    preferredName: String,
-    aliases: List<String>
-): DocumentFile? {
-    val normalizedAliases = aliases.map { normalizeDirName(it) }.toSet()
-    parent.listFiles().firstOrNull { child ->
-        child.isDirectory && normalizedAliases.contains(normalizeDirName(child.name.orEmpty()))
-    }?.let { return it }
-    return runCatching { parent.createDirectory(preferredName) }.getOrNull()
-}
-
-private fun findDirsByAliases(
-    parent: DocumentFile,
-    aliases: List<String>
-): List<DocumentFile> {
-    val normalizedAliases = aliases.map { normalizeDirName(it) }.toSet()
-    return parent.listFiles().filter { child ->
-        child.isDirectory && normalizedAliases.contains(normalizeDirName(child.name.orEmpty()))
-    }
-}
-
-private fun normalizeDirName(name: String): String {
-    return name.trim().lowercase()
-}
-
 private fun baseNameFromTrackUriString(trackUriString: String): String {
     val uri = runCatching { Uri.parse(trackUriString) }.getOrNull()
     val last = uri?.lastPathSegment ?: trackUriString
     val clean = last.substringAfterLast('/').substringAfterLast(':')
     val base = clean.substringBeforeLast('.', clean).trim()
     return if (base.isBlank()) "track" else base
-}
-
-private fun queryMediaStoreDataPath(context: android.content.Context, uri: Uri): String? {
-    // ⚠️ Android 10+ : DATA peut être null selon le stockage / permissions.
-    val projection = arrayOf(MediaStore.MediaColumns.DATA)
-    return runCatching {
-        context.contentResolver.query(uri, projection, null, null, null)?.use { c ->
-            val col = c.getColumnIndex(MediaStore.MediaColumns.DATA)
-            if (col == -1) return@use null
-            if (!c.moveToFirst()) return@use null
-            c.getString(col)
-        }
-    }.getOrNull()
 }
