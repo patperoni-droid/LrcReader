@@ -66,6 +66,16 @@ object BackupManager {
             get() = code == AutoBackupCode.SUCCESS
     }
 
+    private sealed interface WorkspaceRootHandle {
+        data class FileRoot(val directory: File) : WorkspaceRootHandle
+        data class SafRoot(val directory: DocumentFile) : WorkspaceRootHandle
+    }
+
+    private sealed interface WorkspaceBackupsDir {
+        data class FileDir(val directory: File) : WorkspaceBackupsDir
+        data class SafDir(val directory: DocumentFile) : WorkspaceBackupsDir
+    }
+
     internal interface AutoBackupWriter {
         fun writeSaf(
             context: Context,
@@ -433,6 +443,90 @@ object BackupManager {
         return uri.lastPathSegment
     }
 
+    private fun resolveWorkspaceRootHandle(
+        context: Context,
+        snapshot: WorkspaceResolver.Snapshot
+    ): WorkspaceRootHandle? {
+        val rootUri = snapshot.workspaceRootUri ?: return null
+        return when (rootUri.scheme) {
+            "file" -> {
+                val rootPath = rootUri.path?.takeIf { it.isNotBlank() } ?: return null
+                WorkspaceRootHandle.FileRoot(normalizeWorkspaceFileRoot(File(rootPath)))
+            }
+
+            "content" -> {
+                val rootDoc = DocumentFile.fromTreeUri(context, rootUri)
+                    ?: DocumentFile.fromSingleUri(context, rootUri)
+                    ?: return null
+                if (!rootDoc.exists() || !rootDoc.isDirectory) {
+                    return null
+                }
+                WorkspaceRootHandle.SafRoot(normalizeWorkspaceSafRoot(rootDoc))
+            }
+
+            else -> null
+        }
+    }
+
+    private fun resolveWorkspaceBackupsDir(
+        context: Context,
+        snapshot: WorkspaceResolver.Snapshot,
+        createIfMissing: Boolean
+    ): WorkspaceBackupsDir? {
+        return when (val rootHandle = resolveWorkspaceRootHandle(context, snapshot)) {
+            is WorkspaceRootHandle.FileRoot -> {
+                val rootDir = rootHandle.directory
+                if (!rootDir.exists() || !rootDir.isDirectory) {
+                    if (!createIfMissing || !rootDir.mkdirs()) return null
+                }
+
+                val backupsDir = if (rootDir.name.equals("Backups", ignoreCase = true)) {
+                    rootDir
+                } else {
+                    File(rootDir, "Backups").also { dir ->
+                        if (!dir.exists() && (!createIfMissing || !dir.mkdirs())) {
+                            return null
+                        }
+                    }
+                }
+
+                backupsDir.takeIf { it.exists() && it.isDirectory }
+                    ?.let(WorkspaceBackupsDir::FileDir)
+            }
+
+            is WorkspaceRootHandle.SafRoot -> {
+                val rootDoc = rootHandle.directory
+                val backupsDir = if (rootDoc.name.orEmpty().trim().equals("Backups", ignoreCase = true)) {
+                    rootDoc
+                } else {
+                    findDirectoryIgnoreCase(rootDoc, listOf("Backups", "backups"))
+                        ?: if (createIfMissing) rootDoc.createDirectory("Backups") else null
+                }
+
+                backupsDir
+                    ?.takeIf { it.exists() && it.isDirectory }
+                    ?.let(WorkspaceBackupsDir::SafDir)
+            }
+
+            null -> null
+        }
+    }
+
+    private fun normalizeWorkspaceFileRoot(rootDir: File): File {
+        return when {
+            File(rootDir, "BackingTracks").isDirectory -> rootDir
+            File(File(rootDir, "SPL_Music"), "BackingTracks").isDirectory -> File(rootDir, "SPL_Music")
+            else -> rootDir
+        }
+    }
+
+    private fun normalizeWorkspaceSafRoot(rootDoc: DocumentFile): DocumentFile {
+        if (findDirectoryIgnoreCase(rootDoc, listOf("BackingTracks", "BackingTrack")) != null) {
+            return rootDoc
+        }
+        return findDirectoryIgnoreCase(rootDoc, listOf("SPL_Music", "spl_music")) ?: rootDoc
+    }
+
     private fun buildLocalMapByName(context: Context): Map<String, String> {
         val map = LinkedHashMap<String, String>()
 
@@ -449,72 +543,74 @@ object BackupManager {
             if (key2.isNotBlank() && !map.containsKey(key2)) map[key2] = uriStr
         }
 
-        // ✅ table locale prioritaire: SPL_Music/BackingTracks/audio -> file://...
-        run {
-            val rootUri = BackupFolderPrefs.getLibraryRootUri(context)
-            val rootFile = if (rootUri?.scheme == "file" && !rootUri.path.isNullOrBlank()) {
-                File(rootUri.path!!)
-            } else {
-                File(context.getExternalFilesDir(null), "SPL_Music")
-            }
-
-            val backingTracksDir = File(rootFile, "BackingTracks")
-            val audioDirs = linkedSetOf(
-                File(backingTracksDir, "audio"),
-                File(backingTracksDir, "Audio")
+        val snapshot = WorkspaceResolver.resolve(context)
+        val rootHandle = resolveWorkspaceRootHandle(context, snapshot)
+        if (rootHandle == null) {
+            Log.w(
+                IMPORT_LOG_TAG,
+                "Workspace introuvable pour remap backup workspaceStatus=${snapshot.status} workspaceRoot=${snapshot.workspaceRootUri}"
             )
+            return emptyMap()
+        }
 
-            audioDirs.forEach { audioDir ->
-                if (audioDir.exists() && audioDir.isDirectory) {
-                    audioDir.walkTopDown().forEach { f ->
-                        if (f.isFile) addVariants(f.name, Uri.fromFile(f).toString())
+        return when (rootHandle) {
+            is WorkspaceRootHandle.FileRoot -> {
+                val rootDir = rootHandle.directory
+                if (!rootDir.exists() || !rootDir.isDirectory) {
+                    emptyMap()
+                } else {
+                    val backingTracksDir = File(rootDir, "BackingTracks")
+                    val audioDirs = linkedSetOf(
+                        File(backingTracksDir, "audio"),
+                        File(backingTracksDir, "Audio")
+                    )
+
+                    audioDirs.forEach { audioDir ->
+                        if (audioDir.exists() && audioDir.isDirectory) {
+                            audioDir.walkTopDown().forEach { f ->
+                                if (f.isFile) addVariants(f.name, Uri.fromFile(f).toString())
+                            }
+                        }
+                    }
+                    if (map.isNotEmpty()) {
+                        map
+                    } else {
+                        fun walk(dir: File) {
+                            dir.listFiles()?.forEach { f ->
+                                if (f.isDirectory) walk(f)
+                                else addVariants(f.name, Uri.fromFile(f).toString())
+                            }
+                        }
+
+                        walk(rootDir)
+                        map
                     }
                 }
             }
-            if (map.isNotEmpty()) return map
-        }
 
-        val rootUri = BackupFolderPrefs.getLibraryRootUri(context) ?: return emptyMap()
+            is WorkspaceRootHandle.SafRoot -> {
+                val cachedIndex = LibraryIndexCache.load(context) ?: emptyList()
+                if (cachedIndex.isNotEmpty()) {
+                    cachedIndex.forEach { e ->
+                        if (!e.isDirectory) addVariants(e.name, e.uriString)
+                    }
+                }
 
-        // ✅ INTERNAL : scan filesystem
-        if (rootUri.scheme == "file") {
-            val rootDir = File(rootUri.path ?: return emptyMap())
-            if (!rootDir.exists()) return emptyMap()
+                if (map.isNotEmpty()) {
+                    map
+                } else {
+                    fun walk(doc: DocumentFile) {
+                        doc.listFiles().forEach { child ->
+                            if (child.isDirectory) walk(child)
+                            else addVariants(child.name, child.uri.toString())
+                        }
+                    }
 
-            fun walk(dir: File) {
-                dir.listFiles()?.forEach { f ->
-                    if (f.isDirectory) walk(f)
-                    else addVariants(f.name, Uri.fromFile(f).toString())
+                    walk(rootHandle.directory)
+                    map
                 }
             }
-
-            walk(rootDir)
-            return map
         }
-
-        // ✅ SAF : on essaye d’abord le cache (rapide)
-        val cachedIndex = LibraryIndexCache.load(context) ?: emptyList()
-        if (cachedIndex.isNotEmpty()) {
-            cachedIndex.forEach { e ->
-                if (!e.isDirectory) addVariants(e.name, e.uriString)
-            }
-            if (map.isNotEmpty()) return map
-        }
-
-        // ✅ SAF fallback : scan DocumentFile tree (plus lent, mais fiable)
-        val rootDoc = DocumentFile.fromTreeUri(context, rootUri)
-            ?: DocumentFile.fromSingleUri(context, rootUri)
-            ?: return emptyMap()
-
-        fun walk(doc: DocumentFile) {
-            doc.listFiles().forEach { child ->
-                if (child.isDirectory) walk(child)
-                else addVariants(child.name, child.uri.toString())
-            }
-        }
-
-        walk(rootDoc)
-        return map
     }
 
     private data class UriFixStats(
@@ -769,71 +865,11 @@ object BackupManager {
 
     private const val DEFAULT_BACKUP_FILE = "lrc_backup.json"
 
-    /**
-     * Renvoie le DocumentFile dossier de backup :
-     * 1) dossier choisi par l'utilisateur via BackupFolderPrefs
-     * 2) fallback : libraryRootUri/Backups
-     * 3) fallback : SplFolders.backupsDir(context)
-     */
     private fun findDirectoryIgnoreCase(parent: DocumentFile, names: List<String>): DocumentFile? {
         val wanted = names.map { it.trim().lowercase() }.toSet()
         return parent.listFiles().firstOrNull { child ->
             child.isDirectory && child.name.orEmpty().trim().lowercase() in wanted
         }
-    }
-
-    private fun resolveBackupDirFromLibraryRoot(context: Context): DocumentFile? {
-        val root = BackupFolderPrefs.getLibraryRootUri(context) ?: return null
-        if (root.scheme == "file") return null
-
-        val rootDoc = DocumentFile.fromTreeUri(context, root)
-            ?: DocumentFile.fromSingleUri(context, root)
-            ?: return null
-
-        if (!rootDoc.isDirectory) {
-            return null
-        }
-
-        val rootName = rootDoc.name.orEmpty().trim()
-        if (rootName.equals("Backups", ignoreCase = true)) {
-            return rootDoc.takeIf { it.canWrite() }
-        }
-
-        val backups = findDirectoryIgnoreCase(rootDoc, listOf("Backups", "backups"))
-            ?: rootDoc.createDirectory("Backups")
-
-        return backups?.takeIf { it.isDirectory && it.canWrite() }
-    }
-
-    private fun getBackupDir(context: Context): DocumentFile? {
-        val folderUri = BackupFolderPrefs.get(context)
-        if (folderUri != null) {
-            // ✅ MODE INTERNE : pas de DocumentFile / pas de SAF
-            if (folderUri.scheme == "file") {
-                return null
-            }
-
-            // ✅ MODE SAF
-            val tree = DocumentFile.fromTreeUri(context, folderUri)
-            if (tree != null && tree.canWrite()) return tree
-
-            Log.d(BOOT_TAG, "BackupManager.getBackupDir fallbackFromFolderUri folderUri=$folderUri")
-        }
-
-        val fromRoot = resolveBackupDirFromLibraryRoot(context)
-        if (fromRoot != null && fromRoot.canWrite()) {
-            Log.d(BOOT_TAG, "BackupManager.getBackupDir resolvedFromLibraryRoot uri=${fromRoot.uri}")
-            return fromRoot
-        }
-
-        val splFallback = SplFolders.backupsDir(context)
-        Log.d(BOOT_TAG, "BackupManager.getBackupDir resolvedFromSplFolders uri=${splFallback?.uri}")
-        return splFallback
-    }
-
-    private fun getBackupDirFile(context: Context): File {
-        // /storage/emulated/0/Android/data/<package>/files/SPL_Music/Backups
-        return SplFolders.backupsDirFile(context)
     }
 
     /**
@@ -960,34 +996,51 @@ object BackupManager {
         context: Context,
         onLastPlayed: (LastPlayed?) -> Unit = {}
     ): Boolean {
-        val safDir = getBackupDir(context)
-        if (safDir != null) {
-            val file = safDir.findFile(DEFAULT_BACKUP_FILE)
-            if (file != null && file.isFile) {
-                val json = try {
+        val snapshot = WorkspaceResolver.resolve(context)
+        if (!snapshot.isUsable || snapshot.workspaceRootUri == null) {
+            logAutoBackupWarn(
+                "step=auto_restore_skip workspaceStatus=${snapshot.status} workspaceRoot=${snapshot.workspaceRootUri}"
+            )
+            return false
+        }
+
+        val backupsDir = resolveWorkspaceBackupsDir(
+            context = context,
+            snapshot = snapshot,
+            createIfMissing = false
+        ) ?: run {
+            logAutoBackupWarn(
+                "step=auto_restore_skip workspaceStatus=${snapshot.status} workspaceRoot=${snapshot.workspaceRootUri} detail=backups_dir_unresolved"
+            )
+            return false
+        }
+
+        val json = when (backupsDir) {
+            is WorkspaceBackupsDir.SafDir -> {
+                val file = backupsDir.directory.findFile(DEFAULT_BACKUP_FILE)
+                    ?.takeIf { it.isFile }
+                    ?: return false
+                try {
                     context.contentResolver.openInputStream(file.uri)?.use { input ->
                         input.readBytes().toString(Charsets.UTF_8)
                     }
                 } catch (_: Exception) {
                     null
                 }
+            }
 
-                if (json != null) {
-                    return try {
-                        importState(context, json, onLastPlayed)
-                        true
-                    } catch (_: Exception) {
-                        false
-                    }
+            is WorkspaceBackupsDir.FileDir -> {
+                try {
+                    val file = File(backupsDir.directory, DEFAULT_BACKUP_FILE)
+                    if (!file.exists() || !file.isFile) return false
+                    file.readText(Charsets.UTF_8)
+                } catch (_: Exception) {
+                    null
                 }
             }
-        }
+        } ?: return false
 
         return try {
-            val dir = getBackupDirFile(context)
-            val f = File(dir, DEFAULT_BACKUP_FILE)
-            if (!f.exists() || !f.isFile) return false
-            val json = f.readText(Charsets.UTF_8)
             importState(context, json, onLastPlayed)
             true
         } catch (_: Exception) {

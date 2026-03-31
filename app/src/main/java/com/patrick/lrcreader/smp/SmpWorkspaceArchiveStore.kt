@@ -5,9 +5,7 @@ import android.net.Uri
 import android.provider.DocumentsContract
 import android.util.Log
 import androidx.documentfile.provider.DocumentFile
-import com.patrick.lrcreader.core.BackupFolderPrefs
-import com.patrick.lrcreader.core.BackupFolderPrefsInternal
-import com.patrick.lrcreader.core.BackupFolderPrefsSaf
+import com.patrick.lrcreader.core.WorkspaceResolver
 import java.io.File
 
 object SmpWorkspaceArchiveStore {
@@ -22,6 +20,11 @@ object SmpWorkspaceArchiveStore {
         val failureReason: String? = null
     )
 
+    internal sealed interface WorkspaceSmpDir {
+        data class FileDir(val directory: File) : WorkspaceSmpDir
+        data class SafDir(val directory: DocumentFile) : WorkspaceSmpDir
+    }
+
     private data class NormalizationScan<T>(
         val supersededArchives: List<T>,
         val unresolvedCount: Int
@@ -34,12 +37,24 @@ object SmpWorkspaceArchiveStore {
     private const val SMP_DIR_NAME = "SMP"
     private val FORBIDDEN_ARCHIVE_NAME_CHARS = Regex("[\\u0000-\\u001F<>:\"/\\\\|?*]+")
 
-    fun persistNormalizedArchive(context: Context, songUnit: SongUnit): PersistResult {
+    fun persistNormalizedArchive(
+        context: Context,
+        songUnit: SongUnit,
+        snapshotOverride: WorkspaceResolver.Snapshot? = null
+    ): PersistResult {
         val songId = songUnit.id.trim()
         if (songId.isEmpty()) {
             return PersistResult(
                 archiveUri = null,
                 failureReason = "songId SMP manquant pour l'archive durable"
+            )
+        }
+
+        val workspaceSnapshot = snapshotOverride ?: WorkspaceResolver.resolve(context)
+        if (!workspaceSnapshot.isUsable || workspaceSnapshot.workspaceRootUri == null) {
+            return PersistResult(
+                archiveUri = null,
+                failureReason = "workspace durable indisponible pour l'archive SMP"
             )
         }
 
@@ -52,6 +67,7 @@ object SmpWorkspaceArchiveStore {
         return try {
             writeArchiveToWorkspace(
                 context = context,
+                snapshot = workspaceSnapshot,
                 songUnit = songUnit,
                 songId = songId,
                 tempArchive = tempArchive
@@ -65,34 +81,37 @@ object SmpWorkspaceArchiveStore {
 
     private fun writeArchiveToWorkspace(
         context: Context,
+        snapshot: WorkspaceResolver.Snapshot,
         songUnit: SongUnit,
         songId: String,
         tempArchive: File
     ): PersistResult {
         val targetName = buildDurableArchiveFileName(songUnit)
-        val fileTargetDir = resolveWritableFileSmpDir(context)
-        if (fileTargetDir != null) {
-            return writeArchiveToFileDir(
-                targetDir = fileTargetDir,
+        val targetDir = resolveWorkspaceSmpDir(
+            context = context,
+            snapshot = snapshot,
+            createIfMissing = true
+        ) ?: return PersistResult(
+                archiveUri = null,
+                failureReason = "dossier workspace BackingTracks/SMP introuvable"
+            )
+
+        return when (targetDir) {
+            is WorkspaceSmpDir.FileDir -> writeArchiveToFileDir(
+                targetDir = targetDir.directory,
+                songId = songId,
+                targetName = targetName,
+                tempArchive = tempArchive
+            )
+
+            is WorkspaceSmpDir.SafDir -> writeArchiveToSafDir(
+                context = context,
+                targetDir = targetDir.directory,
                 songId = songId,
                 targetName = targetName,
                 tempArchive = tempArchive
             )
         }
-
-        val safTargetDir = resolveWritableSafSmpDir(context)
-            ?: return PersistResult(
-                archiveUri = null,
-                failureReason = "dossier workspace BackingTracks/SMP introuvable"
-            )
-
-        return writeArchiveToSafDir(
-            context = context,
-            targetDir = safTargetDir,
-            songId = songId,
-            targetName = targetName,
-            tempArchive = tempArchive
-        )
     }
 
     internal fun buildDurableArchiveFileName(songUnit: SongUnit): String {
@@ -332,67 +351,87 @@ object SmpWorkspaceArchiveStore {
         }
     }
 
-    private fun resolveWritableFileSmpDir(context: Context): File? {
-        val fileRootUri = listOfNotNull(
-            BackupFolderPrefsInternal.getLibraryRootUri(context),
-            BackupFolderPrefs.getLibraryRootUri(context)
-        ).firstOrNull { it.scheme == "file" } ?: return null
+    internal fun resolveWorkspaceSmpDir(
+        context: Context,
+        snapshot: WorkspaceResolver.Snapshot,
+        createIfMissing: Boolean
+    ): WorkspaceSmpDir? {
+        val rootUri = snapshot.workspaceRootUri ?: return null
+        return when (rootUri.scheme) {
+            "file" -> resolveWorkspaceFileSmpDir(rootUri, createIfMissing)
+                ?.let(WorkspaceSmpDir::FileDir)
 
-        val rootPath = fileRootUri.path?.takeIf { it.isNotBlank() } ?: return null
-        val rootDir = File(rootPath)
-        val splRoot = when {
-            File(rootDir, BACKING_TRACKS_DIR_NAME).isDirectory -> rootDir
-            File(rootDir, "SPL_Music").isDirectory -> File(rootDir, "SPL_Music")
-            else -> rootDir
+            "content" -> resolveWorkspaceSafSmpDir(context, rootUri, createIfMissing)
+                ?.let(WorkspaceSmpDir::SafDir)
+
+            else -> null
+        }
+    }
+
+    private fun resolveWorkspaceFileSmpDir(
+        rootUri: Uri,
+        createIfMissing: Boolean
+    ): File? {
+        val rootPath = rootUri.path?.takeIf { it.isNotBlank() } ?: return null
+        val rawRootDir = File(rootPath)
+        val splRoot = normalizeWorkspaceFileRoot(rawRootDir)
+        if (!splRoot.exists() || !splRoot.isDirectory) {
+            if (!createIfMissing || !splRoot.mkdirs()) {
+                logWarn("Workspace file root indisponible backend=file root=${splRoot.absolutePath}")
+                return null
+            }
         }
 
         val backingTracksDir = File(splRoot, BACKING_TRACKS_DIR_NAME)
-        if (!backingTracksDir.exists() && !backingTracksDir.mkdirs()) {
-            logWarn("Création BackingTracks impossible backend=file root=${splRoot.absolutePath}")
-            return null
+        if (!backingTracksDir.exists()) {
+            if (!createIfMissing || !backingTracksDir.mkdirs()) {
+                logWarn("Création BackingTracks impossible backend=file root=${splRoot.absolutePath}")
+                return null
+            }
         }
 
         val smpDir = File(backingTracksDir, SMP_DIR_NAME)
-        if (!smpDir.exists() && !smpDir.mkdirs()) {
-            logWarn("Création SMP impossible backend=file root=${splRoot.absolutePath}")
-            return null
-        }
-
-        return smpDir
-    }
-
-    private fun resolveWritableSafSmpDir(context: Context): DocumentFile? {
-        val splRoot = resolveWritableSafSplRootDir(context) ?: return null
-        val backingTracks = findDirectoryIgnoreCase(splRoot, listOf(BACKING_TRACKS_DIR_NAME, "BackingTrack"))
-            ?: splRoot.createDirectory(BACKING_TRACKS_DIR_NAME)
-            ?: return null
-
-        return findDirectoryIgnoreCase(backingTracks, listOf(SMP_DIR_NAME, "smp"))
-            ?: backingTracks.createDirectory(SMP_DIR_NAME)
-    }
-
-    private fun resolveWritableSafSplRootDir(context: Context): DocumentFile? {
-        val candidates = listOfNotNull(
-            BackupFolderPrefsSaf.getLibraryRootUri(context),
-            BackupFolderPrefs.getLibraryRootUri(context),
-            BackupFolderPrefsSaf.getSetupTreeUri(context),
-            BackupFolderPrefs.getSetupTreeUri(context)
-        )
-
-        candidates.forEach { candidateUri ->
-            val rootDir = resolveWritableSafDirectory(context, candidateUri) ?: return@forEach
-
-            if (findDirectoryIgnoreCase(rootDir, listOf(BACKING_TRACKS_DIR_NAME, "BackingTrack")) != null) {
-                return rootDir
-            }
-
-            val splMusic = findDirectoryIgnoreCase(rootDir, listOf("SPL_Music", "spl_music"))
-            if (splMusic != null) {
-                return splMusic
+        if (!smpDir.exists()) {
+            if (!createIfMissing || !smpDir.mkdirs()) {
+                logWarn("Création SMP impossible backend=file root=${splRoot.absolutePath}")
+                return null
             }
         }
 
-        return null
+        return smpDir.takeIf { it.isDirectory }
+    }
+
+    private fun normalizeWorkspaceFileRoot(rootDir: File): File {
+        return when {
+            File(rootDir, BACKING_TRACKS_DIR_NAME).isDirectory -> rootDir
+            File(File(rootDir, "SPL_Music"), BACKING_TRACKS_DIR_NAME).isDirectory -> File(rootDir, "SPL_Music")
+            else -> rootDir
+        }
+    }
+
+    private fun resolveWorkspaceSafSmpDir(
+        context: Context,
+        rootUri: Uri,
+        createIfMissing: Boolean
+    ): DocumentFile? {
+        val rootDoc = resolveWritableSafDirectory(context, rootUri) ?: return null
+        val workspaceRoot = normalizeWorkspaceSafRoot(rootDoc)
+        val backingTracks = (
+            findDirectoryIgnoreCase(workspaceRoot, listOf(BACKING_TRACKS_DIR_NAME, "BackingTrack"))
+                ?: if (createIfMissing) workspaceRoot.createDirectory(BACKING_TRACKS_DIR_NAME) else null
+            ) ?: return null
+
+        return (
+            findDirectoryIgnoreCase(backingTracks, listOf(SMP_DIR_NAME, "smp"))
+                ?: if (createIfMissing) backingTracks.createDirectory(SMP_DIR_NAME) else null
+            )?.takeIf { it.isDirectory }
+    }
+
+    private fun normalizeWorkspaceSafRoot(rootDoc: DocumentFile): DocumentFile {
+        if (findDirectoryIgnoreCase(rootDoc, listOf(BACKING_TRACKS_DIR_NAME, "BackingTrack")) != null) {
+            return rootDoc
+        }
+        return findDirectoryIgnoreCase(rootDoc, listOf("SPL_Music", "spl_music")) ?: rootDoc
     }
 
     private fun resolveWritableSafDirectory(context: Context, rootUri: Uri): DocumentFile? {

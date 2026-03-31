@@ -837,6 +837,7 @@ class MainActivity : AppCompatActivity() {
 
                 var currentPlayingUri by remember { mutableStateOf<String?>(null) }
                 var currentPlayingPlaylist by rememberSaveable { mutableStateOf<String?>(initialLastPlaylist) }
+                var currentPlayingPlaylistItemKey by rememberSaveable { mutableStateOf<String?>(null) }
                 var isPlaying by remember { mutableStateOf(false) }
                 var parsedLines by remember { mutableStateOf<List<LrcLine>>(emptyList()) }
                 var lyricsLoading by remember { mutableStateOf(false) }
@@ -1243,10 +1244,21 @@ class MainActivity : AppCompatActivity() {
                     playlistItemKey: String? = null
                 ) {
                     val cleanPlaylistName = playlistName?.trim().takeUnless { it.isNullOrEmpty() }
+                    val currentItemKey = playlistItemKey
+                        ?.trim()
+                        ?.takeIf { it.isNotEmpty() }
+                        ?.let { cleanKey ->
+                            canonicalPlaylistPlaybackKey(
+                                playlistItemKey = cleanKey,
+                                playbackUri = playbackUri
+                            )
+                        }
                     if (cleanPlaylistName == null) {
+                        currentPlayingPlaylistItemKey = null
                         PlaylistRepository.clearNowPlaying()
                         return
                     }
+                    currentPlayingPlaylistItemKey = currentItemKey
                     PlaylistRepository.setNowPlaying(
                         cleanPlaylistName,
                         canonicalPlaylistPlaybackKey(
@@ -1794,6 +1806,7 @@ class MainActivity : AppCompatActivity() {
                     if (!lastUri.isNullOrBlank()) {
                         currentPlayingUri = lastUri
                         currentPlayingPlaylist = lastPlaylist
+                        currentPlayingPlaylistItemKey = null
 
                         val overrideText = withContext(Dispatchers.IO) {
                             LrcStorage.loadForTrack(ctx, lastUri)?.takeIf { it.isNotBlank() }
@@ -2347,6 +2360,8 @@ class MainActivity : AppCompatActivity() {
                                     nextChainedUri = nextChainedUri,
                                     nextTrackUri = nextTrack?.uri,
                                     currentPlayingUri = currentPlayingUri,
+                                    currentPlayingPlaylist = currentPlayingPlaylist,
+                                    currentPlayingPlaylistItemKey = currentPlayingPlaylistItemKey,
                                     selectedPlaylist = selectedQuickPlaylist,
                                     openedPlaylist = openedPlaylist,
                                     isRestoringSession = isRestoringSession,

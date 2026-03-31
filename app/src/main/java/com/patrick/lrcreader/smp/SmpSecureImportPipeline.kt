@@ -3,6 +3,7 @@ package com.patrick.lrcreader.smp
 import android.content.Context
 import android.net.Uri
 import android.util.Log
+import com.patrick.lrcreader.core.WorkspaceResolver
 import java.io.File
 
 data class SmpSecureImportResult(
@@ -36,6 +37,17 @@ class SmpSecureImportPipeline(private val context: Context) {
         uri: Uri,
         importer: SmpImporter = SmpImporter(context)
     ): SmpSecureImportResult {
+        val workspaceSnapshot = WorkspaceResolver.resolve(context)
+        if (!workspaceSnapshot.isUsable || workspaceSnapshot.workspaceRootUri == null) {
+            Log.e(
+                TAG,
+                "Import SMP sécurisé refusé uri=$uri workspaceStatus=${workspaceSnapshot.status} workspaceRoot=${workspaceSnapshot.workspaceRootUri}"
+            )
+            return SmpSecureImportResult(
+                failureReason = "workspace durable indisponible pour l'import SMP sécurisé"
+            )
+        }
+
         val preImportSongIds = smpLibraryScanner.listSongs().map { it.id }.toSet()
         val predictedSongId = SmpArchiveSongIdResolver.readStableSongId(context, uri)
         val rollbackPreparation = prepareRuntimeRollback(predictedSongId)
@@ -51,7 +63,11 @@ class SmpSecureImportPipeline(private val context: Context) {
                     failureReason = importer.lastFailureReason ?: "import SMP impossible"
                 )
 
-            val archivePersistResult = SmpWorkspaceArchiveStore.persistNormalizedArchive(context, importedSong)
+            val archivePersistResult = SmpWorkspaceArchiveStore.persistNormalizedArchive(
+                context = context,
+                songUnit = importedSong,
+                snapshotOverride = workspaceSnapshot
+            )
             if (archivePersistResult.archiveUri != null) {
                 return SmpSecureImportResult(
                     importedSong = importedSong,

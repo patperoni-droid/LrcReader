@@ -81,6 +81,7 @@ import com.patrick.lrcreader.core.TunerEngine
 import com.patrick.lrcreader.core.TunerState
 import com.patrick.lrcreader.core.buildGroupEnd
 import com.patrick.lrcreader.core.buildGroupHeader
+import com.patrick.lrcreader.core.canonicalPlaylistPlaybackKey
 import com.patrick.lrcreader.core.getGroupUuid
 import com.patrick.lrcreader.core.getGroupTitle
 import com.patrick.lrcreader.core.isGroupEnd
@@ -116,6 +117,8 @@ fun QuickPlaylistsScreen(
     nextChainedUri: String? = null,
     nextTrackUri: String? = null,
     currentPlayingUri: String? = null,
+    currentPlayingPlaylist: String? = null,
+    currentPlayingPlaylistItemKey: String? = null,
     selectedPlaylist: String? = null,
     openedPlaylist: String? = null,
     isRestoringSession: Boolean = false,
@@ -1200,12 +1203,17 @@ fun QuickPlaylistsScreen(
                                 loadSongColor(context, pl, uriString)
                             }
 
-                            val isCurrentPlaying =
-                                currentPlayingUri == uriString ||
-                                    (
-                                        smpSongId != null &&
-                                            smpPlaybackUriById[smpSongId] == currentPlayingUri
-                                        )
+                            val playlistItemPlaybackKey = canonicalPlaylistPlaybackKey(
+                                playlistItemKey = uriString,
+                                playbackUri = uriString
+                            )
+                            val hasCurrentPlaylistItemKey = !currentPlayingPlaylistItemKey.isNullOrBlank()
+                            val isCurrentPlaying = if (hasCurrentPlaylistItemKey) {
+                                currentPlayingPlaylist == internalSelected &&
+                                    currentPlayingPlaylistItemKey == playlistItemPlaybackKey
+                            } else {
+                                currentPlayingUri == uriString
+                            }
                             val isDraggingThis = draggingUri == uriString
                             val isChainedNext = nextChainedUri != null && uriString == nextChainedUri
                             val isForcedNext = nextTrackUri != null && uriString == nextTrackUri
@@ -1293,17 +1301,6 @@ fun QuickPlaylistsScreen(
                                             .background(groupAccent)
                                     )
                                 }
-                                if (customSongColor != null) {
-                                    Box(
-                                        modifier = Modifier
-                                            .padding(end = 8.dp)
-                                            .width(4.dp)
-                                            .height(22.dp)
-                                            .clip(RoundedCornerShape(999.dp))
-                                            .alpha(if (isPlayed) 0.6f else 1f)
-                                            .background(customSongColor)
-                                    )
-                                }
                                 val isPrompter = uriString.startsWith("prompter://")
                                 val isSmp = smpSongId != null
                                 val prefix = if (isPrompter) "📝 " else ""
@@ -1313,15 +1310,14 @@ fun QuickPlaylistsScreen(
                                     else -> Color.White
                                 }
                                 val titleColor = when {
-                                    isCurrentPlaying -> Color(0xFFFFFDE7)
                                     customSongColor != null -> customSongColor
+                                    isCurrentPlaying -> Color(0xFFFFFDE7)
                                     isPlayed -> playedTextColor
                                     else -> normalTitleColor
                                 }
                                 Row(
                                     modifier = Modifier
                                         .weight(1f)
-                                        .alpha(if (isPlayed) 0.6f else 1f)
                                         .combinedClickable(
                                             onClick = {
                                                 val currentPlaylist = internalSelected
@@ -1367,6 +1363,14 @@ fun QuickPlaylistsScreen(
                                                 fontSize = 10.sp
                                             )
                                         }
+                                    }
+                                    if (isPlayed) {
+                                        Spacer(Modifier.width(8.dp))
+                                        Text(
+                                            text = "✔",
+                                            color = Color(0xFFD0D0D0),
+                                            fontSize = 12.sp
+                                        )
                                     }
                                 }
 
