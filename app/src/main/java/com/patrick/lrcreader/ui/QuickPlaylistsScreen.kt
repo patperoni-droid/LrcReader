@@ -1215,16 +1215,29 @@ fun QuickPlaylistsScreen(
                             val rowShape = RoundedCornerShape(12.dp)
                             val groupTint = Color(0xFF0A6C97).copy(alpha = 0.38f)
                             val groupAccent = Color(0xFF0A6C97).copy(alpha = 0.95f)
+                            val selectedBorderColor = Color(0xCC4FC3F7)
+                            val selectedMarkerColor = Color(0xFF4FC3F7)
                             val rowBaseBackground = if (isDraggingThis)
                                 Color(0x33FFFFFF)
                             else if (isSelected)
-                                Color(0x2239B7FF)
+                                Color(0x14FFFFFF)
                             else if (isForcedNext)
                                 Color(0x33D32F2F)
                             else if (isChainedNext)
                                 Color(0x22FFFFFF)
                             else
                                 Color(0xFF181818)
+                            val rowBorderWidth = if (isSelected) 2.dp else 1.dp
+                            val rowBorderColor = if (isSelected)
+                                selectedBorderColor
+                            else if (isCurrentPlaying)
+                                Color.White.copy(alpha = 0.8f)
+                            else if (isForcedNext)
+                                Color(0x99FF8A80)
+                            else if (isChainedNext)
+                                Color(0x66FFD54F)
+                            else
+                                Color(0x33FFFFFF)
 
                             Row(
                                 modifier = Modifier
@@ -1243,22 +1256,23 @@ fun QuickPlaylistsScreen(
                                         }
                                     )
                                     .border(
-                                        width = 1.dp,
-                                        color = if (isSelected)
-                                            Color(0xAA4FC3F7)
-                                        else if (isCurrentPlaying)
-                                            Color.White.copy(alpha = 0.8f)
-                                        else if (isForcedNext)
-                                            Color(0x99FF8A80)
-                                        else if (isChainedNext)
-                                            Color(0x66FFD54F)
-                                        else
-                                            Color(0x33FFFFFF),
+                                        width = rowBorderWidth,
+                                        color = rowBorderColor,
                                         shape = rowShape
                                     )
                                     .padding(horizontal = 6.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
+                                if (isSelected) {
+                                    Box(
+                                        modifier = Modifier
+                                            .padding(end = 8.dp)
+                                            .width(4.dp)
+                                            .height(28.dp)
+                                            .clip(RoundedCornerShape(999.dp))
+                                            .background(selectedMarkerColor)
+                                    )
+                                }
                                 Icon(
                                     imageVector = Icons.Filled.DragHandle,
                                     contentDescription = stringResource(R.string.common_cd_move),
@@ -1279,6 +1293,17 @@ fun QuickPlaylistsScreen(
                                             .background(groupAccent)
                                     )
                                 }
+                                if (customSongColor != null) {
+                                    Box(
+                                        modifier = Modifier
+                                            .padding(end = 8.dp)
+                                            .width(4.dp)
+                                            .height(22.dp)
+                                            .clip(RoundedCornerShape(999.dp))
+                                            .alpha(if (isPlayed) 0.6f else 1f)
+                                            .background(customSongColor)
+                                    )
+                                }
                                 val isPrompter = uriString.startsWith("prompter://")
                                 val isSmp = smpSongId != null
                                 val prefix = if (isPrompter) "📝 " else ""
@@ -1288,9 +1313,9 @@ fun QuickPlaylistsScreen(
                                     else -> Color.White
                                 }
                                 val titleColor = when {
-                                    isPlayed -> playedTextColor
                                     isCurrentPlaying -> Color(0xFFFFFDE7)
                                     customSongColor != null -> customSongColor
+                                    isPlayed -> playedTextColor
                                     else -> normalTitleColor
                                 }
                                 Row(
@@ -1617,7 +1642,21 @@ fun QuickPlaylistsScreen(
                                                         .border(1.dp, Color.White, RoundedCornerShape(999.dp))
                                                         .clickable {
                                                             internalSelected?.let { pl ->
-                                                                saveSongColor(context, pl, uriString, c)
+                                                                val selectedBatch = songs.filter { key ->
+                                                                    key in selectedTrackKeys && isPlayableAudioItem(key)
+                                                                }
+                                                                val targets = if (
+                                                                    uriString in selectedTrackKeys &&
+                                                                    selectedBatch.size > 1
+                                                                ) {
+                                                                    selectedBatch
+                                                                } else {
+                                                                    listOf(uriString)
+                                                                }
+                                                                targets.forEach { targetUri ->
+                                                                    saveSongColor(context, pl, targetUri, c)
+                                                                }
+                                                                selectedTrackKeys = selectedTrackKeys - targets.toSet()
                                                                 songColorsVersion++
                                                             }
                                                             menuOpen = false
