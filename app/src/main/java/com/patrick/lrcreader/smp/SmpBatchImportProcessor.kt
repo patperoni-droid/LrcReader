@@ -2,6 +2,7 @@ package com.patrick.lrcreader.smp
 
 import android.content.Context
 import android.net.Uri
+import android.os.SystemClock
 import android.provider.OpenableColumns
 import android.util.Log
 import androidx.documentfile.provider.DocumentFile
@@ -13,6 +14,7 @@ class SmpBatchImportProcessor(
 
     companion object {
         private const val TAG = "SMP_BATCH"
+        private const val IMPORT_TRACE_TAG = "IMPORT_TRACE"
 
         private val AUDIO_EXTENSIONS = listOf(
             ".mp3",
@@ -122,11 +124,21 @@ class SmpBatchImportProcessor(
         },
         onProgress: (Progress) -> Unit = {}
     ): BatchResult {
+        val batchStartMs = SystemClock.elapsedRealtime()
+        Log.i(
+            IMPORT_TRACE_TAG,
+            "elapsedMs=$batchStartMs step=batch_process_start totalCount=${plan.totalCount} supportedCount=${plan.supportedCount} hasAudioToPrepare=${plan.hasAudioToPrepare} playlist=${playlistName ?: "none"}"
+        )
         val successes = mutableListOf<ItemSuccess>()
         val failures = mutableListOf<ItemFailure>()
         val totalCount = plan.totalCount.coerceAtLeast(1)
 
         plan.items.forEachIndexed { index, item ->
+            val itemStartMs = SystemClock.elapsedRealtime()
+            Log.i(
+                IMPORT_TRACE_TAG,
+                "elapsedMs=$itemStartMs step=batch_item_start index=${index + 1}/$totalCount name=${item.displayName} kind=${item.sourceKind} uri=${item.sourceUri}"
+            )
             when (item.sourceKind) {
                 SourceKind.UNSUPPORTED -> {
                     val reason = "Fichier non pris en charge"
@@ -139,11 +151,19 @@ class SmpBatchImportProcessor(
                         stage = FailureStage.UNSUPPORTED,
                         reason = reason
                     )
+                    Log.i(
+                        IMPORT_TRACE_TAG,
+                        "elapsedMs=${SystemClock.elapsedRealtime()} step=batch_item_end index=${index + 1}/$totalCount result=unsupported durationMs=${SystemClock.elapsedRealtime() - itemStartMs} name=${item.displayName}"
+                    )
                 }
 
                 SourceKind.SMP,
                 SourceKind.AUDIO -> {
                     val smpUri = if (item.sourceKind == SourceKind.AUDIO) {
+                        Log.i(
+                            IMPORT_TRACE_TAG,
+                            "elapsedMs=${SystemClock.elapsedRealtime()} step=batch_progress_emit index=${index + 1}/$totalCount stage=CONVERTING name=${item.displayName}"
+                        )
                         onProgress(
                             Progress(
                                 currentItemIndex = index + 1,
@@ -175,11 +195,19 @@ class SmpBatchImportProcessor(
                             TAG,
                             "step=convert_ok name=${item.displayName} sourceUri=${item.sourceUri} smpUri=$outputUri"
                         )
+                        Log.i(
+                            IMPORT_TRACE_TAG,
+                            "elapsedMs=${SystemClock.elapsedRealtime()} step=batch_conversion_ok index=${index + 1}/$totalCount name=${item.displayName} smpUri=$outputUri durationMs=${SystemClock.elapsedRealtime() - itemStartMs}"
+                        )
                         outputUri
                     } else {
                         item.sourceUri
                     }
 
+                    Log.i(
+                        IMPORT_TRACE_TAG,
+                        "elapsedMs=${SystemClock.elapsedRealtime()} step=batch_progress_emit index=${index + 1}/$totalCount stage=IMPORTING name=${item.displayName} smpUri=$smpUri"
+                    )
                     onProgress(
                         Progress(
                             currentItemIndex = index + 1,
@@ -201,6 +229,10 @@ class SmpBatchImportProcessor(
                             stage = FailureStage.IMPORT,
                             reason = reason
                         )
+                        Log.i(
+                            IMPORT_TRACE_TAG,
+                            "elapsedMs=${SystemClock.elapsedRealtime()} step=batch_item_end index=${index + 1}/$totalCount result=import_failed durationMs=${SystemClock.elapsedRealtime() - itemStartMs} name=${item.displayName} reason=$reason"
+                        )
                         return@forEachIndexed
                     }
                     Log.i(
@@ -209,6 +241,10 @@ class SmpBatchImportProcessor(
                     )
 
                     if (!playlistName.isNullOrBlank()) {
+                        Log.i(
+                            IMPORT_TRACE_TAG,
+                            "elapsedMs=${SystemClock.elapsedRealtime()} step=batch_progress_emit index=${index + 1}/$totalCount stage=ADDING_TO_PLAYLIST name=${item.displayName} songId=${importedSong.id}"
+                        )
                         onProgress(
                             Progress(
                                 currentItemIndex = index + 1,
@@ -230,6 +266,10 @@ class SmpBatchImportProcessor(
                                 stage = FailureStage.PLAYLIST,
                                 reason = playlistError.message ?: "ajout playlist impossible"
                             )
+                            Log.i(
+                                IMPORT_TRACE_TAG,
+                                "elapsedMs=${SystemClock.elapsedRealtime()} step=batch_item_end index=${index + 1}/$totalCount result=playlist_failed durationMs=${SystemClock.elapsedRealtime() - itemStartMs} name=${item.displayName} songId=${importedSong.id} reason=${playlistError.message}"
+                            )
                             return@forEachIndexed
                         }
                         Log.i(
@@ -244,14 +284,23 @@ class SmpBatchImportProcessor(
                         generatedSmpUri = smpUri.takeIf { item.sourceKind == SourceKind.AUDIO },
                         addedToPlaylist = !playlistName.isNullOrBlank()
                     )
+                    Log.i(
+                        IMPORT_TRACE_TAG,
+                        "elapsedMs=${SystemClock.elapsedRealtime()} step=batch_item_end index=${index + 1}/$totalCount result=success durationMs=${SystemClock.elapsedRealtime() - itemStartMs} name=${item.displayName} songId=${importedSong.id} addedToPlaylist=${!playlistName.isNullOrBlank()}"
+                    )
                 }
             }
         }
 
-        return BatchResult(
+        val result = BatchResult(
             successes = successes,
             failures = failures
         )
+        Log.i(
+            IMPORT_TRACE_TAG,
+            "elapsedMs=${SystemClock.elapsedRealtime()} step=batch_process_end durationMs=${SystemClock.elapsedRealtime() - batchStartMs} successCount=${result.successCount} failureCount=${result.failureCount} playlist=${playlistName ?: "none"}"
+        )
+        return result
     }
 
     private fun classifyUri(uri: Uri, mimeType: String?): SourceKind {

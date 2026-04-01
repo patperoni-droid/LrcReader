@@ -5,8 +5,9 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.DocumentsContract
 import androidx.documentfile.provider.DocumentFile
-import com.patrick.lrcreader.core.BackupFolderPrefs
 import com.patrick.lrcreader.core.LibraryIndexCache
+import com.patrick.lrcreader.core.StorageModePrefs
+import com.patrick.lrcreader.ui.library.resolveUsableWorkspaceSnapshot
 import java.io.File
 import java.security.MessageDigest
 
@@ -148,7 +149,11 @@ fun moveLibraryFile(
     // ✅ MOVE NATIF (instant) si possible
     if (android.os.Build.VERSION.SDK_INT >= 24) {
         try {
-            val rootTree = BackupFolderPrefs.get(context)
+            val rootTree = resolveUsableWorkspaceSnapshot(
+                context = context,
+                expectedMode = StorageModePrefs.Mode.SAF,
+                stage = "library_core:move_file"
+            )?.workspaceRootUri
 
             if (rootTree != null) {
                 val srcDocId = DocumentsContract.getDocumentId(sourceUri)
@@ -497,7 +502,11 @@ fun moveLibraryFileWithProgress(
     if (android.os.Build.VERSION.SDK_INT >= 24) {
         try {
             onProgress(null, "Déplacement…")
-            val rootTree = BackupFolderPrefs.get(context)
+            val rootTree = resolveUsableWorkspaceSnapshot(
+                context = context,
+                expectedMode = StorageModePrefs.Mode.SAF,
+                stage = "library_core:move_file_with_progress"
+            )?.workspaceRootUri
 
             if (rootTree != null) {
                 val srcDocId = DocumentsContract.getDocumentId(sourceUri)

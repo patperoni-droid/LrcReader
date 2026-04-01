@@ -6,10 +6,9 @@ import android.net.Uri
 import android.os.Handler
 import android.provider.OpenableColumns
 import android.util.Log
-import com.patrick.lrcreader.core.BackupFolderPrefs
-import com.patrick.lrcreader.core.BackupFolderPrefsInternal
-import com.patrick.lrcreader.core.InternalStoragePaths
 import com.patrick.lrcreader.core.LibraryIndexCache
+import com.patrick.lrcreader.core.StorageModePrefs
+import com.patrick.lrcreader.core.WorkspaceResolver
 import com.patrick.lrcreader.ui.LibraryEntry
 import com.patrick.lrcreader.ui.MoveResult
 import com.patrick.lrcreader.ui.isHiddenLibraryTransportFile
@@ -18,52 +17,36 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 class LibraryBackendInternal(
-    private val context: Context
+    private val context: Context,
+    private val resolvedWorkspaceSnapshot: WorkspaceResolver.Snapshot? = null
 ) : LibraryBackend {
     private val tag = "LIB_INTERNAL"
 
-    override fun getRootUri(): Uri {
-        val saved = BackupFolderPrefsInternal.getLibraryRootUri(context)
-            ?: BackupFolderPrefs.getLibraryRootUri(context)
-        if (saved != null && saved.scheme == "file") {
-            Log.i(tag, "getRootUri: use_saved uri=$saved")
-            return saved
-        }
-
-        val root = Uri.fromFile(InternalStoragePaths.ensureSplRoot(context))
-        BackupFolderPrefsInternal.saveLibraryRootUri(context, root)
-        BackupFolderPrefs.saveLibraryRootUri(context, root)
-        Log.i(tag, "getRootUri: resolved_internal uri=$root")
+    override fun getRootUri(): Uri? {
+        val snapshot = resolveUsableWorkspaceSnapshot(
+            context = context,
+            providedSnapshot = resolvedWorkspaceSnapshot,
+            expectedMode = StorageModePrefs.Mode.INTERNAL,
+            stage = "library_backend_internal:get_root"
+        ) ?: return null
+        val root = snapshot.workspaceRootUri ?: return null
+        Log.i(tag, "getRootUri: use_workspace_snapshot uri=$root status=${snapshot.status}")
         return root
     }
 
     override fun ensureBaseFolders() {
-        val rootDir = File(getRootUri().path ?: return)
-        Log.i(tag, "ensureBaseFolders rootPath=${rootDir.absolutePath}")
-
-        val backingTracks = File(rootDir, "BackingTracks")
-        val backups = File(rootDir, "Backups")
-        val dj = File(rootDir, "DJ")
-
-        val audio = File(backingTracks, "Audio")
-        val smp = File(backingTracks, "SMP")
+        val folders = ensureWorkspaceLibraryFolders(
+            context = context,
+            providedSnapshot = resolvedWorkspaceSnapshot,
+            expectedMode = StorageModePrefs.Mode.INTERNAL,
+            stage = "library_backend_internal:ensure_base_folders"
+        ) ?: return
+        val rootDir = File(folders.rootUri.path ?: return)
+        val backingTracks = File(folders.backingTracksUri.path ?: return)
+        val audio = File(folders.audioUri.path ?: return)
+        val smp = File(folders.smpUri.path ?: return)
         val lyrics = File(backingTracks, "Lyrics")
-        val accords = File(backingTracks, "Accords")
-        val midi = File(backingTracks, "Midi")
-        val videos = File(backingTracks, "Videos")
-
-        ensureDirWithLog(rootDir, "SPL_Music")
-        ensureDirWithLog(backingTracks, "BackingTracks")
-        ensureDirWithLog(backups, "Backups")
-        ensureDirWithLog(dj, "DJ")
-
-        ensureDirWithLog(audio, "BackingTracks/Audio")
-        ensureDirWithLog(smp, "BackingTracks/SMP")
-        ensureDirWithLog(lyrics, "BackingTracks/Lyrics")
-        ensureDirWithLog(accords, "BackingTracks/Accords")
-        ensureDirWithLog(midi, "BackingTracks/Midi")
-        ensureDirWithLog(videos, "BackingTracks/Videos")
-
+        Log.i(tag, "ensureBaseFolders rootPath=${rootDir.absolutePath}")
         Log.i(tag, "LIST root=${names(rootDir)}")
         Log.i(tag, "LIST BackingTracks=${names(backingTracks)}")
         Log.i(tag, "LIST Audio=${names(audio)}")
@@ -132,9 +115,13 @@ class LibraryBackendInternal(
         destFolderUri: Uri?,
         currentFolderUri: Uri?
     ): Uri? = withContext(Dispatchers.IO) {
-        val rootDir = File(getRootUri().path ?: return@withContext null)
-        val backingRoot = File(rootDir, "BackingTracks").apply { mkdirs() }
-        val audioDir = File(backingRoot, "Audio").apply { mkdirs() }
+        val folders = ensureWorkspaceLibraryFolders(
+            context = context,
+            providedSnapshot = resolvedWorkspaceSnapshot,
+            expectedMode = StorageModePrefs.Mode.INTERNAL,
+            stage = "library_backend_internal:import_audio"
+        ) ?: return@withContext null
+        val audioDir = File(folders.audioUri.path ?: return@withContext null)
 
         pickedUris.forEach { src ->
             val name = queryDisplayName(src) ?: "import_${System.currentTimeMillis()}.mp3"
@@ -299,12 +286,6 @@ class LibraryBackendInternal(
                     if (idx >= 0 && c.moveToFirst()) c.getString(idx) else null
                 }
         }.getOrNull()
-    }
-
-    private fun ensureDirWithLog(dir: File, label: String) {
-        val created = dir.mkdirs()
-        val ok = dir.exists() && dir.isDirectory
-        Log.i(tag, "MKDIR $label path=${dir.absolutePath} created=$created ok=$ok")
     }
 
     private fun names(dir: File): String {

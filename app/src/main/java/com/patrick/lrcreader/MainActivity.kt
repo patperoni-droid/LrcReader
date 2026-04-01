@@ -77,11 +77,14 @@ import com.patrick.lrcreader.smp.SmpAutoMigrationResult
 import com.patrick.lrcreader.smp.SmpBatchImportProcessor
 import com.patrick.lrcreader.smp.SmpConverter
 import com.patrick.lrcreader.smp.SmpImportedSongDetail
+import com.patrick.lrcreader.smp.SmpImportedUiSignal
+import com.patrick.lrcreader.smp.SmpArchiveFinalizeScheduler
 import com.patrick.lrcreader.smp.SmpLibraryScanner
 import com.patrick.lrcreader.smp.SmpSecureImportPipeline
 import com.patrick.lrcreader.smp.SmpUserArchiveRebuilder
 import com.patrick.lrcreader.ui.*
 import com.patrick.lrcreader.ui.library.LibraryScreen
+import com.patrick.lrcreader.ui.library.ensureWorkspaceLibraryFolders
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.collectLatest
@@ -158,6 +161,7 @@ class MainActivity : AppCompatActivity() {
     ) {
         val safeTab = snapshot.tabKey.ifBlank { TAB_HOME }
         val safeUri = snapshot.currentPlayingUri?.takeIf { it.isNotBlank() }
+        val safeSongId = resolveSessionSongIdFromTrackUri(safeUri)
         val safePlaylist = snapshot.currentPlayingPlaylist?.takeIf { it.isNotBlank() }
             ?: snapshot.quickPlaylist?.takeIf { it.isNotBlank() }
         val normalizedSnapshot = SessionSnapshot(
@@ -175,7 +179,7 @@ class MainActivity : AppCompatActivity() {
 
         Log.d(
             "BOOTSTEP",
-            "SessionPersist:before reason=$reason tab=$safeTab quick=${snapshot.quickPlaylist} opened=${snapshot.openedPlaylist} uri=$safeUri playlist=$safePlaylist"
+            "SessionPersist:before reason=$reason tab=$safeTab quick=${snapshot.quickPlaylist} opened=${snapshot.openedPlaylist} uri=$safeUri songId=$safeSongId playlist=$safePlaylist"
         )
         val tStart = SystemClock.elapsedRealtime()
         SessionPrefs.saveSessionSnapshot(
@@ -184,7 +188,8 @@ class MainActivity : AppCompatActivity() {
             quickPlaylist = normalizedSnapshot.quickPlaylist,
             openedPlaylist = normalizedSnapshot.openedPlaylist,
             lastTrackUri = normalizedSnapshot.currentPlayingUri,
-            lastPlaylistName = normalizedSnapshot.currentPlayingPlaylist
+            lastPlaylistName = normalizedSnapshot.currentPlayingPlaylist,
+            lastSongId = safeSongId
         )
         lastPersistedSessionSnapshot = normalizedSnapshot
         if (BuildConfig.DEBUG) {
@@ -195,6 +200,36 @@ class MainActivity : AppCompatActivity() {
             )
         }
         Log.d("BOOTSTEP", "SessionPersist:after reason=$reason")
+    }
+
+    private fun resolveSessionSongIdFromTrackUri(trackUriString: String?): String? {
+        val rawUri = trackUriString?.trim().orEmpty()
+        if (rawUri.isEmpty()) return null
+
+        getSmpSongId(rawUri)?.let { songId ->
+            return songId.takeIf { it.isNotBlank() }
+        }
+
+        val trackUri = runCatching { Uri.parse(rawUri) }.getOrNull() ?: return null
+        if (trackUri.scheme != "file") return null
+
+        val audioPath = trackUri.path?.takeIf { it.isNotBlank() } ?: return null
+        val audioFile = File(audioPath)
+        if (!audioFile.isFile || !audioFile.name.startsWith("audio.", ignoreCase = true)) {
+            return null
+        }
+
+        val songDir = runCatching { audioFile.parentFile?.canonicalFile }.getOrNull() ?: return null
+        val tracksRoot = runCatching { File(filesDir, "tracks").canonicalFile }.getOrNull() ?: return null
+        if (songDir.parentFile?.canonicalFile != tracksRoot) {
+            return null
+        }
+
+        if (!File(songDir, "config.json").isFile) {
+            return null
+        }
+
+        return songDir.name.takeIf { it.isNotBlank() }
     }
 
     private fun persistSession(reason: String, snapshot: SessionSnapshot = latestSessionSnapshot) {
@@ -246,7 +281,10 @@ class MainActivity : AppCompatActivity() {
         val initialTabKey = SessionPrefs.getTab(this)
         val initialQuickPlaylist = SessionPrefs.getQuickPlaylist(this)
         val initialOpenedPlaylist = SessionPrefs.getOpenedPlaylist(this)
-        val (initialLastTrackUri, initialLastPlaylist) = SessionPrefs.getLastSession(this)
+        val initialLastSession = SessionPrefs.getLastSessionState(this)
+        val initialLastTrackUri = initialLastSession.trackUri
+        val initialLastSongId = initialLastSession.songId
+        val initialLastPlaylist = initialLastSession.playlistName
         mark("SessionPrefs.getTab/getQuick/getOpened:after")
         latestSessionSnapshot = SessionSnapshot(
             tabKey = initialTabKey ?: TAB_HOME,
@@ -258,9 +296,16 @@ class MainActivity : AppCompatActivity() {
 
         mark("DjEngine.init:deferred/lazy (DjScreen)")
 
-        mark("BackupFolderPrefs.getLibraryRootUri:before")
-        val root = BackupFolderPrefs.getLibraryRootUri(this)
-        mark("BackupFolderPrefs.getLibraryRootUri:after root=$root")
+        mark("WorkspaceResolver.resolve(onCreate):before")
+        val startupWorkspaceSnapshot = WorkspaceResolver.resolve(this)
+        val root = startupWorkspaceSnapshot
+            .takeIf { it.isUsable }
+            ?.workspaceRootUri
+        Log.i(
+            "WORKSPACE_C1",
+            "stage=main_activity:on_create status=${startupWorkspaceSnapshot.status} mode=${startupWorkspaceSnapshot.mode} root=$root detail=${startupWorkspaceSnapshot.detail}"
+        )
+        mark("WorkspaceResolver.resolve(onCreate):after root=$root")
         if (root != null) {
             mark("LibraryIndexCache.load(onCreate):before")
             val cached = LibraryIndexCache.load(this)
@@ -275,6 +320,9 @@ class MainActivity : AppCompatActivity() {
         mark("AutoBackupScheduler.ensureScheduled:before")
         AutoBackupScheduler.ensureScheduled(this)
         mark("AutoBackupScheduler.ensureScheduled:after")
+        mark("SmpArchiveFinalizeScheduler.reconcilePending:before")
+        SmpArchiveFinalizeScheduler.reconcilePending(this)
+        mark("SmpArchiveFinalizeScheduler.reconcilePending:after")
 
 
         mark("BackupManager.autoRestoreFromDefaultBackupFile:deferred")
@@ -387,8 +435,7 @@ class MainActivity : AppCompatActivity() {
                 var pendingPlaylistBatchPlan by remember {
                     mutableStateOf<SmpBatchImportProcessor.BatchPlan?>(null)
                 }
-                var lastImportedSmpSongId by remember { mutableStateOf<String?>(null) }
-                var lastImportedSmpRefreshVersion by remember { mutableIntStateOf(-1) }
+                var lastImportedSmpUiSignal by remember { mutableStateOf<SmpImportedUiSignal?>(null) }
                 val lastSmpImportFailureReason = remember { AtomicReference<String?>(null) }
                 val smpImporter = remember(ctx) { SmpImporter(ctx) }
                 val smpSecureImportPipeline = remember(ctx) { SmpSecureImportPipeline(ctx) }
@@ -476,23 +523,74 @@ class MainActivity : AppCompatActivity() {
                         cleanMime == "application/octet-stream"
                 }
 
-                suspend fun importSmpIntoApp(uri: Uri): com.patrick.lrcreader.smp.SongUnit? {
+                suspend fun importSmpIntoApp(
+                    uri: Uri,
+                    libraryRuntimeReadyFirst: Boolean = false
+                ): com.patrick.lrcreader.smp.SongUnit? {
+                    val importStartMs = SystemClock.elapsedRealtime()
+                    Log.i(
+                        "IMPORT_TRACE",
+                        "elapsedMs=$importStartMs step=main_importSmpIntoApp_start uri=$uri libraryRuntimeReadyFirst=$libraryRuntimeReadyFirst"
+                    )
                     lastSmpImportFailureReason.set(null)
-                    val importResult = withContext(Dispatchers.IO) {
-                        smpSecureImportPipeline.import(uri, smpImporter)
+                    val blockingResult = if (!libraryRuntimeReadyFirst) {
+                        withContext(Dispatchers.IO) {
+                            smpSecureImportPipeline.import(uri, smpImporter)
+                        }
+                    } else {
+                        null
                     }
-                    lastSmpImportFailureReason.set(importResult.failureReason)
+                    val runtimeReadyResult = if (libraryRuntimeReadyFirst) {
+                        withContext(Dispatchers.IO) {
+                            smpSecureImportPipeline.importRuntimeReady(uri, smpImporter)
+                        }
+                    } else {
+                        null
+                    }
+                    Log.i(
+                        "IMPORT_TRACE",
+                        "elapsedMs=${SystemClock.elapsedRealtime()} step=main_importSmpIntoApp_pipeline_done durationMs=${SystemClock.elapsedRealtime() - importStartMs} uri=$uri blockingSuccess=${blockingResult?.isSuccess} runtimeReadySuccess=${runtimeReadyResult?.isRuntimeReadySuccess} songId=${blockingResult?.importedSong?.id ?: runtimeReadyResult?.importedSong?.id} failureReason=${blockingResult?.failureReason ?: runtimeReadyResult?.failureReason} archiveState=${runtimeReadyResult?.archiveState} archiveFailureReason=${runtimeReadyResult?.archiveFailureReason}"
+                    )
+                    val blockingFailureReason = blockingResult?.failureReason
+                    val runtimeFailureReason = runtimeReadyResult?.failureReason
+                    if (!blockingFailureReason.isNullOrBlank()) {
+                        lastSmpImportFailureReason.set(blockingFailureReason)
+                    } else if (!runtimeFailureReason.isNullOrBlank()) {
+                        lastSmpImportFailureReason.set(runtimeFailureReason)
+                    }
 
-                    val importedSong = importResult.importedSong ?: run {
+                    val importedSong = blockingResult?.importedSong ?: runtimeReadyResult?.importedSong ?: run {
+                        Log.i(
+                            "IMPORT_TRACE",
+                            "elapsedMs=${SystemClock.elapsedRealtime()} step=main_importSmpIntoApp_end durationMs=${SystemClock.elapsedRealtime() - importStartMs} uri=$uri result=no_song"
+                        )
                         return null
+                    }
+
+                    runtimeReadyResult?.archiveFailureReason?.let { archiveFailureReason ->
+                        Log.w(
+                            "IMPORT_TRACE",
+                            "elapsedMs=${SystemClock.elapsedRealtime()} step=main_importSmpIntoApp_archive_finalize_pending_issue songId=${importedSong.id} requestId=${runtimeReadyResult.archiveRequestId} archiveState=${runtimeReadyResult.archiveState} failureReason=$archiveFailureReason"
+                        )
                     }
 
                     withContext(Dispatchers.Main) {
                         smpSongsById = smpSongsById + (importedSong.id to importedSong)
                         smpCacheRefreshTick++
-                        lastImportedSmpSongId = importedSong.id
-                        lastImportedSmpRefreshVersion = smpCacheRefreshTick
+                        lastImportedSmpUiSignal = SmpImportedUiSignal(
+                            songId = importedSong.id,
+                            title = importedSong.title,
+                            requestVersion = smpCacheRefreshTick
+                        )
+                        Log.i(
+                            "IMPORT_TRACE",
+                            "elapsedMs=${SystemClock.elapsedRealtime()} step=main_importSmpIntoApp_publish songId=${importedSong.id} refreshTick=$smpCacheRefreshTick requestVersion=${lastImportedSmpUiSignal?.requestVersion} libraryRuntimeReadyFirst=$libraryRuntimeReadyFirst"
+                        )
                     }
+                    Log.i(
+                        "IMPORT_TRACE",
+                        "elapsedMs=${SystemClock.elapsedRealtime()} step=main_importSmpIntoApp_end durationMs=${SystemClock.elapsedRealtime() - importStartMs} uri=$uri result=success songId=${importedSong.id}"
+                    )
                     return importedSong
                 }
 
@@ -509,7 +607,7 @@ class MainActivity : AppCompatActivity() {
                                 smpBatchProcessor.process(
                                     plan = plan,
                                     playlistName = playlistName,
-                                    importSmp = { uri -> importSmpIntoApp(uri) },
+                                    importSmp = { uri -> importSmpIntoApp(uri, libraryRuntimeReadyFirst = false) },
                                     importFailureReasonProvider = {
                                         lastSmpImportFailureReason.get() ?: smpImporter.lastFailureReason
                                     },
@@ -555,21 +653,6 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
 
-                fun resolveBackingTracksAudioDir(rootFile: File): File {
-                    val backingTracksDir = File(rootFile, "BackingTracks").apply { mkdirs() }
-                    return File(backingTracksDir, "Audio").apply { mkdirs() }
-                }
-
-                fun resolveBackingTracksAudioDoc(splRootDoc: DocumentFile): DocumentFile? {
-                    val backingTracksDoc = splRootDoc.findFile("BackingTracks")
-                        ?: splRootDoc.findFile("BackingTrack")
-                        ?: splRootDoc.createDirectory("BackingTracks")
-                        ?: return null
-                    return backingTracksDoc.findFile("Audio")
-                        ?: backingTracksDoc.findFile("audio")
-                        ?: backingTracksDoc.createDirectory("Audio")
-                }
-
                 val pickSmpFileLauncher = rememberLauncherForActivityResult(
                     contract = ActivityResultContracts.OpenDocument()
                 ) { uri ->
@@ -591,9 +674,14 @@ class MainActivity : AppCompatActivity() {
                     if (!pickedName.endsWith(".smp", ignoreCase = true)) {
                         Log.w("SMP", "Fichier sélectionné sans extension .smp: name=$pickedName uri=$uri")
                     }
+                    Log.w(
+                        "IMPORT_PROOF",
+                        "elapsedMs=${SystemClock.elapsedRealtime()} file=MainActivity.kt phase=library_external_smp_picker detail=name=$pickedName uri=$uri"
+                    )
+                    Toast.makeText(ctx, "IMPORT_PROOF external SMP picker path", Toast.LENGTH_SHORT).show()
 
                     scope.launch {
-                        val importedSong = importSmpIntoApp(uri)
+                        val importedSong = importSmpIntoApp(uri, libraryRuntimeReadyFirst = true)
                         val toastMessage = if (importedSong != null) {
                             Log.i(
                                 "SMP",
@@ -651,16 +739,26 @@ class MainActivity : AppCompatActivity() {
                     contract = ActivityResultContracts.OpenMultipleDocuments()
                 ) { uris ->
                     if (uris.isNullOrEmpty()) return@rememberLauncherForActivityResult
-                    // ✅ MODE INTERNE : on copie les fichiers choisis dans le dossier interne
-                    val savedRootNow = BackupFolderPrefs.getLibraryRootUri(ctx)
-                    val internalModeNow = savedRootNow != null && savedRootNow.scheme == "file"
+                    val libraryFolders = ensureWorkspaceLibraryFolders(
+                        context = ctx,
+                        providedSnapshot = workspaceSnapshot,
+                        expectedMode = workspaceSnapshot.mode,
+                        stage = "main_activity:pick_audio_files"
+                    )
+                    if (libraryFolders == null) {
+                        android.util.Log.e(
+                            "WORKSPACE_C1",
+                            "stage=main_activity:pick_audio_files error=workspace_unavailable status=${workspaceSnapshot.status} root=${workspaceSnapshot.workspaceRootUri}"
+                        )
+                        return@rememberLauncherForActivityResult
+                    }
+                    val internalModeNow = libraryFolders.snapshot.mode == StorageModePrefs.Mode.INTERNAL
 
                     if (internalModeNow) {
                         scope.launch {
                             isImporting = true
                             try {
-                                val rootFile = File(savedRootNow!!.path!!)
-                                val audioDir = resolveBackingTracksAudioDir(rootFile)
+                                val audioDir = File(libraryFolders.audioUri.path!!)
 
                                 fun displayNameOf(uri: Uri): String {
                                     val cr = ctx.contentResolver
@@ -703,37 +801,16 @@ class MainActivity : AppCompatActivity() {
                         }
                         return@rememberLauncherForActivityResult
                     }
-                    val setupTree = BackupFolderPrefs.getSetupTreeUri(ctx) ?: run {
-                        android.util.Log.e("IMPORT", "setupTreeUri manquant")
-                        return@rememberLauncherForActivityResult
-                    }
-
-                    val baseTree = DocumentFile.fromTreeUri(ctx, setupTree) ?: run {
-                        android.util.Log.e("IMPORT", "baseTree null (permission tree ?)")
-                        return@rememberLauncherForActivityResult
-                    }
-
-                    val splRootDoc = baseTree.findFile("SPL_Music") ?: run {
-                        android.util.Log.e("IMPORT", "SPL_Music introuvable")
-                        return@rememberLauncherForActivityResult
-                    }
-
-                    val audioDoc = resolveBackingTracksAudioDoc(splRootDoc) ?: run {
-                        android.util.Log.e("IMPORT", "BackingTracks/Audio introuvable")
-                        return@rememberLauncherForActivityResult
-                    }
 
                     scope.launch {
                         isImporting = true
                         try {
                             val result = withContext(Dispatchers.IO) {
-                                ImportAudioManager.importAudioFiles(
+                                ImportAudioManager.importAudioFilesToFolder(
                                     context = ctx,
-                                    appRootTreeUri = setupTree, // ✅ LE TREE URI autorisé
+                                    destFolderUri = libraryFolders.audioUri,
                                     sourceUris = uris,
-                                    destFolderName = "BackingTracks",
-                                    overwriteIfExists = false,
-                                    destFolderUri = audioDoc.uri
+                                    overwriteIfExists = false
                                 )
                             }
 
@@ -744,9 +821,10 @@ class MainActivity : AppCompatActivity() {
                             result.errors.take(20).forEach { android.util.Log.e("IMPORT", it) }
 
                             val newIndex = withContext(Dispatchers.IO) {
-                                buildFullIndex(ctx, setupTree) // ✅ si ton buildFullIndex sait descendre depuis le dossier choisi
+                                buildFullIndex(ctx, libraryFolders.rootUri)
                             }
                             LibraryIndexCache.save(ctx, newIndex)
+                            LibrarySnapshot.rootFolderUri = libraryFolders.rootUri
                             LibrarySnapshot.entries = newIndex.map { it.uriString }
                             LibrarySnapshot.isReady = true
 
@@ -824,10 +902,17 @@ class MainActivity : AppCompatActivity() {
 
                 var closeMixSignal by remember { mutableIntStateOf(0) }
                 var sessionRestored by remember { mutableStateOf(false) }
-                val hasSessionToRestore = remember(initialTabKey, initialQuickPlaylist, initialOpenedPlaylist, initialLastTrackUri) {
+                val hasSessionToRestore = remember(
+                    initialTabKey,
+                    initialQuickPlaylist,
+                    initialOpenedPlaylist,
+                    initialLastTrackUri,
+                    initialLastSongId
+                ) {
                     !initialTabKey.isNullOrBlank() ||
                             !initialQuickPlaylist.isNullOrBlank() ||
                             !initialOpenedPlaylist.isNullOrBlank() ||
+                            !initialLastSongId.isNullOrBlank() ||
                             !initialLastTrackUri.isNullOrBlank()
                 }
                 var isRestoringSession by remember { mutableStateOf(hasSessionToRestore) }
@@ -1296,7 +1381,12 @@ class MainActivity : AppCompatActivity() {
                     playlistSessionWriteJob?.cancel()
                     playlistSessionWriteJob = scope.launch(Dispatchers.IO) {
                         try {
-                            SessionPrefs.saveLastSession(ctx, uriString, playlistName)
+                            SessionPrefs.saveLastSession(
+                                context = ctx,
+                                trackUri = uriString,
+                                playlistName = playlistName,
+                                songId = resolveSessionSongIdFromTrackUri(uriString)
+                            )
                         } catch (_: CancellationException) {
                             // coalesced on rapid taps
                         }
@@ -1387,9 +1477,7 @@ class MainActivity : AppCompatActivity() {
                                         }
                                         if (resolved.isNotEmpty() && parsedLines.isEmpty()) {
                                             parsedLines = resolved
-                                            val cacheScopeKey = (BackupFolderPrefsSaf.getLibraryRootUri(ctx)
-                                                ?: BackupFolderPrefs.getLibraryRootUri(ctx))
-                                                ?.toString()
+                                            val cacheScopeKey = savedRoot?.toString()
                                             LyricsMemoryCache.updateScope(cacheScopeKey)
                                             LyricsMemoryCache.put(
                                                 trackUriString = uriString,
@@ -1793,10 +1881,30 @@ class MainActivity : AppCompatActivity() {
                     val restoredTabKey = SessionPrefs.getTab(ctx)
                     val restoredQuickPlaylist = SessionPrefs.getQuickPlaylist(ctx)
                     val restoredOpenedPlaylist = SessionPrefs.getOpenedPlaylist(ctx)
-                    val (lastUri, lastPlaylist) = SessionPrefs.getLastSession(ctx)
+                    val restoredLastSession = SessionPrefs.getLastSessionState(ctx)
+                    val lastPlaylist = restoredLastSession.playlistName
+                    var restoredSongId = restoredLastSession.songId?.takeIf { it.isNotBlank() }
+                    val fallbackLastUri = restoredLastSession.trackUri?.takeIf { it.isNotBlank() }
+                    val restoredTarget = restoredSongId?.let { songId ->
+                        resolveSmpAudioTarget(
+                            songId = songId,
+                            playlistName = lastPlaylist,
+                            showToastOnFailure = false
+                        )
+                    }
+                    val lastUri = restoredTarget?.uri ?: fallbackLastUri
+                    if (restoredTarget == null && !restoredSongId.isNullOrBlank() && !fallbackLastUri.isNullOrBlank()) {
+                        Log.w(
+                            "SMP_TRACE",
+                            "RESTORE fallback_to_uri songId=$restoredSongId playlist=$lastPlaylist uri=$fallbackLastUri"
+                        )
+                    }
+                    if (restoredSongId.isNullOrBlank()) {
+                        restoredSongId = resolveSessionSongIdFromTrackUri(lastUri)
+                    }
                     Log.d(
                         "SMP_TRACE",
-                        "RESTORE playlistQuick=$restoredQuickPlaylist playlistOpened=$restoredOpenedPlaylist lastPlaylist=$lastPlaylist track=$lastUri uri=$lastUri source=SessionPrefs"
+                        "RESTORE playlistQuick=$restoredQuickPlaylist playlistOpened=$restoredOpenedPlaylist lastPlaylist=$lastPlaylist songId=$restoredSongId track=$fallbackLastUri resolvedUri=$lastUri source=SessionPrefs"
                     )
 
                     restoredTabKey?.let { selectedTab = tabFromKey(it) }
@@ -2401,11 +2509,9 @@ class MainActivity : AppCompatActivity() {
                                         reselectRootSignal = libraryTabReselectSignal,
                                         searchToggleSignal = librarySearchToggleSignal,
                                         smpRefreshVersion = smpCacheRefreshTick,
-                                        lastImportedSmpSongId = lastImportedSmpSongId,
-                                        lastImportedSmpRefreshVersion = lastImportedSmpRefreshVersion,
+                                        lastImportedSmpSignal = lastImportedSmpUiSignal,
                                         onConsumeImportedSmpAutoOpen = {
-                                            lastImportedSmpSongId = null
-                                            lastImportedSmpRefreshVersion = -1
+                                            lastImportedSmpUiSignal = null
                                         },
                                         onWorkspaceChanged = {
                                             forceSetup = false
@@ -2424,7 +2530,7 @@ class MainActivity : AppCompatActivity() {
                                         },
                                         onImportGeneratedSmp = { uri ->
                                             Log.i("SMP_CONVERT_FLOW", "step=main_auto_import_start outputUri=$uri")
-                                            val importedSong = importSmpIntoApp(uri)
+                                            val importedSong = importSmpIntoApp(uri, libraryRuntimeReadyFirst = true)
                                             if (importedSong != null) {
                                                 Log.i(
                                                     "SMP_CONVERT_FLOW",

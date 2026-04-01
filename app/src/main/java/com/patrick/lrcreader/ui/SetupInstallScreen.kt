@@ -22,9 +22,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.documentfile.provider.DocumentFile
-import com.patrick.lrcreader.core.BackupFolderPrefs
-import com.patrick.lrcreader.core.DjFolderPrefs
-import com.patrick.lrcreader.core.InternalStoragePaths
 import com.patrick.lrcreader.core.StorageModePrefs
 import com.patrick.lrcreader.exo.R
 import kotlinx.coroutines.launch
@@ -61,93 +58,18 @@ fun SetupInstallScreen(
             "setup:picked authority=${uri.authority} treeId=${safeTreeDocumentId(uri)} docId=${safeDocumentId(uri)}"
         )
 
-        // 1) Persist permissions
-        persistTreePermIfPossible(context, uri)
-
-        // 2) Save setup tree
-        BackupFolderPrefs.saveSetupTreeUri(context, uri)
-
-        // 3) Create/find SPL_Music sous le dossier choisi
-        val baseTree = DocumentFile.fromTreeUri(context, uri) ?: run {
-            Log.e(SETUP_STORAGE_TAG, "setup:base_tree_unresolved pickedUri=$uri")
+        val folders = initializeSafWorkspaceFromPickedTree(
+            context = context,
+            pickedTreeUri = uri,
+            stage = "setup_install_screen:saf"
+        ) ?: run {
+            Log.e(SETUP_STORAGE_TAG, "setup:workspace_prepare_failed pickedUri=$uri")
             return
         }
         Log.i(
             SETUP_STORAGE_TAG,
-            "setup:base_tree uri=${baseTree.uri} children=${listChildNames(baseTree)}"
+            "setup:workspace_ready mode=${folders.snapshot.mode} status=${folders.snapshot.status} root=${folders.rootUri} audio=${folders.audioUri} smp=${folders.smpUri} dj=${folders.djUri}"
         )
-
-        val splRoot = if (shouldUsePickedFolderAsSplRoot(baseTree.name, listChildNames(baseTree))) {
-            Log.i(
-                SETUP_STORAGE_TAG,
-                "setup:use_picked_folder_as_spl_root uri=${baseTree.uri} name=${baseTree.name}"
-            )
-            baseTree
-        } else {
-            baseTree.listFiles().firstOrNull {
-                it.isDirectory && it.name.equals("SPL_Music", ignoreCase = true)
-            } ?: baseTree.createDirectory("SPL_Music")
-        }
-
-        if (splRoot == null || !splRoot.isDirectory) {
-            Log.e(SETUP_STORAGE_TAG, "setup:spl_root_missing parent=${baseTree.uri}")
-            return
-        }
-
-        // 4) Create/find sous-dossiers sans doublons
-        fun ensureDirSmart(
-            parent: DocumentFile,
-            expectedName: String,
-            aliases: List<String> = emptyList()
-        ): DocumentFile? {
-            fun norm(s: String) =
-                s.trim().lowercase()
-                    .replace(" ", "")
-                    .replace(Regex("\\(\\d+\\)$"), "")
-
-            val wanted = (listOf(expectedName) + aliases).map { norm(it) }
-
-            parent.listFiles()
-                .firstOrNull { it.isDirectory && wanted.contains(norm(it.name ?: "")) }
-                ?.let {
-                    Log.i(
-                        SETUP_STORAGE_TAG,
-                        "setup:dir_hit parent=${parent.uri} expected=$expectedName actual=${it.name} uri=${it.uri}"
-                    )
-                    return it
-                }
-
-            val created = parent.createDirectory(expectedName)
-            Log.i(
-                SETUP_STORAGE_TAG,
-                "setup:dir_create parent=${parent.uri} expected=$expectedName created=${created?.uri}"
-            )
-            return created
-        }
-
-        val backingTracksDir = ensureDirSmart(splRoot, "BackingTracks", aliases = listOf("BackingTrack"))
-        val audioDir = backingTracksDir?.let {
-            ensureDirSmart(it, "Audio", aliases = listOf("audio"))
-        }
-        val smpDir = backingTracksDir?.let {
-            ensureDirSmart(it, "SMP", aliases = listOf("smp"))
-        }
-        val djDir = ensureDirSmart(splRoot, "DJ")
-
-        Log.i(
-            SETUP_STORAGE_TAG,
-            "setup:dirs splRoot=${splRoot.uri} splDocId=${safeDocumentId(splRoot.uri)} backingTracks=${backingTracksDir?.uri} backingDocId=${backingTracksDir?.uri?.let(::safeDocumentId)} audio=${audioDir?.uri} audioDocId=${audioDir?.uri?.let(::safeDocumentId)} smp=${smpDir?.uri} smpDocId=${smpDir?.uri?.let(::safeDocumentId)} dj=${djDir?.uri} djDocId=${djDir?.uri?.let(::safeDocumentId)} splChildren=${listChildNames(splRoot)} backingChildren=${listChildNames(backingTracksDir)}"
-        )
-
-        // 5) Library root = SPL_Music (tree uri)
-        BackupFolderPrefs.saveLibraryRootUri(context, splToTreeUri(splRoot.uri))
-
-        // 6) DJ pref
-        if (djDir != null) {
-            DjFolderPrefs.save(context, splToTreeUri(djDir.uri))
-        }
-
-        // 7) Étape 2
         showImportPrompt = true
     }
 
@@ -264,21 +186,19 @@ fun SetupInstallScreen(
 
                         // ✅ OPTION B = MODE INTERNE (robuste sur vieux téléphones)
                         StorageModePrefs.set(context, StorageModePrefs.Mode.INTERNAL)
-
-                        val rootDir = InternalStoragePaths.ensureSplRoot(context)
-                        val backingTracksDir = java.io.File(rootDir, "BackingTracks").apply { mkdirs() }
-                        val audioDir = java.io.File(backingTracksDir, "Audio").apply { mkdirs() }
-                        val smpDir = java.io.File(backingTracksDir, "SMP").apply { mkdirs() }
-                        val rootUri = Uri.fromFile(rootDir)
+                        val folders = initializeInternalWorkspace(
+                            context = context,
+                            stage = "setup_install_screen:internal"
+                        )
 
                         Log.w(
                             SETUP_STORAGE_TAG,
-                            "setup:storage_mode=INTERNAL root=${rootDir.absolutePath} backingTracks=${backingTracksDir.absolutePath} audio=${audioDir.absolutePath} smp=${smpDir.absolutePath} rootChildren=${rootDir.list()?.sorted()} backingChildren=${backingTracksDir.list()?.sorted()}"
+                            "setup:storage_mode=INTERNAL root=${folders?.rootUri} audio=${folders?.audioUri} smp=${folders?.smpUri}"
                         )
-
-                        // ✅ IMPORTANT : marquer l’installation OK (sinon boucle)
-                        BackupFolderPrefs.saveSetupTreeUri(context, rootUri)
-                        BackupFolderPrefs.saveLibraryRootUri(context, rootUri)
+                        if (folders == null) {
+                            pendingBadUri = null
+                            return@TextButton
+                        }
 
                         pendingBadUri = null
 

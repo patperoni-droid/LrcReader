@@ -1,6 +1,8 @@
 package com.patrick.lrcreader.ui.library
 
 import android.net.Uri
+import android.os.SystemClock
+import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -10,6 +12,12 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -20,6 +28,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.patrick.lrcreader.exo.R
 import kotlin.math.roundToInt
+
+private const val IMPORT_TRACE_TAG = "IMPORT_TRACE"
 
 @Composable
 fun LibraryHeader(
@@ -112,6 +122,27 @@ fun LibraryLoadingOverlay(
     moveProgress: Float?,
     moveLabel: String?
 ) {
+    var lastLoggedBucket by remember { mutableIntStateOf(-1) }
+    var logged99 by remember { mutableStateOf(false) }
+    var logged100 by remember { mutableStateOf(false) }
+
+    LaunchedEffect(isLoading) {
+        if (isLoading) {
+            lastLoggedBucket = -1
+            logged99 = false
+            logged100 = false
+            Log.i(
+                IMPORT_TRACE_TAG,
+                "elapsedMs=${SystemClock.elapsedRealtime()} step=overlay_visible moveProgress=$moveProgress label=${moveLabel ?: "null"}"
+            )
+        } else {
+            Log.i(
+                IMPORT_TRACE_TAG,
+                "elapsedMs=${SystemClock.elapsedRealtime()} step=overlay_hidden moveProgress=$moveProgress label=${moveLabel ?: "null"}"
+            )
+        }
+    }
+
     if (!isLoading) return
 
     Box(
@@ -135,14 +166,45 @@ fun LibraryLoadingOverlay(
                     fontSize = 16.sp
                 )
             } else {
+                val clampedProgress = p.coerceIn(0f, 1f)
+                val displayPct = if (clampedProgress >= 1f) {
+                    100
+                } else {
+                    (clampedProgress * 100f).toInt().coerceAtMost(99)
+                }
+                val bucket = (displayPct / 5) * 5
+                LaunchedEffect(bucket) {
+                    if (bucket != lastLoggedBucket) {
+                        lastLoggedBucket = bucket
+                        Log.i(
+                            IMPORT_TRACE_TAG,
+                            "elapsedMs=${SystemClock.elapsedRealtime()} step=overlay_progress_bucket bucketPct=$bucket rawProgress=$clampedProgress label=${moveLabel ?: "null"}"
+                        )
+                    }
+                }
+                LaunchedEffect(displayPct) {
+                    if (displayPct == 99 && !logged99) {
+                        logged99 = true
+                        Log.i(
+                            IMPORT_TRACE_TAG,
+                            "elapsedMs=${SystemClock.elapsedRealtime()} step=overlay_display_99 rawProgress=$clampedProgress label=${moveLabel ?: "null"}"
+                        )
+                    }
+                    if (displayPct == 100 && !logged100) {
+                        logged100 = true
+                        Log.i(
+                            IMPORT_TRACE_TAG,
+                            "elapsedMs=${SystemClock.elapsedRealtime()} step=overlay_display_100 rawProgress=$clampedProgress label=${moveLabel ?: "null"}"
+                        )
+                    }
+                }
                 LinearProgressIndicator(
-                    progress = { p.coerceIn(0f, 1f) },
+                    progress = { clampedProgress },
                     modifier = Modifier.fillMaxWidth(0.72f).height(10.dp)
                 )
                 Spacer(Modifier.height(12.dp))
-                val pct = (p.coerceIn(0f, 1f) * 100f).roundToInt()
                 Text(
-                    (moveLabel ?: stringResource(R.string.library_copying)) + " $pct%",
+                    (moveLabel ?: stringResource(R.string.library_copying)) + " $displayPct%",
                     color = Color.White.copy(alpha = 0.9f),
                     fontSize = 16.sp
                 )

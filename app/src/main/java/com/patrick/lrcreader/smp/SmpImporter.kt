@@ -3,6 +3,7 @@ package com.patrick.lrcreader.smp
 import android.content.Context
 import android.net.Uri
 import android.os.Looper
+import android.os.SystemClock
 import android.provider.OpenableColumns
 import android.util.Log
 import com.patrick.lrcreader.core.EditSoundPrefs
@@ -23,6 +24,7 @@ class SmpImporter(private val context: Context) {
     companion object {
         private const val TAG = "SmpImporter"
         private const val TRACE_TAG = "SMP_TRACE"
+        private const val IMPORT_TRACE_TAG = "IMPORT_TRACE"
         private const val TRACKS_DIR_NAME = "tracks"
         private const val CONFIG_FILE_NAME = "config.json"
         private const val WAVEFORM_FILE_NAME = "waveform.json"
@@ -35,12 +37,21 @@ class SmpImporter(private val context: Context) {
     )
 
     fun importSmp(uri: Uri): SongUnit? {
+        val importStartMs = SystemClock.elapsedRealtime()
         lastFailureReason = null
+        Log.i(
+            IMPORT_TRACE_TAG,
+            "elapsedMs=$importStartMs step=runtime_import_start uri=$uri"
+        )
 
         if (Looper.myLooper() == Looper.getMainLooper()) {
             lastFailureReason = "appel sur le thread principal"
             Log.w(TAG, "importSmp refusé sur le thread principal uri=$uri")
             Log.w(TRACE_TAG, "step=import_failed uri=$uri reason=main_thread")
+            Log.i(
+                IMPORT_TRACE_TAG,
+                "elapsedMs=${SystemClock.elapsedRealtime()} step=runtime_import_end durationMs=${SystemClock.elapsedRealtime() - importStartMs} uri=$uri result=main_thread"
+            )
             return null
         }
 
@@ -54,6 +65,10 @@ class SmpImporter(private val context: Context) {
             lastFailureReason = "création du dossier tracks impossible"
             Log.e(TAG, "Impossible de créer le dossier tracks: ${tracksRoot.absolutePath}")
             Log.e(TRACE_TAG, "step=import_failed uri=$uri reason=tracks_root_create_failed path=${tracksRoot.absolutePath}")
+            Log.i(
+                IMPORT_TRACE_TAG,
+                "elapsedMs=${SystemClock.elapsedRealtime()} step=runtime_import_end durationMs=${SystemClock.elapsedRealtime() - importStartMs} uri=$uri result=tracks_root_create_failed"
+            )
             return null
         }
 
@@ -65,13 +80,28 @@ class SmpImporter(private val context: Context) {
             lastFailureReason = "création du dossier temporaire impossible"
             Log.e(TAG, "Impossible de créer le dossier temporaire: ${stagingDir.absolutePath}")
             Log.e(TRACE_TAG, "step=import_failed uri=$uri reason=staging_create_failed path=${stagingDir.absolutePath}")
+            Log.i(
+                IMPORT_TRACE_TAG,
+                "elapsedMs=${SystemClock.elapsedRealtime()} step=runtime_import_end durationMs=${SystemClock.elapsedRealtime() - importStartMs} uri=$uri result=staging_create_failed"
+            )
             return null
         }
 
         var importedDir: File? = null
 
         try {
-            val extracted = extractArchive(uri = uri, stagingDir = stagingDir) ?: return null
+            val extractStartMs = SystemClock.elapsedRealtime()
+            val extracted = extractArchive(uri = uri, stagingDir = stagingDir) ?: run {
+                Log.i(
+                    IMPORT_TRACE_TAG,
+                    "elapsedMs=${SystemClock.elapsedRealtime()} step=runtime_import_end durationMs=${SystemClock.elapsedRealtime() - importStartMs} uri=$uri result=extract_failed"
+                )
+                return null
+            }
+            Log.i(
+                IMPORT_TRACE_TAG,
+                "elapsedMs=${SystemClock.elapsedRealtime()} step=runtime_import_extract_done durationMs=${SystemClock.elapsedRealtime() - extractStartMs} uri=$uri"
+            )
 
             val config = extracted.config
             val title = config.title ?: displayName.removeSmpSuffix().ifBlank { "Untitled" }
@@ -109,16 +139,29 @@ class SmpImporter(private val context: Context) {
                 lastFailureReason = "écrasement du dossier existant impossible"
                 Log.e(TAG, "Impossible d'écraser le dossier existant: ${destinationDir.absolutePath}")
                 Log.e(TRACE_TAG, "step=import_failed uri=$uri reason=destination_delete_failed destinationDir=${destinationDir.absolutePath}")
+                Log.i(
+                    IMPORT_TRACE_TAG,
+                    "elapsedMs=${SystemClock.elapsedRealtime()} step=runtime_import_end durationMs=${SystemClock.elapsedRealtime() - importStartMs} uri=$uri result=destination_delete_failed songId=$songId"
+                )
                 return null
             }
 
+            val finalizeStartMs = SystemClock.elapsedRealtime()
             if (!moveStagingToDestination(stagingDir = stagingDir, destinationDir = destinationDir)) {
                 lastFailureReason = "finalisation de l'import impossible"
                 Log.e(TAG, "Impossible de finaliser l'import vers ${destinationDir.absolutePath}")
                 Log.e(TRACE_TAG, "step=import_failed uri=$uri reason=move_to_destination_failed destinationDir=${destinationDir.absolutePath}")
                 deleteRecursivelyIfExists(destinationDir)
+                Log.i(
+                    IMPORT_TRACE_TAG,
+                    "elapsedMs=${SystemClock.elapsedRealtime()} step=runtime_import_end durationMs=${SystemClock.elapsedRealtime() - importStartMs} uri=$uri result=move_to_destination_failed songId=$songId"
+                )
                 return null
             }
+            Log.i(
+                IMPORT_TRACE_TAG,
+                "elapsedMs=${SystemClock.elapsedRealtime()} step=runtime_import_finalize_done durationMs=${SystemClock.elapsedRealtime() - finalizeStartMs} uri=$uri songId=$songId"
+            )
 
             importedDir = destinationDir
             restorePreservedLyrics(
@@ -159,11 +202,19 @@ class SmpImporter(private val context: Context) {
                 TRACE_TAG,
                 "step=import_success uri=$uri songId=$songId title=$title destinationDir=${destinationDir.absolutePath}"
             )
+            Log.i(
+                IMPORT_TRACE_TAG,
+                "elapsedMs=${SystemClock.elapsedRealtime()} step=runtime_import_end durationMs=${SystemClock.elapsedRealtime() - importStartMs} uri=$uri result=success songId=$songId"
+            )
             return songUnit
         } catch (e: Exception) {
             lastFailureReason = "exception pendant l'import"
             Log.e(TAG, "Erreur pendant l'import du .smp name=$displayName uri=$uri", e)
             Log.e(TRACE_TAG, "step=import_failed uri=$uri reason=exception", e)
+            Log.i(
+                IMPORT_TRACE_TAG,
+                "elapsedMs=${SystemClock.elapsedRealtime()} step=runtime_import_end durationMs=${SystemClock.elapsedRealtime() - importStartMs} uri=$uri result=exception"
+            )
             return null
         } finally {
             if (importedDir == null) {

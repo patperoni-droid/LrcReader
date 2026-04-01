@@ -5,7 +5,6 @@ import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
-import android.provider.DocumentsContract
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -54,6 +53,7 @@ import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.smp.SmpBatchImportProcessor
 import com.patrick.lrcreader.smp.SmpConverter
 import com.patrick.lrcreader.smp.SmpExporter
+import com.patrick.lrcreader.smp.SmpImportedUiSignal
 import com.patrick.lrcreader.smp.SmpLibraryScanner
 import com.patrick.lrcreader.ui.LibraryEntry
 import com.patrick.lrcreader.ui.LibraryFolderCache
@@ -71,6 +71,9 @@ import java.util.concurrent.atomic.AtomicInteger
 
 private val PROMPTER_FOLDER_URI: Uri = Uri.parse("spl-prompter://folder")
 private val SMP_FOLDER_URI: Uri = Uri.parse("spl-smp://folder")
+private const val IMPORT_PROOF_TAG = "IMPORT_PROOF"
+private const val IMPORT_TRACE_TAG = "IMPORT_TRACE"
+private const val SMP_VIEW_TRACE_TAG = "SMP_VIEW_TRACE"
 private const val LIB_SMP_TRACE_TAG = "LIB_SMP_TRACE"
 private const val LIBRARY_PERF_TRACE_TAG = "LIBRARY_PERF_TRACE"
 private val buildEntriesPerfCounter = AtomicInteger(0)
@@ -79,6 +82,7 @@ private val refreshCurrentEffectPerfCounter = AtomicInteger(0)
 private val folderChangeEffectPerfCounter = AtomicInteger(0)
 private val importedSmpEffectPerfCounter = AtomicInteger(0)
 private val uiEntriesSnapshotPerfCounter = AtomicInteger(0)
+private val buildSmpEntriesTraceCounter = AtomicInteger(0)
 
 private fun isPrompterFolderUri(uri: Uri?): Boolean = uri?.scheme == "spl-prompter"
 private fun isSmpFolderUri(uri: Uri?): Boolean = uri?.scheme == "spl-smp"
@@ -105,6 +109,11 @@ private data class PendingPlaylistAssignRequest(
     val playlistName: String,
     val directItemUris: List<String>,
     val batchPlan: SmpBatchImportProcessor.BatchPlan?
+)
+
+private data class BatchProgressVisualBounds(
+    val floor: Float,
+    val ceiling: Float
 )
 
 private val HIDDEN_LEGACY_FOLDER_NAMES = setOf(
@@ -171,8 +180,7 @@ fun LibraryScreen(
     reselectRootSignal: Int = 0,
     searchToggleSignal: Int = 0,
     smpRefreshVersion: Int = 0,
-    lastImportedSmpSongId: String? = null,
-    lastImportedSmpRefreshVersion: Int = -1,
+    lastImportedSmpSignal: SmpImportedUiSignal? = null,
     onConsumeImportedSmpAutoOpen: () -> Unit = {},
     onWorkspaceChanged: () -> Unit = {},
     onAfterBackupImport: () -> Unit = {},
@@ -233,6 +241,7 @@ fun LibraryScreen(
     val sBatchUnsupportedOnly = stringResource(R.string.smp_batch_unsupported_only)
     val sBatchStageConverting = stringResource(R.string.smp_batch_stage_converting)
     val sBatchStageImporting = stringResource(R.string.smp_batch_stage_importing)
+    val sBatchStagePersistingArchive = stringResource(R.string.smp_batch_stage_persisting_archive)
     val sBatchStagePlaylist = stringResource(R.string.smp_batch_stage_playlist)
 
     // State
@@ -245,7 +254,7 @@ fun LibraryScreen(
 
     val backend: LibraryBackend = remember(workspaceVersion, storageMode) {
         when (storageMode) {
-            StorageModePrefs.Mode.INTERNAL -> LibraryBackendInternal(context)
+            StorageModePrefs.Mode.INTERNAL -> LibraryBackendInternal(context, workspaceSnapshot)
             StorageModePrefs.Mode.SAF -> LibraryBackendSaf(context, workspaceSnapshot)
             else -> LibraryBackendSaf(context, workspaceSnapshot) // sécurité si un jour il y a une 3e valeur / null / migration
         }
@@ -273,28 +282,148 @@ fun LibraryScreen(
     val smpLibraryScanner = remember(context) { SmpLibraryScanner(context) }
     var initialLoadDone by remember { mutableStateOf(false) }
     var lastHandledImportedSmpRefresh by remember { mutableIntStateOf(-1) }
+    var importedAutoOpenDeferredRetryRequestVersion by remember { mutableIntStateOf(-1) }
+    var importedAutoOpenDeferredRetryToken by remember { mutableIntStateOf(0) }
+    var importedAutoOpenReconcileVersion by remember { mutableIntStateOf(-1) }
+    var archivePersistProofShown by remember { mutableStateOf(false) }
+    var importedAutoOpenLaunchProofVersion by remember { mutableIntStateOf(-1) }
+    var importedAutoOpenDeferredProofVersion by remember { mutableIntStateOf(-1) }
+    var importedAutoOpenSuccessProofVersion by remember { mutableIntStateOf(-1) }
     var pendingDirectImportPlan by remember {
         mutableStateOf<SmpBatchImportProcessor.BatchPlan?>(null)
     }
+    var currentBatchProgress by remember {
+        mutableStateOf<SmpBatchImportProcessor.Progress?>(null)
+    }
+    var lastLoggedMoveProgressBucket by remember { mutableIntStateOf(-1) }
 
-    fun batchProgressFraction(progress: SmpBatchImportProcessor.Progress): Float {
-        val total = progress.totalCount.coerceAtLeast(1)
-        val base = (progress.currentItemIndex - 1).coerceAtLeast(0).toFloat() / total.toFloat()
-        val stageOffset = when (progress.stage) {
-            SmpBatchImportProcessor.ProgressStage.CONVERTING -> 0.2f
-            SmpBatchImportProcessor.ProgressStage.IMPORTING -> 0.7f
-            SmpBatchImportProcessor.ProgressStage.ADDING_TO_PLAYLIST -> 0.9f
-        } / total.toFloat()
-        return (base + stageOffset).coerceIn(0f, 1f)
+    fun emitImportProof(
+        phase: String,
+        detail: String,
+        toastMessage: String? = null
+    ) {
+        Log.w(
+            IMPORT_PROOF_TAG,
+            "elapsedMs=${SystemClock.elapsedRealtime()} file=LibraryScreen.kt phase=$phase detail=$detail"
+        )
+        toastMessage?.let { message ->
+            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+        }
     }
 
-    fun batchProgressLabel(progress: SmpBatchImportProcessor.Progress): String {
-        val stageLabel = when (progress.stage) {
+    fun batchProgressBounds(progress: SmpBatchImportProcessor.Progress): BatchProgressVisualBounds {
+        val total = progress.totalCount.coerceAtLeast(1)
+        val base = (progress.currentItemIndex - 1).coerceAtLeast(0).toFloat() / total.toFloat()
+        val stageRange = when (progress.stage) {
+            SmpBatchImportProcessor.ProgressStage.CONVERTING -> 0f to 0.28f
+            // Library direct imports do not have a playlist stage, so IMPORTING must carry
+            // the visual progress almost to completion instead of plateauing too early.
+            SmpBatchImportProcessor.ProgressStage.IMPORTING -> 0.28f to 0.992f
+            SmpBatchImportProcessor.ProgressStage.ADDING_TO_PLAYLIST -> 0.992f to 0.997f
+        }
+        return BatchProgressVisualBounds(
+            floor = (base + stageRange.first / total.toFloat()).coerceIn(0f, 1f),
+            ceiling = (base + stageRange.second / total.toFloat()).coerceIn(0f, 1f)
+        )
+    }
+
+    fun batchProgressLabel(
+        progress: SmpBatchImportProcessor.Progress,
+        persistingArchive: Boolean = false
+    ): String {
+        val stageLabel = when {
+            persistingArchive && progress.stage == SmpBatchImportProcessor.ProgressStage.IMPORTING ->
+                sBatchStagePersistingArchive
+
+            else -> when (progress.stage) {
             SmpBatchImportProcessor.ProgressStage.CONVERTING -> sBatchStageConverting
             SmpBatchImportProcessor.ProgressStage.IMPORTING -> sBatchStageImporting
             SmpBatchImportProcessor.ProgressStage.ADDING_TO_PLAYLIST -> sBatchStagePlaylist
+            }
         }
         return "$stageLabel ${progress.currentItemIndex}/${progress.totalCount}\n${progress.displayName}"
+    }
+
+    LaunchedEffect(
+        currentBatchProgress?.currentItemIndex,
+        currentBatchProgress?.totalCount,
+        currentBatchProgress?.stage
+    ) {
+        val progress = currentBatchProgress ?: return@LaunchedEffect
+        Log.i(
+            IMPORT_TRACE_TAG,
+            "elapsedMs=${SystemClock.elapsedRealtime()} step=library_current_batch_progress index=${progress.currentItemIndex}/${progress.totalCount} stage=${progress.stage} displayName=${progress.displayName}"
+        )
+        val bounds = batchProgressBounds(progress)
+        moveProgress = (moveProgress ?: 0f).coerceAtLeast(bounds.floor)
+
+        when (progress.stage) {
+            SmpBatchImportProcessor.ProgressStage.IMPORTING -> {
+                val total = progress.totalCount.coerceAtLeast(1).toFloat()
+                val minStep = 0.0045f / total
+                val itemVisualEnd = (progress.currentItemIndex.toFloat() / total).coerceIn(0f, 1f)
+                val archivePersistLabel = batchProgressLabel(progress, persistingArchive = true)
+                val lingerCeiling = (
+                    itemVisualEnd - (0.0015f / total)
+                    ).coerceAtLeast(bounds.ceiling).coerceAtMost(0.9985f)
+                while (currentBatchProgress == progress) {
+                    val current = moveProgress ?: bounds.floor
+                    if (current >= bounds.ceiling) {
+                        if (moveLabel != archivePersistLabel) {
+                            moveLabel = archivePersistLabel
+                        }
+                        if (!archivePersistProofShown) {
+                            archivePersistProofShown = true
+                            emitImportProof(
+                                phase = "archive_persist_label_path",
+                                detail = "item=${progress.currentItemIndex}/${progress.totalCount} name=${progress.displayName}",
+                                toastMessage = "IMPORT_PROOF archive persist UI path"
+                            )
+                        }
+                        if (current < lingerCeiling) {
+                            val remaining = lingerCeiling - current
+                            val step = maxOf(remaining * 0.08f, minStep * 0.25f)
+                            moveProgress = (current + step).coerceAtMost(lingerCeiling)
+                        }
+                        delay(200L)
+                        continue
+                    }
+                    val remaining = bounds.ceiling - current
+                    val step = maxOf(remaining * 0.14f, minStep)
+                    moveProgress = (current + step).coerceAtMost(bounds.ceiling)
+                    delay(180L)
+                }
+            }
+
+            else -> {
+                repeat(6) { index ->
+                    if (currentBatchProgress != progress) return@LaunchedEffect
+                    val fraction = (index + 1).toFloat() / 6f
+                    val target = bounds.floor + ((bounds.ceiling - bounds.floor) * fraction)
+                    val current = moveProgress ?: bounds.floor
+                    if (target > current) {
+                        moveProgress = target
+                    }
+                    delay(40L)
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(moveProgress, isLoading) {
+        val progress = moveProgress
+        if (!isLoading || progress == null) {
+            lastLoggedMoveProgressBucket = -1
+            return@LaunchedEffect
+        }
+        val bucket = (((progress.coerceIn(0f, 1f)) * 100f).toInt() / 5) * 5
+        if (bucket != lastLoggedMoveProgressBucket) {
+            lastLoggedMoveProgressBucket = bucket
+            Log.i(
+                IMPORT_TRACE_TAG,
+                "elapsedMs=${SystemClock.elapsedRealtime()} step=library_move_progress_bucket bucketPct=$bucket rawProgress=$progress label=${moveLabel ?: "null"}"
+            )
+        }
     }
 
     fun runDirectBatchImport(plan: SmpBatchImportProcessor.BatchPlan) {
@@ -303,6 +432,19 @@ fun LibraryScreen(
             isLoading = true
             moveLabel = sBatchPreparing
             moveProgress = 0f
+            currentBatchProgress = null
+            archivePersistProofShown = false
+            Log.i(
+                IMPORT_TRACE_TAG,
+                "elapsedMs=${SystemClock.elapsedRealtime()} step=library_direct_batch_start totalCount=${plan.totalCount} supportedCount=${plan.supportedCount}"
+            )
+            if (plan.hasAudioToPrepare) {
+                emitImportProof(
+                    phase = "library_direct_batch_audio_path",
+                    detail = "totalCount=${plan.totalCount} supportedCount=${plan.supportedCount}",
+                    toastMessage = "IMPORT_PROOF audio->SMP batch path"
+                )
+            }
             try {
                 val result = withContext(Dispatchers.IO) {
                     smpBatchProcessor.process(
@@ -311,13 +453,18 @@ fun LibraryScreen(
                         importFailureReasonProvider = onImportGeneratedSmpFailureReason,
                         onProgress = { progress ->
                             mainHandler.post {
-                                moveProgress = batchProgressFraction(progress)
+                                currentBatchProgress = progress
                                 moveLabel = batchProgressLabel(progress)
                             }
                         }
                     )
                 }
 
+                currentBatchProgress = null
+                Log.i(
+                    IMPORT_TRACE_TAG,
+                    "elapsedMs=${SystemClock.elapsedRealtime()} step=library_direct_batch_force_100 successCount=${result.successCount} failureCount=${result.failureCount}"
+                )
                 moveProgress = 1f
                 moveLabel = sBatchPreparing
 
@@ -330,9 +477,14 @@ fun LibraryScreen(
             } finally {
                 pendingDirectImportPlan = null
                 importTargetFolderUri = null
+                currentBatchProgress = null
                 val elapsed = System.currentTimeMillis() - loadingStartedAt
                 val minMs = 500L
                 if (elapsed < minMs) delay(minMs - elapsed)
+                Log.i(
+                    IMPORT_TRACE_TAG,
+                    "elapsedMs=${SystemClock.elapsedRealtime()} step=library_direct_batch_end durationMs=$elapsed"
+                )
                 isLoading = false
                 moveProgress = null
                 moveLabel = null
@@ -374,6 +526,63 @@ fun LibraryScreen(
             "step=build_smp_entries_done entriesCount=${entries.size} entries=${summarizeLibraryEntries(entries)}"
         )
         return entries
+    }
+
+    suspend fun buildSmpEntriesAsync(): List<LibraryEntry> = withContext(Dispatchers.IO) {
+        val callId = buildSmpEntriesTraceCounter.incrementAndGet()
+        val startMs = SystemClock.elapsedRealtime()
+        Log.i(
+            SMP_VIEW_TRACE_TAG,
+            "elapsedMs=$startMs step=build_smp_entries_async_start call=$callId"
+        )
+        val result = buildSmpEntries()
+        Log.i(
+            SMP_VIEW_TRACE_TAG,
+            "elapsedMs=${SystemClock.elapsedRealtime()} step=build_smp_entries_async_end call=$callId durationMs=${SystemClock.elapsedRealtime() - startMs} count=${result.size} entries=${summarizeLibraryEntries(result)}"
+        )
+        result
+    }
+
+    suspend fun refreshSmpEntriesAsync(): List<LibraryEntry> {
+        LibraryFolderCache.remove(SMP_FOLDER_URI)
+        val smpEntries = buildSmpEntriesAsync()
+        LibraryFolderCache.put(SMP_FOLDER_URI, smpEntries)
+        return smpEntries
+    }
+
+    fun mergeSmpEntriesWithImportedSignal(
+        smpEntries: List<LibraryEntry>,
+        importedUriString: String,
+        importedTitle: String
+    ): List<LibraryEntry> {
+        val existingEntry = smpEntries.firstOrNull { it.uri.toString() == importedUriString }
+        val mergedEntry = existingEntry ?: LibraryEntry(
+            uri = Uri.parse(importedUriString),
+            name = importedTitle,
+            isDirectory = false
+        )
+        return (smpEntries.filterNot { it.uri.toString() == importedUriString } + mergedEntry)
+            .sortedBy { it.name.lowercase() }
+    }
+
+    fun showSmpEntriesImmediately(smpEntries: List<LibraryEntry>) {
+        LibraryFolderCache.put(SMP_FOLDER_URI, smpEntries)
+        currentFolderUri
+            ?.takeUnless { isSmpFolderUri(it) }
+            ?.let { currentFolder ->
+                if (folderStack.lastOrNull()?.toString() != currentFolder.toString()) {
+                    folderStack = folderStack + currentFolder
+                }
+            }
+        currentFolderUri = SMP_FOLDER_URI
+        if (entries != smpEntries) {
+            entries = smpEntries
+        }
+        selectedSongs = emptySet()
+        Log.i(
+            SMP_VIEW_TRACE_TAG,
+            "elapsedMs=${SystemClock.elapsedRealtime()} step=show_smp_entries_immediately currentFolderUri=$currentFolderUri entriesSize=${smpEntries.size} entries=${summarizeLibraryEntries(smpEntries)}"
+        )
     }
 
     fun decorateEntriesForFolder(folderUri: Uri, source: List<LibraryEntry>): List<LibraryEntry> {
@@ -593,6 +802,28 @@ fun LibraryScreen(
             LIB_SMP_TRACE_TAG,
             "step=effect_refresh_current_start smpRefreshVersion=$smpRefreshVersion currentFolderUri=$currentFolder root=$rootFolder shouldRefresh=$shouldRefreshCurrentFolder entriesSize=${entries.size}"
         )
+        val pendingImportSignal = lastImportedSmpSignal
+        val importedAutoOpenPending = pendingImportSignal?.let { signal ->
+            signal.requestVersion == smpRefreshVersion &&
+                signal.requestVersion >= 0 &&
+                signal.songId.isNotBlank()
+        } == true
+        if (importedAutoOpenPending) {
+            Log.i(
+                SMP_VIEW_TRACE_TAG,
+                "elapsedMs=${SystemClock.elapsedRealtime()} step=refresh_current_paused_for_import smpRefreshVersion=$smpRefreshVersion requestVersion=${lastImportedSmpSignal?.requestVersion} songId=${lastImportedSmpSignal?.songId} currentFolderUri=$currentFolder"
+            )
+            val durationMs = SystemClock.elapsedRealtime() - startMs
+            Log.i(
+                LIBRARY_PERF_TRACE_TAG,
+                "step=effect_refresh_current_end call=$callId durationMs=$durationMs result=skip_pending_imported_auto_open"
+            )
+            Log.i(
+                LIB_SMP_TRACE_TAG,
+                "step=effect_refresh_current_skip reason=pending_imported_auto_open smpRefreshVersion=$smpRefreshVersion requestVersion=${lastImportedSmpSignal?.requestVersion} currentFolderUri=$currentFolder"
+            )
+            return@LaunchedEffect
+        }
         if (!shouldRefreshCurrentFolder) {
             val durationMs = SystemClock.elapsedRealtime() - startMs
             Log.i(
@@ -762,6 +993,24 @@ fun LibraryScreen(
                 .map { it.entry }
         }
     }
+    suspend fun injectSmpEntriesAndCheckVisible(
+        smpEntries: List<LibraryEntry>,
+        importedUriString: String,
+        importedSongId: String,
+        phase: String
+    ): Boolean {
+        showSmpEntriesImmediately(smpEntries)
+        withFrameNanos { }
+        val visibleInEntries = entries.any { it.uri.toString() == importedUriString }
+        val visibleInFiltered = filteredEntries.any { it.uri.toString() == importedUriString }
+        val onSmpFolder = isSmpFolderUri(currentFolderUri)
+        val visible = onSmpFolder && visibleInEntries && visibleInFiltered
+        Log.i(
+            SMP_VIEW_TRACE_TAG,
+            "elapsedMs=${SystemClock.elapsedRealtime()} step=inject_smp_entries_check_visible phase=$phase importedSongId=$importedSongId onSmpFolder=$onSmpFolder visibleInEntries=$visibleInEntries visibleInFiltered=$visibleInFiltered entriesSize=${entries.size} filteredSize=${filteredEntries.size}"
+        )
+        return visible
+    }
     val entriesSummary = remember(entries) { summarizeLibraryEntries(entries) }
     val filteredEntriesSummary = remember(filteredEntries) { summarizeLibraryEntries(filteredEntries) }
     LaunchedEffect(currentFolderUri, searchQuery, entriesSummary, filteredEntriesSummary) {
@@ -830,16 +1079,35 @@ fun LibraryScreen(
         }
     }
 
-    LaunchedEffect(initialLoadDone, smpRefreshVersion, lastImportedSmpSongId, lastImportedSmpRefreshVersion) {
+    LaunchedEffect(
+        initialLoadDone,
+        smpRefreshVersion,
+        lastImportedSmpSignal,
+        importedAutoOpenDeferredRetryToken
+    ) {
         val callId = importedSmpEffectPerfCounter.incrementAndGet()
         val startMs = SystemClock.elapsedRealtime()
+        val importedSignal = lastImportedSmpSignal
+        val importedRequestVersion = importedSignal?.requestVersion ?: -1
+        fun consumeImportedSmpAutoOpen(reason: String) {
+            importedAutoOpenDeferredRetryRequestVersion = -1
+            Log.i(
+                SMP_VIEW_TRACE_TAG,
+                "elapsedMs=${SystemClock.elapsedRealtime()} step=consume_imported_auto_open reason=$reason smpRefreshVersion=$smpRefreshVersion requestVersion=$importedRequestVersion songId=${importedSignal?.songId} currentFolderUri=$currentFolderUri entriesSize=${entries.size}"
+            )
+            onConsumeImportedSmpAutoOpen()
+        }
         Log.i(
             LIBRARY_PERF_TRACE_TAG,
-            "step=effect_imported_smp_launch call=$callId timeMs=$startMs initialLoadDone=$initialLoadDone smpRefreshVersion=$smpRefreshVersion requestVersion=$lastImportedSmpRefreshVersion songId=$lastImportedSmpSongId"
+            "step=effect_imported_smp_launch call=$callId timeMs=$startMs initialLoadDone=$initialLoadDone smpRefreshVersion=$smpRefreshVersion requestVersion=$importedRequestVersion songId=${importedSignal?.songId}"
+        )
+        Log.i(
+            SMP_VIEW_TRACE_TAG,
+            "elapsedMs=$startMs step=effect_imported_smp_launch call=$callId initialLoadDone=$initialLoadDone smpRefreshVersion=$smpRefreshVersion requestVersion=$importedRequestVersion songId=${importedSignal?.songId} currentFolderUri=$currentFolderUri"
         )
         Log.i(
             LIB_SMP_TRACE_TAG,
-            "step=effect_imported_smp_start initialLoadDone=$initialLoadDone smpRefreshVersion=$smpRefreshVersion requestVersion=$lastImportedSmpRefreshVersion lastImportedSmpSongId=$lastImportedSmpSongId currentFolderUri=$currentFolderUri entriesSize=${entries.size}"
+            "step=effect_imported_smp_start initialLoadDone=$initialLoadDone smpRefreshVersion=$smpRefreshVersion requestVersion=$importedRequestVersion lastImportedSmpSongId=${importedSignal?.songId} currentFolderUri=$currentFolderUri entriesSize=${entries.size}"
         )
         if (!initialLoadDone) {
             val durationMs = SystemClock.elapsedRealtime() - startMs
@@ -853,7 +1121,7 @@ fun LibraryScreen(
             )
             return@LaunchedEffect
         }
-        val importedSongId = lastImportedSmpSongId?.trim().takeUnless { it.isNullOrEmpty() } ?: run {
+        val importedSongId = importedSignal?.songId?.trim().takeUnless { it.isNullOrEmpty() } ?: run {
             val durationMs = SystemClock.elapsedRealtime() - startMs
             Log.i(
                 LIBRARY_PERF_TRACE_TAG,
@@ -865,7 +1133,7 @@ fun LibraryScreen(
             )
             return@LaunchedEffect
         }
-        if (lastImportedSmpRefreshVersion < 0) {
+        if (importedRequestVersion < 0) {
             val durationMs = SystemClock.elapsedRealtime() - startMs
             Log.i(
                 LIBRARY_PERF_TRACE_TAG,
@@ -877,7 +1145,7 @@ fun LibraryScreen(
             )
             return@LaunchedEffect
         }
-        if (lastImportedSmpRefreshVersion != smpRefreshVersion) {
+        if (importedRequestVersion != smpRefreshVersion) {
             val durationMs = SystemClock.elapsedRealtime() - startMs
             Log.i(
                 LIBRARY_PERF_TRACE_TAG,
@@ -885,12 +1153,12 @@ fun LibraryScreen(
             )
             Log.i(
                 LIB_SMP_TRACE_TAG,
-                "step=effect_imported_smp_skip reason=request_version_mismatch smpRefreshVersion=$smpRefreshVersion requestVersion=$lastImportedSmpRefreshVersion"
+                "step=effect_imported_smp_skip reason=request_version_mismatch smpRefreshVersion=$smpRefreshVersion requestVersion=$importedRequestVersion"
             )
-            onConsumeImportedSmpAutoOpen()
+            consumeImportedSmpAutoOpen("request_version_mismatch")
             return@LaunchedEffect
         }
-        if (lastImportedSmpRefreshVersion == lastHandledImportedSmpRefresh) {
+        if (importedRequestVersion == lastHandledImportedSmpRefresh) {
             val durationMs = SystemClock.elapsedRealtime() - startMs
             Log.i(
                 LIBRARY_PERF_TRACE_TAG,
@@ -898,16 +1166,158 @@ fun LibraryScreen(
             )
             Log.i(
                 LIB_SMP_TRACE_TAG,
-                "step=effect_imported_smp_skip reason=already_handled smpRefreshVersion=$smpRefreshVersion requestVersion=$lastImportedSmpRefreshVersion lastHandled=$lastHandledImportedSmpRefresh"
+                "step=effect_imported_smp_skip reason=already_handled smpRefreshVersion=$smpRefreshVersion requestVersion=$importedRequestVersion lastHandled=$lastHandledImportedSmpRefresh"
             )
-            onConsumeImportedSmpAutoOpen()
+            consumeImportedSmpAutoOpen("already_handled")
             return@LaunchedEffect
+        }
+        if (importedAutoOpenLaunchProofVersion != importedRequestVersion) {
+            importedAutoOpenLaunchProofVersion = importedRequestVersion
+            emitImportProof(
+                phase = "smp_auto_open_launch",
+                detail = "songId=$importedSongId requestVersion=$importedRequestVersion currentFolderUri=$currentFolderUri",
+                toastMessage = "IMPORT_PROOF SMP auto-open path"
+            )
         }
 
         val importedUriString = buildSmpItem(importedSongId)
-        val smpEntries = buildSmpEntries()
-        val isImportedSongVisible = smpEntries.any { it.uri.toString() == importedUriString }
+        val importedTitle = importedSignal?.title?.trim().takeUnless { it.isNullOrEmpty() } ?: importedSongId
+        searchQuery = ""
+        var smpEntries = mergeSmpEntriesWithImportedSignal(
+            smpEntries = LibraryFolderCache.get(SMP_FOLDER_URI)
+                ?: if (isSmpFolderUri(currentFolderUri)) entries else emptyList(),
+            importedUriString = importedUriString,
+            importedTitle = importedTitle
+        )
+        var isImportedSongVisible = injectSmpEntriesAndCheckVisible(
+            smpEntries = smpEntries,
+            importedUriString = importedUriString,
+            importedSongId = importedSongId,
+            phase = "provisional"
+        )
+        if (isImportedSongVisible && importedAutoOpenReconcileVersion != importedRequestVersion) {
+            importedAutoOpenReconcileVersion = importedRequestVersion
+            scope.launch {
+                repeat(10) { attempt ->
+                    delay(if (attempt == 0) 0L else 350L)
+                    val refreshed = refreshSmpEntriesAsync()
+                    val merged = mergeSmpEntriesWithImportedSignal(
+                        smpEntries = refreshed,
+                        importedUriString = importedUriString,
+                        importedTitle = importedTitle
+                    )
+                    showSmpEntriesImmediately(merged)
+                    val resolved = refreshed.any { it.uri.toString() == importedUriString }
+                    Log.i(
+                        SMP_VIEW_TRACE_TAG,
+                        "elapsedMs=${SystemClock.elapsedRealtime()} step=effect_imported_smp_reconcile attempt=$attempt importedSongId=$importedSongId resolved=$resolved refreshedCount=${refreshed.size}"
+                    )
+                    if (resolved) return@launch
+                }
+            }
+        }
         if (!isImportedSongVisible) {
+            smpEntries = buildSmpEntriesAsync()
+            smpEntries = mergeSmpEntriesWithImportedSignal(
+                smpEntries = smpEntries,
+                importedUriString = importedUriString,
+                importedTitle = importedTitle
+            )
+            isImportedSongVisible = injectSmpEntriesAndCheckVisible(
+                smpEntries = smpEntries,
+                importedUriString = importedUriString,
+                importedSongId = importedSongId,
+                phase = "initial"
+            )
+        }
+        if (!isImportedSongVisible) {
+            for (attempt in 1..10) {
+                if (isImportedSongVisible) break
+                Log.i(
+                    SMP_VIEW_TRACE_TAG,
+                    "elapsedMs=${SystemClock.elapsedRealtime()} step=effect_imported_smp_retry_start attempt=$attempt importedSongId=$importedSongId"
+                )
+                delay(180L)
+                smpEntries = refreshSmpEntriesAsync()
+                smpEntries = mergeSmpEntriesWithImportedSignal(
+                    smpEntries = smpEntries,
+                    importedUriString = importedUriString,
+                    importedTitle = importedTitle
+                )
+                isImportedSongVisible = injectSmpEntriesAndCheckVisible(
+                    smpEntries = smpEntries,
+                    importedUriString = importedUriString,
+                    importedSongId = importedSongId,
+                    phase = "retry_$attempt"
+                )
+                Log.i(
+                    SMP_VIEW_TRACE_TAG,
+                    "elapsedMs=${SystemClock.elapsedRealtime()} step=effect_imported_smp_retry_done attempt=$attempt importedSongId=$importedSongId visible=$isImportedSongVisible smpEntriesCount=${smpEntries.size}"
+                )
+                if (isImportedSongVisible) {
+                    Log.i(
+                        LIB_SMP_TRACE_TAG,
+                        "step=effect_imported_smp_retry_visible importedSongId=$importedSongId attempt=$attempt smpEntriesCount=${smpEntries.size}"
+                    )
+                }
+            }
+        }
+        if (!isImportedSongVisible) {
+            Log.i(
+                LIB_SMP_TRACE_TAG,
+                "step=effect_imported_smp_final_retry_start importedSongId=$importedSongId smpEntriesCount=${smpEntries.size}"
+            )
+            Log.i(
+                SMP_VIEW_TRACE_TAG,
+                "elapsedMs=${SystemClock.elapsedRealtime()} step=effect_imported_smp_final_retry_start importedSongId=$importedSongId smpEntriesCount=${smpEntries.size}"
+            )
+            delay(1200L)
+            smpEntries = refreshSmpEntriesAsync()
+            smpEntries = mergeSmpEntriesWithImportedSignal(
+                smpEntries = smpEntries,
+                importedUriString = importedUriString,
+                importedTitle = importedTitle
+            )
+            isImportedSongVisible = injectSmpEntriesAndCheckVisible(
+                smpEntries = smpEntries,
+                importedUriString = importedUriString,
+                importedSongId = importedSongId,
+                phase = "final_retry"
+            )
+            Log.i(
+                LIB_SMP_TRACE_TAG,
+                "step=effect_imported_smp_final_retry_done importedSongId=$importedSongId visible=$isImportedSongVisible smpEntriesCount=${smpEntries.size}"
+            )
+            Log.i(
+                SMP_VIEW_TRACE_TAG,
+                "elapsedMs=${SystemClock.elapsedRealtime()} step=effect_imported_smp_final_retry_done importedSongId=$importedSongId visible=$isImportedSongVisible smpEntriesCount=${smpEntries.size}"
+            )
+        }
+        if (!isImportedSongVisible) {
+            if (importedAutoOpenDeferredRetryRequestVersion != importedRequestVersion) {
+                importedAutoOpenDeferredRetryRequestVersion = importedRequestVersion
+                if (importedAutoOpenDeferredProofVersion != importedRequestVersion) {
+                    importedAutoOpenDeferredProofVersion = importedRequestVersion
+                    emitImportProof(
+                        phase = "smp_auto_open_deferred_retry",
+                        detail = "songId=$importedSongId requestVersion=$importedRequestVersion entriesCount=${smpEntries.size}",
+                        toastMessage = "IMPORT_PROOF SMP auto-open retry path"
+                    )
+                }
+                Log.i(
+                    SMP_VIEW_TRACE_TAG,
+                    "elapsedMs=${SystemClock.elapsedRealtime()} step=effect_imported_smp_deferred_retry_schedule importedSongId=$importedSongId requestVersion=$importedRequestVersion smpEntriesCount=${smpEntries.size}"
+                )
+                delay(1800L)
+                importedAutoOpenDeferredRetryToken++
+                Log.i(
+                    SMP_VIEW_TRACE_TAG,
+                    "elapsedMs=${SystemClock.elapsedRealtime()} step=effect_imported_smp_deferred_retry_relaunch importedSongId=$importedSongId requestVersion=$importedRequestVersion retryToken=$importedAutoOpenDeferredRetryToken"
+                )
+                return@LaunchedEffect
+            }
+
+            consumeImportedSmpAutoOpen("imported_song_not_visible_after_deferred_retry")
             val durationMs = SystemClock.elapsedRealtime() - startMs
             Log.i(
                 LIBRARY_PERF_TRACE_TAG,
@@ -920,25 +1330,37 @@ fun LibraryScreen(
             return@LaunchedEffect
         }
 
-        lastHandledImportedSmpRefresh = lastImportedSmpRefreshVersion
-        currentFolderUri
-            ?.takeUnless { isSmpFolderUri(it) }
-            ?.let { currentFolder ->
-                if (folderStack.lastOrNull()?.toString() != currentFolder.toString()) {
-                    folderStack = folderStack + currentFolder
-                }
-            }
-
-        currentFolderUri = SMP_FOLDER_URI
-        LibraryFolderCache.remove(SMP_FOLDER_URI)
-        loadFolderEntriesAsync(
-            folderUri = SMP_FOLDER_URI,
-            forceRefresh = true,
-            clearVisibleOnMiss = true
+        val successVisible = injectSmpEntriesAndCheckVisible(
+            smpEntries = smpEntries,
+            importedUriString = importedUriString,
+            importedSongId = importedSongId,
+            phase = "success_gate"
         )
-        searchQuery = ""
-        selectedSongs = emptySet()
-        onConsumeImportedSmpAutoOpen()
+        if (!successVisible) {
+            Log.i(
+                SMP_VIEW_TRACE_TAG,
+                "elapsedMs=${SystemClock.elapsedRealtime()} step=effect_imported_smp_success_gate_rejected importedSongId=$importedSongId requestVersion=$importedRequestVersion"
+            )
+            lastHandledImportedSmpRefresh = -1
+            if (importedAutoOpenDeferredRetryRequestVersion != importedRequestVersion) {
+                importedAutoOpenDeferredRetryRequestVersion = importedRequestVersion
+                delay(1800L)
+                importedAutoOpenDeferredRetryToken++
+                return@LaunchedEffect
+            }
+            consumeImportedSmpAutoOpen("success_gate_rejected")
+            return@LaunchedEffect
+        }
+        lastHandledImportedSmpRefresh = importedRequestVersion
+        if (importedAutoOpenSuccessProofVersion != importedRequestVersion) {
+            importedAutoOpenSuccessProofVersion = importedRequestVersion
+            emitImportProof(
+                phase = "smp_auto_open_success",
+                detail = "songId=$importedSongId requestVersion=$importedRequestVersion entriesCount=${smpEntries.size}",
+                toastMessage = "IMPORT_PROOF SMP auto-open success"
+            )
+        }
+        consumeImportedSmpAutoOpen("success")
         val durationMs = SystemClock.elapsedRealtime() - startMs
         Log.i(
             LIBRARY_PERF_TRACE_TAG,
@@ -946,7 +1368,7 @@ fun LibraryScreen(
         )
         Log.i(
             LIB_SMP_TRACE_TAG,
-            "step=effect_imported_smp_done initialLoadDone=$initialLoadDone smpRefreshVersion=$smpRefreshVersion requestVersion=$lastImportedSmpRefreshVersion currentFolderUri=$currentFolderUri entriesSize=${entries.size} entries=${summarizeLibraryEntries(entries)}"
+            "step=effect_imported_smp_done initialLoadDone=$initialLoadDone smpRefreshVersion=$smpRefreshVersion requestVersion=$importedRequestVersion currentFolderUri=$currentFolderUri entriesSize=${entries.size} entries=${summarizeLibraryEntries(entries)}"
         )
     }
 
@@ -1046,6 +1468,7 @@ fun LibraryScreen(
             if (hasBatchWork) {
                 startLoading(sBatchPreparing, determinate = true)
                 moveProgress = 0f
+                currentBatchProgress = null
             }
 
             try {
@@ -1096,12 +1519,18 @@ fun LibraryScreen(
                             },
                             onProgress = { progress ->
                                 mainHandler.post {
-                                    moveProgress = batchProgressFraction(progress)
+                                    currentBatchProgress = progress
                                     moveLabel = batchProgressLabel(progress)
                                 }
                             }
                         )
                     }
+                    currentBatchProgress = null
+                    Log.i(
+                        IMPORT_TRACE_TAG,
+                        "elapsedMs=${SystemClock.elapsedRealtime()} step=library_playlist_batch_force_100 successCount=${result.successCount} failureCount=${result.failureCount} playlist=${request.playlistName}"
+                    )
+                    moveProgress = 1f
                     successCount += result.successCount
                     failureCount += result.failureCount
                 }
@@ -1122,6 +1551,7 @@ fun LibraryScreen(
             } finally {
                 pendingAssignRequest = null
                 if (hasBatchWork) {
+                    currentBatchProgress = null
                     stopLoadingNice()
                 }
             }
@@ -1251,123 +1681,20 @@ fun LibraryScreen(
             scope.launch {
                 startLoading(sScanning, determinate = false)
                 try {
-                    persistTreePermIfPossible(context, uri)
-
-                    BackupFolderPrefs.saveSetupTreeUri(context, uri)
-                    BackupFolderPrefsSaf.saveSetupTreeUri(context, uri)
-
-                    val baseTree = DocumentFile.fromTreeUri(context, uri) ?: return@launch
-
-                    val splRoot = if (shouldUsePickedFolderAsSplRoot(baseTree.name, listChildNames(baseTree))) {
-                        baseTree
-                    } else {
-                        baseTree.listFiles().firstOrNull {
-                            it.isDirectory && it.name.equals("SPL_Music", ignoreCase = true)
-                        } ?: baseTree.createDirectory("SPL_Music")
-                    }
-
-                    if (splRoot == null || !splRoot.isDirectory) return@launch
-
-                    fun ensureDirSmart(
-                        context: android.content.Context,
-                        parent: DocumentFile,
-                        expectedName: String,
-                        aliases: List<String> = emptyList()
-                    ): DocumentFile? {
-
-                        fun norm(s: String): String =
-                            s.trim().lowercase().replace(" ", "").replace(Regex("\\(\\d+\\)$"), "")
-
-                        val wanted = (listOf(expectedName) + aliases).map { norm(it) }
-
-                        val parentUri = parent.uri
-                        val parentDocId =
-                            runCatching { DocumentsContract.getDocumentId(parentUri) }.getOrNull()
-                                ?: return parent.findFile(expectedName) ?: parent.createDirectory(expectedName)
-
-                        val childrenUri =
-                            DocumentsContract.buildChildDocumentsUriUsingTree(parentUri, parentDocId)
-
-                        val cr = context.contentResolver
-                        cr.query(
-                            childrenUri,
-                            arrayOf(
-                                DocumentsContract.Document.COLUMN_DOCUMENT_ID,
-                                DocumentsContract.Document.COLUMN_DISPLAY_NAME,
-                                DocumentsContract.Document.COLUMN_MIME_TYPE
-                            ),
-                            null,
-                            null,
-                            null
-                        )?.use { c ->
-                            val idCol = c.getColumnIndex(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
-                            val nameCol = c.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
-                            val mimeCol = c.getColumnIndex(DocumentsContract.Document.COLUMN_MIME_TYPE)
-
-                            while (c.moveToNext()) {
-                                val mime = c.getString(mimeCol) ?: ""
-                                if (mime != DocumentsContract.Document.MIME_TYPE_DIR) continue
-
-                                val name = c.getString(nameCol) ?: continue
-                                val n = norm(name)
-
-                                if (wanted.any { w -> n == w || n.startsWith(w) }) {
-                                    val childDocId = c.getString(idCol)
-                                    val childUri =
-                                        DocumentsContract.buildDocumentUriUsingTree(parentUri, childDocId)
-                                    return DocumentFile.fromSingleUri(context, childUri)
-                                }
-                            }
-                        }
-
-                        return parent.createDirectory(expectedName)
-                    }
-
-                    val backingTracksDir = ensureDirSmart(
+                    val folders = initializeSafWorkspaceFromPickedTree(
                         context = context,
-                        parent = splRoot,
-                        expectedName = "BackingTracks",
-                        aliases = listOf("BackingTrack")
-                    )
-                    backingTracksDir?.let { backingTracks ->
-                        ensureDirSmart(
-                            context = context,
-                            parent = backingTracks,
-                            expectedName = "Audio",
-                            aliases = listOf("audio")
-                        )
-                        ensureDirSmart(
-                            context = context,
-                            parent = backingTracks,
-                            expectedName = "SMP",
-                            aliases = listOf("smp")
-                        )
-                    }
-
-                    val djDir = ensureDirSmart(
-                        context = context,
-                        parent = splRoot,
-                        expectedName = "DJ"
-                    )
-                    val splDocUri: Uri = splToTreeUri(splRoot.uri)
-
-// Permission persistée sur le tree choisi (uri du picker)
-                    persistTreePermIfPossible(context, uri)
+                        pickedTreeUri = uri,
+                        stage = "library_screen:pick_root"
+                    ) ?: return@launch
                     BackupFolderPrefs.setDone(context, true)
-                    BackupFolderPrefs.saveLibraryRootUri(context, splDocUri)
-                    BackupFolderPrefsSaf.saveLibraryRootUri(context, splDocUri)
 
-                    currentFolderUri = splDocUri
+                    currentFolderUri = folders.rootUri
                     folderStack = emptyList()
-
-                    if (djDir != null) {
-                        DjFolderPrefs.save(context, splToTreeUri(djDir.uri))
-                    }
 
 // --- rescan ---
                     runGlobalScan(
-                        root = splDocUri,
-                        folderToShow = splDocUri
+                        root = folders.rootUri,
+                        folderToShow = folders.rootUri
                     )
                     onWorkspaceChanged()
 
@@ -1542,38 +1869,14 @@ fun LibraryScreen(
                 onSetupDone = {
                     BackupFolderPrefs.setDone(context, true)
                     onWorkspaceChanged()
-                    val root = backend.getRootUri()
-                    currentFolderUri = root
-                    if (root != null) {
-                        scope.launch {
-                            loadFolderEntriesAsync(
-                                folderUri = root,
-                                clearVisibleOnMiss = true
-                            )
-                        }
-                    }
                 },
                 onImportNow = {
                     importTargetFolderUri = backend.getRootUri()
                     importAudioLauncher.launch(arrayOf("audio/*"))
                 },
                 onImportLater = { },
-                onDemoInstalled = { result ->
+                onDemoInstalled = { _ ->
                     LibraryFolderCache.clear()
-                    indexAll = backend.loadIndex()
-                    val targetFolder = result.audioFolderUri ?: backend.getRootUri()
-                    currentFolderUri = targetFolder
-                    if (targetFolder == null) {
-                        entries = emptyList()
-                    } else {
-                        scope.launch {
-                            loadFolderEntriesAsync(
-                                folderUri = targetFolder,
-                                forceRefresh = true,
-                                clearVisibleOnMiss = true
-                            )
-                        }
-                    }
                 }
             )
         }
@@ -1614,6 +1917,18 @@ fun LibraryScreen(
                         val rootNow = backend.getRootUri() ?: return@launch
                         startLoading(sScanning, determinate = false)
                         try {
+                            if (isSmpFolderUri(currentFolderUri)) {
+                                Log.i(
+                                    SMP_VIEW_TRACE_TAG,
+                                    "elapsedMs=${SystemClock.elapsedRealtime()} step=manual_smp_rescan_start currentFolderUri=$currentFolderUri"
+                                )
+                                showSmpEntriesImmediately(refreshSmpEntriesAsync())
+                                Log.i(
+                                    SMP_VIEW_TRACE_TAG,
+                                    "elapsedMs=${SystemClock.elapsedRealtime()} step=manual_smp_rescan_end currentFolderUri=$currentFolderUri entriesSize=${entries.size}"
+                                )
+                                return@launch
+                            }
                             val folderToShow = currentFolderUri
                                 ?.takeUnless { isPrompterFolderUri(it) || isSmpFolderUri(it) }
                                 ?: rootNow
@@ -2496,36 +2811,4 @@ fun LibraryScreen(
             }
         }
     }
-}
-
-// ------------------------------------------------------------
-// Helpers
-// ------------------------------------------------------------
-private fun toTreeUri(docUri: Uri): Uri {
-    val authority = docUri.authority ?: return docUri
-    val docId = runCatching { DocumentsContract.getDocumentId(docUri) }.getOrNull() ?: return docUri
-    return DocumentsContract.buildTreeDocumentUri(authority, docId)
-}
-
-private fun normalizeToSplMusicDocUri(
-    context: android.content.Context,
-    anyTreeOrDocUri: Uri
-): Uri {
-    // ✅ Mode interne : ne jamais appeler DocumentsContract
-    if (anyTreeOrDocUri.scheme == "file") return anyTreeOrDocUri
-
-    val setupTree = BackupFolderPrefs.getSetupTreeUri(context) ?: return anyTreeOrDocUri
-
-    val id = runCatching { DocumentsContract.getTreeDocumentId(anyTreeOrDocUri) }.getOrNull()
-        ?: runCatching { DocumentsContract.getDocumentId(anyTreeOrDocUri) }.getOrNull()
-        ?: return anyTreeOrDocUri
-
-    val parts = id.split('/')
-    val idx = parts.indexOfFirst { it.equals("SPL_Music", ignoreCase = true) }
-    if (idx < 0) return anyTreeOrDocUri
-
-    val splId = parts.take(idx + 1).joinToString("/")
-
-    val authority = setupTree.authority ?: return anyTreeOrDocUri
-    return DocumentsContract.buildTreeDocumentUri(authority, splId)
 }

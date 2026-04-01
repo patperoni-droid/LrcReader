@@ -5,12 +5,11 @@ import android.net.Uri
 import android.provider.DocumentsContract
 import android.util.Log
 import androidx.documentfile.provider.DocumentFile
-import com.patrick.lrcreader.core.BackupFolderPrefs
-import com.patrick.lrcreader.core.BackupFolderPrefsSaf
-import com.patrick.lrcreader.core.BackupManager
 import com.patrick.lrcreader.core.LibraryIndexCache
 import com.patrick.lrcreader.core.LibrarySnapshot
 import com.patrick.lrcreader.core.PlaylistRepository
+import com.patrick.lrcreader.core.StorageModePrefs
+import com.patrick.lrcreader.core.WorkspaceResolver
 import com.patrick.lrcreader.core.buildSmpItem
 import com.patrick.lrcreader.exo.BuildConfig
 import com.patrick.lrcreader.smp.SmpSecureImportPipeline
@@ -40,9 +39,14 @@ private data class DemoImportedSong(
 suspend fun installDemoLibrary(context: Context): DemoInstallResult = withContext(Dispatchers.IO) {
     var stage = "start"
     try {
-        val rootUri = BackupFolderPrefs.getLibraryRootUri(context)
+        val workspaceSnapshot = resolveUsableWorkspaceSnapshot(
+            context = context,
+            expectedMode = null,
+            stage = "setup_demo:resolve_workspace"
+        ) ?: error("library_root_missing")
+        val rootUri = workspaceSnapshot.workspaceRootUri
             ?: error("library_root_missing")
-        val backendType = if (rootUri.scheme == "file") "INTERNAL" else "SAF"
+        val backendType = if (workspaceSnapshot.mode == StorageModePrefs.Mode.INTERNAL) "INTERNAL" else "SAF"
         val secureImportPipeline = SmpSecureImportPipeline(context)
         Log.i(
             TAG,
@@ -50,7 +54,7 @@ suspend fun installDemoLibrary(context: Context): DemoInstallResult = withContex
         )
 
         stage = "copy_demo_files"
-        val installPaths = if (rootUri.scheme == "file") {
+        val installPaths = if (workspaceSnapshot.mode == StorageModePrefs.Mode.INTERNAL) {
             installDemoIntoInternalStorage(
                 context = context,
                 rootUri = rootUri,
@@ -85,16 +89,7 @@ suspend fun installDemoLibrary(context: Context): DemoInstallResult = withContex
             TAG,
             "playlist:end name=$DEMO_PLAYLIST_NAME finalCount=${PlaylistRepository.getAllSongsRaw(DEMO_PLAYLIST_NAME).size}"
         )
-        runCatching {
-            BackupManager.autoSaveToDefaultBackupFile(context)
-        }.onSuccess {
-            Log.i(TAG, "backup:autoSave success playlist=$DEMO_PLAYLIST_NAME")
-        }.onFailure { error ->
-            Log.w(
-                TAG,
-                "backup:autoSave failed playlist=$DEMO_PLAYLIST_NAME message=${error.message}"
-            )
-        }
+        Log.i(TAG, "backup:autoSave skipped playlist=$DEMO_PLAYLIST_NAME reason=keep_demo_install_responsive")
 
         stage = "refresh_start"
         val refreshRootUri = copyRootUri
@@ -103,10 +98,10 @@ suspend fun installDemoLibrary(context: Context): DemoInstallResult = withContex
             TAG,
             "refresh:start requestedRoot=$rootUri refreshRoot=$refreshRootUri folderToShow=$folderToShow"
         )
-        val backend: LibraryBackend = if (rootUri.scheme == "file") {
-            LibraryBackendInternal(context)
+        val backend: LibraryBackend = if (workspaceSnapshot.mode == StorageModePrefs.Mode.INTERNAL) {
+            LibraryBackendInternal(context, workspaceSnapshot)
         } else {
-            LibraryBackendSaf(context)
+            LibraryBackendSaf(context, workspaceSnapshot)
         }
 
         var refreshedIndex: List<LibraryIndexCache.CachedEntry> = emptyList()
@@ -176,28 +171,18 @@ private fun installDemoIntoSafStorage(
     rootUri: Uri,
     secureImportPipeline: SmpSecureImportPipeline
 ): DemoInstallPaths {
-    val setupTreeUri = BackupFolderPrefsSaf.getSetupTreeUri(context)
-        ?: BackupFolderPrefs.getSetupTreeUri(context)
-        ?: rootUri
-    val parentDoc = resolveRootDocument(context, setupTreeUri)
+    val parentDoc = resolveRootDocument(context, rootUri)
         ?: error("saf_root_missing")
     Log.i(
         TAG,
-        "root:resolved requestUri=$rootUri setupTreeUri=$setupTreeUri resolvedUri=${parentDoc.uri} isDirectory=${parentDoc.isDirectory} children=${listChildNames(parentDoc)}"
+        "root:resolved requestUri=$rootUri resolvedUri=${parentDoc.uri} isDirectory=${parentDoc.isDirectory} children=${listChildNames(parentDoc)}"
     )
 
-    val splRoot = ensureDirSmart(parentDoc, "SPL_Music", aliases = listOf("spl_music"))
-        ?: error("spl_music_missing")
-    Log.i(
-        TAG,
-        "resolve:SPL_Music parent=${parentDoc.uri} result=${splRoot.uri} children=${listChildNames(parentDoc)}"
-    )
-
-    val backingTracks = ensureDirSmart(splRoot, "BackingTracks", aliases = listOf("backingtracks", "backingtrack"))
+    val backingTracks = ensureDirSmart(parentDoc, "BackingTracks", aliases = listOf("backingtracks", "backingtrack"))
         ?: error("backingtracks_missing")
     Log.i(
         TAG,
-        "resolve:BackingTracks root=${splRoot.uri} result=${backingTracks.uri} children=${listChildNames(splRoot)}"
+        "resolve:BackingTracks root=${parentDoc.uri} result=${backingTracks.uri} children=${listChildNames(parentDoc)}"
     )
     val smpDir = ensureDirSmart(backingTracks, "SMP", aliases = listOf("smp"))
         ?: error("smp_dir_missing")
@@ -219,7 +204,7 @@ private fun installDemoIntoSafStorage(
     }
 
     return DemoInstallPaths(
-        copyRootUri = splRoot.uri,
+        copyRootUri = parentDoc.uri,
         audioFolderUri = null,
         importedAudioUris = importedSongs.map { song -> song.playlistItemUri }
     )

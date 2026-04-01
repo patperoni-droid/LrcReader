@@ -6,11 +6,11 @@ import android.net.Uri
 import android.os.Handler
 import android.util.Log
 import androidx.documentfile.provider.DocumentFile
-import com.patrick.lrcreader.core.BackupFolderPrefs
 import com.patrick.lrcreader.core.LibraryIndexCache
 import com.patrick.lrcreader.core.PlaylistRepair
 import com.patrick.lrcreader.core.PlaylistRepository
 import com.patrick.lrcreader.core.SafeFileOps
+import com.patrick.lrcreader.core.StorageModePrefs
 import com.patrick.lrcreader.ui.LibraryEntry
 import com.patrick.lrcreader.ui.MoveResult
 import com.patrick.lrcreader.ui.asTreeDocumentUri
@@ -30,7 +30,11 @@ suspend fun libraryLoadInitial(
     onIndexAll: (List<LibraryIndexCache.CachedEntry>) -> Unit,
     onEntries: (List<LibraryEntry>) -> Unit
 ) {
-    val root = currentFolderUri ?: BackupFolderPrefs.get(context)
+    val root = currentFolderUri ?: resolveUsableWorkspaceSnapshot(
+        context = context,
+        expectedMode = null,
+        stage = "library_actions:load_initial"
+    )?.workspaceRootUri
     android.util.Log.d(
         "LibDebug",
         "LOAD_INITIAL rootUri=$root"
@@ -119,8 +123,11 @@ suspend fun libraryMoveOneFile(
     indexAll: List<LibraryIndexCache.CachedEntry>,
     onProgress: (Float?, String?) -> Unit,
 ): MoveResult {
-
-    val rootTree = BackupFolderPrefs.get(context)
+    val rootTree = resolveUsableWorkspaceSnapshot(
+        context = context,
+        expectedMode = StorageModePrefs.Mode.SAF,
+        stage = "library_actions:move_one_file"
+    )?.workspaceRootUri
         ?: return MoveResult(false, null)
     val srcParent = indexAll
         .firstOrNull { it.uriString == srcUri.toString() }

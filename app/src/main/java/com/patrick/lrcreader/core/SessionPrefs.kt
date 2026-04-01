@@ -16,6 +16,7 @@ object SessionPrefs {
     private const val KEY_OPENED_PLAYLIST = "opened_playlist"
 
     private const val KEY_LAST_TRACK_URI = "last_track_uri"
+    private const val KEY_LAST_SONG_ID = "last_song_id"
     private const val KEY_LAST_PLAYLIST_NAME = "last_playlist_name"
     private const val TAG = "BOOTSTEP"
     private const val CONFIG_FILE_NAME = "session_state.json"
@@ -25,6 +26,7 @@ object SessionPrefs {
     private const val JSON_KEY_QUICK_PLAYLIST = "quickPlaylist"
     private const val JSON_KEY_OPENED_PLAYLIST = "openedPlaylist"
     private const val JSON_KEY_LAST_TRACK_URI = "lastTrackUri"
+    private const val JSON_KEY_LAST_SONG_ID = "lastSongId"
     private const val JSON_KEY_LAST_PLAYLIST_NAME = "lastPlaylistName"
 
     private fun prefs(context: Context) =
@@ -49,6 +51,7 @@ object SessionPrefs {
         val quickPlaylist: String?,
         val openedPlaylist: String?,
         val lastTrackUri: String?,
+        val lastSongId: String?,
         val lastPlaylistName: String?
     ) {
         fun toJson(): JSONObject = JSONObject().apply {
@@ -57,6 +60,7 @@ object SessionPrefs {
             put(JSON_KEY_QUICK_PLAYLIST, quickPlaylist ?: JSONObject.NULL)
             put(JSON_KEY_OPENED_PLAYLIST, openedPlaylist ?: JSONObject.NULL)
             put(JSON_KEY_LAST_TRACK_URI, lastTrackUri ?: JSONObject.NULL)
+            put(JSON_KEY_LAST_SONG_ID, lastSongId ?: JSONObject.NULL)
             put(JSON_KEY_LAST_PLAYLIST_NAME, lastPlaylistName ?: JSONObject.NULL)
         }
     }
@@ -67,6 +71,7 @@ object SessionPrefs {
             quickPlaylist = null,
             openedPlaylist = null,
             lastTrackUri = null,
+            lastSongId = null,
             lastPlaylistName = null
         )
 
@@ -85,6 +90,7 @@ object SessionPrefs {
                 quickPlaylist = root.optNullableString(JSON_KEY_QUICK_PLAYLIST),
                 openedPlaylist = root.optNullableString(JSON_KEY_OPENED_PLAYLIST),
                 lastTrackUri = root.optNullableString(JSON_KEY_LAST_TRACK_URI),
+                lastSongId = root.optNullableString(JSON_KEY_LAST_SONG_ID),
                 lastPlaylistName = root.optNullableString(JSON_KEY_LAST_PLAYLIST_NAME)
             )
         }.onFailure {
@@ -114,6 +120,7 @@ object SessionPrefs {
             quickPlaylist = prefs(context).getString(KEY_QUICK_PLAYLIST, null),
             openedPlaylist = prefs(context).getString(KEY_OPENED_PLAYLIST, null),
             lastTrackUri = prefs(context).getString(KEY_LAST_TRACK_URI, null),
+            lastSongId = prefs(context).getString(KEY_LAST_SONG_ID, null),
             lastPlaylistName = prefs(context).getString(KEY_LAST_PLAYLIST_NAME, null)
         )
         writeJsonState(context, mutate(current))
@@ -125,13 +132,15 @@ object SessionPrefs {
         quickPlaylist: String?,
         openedPlaylist: String?,
         lastTrackUri: String?,
-        lastPlaylistName: String?
+        lastPlaylistName: String?,
+        lastSongId: String? = null
     ) {
         runCatching {
             val normalizedTab = tab?.takeIf { it.isNotBlank() }
             val normalizedQuick = quickPlaylist?.takeIf { it.isNotBlank() }
             val normalizedOpened = openedPlaylist?.takeIf { it.isNotBlank() }
             val normalizedTrackUri = lastTrackUri?.takeIf { it.isNotBlank() }
+            val normalizedSongId = lastSongId?.takeIf { it.isNotBlank() }
             val normalizedPlaylistName = lastPlaylistName?.takeIf { it.isNotBlank() }
 
             prefs(context)
@@ -140,6 +149,7 @@ object SessionPrefs {
                 .putString(KEY_QUICK_PLAYLIST, normalizedQuick)
                 .putString(KEY_OPENED_PLAYLIST, normalizedOpened)
                 .putString(KEY_LAST_TRACK_URI, normalizedTrackUri)
+                .putString(KEY_LAST_SONG_ID, normalizedSongId)
                 .putString(KEY_LAST_PLAYLIST_NAME, normalizedPlaylistName)
                 .apply()
 
@@ -150,18 +160,19 @@ object SessionPrefs {
                     quickPlaylist = normalizedQuick,
                     openedPlaylist = normalizedOpened,
                     lastTrackUri = normalizedTrackUri,
+                    lastSongId = normalizedSongId,
                     lastPlaylistName = normalizedPlaylistName
                 )
             )
 
             Log.d(
                 TAG,
-                "SessionPrefs.saveSnapshot tab=$normalizedTab quick=$normalizedQuick opened=$normalizedOpened uri=$normalizedTrackUri playlist=$normalizedPlaylistName"
+                "SessionPrefs.saveSnapshot tab=$normalizedTab quick=$normalizedQuick opened=$normalizedOpened uri=$normalizedTrackUri songId=$normalizedSongId playlist=$normalizedPlaylistName"
             )
         }.onFailure {
             Log.e(
                 TAG,
-                "SessionPrefs.saveSnapshot failed tab=$tab quick=$quickPlaylist opened=$openedPlaylist uri=$lastTrackUri playlist=$lastPlaylistName",
+                "SessionPrefs.saveSnapshot failed tab=$tab quick=$quickPlaylist opened=$openedPlaylist uri=$lastTrackUri songId=$lastSongId playlist=$lastPlaylistName",
                 it
             )
         }
@@ -259,47 +270,70 @@ object SessionPrefs {
 
     // -------- DERNIÈRE SESSION (titre + playlist) --------
 
-    fun saveLastSession(context: Context, trackUri: String?, playlistName: String?) {
+    data class LastSessionState(
+        val trackUri: String?,
+        val playlistName: String?,
+        val songId: String?
+    )
+
+    fun saveLastSession(
+        context: Context,
+        trackUri: String?,
+        playlistName: String?,
+        songId: String? = null
+    ) {
         runCatching {
             prefs(context)
                 .edit()
                 .putString(KEY_LAST_TRACK_URI, trackUri)
+                .putString(KEY_LAST_SONG_ID, songId)
                 .putString(KEY_LAST_PLAYLIST_NAME, playlistName)
                 .apply()
             mutateJsonState(context) {
-                it.copy(lastTrackUri = trackUri, lastPlaylistName = playlistName)
+                it.copy(lastTrackUri = trackUri, lastSongId = songId, lastPlaylistName = playlistName)
             }
             val file = prefsFile(context)
             Log.d(
                 TAG,
-                "SessionPrefs.saveLast prefs=$PREFS_NAME mode=$MODE file=${file.absolutePath} exists=${file.exists()} uri=$trackUri playlist=$playlistName"
+                "SessionPrefs.saveLast prefs=$PREFS_NAME mode=$MODE file=${file.absolutePath} exists=${file.exists()} uri=$trackUri songId=$songId playlist=$playlistName"
             )
         }.onFailure {
-            Log.e(TAG, "SessionPrefs.saveLast failed prefs=$PREFS_NAME uri=$trackUri playlist=$playlistName", it)
+            Log.e(TAG, "SessionPrefs.saveLast failed prefs=$PREFS_NAME uri=$trackUri songId=$songId playlist=$playlistName", it)
         }
     }
 
-    fun getLastSession(context: Context): Pair<String?, String?> {
+    fun getLastSessionState(context: Context): LastSessionState {
         val p = prefs(context)
         val json = readJsonState(context)
         val uri = json?.lastTrackUri ?: p.getString(KEY_LAST_TRACK_URI, null)
+        val songId = json?.lastSongId ?: p.getString(KEY_LAST_SONG_ID, null)
         val name = json?.lastPlaylistName ?: p.getString(KEY_LAST_PLAYLIST_NAME, null)
         val file = prefsFile(context)
         Log.d(
             TAG,
-            "SessionPrefs.getLast prefs=$PREFS_NAME mode=$MODE file=${file.absolutePath} fileExists=${file.exists()} hasUri=${p.contains(KEY_LAST_TRACK_URI)} hasPlaylist=${p.contains(KEY_LAST_PLAYLIST_NAME)} uri=$uri playlist=$name"
+            "SessionPrefs.getLast prefs=$PREFS_NAME mode=$MODE file=${file.absolutePath} fileExists=${file.exists()} hasUri=${p.contains(KEY_LAST_TRACK_URI)} hasSongId=${p.contains(KEY_LAST_SONG_ID)} hasPlaylist=${p.contains(KEY_LAST_PLAYLIST_NAME)} uri=$uri songId=$songId playlist=$name"
         )
-        return uri to name
+        return LastSessionState(
+            trackUri = uri,
+            playlistName = name,
+            songId = songId
+        )
+    }
+
+    fun getLastSession(context: Context): Pair<String?, String?> {
+        val state = getLastSessionState(context)
+        return state.trackUri to state.playlistName
     }
 
     fun clearLastSession(context: Context) {
         prefs(context)
             .edit()
             .remove(KEY_LAST_TRACK_URI)
+            .remove(KEY_LAST_SONG_ID)
             .remove(KEY_LAST_PLAYLIST_NAME)
             .apply()
         mutateJsonState(context) {
-            it.copy(lastTrackUri = null, lastPlaylistName = null)
+            it.copy(lastTrackUri = null, lastSongId = null, lastPlaylistName = null)
         }
     }
 

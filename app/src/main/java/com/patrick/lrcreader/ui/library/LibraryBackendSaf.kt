@@ -7,10 +7,9 @@ import android.os.SystemClock
 import android.provider.DocumentsContract
 import android.util.Log
 import androidx.documentfile.provider.DocumentFile
-import com.patrick.lrcreader.core.BackupFolderPrefs
-import com.patrick.lrcreader.core.BackupFolderPrefsSaf
 import com.patrick.lrcreader.core.ImportAudioManager
 import com.patrick.lrcreader.core.LibraryIndexCache
+import com.patrick.lrcreader.core.StorageModePrefs
 import com.patrick.lrcreader.core.WorkspaceResolver
 import com.patrick.lrcreader.exo.BuildConfig
 import com.patrick.lrcreader.exo.R
@@ -49,98 +48,43 @@ class LibraryBackendSaf(
             return result
         }
 
-        val providedSnapshot = resolvedWorkspaceSnapshot
-        val providedRoot = providedSnapshot?.workspaceRootUri
-        if (
-            providedSnapshot?.mode == com.patrick.lrcreader.core.StorageModePrefs.Mode.SAF &&
-            providedSnapshot.isUsable &&
-            providedRoot != null &&
-            providedRoot.scheme != "file"
-        ) {
-            return finish(
-                source = "provided_snapshot",
-                result = providedRoot,
-                detail = "status=${providedSnapshot.status}"
-            )
-        }
-
-        // Legacy fallback: keep one local resolution path if the screen did not receive
-        // a usable snapshot, but avoid calling it on the hot path when the snapshot exists.
-        val workspaceSnapshot = WorkspaceResolver.resolve(context)
-        val resolvedRoot = workspaceSnapshot.workspaceRootUri
-        if (
-            workspaceSnapshot.mode == com.patrick.lrcreader.core.StorageModePrefs.Mode.SAF &&
-            workspaceSnapshot.isUsable &&
-            resolvedRoot != null &&
-            resolvedRoot.scheme != "file"
-        ) {
-            Log.i(
-                tag,
-                "getRootUri: use_workspace_resolver status=${workspaceSnapshot.status} detail=${workspaceSnapshot.detail} resolved=$resolvedRoot authority=${resolvedRoot.authority} treeId=${safeTreeDocumentId(resolvedRoot)} docId=${safeDocumentId(resolvedRoot)}"
-            )
-            if (BackupFolderPrefsSaf.getLibraryRootUri(context)?.toString() != resolvedRoot.toString()) {
-                BackupFolderPrefsSaf.saveLibraryRootUri(context, resolvedRoot)
-            }
-            if (BackupFolderPrefs.getLibraryRootUri(context)?.toString() != resolvedRoot.toString()) {
-                BackupFolderPrefs.saveLibraryRootUri(context, resolvedRoot)
-            }
-            return finish(
-                source = "fallback_workspace_resolver",
-                result = resolvedRoot,
-                detail = "status=${workspaceSnapshot.status}"
-            )
-        }
-
-        val savedSaf = BackupFolderPrefsSaf.getLibraryRootUri(context)
-        val savedCompat = BackupFolderPrefs.getLibraryRootUri(context)
-        val saved = savedSaf ?: savedCompat
-
-        if (saved != null && saved.scheme != "file") {
-            Log.i(
-                tag,
-                "getRootUri: use_saved savedSaf=$savedSaf savedCompat=$savedCompat resolved=$saved authority=${saved.authority} treeId=${safeTreeDocumentId(saved)} docId=${safeDocumentId(saved)}"
-            )
-            return finish(source = "saved_root", result = saved)
-        }
-
-        val setupTreeSaf = BackupFolderPrefsSaf.getSetupTreeUri(context)
-        val setupTreeCompat = BackupFolderPrefs.getSetupTreeUri(context)
-        val setupTree = setupTreeSaf ?: setupTreeCompat ?: return finish(
-            source = "no_root_available",
+        val snapshot = resolveUsableWorkspaceSnapshot(
+            context = context,
+            providedSnapshot = resolvedWorkspaceSnapshot,
+            expectedMode = StorageModePrefs.Mode.SAF,
+            stage = "library_backend_saf:get_root"
+        ) ?: return finish(
+            source = "workspace_unavailable",
             result = null
         )
-
-        val baseTree = DocumentFile.fromTreeUri(context, setupTree) ?: return finish(
-            source = "setup_tree_unresolved",
-            result = null,
-            detail = "setupTree=$setupTree"
-        )
-        val spl = ensureDirSmart(baseTree, "SPL_Music", aliases = listOf("spl_music")) ?: return finish(
-            source = "setup_tree_missing_spl",
-            result = null,
-            detail = "setupTree=$setupTree"
-        )
-
+        val resolvedRoot = snapshot.workspaceRootUri
         Log.i(
             tag,
-            "getRootUri: resolve_from_setup setupTreeSaf=$setupTreeSaf setupTreeCompat=$setupTreeCompat setupAuthority=${setupTree.authority} setupTreeId=${safeTreeDocumentId(setupTree)} baseTree=${baseTree.uri} baseDocId=${safeDocumentId(baseTree.uri)} spl=${spl.uri} splDocId=${safeDocumentId(spl.uri)} baseChildren=${listChildNames(baseTree)}"
+            "getRootUri: use_workspace_snapshot status=${snapshot.status} detail=${snapshot.detail} resolved=$resolvedRoot authority=${resolvedRoot?.authority} treeId=${safeTreeDocumentId(resolvedRoot)} docId=${safeDocumentId(resolvedRoot)}"
         )
-
-        BackupFolderPrefsSaf.saveLibraryRootUri(context, spl.uri)
-        BackupFolderPrefs.saveLibraryRootUri(context, spl.uri)
-        return finish(source = "resolved_from_setup", result = spl.uri)
+        return finish(
+            source = "workspace_snapshot",
+            result = resolvedRoot,
+            detail = "status=${snapshot.status}"
+        )
     }
 
     override fun ensureBaseFolders() {
         val callId = ensureBaseFoldersCallCounter.incrementAndGet()
         val startMs = SystemClock.elapsedRealtime()
         Log.i(perfTag, "step=ensure_base_folders_start call=$callId timeMs=$startMs")
-        val rootUri = getRootUri() ?: run {
+        val folders = ensureWorkspaceLibraryFolders(
+            context = context,
+            providedSnapshot = resolvedWorkspaceSnapshot,
+            expectedMode = StorageModePrefs.Mode.SAF,
+            stage = "library_backend_saf:ensure_base_folders"
+        ) ?: run {
             Log.w(tag, "ensureBaseFolders: rootUri=null")
             val durationMs = SystemClock.elapsedRealtime() - startMs
             Log.i(perfTag, "step=ensure_base_folders_end call=$callId durationMs=$durationMs root=null result=no_root")
             return
         }
+        val rootUri = folders.rootUri
         val rootKey = rootUri.toString()
         if (baseFoldersEnsuredForRoot == rootKey) {
             Log.d(tag, "ensureBaseFolders: skip (already ensured) root=$rootKey")
@@ -193,8 +137,6 @@ class LibraryBackendSaf(
         }
 
         baseFoldersEnsuredForRoot = rootKey
-        BackupFolderPrefsSaf.saveLibraryRootUri(context, rootDoc.uri)
-        BackupFolderPrefs.saveLibraryRootUri(context, rootDoc.uri)
         val durationMs = SystemClock.elapsedRealtime() - startMs
         Log.i(
             perfTag,
@@ -203,18 +145,8 @@ class LibraryBackendSaf(
     }
 
     override fun chooseInitialFolder(root: Uri, indexAll: List<LibraryIndexCache.CachedEntry>): Uri {
-        val setupTree = BackupFolderPrefsSaf.getSetupTreeUri(context)
-            ?: BackupFolderPrefs.getSetupTreeUri(context)
-
-        if (isUsableLibraryRoot(root, setupTree)) {
-            return root
-        }
-
-        if (setupTree != null && isUsableSetupTree(setupTree)) {
-            return setupTree
-        }
-
-        return root
+        val resolvedRoot = getRootUri() ?: return root
+        return if (isUsableLibraryRoot(root, resolvedRoot)) root else resolvedRoot
     }
 
     override fun loadIndex(): List<LibraryIndexCache.CachedEntry> {
@@ -340,29 +272,35 @@ class LibraryBackendSaf(
         destFolderUri: Uri?,
         currentFolderUri: Uri?
     ): Uri? {
-        val root = getRootUri() ?: return null
-        val setupTree = BackupFolderPrefsSaf.getSetupTreeUri(context)
-            ?: BackupFolderPrefs.getSetupTreeUri(context)
-            ?: root
-
-        val rawDest = destFolderUri ?: currentFolderUri ?: root
-        val destFolder = resolveAudioImportTarget(root = root, requestedDestination = rawDest) ?: root
-
-        persistTreePermIfPossible(context, destFolder)
-
-        ImportAudioManager.importAudioFiles(
+        val folders = ensureWorkspaceLibraryFolders(
             context = context,
-            appRootTreeUri = setupTree,
+            providedSnapshot = resolvedWorkspaceSnapshot,
+            expectedMode = StorageModePrefs.Mode.SAF,
+            stage = "library_backend_saf:import_audio"
+        ) ?: return null
+        val root = folders.rootUri
+        val rawDest = destFolderUri ?: currentFolderUri ?: root
+        val destFolder = resolveAudioImportTarget(
+            root = root,
+            requestedDestination = rawDest,
+            defaultAudioDir = folders.audioUri
+        ) ?: folders.audioUri
+
+        ImportAudioManager.importAudioFilesToFolder(
+            context = context,
+            destFolderUri = destFolder,
             sourceUris = pickedUris,
-            destFolderName = "BackingTracks",
-            overwriteIfExists = false,
-            destFolderUri = destFolder
+            overwriteIfExists = false
         )
 
         return destFolder
     }
 
-    private fun resolveAudioImportTarget(root: Uri, requestedDestination: Uri): Uri? {
+    private fun resolveAudioImportTarget(
+        root: Uri,
+        requestedDestination: Uri,
+        defaultAudioDir: Uri
+    ): Uri? {
         fun asDoc(uri: Uri): DocumentFile? {
             return DocumentFile.fromTreeUri(context, uri) ?: DocumentFile.fromSingleUri(context, uri)
         }
@@ -381,11 +319,7 @@ class LibraryBackendSaf(
             return requestedDoc.uri
         }
 
-        val backingTracks = ensureDirSmart(rootDoc, "BackingTracks", aliases = listOf("backingtracks", "backingtrack"))
-            ?: return requestedDestination
-        val audioDir = ensureDirSmart(backingTracks, "Audio", aliases = listOf("audio"))
-            ?: return requestedDestination
-        return audioDir.uri
+        return defaultAudioDir
     }
 
     override suspend fun rename(
@@ -529,28 +463,10 @@ class LibraryBackendSaf(
         return doc?.exists() == true && doc.isDirectory
     }
 
-    private fun isUsableLibraryRoot(rootUri: Uri?, setupTree: Uri?): Boolean {
+    private fun isUsableLibraryRoot(rootUri: Uri?, workspaceRoot: Uri?): Boolean {
         if (!isReadableDirectory(rootUri)) return false
         val uri = rootUri ?: return false
-        return hasReadAccess(uri, setupTree)
-    }
-
-    private fun isUsableSetupTree(setupTree: Uri): Boolean {
-        if (!isReadableDirectory(setupTree)) return false
-        return BackupFolderPrefs.hasValidSetupTreePermission(context)
-    }
-
-    private fun hasReadAccess(uri: Uri, setupTree: Uri?): Boolean {
-        val targetNorm = normalizeAsTreeUri(uri) ?: uri
-        val hasDirectPersisted = context.contentResolver.persistedUriPermissions.any { p ->
-            if (!p.isReadPermission) return@any false
-            val permNorm = normalizeAsTreeUri(p.uri) ?: p.uri
-            permNorm == targetNorm
-        }
-        if (hasDirectPersisted) return true
-
-        if (!BackupFolderPrefs.hasValidSetupTreePermission(context)) return false
-        return isInsideTree(uri, setupTree)
+        return isInsideTree(uri, workspaceRoot)
     }
 
     private fun isInsideTree(candidate: Uri, treeUri: Uri?): Boolean {

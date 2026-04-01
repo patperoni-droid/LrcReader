@@ -193,6 +193,7 @@
     <string name="smp_batch_progress_title">Preparing tracks…</string>
     <string name="smp_batch_stage_converting">Converting to SMP</string>
     <string name="smp_batch_stage_importing">Importing track</string>
+    <string name="smp_batch_stage_persisting_archive">Persisting archive</string>
     <string name="smp_batch_stage_playlist">Adding to playlist</string>
     <string name="smp_batch_import_summary">%1$d track(s) ready, %2$d failure(s)</string>
     <string name="smp_batch_playlist_summary">%1$d track(s) added, %2$d failure(s)</string>
