@@ -213,6 +213,7 @@ fun LibraryScreen(
     modifier: Modifier = Modifier,
     workspaceSnapshot: WorkspaceResolver.Snapshot,
     workspaceVersion: Int = 0,
+    currentPlayingSongId: String? = null,
     reselectRootSignal: Int = 0,
     searchToggleSignal: Int = 0,
     smpRefreshVersion: Int = 0,
@@ -2217,6 +2218,7 @@ fun LibraryScreen(
                             } else {
                                 LibrarySongsList(
                                     songs = filteredSongItems,
+                                    currentPlayingSongId = currentPlayingSongId,
                                     cardBg = cardBg,
                                     rowBorder = rowBorder,
                                     accent = accent,

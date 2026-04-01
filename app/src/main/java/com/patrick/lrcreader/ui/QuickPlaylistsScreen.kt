@@ -1218,6 +1218,7 @@ fun QuickPlaylistsScreen(
                             val isChainedNext = nextChainedUri != null && uriString == nextChainedUri
                             val isForcedNext = nextTrackUri != null && uriString == nextTrackUri
                             val isSelected = selectedTrackKeys.contains(uriString)
+                            val showCurrentMarker = isCurrentPlaying && !isSelected
                             val isInsideGroup =
                                 isPlayableAudioItem(uriString) && isItemInsideGroup(songs, itemIndex)
                             val rowShape = RoundedCornerShape(12.dp)
@@ -1281,6 +1282,16 @@ fun QuickPlaylistsScreen(
                                             .background(selectedMarkerColor)
                                     )
                                 }
+                                if (showCurrentMarker) {
+                                    Box(
+                                        modifier = Modifier
+                                            .padding(end = 8.dp)
+                                            .width(3.dp)
+                                            .height(26.dp)
+                                            .clip(RoundedCornerShape(999.dp))
+                                            .background(Color(0xFFFFFDE7).copy(alpha = 0.9f))
+                                    )
+                                }
                                 Icon(
                                     imageVector = Icons.Filled.DragHandle,
                                     contentDescription = stringResource(R.string.common_cd_move),
@@ -1302,7 +1313,6 @@ fun QuickPlaylistsScreen(
                                     )
                                 }
                                 val isPrompter = uriString.startsWith("prompter://")
-                                val isSmp = smpSongId != null
                                 val prefix = if (isPrompter) "📝 " else ""
                                 val playedTextColor = Color(0xFF9E9E9E)
                                 val normalTitleColor = when {
@@ -1350,20 +1360,6 @@ fun QuickPlaylistsScreen(
                                         fontSize = 14.sp,
                                         modifier = Modifier.weight(1f)
                                     )
-                                    if (isSmp) {
-                                        Spacer(Modifier.width(6.dp))
-                                        Box(
-                                            modifier = Modifier
-                                                .background(Color(0xFF2E7D32), shape = RoundedCornerShape(6.dp))
-                                                .padding(horizontal = 6.dp, vertical = 2.dp)
-                                        ) {
-                                            Text(
-                                                text = "SMP",
-                                                color = Color.White,
-                                                fontSize = 10.sp
-                                            )
-                                        }
-                                    }
                                     if (isPlayed) {
                                         Spacer(Modifier.width(8.dp))
                                         Text(

@@ -923,6 +923,9 @@ class MainActivity : AppCompatActivity() {
                 var currentPlayingUri by remember { mutableStateOf<String?>(null) }
                 var currentPlayingPlaylist by rememberSaveable { mutableStateOf<String?>(initialLastPlaylist) }
                 var currentPlayingPlaylistItemKey by rememberSaveable { mutableStateOf<String?>(null) }
+                val currentPlayingSongId = remember(currentPlayingUri) {
+                    resolveSessionSongIdFromTrackUri(currentPlayingUri)
+                }
                 var isPlaying by remember { mutableStateOf(false) }
                 var parsedLines by remember { mutableStateOf<List<LrcLine>>(emptyList()) }
                 var lyricsLoading by remember { mutableStateOf(false) }
@@ -2506,6 +2509,7 @@ class MainActivity : AppCompatActivity() {
                                         modifier = contentModifier,
                                         workspaceSnapshot = workspaceSnapshot,
                                         workspaceVersion = setupTick,
+                                        currentPlayingSongId = currentPlayingSongId,
                                         reselectRootSignal = libraryTabReselectSignal,
                                         searchToggleSignal = librarySearchToggleSignal,
                                         smpRefreshVersion = smpCacheRefreshTick,
