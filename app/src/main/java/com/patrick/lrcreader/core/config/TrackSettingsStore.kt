@@ -13,16 +13,17 @@ object TrackSettingsStore {
     private val lock = ReentrantLock()
     private var cachedState: TrackSettingsState? = null
 
+    private data class ReadKeys(
+        val songScopedKey: String?,
+        val relativePath: String?
+    )
+
     fun ensureInitialized(context: Context): Boolean {
         return TrackSettingsAtomicIo.ensureInitialized(context)
     }
 
     fun getVolumeDbByUri(context: Context, uriString: String): Int? {
-        val relPath = TrackSettingsPathResolver.resolveRelativeTrackPath(context, uriString) ?: return null
-        return lock.withLock {
-            val state = readStateLocked(context)
-            state.tracks[relPath]?.volumeDb
-        }
+        return readEntryByUri(context, uriString)?.volumeDb
     }
 
     fun saveVolumeDbByUri(context: Context, uriString: String, volumeDb: Int): Boolean {
@@ -33,11 +34,7 @@ object TrackSettingsStore {
     }
 
     fun getTempoByUri(context: Context, uriString: String): Float? {
-        val relPath = TrackSettingsPathResolver.resolveRelativeTrackPath(context, uriString) ?: return null
-        return lock.withLock {
-            val state = readStateLocked(context)
-            state.tracks[relPath]?.tempo
-        }
+        return readEntryByUri(context, uriString)?.tempo
     }
 
     fun saveTempoByUri(context: Context, uriString: String, tempo: Float): Boolean {
@@ -48,11 +45,7 @@ object TrackSettingsStore {
     }
 
     fun getPitchSemiByUri(context: Context, uriString: String): Int? {
-        val relPath = TrackSettingsPathResolver.resolveRelativeTrackPath(context, uriString) ?: return null
-        return lock.withLock {
-            val state = readStateLocked(context)
-            state.tracks[relPath]?.pitchSemi
-        }
+        return readEntryByUri(context, uriString)?.pitchSemi
     }
 
     fun savePitchSemiByUri(context: Context, uriString: String, pitchSemi: Int): Boolean {
@@ -70,12 +63,8 @@ object TrackSettingsStore {
     }
 
     fun getEqByUri(context: Context, uriString: String): TrackEqSettings? {
-        val relPath = TrackSettingsPathResolver.resolveRelativeTrackPath(context, uriString) ?: return null
-        return lock.withLock {
-            val state = readStateLocked(context)
-            val eq = state.tracks[relPath]?.eq ?: return null
-            TrackEqSettings(low = eq.low, mid = eq.mid, high = eq.high)
-        }
+        val eq = readEntryByUri(context, uriString)?.eq ?: return null
+        return TrackEqSettings(low = eq.low, mid = eq.mid, high = eq.high)
     }
 
     fun saveEqByUri(context: Context, uriString: String, eq: TrackEqSettings): Boolean {
@@ -86,10 +75,13 @@ object TrackSettingsStore {
     }
 
     fun getTitleColorArgbByUri(context: Context, playlistName: String, uriString: String): Int? {
-        val relPath = TrackSettingsPathResolver.resolveRelativeTrackPath(context, uriString) ?: return null
+        return readEntryByUri(context, uriString)?.titleColorByPlaylist?.get(playlistName)
+    }
+
+    internal fun getBySongId(context: Context, songId: String): TrackSettingsEntry? {
+        val keys = resolveReadKeysForSongId(context, songId) ?: return null
         return lock.withLock {
-            val state = readStateLocked(context)
-            state.tracks[relPath]?.titleColorByPlaylist?.get(playlistName)
+            readEntryLocked(context, keys)
         }
     }
 
@@ -171,5 +163,41 @@ object TrackSettingsStore {
 
         cachedState = state
         return state
+    }
+
+    private fun readEntryByUri(context: Context, uriString: String): TrackSettingsEntry? {
+        val keys = resolveReadKeysForUri(context, uriString) ?: return null
+        return lock.withLock {
+            readEntryLocked(context, keys)
+        }
+    }
+
+    private fun readEntryLocked(context: Context, keys: ReadKeys): TrackSettingsEntry? {
+        val state = readStateLocked(context)
+        keys.songScopedKey?.let { songKey ->
+            state.tracks[songKey]?.let { return it }
+        }
+        val relPath = keys.relativePath ?: return null
+        return state.tracks[relPath]
+    }
+
+    private fun resolveReadKeysForUri(context: Context, uriString: String): ReadKeys? {
+        val songScopedKey = SongIdKeyResolver.songScopedKey(
+            SongIdKeyResolver.songIdFromTrackUri(context, uriString)
+        )
+        val relativePath = TrackSettingsPathResolver.resolveRelativeTrackPath(context, uriString)
+        if (songScopedKey == null && relativePath == null) return null
+        return ReadKeys(
+            songScopedKey = songScopedKey,
+            relativePath = relativePath
+        )
+    }
+
+    private fun resolveReadKeysForSongId(context: Context, songId: String): ReadKeys? {
+        val songScopedKey = SongIdKeyResolver.songScopedKey(songId) ?: return null
+        return ReadKeys(
+            songScopedKey = songScopedKey,
+            relativePath = SongIdKeyResolver.resolveLegacyRelativePathBySongId(context, songId)
+        )
     }
 }

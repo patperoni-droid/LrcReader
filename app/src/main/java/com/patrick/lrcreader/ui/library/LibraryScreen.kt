@@ -9,7 +9,11 @@ import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Icon
@@ -66,11 +70,14 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.patrick.lrcreader.core.StorageModePrefs
+import androidx.compose.runtime.saveable.rememberSaveable
 import java.io.File
 import java.util.concurrent.atomic.AtomicInteger
 
 private val PROMPTER_FOLDER_URI: Uri = Uri.parse("spl-prompter://folder")
 private val SMP_FOLDER_URI: Uri = Uri.parse("spl-smp://folder")
+private const val LIBRARY_VIEW_MODE_SONGS = "songs"
+private const val LIBRARY_VIEW_MODE_FILES = "files"
 private const val IMPORT_PROOF_TAG = "IMPORT_PROOF"
 private const val IMPORT_TRACE_TAG = "IMPORT_TRACE"
 private const val SMP_VIEW_TRACE_TAG = "SMP_VIEW_TRACE"
@@ -173,6 +180,35 @@ private fun resolveFolderName(context: android.content.Context, uri: Uri): Strin
 }
 
 @Composable
+private fun LibraryViewModeButton(
+    label: String,
+    selected: Boolean,
+    accent: Color,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .background(
+                color = if (selected) accent.copy(alpha = 0.18f) else Color.Transparent,
+                shape = RoundedCornerShape(8.dp)
+            )
+            .border(
+                width = 1.dp,
+                color = if (selected) accent else Color.White.copy(alpha = 0.18f),
+                shape = RoundedCornerShape(8.dp)
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 8.dp)
+    ) {
+        Text(
+            text = label,
+            color = if (selected) accent else Color.White.copy(alpha = 0.78f),
+            fontSize = 12.sp
+        )
+    }
+}
+
+@Composable
 fun LibraryScreen(
     modifier: Modifier = Modifier,
     workspaceSnapshot: WorkspaceResolver.Snapshot,
@@ -234,6 +270,8 @@ fun LibraryScreen(
     val sPrompterFolder = stringResource(R.string.main_menu_prompter)
     val sSmpFolder = stringResource(R.string.library_smp_folder)
     val sSmpEmptyState = stringResource(R.string.library_smp_empty_state)
+    val sSongsView = stringResource(R.string.library_view_mode_songs)
+    val sFilesView = stringResource(R.string.library_view_mode_files)
     val sConvertSmpSingleSuccess = stringResource(R.string.library_convert_smp_success_single)
     val sConvertSmpSingleFailed = stringResource(R.string.library_convert_smp_failed_single)
     val sConvertSmpNoMp3 = stringResource(R.string.library_convert_smp_no_mp3)
@@ -265,9 +303,11 @@ fun LibraryScreen(
     val initialFolder = remember(workspaceVersion, storageMode, workspaceSnapshot.workspaceRootUri) {
         backend.getRootUri()
     }
+    var libraryViewMode by rememberSaveable { mutableStateOf(LIBRARY_VIEW_MODE_SONGS) }
     var currentFolderUri by remember { mutableStateOf<Uri?>(initialFolder) }
     var folderStack by remember { mutableStateOf<List<Uri>>(emptyList()) }
     var entries by remember { mutableStateOf<List<LibraryEntry>>(emptyList()) }
+    var songItems by remember { mutableStateOf<List<LibrarySongItem>>(emptyList()) }
     var selectedSongs by remember { mutableStateOf<Set<Uri>>(emptySet()) }
 
     var isLoading by remember { mutableStateOf(false) }
@@ -502,6 +542,33 @@ fun LibraryScreen(
         }
     }
 
+    fun resolveSongDisplayTitle(songId: String, fallbackTitle: String): String {
+        val playbackItem = buildSmpItem(songId)
+        return TitleAliasesStore.getTitleForTrack(context, playbackItem)
+            ?: PlaylistRepository.getAnyCustomTitleForUri(playbackItem)
+            ?: fallbackTitle
+    }
+
+    fun buildLibrarySongItems(): List<LibrarySongItem> {
+        val songs = smpLibraryScanner.listSongs()
+        return songs
+            .map { song ->
+                val fallbackTitle = song.title.ifBlank { song.id }
+                val playbackItem = buildSmpItem(song.id)
+                LibrarySongItem(
+                    song = song,
+                    playbackItem = playbackItem,
+                    displayTitle = resolveSongDisplayTitle(song.id, fallbackTitle),
+                    fallbackTitle = fallbackTitle
+                )
+            }
+            .sortedBy { it.displayTitle.lowercase() }
+    }
+
+    suspend fun buildLibrarySongItemsAsync(): List<LibrarySongItem> = withContext(Dispatchers.IO) {
+        buildLibrarySongItems()
+    }
+
     fun buildSmpEntries(): List<LibraryEntry> {
         val songs = smpLibraryScanner.listSongs()
         Log.i(
@@ -511,9 +578,10 @@ fun LibraryScreen(
         val entries = songs
             .map { song ->
                 val uriString = buildSmpItem(song.id)
-                val displayName = TitleAliasesStore.getTitleForTrack(context, uriString)
-                    ?: PlaylistRepository.getAnyCustomTitleForUri(uriString)
-                    ?: song.title.ifBlank { song.id }
+                val displayName = resolveSongDisplayTitle(
+                    songId = song.id,
+                    fallbackTitle = song.title.ifBlank { song.id }
+                )
                 LibraryEntry(
                     uri = Uri.parse(uriString),
                     name = displayName,
@@ -948,9 +1016,14 @@ fun LibraryScreen(
     // search
     var searchQuery by remember { mutableStateOf("") }
     var isSearchVisible by remember { mutableStateOf(false) }
+    val isSongViewMode = libraryViewMode == LIBRARY_VIEW_MODE_SONGS
     val titleAliasVersion = TitleAliasesStore.version.intValue
     data class SearchableLibraryEntry(
         val entry: LibraryEntry,
+        val indexedItem: SearchEngine.IndexedItem
+    )
+    data class SearchableLibrarySong(
+        val item: LibrarySongItem,
         val indexedItem: SearchEngine.IndexedItem
     )
     val searchableEntries = remember(entries, titleAliasVersion, context) {
@@ -979,6 +1052,18 @@ fun LibraryScreen(
             }
             .toList()
     }
+    val searchableSongItems = remember(songItems) {
+        songItems.map { item ->
+            SearchableLibrarySong(
+                item = item,
+                indexedItem = SearchEngine.index(
+                    id = item.songId,
+                    displayTitle = item.displayTitle,
+                    fallbackName = item.fallbackTitle
+                )
+            )
+        }
+    }
     val filteredEntries = remember(searchQuery, searchableEntries) {
         val normalizedQuery = SearchEngine.normalize(searchQuery)
         if (normalizedQuery.isBlank()) {
@@ -991,6 +1076,20 @@ fun LibraryScreen(
             searchableEntries
                 .filter { it.indexedItem.id in filteredIds }
                 .map { it.entry }
+        }
+    }
+    val filteredSongItems = remember(searchQuery, searchableSongItems) {
+        val normalizedQuery = SearchEngine.normalize(searchQuery)
+        if (normalizedQuery.isBlank()) {
+            searchableSongItems.map { it.item }
+        } else {
+            val filteredIds = SearchEngine.filter(
+                items = searchableSongItems.map { it.indexedItem },
+                query = searchQuery
+            ).asSequence().map { it.id }.toSet()
+            searchableSongItems
+                .filter { it.indexedItem.id in filteredIds }
+                .map { it.item }
         }
     }
     suspend fun injectSmpEntriesAndCheckVisible(
@@ -1030,14 +1129,16 @@ fun LibraryScreen(
             ?.let { resolveFolderName(context, it) }
             ?.let(::isBackupFolderName) == true
     }
-    LaunchedEffect(searchQuery, searchableEntries.size, filteredEntries.size, currentFolderUri) {
+    val activeSearchableCount = if (isSongViewMode) searchableSongItems.size else searchableEntries.size
+    val activeFilteredCount = if (isSongViewMode) filteredSongItems.size else filteredEntries.size
+    LaunchedEffect(searchQuery, activeSearchableCount, activeFilteredCount, currentFolderUri, isSongViewMode) {
         if (BuildConfig.DEBUG) {
             val normalizedQuery = SearchEngine.normalize(searchQuery)
-            val itemsBefore = searchableEntries.size
-            val itemsAfter = filteredEntries.size
+            val itemsBefore = activeSearchableCount
+            val itemsAfter = activeFilteredCount
             Log.d(
                 "SEARCH_PROOF",
-                "mode=LIBRARY query='$normalizedQuery' playlist=- itemsBefore=$itemsBefore itemsAfter=$itemsAfter"
+                "mode=LIBRARY query='$normalizedQuery' playlist=- viewMode=$libraryViewMode itemsBefore=$itemsBefore itemsAfter=$itemsAfter"
             )
         }
     }
@@ -1077,6 +1178,11 @@ fun LibraryScreen(
                 )
             }
         }
+    }
+
+    LaunchedEffect(initialLoadDone, smpRefreshVersion, titleAliasVersion) {
+        if (!initialLoadDone) return@LaunchedEffect
+        songItems = buildLibrarySongItemsAsync()
     }
 
     LaunchedEffect(
@@ -1791,6 +1897,7 @@ fun LibraryScreen(
                 effectResult = "no_root"
                 currentFolderUri = null
                 entries = emptyList()
+                songItems = emptyList()
                 Log.i(
                     LIB_SMP_TRACE_TAG,
                     "step=effect_initial_load_no_root workspaceVersion=$workspaceVersion workspaceStatus=${workspaceSnapshot.status} currentFolderUri=$currentFolderUri initialLoadDone=$initialLoadDone"
@@ -1859,6 +1966,7 @@ fun LibraryScreen(
             doc?.name ?: "SPL_Music"
         }
     } ?: sNoFolderSelected
+    val headerFolderUri = if (isSongViewMode && currentFolderUri != null) SMP_FOLDER_URI else currentFolderUri
     val isSetupDone = workspaceSnapshot.isUsable
     if (!isSetupDone) {
         DarkBlueGradientBackground {
@@ -1889,8 +1997,8 @@ fun LibraryScreen(
             LibraryHeader(
                 titleColor = titleColor,
                 subtitleColor = subtitleColor,
-                currentFolderUri = currentFolderUri,
-                canGoBack = folderStack.isNotEmpty(),
+                currentFolderUri = headerFolderUri,
+                canGoBack = !isSongViewMode && folderStack.isNotEmpty(),
 
                 onBack = {
                     val parentUri = folderStack.lastOrNull() ?: backend.getRootUri()
@@ -1917,6 +2025,7 @@ fun LibraryScreen(
                         val rootNow = backend.getRootUri() ?: return@launch
                         startLoading(sScanning, determinate = false)
                         try {
+                            songItems = buildLibrarySongItemsAsync()
                             if (isSmpFolderUri(currentFolderUri)) {
                                 Log.i(
                                     SMP_VIEW_TRACE_TAG,
@@ -1953,6 +2062,7 @@ fun LibraryScreen(
                     StorageModePrefs.set(context, StorageModePrefs.Mode.SAF)
                     currentFolderUri = null
                     entries = emptyList()
+                    songItems = emptyList()
                     selectedSongs = emptySet()
                     folderStack = emptyList()
                     LibraryFolderCache.clear()
@@ -2023,6 +2133,32 @@ fun LibraryScreen(
             )
 
             Spacer(Modifier.height(10.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                LibraryViewModeButton(
+                    label = sSongsView,
+                    selected = isSongViewMode,
+                    accent = accent,
+                    onClick = {
+                        libraryViewMode = LIBRARY_VIEW_MODE_SONGS
+                        selectedSongs = emptySet()
+                        stopQuickPlay()
+                    }
+                )
+                LibraryViewModeButton(
+                    label = sFilesView,
+                    selected = !isSongViewMode,
+                    accent = accent,
+                    onClick = {
+                        libraryViewMode = LIBRARY_VIEW_MODE_FILES
+                        stopQuickPlay()
+                    }
+                )
+            }
+
+            Spacer(Modifier.height(10.dp))
             Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
 
                 if (currentFolderUri == null) {
@@ -2064,262 +2200,291 @@ fun LibraryScreen(
                             Spacer(Modifier.height(8.dp))
                         }
 
-                        val isEmptySmpFolder =
-                            currentFolderUri?.let(::isSmpFolderUri) == true && searchableEntries.isEmpty()
-
-                        if (isEmptySmpFolder) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(horizontal = 12.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = sSmpEmptyState,
-                                    color = subtitleColor,
-                                    fontSize = 13.sp
+                        if (isSongViewMode) {
+                            if (searchableSongItems.isEmpty()) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(horizontal = 12.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = sSmpEmptyState,
+                                        color = subtitleColor,
+                                        fontSize = 13.sp
+                                    )
+                                }
+                            } else {
+                                LibrarySongsList(
+                                    songs = filteredSongItems,
+                                    cardBg = cardBg,
+                                    rowBorder = rowBorder,
+                                    accent = accent,
+                                    bottomPadding = 0.dp,
+                                    onOpenPlayer = { song ->
+                                        stopQuickPlay()
+                                        onPlayFromLibrary(song.playbackItem)
+                                    }
                                 )
                             }
                         } else {
-                            LibraryList(
-                            entries = filteredEntries,
-                            cardBg = cardBg,
-                            rowBorder = rowBorder,
-                            accent = accent,
-                            bottomPadding = if (selectedSongs.isNotEmpty()) bottomBarHeight else 0.dp,
-                            canImportBackupJson = canImportBackupJsonFromCurrentFolder,
-                            selectedSongs = selectedSongs,
+                            val isEmptySmpFolder =
+                                currentFolderUri?.let(::isSmpFolderUri) == true && searchableEntries.isEmpty()
 
-                            onToggleSelect = { uri ->
-                                selectedSongs =
-                                    if (selectedSongs.contains(uri)) selectedSongs - uri else selectedSongs + uri
-                            },
-
-                            onOpenFolder = { entry ->
-                                if (entry.disabled) return@LibraryList
-                                Log.i(
-                                    LIB_SMP_TRACE_TAG,
-                                    "step=navigation_open_folder from=$currentFolderUri to=${entry.uri} name=${entry.name} stackBefore=${folderStack.size}"
-                                )
-                                currentFolderUri?.let { folderStack = folderStack + it }
-                                currentFolderUri = entry.uri
-                                if (!showCachedEntries(entry.uri)) {
-                                    entries = emptyList()
-                                }
-                                searchQuery = ""
-                                selectedSongs = emptySet()
-                            },
-
-                            onOpenPlayer = { uri ->
-                                stopQuickPlay()
-                                onPlayFromLibrary(uri.toString())
-                            },
-
-                            onQuickPlay = { uri ->
-                                quickPlayToggle(uri)
-                            },
-
-                            onImportBackupJson = { uri ->
-                                pendingBackupImportUri = uri
-                            },
-
-                            onOpenLrcEditor = { lrcUri ->
-                                stopQuickPlay()
-
-                                lrcEditorUri = lrcUri
-                                lrcEditorName = runCatching {
-                                    DocumentFile.fromSingleUri(context, lrcUri)?.name
-                                        ?: DocumentFile.fromTreeUri(context, lrcUri)?.name
-                                        ?: "lyrics.lrc"
-                                }.getOrNull() ?: "lyrics.lrc"
-
-                                lrcEditorText = readTextFromUri(lrcUri) ?: ""
-                                showLrcEditor = true
-                            },
-
-                            onConvertOneToSmp = { mp3Uri ->
-                                scope.launch {
-                                    Log.i(
-                                        "SMP_CONVERT_FLOW",
-                                        "step=ui_start sourceUri=$mp3Uri backend=${if (mp3Uri.scheme == "file") "file" else "SAF"}"
+                            if (isEmptySmpFolder) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(horizontal = 12.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = sSmpEmptyState,
+                                        color = subtitleColor,
+                                        fontSize = 13.sp
                                     )
-                                    startLoading(sConvertingSmp, determinate = false)
-                                    try {
-                                        val result = withContext(Dispatchers.IO) {
-                                            smpConverter.convertSingle(mp3Uri)
-                                        }
-                                        result.fold(
-                                            onSuccess = { outputUri ->
-                                                Log.i(
-                                                    "SMP_CONVERT_FLOW",
-                                                    "step=conversion_ok sourceUri=$mp3Uri outputUri=$outputUri"
-                                                )
-                                                Log.i(
-                                                    "SMP_CONVERT_FLOW",
-                                                    "step=auto_import_call sourceUri=$mp3Uri outputUri=$outputUri"
-                                                )
-                                                val importedSong = onImportGeneratedSmp(outputUri)
-                                                if (importedSong != null) {
+                                }
+                            } else {
+                                LibraryList(
+                                entries = filteredEntries,
+                                cardBg = cardBg,
+                                rowBorder = rowBorder,
+                                accent = accent,
+                                bottomPadding = if (selectedSongs.isNotEmpty()) bottomBarHeight else 0.dp,
+                                canImportBackupJson = canImportBackupJsonFromCurrentFolder,
+                                selectedSongs = selectedSongs,
+
+                                onToggleSelect = { uri ->
+                                    selectedSongs =
+                                        if (selectedSongs.contains(uri)) selectedSongs - uri else selectedSongs + uri
+                                },
+
+                                onOpenFolder = { entry ->
+                                    if (entry.disabled) return@LibraryList
+                                    Log.i(
+                                        LIB_SMP_TRACE_TAG,
+                                        "step=navigation_open_folder from=$currentFolderUri to=${entry.uri} name=${entry.name} stackBefore=${folderStack.size}"
+                                    )
+                                    currentFolderUri?.let { folderStack = folderStack + it }
+                                    currentFolderUri = entry.uri
+                                    if (!showCachedEntries(entry.uri)) {
+                                        entries = emptyList()
+                                    }
+                                    searchQuery = ""
+                                    selectedSongs = emptySet()
+                                },
+
+                                onOpenPlayer = { uri ->
+                                    stopQuickPlay()
+                                    onPlayFromLibrary(uri.toString())
+                                },
+
+                                onQuickPlay = { uri ->
+                                    quickPlayToggle(uri)
+                                },
+
+                                onImportBackupJson = { uri ->
+                                    pendingBackupImportUri = uri
+                                },
+
+                                onOpenLrcEditor = { lrcUri ->
+                                    stopQuickPlay()
+
+                                    lrcEditorUri = lrcUri
+                                    lrcEditorName = runCatching {
+                                        DocumentFile.fromSingleUri(context, lrcUri)?.name
+                                            ?: DocumentFile.fromTreeUri(context, lrcUri)?.name
+                                            ?: "lyrics.lrc"
+                                    }.getOrNull() ?: "lyrics.lrc"
+
+                                    lrcEditorText = readTextFromUri(lrcUri) ?: ""
+                                    showLrcEditor = true
+                                },
+
+                                onConvertOneToSmp = { mp3Uri ->
+                                    scope.launch {
+                                        Log.i(
+                                            "SMP_CONVERT_FLOW",
+                                            "step=ui_start sourceUri=$mp3Uri backend=${if (mp3Uri.scheme == "file") "file" else "SAF"}"
+                                        )
+                                        startLoading(sConvertingSmp, determinate = false)
+                                        try {
+                                            val result = withContext(Dispatchers.IO) {
+                                                smpConverter.convertSingle(mp3Uri)
+                                            }
+                                            result.fold(
+                                                onSuccess = { outputUri ->
                                                     Log.i(
                                                         "SMP_CONVERT_FLOW",
-                                                        "step=auto_import_ok sourceUri=$mp3Uri outputUri=$outputUri songId=${importedSong.id} title=${importedSong.title}"
+                                                        "step=conversion_ok sourceUri=$mp3Uri outputUri=$outputUri"
                                                     )
-                                                } else {
+                                                    Log.i(
+                                                        "SMP_CONVERT_FLOW",
+                                                        "step=auto_import_call sourceUri=$mp3Uri outputUri=$outputUri"
+                                                    )
+                                                    val importedSong = onImportGeneratedSmp(outputUri)
+                                                    if (importedSong != null) {
+                                                        Log.i(
+                                                            "SMP_CONVERT_FLOW",
+                                                            "step=auto_import_ok sourceUri=$mp3Uri outputUri=$outputUri songId=${importedSong.id} title=${importedSong.title}"
+                                                        )
+                                                    } else {
+                                                        Log.e(
+                                                            "SMP_CONVERT_FLOW",
+                                                            "step=auto_import_failed sourceUri=$mp3Uri outputUri=$outputUri"
+                                                        )
+                                                    }
+                                                    Toast.makeText(
+                                                        context,
+                                                        if (importedSong != null) {
+                                                            sConvertSmpSingleSuccess
+                                                        } else {
+                                                            sConvertSmpSingleFailed
+                                                        },
+                                                        Toast.LENGTH_SHORT
+                                                    ).show()
+                                                },
+                                                onFailure = { error ->
                                                     Log.e(
                                                         "SMP_CONVERT_FLOW",
-                                                        "step=auto_import_failed sourceUri=$mp3Uri outputUri=$outputUri"
+                                                        "step=conversion_failed_before_import sourceUri=$mp3Uri",
+                                                        error
+                                                    )
+                                                    Toast.makeText(
+                                                        context,
+                                                        sConvertSmpSingleFailed,
+                                                        Toast.LENGTH_SHORT
+                                                    ).show()
+                                                }
+                                            )
+                                        } finally {
+                                            stopLoadingNice()
+                                        }
+                                    }
+                                },
+
+                                onAssignOne = { uri ->
+                                    selectedSongs = setOf(uri)
+                                    showAssignDialog = true
+                                },
+
+                                onShareOne = { uri ->
+                                    val songId = getSmpSongId(uri.toString())
+                                    if (songId == null) {
+                                        Toast.makeText(context, sShareSmpFailed, Toast.LENGTH_SHORT).show()
+                                        return@LibraryList
+                                    }
+
+                                    scope.launch {
+                                        startLoading(sLoading, determinate = false)
+                                        try {
+                                            val shareUri = withContext(Dispatchers.IO) {
+                                                val song = smpLibraryScanner.findSongById(songId) ?: return@withContext null
+                                                val exportedFile = SmpExporter.exportSongUnitToCacheSmp(context, song)
+                                                    ?: return@withContext null
+                                                FileProvider.getUriForFile(
+                                                    context,
+                                                    "${context.packageName}.fileprovider",
+                                                    exportedFile
+                                                )
+                                            }
+
+                                            if (shareUri == null) {
+                                                Toast.makeText(context, sShareSmpFailed, Toast.LENGTH_SHORT).show()
+                                            } else {
+                                                val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                                    type = "application/octet-stream"
+                                                    putExtra(Intent.EXTRA_STREAM, shareUri)
+                                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                                }
+                                                context.startActivity(
+                                                    Intent.createChooser(
+                                                        shareIntent,
+                                                        context.getString(R.string.backup_share)
+                                                    )
+                                                )
+                                            }
+                                        } finally {
+                                            stopLoadingNice()
+                                        }
+                                    }
+                                },
+
+                                onMoveOne = { uri ->
+                                    pendingMoveUri = uri
+
+                                    val root = backend.getRootUri()
+                                    if (root == null) {
+                                        showMoveBrowser = false
+                                        return@LibraryList
+                                    }
+
+                                    moveBrowserFolder = root
+                                    moveBrowserStack = emptyList()
+                                    showMoveBrowser = true
+                                },
+
+                                onRenameOne = { entry ->
+                                    val prompterId = extractPrompterId(entry.uri)
+                                    if (prompterId != null) {
+                                        val textSong = TextSongRepository.get(context, prompterId)
+                                        if (textSong != null) {
+                                            editPrompterId = prompterId
+                                            editPrompterTitle = textSong.title
+                                            editPrompterContent = textSong.content
+                                            showEditPrompterDialog = true
+                                        }
+                                    } else {
+                                        renameTarget = entry
+                                        renameText = TitleAliasesStore.getTitleForTrack(context, entry.uri.toString())
+                                            ?: PlaylistRepository.getAnyCustomTitleForUri(entry.uri.toString())
+                                            ?: entry.name
+                                    }
+                                },
+
+                                onDeleteOne = { uri ->
+                                    val prompterId = extractPrompterId(uri)
+                                    if (prompterId != null) {
+                                        if (deletePrompterAndRemoveFromAllPlaylists(context, uri.toString())) {
+                                            selectedSongs = selectedSongs - uri
+                                            val folder = currentFolderUri
+                                            if (folder != null) {
+                                                entries = buildEntriesForFolder(folder, useCache = false)
+                                            }
+                                        }
+                                    } else {
+                                        val smpSongId = getSmpSongId(uri.toString())
+                                        if (smpSongId != null) {
+                                            pendingDeleteSmpUri = uri
+                                        } else {
+                                            scope.launch {
+                                                val plan = runCatching {
+                                                    backend.planDelete(
+                                                        target = uri,
+                                                        indexAll = indexAll
+                                                    )
+                                                }.getOrElse {
+                                                    LibraryDeletePlan(
+                                                        target = LibraryDeleteItem(
+                                                            uri = uri,
+                                                            role = LibraryDeleteRole.FILE,
+                                                            displayName = uri.lastPathSegment ?: "file"
+                                                        ),
+                                                        associated = emptyList()
                                                     )
                                                 }
-                                                Toast.makeText(
-                                                    context,
-                                                    if (importedSong != null) {
-                                                        sConvertSmpSingleSuccess
-                                                    } else {
-                                                        sConvertSmpSingleFailed
-                                                    },
-                                                    Toast.LENGTH_SHORT
-                                                ).show()
-                                            },
-                                            onFailure = { error ->
-                                                Log.e(
-                                                    "SMP_CONVERT_FLOW",
-                                                    "step=conversion_failed_before_import sourceUri=$mp3Uri",
-                                                    error
-                                                )
-                                                Toast.makeText(
-                                                    context,
-                                                    sConvertSmpSingleFailed,
-                                                    Toast.LENGTH_SHORT
-                                                ).show()
+                                                pendingDeletePlan = plan
+                                                showDeleteConfirmDialog = true
                                             }
-                                        )
-                                    } finally {
-                                        stopLoadingNice()
-                                    }
-                                }
-                            },
-
-                            onAssignOne = { uri ->
-                                selectedSongs = setOf(uri)
-                                showAssignDialog = true
-                            },
-
-                            onShareOne = { uri ->
-                                val songId = getSmpSongId(uri.toString())
-                                if (songId == null) {
-                                    Toast.makeText(context, sShareSmpFailed, Toast.LENGTH_SHORT).show()
-                                    return@LibraryList
-                                }
-
-                                scope.launch {
-                                    startLoading(sLoading, determinate = false)
-                                    try {
-                                        val shareUri = withContext(Dispatchers.IO) {
-                                            val song = smpLibraryScanner.findSongById(songId) ?: return@withContext null
-                                            val exportedFile = SmpExporter.exportSongUnitToCacheSmp(context, song)
-                                                ?: return@withContext null
-                                            FileProvider.getUriForFile(
-                                                context,
-                                                "${context.packageName}.fileprovider",
-                                                exportedFile
-                                            )
-                                        }
-
-                                        if (shareUri == null) {
-                                            Toast.makeText(context, sShareSmpFailed, Toast.LENGTH_SHORT).show()
-                                        } else {
-                                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                                                type = "application/octet-stream"
-                                                putExtra(Intent.EXTRA_STREAM, shareUri)
-                                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                            }
-                                            context.startActivity(
-                                                Intent.createChooser(
-                                                    shareIntent,
-                                                    context.getString(R.string.backup_share)
-                                                )
-                                            )
-                                        }
-                                    } finally {
-                                        stopLoadingNice()
-                                    }
-                                }
-                            },
-
-                            onMoveOne = { uri ->
-                                pendingMoveUri = uri
-
-                                val root = backend.getRootUri()
-                                if (root == null) {
-                                    showMoveBrowser = false
-                                    return@LibraryList
-                                }
-
-                                moveBrowserFolder = root
-                                moveBrowserStack = emptyList()
-                                showMoveBrowser = true
-                            },
-
-                            onRenameOne = { entry ->
-                                val prompterId = extractPrompterId(entry.uri)
-                                if (prompterId != null) {
-                                    val textSong = TextSongRepository.get(context, prompterId)
-                                    if (textSong != null) {
-                                        editPrompterId = prompterId
-                                        editPrompterTitle = textSong.title
-                                        editPrompterContent = textSong.content
-                                        showEditPrompterDialog = true
-                                    }
-                                } else {
-                                    renameTarget = entry
-                                    renameText = TitleAliasesStore.getTitleForTrack(context, entry.uri.toString())
-                                        ?: PlaylistRepository.getAnyCustomTitleForUri(entry.uri.toString())
-                                        ?: entry.name
-                                }
-                            },
-
-                            onDeleteOne = { uri ->
-                                val prompterId = extractPrompterId(uri)
-                                if (prompterId != null) {
-                                    if (deletePrompterAndRemoveFromAllPlaylists(context, uri.toString())) {
-                                        selectedSongs = selectedSongs - uri
-                                        val folder = currentFolderUri
-                                        if (folder != null) {
-                                            entries = buildEntriesForFolder(folder, useCache = false)
-                                        }
-                                    }
-                                } else {
-                                    val smpSongId = getSmpSongId(uri.toString())
-                                    if (smpSongId != null) {
-                                        pendingDeleteSmpUri = uri
-                                    } else {
-                                        scope.launch {
-                                            val plan = runCatching {
-                                                backend.planDelete(
-                                                    target = uri,
-                                                    indexAll = indexAll
-                                                )
-                                            }.getOrElse {
-                                                LibraryDeletePlan(
-                                                    target = LibraryDeleteItem(
-                                                        uri = uri,
-                                                        role = LibraryDeleteRole.FILE,
-                                                        displayName = uri.lastPathSegment ?: "file"
-                                                    ),
-                                                    associated = emptyList()
-                                                )
-                                            }
-                                            pendingDeletePlan = plan
-                                            showDeleteConfirmDialog = true
                                         }
                                     }
                                 }
+                            )
                             }
-                        )
                         }
                     }
 
-                    if (selectedSongs.isNotEmpty()) {
+                    if (!isSongViewMode && selectedSongs.isNotEmpty()) {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()

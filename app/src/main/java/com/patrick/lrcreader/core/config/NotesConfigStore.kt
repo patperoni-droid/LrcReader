@@ -30,6 +30,18 @@ internal object NotesConfigStore {
         }
     }
 
+    fun getBySongId(context: Context, songId: String): List<NotesScopedEntry> = runBlocking {
+        mutex.withLock {
+            val cleanSongKey = SongIdKeyResolver.songScopedKey(songId) ?: return@withLock emptyList()
+            val state = readStateLocked(context)
+
+            scopedEntriesForKey(state, cleanSongKey).takeIf { it.isNotEmpty() }
+                ?: SongIdKeyResolver.resolveLegacyRelativePathBySongId(context, songId)
+                    ?.let { legacyScope -> scopedEntriesForKey(state, legacyScope) }
+                ?: emptyList()
+        }
+    }
+
     fun upsert(context: Context, scopeKey: String, entry: NotesConfigEntry): Boolean = runBlocking {
         mutex.withLock {
             if (!isValidScopeKey(scopeKey)) {
@@ -116,5 +128,14 @@ internal object NotesConfigStore {
         if (segments.any { it.isBlank() || it == "." || it == ".." }) return null
 
         return normalized
+    }
+
+    private fun scopedEntriesForKey(
+        state: NotesConfigState,
+        scopeKey: String
+    ): List<NotesScopedEntry> {
+        return state.notesByScope[scopeKey]
+            .orEmpty()
+            .map { entry -> NotesScopedEntry(scopeKey = scopeKey, note = entry) }
     }
 }

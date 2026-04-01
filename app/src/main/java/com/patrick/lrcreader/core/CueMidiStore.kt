@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.util.Log
 import com.patrick.lrcreader.core.config.MidiCuesConfigStore
+import com.patrick.lrcreader.core.config.SongIdKeyResolver
 import com.patrick.lrcreader.core.config.TrackSettingsPathResolver
 
 /**
@@ -26,6 +27,12 @@ object CueMidiStore {
 
     private data class TrackKeys(
         val legacyKey: String,
+        val relativePath: String?
+    )
+
+    private data class SongReadKeys(
+        val songScopedKey: String,
+        val legacyKey: String?,
         val relativePath: String?
     )
 
@@ -157,13 +164,25 @@ object CueMidiStore {
 
     fun getCuesForTrack(trackUri: String?): List<CueMidi> {
         val keys = resolveTrackKeys(trackUri) ?: return emptyList()
-
-        if (keys.relativePath != null) {
-            val portable = portableCuesByTrack[keys.relativePath]
-            if (portable != null) return portable.toList()
+        val songScopedKey = appContext?.let { context ->
+            SongIdKeyResolver.songScopedKey(
+                SongIdKeyResolver.songIdFromTrackUri(context, trackUri)
+            )
         }
+        return readCues(
+            songScopedKey = songScopedKey,
+            relativePath = keys.relativePath,
+            legacyKey = keys.legacyKey
+        )
+    }
 
-        return legacyCuesByTrack[keys.legacyKey]?.toList() ?: emptyList()
+    fun getBySongId(songId: String?): List<CueMidi> {
+        val keys = resolveSongReadKeys(songId) ?: return emptyList()
+        return readCues(
+            songScopedKey = keys.songScopedKey,
+            relativePath = keys.relativePath,
+            legacyKey = keys.legacyKey
+        )
     }
 
     fun shiftAfterDelete(trackUri: String?, deletedLineIndex: Int) {
@@ -218,5 +237,37 @@ object CueMidiStore {
         if (deleteFromMap(legacyCuesByTrack, keys.legacyKey, lineIndex)) {
             persistLegacyOnly()
         }
+    }
+
+    private fun resolveSongReadKeys(songId: String?): SongReadKeys? {
+        val cleanSongScopedKey = SongIdKeyResolver.songScopedKey(songId) ?: return null
+        val ctx = appContext
+        val runtimeUri = ctx?.let { SongIdKeyResolver.resolveRuntimeTrackUri(it, songId) }
+        return SongReadKeys(
+            songScopedKey = cleanSongScopedKey,
+            legacyKey = normalizeLegacyKey(runtimeUri),
+            relativePath = ctx?.let { SongIdKeyResolver.resolveLegacyRelativePathBySongId(it, songId) }
+        )
+    }
+
+    private fun readCues(
+        songScopedKey: String?,
+        relativePath: String?,
+        legacyKey: String?
+    ): List<CueMidi> {
+        if (songScopedKey != null) {
+            portableCuesByTrack[songScopedKey]?.let { return it.toList() }
+            legacyCuesByTrack[songScopedKey]?.let { return it.toList() }
+        }
+
+        if (relativePath != null) {
+            portableCuesByTrack[relativePath]?.let { return it.toList() }
+        }
+
+        if (legacyKey != null) {
+            legacyCuesByTrack[legacyKey]?.let { return it.toList() }
+        }
+
+        return emptyList()
     }
 }

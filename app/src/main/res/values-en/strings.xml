@@ -162,6 +162,8 @@
     <string name="library_list_move_to_folder">Move to a folder</string>
     <string name="library_list_rename">Rename</string>
     <string name="library_list_delete_permanently">Delete permanently</string>
+    <string name="library_view_mode_songs">Songs</string>
+    <string name="library_view_mode_files">Files</string>
     <string name="library_smp_folder">Backing Tracks</string>
     <string name="library_legacy_backing_tracks_folder">Backing Tracks (legacy)</string>
     <string name="library_smp_empty_state">No SMP backing tracks yet.\nImport or convert a song to see it appear here.</string>
