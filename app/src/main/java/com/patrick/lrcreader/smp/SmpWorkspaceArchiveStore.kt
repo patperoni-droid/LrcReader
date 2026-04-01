@@ -15,6 +15,15 @@ object SmpWorkspaceArchiveStore {
         val failureReason: String? = null
     )
 
+    data class DeleteArchivesResult(
+        val deletedCount: Int,
+        val failedCount: Int,
+        val failureReason: String? = null
+    ) {
+        val isSuccess: Boolean
+            get() = failureReason == null && failedCount == 0
+    }
+
     internal data class FilePersistResult(
         val archiveFile: File?,
         val failureReason: String? = null
@@ -76,6 +85,49 @@ object SmpWorkspaceArchiveStore {
             if (tempArchive.exists() && !tempArchive.delete()) {
                 logWarn("Suppression du cache SMP impossible: ${tempArchive.absolutePath}")
             }
+        }
+    }
+
+    fun deleteArchivesForSongId(
+        context: Context,
+        songId: String,
+        snapshotOverride: WorkspaceResolver.Snapshot? = null
+    ): DeleteArchivesResult {
+        val cleanSongId = songId.trim()
+        if (cleanSongId.isEmpty()) {
+            return DeleteArchivesResult(
+                deletedCount = 0,
+                failedCount = 0,
+                failureReason = "songId SMP manquant pour la suppression archive"
+            )
+        }
+
+        val workspaceSnapshot = snapshotOverride ?: WorkspaceResolver.resolve(context)
+        if (!workspaceSnapshot.isUsable || workspaceSnapshot.workspaceRootUri == null) {
+            return DeleteArchivesResult(
+                deletedCount = 0,
+                failedCount = 0,
+                failureReason = "workspace durable indisponible pour la suppression archive SMP"
+            )
+        }
+
+        val targetDir = resolveWorkspaceSmpDir(
+            context = context,
+            snapshot = workspaceSnapshot,
+            createIfMissing = false
+        ) ?: return DeleteArchivesResult(deletedCount = 0, failedCount = 0)
+
+        return when (targetDir) {
+            is WorkspaceSmpDir.FileDir -> deleteFileArchivesForSongId(
+                targetDir = targetDir.directory,
+                songId = cleanSongId
+            )
+
+            is WorkspaceSmpDir.SafDir -> deleteSafArchivesForSongId(
+                context = context,
+                targetDir = targetDir.directory,
+                songId = cleanSongId
+            )
         }
     }
 
@@ -493,6 +545,33 @@ object SmpWorkspaceArchiveStore {
         )
     }
 
+    private fun scanFileArchivesForSongId(
+        targetDir: File,
+        songId: String
+    ): NormalizationScan<File> {
+        var unresolvedCount = 0
+        val matchingArchives = targetDir.listFiles()
+            .orEmpty()
+            .filter { file ->
+                file.isFile && isSupportedArchiveFileName(file.name)
+            }
+            .filter { file ->
+                when (val resolvedSongId = readStableSongId(file)) {
+                    null -> {
+                        unresolvedCount += 1
+                        logInfo("step=delete_skip_unresolved backend=file file=${file.absolutePath}")
+                        false
+                    }
+
+                    else -> resolvedSongId == songId
+                }
+            }
+        return NormalizationScan(
+            supersededArchives = matchingArchives,
+            unresolvedCount = unresolvedCount
+        )
+    }
+
     private fun scanSupersededSafArchives(
         context: Context,
         targetDir: DocumentFile,
@@ -542,6 +621,204 @@ object SmpWorkspaceArchiveStore {
         return NormalizationScan(
             supersededArchives = supersededArchives,
             unresolvedCount = unresolvedCount
+        )
+    }
+
+    private fun scanSafArchivesForSongId(
+        context: Context,
+        targetDir: DocumentFile,
+        songId: String
+    ): NormalizationScan<DocumentFile> {
+        var unresolvedCount = 0
+        val matchingArchives = targetDir.listFiles().mapNotNull { child ->
+            val childName = child.name.orEmpty()
+            if (!child.isFile || !isSupportedArchiveFileName(childName)) {
+                return@mapNotNull null
+            }
+            when (val resolvedSongId = readStableSongId(context, child)) {
+                null -> {
+                    unresolvedCount += 1
+                    logInfo("step=delete_skip_unresolved backend=saf file=${child.uri}")
+                    null
+                }
+
+                else -> child.takeIf { resolvedSongId == songId }
+            }
+        }
+        return NormalizationScan(
+            supersededArchives = matchingArchives,
+            unresolvedCount = unresolvedCount
+        )
+    }
+
+    private fun deleteFileArchivesForSongId(
+        targetDir: File,
+        songId: String
+    ): DeleteArchivesResult {
+        if (!targetDir.exists() || !targetDir.isDirectory) {
+            return DeleteArchivesResult(deletedCount = 0, failedCount = 0)
+        }
+
+        val fastPathMatches = findFastPathFileArchivesForSongId(
+            targetDir = targetDir,
+            songId = songId
+        )
+        if (fastPathMatches.isNotEmpty()) {
+            logInfo(
+                "step=delete_fast_path_hit backend=file dir=${targetDir.absolutePath} songId=$songId count=${fastPathMatches.size}"
+            )
+            return deleteFileArchives(
+                archives = fastPathMatches,
+                failureLocation = targetDir.absolutePath
+            )
+        }
+
+        val matchingScan = scanFileArchivesForSongId(
+            targetDir = targetDir,
+            songId = songId
+        )
+        logInfo(
+            "step=delete_fast_path_miss backend=file dir=${targetDir.absolutePath} songId=$songId scanFallbackCount=${matchingScan.supersededArchives.size}"
+        )
+        return deleteFileArchives(
+            archives = matchingScan.supersededArchives,
+            failureLocation = targetDir.absolutePath
+        )
+    }
+
+    private fun deleteSafArchivesForSongId(
+        context: Context,
+        targetDir: DocumentFile,
+        songId: String
+    ): DeleteArchivesResult {
+        val fastPathMatches = findFastPathSafArchivesForSongId(
+            targetDir = targetDir,
+            songId = songId
+        )
+        if (fastPathMatches.isNotEmpty()) {
+            logInfo(
+                "step=delete_fast_path_hit backend=saf dir=${targetDir.uri} songId=$songId count=${fastPathMatches.size}"
+            )
+            return deleteSafArchives(
+                archives = fastPathMatches,
+                failureLocation = targetDir.uri.toString()
+            )
+        }
+
+        val matchingScan = scanSafArchivesForSongId(
+            context = context,
+            targetDir = targetDir,
+            songId = songId
+        )
+        logInfo(
+            "step=delete_fast_path_miss backend=saf dir=${targetDir.uri} songId=$songId scanFallbackCount=${matchingScan.supersededArchives.size}"
+        )
+        return deleteSafArchives(
+            archives = matchingScan.supersededArchives,
+            failureLocation = targetDir.uri.toString()
+        )
+    }
+
+    private fun findFastPathFileArchivesForSongId(
+        targetDir: File,
+        songId: String
+    ): List<File> {
+        val matches = linkedMapOf<String, File>()
+        listOf("$songId.smp", "$songId.smp.zip").forEach { exactName ->
+            val candidate = File(targetDir, exactName)
+            if (candidate.isFile && isSupportedArchiveFileName(candidate.name)) {
+                matches[candidate.absolutePath] = candidate
+            }
+        }
+        targetDir.listFiles()
+            .orEmpty()
+            .filter { file ->
+                file.isFile &&
+                    isSupportedArchiveFileName(file.name) &&
+                    matchesFastPathArchiveName(file.name, songId)
+            }
+            .forEach { file ->
+                matches.putIfAbsent(file.absolutePath, file)
+            }
+        return matches.values.toList()
+    }
+
+    private fun findFastPathSafArchivesForSongId(
+        targetDir: DocumentFile,
+        songId: String
+    ): List<DocumentFile> {
+        val matches = linkedMapOf<String, DocumentFile>()
+        listOf("$songId.smp", "$songId.smp.zip").forEach { exactName ->
+            targetDir.findFile(exactName)
+                ?.takeIf { it.isFile && isSupportedArchiveFileName(it.name.orEmpty()) }
+                ?.let { document ->
+                    matches[document.uri.toString()] = document
+                }
+        }
+        targetDir.listFiles()
+            .filter { document ->
+                document.isFile &&
+                    isSupportedArchiveFileName(document.name.orEmpty()) &&
+                    matchesFastPathArchiveName(document.name.orEmpty(), songId)
+            }
+            .forEach { document ->
+                matches.putIfAbsent(document.uri.toString(), document)
+            }
+        return matches.values.toList()
+    }
+
+    private fun matchesFastPathArchiveName(fileName: String, songId: String): Boolean {
+        val cleanName = fileName.trim()
+        if (cleanName.isEmpty()) return false
+        return cleanName.equals("$songId.smp", ignoreCase = true) ||
+            cleanName.equals("$songId.smp.zip", ignoreCase = true) ||
+            cleanName.endsWith("[$songId].smp", ignoreCase = true) ||
+            cleanName.endsWith("[$songId].smp.zip", ignoreCase = true)
+    }
+
+    private fun deleteFileArchives(
+        archives: List<File>,
+        failureLocation: String
+    ): DeleteArchivesResult {
+        var failedCount = 0
+        archives.forEach { archive ->
+            if (archive.exists() && !archive.delete()) {
+                failedCount += 1
+                logWarn("Suppression archive SMP impossible backend=file path=${archive.absolutePath}")
+            }
+        }
+        val deletedCount = archives.size - failedCount
+        return DeleteArchivesResult(
+            deletedCount = deletedCount,
+            failedCount = failedCount,
+            failureReason = if (failedCount > 0) {
+                "suppression archive SMP impossible dans $failureLocation"
+            } else {
+                null
+            }
+        )
+    }
+
+    private fun deleteSafArchives(
+        archives: List<DocumentFile>,
+        failureLocation: String
+    ): DeleteArchivesResult {
+        var failedCount = 0
+        archives.forEach { archive ->
+            if (!archive.delete()) {
+                failedCount += 1
+                logWarn("Suppression archive SMP impossible backend=saf uri=${archive.uri}")
+            }
+        }
+        val deletedCount = archives.size - failedCount
+        return DeleteArchivesResult(
+            deletedCount = deletedCount,
+            failedCount = failedCount,
+            failureReason = if (failedCount > 0) {
+                "suppression archive SMP impossible dans $failureLocation"
+            } else {
+                null
+            }
         )
     }
 

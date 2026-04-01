@@ -224,6 +224,7 @@ fun LibraryScreen(
     onImportExternalSmp: () -> Unit,
     onImportGeneratedSmp: suspend (Uri) -> com.patrick.lrcreader.smp.SongUnit?,
     onImportGeneratedSmpFailureReason: () -> String? = { null },
+    onDeleteSmpSong: suspend (String) -> Boolean = { false },
     onPlayFromLibrary: (String) -> Unit
 ) {
     val context = LocalContext.current
@@ -2747,21 +2748,10 @@ fun LibraryScreen(
                                     deleteSmpInProgress = true
                                     startLoading(sDeleting, determinate = false)
                                     try {
-                                        val deleted = withContext(Dispatchers.IO) {
-                                            val songDir = smpLibraryScanner.findSongById(songId)
-                                                ?.storageFolder
-                                                ?.takeIf { it.isNotBlank() }
-                                                ?.let(::File)
-                                                ?: File(context.filesDir, "tracks/$songId")
-                                            !songDir.exists() || songDir.deleteRecursively()
-                                        }
+                                        val deleted = onDeleteSmpSong(songId)
                                         if (deleted) {
                                             selectedSongs = selectedSongs - deleteUri
                                             LibraryFolderCache.clear()
-                                            val folder = currentFolderUri
-                                            if (folder != null) {
-                                                entries = buildEntriesForFolder(folder, useCache = false)
-                                            }
                                         } else {
                                             Toast.makeText(context, sDeleteSmpFailed, Toast.LENGTH_SHORT).show()
                                         }

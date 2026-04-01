@@ -39,5 +39,12 @@ object SmpArchiveFinalizeScheduler {
             .forEach { record -> schedule(context, record) }
     }
 
+    fun cancel(context: Context, songId: String) {
+        val cleanSongId = songId.trim()
+        if (cleanSongId.isEmpty()) return
+        WorkManager.getInstance(context.applicationContext)
+            .cancelAllWorkByTag(buildSongTag(cleanSongId))
+    }
+
     private fun buildSongTag(songId: String): String = "smp_archive_finalize::$songId"
 }

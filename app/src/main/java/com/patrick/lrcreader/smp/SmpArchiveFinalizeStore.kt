@@ -75,6 +75,17 @@ object SmpArchiveFinalizeStore {
         }
     }
 
+    fun clear(context: Context, songId: String) {
+        val cleanSongId = songId.trim()
+        if (cleanSongId.isEmpty()) return
+        val updatedIds = songIds(context).toMutableSet().apply { remove(cleanSongId) }
+        prefs(context).edit()
+            .putStringSet(KEY_SONG_IDS, updatedIds)
+            .remove(songKey(cleanSongId))
+            .apply()
+        Log.i(TAG, "step=store_clear songId=$cleanSongId")
+    }
+
     fun markSuccess(
         context: Context,
         songId: String,

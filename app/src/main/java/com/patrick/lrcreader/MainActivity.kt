@@ -79,9 +79,11 @@ import com.patrick.lrcreader.smp.SmpConverter
 import com.patrick.lrcreader.smp.SmpImportedSongDetail
 import com.patrick.lrcreader.smp.SmpImportedUiSignal
 import com.patrick.lrcreader.smp.SmpArchiveFinalizeScheduler
+import com.patrick.lrcreader.smp.SmpArchiveFinalizeStore
 import com.patrick.lrcreader.smp.SmpLibraryScanner
 import com.patrick.lrcreader.smp.SmpSecureImportPipeline
 import com.patrick.lrcreader.smp.SmpUserArchiveRebuilder
+import com.patrick.lrcreader.smp.SmpWorkspaceArchiveStore
 import com.patrick.lrcreader.ui.*
 import com.patrick.lrcreader.ui.library.LibraryScreen
 import com.patrick.lrcreader.ui.library.ensureWorkspaceLibraryFolders
@@ -1804,6 +1806,143 @@ class MainActivity : AppCompatActivity() {
                     )
                 }
 
+                fun playlistReferencesForSongId(songId: String): List<Pair<String, String>> {
+                    val cleanSongId = songId.trim()
+                    if (cleanSongId.isEmpty()) return emptyList()
+                    return PlaylistRepository.getPlaylists().flatMap { playlistName ->
+                        PlaylistRepository.getAllItemsRaw(playlistName)
+                            .asSequence()
+                            .filter { item ->
+                                item.songId?.trim() == cleanSongId ||
+                                    resolveSessionSongIdFromTrackUri(item.uri) == cleanSongId
+                            }
+                            .map { playlistName to it.uri }
+                            .distinct()
+                            .toList()
+                    }
+                }
+
+                suspend fun deleteSmpSongById(songId: String): Boolean {
+                    val cleanSongId = songId.trim()
+                    if (cleanSongId.isEmpty()) return false
+
+                    data class SmpDeleteIoResult(
+                        val success: Boolean,
+                        val runtimeAudioUri: String?
+                    )
+
+                    val playlistReferences = playlistReferencesForSongId(cleanSongId)
+                    val currentMatches = resolveSessionSongIdFromTrackUri(currentPlayingUri) == cleanSongId
+                    val lastSessionState = SessionPrefs.getLastSessionState(ctx)
+                    val lastSessionSongId = lastSessionState.songId?.takeIf { it.isNotBlank() }
+                        ?: resolveSessionSongIdFromTrackUri(lastSessionState.trackUri)
+                    val lastSessionMatches = lastSessionSongId == cleanSongId
+
+                    val ioResult = withContext(Dispatchers.IO) {
+                        val runtimeSong = runCatching {
+                            smpLibraryScanner.findSongById(cleanSongId)
+                        }.getOrNull()
+                        val runtimeDir = runtimeSong
+                            ?.storageFolder
+                            ?.takeIf { it.isNotBlank() }
+                            ?.let(::File)
+                            ?: File(ctx.filesDir, "tracks/$cleanSongId")
+                        val runtimeAudioUri = runtimeSong
+                            ?.audioPath
+                            ?.takeIf { it.isNotBlank() }
+                            ?.let { path -> Uri.fromFile(File(path)).toString() }
+
+                        SmpArchiveFinalizeScheduler.cancel(ctx, cleanSongId)
+                        SmpArchiveFinalizeStore.clear(ctx, cleanSongId)
+
+                        val archiveDeleteResult = SmpWorkspaceArchiveStore.deleteArchivesForSongId(
+                            context = ctx,
+                            songId = cleanSongId
+                        )
+                        if (!archiveDeleteResult.isSuccess) {
+                            Log.w(
+                                "SMP_TRACE",
+                                "DELETE_SMP archive_failed songId=$cleanSongId deleted=${archiveDeleteResult.deletedCount} failed=${archiveDeleteResult.failedCount} reason=${archiveDeleteResult.failureReason}"
+                            )
+                            return@withContext SmpDeleteIoResult(
+                                success = false,
+                                runtimeAudioUri = runtimeAudioUri
+                            )
+                        }
+
+                        val runtimeDeleted = !runtimeDir.exists() || runtimeDir.deleteRecursively()
+                        if (!runtimeDeleted) {
+                            Log.w(
+                                "SMP_TRACE",
+                                "DELETE_SMP runtime_failed songId=$cleanSongId dir=${runtimeDir.absolutePath}"
+                            )
+                        }
+                        SmpDeleteIoResult(
+                            success = runtimeDeleted,
+                            runtimeAudioUri = runtimeAudioUri
+                        )
+                    }
+
+                    if (!ioResult.success) {
+                        return false
+                    }
+
+                    playlistReferences.forEach { (playlistName, uriString) ->
+                        PlaylistRepository.removeSongFromPlaylist(playlistName, uriString)
+                    }
+
+                    if (currentMatches) {
+                        playlistSessionWriteJob?.cancel()
+                        sessionSaveJob?.cancel()
+                        cancelTrimWatcher()
+                        stopChainPlayback()
+                        runCatching {
+                            exoPlayer.stop()
+                            exoPlayer.clearMediaItems()
+                        }
+                        isPlaying = false
+                        lyricsLoading = false
+                        parsedLines = emptyList()
+                        currentPlayingUri = null
+                        currentPlayingPlaylist = null
+                        currentPlayingPlaylistItemKey = null
+                        currentPlayToken += 1
+                        LightCueDispatcher.resetGlobal()
+                        PlaybackCoordinator.onPlayerStop()
+                        PlaylistRepository.clearNowPlaying()
+                    }
+
+                    if (lastSessionMatches) {
+                        SessionPrefs.clearLastSession(ctx)
+                    }
+
+                    if (currentMatches) {
+                        persistCurrentUiSession(reason = "smpDeleteCurrent")
+                    } else if (lastSessionMatches) {
+                        persistCurrentUiSession(reason = "smpDeleteSessionCleanup")
+                    }
+
+                    runCatching {
+                        TitleAliasesStore.clearTitleForTrack(ctx, buildSmpItem(cleanSongId))
+                    }
+                    ioResult.runtimeAudioUri?.let { runtimeAudioUri ->
+                        runCatching {
+                            TitleAliasesStore.clearTitleForTrack(ctx, runtimeAudioUri)
+                        }
+                    }
+
+                    lastImportedSmpUiSignal = lastImportedSmpUiSignal?.takeUnless { signal ->
+                        signal.songId == cleanSongId
+                    }
+                    smpSongsById = smpSongsById - cleanSongId
+                    smpCacheRefreshTick++
+                    Log.i(
+                        "SMP_TRACE",
+                        "DELETE_SMP success songId=$cleanSongId currentCleared=$currentMatches lastSessionCleared=$lastSessionMatches playlistRefsRemoved=${playlistReferences.size}"
+                    )
+                    return true
+                }
+
                 fun playChainFrom(startIndex: Int): Boolean {
                     if (!isChaining) return false
                     var idx = startIndex
@@ -2602,6 +2741,9 @@ class MainActivity : AppCompatActivity() {
                                         },
                                         onImportGeneratedSmpFailureReason = {
                                             lastSmpImportFailureReason.get() ?: smpImporter.lastFailureReason
+                                        },
+                                        onDeleteSmpSong = { songId ->
+                                            deleteSmpSongById(songId)
                                         },
                                         onPlayFromLibrary = { uriString ->
                                             Log.d(
