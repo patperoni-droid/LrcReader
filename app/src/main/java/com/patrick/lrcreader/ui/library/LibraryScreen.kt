@@ -1585,12 +1585,16 @@ fun LibraryScreen(
                 var successCount = 0
                 var failureCount = 0
 
-                request.directItemUris.forEach { itemUriString ->
-                    runCatching {
-                        PlaylistRepository.assignSongToPlaylist(request.playlistName, itemUriString)
-                    }.onSuccess {
-                        successCount += 1
-                        Log.i(
+                    request.directItemUris.forEach { itemUriString ->
+                        runCatching {
+                            PlaylistRepository.assignSongToPlaylist(
+                                playlistName = request.playlistName,
+                                songUri = itemUriString,
+                                songId = getSmpSongId(itemUriString)
+                            )
+                        }.onSuccess {
+                            successCount += 1
+                            Log.i(
                             "PLAYLIST_ASSIGN_LIB",
                             "step=direct_assign playlist=${request.playlistName} item=$itemUriString"
                         )
@@ -1616,7 +1620,11 @@ fun LibraryScreen(
                                     runCatching {
                                         val smpMarker = buildSmpItem(importedSong.id)
                                         PlaylistRepository.createIfNotExists(targetPlaylist)
-                                        PlaylistRepository.assignSongToPlaylist(targetPlaylist, smpMarker)
+                                        PlaylistRepository.assignSongToPlaylist(
+                                            playlistName = targetPlaylist,
+                                            songUri = smpMarker,
+                                            songId = importedSong.id
+                                        )
                                         PlaylistRepository.renameSongInPlaylist(
                                             playlistName = targetPlaylist,
                                             uri = smpMarker,

@@ -11,6 +11,7 @@ import com.patrick.lrcreader.core.PlaylistRepository
 import com.patrick.lrcreader.core.StorageModePrefs
 import com.patrick.lrcreader.core.WorkspaceResolver
 import com.patrick.lrcreader.core.buildSmpItem
+import com.patrick.lrcreader.core.getSmpSongId
 import com.patrick.lrcreader.exo.BuildConfig
 import com.patrick.lrcreader.smp.SmpSecureImportPipeline
 import kotlinx.coroutines.Dispatchers
@@ -82,7 +83,11 @@ suspend fun installDemoLibrary(context: Context): DemoInstallResult = withContex
         )
         PlaylistRepository.createIfNotExists(DEMO_PLAYLIST_NAME)
         importedAudioUris.forEach { itemUri ->
-            PlaylistRepository.assignSongToPlaylist(DEMO_PLAYLIST_NAME, itemUri)
+            PlaylistRepository.assignSongToPlaylist(
+                playlistName = DEMO_PLAYLIST_NAME,
+                songUri = itemUri,
+                songId = getSmpSongId(itemUri)
+            )
         }
         PlaylistRepository.updatePlayListOrder(DEMO_PLAYLIST_NAME, importedAudioUris)
         Log.i(

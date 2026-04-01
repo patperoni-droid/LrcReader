@@ -18,6 +18,7 @@ object PlaylistRepository {
 
     // nom de playlist -> liste de chansons (Uri en String) dans l’ordre
     private val playlists: MutableMap<String, MutableList<String>> = linkedMapOf()
+    private val playlistItems: MutableMap<String, MutableMap<String, PlaylistItem>> = mutableMapOf()
 
     // nom de playlist -> chansons déjà jouées
     private val playedSongs: MutableMap<String, MutableSet<String>> = mutableMapOf()
@@ -146,10 +147,29 @@ object PlaylistRepository {
         }
     }
 
-    fun assignSongToPlaylist(playlistName: String, songUri: String) {
+    fun assignSongToPlaylist(
+        playlistName: String,
+        songUri: String,
+        songId: String? = null
+    ) {
         val list = playlists.getOrPut(playlistName) { mutableListOf() }
+        val items = playlistItems.getOrPut(playlistName) { mutableMapOf() }
+        val cleanSongId = songId?.trim()?.takeIf { it.isNotEmpty() }
+        val existingItem = items[songUri]
+        val nextItem = PlaylistItem(
+            uri = songUri,
+            songId = cleanSongId ?: existingItem?.songId
+        )
+        var changed = false
+        if (existingItem != nextItem) {
+            items[songUri] = nextItem
+            changed = true
+        }
         if (!list.contains(songUri)) {
             list.add(songUri)
+            changed = true
+        }
+        if (changed) {
             bump()
         }
     }
@@ -171,6 +191,24 @@ object PlaylistRepository {
     /** Vue brute telle qu’elle est stockée, pour la sauvegarde. */
     fun getAllSongsRaw(playlistName: String): List<String> {
         return playlists[playlistName]?.toList() ?: emptyList()
+    }
+
+    fun getItemsFor(playlistName: String): List<PlaylistItem> {
+        return getSongsFor(playlistName).map { uri ->
+            getPlaylistItem(playlistName, uri) ?: PlaylistItem(uri = uri)
+        }
+    }
+
+    fun getAllItemsRaw(playlistName: String): List<PlaylistItem> {
+        return getAllSongsRaw(playlistName).map { uri ->
+            getPlaylistItem(playlistName, uri) ?: PlaylistItem(uri = uri)
+        }
+    }
+
+    fun getPlaylistItem(playlistName: String, uri: String): PlaylistItem? {
+        val list = playlists[playlistName] ?: return null
+        if (!list.contains(uri)) return null
+        return playlistItems[playlistName]?.get(uri) ?: PlaylistItem(uri = uri)
     }
 
     /** Réordonne une playlist (drag & drop). */
@@ -296,6 +334,7 @@ object PlaylistRepository {
     fun removeSongFromPlaylist(playlistName: String, uri: String) {
         val list = playlists[playlistName] ?: return
         list.remove(uri)
+        playlistItems[playlistName]?.remove(uri)
         customTitles[playlistName]?.remove(uri)
         reviewSongs[playlistName]?.remove(uri)
         playedSongs[playlistName]?.remove(uri)
@@ -321,6 +360,7 @@ object PlaylistRepository {
 
     fun clearAll() {
         playlists.clear()
+        playlistItems.clear()
         playedSongs.clear()
         reviewSongs.clear()
         customTitles.clear()
@@ -367,6 +407,7 @@ object PlaylistRepository {
 
         val songs = playlists.remove(oldName) ?: mutableListOf()
         playlists[clean] = songs
+        playlistItems[clean] = playlistItems.remove(oldName) ?: mutableMapOf()
         playedSongs[clean] = playedSongs.remove(oldName) ?: mutableSetOf()
         reviewSongs[clean] = reviewSongs.remove(oldName) ?: mutableSetOf()
         customTitles[clean] = customTitles.remove(oldName) ?: mutableMapOf()
@@ -379,6 +420,7 @@ object PlaylistRepository {
     fun deletePlaylist(name: String) {
         if (!playlists.containsKey(name)) return
         playlists.remove(name)
+        playlistItems.remove(name)
         playedSongs.remove(name)
         reviewSongs.remove(name)
         customTitles.remove(name)
@@ -391,6 +433,10 @@ object PlaylistRepository {
 
         playlists.forEach { (_, list) ->
             for (i in list.indices) if (list[i] == oldUri) list[i] = newUri
+        }
+        playlistItems.forEach { (_, items) ->
+            val previous = items.remove(oldUri) ?: return@forEach
+            items[newUri] = previous.copy(uri = newUri)
         }
         playedSongs.forEach { (_, set) -> if (set.remove(oldUri)) set.add(newUri) }
         reviewSongs.forEach { (_, set) -> if (set.remove(oldUri)) set.add(newUri) }

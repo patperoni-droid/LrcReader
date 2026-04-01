@@ -372,7 +372,11 @@ fun SmpImportedSongDetailDialog(
                             onClick = {
                                 val smpMarker = buildSmpItem(song.id)
                                 PlaylistRepository.createIfNotExists(SMP_DEBUG_PLAYLIST_NAME)
-                                PlaylistRepository.assignSongToPlaylist(SMP_DEBUG_PLAYLIST_NAME, smpMarker)
+                                PlaylistRepository.assignSongToPlaylist(
+                                    playlistName = SMP_DEBUG_PLAYLIST_NAME,
+                                    songUri = smpMarker,
+                                    songId = song.id
+                                )
                                 PlaylistRepository.renameSongInPlaylist(
                                     playlistName = SMP_DEBUG_PLAYLIST_NAME,
                                     uri = smpMarker,

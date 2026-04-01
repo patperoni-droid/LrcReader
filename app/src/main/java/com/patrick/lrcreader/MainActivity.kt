@@ -616,7 +616,11 @@ class MainActivity : AppCompatActivity() {
                                             runCatching {
                                                 val smpMarker = buildSmpItem(importedSong.id)
                                                 PlaylistRepository.createIfNotExists(targetPlaylist)
-                                                PlaylistRepository.assignSongToPlaylist(targetPlaylist, smpMarker)
+                                                PlaylistRepository.assignSongToPlaylist(
+                                                    playlistName = targetPlaylist,
+                                                    songUri = smpMarker,
+                                                    songId = importedSong.id
+                                                )
                                                 PlaylistRepository.renameSongInPlaylist(
                                                     playlistName = targetPlaylist,
                                                     uri = smpMarker,

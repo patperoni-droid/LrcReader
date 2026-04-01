@@ -272,8 +272,22 @@ object BackupManager {
         // 1) playlists : ordre complet des titres
         val playlistsJson = JSONObject()
         PlaylistRepository.getPlaylists().forEach { plName ->
-            val songs = PlaylistRepository.getAllSongsRaw(plName)
-            playlistsJson.put(plName, JSONArray(songs))
+            val songs = PlaylistRepository.getAllItemsRaw(plName)
+            val entries = JSONArray()
+            songs.forEach { item ->
+                val cleanSongId = item.songId?.trim()?.takeIf { it.isNotEmpty() }
+                if (cleanSongId != null) {
+                    entries.put(
+                        JSONObject().apply {
+                            put("uri", item.uri)
+                            put("songId", cleanSongId)
+                        }
+                    )
+                } else {
+                    entries.put(item.uri)
+                }
+            }
+            playlistsJson.put(plName, entries)
         }
         root.put("playlists", playlistsJson)
 
@@ -706,6 +720,7 @@ object BackupManager {
                     val entry = arr.opt(i)
                     val oldUri: String
                     val backupName: String?
+                    val backupSongId: String?
                     if (entry is JSONObject) {
                         oldUri = entry.optString("uri", "")
                         backupName = when {
@@ -714,9 +729,11 @@ object BackupManager {
                             entry.optString("title", "").isNotBlank() -> entry.optString("title")
                             else -> null
                         }
+                        backupSongId = entry.optString("songId", "").trim().ifBlank { null }
                     } else {
                         oldUri = arr.optString(i, "")
                         backupName = null
+                        backupSongId = null
                     }
                     val fixedUri = mapUriIfNeeded(
                         context = context,
@@ -725,7 +742,11 @@ object BackupManager {
                         backupName = backupName,
                         stats = uriStats
                     )
-                    PlaylistRepository.assignSongToPlaylist(name, fixedUri)
+                    PlaylistRepository.assignSongToPlaylist(
+                        playlistName = name,
+                        songUri = fixedUri,
+                        songId = backupSongId
+                    )
                 }
             }
         }
