@@ -167,6 +167,7 @@
     <string name="library_smp_folder">Backing Tracks</string>
     <string name="library_legacy_backing_tracks_folder">Backing Tracks (legacy)</string>
     <string name="library_smp_empty_state">Aucun backing track SMP pour l’instant.\nImporte ou convertis un morceau pour le voir apparaître ici.</string>
+    <string name="library_smp_detected_importing">Fichier SMP détecté, import du morceau…</string>
 
     <string name="library_delete_backing_track_title">Supprimer ce morceau ?</string>
     <string name="library_delete_audio_question">Morceau seul</string>

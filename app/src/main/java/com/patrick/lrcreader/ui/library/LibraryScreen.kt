@@ -271,6 +271,7 @@ fun LibraryScreen(
     val sPrompterFolder = stringResource(R.string.main_menu_prompter)
     val sSmpFolder = stringResource(R.string.library_smp_folder)
     val sSmpEmptyState = stringResource(R.string.library_smp_empty_state)
+    val sSmpDetectedImporting = stringResource(R.string.library_smp_detected_importing)
     val sSongsView = stringResource(R.string.library_view_mode_songs)
     val sFilesView = stringResource(R.string.library_view_mode_files)
     val sConvertSmpSingleSuccess = stringResource(R.string.library_convert_smp_success_single)
@@ -1741,6 +1742,29 @@ fun LibraryScreen(
         }.getOrNull()?.takeIf { it.isNotBlank() } ?: "backup.json"
     }
 
+    fun isSmpFile(uri: Uri): Boolean {
+        val nameCandidates = linkedSetOf<String>()
+        val displayName = resolveEntryDisplayName(uri).trim()
+        if (displayName.isNotEmpty()) {
+            nameCandidates += displayName
+        }
+        val singleName = runCatching { DocumentFile.fromSingleUri(context, uri)?.name?.trim() }.getOrNull()
+        if (!singleName.isNullOrEmpty()) {
+            nameCandidates += singleName
+        }
+        val lastPathSegment = uri.lastPathSegment?.trim()
+        if (!lastPathSegment.isNullOrEmpty()) {
+            nameCandidates += lastPathSegment
+        }
+        if (nameCandidates.any { it.endsWith(".smp", ignoreCase = true) }) {
+            return true
+        }
+
+        val cleanMime = context.contentResolver.getType(uri)?.trim()?.lowercase()
+        return cleanMime == "application/vnd.stage-music-player" ||
+            cleanMime == "application/x-stage-music-player"
+    }
+
     suspend fun importBackupJson(uri: Uri) {
         val fileLabel = resolveEntryDisplayName(uri)
         backupImportInProgress = true
@@ -1855,6 +1879,18 @@ fun LibraryScreen(
         if (pickedUris.isNullOrEmpty()) return@rememberLauncherForActivityResult
 
         scope.launch {
+            val singlePickedUri = pickedUris.singleOrNull()
+            if (singlePickedUri != null && isSmpFile(singlePickedUri)) {
+                val displayName = resolveEntryDisplayName(singlePickedUri)
+                Log.i(
+                    IMPORT_TRACE_TAG,
+                    "elapsedMs=${SystemClock.elapsedRealtime()} step=redirect_audio_to_smp_import uri=$singlePickedUri name=$displayName"
+                )
+                Toast.makeText(context, sSmpDetectedImporting, Toast.LENGTH_SHORT).show()
+                onImportGeneratedSmp(singlePickedUri)
+                return@launch
+            }
+
             val plan = withContext(Dispatchers.IO) {
                 smpBatchProcessor.buildPlan(pickedUris)
             }

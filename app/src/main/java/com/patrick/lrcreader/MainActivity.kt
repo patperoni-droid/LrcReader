@@ -607,7 +607,7 @@ class MainActivity : AppCompatActivity() {
                                 smpBatchProcessor.process(
                                     plan = plan,
                                     playlistName = playlistName,
-                                    importSmp = { uri -> importSmpIntoApp(uri, libraryRuntimeReadyFirst = false) },
+                                    importSmp = { uri -> importSmpIntoApp(uri, libraryRuntimeReadyFirst = true) },
                                     importFailureReasonProvider = {
                                         lastSmpImportFailureReason.get() ?: smpImporter.lastFailureReason
                                     },
