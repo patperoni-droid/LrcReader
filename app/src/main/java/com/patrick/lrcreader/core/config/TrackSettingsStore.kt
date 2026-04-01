@@ -27,8 +27,8 @@ object TrackSettingsStore {
     }
 
     fun saveVolumeDbByUri(context: Context, uriString: String, volumeDb: Int): Boolean {
-        val relPath = TrackSettingsPathResolver.resolveRelativeTrackPath(context, uriString) ?: return false
-        return updateTrackLocked(context, relPath) { entry ->
+        val keys = resolveReadKeysForUri(context, uriString) ?: return false
+        return updateTrackLocked(context, keys) { entry ->
             entry.copy(volumeDb = volumeDb)
         }
     }
@@ -38,8 +38,8 @@ object TrackSettingsStore {
     }
 
     fun saveTempoByUri(context: Context, uriString: String, tempo: Float): Boolean {
-        val relPath = TrackSettingsPathResolver.resolveRelativeTrackPath(context, uriString) ?: return false
-        return updateTrackLocked(context, relPath) { entry ->
+        val keys = resolveReadKeysForUri(context, uriString) ?: return false
+        return updateTrackLocked(context, keys) { entry ->
             entry.copy(tempo = tempo)
         }
     }
@@ -49,15 +49,15 @@ object TrackSettingsStore {
     }
 
     fun savePitchSemiByUri(context: Context, uriString: String, pitchSemi: Int): Boolean {
-        val relPath = TrackSettingsPathResolver.resolveRelativeTrackPath(context, uriString) ?: return false
-        return updateTrackLocked(context, relPath) { entry ->
+        val keys = resolveReadKeysForUri(context, uriString) ?: return false
+        return updateTrackLocked(context, keys) { entry ->
             entry.copy(pitchSemi = pitchSemi)
         }
     }
 
     fun clearPitchSemiByUri(context: Context, uriString: String): Boolean {
-        val relPath = TrackSettingsPathResolver.resolveRelativeTrackPath(context, uriString) ?: return false
-        return updateTrackLocked(context, relPath) { entry ->
+        val keys = resolveReadKeysForUri(context, uriString) ?: return false
+        return updateTrackLocked(context, keys) { entry ->
             entry.copy(pitchSemi = null)
         }
     }
@@ -68,8 +68,8 @@ object TrackSettingsStore {
     }
 
     fun saveEqByUri(context: Context, uriString: String, eq: TrackEqSettings): Boolean {
-        val relPath = TrackSettingsPathResolver.resolveRelativeTrackPath(context, uriString) ?: return false
-        return updateTrackLocked(context, relPath) { entry ->
+        val keys = resolveReadKeysForUri(context, uriString) ?: return false
+        return updateTrackLocked(context, keys) { entry ->
             entry.copy(eq = TrackSettingsEq(low = eq.low, mid = eq.mid, high = eq.high))
         }
     }
@@ -91,8 +91,8 @@ object TrackSettingsStore {
         uriString: String,
         colorArgb: Int
     ): Boolean {
-        val relPath = TrackSettingsPathResolver.resolveRelativeTrackPath(context, uriString) ?: return false
-        return updateTrackLocked(context, relPath) { entry ->
+        val keys = resolveReadKeysForUri(context, uriString) ?: return false
+        return updateTrackLocked(context, keys) { entry ->
             val updated = entry.titleColorByPlaylist.toMutableMap()
             updated[playlistName] = colorArgb
             entry.copy(titleColorByPlaylist = updated)
@@ -100,8 +100,8 @@ object TrackSettingsStore {
     }
 
     fun clearTitleColorByUri(context: Context, playlistName: String, uriString: String): Boolean {
-        val relPath = TrackSettingsPathResolver.resolveRelativeTrackPath(context, uriString) ?: return false
-        return updateTrackLocked(context, relPath) { entry ->
+        val keys = resolveReadKeysForUri(context, uriString) ?: return false
+        return updateTrackLocked(context, keys) { entry ->
             val updated = entry.titleColorByPlaylist.toMutableMap()
             updated.remove(playlistName)
             entry.copy(titleColorByPlaylist = updated)
@@ -110,19 +110,29 @@ object TrackSettingsStore {
 
     private fun updateTrackLocked(
         context: Context,
-        relPath: String,
+        keys: ReadKeys,
         mutate: (TrackSettingsEntry) -> TrackSettingsEntry
     ): Boolean {
         return lock.withLock {
             val current = readStateLocked(context)
-            val currentEntry = current.tracks[relPath] ?: TrackSettingsEntry()
+            val currentEntry = readEntryLocked(context, keys) ?: TrackSettingsEntry()
             val nextEntry = mutate(currentEntry)
+            val writeKeys = linkedSetOf<String>().apply {
+                keys.songScopedKey?.let(::add)
+                keys.relativePath?.let(::add)
+            }
+            if (writeKeys.isEmpty()) {
+                Log.e(TAG, "updateTrackLocked: no writable key")
+                return@withLock false
+            }
 
             val nextTracks = current.tracks.toMutableMap()
             if (nextEntry.isEmpty()) {
-                nextTracks.remove(relPath)
+                writeKeys.forEach(nextTracks::remove)
             } else {
-                nextTracks[relPath] = nextEntry
+                writeKeys.forEach { key ->
+                    nextTracks[key] = nextEntry
+                }
             }
 
             val nextState = current.copy(
@@ -136,7 +146,7 @@ object TrackSettingsStore {
                 cachedState = nextState
                 true
             } else {
-                Log.e(TAG, "updateTrackLocked: write failed relPath=$relPath")
+                Log.e(TAG, "updateTrackLocked: write failed keys=$writeKeys")
                 false
             }
         }
@@ -183,7 +193,7 @@ object TrackSettingsStore {
 
     private fun resolveReadKeysForUri(context: Context, uriString: String): ReadKeys? {
         val songScopedKey = SongIdKeyResolver.songScopedKey(
-            SongIdKeyResolver.songIdFromTrackUri(context, uriString)
+            SongIdKeyResolver.resolveSongIdFromUri(context, uriString)
         )
         val relativePath = TrackSettingsPathResolver.resolveRelativeTrackPath(context, uriString)
         if (songScopedKey == null && relativePath == null) return null

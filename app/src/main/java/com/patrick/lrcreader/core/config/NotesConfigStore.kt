@@ -2,6 +2,7 @@ package com.patrick.lrcreader.core.config
 
 import android.content.Context
 import android.util.Log
+import java.io.File
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -44,13 +45,14 @@ internal object NotesConfigStore {
 
     fun upsert(context: Context, scopeKey: String, entry: NotesConfigEntry): Boolean = runBlocking {
         mutex.withLock {
-            if (!isValidScopeKey(scopeKey)) {
+            val writeScopeKeys = resolveWriteScopeKeys(context, scopeKey)
+            if (writeScopeKeys.isEmpty()) {
                 Log.w(TAG, "upsert: invalid scopeKey=$scopeKey")
                 return@withLock false
             }
 
             val current = readStateLocked(context)
-            val next = current.withUpsert(scopeKey = scopeKey, entry = entry)
+            val next = current.withMirroredUpsert(scopeKeys = writeScopeKeys, entry = entry)
             writeStateLocked(context, next)
         }
     }
@@ -137,5 +139,48 @@ internal object NotesConfigStore {
         return state.notesByScope[scopeKey]
             .orEmpty()
             .map { entry -> NotesScopedEntry(scopeKey = scopeKey, note = entry) }
+    }
+
+    private fun resolveWriteScopeKeys(context: Context, rawScopeKey: String): List<String> {
+        val normalizedScope = normalizeScopeKey(rawScopeKey) ?: return emptyList()
+        if (normalizedScope == GLOBAL_SCOPE_KEY) {
+            return listOf(GLOBAL_SCOPE_KEY)
+        }
+
+        val scopeKeys = linkedSetOf<String>()
+        val songId = extractSongIdFromScopeKey(normalizedScope)
+            ?: resolveSongIdFromLegacyScope(context, normalizedScope)
+        SongIdKeyResolver.songScopedKey(songId)?.let(scopeKeys::add)
+        scopeKeys.add(normalizedScope)
+
+        songId?.let { resolvedSongId ->
+            SongIdKeyResolver.resolveLegacyRelativePathBySongId(context, resolvedSongId)
+                ?.let(scopeKeys::add)
+        }
+
+        return scopeKeys.toList()
+    }
+
+    private fun extractSongIdFromScopeKey(scopeKey: String): String? {
+        val prefix = "songId::"
+        return if (scopeKey.startsWith(prefix)) {
+            SongIdKeyResolver.normalizeSongId(scopeKey.removePrefix(prefix))
+        } else {
+            null
+        }
+    }
+
+    private fun resolveSongIdFromLegacyScope(context: Context, legacyScope: String): String? {
+        val tracksDir = File(context.filesDir, "tracks")
+        return tracksDir.listFiles()
+            .orEmpty()
+            .asSequence()
+            .filter { songDir -> songDir.isDirectory && File(songDir, "config.json").isFile }
+            .mapNotNull { songDir ->
+                val songId = SongIdKeyResolver.normalizeSongId(songDir.name) ?: return@mapNotNull null
+                val legacyPath = SongIdKeyResolver.resolveLegacyRelativePathBySongId(context, songId)
+                songId.takeIf { legacyPath == legacyScope }
+            }
+            .firstOrNull()
     }
 }

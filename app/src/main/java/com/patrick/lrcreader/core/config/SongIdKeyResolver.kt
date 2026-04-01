@@ -28,6 +28,9 @@ internal object SongIdKeyResolver {
     fun songScopedKey(songId: String?): String? =
         normalizeSongId(songId)?.let { "$SONG_ID_KEY_PREFIX$it" }
 
+    fun resolveSongIdFromUri(context: Context, trackUriString: String?): String? =
+        songIdFromTrackUri(context, trackUriString)
+
     fun songIdFromTrackUri(context: Context, trackUriString: String?): String? {
         val rawUri = trackUriString?.trim().orEmpty()
         if (rawUri.isEmpty()) return null

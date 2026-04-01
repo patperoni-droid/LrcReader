@@ -27,7 +27,8 @@ object CueMidiStore {
 
     private data class TrackKeys(
         val legacyKey: String,
-        val relativePath: String?
+        val relativePath: String?,
+        val songScopedKey: String?
     )
 
     private data class SongReadKeys(
@@ -106,9 +107,15 @@ object CueMidiStore {
 
     private fun resolveTrackKeys(trackUri: String?): TrackKeys? {
         val legacyKey = normalizeLegacyKey(trackUri) ?: return null
+        val songScopedKey = appContext?.let { context ->
+            SongIdKeyResolver.songScopedKey(
+                SongIdKeyResolver.resolveSongIdFromUri(context, trackUri)
+            )
+        }
         return TrackKeys(
             legacyKey = legacyKey,
-            relativePath = resolveRelativePathCached(legacyKey)
+            relativePath = resolveRelativePathCached(legacyKey),
+            songScopedKey = songScopedKey
         )
     }
 
@@ -164,13 +171,8 @@ object CueMidiStore {
 
     fun getCuesForTrack(trackUri: String?): List<CueMidi> {
         val keys = resolveTrackKeys(trackUri) ?: return emptyList()
-        val songScopedKey = appContext?.let { context ->
-            SongIdKeyResolver.songScopedKey(
-                SongIdKeyResolver.songIdFromTrackUri(context, trackUri)
-            )
-        }
         return readCues(
-            songScopedKey = songScopedKey,
+            songScopedKey = keys.songScopedKey,
             relativePath = keys.relativePath,
             legacyKey = keys.legacyKey
         )
@@ -187,17 +189,18 @@ object CueMidiStore {
 
     fun shiftAfterDelete(trackUri: String?, deletedLineIndex: Int) {
         val keys = resolveTrackKeys(trackUri) ?: return
+        val portableKeys = resolvePortableWriteKeys(keys)
+        var portableChanged = false
+        portableKeys.forEach { key ->
+            portableChanged = shiftInMap(portableCuesByTrack, key, deletedLineIndex) || portableChanged
+        }
+        val legacyChanged = shiftInMap(legacyCuesByTrack, keys.legacyKey, deletedLineIndex)
 
-        if (keys.relativePath != null) {
-            val portableChanged = shiftInMap(portableCuesByTrack, keys.relativePath, deletedLineIndex)
-            val legacyChanged = shiftInMap(legacyCuesByTrack, keys.legacyKey, deletedLineIndex)
+        if (portableKeys.isNotEmpty()) {
             if (portableChanged || legacyChanged) {
                 persistPortableAndLegacy()
             }
-            return
-        }
-
-        if (shiftInMap(legacyCuesByTrack, keys.legacyKey, deletedLineIndex)) {
+        } else if (legacyChanged) {
             persistLegacyOnly()
         }
     }
@@ -208,9 +211,12 @@ object CueMidiStore {
      */
     fun upsertCue(trackUri: String?, cue: CueMidi) {
         val keys = resolveTrackKeys(trackUri) ?: return
+        val portableKeys = resolvePortableWriteKeys(keys)
 
-        if (keys.relativePath != null) {
-            upsertInMap(portableCuesByTrack, keys.relativePath, cue)
+        if (portableKeys.isNotEmpty()) {
+            portableKeys.forEach { key ->
+                upsertInMap(portableCuesByTrack, key, cue)
+            }
             upsertInMap(legacyCuesByTrack, keys.legacyKey, cue)
             persistPortableAndLegacy()
         } else {
@@ -224,17 +230,18 @@ object CueMidiStore {
      */
     fun deleteCue(trackUri: String?, lineIndex: Int) {
         val keys = resolveTrackKeys(trackUri) ?: return
+        val portableKeys = resolvePortableWriteKeys(keys)
+        var portableChanged = false
+        portableKeys.forEach { key ->
+            portableChanged = deleteFromMap(portableCuesByTrack, key, lineIndex) || portableChanged
+        }
+        val legacyChanged = deleteFromMap(legacyCuesByTrack, keys.legacyKey, lineIndex)
 
-        if (keys.relativePath != null) {
-            val portableChanged = deleteFromMap(portableCuesByTrack, keys.relativePath, lineIndex)
-            val legacyChanged = deleteFromMap(legacyCuesByTrack, keys.legacyKey, lineIndex)
+        if (portableKeys.isNotEmpty()) {
             if (portableChanged || legacyChanged) {
                 persistPortableAndLegacy()
             }
-            return
-        }
-
-        if (deleteFromMap(legacyCuesByTrack, keys.legacyKey, lineIndex)) {
+        } else if (legacyChanged) {
             persistLegacyOnly()
         }
     }
@@ -269,5 +276,12 @@ object CueMidiStore {
         }
 
         return emptyList()
+    }
+
+    private fun resolvePortableWriteKeys(keys: TrackKeys): List<String> {
+        return linkedSetOf<String>().apply {
+            keys.songScopedKey?.let(::add)
+            keys.relativePath?.let(::add)
+        }.toList()
     }
 }

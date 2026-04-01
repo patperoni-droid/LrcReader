@@ -97,6 +97,32 @@ internal data class NotesConfigState(
         )
     }
 
+    fun withMirroredUpsert(scopeKeys: List<String>, entry: NotesConfigEntry): NotesConfigState {
+        val cleanedScopeKeys = scopeKeys.distinct()
+        val nextMap = linkedMapOf<String, MutableList<NotesConfigEntry>>()
+
+        notesByScope.forEach { (scopeKey, entries) ->
+            val filtered = entries.filterNot { it.id == entry.id }.toMutableList()
+            if (filtered.isNotEmpty()) {
+                nextMap[scopeKey] = filtered
+            }
+        }
+
+        cleanedScopeKeys.forEach { scopeKey ->
+            val updatedEntries = nextMap[scopeKey] ?: mutableListOf()
+            updatedEntries.add(entry)
+            nextMap[scopeKey] = updatedEntries
+                .distinctBy { it.id }
+                .sortedByDescending { it.updatedAt }
+                .toMutableList()
+        }
+
+        return copy(
+            schemaVersion = SCHEMA_VERSION,
+            notesByScope = nextMap.mapValues { it.value.toList() }
+        )
+    }
+
     fun withoutId(id: Long): NotesConfigState {
         val nextMap = linkedMapOf<String, List<NotesConfigEntry>>()
 
