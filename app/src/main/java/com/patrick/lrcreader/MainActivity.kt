@@ -1766,6 +1766,44 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
 
+                fun resolvePlaylistAudioTarget(
+                    playlistItemKey: String,
+                    playlistName: String?,
+                    rawTarget: PlaybackRouter.Target,
+                    showToastOnFailure: Boolean = false
+                ): PlaybackRouter.Target.Audio? {
+                    val cleanPlaylistName = playlistName?.trim().takeUnless { it.isNullOrEmpty() }
+                    if (cleanPlaylistName != null) {
+                        val playlistSongId = PlaylistRepository.getPlaylistItem(cleanPlaylistName, playlistItemKey)
+                            ?.songId
+                            ?.trim()
+                            ?.takeIf { it.isNotEmpty() }
+                        if (playlistSongId != null) {
+                            val resolvedBySongId = resolveSmpAudioTarget(
+                                songId = playlistSongId,
+                                playlistName = cleanPlaylistName,
+                                showToastOnFailure = false
+                            )
+                            if (resolvedBySongId != null) {
+                                Log.d(
+                                    SMP_PLAY_TRACE_TAG,
+                                    "PLAYLIST_META_RESOLVED item=$playlistItemKey songId=$playlistSongId playlist=$cleanPlaylistName uri=${resolvedBySongId.uri}"
+                                )
+                                return resolvedBySongId
+                            }
+                            Log.w(
+                                SMP_PLAY_TRACE_TAG,
+                                "PLAYLIST_META_FALLBACK item=$playlistItemKey songId=$playlistSongId playlist=$cleanPlaylistName"
+                            )
+                        }
+                    }
+
+                    return resolveAudioTarget(
+                        target = rawTarget,
+                        showToastOnFailure = showToastOnFailure
+                    )
+                }
+
                 fun playChainFrom(startIndex: Int): Boolean {
                     if (!isChaining) return false
                     var idx = startIndex
@@ -1774,7 +1812,11 @@ class MainActivity : AppCompatActivity() {
                         when (val target = PlaybackRouter.resolve(chainQueue[playableIndex], chainPlaylist)) {
                             is PlaybackRouter.Target.Audio,
                             is PlaybackRouter.Target.Smp -> {
-                                val resolvedTarget = resolveAudioTarget(target)
+                                val resolvedTarget = resolvePlaylistAudioTarget(
+                                    playlistItemKey = chainQueue[playableIndex],
+                                    playlistName = chainPlaylist,
+                                    rawTarget = target
+                                )
                                 if (resolvedTarget == null) {
                                     idx = playableIndex + 1
                                     continue
@@ -1809,7 +1851,11 @@ class MainActivity : AppCompatActivity() {
                         val started = when (val target = PlaybackRouter.resolve(forcedNext.uri, forcedNext.playlist)) {
                             is PlaybackRouter.Target.Audio,
                             is PlaybackRouter.Target.Smp -> {
-                                val resolvedTarget = resolveAudioTarget(target)
+                                val resolvedTarget = resolvePlaylistAudioTarget(
+                                    playlistItemKey = forcedNext.uri,
+                                    playlistName = forcedNext.playlist,
+                                    rawTarget = target
+                                )
                                 if (resolvedTarget == null) {
                                     false
                                 } else {
@@ -2403,8 +2449,10 @@ class MainActivity : AppCompatActivity() {
                                                     SMP_PLAY_TRACE_TAG,
                                                     "PLAYLIST_TARGET type=${target.javaClass.simpleName} value=$target"
                                                 )
-                                                val resolvedTarget = resolveAudioTarget(
-                                                    target = target,
+                                                val resolvedTarget = resolvePlaylistAudioTarget(
+                                                    playlistItemKey = uri,
+                                                    playlistName = playlistName,
+                                                    rawTarget = target,
                                                     showToastOnFailure = true
                                                 ) ?: run {
                                                     Log.d(
