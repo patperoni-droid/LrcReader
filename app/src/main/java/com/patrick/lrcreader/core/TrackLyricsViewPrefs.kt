@@ -3,33 +3,80 @@ package com.patrick.lrcreader.core
 import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
+import com.patrick.lrcreader.core.config.SongIdKeyResolver
 
 object TrackLyricsViewPrefs {
     private const val PREFS_NAME = "track_lyrics_view_prefs"
     private const val KEY_PREFIX = "view_track_"
     private const val LEGACY_KEY_PREFIX = "view_"
 
+    private data class PreferenceKeys(
+        val songScopedKey: String?,
+        val stableKey: String,
+        val legacyUriKey: String
+    )
+
     fun get(context: Context, trackUriString: String): LyricsViewMode? {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val stableKey = preferenceKey(context, trackUriString)
-        val value = prefs.getString(stableKey, null)
-            ?: prefs.getString(LEGACY_KEY_PREFIX + trackUriString, null)?.also { legacyValue ->
-                prefs.edit().putString(stableKey, legacyValue).apply()
+        val keys = resolvePreferenceKeys(context, trackUriString)
+        val value = keys.songScopedKey
+            ?.let { songKey ->
+                prefs.getString(songKey, null)
+                    ?: prefs.getString(keys.stableKey, null)?.also { stableValue ->
+                        prefs.edit()
+                            .putString(songKey, stableValue)
+                            .remove(keys.stableKey)
+                            .remove(keys.legacyUriKey)
+                            .apply()
+                    }
+                    ?: prefs.getString(keys.legacyUriKey, null)?.also { legacyValue ->
+                        prefs.edit()
+                            .putString(songKey, legacyValue)
+                            .remove(keys.stableKey)
+                            .remove(keys.legacyUriKey)
+                            .apply()
+                    }
+            }
+            ?: prefs.getString(keys.stableKey, null)
+            ?: prefs.getString(keys.legacyUriKey, null)?.also { legacyValue ->
+                prefs.edit().putString(keys.stableKey, legacyValue).apply()
             }
             ?: return null
         return runCatching { LyricsViewMode.valueOf(value) }.getOrNull()
     }
 
     fun save(context: Context, trackUriString: String, mode: LyricsViewMode) {
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val keys = resolvePreferenceKeys(context, trackUriString)
+        val editor = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit()
-            .putString(preferenceKey(context, trackUriString), mode.name)
-            .apply()
+
+        if (keys.songScopedKey != null) {
+            editor.putString(keys.songScopedKey, mode.name)
+            editor.remove(keys.stableKey)
+            editor.remove(keys.legacyUriKey)
+        } else {
+            editor.putString(keys.stableKey, mode.name)
+        }
+
+        editor.apply()
     }
 
     private fun preferenceKey(context: Context, trackUriString: String): String {
         val displayName = resolveDisplayName(context, trackUriString)
         return buildPreferenceKey(trackUriString, displayName)
+    }
+
+    private fun resolvePreferenceKeys(context: Context, trackUriString: String): PreferenceKeys {
+        val cleanTrackUri = trackUriString.trim()
+        val stableKey = preferenceKey(context, cleanTrackUri)
+        val songScopedKey = buildSongScopedPreferenceKey(
+            SongIdKeyResolver.resolveSongIdFromUri(context, cleanTrackUri)
+        )
+        return PreferenceKeys(
+            songScopedKey = songScopedKey,
+            stableKey = stableKey,
+            legacyUriKey = LEGACY_KEY_PREFIX + cleanTrackUri
+        )
     }
 
     private fun resolveDisplayName(context: Context, trackUriString: String): String? {
@@ -60,6 +107,11 @@ object TrackLyricsViewPrefs {
             ?.takeIf { it.isNotBlank() }
             ?: fallbackTrackFileName(trackUriString)
         return KEY_PREFIX + normalizeKeyPart(stableName)
+    }
+
+    internal fun buildSongScopedPreferenceKey(songId: String?): String? {
+        val songScopedKey = SongIdKeyResolver.songScopedKey(songId) ?: return null
+        return KEY_PREFIX + songScopedKey
     }
 
     internal fun fallbackTrackFileName(trackUriString: String): String {

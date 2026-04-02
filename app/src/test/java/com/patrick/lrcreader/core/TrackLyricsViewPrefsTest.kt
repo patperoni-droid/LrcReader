@@ -33,4 +33,11 @@ class TrackLyricsViewPrefsTest {
 
         assertEquals("MonTitre.wav", fileName)
     }
+
+    @Test
+    fun buildSongScopedPreferenceKey_keepsSongIdentity() {
+        val key = TrackLyricsViewPrefs.buildSongScopedPreferenceKey("song_123")
+
+        assertEquals("view_track_songId::song_123", key)
+    }
 }
