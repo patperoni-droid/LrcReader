@@ -25,6 +25,12 @@ object TitleAliasesStore {
     private val lock = ReentrantLock()
     private var cachedState: TitleAliasesState? = null
 
+    private data class ReadKeys(
+        val songScopedKey: String?,
+        val legacyPreferredKey: String?,
+        val uriKey: String
+    )
+
     var version = mutableIntStateOf(0)
         private set
 
@@ -38,16 +44,14 @@ object TitleAliasesStore {
     }
 
     fun getTitleForTrack(context: Context, trackUriString: String): String? {
-        val uriKey = trackUriString.trim()
-        if (uriKey.isEmpty()) return null
-        val preferredKey = resolvePreferredKey(context, uriKey)
+        val keys = resolveReadKeys(context, trackUriString) ?: return null
 
         return lock.withLock {
             syncFallbackToPrimaryIfPossibleLocked(context)
 
             val state = readStateLocked(context)
-            findAlias(state.aliases, preferredKey, uriKey)
-                ?: findAlias(readFallbackAliasesLocked(context), preferredKey, uriKey)
+            findAlias(state.aliases, keys)
+                ?: findAlias(readFallbackAliasesLocked(context), keys)
         }
     }
 
@@ -55,9 +59,10 @@ object TitleAliasesStore {
         val cleanTitle = newTitle.trim()
         if (cleanTitle.isEmpty()) return clearTitleForTrack(context, trackUriString)
 
-        val uriKey = trackUriString.trim()
-        if (uriKey.isEmpty()) return false
-        val preferredKey = resolvePreferredKey(context, uriKey) ?: uriKey
+        val keys = resolveReadKeys(context, trackUriString) ?: return false
+        val primaryWriteKeys = resolvePrimaryWriteKeys(keys)
+        val primaryCleanupKeys = resolvePrimaryCleanupKeys(keys)
+        val primaryTouchedKeys = (primaryWriteKeys + primaryCleanupKeys)
 
         return lock.withLock {
             val debug = buildStorageDebugSnapshot(context)
@@ -70,7 +75,7 @@ object TitleAliasesStore {
             logStorageDebug(debug, initOk, cause = if (initOk) "ensureOk" else "ensureFailed")
 
             if (BuildConfig.DEBUG) {
-                Log.d("ALIAS_STORE", "set key=$preferredKey title='$cleanTitle'")
+                Log.d("ALIAS_STORE", "set keys=$primaryWriteKeys cleanup=$primaryCleanupKeys title='$cleanTitle'")
             }
 
             if (initOk) {
@@ -80,16 +85,20 @@ object TitleAliasesStore {
                 val nextAliases = state.aliases.toMutableMap()
 
                 var changed = false
-                if (nextAliases[preferredKey] != cleanTitle) {
-                    nextAliases[preferredKey] = cleanTitle
-                    changed = true
+                primaryWriteKeys.forEach { key ->
+                    if (nextAliases[key] != cleanTitle) {
+                        nextAliases[key] = cleanTitle
+                        changed = true
+                    }
                 }
-                if (preferredKey != uriKey && nextAliases.remove(uriKey) != null) {
-                    changed = true
+                primaryCleanupKeys.forEach { key ->
+                    if (nextAliases.remove(key) != null) {
+                        changed = true
+                    }
                 }
 
                 if (!changed) {
-                    clearFallbackAliasKeysLocked(context, setOf(preferredKey, uriKey))
+                    clearFallbackAliasKeysLocked(context, primaryTouchedKeys)
                     return@withLock true
                 }
 
@@ -99,7 +108,7 @@ object TitleAliasesStore {
                 )
                 val savedPrimary = writePrimaryStateLocked(context, nextState)
                 if (savedPrimary) {
-                    clearFallbackAliasKeysLocked(context, setOf(preferredKey, uriKey))
+                    clearFallbackAliasKeysLocked(context, primaryTouchedKeys)
                     bumpVersion()
                     return@withLock true
                 }
@@ -109,9 +118,13 @@ object TitleAliasesStore {
                 }
             }
 
-            val fallbackSavedA = saveFallbackAliasLocked(context, preferredKey, cleanTitle)
-            val fallbackSavedB = if (preferredKey != uriKey) saveFallbackAliasLocked(context, uriKey, cleanTitle) else true
-            val fallbackSaved = fallbackSavedA && fallbackSavedB
+            val fallbackWriteKeys = resolveFallbackWriteKeys(keys)
+            val fallbackSaved = fallbackWriteKeys.all { key ->
+                saveFallbackAliasLocked(context, key, cleanTitle)
+            }
+            if (fallbackSaved) {
+                clearFallbackAliasKeysLocked(context, primaryCleanupKeys)
+            }
 
             if (BuildConfig.DEBUG) {
                 val fileDebug = resolveDebugFileLocation(context)
@@ -128,19 +141,12 @@ object TitleAliasesStore {
     }
 
     fun clearTitleForTrack(context: Context, trackUriString: String): Boolean {
-        val uriKey = trackUriString.trim()
-        if (uriKey.isEmpty()) return false
-        val preferredKey = resolvePreferredKey(context, uriKey)
+        val keys = resolveReadKeys(context, trackUriString) ?: return false
+        val touchedKeys = resolveAllTouchedKeys(keys)
 
         return lock.withLock {
             var changedFallback = false
-            changedFallback = clearFallbackAliasKeysLocked(
-                context,
-                buildSet {
-                    add(uriKey)
-                    if (!preferredKey.isNullOrBlank()) add(preferredKey)
-                }
-            ) || changedFallback
+            changedFallback = clearFallbackAliasKeysLocked(context, touchedKeys) || changedFallback
 
             val initOk = runCatching { ensureInitialized(context) }.getOrDefault(false)
             if (!initOk) {
@@ -152,11 +158,10 @@ object TitleAliasesStore {
             val nextAliases = state.aliases.toMutableMap()
 
             var changedPrimary = false
-            if (!preferredKey.isNullOrBlank() && nextAliases.remove(preferredKey) != null) {
-                changedPrimary = true
-            }
-            if (preferredKey != uriKey && nextAliases.remove(uriKey) != null) {
-                changedPrimary = true
+            touchedKeys.forEach { key ->
+                if (nextAliases.remove(key) != null) {
+                    changedPrimary = true
+                }
             }
 
             if (!changedPrimary) {
@@ -188,9 +193,8 @@ object TitleAliasesStore {
     }
 
     fun resolveKey(context: Context, trackUriString: String): String? {
-        val uriKey = trackUriString.trim()
-        if (uriKey.isEmpty()) return null
-        return resolvePreferredKey(context, uriKey) ?: uriKey
+        val keys = resolveReadKeys(context, trackUriString) ?: return null
+        return keys.songScopedKey ?: keys.legacyPreferredKey ?: keys.uriKey
     }
 
     fun migrateFromLegacyTitlesIfMissing(
@@ -223,15 +227,80 @@ object TitleAliasesStore {
         return uriKey
     }
 
-    private fun findAlias(map: Map<String, String>, preferredKey: String?, uriKey: String): String? {
-        val byPreferred = preferredKey?.let { map[it] }.orEmpty().trim()
-        if (byPreferred.isNotEmpty()) return byPreferred
+    private fun resolveReadKeys(context: Context, trackUriString: String): ReadKeys? {
+        val uriKey = trackUriString.trim()
+        if (uriKey.isEmpty()) return null
 
-        if (preferredKey != null && preferredKey != uriKey) {
-            val byUri = map[uriKey].orEmpty().trim()
-            if (byUri.isNotEmpty()) return byUri
+        val songId = SongIdKeyResolver.resolveSongIdFromUri(context, uriKey)
+        val songScopedKey = SongIdKeyResolver.songScopedKey(songId)
+        val legacyPreferredKey = resolvePreferredKey(context, uriKey)
+            ?.takeIf { it != uriKey || songScopedKey == null }
+            ?: songId?.let { SongIdKeyResolver.resolveLegacyRelativePathBySongId(context, it) }
+            ?.trim()
+            ?.trim('/')
+            ?: uriKey
+
+        return ReadKeys(
+            songScopedKey = songScopedKey,
+            legacyPreferredKey = legacyPreferredKey,
+            uriKey = uriKey
+        )
+    }
+
+    private fun resolvePrimaryWriteKeys(keys: ReadKeys): Set<String> {
+        return linkedSetOf<String>().apply {
+            if (keys.songScopedKey != null) {
+                add(keys.songScopedKey)
+            } else {
+                add(keys.legacyPreferredKey ?: keys.uriKey)
+            }
         }
+    }
 
+    private fun resolveFallbackWriteKeys(keys: ReadKeys): Set<String> {
+        return linkedSetOf<String>().apply {
+            if (keys.songScopedKey != null) {
+                add(keys.songScopedKey)
+            } else {
+                val preferredKey = keys.legacyPreferredKey ?: keys.uriKey
+                add(preferredKey)
+                if (preferredKey != keys.uriKey) add(keys.uriKey)
+            }
+        }
+    }
+
+    private fun resolvePrimaryCleanupKeys(keys: ReadKeys): Set<String> {
+        return linkedSetOf<String>().apply {
+            if (keys.songScopedKey != null) {
+                keys.legacyPreferredKey
+                    ?.takeUnless { it == keys.songScopedKey }
+                    ?.let(::add)
+                keys.uriKey
+                    .takeUnless { it == keys.songScopedKey || it == keys.legacyPreferredKey }
+                    ?.let(::add)
+            } else {
+                keys.uriKey
+                    .takeUnless { it == keys.legacyPreferredKey }
+                    ?.let(::add)
+            }
+        }
+    }
+
+    private fun resolveAllTouchedKeys(keys: ReadKeys): Set<String> {
+        return linkedSetOf<String>().apply {
+            keys.songScopedKey?.let(::add)
+            keys.legacyPreferredKey?.let(::add)
+            add(keys.uriKey)
+        }
+    }
+
+    private fun findAlias(map: Map<String, String>, keys: ReadKeys): String? {
+        resolveAllTouchedKeys(keys).forEach { key ->
+            val value = map[key].orEmpty().trim()
+            if (value.isNotEmpty()) {
+                return value
+            }
+        }
         return null
     }
 
