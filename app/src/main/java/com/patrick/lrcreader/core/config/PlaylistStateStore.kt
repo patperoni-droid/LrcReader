@@ -3,6 +3,7 @@ package com.patrick.lrcreader.core.config
 import android.content.Context
 import android.os.SystemClock
 import android.util.Log
+import com.patrick.lrcreader.core.PlaylistRepository
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -22,12 +23,12 @@ internal object PlaylistStateStore {
 
     fun loadManualOrder(context: Context, playlistName: String, currentOrderUris: List<String>): List<String>? {
         return withLockBlocking {
-            val conversion = buildConversion(context, currentOrderUris) ?: return@withLockBlocking null
+            val conversion = buildConversion(context, playlistName, currentOrderUris) ?: return@withLockBlocking null
             val entry = readStateLocked(context).playlists[playlistName] ?: return@withLockBlocking null
             if (entry.manualOrder.isEmpty()) return@withLockBlocking null
-            reorderFromRelativeOrder(
+            reorderFromStoredOrder(
                 currentOrderUris = currentOrderUris,
-                desiredRelativeOrder = entry.manualOrder,
+                desiredStoredOrder = entry.manualOrder,
                 conversion = conversion
             )
         }
@@ -35,12 +36,12 @@ internal object PlaylistStateStore {
 
     fun loadOriginalOrder(context: Context, playlistName: String, currentOrderUris: List<String>): List<String>? {
         return withLockBlocking {
-            val conversion = buildConversion(context, currentOrderUris) ?: return@withLockBlocking null
+            val conversion = buildConversion(context, playlistName, currentOrderUris) ?: return@withLockBlocking null
             val entry = readStateLocked(context).playlists[playlistName] ?: return@withLockBlocking null
             if (entry.originalOrder.isEmpty()) return@withLockBlocking null
-            reorderFromRelativeOrder(
+            reorderFromStoredOrder(
                 currentOrderUris = currentOrderUris,
-                desiredRelativeOrder = entry.originalOrder,
+                desiredStoredOrder = entry.originalOrder,
                 conversion = conversion
             )
         }
@@ -48,11 +49,11 @@ internal object PlaylistStateStore {
 
     fun saveManualOrder(context: Context, playlistName: String, manualOrderUris: List<String>): Boolean {
         return withLockBlocking {
-            val conversion = buildConversion(context, manualOrderUris) ?: return@withLockBlocking false
+            val conversion = buildConversion(context, playlistName, manualOrderUris) ?: return@withLockBlocking false
             val state = readStateLocked(context)
             val previous = state.playlists[playlistName] ?: PlaylistStateEntry()
             val next = previous.copy(
-                manualOrder = manualOrderUris.mapNotNull { conversion.relativePathByUri[it] },
+                manualOrder = manualOrderUris.mapNotNull { conversion.storedKeyByUri[it] },
                 updatedAt = System.currentTimeMillis()
             )
             writePlaylistEntryLocked(context, playlistName, next)
@@ -61,11 +62,11 @@ internal object PlaylistStateStore {
 
     fun saveOriginalOrder(context: Context, playlistName: String, originalOrderUris: List<String>): Boolean {
         return withLockBlocking {
-            val conversion = buildConversion(context, originalOrderUris) ?: return@withLockBlocking false
+            val conversion = buildConversion(context, playlistName, originalOrderUris) ?: return@withLockBlocking false
             val state = readStateLocked(context)
             val previous = state.playlists[playlistName] ?: PlaylistStateEntry()
             val next = previous.copy(
-                originalOrder = originalOrderUris.mapNotNull { conversion.relativePathByUri[it] },
+                originalOrder = originalOrderUris.mapNotNull { conversion.storedKeyByUri[it] },
                 updatedAt = System.currentTimeMillis()
             )
             writePlaylistEntryLocked(context, playlistName, next)
@@ -80,9 +81,9 @@ internal object PlaylistStateStore {
                 return@withLockBlocking true
             }
 
-            val conversion = buildConversion(context, originalOrderUris) ?: return@withLockBlocking false
+            val conversion = buildConversion(context, playlistName, originalOrderUris) ?: return@withLockBlocking false
             val next = (previous ?: PlaylistStateEntry()).copy(
-                originalOrder = originalOrderUris.mapNotNull { conversion.relativePathByUri[it] },
+                originalOrder = originalOrderUris.mapNotNull { conversion.storedKeyByUri[it] },
                 updatedAt = System.currentTimeMillis()
             )
             writePlaylistEntryLocked(context, playlistName, next)
@@ -151,41 +152,54 @@ internal object PlaylistStateStore {
     }
 
     private data class Conversion(
-        val relativePathByUri: Map<String, String>,
-        val uriByRelativePath: Map<String, String>
+        val storedKeyByUri: Map<String, String>,
+        val uriByStoredKey: Map<String, String>
     )
 
-    private fun buildConversion(context: Context, uris: List<String>): Conversion? {
+    private fun buildConversion(context: Context, playlistName: String, uris: List<String>): Conversion? {
         if (uris.isEmpty()) return null
 
-        val relativeByUri = linkedMapOf<String, String>()
-        val uriByRelative = linkedMapOf<String, String>()
+        val storedKeyByUri = linkedMapOf<String, String>()
+        val uriByStoredKey = linkedMapOf<String, String>()
 
         for (uri in uris) {
-            val relPath = TrackSettingsPathResolver.resolveRelativeTrackPath(context, uri)
-                ?: return null
-            relativeByUri[uri] = relPath
-            if (!uriByRelative.containsKey(relPath)) {
-                uriByRelative[relPath] = uri
+            val storedKey = resolveStoredKey(context, playlistName, uri) ?: return null
+            val legacyKey = TrackSettingsPathResolver.resolveRelativeTrackPath(context, uri)
+
+            storedKeyByUri[uri] = storedKey
+            if (!uriByStoredKey.containsKey(storedKey)) {
+                uriByStoredKey[storedKey] = uri
+            }
+            if (!legacyKey.isNullOrBlank() && !uriByStoredKey.containsKey(legacyKey)) {
+                uriByStoredKey[legacyKey] = uri
             }
         }
 
         return Conversion(
-            relativePathByUri = relativeByUri,
-            uriByRelativePath = uriByRelative
+            storedKeyByUri = storedKeyByUri,
+            uriByStoredKey = uriByStoredKey
         )
     }
 
-    private fun reorderFromRelativeOrder(
+    private fun resolveStoredKey(context: Context, playlistName: String, uri: String): String? {
+        val songId = PlaylistRepository.getPlaylistItem(playlistName, uri)?.songId
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+            ?: SongIdKeyResolver.resolveSongIdFromUri(context, uri)
+        SongIdKeyResolver.songScopedKey(songId)?.let { return it }
+        return TrackSettingsPathResolver.resolveRelativeTrackPath(context, uri)
+    }
+
+    private fun reorderFromStoredOrder(
         currentOrderUris: List<String>,
-        desiredRelativeOrder: List<String>,
+        desiredStoredOrder: List<String>,
         conversion: Conversion
     ): List<String> {
         val usedUris = linkedSetOf<String>()
         val reordered = mutableListOf<String>()
 
-        desiredRelativeOrder.forEach { relPath ->
-            val uri = conversion.uriByRelativePath[relPath] ?: return@forEach
+        desiredStoredOrder.forEach { storedKey ->
+            val uri = conversion.uriByStoredKey[storedKey] ?: return@forEach
             if (usedUris.add(uri)) {
                 reordered.add(uri)
             }
