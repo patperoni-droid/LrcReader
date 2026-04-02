@@ -10,13 +10,13 @@ import com.patrick.lrcreader.core.LibrarySnapshot
 import com.patrick.lrcreader.core.PlaylistRepository
 import com.patrick.lrcreader.core.StorageModePrefs
 import com.patrick.lrcreader.core.WorkspaceResolver
-import com.patrick.lrcreader.core.buildSmpItem
-import com.patrick.lrcreader.core.getSmpSongId
 import com.patrick.lrcreader.exo.BuildConfig
 import com.patrick.lrcreader.smp.SmpSecureImportPipeline
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
 
 private const val TAG = "SETUP_DEMO"
 private const val DEMO_PLAYLIST_NAME = "SPL Demo"
@@ -30,19 +30,19 @@ data class DemoInstallResult(
 private data class DemoInstallPaths(
     val copyRootUri: Uri,
     val audioFolderUri: Uri?,
-    val importedAudioUris: List<String>
+    val importedSongs: List<DemoImportedSong>
 )
 
 private data class DemoImportedSong(
-    val playlistItemUri: String
+    val playlistItemUri: String,
+    val songId: String
 )
 
 suspend fun installDemoLibrary(context: Context): DemoInstallResult = withContext(Dispatchers.IO) {
     var stage = "start"
     try {
-        val workspaceSnapshot = resolveUsableWorkspaceSnapshot(
+        val workspaceSnapshot = resolveDemoWorkspaceSnapshot(
             context = context,
-            expectedMode = null,
             stage = "setup_demo:resolve_workspace"
         ) ?: error("library_root_missing")
         val rootUri = workspaceSnapshot.workspaceRootUri
@@ -70,7 +70,8 @@ suspend fun installDemoLibrary(context: Context): DemoInstallResult = withContex
         }
         val copyRootUri = installPaths.copyRootUri
         val audioFolderUri = installPaths.audioFolderUri
-        val importedAudioUris = installPaths.importedAudioUris
+        val importedSongs = installPaths.importedSongs
+        val importedAudioUris = importedSongs.map { it.playlistItemUri }
         Log.i(
             TAG,
             "copy:end requestedRoot=$rootUri copyRoot=$copyRootUri audioFolderUri=$audioFolderUri importedCount=${importedAudioUris.size}"
@@ -82,11 +83,11 @@ suspend fun installDemoLibrary(context: Context): DemoInstallResult = withContex
             "playlist:start name=$DEMO_PLAYLIST_NAME existingCount=${PlaylistRepository.getAllSongsRaw(DEMO_PLAYLIST_NAME).size} importedCount=${importedAudioUris.size}"
         )
         PlaylistRepository.createIfNotExists(DEMO_PLAYLIST_NAME)
-        importedAudioUris.forEach { itemUri ->
+        importedSongs.forEach { importedSong ->
             PlaylistRepository.assignSongToPlaylist(
                 playlistName = DEMO_PLAYLIST_NAME,
-                songUri = itemUri,
-                songId = getSmpSongId(itemUri)
+                songUri = importedSong.playlistItemUri,
+                songId = importedSong.songId
             )
         }
         PlaylistRepository.updatePlayListOrder(DEMO_PLAYLIST_NAME, importedAudioUris)
@@ -167,7 +168,7 @@ private fun installDemoIntoInternalStorage(
     return DemoInstallPaths(
         copyRootUri = rootUri,
         audioFolderUri = null,
-        importedAudioUris = importedSongs.map { song -> song.playlistItemUri }
+        importedSongs = importedSongs
     )
 }
 
@@ -211,7 +212,7 @@ private fun installDemoIntoSafStorage(
     return DemoInstallPaths(
         copyRootUri = parentDoc.uri,
         audioFolderUri = null,
-        importedAudioUris = importedSongs.map { song -> song.playlistItemUri }
+        importedSongs = importedSongs
     )
 }
 
@@ -220,12 +221,45 @@ private fun importCopiedDemoSmp(
     archiveUri: Uri,
     assetName: String
 ): DemoImportedSong {
-    val importResult = secureImportPipeline.import(archiveUri)
+    val importResult = secureImportPipeline.importRuntimeReady(archiveUri)
     val importedSong = importResult.importedSong
         ?: error("demo_smp_import_failed:$assetName:${importResult.failureReason ?: "unknown"}")
+    importResult.archiveFailureReason?.let { archiveFailureReason ->
+        Log.w(
+            TAG,
+            "demo import runtime-ready archive finalize pending issue asset=$assetName songId=${importedSong.id} requestId=${importResult.archiveRequestId} archiveState=${importResult.archiveState} failureReason=$archiveFailureReason"
+        )
+    }
     return DemoImportedSong(
-        playlistItemUri = buildSmpItem(importedSong.id)
+        playlistItemUri = buildDemoSmpItem(importedSong.id),
+        songId = importedSong.id
     )
+}
+
+private fun resolveDemoWorkspaceSnapshot(
+    context: Context,
+    stage: String
+): WorkspaceResolver.Snapshot? {
+    val snapshot = WorkspaceResolver.resolve(context)
+    val rootUri = snapshot.workspaceRootUri
+    if (!snapshot.isUsable || rootUri == null) {
+        Log.e(
+            TAG,
+            "stage=$stage error=workspace_unavailable mode=${snapshot.mode} status=${snapshot.status} root=$rootUri detail=${snapshot.detail}"
+        )
+        return null
+    }
+    Log.i(
+        TAG,
+        "stage=$stage mode=${snapshot.mode} status=${snapshot.status} root=$rootUri detail=${snapshot.detail}"
+    )
+    return snapshot
+}
+
+private fun buildDemoSmpItem(songId: String): String {
+    val cleanSongId = songId.trim().ifBlank { "demo_song" }
+    val encodedSongId = URLEncoder.encode(cleanSongId, StandardCharsets.UTF_8.name())
+    return "smp://$encodedSongId"
 }
 
 private fun copyAssetToFile(
