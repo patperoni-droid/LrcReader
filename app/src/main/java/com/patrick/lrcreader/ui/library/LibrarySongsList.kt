@@ -1,5 +1,6 @@
 package com.patrick.lrcreader.ui.library
 
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -19,21 +20,30 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.patrick.lrcreader.exo.R
 
 @Composable
 private fun LibrarySongIndicators(song: LibrarySongItem) {
@@ -67,27 +77,44 @@ fun LibrarySongsList(
     rowBorder: Color,
     accent: Color,
     bottomPadding: Dp,
-    onOpenPlayer: (LibrarySongItem) -> Unit
+    selectedSongs: Set<Uri>,
+    onToggleSelect: (Uri) -> Unit,
+    onOpenPlayer: (LibrarySongItem) -> Unit,
+    onAssignOne: (Uri) -> Unit,
+    onShareOne: (Uri) -> Unit,
+    onRenameOne: (LibrarySongItem) -> Unit,
+    onDeleteOne: (Uri) -> Unit
 ) {
+    val selectionMode = selectedSongs.isNotEmpty()
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = bottomPadding),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         items(songs, key = { it.songId }) { song ->
+            val songUri = remember(song.playbackItem) { Uri.parse(song.playbackItem) }
             val canPlay = song.audioAvailable
+            val isSelected = selectedSongs.contains(songUri)
             val isCurrentPlaying = currentPlayingSongId == song.songId
-            val rowClick = if (canPlay) {
+            var menuOpen by remember(song.songId) { mutableStateOf(false) }
+            val rowClick = if (selectionMode) {
+                Modifier.clickable { onToggleSelect(songUri) }
+            } else if (canPlay) {
                 Modifier.clickable { onOpenPlayer(song) }
             } else {
                 Modifier
             }
-            val backgroundColor = if (isCurrentPlaying) {
+            val backgroundColor = if (isSelected) {
+                accent.copy(alpha = 0.16f)
+            } else if (isCurrentPlaying) {
                 accent.copy(alpha = 0.12f)
             } else {
                 cardBg
             }
-            val borderColor = if (isCurrentPlaying) {
+            val borderColor = if (isSelected) {
+                accent
+            } else if (isCurrentPlaying) {
                 accent.copy(alpha = 0.45f)
             } else {
                 rowBorder
@@ -108,6 +135,28 @@ fun LibrarySongsList(
                     .padding(horizontal = 12.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                Box(
+                    modifier = Modifier
+                        .size(20.dp)
+                        .background(
+                            if (isSelected) accent.copy(alpha = 0.18f) else Color.Transparent,
+                            RoundedCornerShape(4.dp)
+                        )
+                        .border(
+                            1.dp,
+                            if (isSelected) accent else Color.White.copy(alpha = 0.7f),
+                            RoundedCornerShape(4.dp)
+                        )
+                        .clickable { onToggleSelect(songUri) },
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (isSelected) {
+                        Text("✕", color = accent, fontSize = 13.sp)
+                    }
+                }
+
+                Spacer(Modifier.width(10.dp))
+
                 if (isCurrentPlaying) {
                     Box(
                         modifier = Modifier
@@ -146,7 +195,9 @@ fun LibrarySongsList(
                 }
 
                 IconButton(
-                    onClick = { onOpenPlayer(song) },
+                    onClick = {
+                        if (selectionMode) onToggleSelect(songUri) else onOpenPlayer(song)
+                    },
                     enabled = canPlay
                 ) {
                     Icon(
@@ -154,6 +205,70 @@ fun LibrarySongsList(
                         contentDescription = null,
                         tint = if (canPlay) accent else Color.White.copy(alpha = 0.35f)
                     )
+                }
+
+                Box {
+                    IconButton(onClick = { menuOpen = true }) {
+                        Icon(
+                            imageVector = Icons.Default.MoreVert,
+                            contentDescription = null,
+                            tint = Color.White
+                        )
+                    }
+
+                    DropdownMenu(
+                        expanded = menuOpen,
+                        onDismissRequest = { menuOpen = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    stringResource(R.string.library_list_assign_to_playlist),
+                                    color = Color.White
+                                )
+                            },
+                            onClick = {
+                                menuOpen = false
+                                onAssignOne(songUri)
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    stringResource(R.string.backup_share),
+                                    color = Color.White
+                                )
+                            },
+                            onClick = {
+                                menuOpen = false
+                                onShareOne(songUri)
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    stringResource(R.string.library_list_rename),
+                                    color = Color.White
+                                )
+                            },
+                            onClick = {
+                                menuOpen = false
+                                onRenameOne(song)
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    stringResource(R.string.library_delete_action),
+                                    color = Color(0xFFFF6464)
+                                )
+                            },
+                            onClick = {
+                                menuOpen = false
+                                onDeleteOne(songUri)
+                            }
+                        )
+                    }
                 }
             }
         }

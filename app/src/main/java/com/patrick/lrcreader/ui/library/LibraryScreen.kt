@@ -1016,6 +1016,18 @@ fun LibraryScreen(
     var editPrompterContent by remember { mutableStateOf("") }
     var showEditPrompterDialog by remember { mutableStateOf(false) }
 
+    fun toggleSelection(uri: Uri) {
+        selectedSongs = if (selectedSongs.contains(uri)) selectedSongs - uri else selectedSongs + uri
+    }
+
+    fun beginAliasRename(entry: LibraryEntry, initialTitle: String? = null) {
+        renameTarget = entry
+        renameText = initialTitle
+            ?: TitleAliasesStore.getTitleForTrack(context, entry.uri.toString())
+            ?: PlaylistRepository.getAnyCustomTitleForUri(entry.uri.toString())
+            ?: entry.name
+    }
+
     // search
     var searchQuery by remember { mutableStateOf("") }
     var isSearchVisible by remember { mutableStateOf(false) }
@@ -1569,6 +1581,48 @@ fun LibraryScreen(
         isLoading = false
         moveProgress = null
         moveLabel = null
+    }
+
+    fun shareSmpSong(uri: Uri) {
+        val songId = getSmpSongId(uri.toString())
+        if (songId == null) {
+            Toast.makeText(context, sShareSmpFailed, Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        scope.launch {
+            startLoading(sLoading, determinate = false)
+            try {
+                val shareUri = withContext(Dispatchers.IO) {
+                    val song = smpLibraryScanner.findSongById(songId) ?: return@withContext null
+                    val exportedFile = SmpExporter.exportSongUnitToCacheSmp(context, song)
+                        ?: return@withContext null
+                    FileProvider.getUriForFile(
+                        context,
+                        "${context.packageName}.fileprovider",
+                        exportedFile
+                    )
+                }
+
+                if (shareUri == null) {
+                    Toast.makeText(context, sShareSmpFailed, Toast.LENGTH_SHORT).show()
+                } else {
+                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                        type = "application/octet-stream"
+                        putExtra(Intent.EXTRA_STREAM, shareUri)
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    context.startActivity(
+                        Intent.createChooser(
+                            shareIntent,
+                            context.getString(R.string.backup_share)
+                        )
+                    )
+                }
+            } finally {
+                stopLoadingNice()
+            }
+        }
     }
 
     fun runLibraryPlaylistAssignment(request: PendingPlaylistAssignRequest) {
@@ -2199,6 +2253,7 @@ fun LibraryScreen(
                     accent = accent,
                     onClick = {
                         libraryViewMode = LIBRARY_VIEW_MODE_FILES
+                        selectedSongs = emptySet()
                         stopQuickPlay()
                     }
                 )
@@ -2267,10 +2322,34 @@ fun LibraryScreen(
                                     cardBg = cardBg,
                                     rowBorder = rowBorder,
                                     accent = accent,
-                                    bottomPadding = 0.dp,
+                                    bottomPadding = if (selectedSongs.isNotEmpty()) bottomBarHeight else 0.dp,
+                                    selectedSongs = selectedSongs,
+                                    onToggleSelect = { uri ->
+                                        toggleSelection(uri)
+                                    },
                                     onOpenPlayer = { song ->
                                         stopQuickPlay()
                                         onPlayFromLibrary(song.playbackItem)
+                                    },
+                                    onAssignOne = { uri ->
+                                        selectedSongs = setOf(uri)
+                                        showAssignDialog = true
+                                    },
+                                    onShareOne = { uri ->
+                                        shareSmpSong(uri)
+                                    },
+                                    onRenameOne = { song ->
+                                        beginAliasRename(
+                                            entry = LibraryEntry(
+                                                uri = Uri.parse(song.playbackItem),
+                                                name = song.fallbackTitle,
+                                                isDirectory = false
+                                            ),
+                                            initialTitle = song.displayTitle
+                                        )
+                                    },
+                                    onDeleteOne = { uri ->
+                                        pendingDeleteSmpUri = uri
                                     }
                                 )
                             }
@@ -2302,8 +2381,7 @@ fun LibraryScreen(
                                 selectedSongs = selectedSongs,
 
                                 onToggleSelect = { uri ->
-                                    selectedSongs =
-                                        if (selectedSongs.contains(uri)) selectedSongs - uri else selectedSongs + uri
+                                    toggleSelection(uri)
                                 },
 
                                 onOpenFolder = { entry ->
@@ -2416,45 +2494,7 @@ fun LibraryScreen(
                                 },
 
                                 onShareOne = { uri ->
-                                    val songId = getSmpSongId(uri.toString())
-                                    if (songId == null) {
-                                        Toast.makeText(context, sShareSmpFailed, Toast.LENGTH_SHORT).show()
-                                        return@LibraryList
-                                    }
-
-                                    scope.launch {
-                                        startLoading(sLoading, determinate = false)
-                                        try {
-                                            val shareUri = withContext(Dispatchers.IO) {
-                                                val song = smpLibraryScanner.findSongById(songId) ?: return@withContext null
-                                                val exportedFile = SmpExporter.exportSongUnitToCacheSmp(context, song)
-                                                    ?: return@withContext null
-                                                FileProvider.getUriForFile(
-                                                    context,
-                                                    "${context.packageName}.fileprovider",
-                                                    exportedFile
-                                                )
-                                            }
-
-                                            if (shareUri == null) {
-                                                Toast.makeText(context, sShareSmpFailed, Toast.LENGTH_SHORT).show()
-                                            } else {
-                                                val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                                                    type = "application/octet-stream"
-                                                    putExtra(Intent.EXTRA_STREAM, shareUri)
-                                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                                }
-                                                context.startActivity(
-                                                    Intent.createChooser(
-                                                        shareIntent,
-                                                        context.getString(R.string.backup_share)
-                                                    )
-                                                )
-                                            }
-                                        } finally {
-                                            stopLoadingNice()
-                                        }
-                                    }
+                                    shareSmpSong(uri)
                                 },
 
                                 onMoveOne = { uri ->
@@ -2482,10 +2522,7 @@ fun LibraryScreen(
                                             showEditPrompterDialog = true
                                         }
                                     } else {
-                                        renameTarget = entry
-                                        renameText = TitleAliasesStore.getTitleForTrack(context, entry.uri.toString())
-                                            ?: PlaylistRepository.getAnyCustomTitleForUri(entry.uri.toString())
-                                            ?: entry.name
+                                        beginAliasRename(entry)
                                     }
                                 },
 
@@ -2531,7 +2568,7 @@ fun LibraryScreen(
                         }
                     }
 
-                    if (!isSongViewMode && selectedSongs.isNotEmpty()) {
+                    if (selectedSongs.isNotEmpty()) {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
