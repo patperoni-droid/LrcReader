@@ -1178,7 +1178,8 @@ fun QuickPlaylistsScreen(
                                 }
                             } else {
                                 if (smpSongId != null) {
-                                    PlaylistRepository.getAnyCustomTitleForUri(uriString)
+                                    TitleAliasesStore.getTitleForTrack(context, uriString)
+                                        ?: PlaylistRepository.getAnyCustomTitleForUri(uriString)
                                         ?: smpTitleById[smpSongId]
                                         ?: "SMP $smpSongId"
                                 } else {
@@ -2428,7 +2429,8 @@ private fun buildQuickPlaylistSearchTitle(
 
     val smpSongId = getSmpSongId(item)
     if (smpSongId != null) {
-        return PlaylistRepository.getAnyCustomTitleForUri(item)
+        return TitleAliasesStore.getTitleForTrack(context, item)
+            ?: PlaylistRepository.getAnyCustomTitleForUri(item)
             ?: smpTitleById[smpSongId]
             ?: "SMP $smpSongId"
     }

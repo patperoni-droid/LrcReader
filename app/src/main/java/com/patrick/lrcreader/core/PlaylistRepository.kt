@@ -22,12 +22,15 @@ object PlaylistRepository {
 
     // nom de playlist -> chansons déjà jouées
     private val playedSongs: MutableMap<String, MutableSet<String>> = mutableMapOf()
+    private val playedSongIds: MutableMap<String, MutableSet<String>> = mutableMapOf()
 
     // nom de playlist -> chansons marquées "à revoir"
     private val reviewSongs: MutableMap<String, MutableSet<String>> = mutableMapOf()
+    private val reviewSongIds: MutableMap<String, MutableSet<String>> = mutableMapOf()
 
     // nom de playlist -> (uri -> titre personnalisé)
     private val customTitles: MutableMap<String, MutableMap<String, String>> = mutableMapOf()
+    private val customTitlesBySongId: MutableMap<String, MutableMap<String, String>> = mutableMapOf()
 
     // nom de playlist -> couleur (ARGB en Long)
     private val playlistColors: MutableMap<String, Long> = mutableMapOf()
@@ -42,6 +45,7 @@ object PlaylistRepository {
 
     private var nowPlayingPlaylist: String? = null
     private var nowPlayingUri: String? = null
+    private var nowPlayingSongId: String? = null
 
     private var playbackAccumMs: Long = 0L
     private var lastTickElapsedMs: Long? = null
@@ -57,8 +61,10 @@ object PlaylistRepository {
      * Ne marque rien "played" ici : on arme juste le suivi.
      */
     fun setNowPlaying(playlistName: String, uri: String) {
+        val cleanUri = normalizeUriKey(uri) ?: return
         nowPlayingPlaylist = playlistName
-        nowPlayingUri = uri
+        nowPlayingUri = cleanUri
+        nowPlayingSongId = resolveSongIdForState(playlistName, cleanUri)
         playbackAccumMs = 0L
         lastTickElapsedMs = null
         playedTriggeredForCurrent = false
@@ -69,6 +75,7 @@ object PlaylistRepository {
     fun clearNowPlaying() {
         nowPlayingPlaylist = null
         nowPlayingUri = null
+        nowPlayingSongId = null
         playbackAccumMs = 0L
         lastTickElapsedMs = null
         playedTriggeredForCurrent = false
@@ -83,6 +90,7 @@ object PlaylistRepository {
     fun onPlaybackTick(isPlaying: Boolean) {
         val pl = nowPlayingPlaylist ?: return
         val uri = nowPlayingUri ?: return
+        val songId = nowPlayingSongId
 
         // On ne déclenche qu'une fois par titre
         if (playedTriggeredForCurrent) return
@@ -116,19 +124,30 @@ object PlaylistRepository {
             nowPlayingArmedAtElapsedMs = null // ✅ plus besoin du garde-fou
 
             // ✅ Marque joué + met à la fin, puis bump() une seule fois
-            val set = playedSongs.getOrPut(pl) { mutableSetOf() }
-            set.add(uri)
+            var changed = markSongPlayedState(
+                playlistName = pl,
+                uri = uri,
+                songId = songId
+            )
 
             val list = playlists[pl]
+            var moved = false
             if (list != null) {
-                val idx = list.indexOf(uri)
-                if (idx != -1) {
+                val idx = list.indexOf(uri).takeIf { it >= 0 }
+                    ?: songId?.let { currentSongId ->
+                        list.indexOfFirst { item -> resolveSongIdForState(pl, item) == currentSongId }
+                            .takeIf { it >= 0 }
+                    }
+                if (idx != null) {
                     list.removeAt(idx)
                     list.add(uri)
+                    moved = true
                 }
             }
 
-            bump()
+            if (changed || moved) {
+                bump()
+            }
         }
     }
 
@@ -152,22 +171,33 @@ object PlaylistRepository {
         songUri: String,
         songId: String? = null
     ) {
+        val cleanSongUri = normalizeUriKey(songUri) ?: return
         val list = playlists.getOrPut(playlistName) { mutableListOf() }
         val items = playlistItems.getOrPut(playlistName) { mutableMapOf() }
-        val cleanSongId = songId?.trim()?.takeIf { it.isNotEmpty() }
-        val existingItem = items[songUri]
+        val cleanSongId = normalizeSongId(songId)
+        val existingItem = items[cleanSongUri]
+        val previousSongId = normalizeSongId(existingItem?.songId)
         val nextItem = PlaylistItem(
-            uri = songUri,
+            uri = cleanSongUri,
             songId = cleanSongId ?: existingItem?.songId
         )
         var changed = false
         if (existingItem != nextItem) {
-            items[songUri] = nextItem
+            items[cleanSongUri] = nextItem
             changed = true
         }
-        if (!list.contains(songUri)) {
-            list.add(songUri)
+        if (!list.contains(cleanSongUri)) {
+            list.add(cleanSongUri)
             changed = true
+        }
+        val resolvedSongId = normalizeSongId(nextItem.songId) ?: normalizeSongId(getSmpSongId(cleanSongUri))
+        if (resolvedSongId != null && (previousSongId != resolvedSongId || existingItem == null)) {
+            migrateStateToSongId(
+                playlistName = playlistName,
+                uri = cleanSongUri,
+                previousSongId = previousSongId,
+                nextSongId = resolvedSongId
+            )
         }
         if (changed) {
             bump()
@@ -182,9 +212,8 @@ object PlaylistRepository {
      */
     fun getSongsFor(playlistName: String): List<String> {
         val all = playlists[playlistName] ?: emptyList()
-        val played = playedSongs[playlistName] ?: emptySet()
-        val notPlayed = all.filter { it !in played }
-        val alreadyPlayed = all.filter { it in played }
+        val notPlayed = all.filterNot { isSongPlayed(playlistName, it) }
+        val alreadyPlayed = all.filter { isSongPlayed(playlistName, it) }
         return notPlayed + alreadyPlayed
     }
 
@@ -206,9 +235,10 @@ object PlaylistRepository {
     }
 
     fun getPlaylistItem(playlistName: String, uri: String): PlaylistItem? {
+        val cleanUri = normalizeUriKey(uri) ?: return null
         val list = playlists[playlistName] ?: return null
-        if (!list.contains(uri)) return null
-        return playlistItems[playlistName]?.get(uri) ?: PlaylistItem(uri = uri)
+        if (!list.contains(cleanUri)) return null
+        return playlistItems[playlistName]?.get(cleanUri) ?: PlaylistItem(uri = cleanUri)
     }
 
     /** Réordonne une playlist (drag & drop). */
@@ -224,12 +254,24 @@ object PlaylistRepository {
     // -------------------------------------------------
 
     fun isSongPlayed(playlistName: String, uri: String): Boolean {
-        return playedSongs[playlistName]?.contains(uri) == true
+        val cleanUri = normalizeUriKey(uri) ?: return false
+        val songId = resolveSongIdForState(playlistName, cleanUri)
+        if (songId != null && playedSongIds[playlistName]?.contains(songId) == true) {
+            return true
+        }
+        return playedSongs[playlistName]?.contains(cleanUri) == true
     }
 
     fun markSongPlayed(playlistName: String, uri: String) {
+        val cleanUri = normalizeUriKey(uri) ?: return
+        val songId = resolveSongIdForState(playlistName, cleanUri)
         // ✅ GARDE-FOU : si quelqu’un essaye de marquer "joué" trop tôt sur le titre armé
-        if (playlistName == nowPlayingPlaylist && uri == nowPlayingUri) {
+        val isCurrentTrack = playlistName == nowPlayingPlaylist &&
+            (
+                cleanUri == nowPlayingUri ||
+                    (songId != null && songId == nowPlayingSongId)
+                )
+        if (isCurrentTrack) {
             val armedAt = nowPlayingArmedAtElapsedMs
             if (armedAt != null) {
                 val elapsed = SystemClock.elapsedRealtime() - armedAt
@@ -240,26 +282,27 @@ object PlaylistRepository {
             }
         }
 
-        val set = playedSongs.getOrPut(playlistName) { mutableSetOf() }
-        if (set.add(uri)) {
+        if (markSongPlayedState(playlistName, cleanUri, songId)) {
             bump()
         }
     }
 
     /** Pour la sauvegarde : liste brute des titres joués. */
     fun getPlayedRaw(playlistName: String): List<String> {
-        return playedSongs[playlistName]?.toList() ?: emptyList()
+        return getAllSongsRaw(playlistName).filter { uri -> isSongPlayed(playlistName, uri) }
     }
 
     /** Remet tous les titres de la playlist en "non joués". */
     fun resetPlayedFor(playlistName: String) {
         playedSongs.remove(playlistName)
+        playedSongIds.remove(playlistName)
         bump()
     }
 
     /** Remet tout le monde en "non joué". */
     fun resetAllPlayed() {
         playedSongs.clear()
+        playedSongIds.clear()
         bump()
     }
 
@@ -268,17 +311,29 @@ object PlaylistRepository {
     // -------------------------------------------------
 
     fun isSongToReview(playlistName: String, uri: String): Boolean {
-        return reviewSongs[playlistName]?.contains(uri) == true
+        val cleanUri = normalizeUriKey(uri) ?: return false
+        val songId = resolveSongIdForState(playlistName, cleanUri)
+        if (songId != null && reviewSongIds[playlistName]?.contains(songId) == true) {
+            return true
+        }
+        return reviewSongs[playlistName]?.contains(cleanUri) == true
     }
 
     fun setSongToReview(playlistName: String, uri: String, toReview: Boolean) {
-        val set = reviewSongs.getOrPut(playlistName) { mutableSetOf() }
-        val changed = if (toReview) set.add(uri) else set.remove(uri)
+        val cleanUri = normalizeUriKey(uri) ?: return
+        val songId = resolveSongIdForState(playlistName, cleanUri)
+        val changed = setSongReviewState(
+            playlistName = playlistName,
+            uri = cleanUri,
+            songId = songId,
+            toReview = toReview
+        )
         if (changed) bump()
     }
 
     fun clearReviewForPlaylist(playlistName: String) {
         reviewSongs.remove(playlistName)
+        reviewSongIds.remove(playlistName)
         bump()
     }
 
@@ -287,12 +342,37 @@ object PlaylistRepository {
     // -------------------------------------------------
 
     fun clearCustomTitleEverywhere(uri: String) {
-        customTitles.forEach { (_, map) -> map.remove(uri) }
-        bump()
+        val cleanUri = normalizeUriKey(uri) ?: return
+        val songIds = getPlaylists()
+            .mapNotNull { playlistName -> resolveSongIdForState(playlistName, cleanUri) }
+            .toSet()
+        var changed = false
+        customTitles.forEach { (_, map) ->
+            if (map.remove(cleanUri) != null) {
+                changed = true
+            }
+        }
+        if (songIds.isNotEmpty()) {
+            customTitlesBySongId.forEach { (_, map) ->
+                songIds.forEach { songId ->
+                    if (map.remove(songId) != null) {
+                        changed = true
+                    }
+                }
+            }
+        }
+        if (changed) {
+            bump()
+        }
     }
 
     fun getCustomTitle(playlistName: String, uri: String): String? {
-        return customTitles[playlistName]?.get(uri)
+        val cleanUri = normalizeUriKey(uri) ?: return null
+        val songId = resolveSongIdForState(playlistName, cleanUri)
+        if (songId != null) {
+            customTitlesBySongId[playlistName]?.get(songId)?.let { return it }
+        }
+        return customTitles[playlistName]?.get(cleanUri)
     }
 
     fun getAnyCustomTitleForUri(uriString: String): String? {
@@ -311,8 +391,8 @@ object PlaylistRepository {
             val out = linkedMapOf<String, String>()
             val pls = getPlaylists()
             for (pl in pls) {
-                val map = customTitles[pl] ?: continue
-                map.forEach { (uri, title) ->
+                getAllSongsRaw(pl).forEach { uri ->
+                    val title = getCustomTitle(pl, uri) ?: return@forEach
                     val cleanUri = uri.trim()
                     val cleanTitle = title.trim()
                     if (cleanUri.isNotEmpty() && cleanTitle.isNotEmpty() && !out.containsKey(cleanUri)) {
@@ -325,19 +405,50 @@ object PlaylistRepository {
     }
 
     fun renameSongInPlaylist(playlistName: String, uri: String, newTitle: String) {
+        val cleanUri = normalizeUriKey(uri) ?: return
         val clean = newTitle.trim()
-        val map = customTitles.getOrPut(playlistName) { mutableMapOf() }
-        if (clean.isEmpty()) map.remove(uri) else map[uri] = clean
-        bump()
+        val songId = resolveSongIdForState(playlistName, cleanUri)
+        var changed = false
+        if (songId != null) {
+            val map = customTitlesBySongId.getOrPut(playlistName) { mutableMapOf() }
+            changed = if (clean.isEmpty()) {
+                map.remove(songId) != null
+            } else {
+                map.put(songId, clean) != clean
+            }
+            if (customTitles[playlistName]?.remove(cleanUri) != null) {
+                changed = true
+            }
+        } else {
+            val map = customTitles.getOrPut(playlistName) { mutableMapOf() }
+            changed = if (clean.isEmpty()) {
+                map.remove(cleanUri) != null
+            } else {
+                map.put(cleanUri, clean) != clean
+            }
+        }
+        if (changed) {
+            bump()
+        }
     }
 
     fun removeSongFromPlaylist(playlistName: String, uri: String) {
+        val cleanUri = normalizeUriKey(uri) ?: return
         val list = playlists[playlistName] ?: return
-        list.remove(uri)
-        playlistItems[playlistName]?.remove(uri)
-        customTitles[playlistName]?.remove(uri)
-        reviewSongs[playlistName]?.remove(uri)
-        playedSongs[playlistName]?.remove(uri)
+        val removedFromList = list.remove(cleanUri)
+        val removedItem = playlistItems[playlistName]?.remove(cleanUri)
+        val removedSongId = normalizeSongId(removedItem?.songId) ?: normalizeSongId(getSmpSongId(cleanUri))
+        customTitles[playlistName]?.remove(cleanUri)
+        reviewSongs[playlistName]?.remove(cleanUri)
+        playedSongs[playlistName]?.remove(cleanUri)
+        if (removedSongId != null && !playlistContainsSongId(playlistName, removedSongId)) {
+            customTitlesBySongId[playlistName]?.remove(removedSongId)
+            reviewSongIds[playlistName]?.remove(removedSongId)
+            playedSongIds[playlistName]?.remove(removedSongId)
+        }
+        if (!removedFromList && removedItem == null) {
+            return
+        }
         bump()
     }
 
@@ -362,15 +473,26 @@ object PlaylistRepository {
         playlists.clear()
         playlistItems.clear()
         playedSongs.clear()
+        playedSongIds.clear()
         reviewSongs.clear()
+        reviewSongIds.clear()
         customTitles.clear()
+        customTitlesBySongId.clear()
         playlistColors.clear()
+        nowPlayingSongId = null
         bump()
     }
 
     fun moveSongToEnd(playlistName: String, uri: String) {
+        val cleanUri = normalizeUriKey(uri) ?: return
+        val songId = resolveSongIdForState(playlistName, cleanUri)
         // ✅ GARDE-FOU : idem, on bloque le "descend direct" si ça arrive trop tôt
-        if (playlistName == nowPlayingPlaylist && uri == nowPlayingUri) {
+        val isCurrentTrack = playlistName == nowPlayingPlaylist &&
+            (
+                cleanUri == nowPlayingUri ||
+                    (songId != null && songId == nowPlayingSongId)
+                )
+        if (isCurrentTrack) {
             val armedAt = nowPlayingArmedAtElapsedMs
             if (armedAt != null) {
                 val elapsed = SystemClock.elapsedRealtime() - armedAt
@@ -379,10 +501,10 @@ object PlaylistRepository {
         }
 
         val list = playlists[playlistName] ?: return
-        val idx = list.indexOf(uri)
+        val idx = list.indexOf(cleanUri)
         if (idx == -1) return
         list.removeAt(idx)
-        list.add(uri)
+        list.add(cleanUri)
         bump()
     }
 
@@ -394,8 +516,8 @@ object PlaylistRepository {
 
     fun exportRaw(): Map<String, Pair<List<String>, Set<String>>> {
         return playlists.mapValues { (plName, list) ->
-            val played = playedSongs[plName] ?: emptySet()
-            list.toList() to played.toSet()
+            val played = getPlayedRaw(plName).toSet()
+            list.toList() to played
         }
     }
 
@@ -409,8 +531,11 @@ object PlaylistRepository {
         playlists[clean] = songs
         playlistItems[clean] = playlistItems.remove(oldName) ?: mutableMapOf()
         playedSongs[clean] = playedSongs.remove(oldName) ?: mutableSetOf()
+        playedSongIds[clean] = playedSongIds.remove(oldName) ?: mutableSetOf()
         reviewSongs[clean] = reviewSongs.remove(oldName) ?: mutableSetOf()
+        reviewSongIds[clean] = reviewSongIds.remove(oldName) ?: mutableSetOf()
         customTitles[clean] = customTitles.remove(oldName) ?: mutableMapOf()
+        customTitlesBySongId[clean] = customTitlesBySongId.remove(oldName) ?: mutableMapOf()
         playlistColors[clean] = playlistColors.remove(oldName) ?: 0xFFE86FFF
 
         bump()
@@ -422,27 +547,35 @@ object PlaylistRepository {
         playlists.remove(name)
         playlistItems.remove(name)
         playedSongs.remove(name)
+        playedSongIds.remove(name)
         reviewSongs.remove(name)
+        reviewSongIds.remove(name)
         customTitles.remove(name)
+        customTitlesBySongId.remove(name)
         playlistColors.remove(name)
         bump()
     }
 
     fun replaceSongUriEverywhere(oldUri: String, newUri: String) {
-        if (oldUri == newUri) return
+        val oldCleanUri = normalizeUriKey(oldUri) ?: return
+        val newCleanUri = normalizeUriKey(newUri) ?: return
+        if (oldCleanUri == newCleanUri) return
 
         playlists.forEach { (_, list) ->
-            for (i in list.indices) if (list[i] == oldUri) list[i] = newUri
+            for (i in list.indices) if (list[i] == oldCleanUri) list[i] = newCleanUri
         }
         playlistItems.forEach { (_, items) ->
-            val previous = items.remove(oldUri) ?: return@forEach
-            items[newUri] = previous.copy(uri = newUri)
+            val previous = items.remove(oldCleanUri) ?: return@forEach
+            items[newCleanUri] = previous.copy(uri = newCleanUri)
         }
-        playedSongs.forEach { (_, set) -> if (set.remove(oldUri)) set.add(newUri) }
-        reviewSongs.forEach { (_, set) -> if (set.remove(oldUri)) set.add(newUri) }
+        playedSongs.forEach { (_, set) -> if (set.remove(oldCleanUri)) set.add(newCleanUri) }
+        reviewSongs.forEach { (_, set) -> if (set.remove(oldCleanUri)) set.add(newCleanUri) }
         customTitles.forEach { (_, map) ->
-            val t = map.remove(oldUri)
-            if (t != null) map[newUri] = t
+            val t = map.remove(oldCleanUri)
+            if (t != null) map[newCleanUri] = t
+        }
+        if (nowPlayingUri == oldCleanUri) {
+            nowPlayingUri = newCleanUri
         }
 
         bump()
@@ -457,4 +590,100 @@ object PlaylistRepository {
     }
 
     fun touch() = bump()
+
+    private fun normalizeUriKey(uri: String?): String? =
+        uri?.trim()?.takeIf { it.isNotEmpty() }
+
+    private fun normalizeSongId(songId: String?): String? =
+        songId?.trim()?.takeIf { it.isNotEmpty() }
+
+    private fun resolveSongIdForState(playlistName: String, uri: String): String? {
+        return normalizeSongId(
+            playlistItems[playlistName]
+                ?.get(uri)
+                ?.songId
+        ) ?: normalizeSongId(getSmpSongId(uri))
+    }
+
+    private fun markSongPlayedState(
+        playlistName: String,
+        uri: String,
+        songId: String?
+    ): Boolean {
+        if (songId != null) {
+            val songSet = playedSongIds.getOrPut(playlistName) { mutableSetOf() }
+            val added = songSet.add(songId)
+            val removedLegacy = playedSongs[playlistName]?.remove(uri) == true
+            return added || removedLegacy
+        }
+
+        val legacySet = playedSongs.getOrPut(playlistName) { mutableSetOf() }
+        return legacySet.add(uri)
+    }
+
+    private fun setSongReviewState(
+        playlistName: String,
+        uri: String,
+        songId: String?,
+        toReview: Boolean
+    ): Boolean {
+        if (songId != null) {
+            val songSet = reviewSongIds.getOrPut(playlistName) { mutableSetOf() }
+            val changed = if (toReview) {
+                songSet.add(songId)
+            } else {
+                songSet.remove(songId)
+            }
+            val removedLegacy = reviewSongs[playlistName]?.remove(uri) == true
+            return changed || removedLegacy
+        }
+
+        val legacySet = reviewSongs.getOrPut(playlistName) { mutableSetOf() }
+        return if (toReview) legacySet.add(uri) else legacySet.remove(uri)
+    }
+
+    private fun migrateStateToSongId(
+        playlistName: String,
+        uri: String,
+        previousSongId: String?,
+        nextSongId: String
+    ) {
+        if (previousSongId != null && previousSongId != nextSongId) {
+            if (playedSongIds[playlistName]?.remove(previousSongId) == true) {
+                playedSongIds.getOrPut(playlistName) { mutableSetOf() }.add(nextSongId)
+            }
+            if (reviewSongIds[playlistName]?.remove(previousSongId) == true) {
+                reviewSongIds.getOrPut(playlistName) { mutableSetOf() }.add(nextSongId)
+            }
+            customTitlesBySongId[playlistName]
+                ?.remove(previousSongId)
+                ?.let { title ->
+                    customTitlesBySongId.getOrPut(playlistName) { mutableMapOf() }
+                        .putIfAbsent(nextSongId, title)
+                }
+            if (playlistName == nowPlayingPlaylist && nowPlayingSongId == previousSongId) {
+                nowPlayingSongId = nextSongId
+            }
+        }
+
+        if (playedSongs[playlistName]?.remove(uri) == true) {
+            playedSongIds.getOrPut(playlistName) { mutableSetOf() }.add(nextSongId)
+        }
+        if (reviewSongs[playlistName]?.remove(uri) == true) {
+            reviewSongIds.getOrPut(playlistName) { mutableSetOf() }.add(nextSongId)
+        }
+        customTitles[playlistName]?.remove(uri)?.let { title ->
+            customTitlesBySongId.getOrPut(playlistName) { mutableMapOf() }
+                .putIfAbsent(nextSongId, title)
+        }
+        if (playlistName == nowPlayingPlaylist && nowPlayingUri == uri) {
+            nowPlayingSongId = nextSongId
+        }
+    }
+
+    private fun playlistContainsSongId(playlistName: String, songId: String): Boolean {
+        return playlists[playlistName]?.any { item ->
+            resolveSongIdForState(playlistName, item) == songId
+        } ?: false
+    }
 }
