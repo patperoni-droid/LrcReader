@@ -147,18 +147,12 @@ internal object NotesConfigStore {
             return listOf(GLOBAL_SCOPE_KEY)
         }
 
-        val scopeKeys = linkedSetOf<String>()
         val songId = extractSongIdFromScopeKey(normalizedScope)
             ?: resolveSongIdFromLegacyScope(context, normalizedScope)
-        SongIdKeyResolver.songScopedKey(songId)?.let(scopeKeys::add)
-        scopeKeys.add(normalizedScope)
-
-        songId?.let { resolvedSongId ->
-            SongIdKeyResolver.resolveLegacyRelativePathBySongId(context, resolvedSongId)
-                ?.let(scopeKeys::add)
+        SongIdKeyResolver.songScopedKey(songId)?.let { songScopedKey ->
+            return listOf(songScopedKey)
         }
-
-        return scopeKeys.toList()
+        return listOf(normalizedScope)
     }
 
     private fun extractSongIdFromScopeKey(scopeKey: String): String? {

@@ -189,18 +189,27 @@ object CueMidiStore {
 
     fun shiftAfterDelete(trackUri: String?, deletedLineIndex: Int) {
         val keys = resolveTrackKeys(trackUri) ?: return
-        val portableKeys = resolvePortableWriteKeys(keys)
-        var portableChanged = false
-        portableKeys.forEach { key ->
-            portableChanged = shiftInMap(portableCuesByTrack, key, deletedLineIndex) || portableChanged
+        if (keys.songScopedKey != null) {
+            val changed = migrateAndMutateSongScoped(
+                keys = keys,
+                mutate = { cues -> shiftedCues(cues, deletedLineIndex) }
+            )
+            if (changed) {
+                persistPortableAndLegacy()
+            }
+            return
         }
-        val legacyChanged = shiftInMap(legacyCuesByTrack, keys.legacyKey, deletedLineIndex)
 
-        if (portableKeys.isNotEmpty()) {
+        if (keys.relativePath != null) {
+            val portableChanged = shiftInMap(portableCuesByTrack, keys.relativePath, deletedLineIndex)
+            val legacyChanged = shiftInMap(legacyCuesByTrack, keys.legacyKey, deletedLineIndex)
             if (portableChanged || legacyChanged) {
                 persistPortableAndLegacy()
             }
-        } else if (legacyChanged) {
+            return
+        }
+
+        if (shiftInMap(legacyCuesByTrack, keys.legacyKey, deletedLineIndex)) {
             persistLegacyOnly()
         }
     }
@@ -211,12 +220,16 @@ object CueMidiStore {
      */
     fun upsertCue(trackUri: String?, cue: CueMidi) {
         val keys = resolveTrackKeys(trackUri) ?: return
-        val portableKeys = resolvePortableWriteKeys(keys)
-
-        if (portableKeys.isNotEmpty()) {
-            portableKeys.forEach { key ->
-                upsertInMap(portableCuesByTrack, key, cue)
+        if (keys.songScopedKey != null) {
+            val changed = migrateAndMutateSongScoped(
+                keys = keys,
+                mutate = { cues -> upsertedCues(cues, cue) }
+            )
+            if (changed) {
+                persistPortableAndLegacy()
             }
+        } else if (keys.relativePath != null) {
+            upsertInMap(portableCuesByTrack, keys.relativePath, cue)
             upsertInMap(legacyCuesByTrack, keys.legacyKey, cue)
             persistPortableAndLegacy()
         } else {
@@ -230,18 +243,27 @@ object CueMidiStore {
      */
     fun deleteCue(trackUri: String?, lineIndex: Int) {
         val keys = resolveTrackKeys(trackUri) ?: return
-        val portableKeys = resolvePortableWriteKeys(keys)
-        var portableChanged = false
-        portableKeys.forEach { key ->
-            portableChanged = deleteFromMap(portableCuesByTrack, key, lineIndex) || portableChanged
+        if (keys.songScopedKey != null) {
+            val changed = migrateAndMutateSongScoped(
+                keys = keys,
+                mutate = { cues -> cues.filterNot { it.lineIndex == lineIndex } }
+            )
+            if (changed) {
+                persistPortableAndLegacy()
+            }
+            return
         }
-        val legacyChanged = deleteFromMap(legacyCuesByTrack, keys.legacyKey, lineIndex)
 
-        if (portableKeys.isNotEmpty()) {
+        if (keys.relativePath != null) {
+            val portableChanged = deleteFromMap(portableCuesByTrack, keys.relativePath, lineIndex)
+            val legacyChanged = deleteFromMap(legacyCuesByTrack, keys.legacyKey, lineIndex)
             if (portableChanged || legacyChanged) {
                 persistPortableAndLegacy()
             }
-        } else if (legacyChanged) {
+            return
+        }
+
+        if (deleteFromMap(legacyCuesByTrack, keys.legacyKey, lineIndex)) {
             persistLegacyOnly()
         }
     }
@@ -278,10 +300,66 @@ object CueMidiStore {
         return emptyList()
     }
 
-    private fun resolvePortableWriteKeys(keys: TrackKeys): List<String> {
-        return linkedSetOf<String>().apply {
-            keys.songScopedKey?.let(::add)
-            keys.relativePath?.let(::add)
-        }.toList()
+    private fun migrateAndMutateSongScoped(
+        keys: TrackKeys,
+        mutate: (List<CueMidi>) -> List<CueMidi>
+    ): Boolean {
+        val songScopedKey = keys.songScopedKey ?: return false
+        val hadSongScopedEntry = portableCuesByTrack.containsKey(songScopedKey)
+        val hadRelativePathEntry = keys.relativePath
+            ?.takeUnless { it == songScopedKey }
+            ?.let { portableCuesByTrack.containsKey(it) }
+            ?: false
+        val hadLegacyEntry = legacyCuesByTrack.containsKey(keys.legacyKey)
+        val currentCues = readCues(
+            songScopedKey = songScopedKey,
+            relativePath = keys.relativePath,
+            legacyKey = keys.legacyKey
+        )
+        val nextCues = mutate(currentCues)
+        if (nextCues == currentCues &&
+            hadSongScopedEntry &&
+            portableCuesByTrack[songScopedKey] == nextCues &&
+            !hadRelativePathEntry &&
+            !hadLegacyEntry
+        ) {
+            return false
+        }
+
+        if (nextCues.isEmpty()) {
+            portableCuesByTrack.remove(songScopedKey)
+        } else {
+            portableCuesByTrack[songScopedKey] = nextCues.toMutableList()
+        }
+
+        keys.relativePath
+            ?.takeUnless { it == songScopedKey }
+            ?.let { portableCuesByTrack.remove(it) }
+        legacyCuesByTrack.remove(keys.legacyKey)
+        return currentCues != nextCues ||
+            !hadSongScopedEntry ||
+            hadRelativePathEntry ||
+            hadLegacyEntry
+    }
+
+    private fun upsertedCues(existing: List<CueMidi>, cue: CueMidi): List<CueMidi> {
+        val updated = existing.toMutableList()
+        val idx = updated.indexOfFirst { it.lineIndex == cue.lineIndex }
+        if (idx >= 0) {
+            updated[idx] = cue
+        } else {
+            updated += cue
+        }
+        return updated
+    }
+
+    private fun shiftedCues(existing: List<CueMidi>, deletedLineIndex: Int): List<CueMidi> {
+        return existing.mapNotNull { cue ->
+            when {
+                cue.lineIndex == deletedLineIndex -> null
+                cue.lineIndex > deletedLineIndex -> cue.copy(lineIndex = cue.lineIndex - 1)
+                else -> cue
+            }
+        }
     }
 }

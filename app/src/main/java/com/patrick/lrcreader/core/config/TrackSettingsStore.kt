@@ -118,8 +118,16 @@ object TrackSettingsStore {
             val currentEntry = readEntryLocked(context, keys) ?: TrackSettingsEntry()
             val nextEntry = mutate(currentEntry)
             val writeKeys = linkedSetOf<String>().apply {
-                keys.songScopedKey?.let(::add)
-                keys.relativePath?.let(::add)
+                if (keys.songScopedKey != null) {
+                    add(keys.songScopedKey)
+                } else {
+                    keys.relativePath?.let(::add)
+                }
+            }
+            val cleanupKeys = linkedSetOf<String>().apply {
+                if (keys.songScopedKey != null) {
+                    keys.relativePath?.let(::add)
+                }
             }
             if (writeKeys.isEmpty()) {
                 Log.e(TAG, "updateTrackLocked: no writable key")
@@ -128,11 +136,12 @@ object TrackSettingsStore {
 
             val nextTracks = current.tracks.toMutableMap()
             if (nextEntry.isEmpty()) {
-                writeKeys.forEach(nextTracks::remove)
+                (writeKeys + cleanupKeys).forEach(nextTracks::remove)
             } else {
                 writeKeys.forEach { key ->
                     nextTracks[key] = nextEntry
                 }
+                cleanupKeys.forEach(nextTracks::remove)
             }
 
             val nextState = current.copy(
@@ -146,7 +155,7 @@ object TrackSettingsStore {
                 cachedState = nextState
                 true
             } else {
-                Log.e(TAG, "updateTrackLocked: write failed keys=$writeKeys")
+                Log.e(TAG, "updateTrackLocked: write failed keys=$writeKeys cleanupKeys=$cleanupKeys")
                 false
             }
         }
