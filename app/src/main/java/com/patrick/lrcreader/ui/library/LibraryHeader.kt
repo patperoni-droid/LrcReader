@@ -37,6 +37,11 @@ fun LibraryHeader(
     onImportBackingTracks: () -> Unit,
     onConvertFolderToSmp: () -> Unit,
     onImportSmp: () -> Unit,
+    selectionCount: Int = 0,
+    onCopySelection: (() -> Unit)? = null,
+    onMoveSelection: (() -> Unit)? = null,
+    onDeleteSelection: (() -> Unit)? = null,
+    onClearSelection: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -74,6 +79,10 @@ fun LibraryHeader(
     val canConvertFolder = currentFolderUri != null &&
         currentFolderUri.scheme != "spl-prompter" &&
         currentFolderUri.scheme != "spl-smp"
+    val isSelectionContext = selectionCount > 0 &&
+        onCopySelection != null &&
+        onMoveSelection != null &&
+        onDeleteSelection != null
 
     Row(
         modifier = modifier
@@ -108,47 +117,79 @@ fun LibraryHeader(
             expanded = actionsExpanded,
             onDismissRequest = { actionsExpanded = false }
         ) {
-
-            // ✅ LE TRUC QUI MANQUAIT : choisir (ou rechanger) le dossier racine
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.library_header_choose_folder)) },
-                onClick = {
-                    actionsExpanded = false
-                    onPickRoot()
+            if (isSelectionContext) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.library_bottom_copy)) },
+                    onClick = {
+                        actionsExpanded = false
+                        onCopySelection?.invoke()
+                    }
+                )
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.library_bottom_move)) },
+                    onClick = {
+                        actionsExpanded = false
+                        onMoveSelection?.invoke()
+                    }
+                )
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.library_bottom_delete)) },
+                    onClick = {
+                        actionsExpanded = false
+                        onDeleteSelection?.invoke()
+                    }
+                )
+                if (onClearSelection != null) {
+                    HorizontalDivider()
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.library_bottom_clear_selection)) },
+                        onClick = {
+                            actionsExpanded = false
+                            onClearSelection()
+                        }
+                    )
                 }
-            )
+            } else {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.library_header_choose_folder)) },
+                    onClick = {
+                        actionsExpanded = false
+                        onPickRoot()
+                    }
+                )
 
-            HorizontalDivider()
+                HorizontalDivider()
 
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.library_header_rescan)) },
-                enabled = hasRoot,
-                onClick = { actionsExpanded = false; onRescan() }
-            )
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.library_header_rescan)) },
+                    enabled = hasRoot,
+                    onClick = { actionsExpanded = false; onRescan() }
+                )
 
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.library_header_import_music)) },
-                enabled = hasRoot,
-                onClick = { actionsExpanded = false; onImportBackingTracks() }
-            )
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.library_header_import_music)) },
+                    enabled = hasRoot,
+                    onClick = { actionsExpanded = false; onImportBackingTracks() }
+                )
 
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.library_header_convert_folder_to_smp)) },
-                enabled = canConvertFolder,
-                onClick = { actionsExpanded = false; onConvertFolderToSmp() }
-            )
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.library_header_convert_folder_to_smp)) },
+                    enabled = canConvertFolder,
+                    onClick = { actionsExpanded = false; onConvertFolderToSmp() }
+                )
 
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.library_header_import_smp)) },
-                enabled = hasRoot,
-                onClick = { actionsExpanded = false; onImportSmp() }
-            )
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.library_header_import_smp)) },
+                    enabled = hasRoot,
+                    onClick = { actionsExpanded = false; onImportSmp() }
+                )
 
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.library_header_forget_folder)) },
-                enabled = hasRoot,
-                onClick = { actionsExpanded = false; onForget() }
-            )
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.library_header_forget_folder)) },
+                    enabled = hasRoot,
+                    onClick = { actionsExpanded = false; onForget() }
+                )
+            }
         }
     }
 }

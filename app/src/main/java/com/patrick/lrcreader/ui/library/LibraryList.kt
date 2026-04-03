@@ -2,8 +2,10 @@ package com.patrick.lrcreader.ui.library
 
 import androidx.compose.ui.text.style.TextOverflow
 import android.net.Uri
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -49,6 +51,7 @@ private fun isConvertibleToSmpByName(name: String): Boolean {
     return lower.endsWith(".mp3") || lower.endsWith(".wav") || lower.endsWith(".wave")
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun LibraryList(
     entries: List<LibraryEntry>,
@@ -92,6 +95,7 @@ fun LibraryList(
         items(entries, key = { "$aliasVersion:${it.uri}" }) { entry ->
             if (entry.isDirectory) {
                 val uri = entry.uri
+                val isSelected = selectedSongs.contains(uri)
                 var menuOpen by remember { mutableStateOf(false) }
 
                 Row(
@@ -99,8 +103,11 @@ fun LibraryList(
                         .fillMaxWidth()
                         .padding(vertical = 3.dp)
                         .background(cardBg, RoundedCornerShape(10.dp))
-                        .border(1.dp, rowBorder, RoundedCornerShape(10.dp))
-                        .clickable { onOpenFolder(entry) }
+                        .border(1.dp, if (isSelected) accent else rowBorder, RoundedCornerShape(10.dp))
+                        .combinedClickable(
+                            onClick = { onOpenFolder(entry) },
+                            onLongClick = { onToggleSelect(uri) }
+                        )
                         .padding(horizontal = 12.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {

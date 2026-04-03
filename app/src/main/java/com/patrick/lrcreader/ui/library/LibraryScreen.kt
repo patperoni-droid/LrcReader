@@ -2244,6 +2244,9 @@ fun LibraryScreen(
         }
     } ?: sNoFolderSelected
     val headerFolderUri = if (isSongViewMode && currentFolderUri != null) SMP_FOLDER_URI else currentFolderUri
+    val showSelectionBottomBar = selectedSongs.isNotEmpty() && isSongViewMode
+    val selectionBottomPadding = if (showSelectionBottomBar) bottomBarHeight else 0.dp
+    val isFilesSelectionContext = !isSongViewMode && selectedSongs.isNotEmpty()
     val isSetupDone = workspaceSnapshot.isUsable
     if (!isSetupDone) {
         DarkBlueGradientBackground {
@@ -2421,6 +2424,27 @@ fun LibraryScreen(
 
                 onImportSmp = {
                     onImportExternalSmp()
+                },
+                selectionCount = if (isFilesSelectionContext) selectedSongs.size else 0,
+                onCopySelection = if (isFilesSelectionContext) {
+                    { openCopyBrowserForSelection(selectedSongs) }
+                } else {
+                    null
+                },
+                onMoveSelection = if (isFilesSelectionContext) {
+                    { openMoveBrowserForSelection(selectedSongs) }
+                } else {
+                    null
+                },
+                onDeleteSelection = if (isFilesSelectionContext) {
+                    { pendingDeleteSelection = normalizeSelection(selectedSongs) }
+                } else {
+                    null
+                },
+                onClearSelection = if (isFilesSelectionContext) {
+                    { selectedSongs = emptySet() }
+                } else {
+                    null
                 }
             )
 
@@ -2535,7 +2559,7 @@ fun LibraryScreen(
                                     cardBg = cardBg,
                                     rowBorder = rowBorder,
                                     accent = accent,
-                                    bottomPadding = if (selectedSongs.isNotEmpty()) bottomBarHeight else 0.dp,
+                                    bottomPadding = selectionBottomPadding,
                                     selectedSongs = selectedSongs,
                                     onToggleSelect = { uri ->
                                         toggleSelection(uri)
@@ -2589,7 +2613,7 @@ fun LibraryScreen(
                                 cardBg = cardBg,
                                 rowBorder = rowBorder,
                                 accent = accent,
-                                bottomPadding = if (selectedSongs.isNotEmpty()) bottomBarHeight else 0.dp,
+                                bottomPadding = selectionBottomPadding,
                                 canImportBackupJson = canImportBackupJsonFromCurrentFolder,
                                 selectedSongs = selectedSongs,
 
@@ -2775,7 +2799,7 @@ fun LibraryScreen(
                         }
                     }
 
-                    if (selectedSongs.isNotEmpty()) {
+                    if (showSelectionBottomBar) {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
