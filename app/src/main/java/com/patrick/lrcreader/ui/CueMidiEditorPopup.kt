@@ -8,52 +8,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
-import com.patrick.lrcreader.core.CueMidi
-import com.patrick.lrcreader.core.CueMidiStore
 import com.patrick.lrcreader.exo.R
-import com.patrick.lrcreader.core.LrcLine
 import com.patrick.lrcreader.smp.MidiCue
 import com.patrick.lrcreader.smp.SmpMidiCueBridge
-
-@Composable
-fun CueMidiEditorPopup(
-    trackUri: String,
-    lines: List<LrcLine>,
-    lineIndex: Int,
-    onClose: () -> Unit
-) {
-    val context = LocalContext.current
-    val existing = remember(context, trackUri, lines, lineIndex) {
-        SmpMidiCueBridge.getEditorCues(context, trackUri, lines)
-            ?.firstOrNull { it.lineIndex == lineIndex }
-            ?: CueMidiStore.getCuesForTrack(trackUri).firstOrNull { it.lineIndex == lineIndex }
-    }
-
-    var channelText by remember(existing) { mutableStateOf((existing?.channel ?: 1).toString()) }
-    var programText by remember(existing) { mutableStateOf((existing?.program ?: 1).toString()) }
-
-    CueMidiEditorDialog(
-        title = stringResource(R.string.cue_midi_dialog_title, lineIndex + 1),
-        initialChannel = existing?.channel ?: 1,
-        initialProgram = existing?.program ?: 1,
-        onConfirm = { ch, prg ->
-            val cue = CueMidi(lineIndex = lineIndex, channel = ch, program = prg)
-            when (SmpMidiCueBridge.upsertCue(context, trackUri, lines, cue)) {
-                null -> CueMidiStore.upsertCue(trackUri, cue)
-                else -> Unit
-            }
-            onClose()
-        },
-        onDelete = {
-            when (SmpMidiCueBridge.deleteCue(context, trackUri, lines, lineIndex)) {
-                null -> CueMidiStore.deleteCue(trackUri, lineIndex)
-                else -> Unit
-            }
-            onClose()
-        },
-        onClose = onClose
-    )
-}
 
 @Composable
 fun TimelineMidiCueEditorPopup(

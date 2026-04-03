@@ -869,18 +869,6 @@ fun LyricsEditorSection(
                                                 Log.w("LrcDebug", "DELETE_LINE_SKIPPED invalidIndex idx=$idx size=${list.size}")
                                             }
 
-                                            if (enableCueEditing && currentTrackUri != null) {
-                                                when (SmpMidiCueBridge.deleteCue(
-                                                    context = context,
-                                                    trackUriString = currentTrackUri,
-                                                    lines = editingLines,
-                                                    lineIndex = idx
-                                                )) {
-                                                    null -> CueMidiStore.deleteCue(trackUri = currentTrackUri, lineIndex = idx)
-                                                    else -> Unit
-                                                }
-                                            }
-
                                             lineMenuIndex = null
                                         }
                                     ) { Text(stringResource(R.string.lyrics_editor_delete), color = Color(0xFFFF8A80)) }
