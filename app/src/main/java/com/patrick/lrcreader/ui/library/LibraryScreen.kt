@@ -166,6 +166,18 @@ private fun shouldHideFromMainLibrary(name: String): Boolean {
         isDjFolderName(name)
 }
 
+private fun isBackingTracksFolderName(name: String): Boolean {
+    val normalized = name.trim().lowercase()
+    return normalized == "backingtracks" || normalized == "backingtrack"
+}
+
+private fun shouldHideFromFilesInBackingTracks(name: String): Boolean {
+    return when (name.trim().lowercase()) {
+        "audio", "lyrics", "accords" -> true
+        else -> false
+    }
+}
+
 private fun resolveFolderName(context: android.content.Context, uri: Uri): String? {
     return when (uri.scheme) {
         "file" -> File(uri.path ?: "").name.ifBlank { null }
@@ -688,7 +700,15 @@ fun LibraryScreen(
 
         val isFilesViewMode = libraryViewMode == LIBRARY_VIEW_MODE_FILES
         val visibleSource = if (isFilesViewMode) {
-            source
+            val isBackingTracksFolder = resolveFolderName(context, folderUri)
+                ?.let(::isBackingTracksFolderName) == true
+            if (isBackingTracksFolder) {
+                source.filterNot { entry ->
+                    entry.isDirectory && shouldHideFromFilesInBackingTracks(entry.name)
+                }
+            } else {
+                source
+            }
         } else {
             source.filterNot { entry ->
                 entry.isDirectory &&

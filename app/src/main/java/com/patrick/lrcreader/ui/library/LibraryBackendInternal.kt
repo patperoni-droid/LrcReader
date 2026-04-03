@@ -39,7 +39,8 @@ class LibraryBackendInternal(
             context = context,
             providedSnapshot = resolvedWorkspaceSnapshot,
             expectedMode = StorageModePrefs.Mode.INTERNAL,
-            stage = "library_backend_internal:ensure_base_folders"
+            stage = "library_backend_internal:ensure_base_folders",
+            createLegacyAudioTextDirs = false
         ) ?: return
         val rootDir = File(folders.rootUri.path ?: return)
         val backingTracks = File(folders.backingTracksUri.path ?: return)
@@ -57,9 +58,10 @@ class LibraryBackendInternal(
     override fun chooseInitialFolder(root: Uri, indexAll: List<LibraryIndexCache.CachedEntry>): Uri {
         val rootDir = File(root.path ?: return root)
         val backingDir = File(rootDir, "BackingTracks").apply { mkdirs() }
-        val audioDir = File(backingDir, "Audio").apply { mkdirs() }
-        val audioCount = audioDir.listFiles()?.size ?: 0
-        return if (audioCount > 0) Uri.fromFile(audioDir) else Uri.fromFile(backingDir)
+        val audioDir = listOf("Audio", "audio")
+            .map { File(backingDir, it) }
+            .firstOrNull { dir -> dir.isDirectory && (dir.listFiles()?.isNotEmpty() == true) }
+        return audioDir?.let(Uri::fromFile) ?: Uri.fromFile(backingDir)
     }
 
     override fun loadIndex(): List<LibraryIndexCache.CachedEntry> {

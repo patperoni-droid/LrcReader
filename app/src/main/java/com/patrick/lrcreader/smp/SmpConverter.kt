@@ -340,7 +340,10 @@ class SmpConverter(private val context: Context) {
 
         if (fileRoot != null) {
             val rootDir = File(fileRoot.path ?: "").takeIf { it.path.isNotBlank() }
-                ?: InternalStoragePaths.ensureSplRoot(context)
+                ?: InternalStoragePaths.ensureSplRoot(
+                    context = context,
+                    createLegacyAudioTextDirs = false
+                )
             val backingTracksDir = File(rootDir, "BackingTracks").apply { mkdirs() }
             return OutputParent.FileParent(backingTracksDir)
         }

@@ -77,7 +77,8 @@ class LibraryBackendSaf(
             context = context,
             providedSnapshot = resolvedWorkspaceSnapshot,
             expectedMode = StorageModePrefs.Mode.SAF,
-            stage = "library_backend_saf:ensure_base_folders"
+            stage = "library_backend_saf:ensure_base_folders",
+            createLegacyAudioTextDirs = false
         ) ?: run {
             Log.w(tag, "ensureBaseFolders: rootUri=null")
             val durationMs = SystemClock.elapsedRealtime() - startMs
@@ -119,10 +120,10 @@ class LibraryBackendSaf(
         Log.i(tag, "root dirs backingTracks=${backingTracks?.uri} backups=${backups?.uri} dj=${dj?.uri}")
 
         if (backingTracks != null && backingTracks.isDirectory) {
-            val audio = ensureDirSmart(backingTracks, "Audio", aliases = listOf("audio"))
-            val smp = ensureDirSmart(backingTracks, "SMP", aliases = listOf("smp"))
-            val lyrics = ensureDirSmart(backingTracks, "Lyrics", aliases = listOf("lyrics"))
-            val accords = ensureDirSmart(backingTracks, "Accords", aliases = listOf("accords"))
+            val audio = findDirIgnoreCase(backingTracks, listOf("Audio", "audio"))
+            val smp = findDirIgnoreCase(backingTracks, listOf("SMP", "smp"))
+            val lyrics = findDirIgnoreCase(backingTracks, listOf("Lyrics", "lyrics"))
+            val accords = findDirIgnoreCase(backingTracks, listOf("Accords", "accords"))
             val midi = ensureDirSmart(backingTracks, "Midi", aliases = listOf("midi"))
             val videos = ensureDirSmart(backingTracks, "Videos", aliases = listOf("videos"))
 

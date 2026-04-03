@@ -17,7 +17,10 @@ import java.io.File
  */
 object InternalStoragePaths {
 
-    fun ensureSplRoot(context: Context): File {
+    fun ensureSplRoot(
+        context: Context,
+        createLegacyAudioTextDirs: Boolean = true
+    ): File {
         // /Android/data/<package>/files/SPL_Music
         val root = File(context.getExternalFilesDir(null), "SPL_Music")
         if (!root.exists()) root.mkdirs()
@@ -48,22 +51,28 @@ object InternalStoragePaths {
         val midiUpper = File(backingTracks, "Midi")
         val videosUpper = File(backingTracks, "Videos")
 
-        // Crée tout (sans risque)
-        listOf(
-            audioLower, lyricsLower, accordsLower, midiLower, videosLower,
-            audioUpper, lyricsUpper, accordsUpper, midiUpper, videosUpper
-        ).forEach { it.mkdirs() }
+        // Sur nouveau workspace, on ne recrée plus automatiquement Audio/Lyrics/Accords.
+        val baseDirs = mutableListOf(midiLower, videosLower, midiUpper, videosUpper)
+        if (createLegacyAudioTextDirs) {
+            baseDirs += listOf(
+                audioLower, lyricsLower, accordsLower,
+                audioUpper, lyricsUpper, accordsUpper
+            )
+        }
+        baseDirs.forEach { it.mkdirs() }
 
-        // Migration SAFE : copie dans les deux sens, sans suppression
-        // (pour que TOUT marche quel que soit le dossier cherché par le code)
-        mirrorCopyOnly(audioUpper, audioLower, tag = "MIGRATION_AUDIO")
-        mirrorCopyOnly(audioLower, audioUpper, tag = "MIGRATION_AUDIO")
+        if (createLegacyAudioTextDirs) {
+            // Migration SAFE : copie dans les deux sens, sans suppression
+            // (pour que TOUT marche quel que soit le dossier cherché par le code)
+            mirrorCopyOnly(audioUpper, audioLower, tag = "MIGRATION_AUDIO")
+            mirrorCopyOnly(audioLower, audioUpper, tag = "MIGRATION_AUDIO")
 
-        mirrorCopyOnly(lyricsUpper, lyricsLower, tag = "MIGRATION_LYRICS")
-        mirrorCopyOnly(lyricsLower, lyricsUpper, tag = "MIGRATION_LYRICS")
+            mirrorCopyOnly(lyricsUpper, lyricsLower, tag = "MIGRATION_LYRICS")
+            mirrorCopyOnly(lyricsLower, lyricsUpper, tag = "MIGRATION_LYRICS")
 
-        mirrorCopyOnly(accordsUpper, accordsLower, tag = "MIGRATION_CHORDS")
-        mirrorCopyOnly(accordsLower, accordsUpper, tag = "MIGRATION_CHORDS")
+            mirrorCopyOnly(accordsUpper, accordsLower, tag = "MIGRATION_CHORDS")
+            mirrorCopyOnly(accordsLower, accordsUpper, tag = "MIGRATION_CHORDS")
+        }
 
         mirrorCopyOnly(midiUpper, midiLower, tag = "MIGRATION_MIDI")
         mirrorCopyOnly(midiLower, midiUpper, tag = "MIGRATION_MIDI")
@@ -74,13 +83,15 @@ object InternalStoragePaths {
         // Bonus compat : si tu avais un dossier "lyrique" ou "lyriques" (français)
         val lyrique1 = File(backingTracks, "lyrique")
         val lyrique2 = File(backingTracks, "lyriques")
-        if (lyrique1.exists() && lyrique1.isDirectory) {
-            mirrorCopyOnly(lyrique1, lyricsLower, tag = "MIGRATION_LYRIQUE_FR")
-            mirrorCopyOnly(lyrique1, lyricsUpper, tag = "MIGRATION_LYRIQUE_FR")
-        }
-        if (lyrique2.exists() && lyrique2.isDirectory) {
-            mirrorCopyOnly(lyrique2, lyricsLower, tag = "MIGRATION_LYRIQUE_FR")
-            mirrorCopyOnly(lyrique2, lyricsUpper, tag = "MIGRATION_LYRIQUE_FR")
+        if (createLegacyAudioTextDirs) {
+            if (lyrique1.exists() && lyrique1.isDirectory) {
+                mirrorCopyOnly(lyrique1, lyricsLower, tag = "MIGRATION_LYRIQUE_FR")
+                mirrorCopyOnly(lyrique1, lyricsUpper, tag = "MIGRATION_LYRIQUE_FR")
+            }
+            if (lyrique2.exists() && lyrique2.isDirectory) {
+                mirrorCopyOnly(lyrique2, lyricsLower, tag = "MIGRATION_LYRIQUE_FR")
+                mirrorCopyOnly(lyrique2, lyricsUpper, tag = "MIGRATION_LYRIQUE_FR")
+            }
         }
 
         return root

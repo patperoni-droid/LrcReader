@@ -58,7 +58,8 @@ internal fun ensureWorkspaceLibraryFolders(
     context: Context,
     providedSnapshot: WorkspaceResolver.Snapshot? = null,
     expectedMode: StorageModePrefs.Mode? = null,
-    stage: String
+    stage: String,
+    createLegacyAudioTextDirs: Boolean = true
 ): WorkspaceLibraryFolders? {
     val snapshot = resolveUsableWorkspaceSnapshot(
         context = context,
@@ -88,17 +89,27 @@ internal fun ensureWorkspaceLibraryFolders(
                 }
 
                 val backingTracksDir = ensureFileDir(File(rootDir, "BackingTracks"))
+                val audioDir = if (createLegacyAudioTextDirs) {
+                    ensureFileDir(File(backingTracksDir, "Audio"))
+                } else {
+                    findExistingFileDirIgnoreCase(backingTracksDir, listOf("Audio", "audio"))
+                        ?: File(backingTracksDir, "Audio")
+                }
+                val smpDir = findExistingFileDirIgnoreCase(backingTracksDir, listOf("SMP", "smp"))
+                    ?: backingTracksDir
                 val folders = WorkspaceLibraryFolders(
                     snapshot = snapshot,
                     rootUri = rootUri,
                     backingTracksUri = Uri.fromFile(backingTracksDir),
-                    audioUri = Uri.fromFile(ensureFileDir(File(backingTracksDir, "Audio"))),
-                    smpUri = Uri.fromFile(ensureFileDir(File(backingTracksDir, "SMP"))),
+                    audioUri = Uri.fromFile(audioDir),
+                    smpUri = Uri.fromFile(smpDir),
                     djUri = Uri.fromFile(ensureFileDir(File(rootDir, "DJ"))),
                     backupsUri = Uri.fromFile(ensureFileDir(File(rootDir, "Backups")))
                 )
-                ensureFileDir(File(backingTracksDir, "Lyrics"))
-                ensureFileDir(File(backingTracksDir, "Accords"))
+                if (createLegacyAudioTextDirs) {
+                    ensureFileDir(File(backingTracksDir, "Lyrics"))
+                    ensureFileDir(File(backingTracksDir, "Accords"))
+                }
                 ensureFileDir(File(backingTracksDir, "Midi"))
                 ensureFileDir(File(backingTracksDir, "Videos"))
                 Log.i(
@@ -119,17 +130,64 @@ internal fun ensureWorkspaceLibraryFolders(
                 )
                 return null
             }
-            val backingTracks = ensureDocumentDir(rootDoc, "BackingTracks", aliases = listOf("backingtracks", "backingtrack"))
-            val audio = backingTracks?.let { ensureDocumentDir(it, "Audio", aliases = listOf("audio")) }
-            val smp = backingTracks?.let { ensureDocumentDir(it, "SMP", aliases = listOf("smp")) }
-            val lyrics = backingTracks?.let { ensureDocumentDir(it, "Lyrics", aliases = listOf("lyrics")) }
-            val accords = backingTracks?.let { ensureDocumentDir(it, "Accords", aliases = listOf("accords")) }
-            val midi = backingTracks?.let { ensureDocumentDir(it, "Midi", aliases = listOf("midi")) }
-            val videos = backingTracks?.let { ensureDocumentDir(it, "Videos", aliases = listOf("videos")) }
-            val dj = ensureDocumentDir(rootDoc, "DJ", aliases = listOf("dj"))
-            val backups = ensureDocumentDir(rootDoc, "Backups", aliases = listOf("backups"))
+            val backingTracks = resolveDocumentDir(
+                parent = rootDoc,
+                expectedName = "BackingTracks",
+                aliases = listOf("backingtracks", "backingtrack"),
+                createIfMissing = true
+            )
+            val audio = backingTracks?.let {
+                resolveDocumentDir(
+                    parent = it,
+                    expectedName = "Audio",
+                    aliases = listOf("audio"),
+                    createIfMissing = createLegacyAudioTextDirs
+                )
+            }
+            val smp = backingTracks?.let {
+                resolveDocumentDir(
+                    parent = it,
+                    expectedName = "SMP",
+                    aliases = listOf("smp"),
+                    createIfMissing = false
+                )
+            }
+            val lyrics = backingTracks?.let {
+                resolveDocumentDir(
+                    parent = it,
+                    expectedName = "Lyrics",
+                    aliases = listOf("lyrics"),
+                    createIfMissing = createLegacyAudioTextDirs
+                )
+            }
+            val accords = backingTracks?.let {
+                resolveDocumentDir(
+                    parent = it,
+                    expectedName = "Accords",
+                    aliases = listOf("accords"),
+                    createIfMissing = createLegacyAudioTextDirs
+                )
+            }
+            val midi = backingTracks?.let {
+                resolveDocumentDir(
+                    parent = it,
+                    expectedName = "Midi",
+                    aliases = listOf("midi"),
+                    createIfMissing = true
+                )
+            }
+            val videos = backingTracks?.let {
+                resolveDocumentDir(
+                    parent = it,
+                    expectedName = "Videos",
+                    aliases = listOf("videos"),
+                    createIfMissing = true
+                )
+            }
+            val dj = resolveDocumentDir(rootDoc, "DJ", aliases = listOf("dj"), createIfMissing = true)
+            val backups = resolveDocumentDir(rootDoc, "Backups", aliases = listOf("backups"), createIfMissing = true)
 
-            if (backingTracks == null || audio == null || smp == null || dj == null || backups == null) {
+            if (backingTracks == null || dj == null || backups == null || (createLegacyAudioTextDirs && audio == null)) {
                 Log.e(
                     WORKSPACE_C1_TAG,
                     "stage=$stage error=saf_folder_resolution_failed root=$rootUri backing=${backingTracks?.uri} audio=${audio?.uri} smp=${smp?.uri} dj=${dj?.uri} backups=${backups?.uri} lyrics=${lyrics?.uri} accords=${accords?.uri} midi=${midi?.uri} videos=${videos?.uri}"
@@ -141,8 +199,8 @@ internal fun ensureWorkspaceLibraryFolders(
                 snapshot = snapshot,
                 rootUri = rootDoc.uri,
                 backingTracksUri = backingTracks.uri,
-                audioUri = audio.uri,
-                smpUri = smp.uri,
+                audioUri = audio?.uri ?: backingTracks.uri,
+                smpUri = smp?.uri ?: backingTracks.uri,
                 djUri = dj.uri,
                 backupsUri = backups.uri
             )
@@ -194,7 +252,8 @@ internal fun initializeSafWorkspaceFromPickedTree(
         context = context,
         providedSnapshot = WorkspaceResolver.resolve(context),
         expectedMode = StorageModePrefs.Mode.SAF,
-        stage = "$stage:folders"
+        stage = "$stage:folders",
+        createLegacyAudioTextDirs = false
     ) ?: return null
 
     DjFolderPrefs.save(context, folders.djUri)
@@ -205,7 +264,7 @@ internal fun initializeInternalWorkspace(
     context: Context,
     stage: String = "setup_internal"
 ): WorkspaceLibraryFolders? {
-    val rootFile = InternalStoragePaths.ensureSplRoot(context)
+    val rootFile = InternalStoragePaths.ensureSplRoot(context, createLegacyAudioTextDirs = false)
     val rootUri = Uri.fromFile(rootFile)
     BackupFolderPrefsInternal.saveLibraryRootUri(context, rootUri)
     BackupFolderPrefs.saveLibraryRootUri(context, rootUri)
@@ -214,7 +273,8 @@ internal fun initializeInternalWorkspace(
         context = context,
         providedSnapshot = WorkspaceResolver.resolve(context),
         expectedMode = StorageModePrefs.Mode.INTERNAL,
-        stage = "$stage:folders"
+        stage = "$stage:folders",
+        createLegacyAudioTextDirs = false
     ) ?: return null
 
     DjFolderPrefs.save(context, folders.djUri)
@@ -226,13 +286,22 @@ private fun ensureDocumentDir(
     expectedName: String,
     aliases: List<String> = emptyList()
 ): DocumentFile? {
+    return resolveDocumentDir(parent, expectedName, aliases, createIfMissing = true)
+}
+
+private fun resolveDocumentDir(
+    parent: DocumentFile,
+    expectedName: String,
+    aliases: List<String> = emptyList(),
+    createIfMissing: Boolean
+): DocumentFile? {
     val wanted = (listOf(expectedName) + aliases).map(::normalizeWorkspaceFolderName)
     parent.listFiles()
         .firstOrNull { child ->
             child.isDirectory && normalizeWorkspaceFolderName(child.name.orEmpty()) in wanted
         }
         ?.let { return it }
-    return parent.createDirectory(expectedName)
+    return if (createIfMissing) parent.createDirectory(expectedName) else null
 }
 
 private fun ensureFileDir(dir: File): File {
@@ -240,6 +309,14 @@ private fun ensureFileDir(dir: File): File {
         dir.mkdirs()
     }
     return dir
+}
+
+private fun findExistingFileDirIgnoreCase(parent: File, names: List<String>): File? {
+    val wanted = names.map(::normalizeWorkspaceFolderName).toSet()
+    return parent.listFiles()
+        ?.firstOrNull { child ->
+            child.isDirectory && normalizeWorkspaceFolderName(child.name) in wanted
+        }
 }
 
 private fun normalizeWorkspaceFolderName(name: String): String {
