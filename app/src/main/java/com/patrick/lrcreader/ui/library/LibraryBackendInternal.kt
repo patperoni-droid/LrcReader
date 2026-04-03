@@ -11,7 +11,6 @@ import com.patrick.lrcreader.core.StorageModePrefs
 import com.patrick.lrcreader.core.WorkspaceResolver
 import com.patrick.lrcreader.ui.LibraryEntry
 import com.patrick.lrcreader.ui.MoveResult
-import com.patrick.lrcreader.ui.isHiddenLibraryTransportFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -56,12 +55,7 @@ class LibraryBackendInternal(
     }
 
     override fun chooseInitialFolder(root: Uri, indexAll: List<LibraryIndexCache.CachedEntry>): Uri {
-        val rootDir = File(root.path ?: return root)
-        val backingDir = File(rootDir, "BackingTracks").apply { mkdirs() }
-        val audioDir = listOf("Audio", "audio")
-            .map { File(backingDir, it) }
-            .firstOrNull { dir -> dir.isDirectory && (dir.listFiles()?.isNotEmpty() == true) }
-        return audioDir?.let(Uri::fromFile) ?: Uri.fromFile(backingDir)
+        return root
     }
 
     override fun loadIndex(): List<LibraryIndexCache.CachedEntry> {
@@ -92,9 +86,7 @@ class LibraryBackendInternal(
     ): List<LibraryEntry> {
         if (folderUri.scheme != "file") return emptyList()
         val dir = File(folderUri.path ?: return emptyList())
-        val children = dir.listFiles()
-            ?.filterNot { child -> child.isFile && isHiddenLibraryTransportFile(child.name) }
-            .orEmpty()
+        val children = dir.listFiles().orEmpty()
 
         return children
             .map { f ->
@@ -285,7 +277,6 @@ class LibraryBackendInternal(
         fun walk(dir: File, parentUri: String?) {
             val children = dir.listFiles()?.toList().orEmpty()
             children.forEach { f ->
-                if (!f.isDirectory && isHiddenLibraryTransportFile(f.name)) return@forEach
                 val uriStr = Uri.fromFile(f).toString()
                 out += LibraryIndexCache.CachedEntry(
                     uriString = uriStr,

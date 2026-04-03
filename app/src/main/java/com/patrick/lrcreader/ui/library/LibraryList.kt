@@ -348,6 +348,15 @@ fun LibraryList(
                                         },
                                         onClick = { menuOpen = false; onMoveOne(uri) }
                                     )
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                stringResource(R.string.library_delete_action),
+                                                color = Color(0xFFFF6464)
+                                            )
+                                        },
+                                        onClick = { menuOpen = false; onDeleteOne(uri) }
+                                    )
                                 }
                                 if (canPlay || isSmp) {
                                     DropdownMenuItem(
@@ -356,17 +365,17 @@ fun LibraryList(
                                     )
                                 }
 
-                                DropdownMenuItem(
-                                    text = {
-                                        Text(
-                                            stringResource(
-                                                if (isSmp) R.string.library_delete_action else R.string.library_list_delete_permanently
-                                            ),
-                                            color = Color(0xFFFF6464)
-                                        )
-                                    },
-                                    onClick = { menuOpen = false; onDeleteOne(uri) }
-                                )
+                                if (isSmp) {
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                stringResource(R.string.library_delete_action),
+                                                color = Color(0xFFFF6464)
+                                            )
+                                        },
+                                        onClick = { menuOpen = false; onDeleteOne(uri) }
+                                    )
+                                }
                             }
                         }
                     }

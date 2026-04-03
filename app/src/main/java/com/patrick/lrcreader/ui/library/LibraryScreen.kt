@@ -63,7 +63,6 @@ import com.patrick.lrcreader.ui.LibraryEntry
 import com.patrick.lrcreader.ui.LibraryFolderCache
 import com.patrick.lrcreader.ui.SmpPreparationNoticeDialog
 import com.patrick.lrcreader.ui.clearPersistedUris
-import com.patrick.lrcreader.ui.isHiddenLibraryTransportFile
 import com.patrick.lrcreader.ui.theme.DarkBlueGradientBackground
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -164,18 +163,6 @@ private fun shouldHideFromMainLibrary(name: String): Boolean {
         isBackupFolderName(name) ||
         isConfigFolderName(name) ||
         isDjFolderName(name)
-}
-
-private fun isBackingTracksFolderName(name: String): Boolean {
-    val normalized = name.trim().lowercase()
-    return normalized == "backingtracks" || normalized == "backingtrack"
-}
-
-private fun shouldHideFromFilesInBackingTracks(name: String): Boolean {
-    return when (name.trim().lowercase()) {
-        "audio", "lyrics", "accords" -> true
-        else -> false
-    }
 }
 
 private fun resolveFolderName(context: android.content.Context, uri: Uri): String? {
@@ -700,15 +687,7 @@ fun LibraryScreen(
 
         val isFilesViewMode = libraryViewMode == LIBRARY_VIEW_MODE_FILES
         val visibleSource = if (isFilesViewMode) {
-            val isBackingTracksFolder = resolveFolderName(context, folderUri)
-                ?.let(::isBackingTracksFolderName) == true
-            if (isBackingTracksFolder) {
-                source.filterNot { entry ->
-                    entry.isDirectory && shouldHideFromFilesInBackingTracks(entry.name)
-                }
-            } else {
-                source
-            }
+            source
         } else {
             source.filterNot { entry ->
                 entry.isDirectory &&
@@ -1089,9 +1068,6 @@ fun LibraryScreen(
     val searchableEntries = remember(entries, titleAliasVersion, context) {
         entries
             .asSequence()
-            .filterNot { entry ->
-                !entry.isDirectory && isHiddenLibraryTransportFile(entry.name)
-            }
             .map { entry ->
                 val uriString = entry.uri.toString()
                 val displayTitle = if (!entry.isDirectory) {

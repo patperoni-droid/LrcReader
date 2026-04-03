@@ -15,7 +15,6 @@ import com.patrick.lrcreader.exo.BuildConfig
 import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.ui.LibraryEntry
 import com.patrick.lrcreader.ui.MoveResult
-import com.patrick.lrcreader.ui.isHiddenLibraryTransportFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicInteger
@@ -147,16 +146,7 @@ class LibraryBackendSaf(
 
     override fun chooseInitialFolder(root: Uri, indexAll: List<LibraryIndexCache.CachedEntry>): Uri {
         val resolvedRoot = getRootUri() ?: return root
-        val effectiveRoot = if (isUsableLibraryRoot(root, resolvedRoot)) root else resolvedRoot
-        val rootDoc = DocumentFile.fromTreeUri(context, effectiveRoot)
-            ?: DocumentFile.fromSingleUri(context, effectiveRoot)
-            ?: return effectiveRoot
-        val backingTracks = rootDoc.listFiles().firstOrNull { child ->
-            child.isDirectory &&
-                (child.name?.equals("BackingTracks", ignoreCase = true) == true ||
-                    child.name?.equals("BackingTrack", ignoreCase = true) == true)
-        }
-        return backingTracks?.uri ?: effectiveRoot
+        return if (isUsableLibraryRoot(root, resolvedRoot)) root else resolvedRoot
     }
 
     override fun loadIndex(): List<LibraryIndexCache.CachedEntry> {
@@ -218,7 +208,6 @@ class LibraryBackendSaf(
 
         val fromIndex = LibraryIndexCache.childrenOf(indexAll, folderUri)
             .asSequence()
-            .filterNot { entry -> !entry.isDirectory && isHiddenLibraryTransportFile(entry.name) }
             .map { e ->
             val isDj = e.isDirectory && e.name.equals("DJ", ignoreCase = true)
             if (isDj) {
@@ -239,9 +228,6 @@ class LibraryBackendSaf(
         val visibleFromFolder = realChildren
             ?.mapNotNull { f ->
                 val n = f.name ?: return@mapNotNull null
-                if (!f.isDirectory && isHiddenLibraryTransportFile(n)) {
-                    return@mapNotNull null
-                }
                 if (f.isDirectory && n.equals("DJ", ignoreCase = true)) {
                     asDjEntry(f.uri, n)
                 } else {
