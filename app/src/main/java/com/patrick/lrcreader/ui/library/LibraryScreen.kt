@@ -222,6 +222,7 @@ fun LibraryScreen(
     onWorkspaceChanged: () -> Unit = {},
     onAfterBackupImport: () -> Unit = {},
     onImportExternalSmp: () -> Unit,
+    onSyncWorkspaceSmpArchives: suspend () -> Int = { 0 },
     onImportGeneratedSmp: suspend (Uri) -> com.patrick.lrcreader.smp.SongUnit?,
     onImportGeneratedSmpFailureReason: () -> String? = { null },
     onDeleteSmpSong: suspend (String) -> Boolean = { false },
@@ -2157,6 +2158,11 @@ fun LibraryScreen(
                         val rootNow = backend.getRootUri() ?: return@launch
                         startLoading(sScanning, determinate = false)
                         try {
+                            val syncedArchiveCount = onSyncWorkspaceSmpArchives()
+                            Log.i(
+                                LIB_SMP_TRACE_TAG,
+                                "step=manual_rescan_workspace_sync importedCount=$syncedArchiveCount currentFolderUri=$currentFolderUri viewMode=$libraryViewMode"
+                            )
                             songItems = buildLibrarySongItemsAsync()
                             if (isSmpFolderUri(currentFolderUri)) {
                                 Log.i(

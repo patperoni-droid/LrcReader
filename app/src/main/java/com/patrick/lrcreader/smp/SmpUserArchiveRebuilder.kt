@@ -149,55 +149,60 @@ class SmpUserArchiveRebuilder(private val context: Context) {
             return emptyList()
         }
 
-        return when (
-            val smpDir = SmpWorkspaceArchiveStore.resolveWorkspaceSmpDir(
-                context = context,
-                snapshot = snapshot,
-                createIfMissing = false
+        val archiveDirs = SmpWorkspaceArchiveStore.resolveWorkspaceArchiveDirs(
+            context = context,
+            snapshot = snapshot,
+            createIfMissing = false
+        )
+        if (archiveDirs.isEmpty()) {
+            traceInfo(
+                "step=archive_dir_missing workspaceStatus=${snapshot.status} workspaceRoot=${snapshot.workspaceRootUri}"
             )
-        ) {
-            is SmpWorkspaceArchiveStore.WorkspaceSmpDir.SafDir -> {
-                val archiveFiles = smpDir.directory.listFiles()
-                    .orEmpty()
-                    .filter { it.isFile && SmpWorkspaceArchiveStore.isSupportedArchiveFileName(it.name.orEmpty()) }
-                    .sortedBy { it.name.orEmpty().lowercase() }
-                archiveFiles.forEach { archive ->
-                    traceInfo("step=archive_discovered backend=SAF name=${archive.name.orEmpty()} uri=${archive.uri}")
-                }
-                val archives = archiveFiles.map { it.uri }
-                Log.i(
-                    TAG,
-                    "step=resolve_archives backend=SAF dir=${smpDir.directory.uri} count=${archives.size}"
-                )
-                archives
-            }
+            Log.i(
+                TAG,
+                "step=resolve_archives backend=none count=0 workspaceStatus=${snapshot.status}"
+            )
+            return emptyList()
+        }
 
-            is SmpWorkspaceArchiveStore.WorkspaceSmpDir.FileDir -> {
-                val archiveFiles = smpDir.directory.listFiles()
-                    .orEmpty()
-                    .filter { it.isFile && SmpWorkspaceArchiveStore.isSupportedArchiveFileName(it.name) }
-                    .sortedBy { it.name.lowercase() }
-                archiveFiles.forEach { archive ->
-                    traceInfo("step=archive_discovered backend=file name=${archive.name} uri=${Uri.fromFile(archive)}")
+        val archives = linkedSetOf<Uri>()
+        archiveDirs.forEachIndexed { index, archiveDir ->
+            when (archiveDir) {
+                is SmpWorkspaceArchiveStore.WorkspaceSmpDir.SafDir -> {
+                    val backendLabel = if (index == 0) "SAF_PRIMARY" else "SAF_LEGACY"
+                    val archiveFiles = archiveDir.directory.listFiles()
+                        .orEmpty()
+                        .filter { it.isFile && SmpWorkspaceArchiveStore.isSupportedArchiveFileName(it.name.orEmpty()) }
+                        .sortedBy { it.name.orEmpty().lowercase() }
+                    archiveFiles.forEach { archive ->
+                        traceInfo("step=archive_discovered backend=$backendLabel name=${archive.name.orEmpty()} uri=${archive.uri}")
+                        archives += archive.uri
+                    }
+                    Log.i(
+                        TAG,
+                        "step=resolve_archives backend=$backendLabel dir=${archiveDir.directory.uri} count=${archiveFiles.size}"
+                    )
                 }
-                val archives = archiveFiles.map { Uri.fromFile(it) }
-                Log.i(
-                    TAG,
-                    "step=resolve_archives backend=file dir=${smpDir.directory.absolutePath} count=${archives.size}"
-                )
-                archives
-            }
 
-            null -> {
-                traceInfo(
-                    "step=archive_dir_missing workspaceStatus=${snapshot.status} workspaceRoot=${snapshot.workspaceRootUri}"
-                )
-                Log.i(
-                    TAG,
-                    "step=resolve_archives backend=none count=0 workspaceStatus=${snapshot.status}"
-                )
-                emptyList()
+                is SmpWorkspaceArchiveStore.WorkspaceSmpDir.FileDir -> {
+                    val backendLabel = if (index == 0) "file_primary" else "file_legacy"
+                    val archiveFiles = archiveDir.directory.listFiles()
+                        .orEmpty()
+                        .filter { it.isFile && SmpWorkspaceArchiveStore.isSupportedArchiveFileName(it.name) }
+                        .sortedBy { it.name.lowercase() }
+                    archiveFiles.forEach { archive ->
+                        val archiveUri = Uri.fromFile(archive)
+                        traceInfo("step=archive_discovered backend=$backendLabel name=${archive.name} uri=$archiveUri")
+                        archives += archiveUri
+                    }
+                    Log.i(
+                        TAG,
+                        "step=resolve_archives backend=$backendLabel dir=${archiveDir.directory.absolutePath} count=${archiveFiles.size}"
+                    )
+                }
             }
         }
+
+        return archives.toList()
     }
 }

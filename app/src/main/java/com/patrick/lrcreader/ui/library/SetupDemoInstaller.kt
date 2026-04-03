@@ -145,18 +145,17 @@ private fun installDemoIntoInternalStorage(
 ): DemoInstallPaths {
     val rootDir = File(rootUri.path ?: error("internal_root_path_missing"))
     val backingTracks = File(rootDir, "BackingTracks").apply { mkdirs() }
-    val smpDir = File(backingTracks, "SMP").apply { mkdirs() }
 
     val assetManager = context.assets
     val importedSongs = listDemoSmpAssetFiles(assetManager.list("demo/smp")).map { name ->
-        val destination = File(smpDir, name)
+        val destination = File(backingTracks, name)
         copyAssetToFile(
             context = context,
             assetPath = "demo/smp/$name",
             destination = destination,
             logicalType = "smp",
             mime = mimeTypeForAsset(name),
-            targetLabel = smpDir.absolutePath
+            targetLabel = backingTracks.absolutePath
         )
         importCopiedDemoSmp(
             secureImportPipeline = secureImportPipeline,
@@ -190,15 +189,13 @@ private fun installDemoIntoSafStorage(
         TAG,
         "resolve:BackingTracks root=${parentDoc.uri} result=${backingTracks.uri} children=${listChildNames(parentDoc)}"
     )
-    val smpDir = ensureDirSmart(backingTracks, "SMP", aliases = listOf("smp"))
-        ?: error("smp_dir_missing")
 
     val assetManager = context.assets
     val importedSongs = listDemoSmpAssetFiles(assetManager.list("demo/smp")).map { name ->
         val copiedUri = copyAssetToDocumentFile(
             context = context,
             assetPath = "demo/smp/$name",
-            targetDir = smpDir,
+            targetDir = backingTracks,
             fileName = name,
             logicalType = "smp"
         )

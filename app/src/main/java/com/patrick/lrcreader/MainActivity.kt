@@ -660,51 +660,64 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 val pickSmpFileLauncher = rememberLauncherForActivityResult(
-                    contract = ActivityResultContracts.OpenDocument()
-                ) { uri ->
-                    if (uri == null) {
+                    contract = ActivityResultContracts.OpenMultipleDocuments()
+                ) { uris ->
+                    if (uris.isNullOrEmpty()) {
                         Log.d("SMP", "Sélection du fichier .smp annulée")
                         return@rememberLauncherForActivityResult
                     }
 
-                    runCatching {
-                        ctx.contentResolver.takePersistableUriPermission(
-                            uri,
-                            Intent.FLAG_GRANT_READ_URI_PERMISSION
-                        )
-                    }.onFailure { error ->
-                        Log.w("SMP", "Permission persistante non obtenue pour $uri", error)
-                    }
-
-                    val pickedName = displayNameOf(uri)
-                    if (!pickedName.endsWith(".smp", ignoreCase = true)) {
-                        Log.w("SMP", "Fichier sélectionné sans extension .smp: name=$pickedName uri=$uri")
-                    }
-                    Log.w(
-                        "IMPORT_PROOF",
-                        "elapsedMs=${SystemClock.elapsedRealtime()} file=MainActivity.kt phase=library_external_smp_picker detail=name=$pickedName uri=$uri"
-                    )
-                    Toast.makeText(ctx, "IMPORT_PROOF external SMP picker path", Toast.LENGTH_SHORT).show()
-
-                    scope.launch {
-                        val importedSong = importSmpIntoApp(uri, libraryRuntimeReadyFirst = true)
-                        val toastMessage = if (importedSong != null) {
-                            Log.i(
-                                "SMP",
-                                "Import SMP réussi: name=$pickedName songId=${importedSong.id} title=${importedSong.title} storageFolder=${importedSong.storageFolder}"
+                    val distinctUris = uris.distinctBy { it.toString() }
+                    distinctUris.forEach { uri ->
+                        runCatching {
+                            ctx.contentResolver.takePersistableUriPermission(
+                                uri,
+                                Intent.FLAG_GRANT_READ_URI_PERMISSION
                             )
-                            "Import SMP réussi"
-                        } else {
-                            val failureReason = lastSmpImportFailureReason.get()
-                                ?: smpImporter.lastFailureReason
-                                ?: "inconnue"
-                            Log.e(
-                                "SMP",
-                                "Import SMP échoué: name=$pickedName reason=$failureReason"
-                            )
-                            "Import SMP échoué: $failureReason"
+                        }.onFailure { error ->
+                            Log.w("SMP", "Permission persistante non obtenue pour $uri", error)
                         }
 
+                        val pickedName = displayNameOf(uri)
+                        if (!pickedName.endsWith(".smp", ignoreCase = true)) {
+                            Log.w("SMP", "Fichier sélectionné sans extension .smp: name=$pickedName uri=$uri")
+                        }
+                        Log.w(
+                            "IMPORT_PROOF",
+                            "elapsedMs=${SystemClock.elapsedRealtime()} file=MainActivity.kt phase=library_external_smp_picker detail=name=$pickedName uri=$uri"
+                        )
+                    }
+
+                    scope.launch {
+                        var successCount = 0
+                        var failureCount = 0
+
+                        distinctUris.forEach { uri ->
+                            val pickedName = displayNameOf(uri)
+                            val importedSong = importSmpIntoApp(uri, libraryRuntimeReadyFirst = true)
+                            if (importedSong != null) {
+                                successCount += 1
+                                Log.i(
+                                    "SMP",
+                                    "Import SMP réussi: name=$pickedName songId=${importedSong.id} title=${importedSong.title} storageFolder=${importedSong.storageFolder}"
+                                )
+                            } else {
+                                failureCount += 1
+                                val failureReason = lastSmpImportFailureReason.get()
+                                    ?: smpImporter.lastFailureReason
+                                    ?: "inconnue"
+                                Log.e(
+                                    "SMP",
+                                    "Import SMP échoué: name=$pickedName reason=$failureReason"
+                                )
+                            }
+                        }
+
+                        val toastMessage = ctx.getString(
+                            R.string.smp_batch_import_summary,
+                            successCount,
+                            failureCount
+                        )
                         Toast.makeText(ctx, toastMessage, Toast.LENGTH_SHORT).show()
                     }
                 }
@@ -985,12 +998,189 @@ class MainActivity : AppCompatActivity() {
 
                 // ✅ Index pour SearchScreen
                 var indexAll by remember { mutableStateOf<List<LibraryIndexCache.CachedEntry>>(emptyList()) }
+                suspend fun syncWorkspaceSmpArchivesToRuntime(
+                    trigger: String,
+                    useAttemptGate: Boolean
+                ): Int {
+                    val rootKey = savedRoot?.toString()
+                    val canUseStorage = rootKey != null &&
+                        !shouldShowSetup &&
+                        (isInternalMode || hasSetupPerm) &&
+                        configInitDoneForRoot == rootKey
+
+                    Log.i(
+                        "SMP_TRACE",
+                        "step=rebuild_gate trigger=$trigger rootKey=$rootKey savedRoot=$savedRoot canUseStorage=$canUseStorage shouldShowSetup=$shouldShowSetup hasSetupPerm=$hasSetupPerm isInternalMode=$isInternalMode configInitDoneForRoot=$configInitDoneForRoot"
+                    )
+
+                    if (!canUseStorage) {
+                        Log.i(
+                            "SMP_TRACE",
+                            "step=rebuild_gate_skip trigger=$trigger rootKey=$rootKey reason=storage_not_ready"
+                        )
+                        return 0
+                    }
+
+                    if (useAttemptGate && smpUserRebuildAttemptedForRoot == rootKey) {
+                        Log.i(
+                            "SMP_TRACE",
+                            "step=rebuild_gate_skip trigger=$trigger rootKey=$rootKey reason=already_attempted"
+                        )
+                        return 0
+                    }
+                    if (useAttemptGate) {
+                        smpUserRebuildAttemptedForRoot = rootKey
+                    }
+
+                    val runtimeSongs = withContext(Dispatchers.IO) {
+                        smpLibraryScanner.listSongs()
+                    }
+                    val runtimeSongIds = runtimeSongs.map { it.id }.sorted()
+                    Log.i(
+                        "SMP_TRACE",
+                        "step=runtime_before_sync trigger=$trigger rootKey=$rootKey count=${runtimeSongs.size} songIds=${runtimeSongIds.joinToString(prefix = "[", postfix = "]", limit = 20, truncated = "...")}"
+                    )
+
+                    if (runtimeSongs.isEmpty()) {
+                        Log.i("SMP_TRACE", "step=global_rebuild_mode trigger=$trigger rootKey=$rootKey")
+                        val userArchives = withContext(Dispatchers.IO) {
+                            smpUserArchiveRebuilder.listUserArchiveUris()
+                        }
+                        if (userArchives.isEmpty()) {
+                            Log.i("SMP_REBUILD", "step=skip_no_user_archives trigger=$trigger root=$rootKey")
+                            Log.i(
+                                "SMP_TRACE",
+                                "step=global_rebuild_skip trigger=$trigger rootKey=$rootKey reason=no_archives"
+                            )
+                            return 0
+                        }
+
+                        Log.i(
+                            "SMP_REBUILD",
+                            "step=start trigger=$trigger root=$rootKey archiveCount=${userArchives.size}"
+                        )
+
+                        val rebuildResult = withContext(Dispatchers.IO) {
+                            smpUserArchiveRebuilder.rebuildFromUserArchives(userArchives)
+                        }
+
+                        val rebuiltSongs = withContext(Dispatchers.IO) {
+                            smpLibraryScanner.listSongs()
+                        }
+                        smpSongsById = rebuiltSongs.associateBy { it.id }
+                        Log.i(
+                            "SMP_TRACE",
+                            "step=runtime_after_global_rebuild trigger=$trigger rootKey=$rootKey count=${rebuiltSongs.size} songIds=${rebuiltSongs.map { it.id }.sorted().joinToString(prefix = "[", postfix = "]", limit = 20, truncated = "...")}"
+                        )
+
+                        if (rebuildResult.importedCount > 0) {
+                            smpCacheRefreshTick++
+                        }
+
+                        Log.i(
+                            "SMP_REBUILD",
+                            "step=done trigger=$trigger root=$rootKey archives=${rebuildResult.discoveredCount} imported=${rebuildResult.importedCount} failed=${rebuildResult.failedCount} runtimeCount=${rebuiltSongs.size}"
+                        )
+                        return rebuildResult.importedCount
+                    }
+
+                    Log.i(
+                        "SMP_TRACE",
+                        "step=partial_sync_mode trigger=$trigger rootKey=$rootKey runtimeCount=${runtimeSongs.size}"
+                    )
+                    val runtimeSongIdsSet = runtimeSongIds.toSet()
+                    val archiveCandidates = withContext(Dispatchers.IO) {
+                        smpUserArchiveRebuilder.listUserArchiveCandidates()
+                    }
+                    if (archiveCandidates.isEmpty()) {
+                        Log.i(
+                            "SMP_REBUILD",
+                            "step=partial_skip_no_user_archives trigger=$trigger root=$rootKey runtimeCount=${runtimeSongs.size}"
+                        )
+                        Log.i(
+                            "SMP_TRACE",
+                            "step=partial_sync_skip trigger=$trigger rootKey=$rootKey reason=no_archives"
+                        )
+                        return 0
+                    }
+
+                    val partialPlan = SmpUserArchiveRebuilder.buildPartialSyncPlan(
+                        runtimeSongIds = runtimeSongIdsSet,
+                        candidates = archiveCandidates
+                    )
+                    Log.i(
+                        "SMP_TRACE",
+                        "step=partial_plan_summary trigger=$trigger rootKey=$rootKey archiveCount=${archiveCandidates.size} importCount=${partialPlan.importCount} skippedInvalid=${partialPlan.skippedInvalidArchives.size} skippedDuplicate=${partialPlan.skippedDuplicateSongIds.size}"
+                    )
+
+                    partialPlan.skippedInvalidArchives.forEach { archiveUri ->
+                        Log.i(
+                            "SMP_REBUILD",
+                            "step=partial_skip_invalid_id trigger=$trigger root=$rootKey uri=$archiveUri"
+                        )
+                    }
+                    partialPlan.skippedDuplicateSongIds.forEach { songId ->
+                        Log.i(
+                            "SMP_REBUILD",
+                            "step=partial_skip_duplicate_id trigger=$trigger root=$rootKey songId=$songId"
+                        )
+                    }
+
+                    if (partialPlan.importCount == 0) {
+                        Log.i(
+                            "SMP_REBUILD",
+                            "step=partial_done trigger=$trigger root=$rootKey archives=${archiveCandidates.size} imported=0 failed=0 skippedInvalid=${partialPlan.skippedInvalidArchives.size} skippedDuplicate=${partialPlan.skippedDuplicateSongIds.size} runtimeCount=${runtimeSongs.size}"
+                        )
+                        return 0
+                    }
+
+                    Log.i(
+                        "SMP_REBUILD",
+                        "step=partial_sync_start trigger=$trigger root=$rootKey archiveCount=${archiveCandidates.size} missingCount=${partialPlan.importCount} runtimeCount=${runtimeSongs.size}"
+                    )
+                    partialPlan.archivesToImport.forEach { candidate ->
+                        Log.i(
+                            "SMP_REBUILD",
+                            "step=partial_import trigger=$trigger root=$rootKey songId=${candidate.stableSongId} uri=${candidate.archiveUri}"
+                        )
+                    }
+
+                    val rebuildResult = withContext(Dispatchers.IO) {
+                        smpUserArchiveRebuilder.rebuildFromUserArchives(
+                            partialPlan.archivesToImport.map { it.archiveUri }
+                        )
+                    }
+
+                    val rebuiltSongs = withContext(Dispatchers.IO) {
+                        smpLibraryScanner.listSongs()
+                    }
+                    smpSongsById = rebuiltSongs.associateBy { it.id }
+                    Log.i(
+                        "SMP_TRACE",
+                        "step=runtime_after_partial_sync trigger=$trigger rootKey=$rootKey count=${rebuiltSongs.size} songIds=${rebuiltSongs.map { it.id }.sorted().joinToString(prefix = "[", postfix = "]", limit = 20, truncated = "...")}"
+                    )
+
+                    if (rebuildResult.importedCount > 0) {
+                        smpCacheRefreshTick++
+                    }
+
+                    Log.i(
+                        "SMP_REBUILD",
+                        "step=partial_done trigger=$trigger root=$rootKey archives=${archiveCandidates.size} imported=${rebuildResult.importedCount} failed=${rebuildResult.failedCount} skippedInvalid=${partialPlan.skippedInvalidArchives.size} skippedDuplicate=${partialPlan.skippedDuplicateSongIds.size} runtimeCount=${runtimeSongs.size}"
+                    )
+                    return rebuildResult.importedCount
+                }
                 LaunchedEffect(smpCacheRefreshTick) {
                     smpSongsById = withContext(Dispatchers.IO) {
                         smpLibraryScanner.listSongs().associateBy { it.id }
                     }
                 }
                 LaunchedEffect(savedRoot, hasSetupPerm, isInternalMode, shouldShowSetup, configInitDoneForRoot) {
+                    syncWorkspaceSmpArchivesToRuntime(
+                        trigger = "startup",
+                        useAttemptGate = true
+                    )
+                    return@LaunchedEffect
                     val rootKey = savedRoot?.toString()
                     val canUseStorage = rootKey != null &&
                         !shouldShowSetup &&
@@ -2721,6 +2911,12 @@ class MainActivity : AppCompatActivity() {
                                                     "application/octet-stream",
                                                     "*/*"
                                                 )
+                                            )
+                                        },
+                                        onSyncWorkspaceSmpArchives = {
+                                            syncWorkspaceSmpArchivesToRuntime(
+                                                trigger = "library_manual_rescan",
+                                                useAttemptGate = false
                                             )
                                         },
                                         onImportGeneratedSmp = { uri ->

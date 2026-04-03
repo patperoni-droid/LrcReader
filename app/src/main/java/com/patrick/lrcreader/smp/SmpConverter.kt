@@ -342,17 +342,12 @@ class SmpConverter(private val context: Context) {
             val rootDir = File(fileRoot.path ?: "").takeIf { it.path.isNotBlank() }
                 ?: InternalStoragePaths.ensureSplRoot(context)
             val backingTracksDir = File(rootDir, "BackingTracks").apply { mkdirs() }
-            val smpDir = File(backingTracksDir, "SMP").apply { mkdirs() }
-            return OutputParent.FileParent(smpDir)
+            return OutputParent.FileParent(backingTracksDir)
         }
 
         val backingTracksDir = resolveWritableSafBackingTracksDir()
             ?: throw IOException("BackingTracks SAF introuvable pour écriture SMP")
-        val smpDir = backingTracksDir.findFile("SMP")
-            ?: backingTracksDir.findFile("smp")
-            ?: backingTracksDir.createDirectory("SMP")
-            ?: throw IOException("Création du dossier SMP impossible dans ${backingTracksDir.uri}")
-        return OutputParent.SafParent(smpDir)
+        return OutputParent.SafParent(backingTracksDir)
     }
 
     private fun resolvePreferredFileOutputDir(sourceFile: File): File {
@@ -366,11 +361,10 @@ class SmpConverter(private val context: Context) {
             (backingTracksDir.name.equals("BackingTracks", ignoreCase = true) ||
                 backingTracksDir.name.equals("BackingTrack", ignoreCase = true))
         ) {
-            val smpDir = File(backingTracksDir, "SMP")
-            if (!smpDir.exists() && !smpDir.mkdirs()) {
-                throw IOException("Création du dossier SMP impossible: ${smpDir.absolutePath}")
+            if (!backingTracksDir.exists() && !backingTracksDir.mkdirs()) {
+                throw IOException("Création du dossier BackingTracks impossible: ${backingTracksDir.absolutePath}")
             }
-            return smpDir
+            return backingTracksDir
         }
 
         return parentDir
@@ -394,17 +388,7 @@ class SmpConverter(private val context: Context) {
         val chosenOutputParent = if (isAudioFolder && grandParentDir != null && isBackingTracksFolder) {
             val writableBackingTracks = resolveWritableSafBackingTracksDir()
             writableBackingTracksUri = writableBackingTracks?.uri
-            if (writableBackingTracks != null) {
-                writableBackingTracks.findFile("SMP")
-                    ?: writableBackingTracks.findFile("smp")
-                    ?: writableBackingTracks.createDirectory("SMP")
-                    ?: throw IOException("Création du dossier SMP impossible dans ${writableBackingTracks.uri}")
-            } else {
-                grandParentDir.findFile("SMP")
-                    ?: grandParentDir.findFile("smp")
-                    ?: grandParentDir.createDirectory("SMP")
-                    ?: throw IOException("Création du dossier SMP impossible dans ${grandParentDir.uri}")
-            }
+            writableBackingTracks ?: grandParentDir
         } else {
             parentDir
         }
