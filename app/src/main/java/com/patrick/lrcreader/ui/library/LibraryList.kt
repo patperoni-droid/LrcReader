@@ -90,19 +90,9 @@ fun LibraryList(
         contentPadding = PaddingValues(bottom = bottomPadding)
     ) {
         items(entries, key = { "$aliasVersion:${it.uri}" }) { entry ->
-            val isDisabled = entry.disabled
             if (entry.isDirectory) {
-                val displayFolderName = if (entry.name.equals("DJ", ignoreCase = true)) {
-                    "DJ (scan séparé)"
-                } else {
-                    entry.name
-                }
-
-                val rowClick = if (!isDisabled) {
-                    Modifier.clickable { onOpenFolder(entry) }
-                } else {
-                    Modifier
-                }
+                val uri = entry.uri
+                var menuOpen by remember { mutableStateOf(false) }
 
                 Row(
                     modifier = Modifier
@@ -110,30 +100,47 @@ fun LibraryList(
                         .padding(vertical = 3.dp)
                         .background(cardBg, RoundedCornerShape(10.dp))
                         .border(1.dp, rowBorder, RoundedCornerShape(10.dp))
-                        .then(rowClick)
-                        .alpha(if (isDisabled) 0.45f else 1f)
+                        .clickable { onOpenFolder(entry) }
                         .padding(horizontal = 12.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
                         Icons.Default.Folder,
                         null,
-                        tint = if (isDisabled) accent.copy(alpha = 0.55f) else accent,
+                        tint = accent,
                         modifier = Modifier.size(22.dp)
                     )
                     Spacer(Modifier.width(10.dp))
 
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(displayFolderName, color = Color.White, fontSize = 15.sp)
+                        Text(entry.name, color = Color.White, fontSize = 15.sp)
+                    }
 
-                        if (isDisabled && !entry.disabledReason.isNullOrBlank()) {
-                            Spacer(Modifier.height(2.dp))
-                            Text(
-                                text = entry.disabledReason!!,
-                                color = Color.White.copy(alpha = 0.65f),
-                                fontSize = 11.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                    Box {
+                        IconButton(onClick = { menuOpen = true }) {
+                            Icon(Icons.Default.MoreVert, null, tint = Color.White)
+                        }
+                        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                            DropdownMenuItem(
+                                text = {
+                                    Text(stringResource(R.string.library_list_copy_to_folder), color = Color.White)
+                                },
+                                onClick = { menuOpen = false; onCopyOne(uri) }
+                            )
+                            DropdownMenuItem(
+                                text = {
+                                    Text(stringResource(R.string.library_list_move_to_folder), color = Color.White)
+                                },
+                                onClick = { menuOpen = false; onMoveOne(uri) }
+                            )
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        stringResource(R.string.library_delete_action),
+                                        color = Color(0xFFFF6464)
+                                    )
+                                },
+                                onClick = { menuOpen = false; onDeleteOne(uri) }
                             )
                         }
                     }

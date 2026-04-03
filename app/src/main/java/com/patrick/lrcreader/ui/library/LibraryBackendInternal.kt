@@ -96,11 +96,6 @@ class LibraryBackendInternal(
                     isDirectory = f.isDirectory
                 )
             }
-            .map { e ->
-                if (e.isDirectory && e.name.equals("DJ", ignoreCase = true)) {
-                    e.copy(disabled = true, disabledReason = djExcludedReason)
-                } else e
-            }
             .sortedWith(compareByDescending<LibraryEntry> { it.isDirectory }.thenBy { it.name.lowercase() })
     }
 
@@ -157,12 +152,28 @@ class LibraryBackendInternal(
         val srcFile = File(srcUri.path ?: return@withContext MoveResult(false))
         val destDir = File(destUri.path ?: return@withContext MoveResult(false))
         if (!srcFile.exists() || !destDir.exists() || !destDir.isDirectory) return@withContext MoveResult(false)
+        if (srcFile.isDirectory && isSameOrDescendantDirectory(srcFile, destDir)) {
+            return@withContext MoveResult(false)
+        }
 
         mainHandler.post { onProgress(null, "Déplacement…") }
 
         val out = File(destDir, srcFile.name)
+        if (out.exists()) return@withContext MoveResult(false)
         if (srcFile.renameTo(out)) {
             return@withContext MoveResult(ok = true, newUri = Uri.fromFile(out))
+        }
+
+        if (srcFile.isDirectory) {
+            val copied = copyEntryRecursively(srcFile, out)
+            val deleted = copied && srcFile.deleteRecursively()
+            if (copied && deleted) {
+                return@withContext MoveResult(ok = true, newUri = Uri.fromFile(out))
+            }
+            if (out.exists()) {
+                out.deleteRecursively()
+            }
+            return@withContext MoveResult(false)
         }
 
         runCatching {
@@ -186,7 +197,10 @@ class LibraryBackendInternal(
         if (srcUri.scheme != "file" || destUri.scheme != "file") return@withContext MoveResult(false)
         val srcFile = File(srcUri.path ?: return@withContext MoveResult(false))
         val destDir = File(destUri.path ?: return@withContext MoveResult(false))
-        if (!srcFile.exists() || !srcFile.isFile || !destDir.exists() || !destDir.isDirectory) {
+        if (!srcFile.exists() || !destDir.exists() || !destDir.isDirectory) {
+            return@withContext MoveResult(false)
+        }
+        if (srcFile.isDirectory && isSameOrDescendantDirectory(srcFile, destDir)) {
             return@withContext MoveResult(false)
         }
 
@@ -194,6 +208,17 @@ class LibraryBackendInternal(
         if (out.exists()) return@withContext MoveResult(false)
 
         mainHandler.post { onProgress(null, "Copie…") }
+
+        if (srcFile.isDirectory) {
+            return@withContext if (copyEntryRecursively(srcFile, out)) {
+                MoveResult(ok = true, newUri = Uri.fromFile(out))
+            } else {
+                if (out.exists()) {
+                    out.deleteRecursively()
+                }
+                MoveResult(ok = false)
+            }
+        }
 
         runCatching {
             srcFile.inputStream().use { input ->
@@ -255,7 +280,9 @@ class LibraryBackendInternal(
             )
         }
 
-        val ok = runCatching { file.delete() }.getOrDefault(false)
+        val ok = runCatching {
+            if (file.isDirectory) file.deleteRecursively() else file.delete()
+        }.getOrDefault(false)
         if (ok) {
             return LibraryDeleteItemResult(
                 item = item,
@@ -269,6 +296,33 @@ class LibraryBackendInternal(
             status = LibraryDeleteStatus.FAILED,
             detail = "delete_returned_false"
         )
+    }
+
+    private fun copyEntryRecursively(source: File, destination: File): Boolean {
+        if (source.isDirectory) {
+            if (!destination.mkdir()) return false
+            source.listFiles().orEmpty().forEach { child ->
+                if (!copyEntryRecursively(child, File(destination, child.name))) return false
+            }
+            return true
+        }
+
+        return runCatching {
+            source.inputStream().use { input ->
+                destination.outputStream().use { output ->
+                    input.copyTo(output)
+                }
+            }
+            true
+        }.getOrDefault(false)
+    }
+
+    private fun isSameOrDescendantDirectory(sourceDir: File, candidateDir: File): Boolean {
+        return runCatching {
+            val sourcePath = sourceDir.canonicalFile.toPath()
+            val candidatePath = candidateDir.canonicalFile.toPath()
+            candidatePath.startsWith(sourcePath)
+        }.getOrDefault(false)
     }
 
     private fun buildInternalIndex(rootDir: File): List<LibraryIndexCache.CachedEntry> {

@@ -15,6 +15,7 @@ import com.patrick.lrcreader.exo.BuildConfig
 import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.ui.LibraryEntry
 import com.patrick.lrcreader.ui.MoveResult
+import com.patrick.lrcreader.ui.asTreeDocumentUri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicInteger
@@ -196,29 +197,14 @@ class LibraryBackendSaf(
             "listFolder uri=$folderUri name=${folderDoc?.name} docExists=${folderDoc?.exists()} isDir=${folderDoc?.isDirectory} count=${runCatching { folderDoc?.listFiles()?.size }.getOrNull()} children=${listChildNames(folderDoc)}"
         )
 
-        fun asDjEntry(uri: Uri, name: String): LibraryEntry {
-            return LibraryEntry(
-                uri = uri,
-                name = name,
-                isDirectory = true,
-                disabled = true,
-                disabledReason = djExcludedReason
-            )
-        }
-
         val fromIndex = LibraryIndexCache.childrenOf(indexAll, folderUri)
             .asSequence()
             .map { e ->
-            val isDj = e.isDirectory && e.name.equals("DJ", ignoreCase = true)
-            if (isDj) {
-                asDjEntry(Uri.parse(e.uriString), e.name)
-            } else {
                 LibraryEntry(
                     uri = Uri.parse(e.uriString),
                     name = e.name,
                     isDirectory = e.isDirectory
                 )
-            }
         }
             .toMutableList()
 
@@ -228,38 +214,15 @@ class LibraryBackendSaf(
         val visibleFromFolder = realChildren
             ?.mapNotNull { f ->
                 val n = f.name ?: return@mapNotNull null
-                if (f.isDirectory && n.equals("DJ", ignoreCase = true)) {
-                    asDjEntry(f.uri, n)
-                } else {
-                    LibraryEntry(
-                        uri = f.uri,
-                        name = n,
-                        isDirectory = f.isDirectory
-                    )
-                }
+                LibraryEntry(
+                    uri = f.uri,
+                    name = n,
+                    isDirectory = f.isDirectory
+                )
             }
             ?.toMutableList()
 
         val visibleEntries = visibleFromFolder ?: fromIndex
-
-        val djDoc = realChildren
-            ?.firstOrNull { it.isDirectory && it.name.equals("DJ", ignoreCase = true) }
-
-        val rootUri = getRootUri()
-        val isRootFolder = runCatching {
-            val folderNorm = normalizeAsTreeUri(folderUri) ?: folderUri
-            val rootNorm = rootUri?.let { normalizeAsTreeUri(it) ?: it }
-            rootNorm != null && folderNorm == rootNorm
-        }.getOrDefault(false)
-
-        val alreadyHasDj = visibleEntries.any { it.isDirectory && it.name.equals("DJ", ignoreCase = true) }
-        if (djDoc != null) {
-            if (!alreadyHasDj) visibleEntries.add(asDjEntry(djDoc.uri, djDoc.name ?: "DJ"))
-        } else if (isRootFolder && !alreadyHasDj) {
-            // DJ reste hors scan bibliothèque pour les perfs, mais doit rester visible au root SPL_Music.
-            val placeholderUri = folderUri.buildUpon().appendQueryParameter("dj_placeholder", "1").build()
-            visibleEntries.add(asDjEntry(placeholderUri, "DJ"))
-        }
 
         return visibleEntries.sortedWith(
             compareByDescending<LibraryEntry> { it.isDirectory }
@@ -344,6 +307,32 @@ class LibraryBackendSaf(
         indexAll: List<LibraryIndexCache.CachedEntry>,
         onProgress: (Float?, String?) -> Unit
     ): MoveResult {
+        val srcDoc = resolveDocument(srcUri)
+        if (srcDoc?.isDirectory == true) {
+            val rootTree = resolveUsableWorkspaceSnapshot(
+                context = context,
+                providedSnapshot = resolvedWorkspaceSnapshot,
+                expectedMode = StorageModePrefs.Mode.SAF,
+                stage = "library_backend_saf:move_dir"
+            )?.workspaceRootUri ?: return MoveResult(false)
+            val destFixed = asTreeDocumentUri(rootTree, destUri)
+            val destDir = resolveDocument(destFixed) ?: return MoveResult(false)
+            if (!destDir.isDirectory) return MoveResult(false)
+            if (isInsideTree(destDir.uri, srcDoc.uri)) return MoveResult(false)
+
+            return withContext(Dispatchers.IO) {
+                mainHandler.post { onProgress(null, "Déplacement…") }
+                val copied = copyDocumentEntryRecursively(srcDoc, destDir) ?: return@withContext MoveResult(false)
+                val deleted = deleteDocumentRecursively(srcDoc)
+                if (deleted) {
+                    MoveResult(ok = true, newUri = copied.uri)
+                } else {
+                    deleteDocumentRecursively(copied)
+                    MoveResult(false)
+                }
+            }
+        }
+
         return libraryMoveOneFile(
             context = context,
             mainHandler = mainHandler,
@@ -361,6 +350,26 @@ class LibraryBackendSaf(
         indexAll: List<LibraryIndexCache.CachedEntry>,
         onProgress: (Float?, String?) -> Unit
     ): MoveResult {
+        val srcDoc = resolveDocument(srcUri)
+        if (srcDoc?.isDirectory == true) {
+            val rootTree = resolveUsableWorkspaceSnapshot(
+                context = context,
+                providedSnapshot = resolvedWorkspaceSnapshot,
+                expectedMode = StorageModePrefs.Mode.SAF,
+                stage = "library_backend_saf:copy_dir"
+            )?.workspaceRootUri ?: return MoveResult(false)
+            val destFixed = asTreeDocumentUri(rootTree, destUri)
+            val destDir = resolveDocument(destFixed) ?: return MoveResult(false)
+            if (!destDir.isDirectory) return MoveResult(false)
+            if (isInsideTree(destDir.uri, srcDoc.uri)) return MoveResult(false)
+
+            return withContext(Dispatchers.IO) {
+                mainHandler.post { onProgress(null, "Copie…") }
+                val copied = copyDocumentEntryRecursively(srcDoc, destDir)
+                MoveResult(ok = copied != null, newUri = copied?.uri)
+            }
+        }
+
         return libraryCopyOneFile(
             context = context,
             mainHandler = mainHandler,
@@ -407,8 +416,7 @@ class LibraryBackendSaf(
 
     private fun deleteSingleDetailed(item: LibraryDeleteItem): LibraryDeleteItemResult {
         return try {
-            val doc = DocumentFile.fromSingleUri(context, item.uri)
-                ?: DocumentFile.fromTreeUri(context, item.uri)
+            val doc = resolveDocument(item.uri)
             if (doc == null) {
                 Log.e(tag, "delete failed unresolved uri=${item.uri}")
                 return LibraryDeleteItemResult(
@@ -427,7 +435,11 @@ class LibraryBackendSaf(
                 )
             }
 
-            val ok = runCatching { doc.delete() }.getOrDefault(false)
+            val ok = if (doc.isDirectory) {
+                deleteDocumentRecursively(doc)
+            } else {
+                runCatching { doc.delete() }.getOrDefault(false)
+            }
             if (ok) {
                 return LibraryDeleteItemResult(
                     item = item,
@@ -449,6 +461,66 @@ class LibraryBackendSaf(
                 detail = "exception:${t::class.simpleName ?: "Unknown"}"
             )
         }
+    }
+
+    private fun resolveDocument(uri: Uri): DocumentFile? {
+        return DocumentFile.fromSingleUri(context, uri) ?: DocumentFile.fromTreeUri(context, uri)
+    }
+
+    private fun copyDocumentEntryRecursively(
+        source: DocumentFile,
+        destDir: DocumentFile
+    ): DocumentFile? {
+        val name = source.name ?: return null
+        if (destDir.findFile(name) != null) return null
+
+        if (source.isDirectory) {
+            val newDir = destDir.createDirectory(name) ?: return null
+            val children = runCatching { source.listFiles().toList() }.getOrDefault(emptyList())
+            for (child in children) {
+                if (copyDocumentEntryRecursively(child, newDir) == null) {
+                    deleteDocumentRecursively(newDir)
+                    return null
+                }
+            }
+            return newDir
+        }
+
+        val mime = source.type ?: "application/octet-stream"
+        val newFile = destDir.createFile(mime, name) ?: return null
+        val copied = runCatching {
+            val input = context.contentResolver.openInputStream(source.uri)
+            val output = context.contentResolver.openOutputStream(newFile.uri, "w")
+            if (input == null || output == null) {
+                input?.close()
+                output?.close()
+                false
+            } else {
+                input.use { inStream ->
+                    output.use { outStream ->
+                        inStream.copyTo(outStream)
+                        outStream.flush()
+                    }
+                }
+                true
+            }
+        }.getOrDefault(false)
+
+        if (!copied) {
+            runCatching { newFile.delete() }
+            return null
+        }
+        return newFile
+    }
+
+    private fun deleteDocumentRecursively(doc: DocumentFile): Boolean {
+        if (doc.isDirectory) {
+            val children = runCatching { doc.listFiles().toList() }.getOrDefault(emptyList())
+            for (child in children) {
+                if (!deleteDocumentRecursively(child)) return false
+            }
+        }
+        return runCatching { doc.delete() }.getOrDefault(false)
     }
 
     private fun ensureDirSmart(

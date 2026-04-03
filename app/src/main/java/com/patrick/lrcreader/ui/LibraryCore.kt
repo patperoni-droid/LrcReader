@@ -292,8 +292,7 @@ fun buildFullIndex(context: Context, rootUri: Uri): List<LibraryIndexCache.Cache
         folderDoc.listFiles().forEach { child ->
             val name = child.name ?: (if (child.isDirectory) "Dossier" else "Fichier")
 
-            // 🔒 si c'est un dossier DJ -> on ne l'indexe pas et on ne descend pas dedans
-            if (child.isDirectory && isDjFolderDoc(child)) return@forEach
+            val isDjChild = child.isDirectory && isDjFolderDoc(child)
 
             // ✅ filtre fichiers : on garde dossiers + fichiers SPL indexables
             if (!child.isDirectory) {
@@ -309,7 +308,7 @@ fun buildFullIndex(context: Context, rootUri: Uri): List<LibraryIndexCache.Cache
                 )
             )
 
-            if (child.isDirectory) {
+            if (child.isDirectory && !isDjChild) {
                 recurse(child, child.uri.toString())
             }
         }

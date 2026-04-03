@@ -144,6 +144,8 @@
 
     <string name="library_delete_file_title">Delete file</string>
     <string name="library_delete_file_confirm_text">Delete this file permanently?</string>
+    <string name="library_delete_folder_title">Delete folder</string>
+    <string name="library_delete_folder_confirm_text">Delete this folder and its contents permanently?</string>
     <string name="library_delete_action">Delete</string>
     <string name="library_share_smp_failed">Unable to share the SMP song.</string>
     <string name="library_copy_failed">Copy failed.</string>

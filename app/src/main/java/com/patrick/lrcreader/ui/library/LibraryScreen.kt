@@ -262,10 +262,12 @@ fun LibraryScreen(
     val sDjExcludedReason = stringResource(R.string.library_dj_excluded_reason)
     val sDeleteBackingTrackTitle = stringResource(R.string.library_delete_backing_track_title)
     val sDeleteFileTitle = stringResource(R.string.library_delete_file_title)
+    val sDeleteFolderTitle = stringResource(R.string.library_delete_folder_title)
     val sDeleteSelectedTitle = stringResource(R.string.library_delete_selected_title)
     val sDeleteAudioOnly = stringResource(R.string.library_delete_audio_question)
     val sDeleteAudioPlusLrc = stringResource(R.string.library_delete_audio_plus_lrc)
     val sDeleteConfirmText = stringResource(R.string.library_delete_file_confirm_text)
+    val sDeleteFolderConfirmText = stringResource(R.string.library_delete_folder_confirm_text)
     val sDeletePermanently = stringResource(R.string.library_list_delete_permanently)
     val sDeleteSmpTitle = stringResource(R.string.library_delete_smp_title)
     val sDeleteSmpConfirmText = stringResource(R.string.library_delete_smp_confirm_text)
@@ -1875,6 +1877,20 @@ fun LibraryScreen(
         }
     }
 
+    fun isDirectoryUri(uri: Uri): Boolean {
+        indexAll.firstOrNull { it.uriString == uri.toString() }?.let { return it.isDirectory }
+        return runCatching {
+            when (uri.scheme) {
+                "file" -> File(uri.path ?: "").isDirectory
+                else -> {
+                    val doc = DocumentFile.fromSingleUri(context, uri)
+                        ?: DocumentFile.fromTreeUri(context, uri)
+                    doc?.isDirectory == true
+                }
+            }
+        }.getOrDefault(false)
+    }
+
     suspend fun runSelectionTransfer(
         label: String,
         sources: List<Uri>,
@@ -2889,6 +2905,7 @@ fun LibraryScreen(
             if (showDeleteConfirmDialog && pendingDeletePlan != null) {
                 val deletePlan = pendingDeletePlan!!
                 val hasAssociated = deletePlan.isAudioTarget && deletePlan.hasAssociated
+                val isDirectoryTarget = isDirectoryUri(deletePlan.target.uri)
 
                 suspend fun executeDeletion(includeAssociated: Boolean) {
                     if (deleteInProgress) return
@@ -2923,8 +2940,19 @@ fun LibraryScreen(
                     },
                     title = {
                         androidx.compose.material3.Text(
-                            if (deletePlan.isAudioTarget) sDeleteBackingTrackTitle else sDeleteFileTitle
+                            when {
+                                deletePlan.isAudioTarget -> sDeleteBackingTrackTitle
+                                isDirectoryTarget -> sDeleteFolderTitle
+                                else -> sDeleteFileTitle
+                            }
                         )
+                    },
+                    text = {
+                        if (!hasAssociated) {
+                            androidx.compose.material3.Text(
+                                if (isDirectoryTarget) sDeleteFolderConfirmText else sDeleteConfirmText
+                            )
+                        }
                     },
                     confirmButton = {
                         Column {
