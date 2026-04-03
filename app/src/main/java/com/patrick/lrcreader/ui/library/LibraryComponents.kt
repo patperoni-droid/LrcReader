@@ -87,7 +87,10 @@ fun LibraryHeader(
 fun LibraryBottomBar(
     bottomBarHeight: Dp,
     selectedCount: Int,
-    onAssign: () -> Unit,
+    onAssign: (() -> Unit)?,
+    onCopy: (() -> Unit)?,
+    onMove: (() -> Unit)?,
+    onDelete: (() -> Unit)?,
     onClear: () -> Unit
 ) {
     BottomAppBar(
@@ -110,8 +113,30 @@ fun LibraryBottomBar(
 
         Spacer(Modifier.weight(1f))
 
-        TextButton(onClick = onAssign) { Text(stringResource(R.string.library_bottom_assign), color = Color.White) }
-        Spacer(Modifier.width(8.dp))
+        if (onAssign != null) {
+            TextButton(onClick = onAssign) {
+                Text(stringResource(R.string.library_bottom_assign), color = Color.White)
+            }
+            Spacer(Modifier.width(8.dp))
+        }
+        if (onCopy != null) {
+            TextButton(onClick = onCopy) {
+                Text(stringResource(R.string.library_bottom_copy), color = Color.White)
+            }
+            Spacer(Modifier.width(8.dp))
+        }
+        if (onMove != null) {
+            TextButton(onClick = onMove) {
+                Text(stringResource(R.string.library_bottom_move), color = Color.White)
+            }
+            Spacer(Modifier.width(8.dp))
+        }
+        if (onDelete != null) {
+            TextButton(onClick = onDelete) {
+                Text(stringResource(R.string.library_bottom_delete), color = Color(0xFFFF6464))
+            }
+            Spacer(Modifier.width(8.dp))
+        }
         TextButton(onClick = onClear) { Text(stringResource(R.string.library_bottom_clear_selection), color = Color(0xFFB0B0B0)) }
     }
 }

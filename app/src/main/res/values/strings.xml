@@ -557,8 +557,13 @@
 
     <!-- Library components -->
     <string name="library_bottom_assign">Attribuer</string>
+    <string name="library_bottom_copy">Copier</string>
+    <string name="library_bottom_move">Déplacer</string>
+    <string name="library_bottom_delete">Supprimer</string>
     <string name="library_bottom_clear_selection">Désélect.</string>
     <string name="library_copying">Copie…</string>
+    <string name="library_delete_selected_title">Supprimer la sélection</string>
+    <string name="library_delete_selected_confirm_text">Supprimer définitivement %1$d fichier(s) sélectionné(s) ?</string>
 
     <!-- MainActivity -->
     <string name="debug_reset_setup">DEBUG : reset setup</string>

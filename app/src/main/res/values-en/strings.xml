@@ -529,8 +529,13 @@
 
     <!-- Library components -->
     <string name="library_bottom_assign">Assign</string>
+    <string name="library_bottom_copy">Copy</string>
+    <string name="library_bottom_move">Move</string>
+    <string name="library_bottom_delete">Delete</string>
     <string name="library_bottom_clear_selection">Deselect.</string>
     <string name="library_copying">Copying…</string>
+    <string name="library_delete_selected_title">Delete selection</string>
+    <string name="library_delete_selected_confirm_text">Delete %1$d selected file(s) permanently?</string>
 
     <!-- MainActivity -->
     <string name="debug_reset_setup">DEBUG: reset setup</string>

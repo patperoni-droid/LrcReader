@@ -61,6 +61,7 @@ import com.patrick.lrcreader.smp.SmpImportedUiSignal
 import com.patrick.lrcreader.smp.SmpLibraryScanner
 import com.patrick.lrcreader.ui.LibraryEntry
 import com.patrick.lrcreader.ui.LibraryFolderCache
+import com.patrick.lrcreader.ui.MoveResult
 import com.patrick.lrcreader.ui.SmpPreparationNoticeDialog
 import com.patrick.lrcreader.ui.clearPersistedUris
 import com.patrick.lrcreader.ui.theme.DarkBlueGradientBackground
@@ -261,6 +262,7 @@ fun LibraryScreen(
     val sDjExcludedReason = stringResource(R.string.library_dj_excluded_reason)
     val sDeleteBackingTrackTitle = stringResource(R.string.library_delete_backing_track_title)
     val sDeleteFileTitle = stringResource(R.string.library_delete_file_title)
+    val sDeleteSelectedTitle = stringResource(R.string.library_delete_selected_title)
     val sDeleteAudioOnly = stringResource(R.string.library_delete_audio_question)
     val sDeleteAudioPlusLrc = stringResource(R.string.library_delete_audio_plus_lrc)
     val sDeleteConfirmText = stringResource(R.string.library_delete_file_confirm_text)
@@ -351,6 +353,10 @@ fun LibraryScreen(
         indexSnapshot: List<LibraryIndexCache.CachedEntry> = indexAll
     ): Uri {
         return backend.chooseInitialFolder(root, indexSnapshot)
+    }
+
+    fun normalizeSelection(selection: Collection<Uri>): List<Uri> {
+        return selection.distinctBy { it.toString() }
     }
 
     fun emitImportProof(
@@ -1021,14 +1027,15 @@ fun LibraryScreen(
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var pendingDeletePlan by remember { mutableStateOf<LibraryDeletePlan?>(null) }
     var deleteInProgress by remember { mutableStateOf(false) }
+    var pendingDeleteSelection by remember { mutableStateOf<List<Uri>>(emptyList()) }
     var pendingDeleteSmpUri by remember { mutableStateOf<Uri?>(null) }
     var deleteSmpInProgress by remember { mutableStateOf(false) }
 
-    var pendingMoveUri by remember { mutableStateOf<Uri?>(null) }
+    var pendingMoveSelection by remember { mutableStateOf<List<Uri>>(emptyList()) }
     var showMoveBrowser by remember { mutableStateOf(false) }
     var moveBrowserFolder by remember { mutableStateOf<Uri?>(null) }
     var moveBrowserStack by remember { mutableStateOf<List<Uri>>(emptyList()) }
-    var pendingCopyUri by remember { mutableStateOf<Uri?>(null) }
+    var pendingCopySelection by remember { mutableStateOf<List<Uri>>(emptyList()) }
     var showCopyBrowser by remember { mutableStateOf(false) }
     var copyBrowserFolder by remember { mutableStateOf<Uri?>(null) }
     var copyBrowserStack by remember { mutableStateOf<List<Uri>>(emptyList()) }
@@ -1039,6 +1046,34 @@ fun LibraryScreen(
     var editPrompterTitle by remember { mutableStateOf("") }
     var editPrompterContent by remember { mutableStateOf("") }
     var showEditPrompterDialog by remember { mutableStateOf(false) }
+
+    fun openMoveBrowserForSelection(selection: Collection<Uri>) {
+        val normalizedSelection = normalizeSelection(selection)
+        val root = backend.getRootUri()
+        if (root == null || normalizedSelection.isEmpty()) {
+            showMoveBrowser = false
+            pendingMoveSelection = emptyList()
+            return
+        }
+        pendingMoveSelection = normalizedSelection
+        moveBrowserFolder = root
+        moveBrowserStack = emptyList()
+        showMoveBrowser = true
+    }
+
+    fun openCopyBrowserForSelection(selection: Collection<Uri>) {
+        val normalizedSelection = normalizeSelection(selection)
+        val root = backend.getRootUri()
+        if (root == null || normalizedSelection.isEmpty()) {
+            showCopyBrowser = false
+            pendingCopySelection = emptyList()
+            return
+        }
+        pendingCopySelection = normalizedSelection
+        copyBrowserFolder = root
+        copyBrowserStack = emptyList()
+        showCopyBrowser = true
+    }
 
     fun toggleSelection(uri: Uri) {
         selectedSongs = if (selectedSongs.contains(uri)) selectedSongs - uri else selectedSongs + uri
@@ -1818,6 +1853,58 @@ fun LibraryScreen(
         ).show()
     }
 
+    fun fallbackDeletePlan(uri: Uri): LibraryDeletePlan {
+        return LibraryDeletePlan(
+            target = LibraryDeleteItem(
+                uri = uri,
+                role = LibraryDeleteRole.FILE,
+                displayName = uri.lastPathSegment ?: "file"
+            ),
+            associated = emptyList()
+        )
+    }
+
+    suspend fun planDeleteForUri(uri: Uri): LibraryDeletePlan {
+        return runCatching {
+            backend.planDelete(
+                target = uri,
+                indexAll = indexAll
+            )
+        }.getOrElse {
+            fallbackDeletePlan(uri)
+        }
+    }
+
+    suspend fun runSelectionTransfer(
+        label: String,
+        sources: List<Uri>,
+        dest: Uri,
+        transfer: suspend (Uri, Uri, (Float?, String?) -> Unit) -> MoveResult
+    ): Int {
+        val normalizedSources = normalizeSelection(sources)
+        if (normalizedSources.isEmpty()) return 0
+
+        val total = normalizedSources.size.coerceAtLeast(1)
+        var successCount = 0
+
+        normalizedSources.forEachIndexed { index, srcUri ->
+            val baseProgress = index.toFloat() / total.toFloat()
+            val progressSpan = 1f / total.toFloat()
+            moveLabel = "$label ${index + 1}/$total"
+            val result = transfer(srcUri, dest) { progress, itemLabel ->
+                val clamped = (progress ?: 0f).coerceIn(0f, 1f)
+                moveProgress = (baseProgress + (clamped * progressSpan)).coerceIn(0f, 1f)
+                moveLabel = itemLabel ?: "$label ${index + 1}/$total"
+            }
+            if (result.ok) {
+                successCount += 1
+            }
+            moveProgress = ((index + 1).toFloat() / total.toFloat()).coerceIn(0f, 1f)
+        }
+
+        return successCount
+    }
+
     fun resolveEntryDisplayName(uri: Uri): String {
         return runCatching {
             DocumentFile.fromSingleUri(context, uri)?.name
@@ -1923,36 +2010,39 @@ fun LibraryScreen(
     val moveToFolderLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree(),
         onResult = { destUri ->
-            val srcUri = pendingMoveUri
-            if (destUri != null && srcUri != null) {
+            val srcUris = pendingMoveSelection
+            if (destUri != null && srcUris.isNotEmpty()) {
                 scope.launch {
                     startLoading(sMoving, determinate = true)
                     try {
                         persistTreePermIfPossible(context, destUri)
-
-                        val result = backend.move(
-                            mainHandler = mainHandler,
-                            srcUri = srcUri,
-                            destUri = destUri,
-                            indexAll = indexAll,
-                            onProgress = { p, label ->
-                                moveProgress = p
-                                moveLabel = label
-                            }
-                        )
-
-                        libraryLogMove(result)
+                        val movedCount = runSelectionTransfer(
+                            label = sMoving,
+                            sources = srcUris,
+                            dest = destUri
+                        ) { srcUri, targetUri, onProgress ->
+                            backend.move(
+                                mainHandler = mainHandler,
+                                srcUri = srcUri,
+                                destUri = targetUri,
+                                indexAll = indexAll,
+                                onProgress = onProgress
+                            ).also(::libraryLogMove)
+                        }
 
                         val root = backend.getRootUri()
                         val refreshFolder = currentFolderUri ?: destUri
-                        if (root != null) runGlobalScan(root = root, folderToShow = refreshFolder)
+                        if (movedCount > 0 && root != null) {
+                            runGlobalScan(root = root, folderToShow = refreshFolder)
+                            selectedSongs = emptySet()
+                        }
                     } finally {
-                        pendingMoveUri = null
+                        pendingMoveSelection = emptyList()
                         stopLoadingNice()
                     }
                 }
             } else {
-                pendingMoveUri = null
+                pendingMoveSelection = emptyList()
             }
         }
     )
@@ -2563,31 +2653,11 @@ fun LibraryScreen(
                                 },
 
                                 onCopyOne = { uri ->
-                                    pendingCopyUri = uri
-
-                                    val root = backend.getRootUri()
-                                    if (root == null) {
-                                        showCopyBrowser = false
-                                        return@LibraryList
-                                    }
-
-                                    copyBrowserFolder = root
-                                    copyBrowserStack = emptyList()
-                                    showCopyBrowser = true
+                                    openCopyBrowserForSelection(listOf(uri))
                                 },
 
                                 onMoveOne = { uri ->
-                                    pendingMoveUri = uri
-
-                                    val root = backend.getRootUri()
-                                    if (root == null) {
-                                        showMoveBrowser = false
-                                        return@LibraryList
-                                    }
-
-                                    moveBrowserFolder = root
-                                    moveBrowserStack = emptyList()
-                                    showMoveBrowser = true
+                                    openMoveBrowserForSelection(listOf(uri))
                                 },
 
                                 onRenameOne = { entry ->
@@ -2657,7 +2727,26 @@ fun LibraryScreen(
                             LibraryBottomBar(
                                 bottomBarHeight = bottomBarHeight,
                                 selectedCount = selectedSongs.size,
-                                onAssign = { showAssignDialog = true },
+                                onAssign = if (isSongViewMode) {
+                                    { showAssignDialog = true }
+                                } else {
+                                    null
+                                },
+                                onCopy = if (isSongViewMode) {
+                                    null
+                                } else {
+                                    { openCopyBrowserForSelection(selectedSongs) }
+                                },
+                                onMove = if (isSongViewMode) {
+                                    null
+                                } else {
+                                    { openMoveBrowserForSelection(selectedSongs) }
+                                },
+                                onDelete = if (isSongViewMode) {
+                                    null
+                                } else {
+                                    { pendingDeleteSelection = normalizeSelection(selectedSongs) }
+                                },
                                 onClear = { selectedSongs = emptySet() }
                             )
                         }
@@ -2841,6 +2930,75 @@ fun LibraryScreen(
                 )
             }
 
+            if (pendingDeleteSelection.isNotEmpty()) {
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = {
+                        if (deleteInProgress) return@AlertDialog
+                        pendingDeleteSelection = emptyList()
+                    },
+                    title = {
+                        androidx.compose.material3.Text(sDeleteSelectedTitle)
+                    },
+                    text = {
+                        androidx.compose.material3.Text(
+                            context.getString(
+                                R.string.library_delete_selected_confirm_text,
+                                pendingDeleteSelection.size
+                            )
+                        )
+                    },
+                    confirmButton = {
+                        androidx.compose.material3.TextButton(
+                            enabled = !deleteInProgress,
+                            onClick = {
+                                if (deleteInProgress) return@TextButton
+                                val selection = pendingDeleteSelection
+                                scope.launch {
+                                    deleteInProgress = true
+                                    startLoading(sDeleting, determinate = false)
+                                    try {
+                                        val results = selection.flatMap { uri ->
+                                            val plan = planDeleteForUri(uri)
+                                            backend.deleteWithPlan(
+                                                plan = plan,
+                                                includeAssociated = false
+                                            ).results
+                                        }
+                                        applyDeleteResult(LibraryDeleteResult(results))
+
+                                        val root = backend.getRootUri()
+                                        val folderUri = currentFolderUri ?: root
+                                        if (root != null && folderUri != null) {
+                                            runGlobalScan(root = root, folderToShow = folderUri)
+                                        }
+                                    } finally {
+                                        deleteInProgress = false
+                                        pendingDeleteSelection = emptyList()
+                                        stopLoadingNice()
+                                    }
+                                }
+                            }
+                        ) {
+                            androidx.compose.material3.Text(
+                                stringResource(R.string.library_delete_action),
+                                color = Color(0xFFFF6464)
+                            )
+                        }
+                    },
+                    dismissButton = {
+                        androidx.compose.material3.TextButton(
+                            enabled = !deleteInProgress,
+                            onClick = {
+                                if (deleteInProgress) return@TextButton
+                                pendingDeleteSelection = emptyList()
+                            }
+                        ) {
+                            androidx.compose.material3.Text(stringResource(R.string.common_cancel))
+                        }
+                    }
+                )
+            }
+
             if (pendingDeleteSmpUri != null) {
                 androidx.compose.material3.AlertDialog(
                     onDismissRequest = {
@@ -3010,7 +3168,7 @@ fun LibraryScreen(
             }
 
             MoveBrowserDialog(
-                show = showMoveBrowser && pendingMoveUri != null,
+                show = showMoveBrowser && pendingMoveSelection.isNotEmpty(),
                 indexAll = indexAll,
                 root = backend.getRootUri(),
                 moveBrowserFolder = moveBrowserFolder,
@@ -3034,29 +3192,37 @@ fun LibraryScreen(
                 onMoveHere = {
                     val rootTree = backend.getRootUri() ?: return@MoveBrowserDialog
                     val dest = moveBrowserFolder ?: rootTree
-                    val src = pendingMoveUri ?: return@MoveBrowserDialog
+                    val sources = pendingMoveSelection
+                    if (sources.isEmpty()) return@MoveBrowserDialog
 
                     showMoveBrowser = false
 
                     scope.launch {
                         startLoading(sMoving, determinate = true)
                         try {
-                            val result = backend.move(
-                                mainHandler = mainHandler,
-                                srcUri = src,
-                                destUri = dest,
-                                indexAll = indexAll,
-                                onProgress = { p, label -> moveProgress = p; moveLabel = label }
-                            )
+                            val movedCount = runSelectionTransfer(
+                                label = sMoving,
+                                sources = sources,
+                                dest = dest
+                            ) { srcUri, targetUri, onProgress ->
+                                backend.move(
+                                    mainHandler = mainHandler,
+                                    srcUri = srcUri,
+                                    destUri = targetUri,
+                                    indexAll = indexAll,
+                                    onProgress = onProgress
+                                ).also(::libraryLogMove)
+                            }
 
-                            if (result.ok) {
+                            if (movedCount > 0) {
                                 runGlobalScan(
                                     root = rootTree,
                                     folderToShow = currentFolderUri ?: dest
                                 )
+                                selectedSongs = emptySet()
                             }
                         } finally {
-                            pendingMoveUri = null
+                            pendingMoveSelection = emptyList()
                             showMoveBrowser = false
                             stopLoadingNice()
                         }
@@ -3064,7 +3230,7 @@ fun LibraryScreen(
                 },
                 onDismiss = {
                     showMoveBrowser = false
-                    pendingMoveUri = null
+                    pendingMoveSelection = emptyList()
                 },
                 onOtherFolder = {
                     showMoveBrowser = false
@@ -3073,7 +3239,7 @@ fun LibraryScreen(
             )
 
             MoveBrowserDialog(
-                show = showCopyBrowser && pendingCopyUri != null,
+                show = showCopyBrowser && pendingCopySelection.isNotEmpty(),
                 indexAll = indexAll,
                 root = backend.getRootUri(),
                 moveBrowserFolder = copyBrowserFolder,
@@ -3097,31 +3263,39 @@ fun LibraryScreen(
                 onMoveHere = {
                     val rootTree = backend.getRootUri() ?: return@MoveBrowserDialog
                     val dest = copyBrowserFolder ?: rootTree
-                    val src = pendingCopyUri ?: return@MoveBrowserDialog
+                    val sources = pendingCopySelection
+                    if (sources.isEmpty()) return@MoveBrowserDialog
 
                     showCopyBrowser = false
 
                     scope.launch {
                         startLoading(sCopying, determinate = true)
                         try {
-                            val result = backend.copyFile(
-                                mainHandler = mainHandler,
-                                srcUri = src,
-                                destUri = dest,
-                                indexAll = indexAll,
-                                onProgress = { p, label -> moveProgress = p; moveLabel = label }
-                            )
+                            val copiedCount = runSelectionTransfer(
+                                label = sCopying,
+                                sources = sources,
+                                dest = dest
+                            ) { srcUri, targetUri, onProgress ->
+                                backend.copyFile(
+                                    mainHandler = mainHandler,
+                                    srcUri = srcUri,
+                                    destUri = targetUri,
+                                    indexAll = indexAll,
+                                    onProgress = onProgress
+                                )
+                            }
 
-                            if (result.ok) {
+                            if (copiedCount > 0) {
                                 runGlobalScan(
                                     root = rootTree,
                                     folderToShow = currentFolderUri ?: dest
                                 )
-                            } else {
+                            }
+                            if (copiedCount < sources.size) {
                                 Toast.makeText(context, sCopyFailed, Toast.LENGTH_SHORT).show()
                             }
                         } finally {
-                            pendingCopyUri = null
+                            pendingCopySelection = emptyList()
                             showCopyBrowser = false
                             stopLoadingNice()
                         }
@@ -3129,11 +3303,11 @@ fun LibraryScreen(
                 },
                 onDismiss = {
                     showCopyBrowser = false
-                    pendingCopyUri = null
+                    pendingCopySelection = emptyList()
                 },
                 onOtherFolder = {
                     showCopyBrowser = false
-                    pendingCopyUri = null
+                    pendingCopySelection = emptyList()
                 }
             )
 
