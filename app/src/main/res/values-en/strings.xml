@@ -280,6 +280,14 @@
 
     <!-- Setup install -->
     <string name="setup_title">Installation</string>
+    <string name="setup_workspace_explainer">Choose SPL\'s work folder.\nYou can use the recommended folder or pick your own.</string>
+    <string name="setup_use_recommended_workspace">Use recommended folder</string>
+    <string name="setup_choose_workspace">Choose my folder</string>
+    <string name="setup_workspace_hint">Right after that, you can import your music or install the demo.</string>
+    <string name="setup_workspace_unavailable_title">This folder won\'t work</string>
+    <string name="setup_workspace_unavailable_message">Choose another work folder, or use the recommended folder.</string>
+    <string name="setup_choose_another_workspace">Choose another folder</string>
+    <string name="setup_workspace_recommended_error">Could not prepare the recommended folder.</string>
     <string name="setup_documents_folder_explainer">SPL will create and use this folder:\nDocuments / SPL_Music</string>
     <string name="setup_allow_documents">Allow Documents</string>
     <string name="setup_control_hint">You stay in control: SPL only touches its own folder.</string>

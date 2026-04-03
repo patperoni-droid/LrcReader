@@ -113,7 +113,7 @@ fun SetupInstallScreen(
             Spacer(Modifier.height(10.dp))
 
             Text(
-                stringResource(R.string.setup_documents_folder_explainer),
+                stringResource(R.string.setup_workspace_explainer),
                 color = subtitleColor,
                 fontSize = 14.sp,
                 lineHeight = 18.sp,
@@ -123,6 +123,42 @@ fun SetupInstallScreen(
             Spacer(Modifier.height(26.dp))
 
             Button(
+                onClick = {
+                    StorageModePrefs.set(context, StorageModePrefs.Mode.INTERNAL)
+                    Log.i(SETUP_STORAGE_TAG, "setup:storage_mode=INTERNAL recommended_workspace")
+                    val folders = initializeInternalWorkspace(
+                        context = context,
+                        stage = "setup_install_screen:recommended"
+                    )
+                    if (folders == null) {
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.setup_workspace_recommended_error),
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        return@Button
+                    }
+                    Log.i(
+                        SETUP_STORAGE_TAG,
+                        "setup:workspace_ready mode=${folders.snapshot.mode} status=${folders.snapshot.status} root=${folders.rootUri} audio=${folders.audioUri} smp=${folders.smpUri} dj=${folders.djUri}"
+                    )
+                    showImportPrompt = true
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color.White,
+                    contentColor = Color.Black
+                )
+            ) {
+                Text(stringResource(R.string.setup_use_recommended_workspace), fontSize = 16.sp)
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            OutlinedButton(
                 onClick = {
                     val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
                         addFlags(
@@ -150,18 +186,16 @@ fun SetupInstallScreen(
                     .fillMaxWidth()
                     .height(56.dp),
                 shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF1E1E1E),
-                    contentColor = Color.White
-                )
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                border = ButtonDefaults.outlinedButtonBorder.copy(width = 1.dp)
             ) {
-                Text(stringResource(R.string.setup_allow_documents), fontSize = 16.sp)
+                Text(stringResource(R.string.setup_choose_workspace), fontSize = 16.sp)
             }
 
             Spacer(Modifier.height(10.dp))
 
             Text(
-                stringResource(R.string.setup_control_hint),
+                stringResource(R.string.setup_workspace_hint),
                 color = Color(0xFF6F7A80),
                 fontSize = 12.sp,
                 textAlign = TextAlign.Center
@@ -173,10 +207,10 @@ fun SetupInstallScreen(
     if (showBadFolderDialog) {
         AlertDialog(
             onDismissRequest = { /* bloqué volontairement */ },
-            title = { Text(stringResource(R.string.setup_downloads_blocked_title)) },
+            title = { Text(stringResource(R.string.setup_workspace_unavailable_title)) },
             text = {
                 Text(
-                    stringResource(R.string.setup_downloads_blocked_message)
+                    stringResource(R.string.setup_workspace_unavailable_message)
                 )
             },
             confirmButton = {
@@ -184,16 +218,15 @@ fun SetupInstallScreen(
                     onClick = {
                         showBadFolderDialog = false
 
-                        // ✅ OPTION B = MODE INTERNE (robuste sur vieux téléphones)
                         StorageModePrefs.set(context, StorageModePrefs.Mode.INTERNAL)
                         val folders = initializeInternalWorkspace(
                             context = context,
-                            stage = "setup_install_screen:internal"
+                            stage = "setup_install_screen:recommended_fallback"
                         )
 
                         Log.w(
                             SETUP_STORAGE_TAG,
-                            "setup:storage_mode=INTERNAL root=${folders?.rootUri} audio=${folders?.audioUri} smp=${folders?.smpUri}"
+                            "setup:storage_mode=INTERNAL fallback_root=${folders?.rootUri} audio=${folders?.audioUri} smp=${folders?.smpUri}"
                         )
                         if (folders == null) {
                             pendingBadUri = null
@@ -201,11 +234,9 @@ fun SetupInstallScreen(
                         }
 
                         pendingBadUri = null
-
-                        // ✅ passer à l’étape 2
                         showImportPrompt = true
                     }
-                ) { Text(stringResource(R.string.setup_continue_internal_mode)) }
+                ) { Text(stringResource(R.string.setup_use_recommended_workspace)) }
             },
             dismissButton = {
                 TextButton(
@@ -213,7 +244,7 @@ fun SetupInstallScreen(
                         showBadFolderDialog = false
                         pendingBadUri = null
                     }
-                ) { Text(stringResource(R.string.setup_retry)) }
+                ) { Text(stringResource(R.string.setup_choose_another_workspace)) }
             }
         )
     }

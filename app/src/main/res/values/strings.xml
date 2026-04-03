@@ -320,6 +320,14 @@
 
     <!-- Setup install -->
     <string name="setup_title">Installation</string>
+    <string name="setup_workspace_explainer">Choisis le dossier de travail de SPL.\nTu peux utiliser le dossier recommandé ou choisir le tien.</string>
+    <string name="setup_use_recommended_workspace">Utiliser le dossier recommandé</string>
+    <string name="setup_choose_workspace">Choisir mon dossier</string>
+    <string name="setup_workspace_hint">Tu pourras importer ta musique ou installer la démo juste après.</string>
+    <string name="setup_workspace_unavailable_title">Ce dossier ne convient pas</string>
+    <string name="setup_workspace_unavailable_message">Choisis un autre dossier de travail, ou utilise le dossier recommandé.</string>
+    <string name="setup_choose_another_workspace">Choisir un autre dossier</string>
+    <string name="setup_workspace_recommended_error">Impossible de préparer le dossier recommandé.</string>
     <string name="setup_documents_folder_explainer">SPL va créer et utiliser ce dossier :\nDocuments / SPL_Music</string>
     <string name="setup_allow_documents">Autoriser Documents</string>
     <string name="setup_control_hint">Tu gardes le contrôle : SPL ne touche qu’à son dossier.</string>
