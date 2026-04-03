@@ -110,8 +110,6 @@ internal fun ensureWorkspaceLibraryFolders(
                     ensureFileDir(File(backingTracksDir, "Lyrics"))
                     ensureFileDir(File(backingTracksDir, "Accords"))
                 }
-                ensureFileDir(File(backingTracksDir, "Midi"))
-                ensureFileDir(File(backingTracksDir, "Videos"))
                 Log.i(
                     WORKSPACE_C1_TAG,
                     "stage=$stage mode=INTERNAL root=${folders.rootUri} backing=${folders.backingTracksUri} audio=${folders.audioUri} smp=${folders.smpUri} dj=${folders.djUri} backups=${folders.backupsUri}"
@@ -173,7 +171,7 @@ internal fun ensureWorkspaceLibraryFolders(
                     parent = it,
                     expectedName = "Midi",
                     aliases = listOf("midi"),
-                    createIfMissing = true
+                    createIfMissing = false
                 )
             }
             val videos = backingTracks?.let {
@@ -181,7 +179,7 @@ internal fun ensureWorkspaceLibraryFolders(
                     parent = it,
                     expectedName = "Videos",
                     aliases = listOf("videos"),
-                    createIfMissing = true
+                    createIfMissing = false
                 )
             }
             val dj = resolveDocumentDir(rootDoc, "DJ", aliases = listOf("dj"), createIfMissing = true)

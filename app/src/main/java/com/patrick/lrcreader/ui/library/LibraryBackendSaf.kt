@@ -124,8 +124,8 @@ class LibraryBackendSaf(
             val smp = findDirIgnoreCase(backingTracks, listOf("SMP", "smp"))
             val lyrics = findDirIgnoreCase(backingTracks, listOf("Lyrics", "lyrics"))
             val accords = findDirIgnoreCase(backingTracks, listOf("Accords", "accords"))
-            val midi = ensureDirSmart(backingTracks, "Midi", aliases = listOf("midi"))
-            val videos = ensureDirSmart(backingTracks, "Videos", aliases = listOf("videos"))
+            val midi = findDirIgnoreCase(backingTracks, listOf("Midi", "midi"))
+            val videos = findDirIgnoreCase(backingTracks, listOf("Videos", "videos"))
 
             Log.i(
                 tag,

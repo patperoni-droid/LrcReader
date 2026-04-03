@@ -8,8 +8,8 @@ import java.io.File
  * Gestion et sécurisation de l'arborescence SPL_Music
  *
  * IMPORTANT (compatibilité) :
- * - On crée les dossiers en minuscules (audio/lyrics/midi/videos)
- * - MAIS on crée aussi les anciens dossiers en Majuscules (Audio/Lyrics/Midi/Videos)
+ * - On crée les dossiers en minuscules (audio/lyrics/accords)
+ * - MAIS on crée aussi les anciens dossiers en Majuscules (Audio/Lyrics/Accords)
  *   et on copie les fichiers dans les deux sens (sans jamais supprimer).
  *
  * But : éviter que certaines parties de l'app (ou anciennes versions) cherchent
@@ -41,18 +41,13 @@ object InternalStoragePaths {
         val audioLower = File(backingTracks, "audio")
         val lyricsLower = File(backingTracks, "lyrics")
         val accordsLower = File(backingTracks, "accords")
-        val midiLower = File(backingTracks, "midi")
-        val videosLower = File(backingTracks, "videos")
-
-        // --- Dossiers legacy (Majuscules)
         val audioUpper = File(backingTracks, "Audio")
         val lyricsUpper = File(backingTracks, "Lyrics")
         val accordsUpper = File(backingTracks, "Accords")
-        val midiUpper = File(backingTracks, "Midi")
-        val videosUpper = File(backingTracks, "Videos")
 
-        // Sur nouveau workspace, on ne recrée plus automatiquement Audio/Lyrics/Accords.
-        val baseDirs = mutableListOf(midiLower, videosLower, midiUpper, videosUpper)
+        // Sur nouveau workspace, on ne recrée plus automatiquement
+        // Audio/Lyrics/Accords/Midi/Videos.
+        val baseDirs = mutableListOf<File>()
         if (createLegacyAudioTextDirs) {
             baseDirs += listOf(
                 audioLower, lyricsLower, accordsLower,
@@ -73,12 +68,6 @@ object InternalStoragePaths {
             mirrorCopyOnly(accordsUpper, accordsLower, tag = "MIGRATION_CHORDS")
             mirrorCopyOnly(accordsLower, accordsUpper, tag = "MIGRATION_CHORDS")
         }
-
-        mirrorCopyOnly(midiUpper, midiLower, tag = "MIGRATION_MIDI")
-        mirrorCopyOnly(midiLower, midiUpper, tag = "MIGRATION_MIDI")
-
-        mirrorCopyOnly(videosUpper, videosLower, tag = "MIGRATION_VIDEOS")
-        mirrorCopyOnly(videosLower, videosUpper, tag = "MIGRATION_VIDEOS")
 
         // Bonus compat : si tu avais un dossier "lyrique" ou "lyriques" (français)
         val lyrique1 = File(backingTracks, "lyrique")
