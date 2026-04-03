@@ -146,6 +146,7 @@
     <string name="library_delete_file_confirm_text">Delete this file permanently?</string>
     <string name="library_delete_action">Delete</string>
     <string name="library_share_smp_failed">Unable to share the SMP song.</string>
+    <string name="library_copy_failed">Copy failed.</string>
     <string name="library_rename_title">Rename</string>
     <string name="library_new_name_label">New name</string>
 
@@ -154,11 +155,14 @@
     <string name="library_move_browser_here">📥 Move here</string>
     <string name="library_move_browser_folder_entry">📁 %1$s</string>
     <string name="library_move_browser_other_folder">Other folder…</string>
+    <string name="library_copy_browser_title">Copy to…</string>
+    <string name="library_copy_browser_here">📥 Copy here</string>
 
     <string name="library_list_cd_play">Play (library)</string>
     <string name="library_list_edit_lrc">Edit this .lrc</string>
     <string name="library_list_import_backup">Import this backup</string>
     <string name="library_list_assign_to_playlist">Assign to a playlist</string>
+    <string name="library_list_copy_to_folder">Copy to a folder</string>
     <string name="library_list_move_to_folder">Move to a folder</string>
     <string name="library_list_rename">Rename</string>
     <string name="library_list_delete_permanently">Delete permanently</string>

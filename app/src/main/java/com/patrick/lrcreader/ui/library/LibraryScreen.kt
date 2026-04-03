@@ -269,6 +269,7 @@ fun LibraryScreen(
     val sDeleteSmpConfirmText = stringResource(R.string.library_delete_smp_confirm_text)
     val sDeleteSmpFailed = stringResource(R.string.library_delete_smp_failed)
     val sShareSmpFailed = stringResource(R.string.library_share_smp_failed)
+    val sCopyFailed = stringResource(R.string.library_copy_failed)
     val sPrompterFolder = stringResource(R.string.main_menu_prompter)
     val sSmpFolder = stringResource(R.string.library_smp_folder)
     val sSmpEmptyState = stringResource(R.string.library_smp_empty_state)
@@ -278,6 +279,7 @@ fun LibraryScreen(
     val sConvertSmpSingleSuccess = stringResource(R.string.library_convert_smp_success_single)
     val sConvertSmpSingleFailed = stringResource(R.string.library_convert_smp_failed_single)
     val sConvertSmpNoMp3 = stringResource(R.string.library_convert_smp_no_mp3)
+    val sCopying = stringResource(R.string.library_copying)
     val sBatchPreparing = stringResource(R.string.smp_batch_progress_title)
     val sBatchUnsupportedOnly = stringResource(R.string.smp_batch_unsupported_only)
     val sBatchStageConverting = stringResource(R.string.smp_batch_stage_converting)
@@ -339,6 +341,17 @@ fun LibraryScreen(
         mutableStateOf<SmpBatchImportProcessor.Progress?>(null)
     }
     var lastLoggedMoveProgressBucket by remember { mutableIntStateOf(-1) }
+
+    fun initialFolderStack(root: Uri, folderToShow: Uri): List<Uri> {
+        return if (folderToShow.toString() == root.toString()) emptyList() else listOf(root)
+    }
+
+    fun resolveFilesInitialFolder(
+        root: Uri,
+        indexSnapshot: List<LibraryIndexCache.CachedEntry> = indexAll
+    ): Uri {
+        return backend.chooseInitialFolder(root, indexSnapshot)
+    }
 
     fun emitImportProof(
         phase: String,
@@ -672,19 +685,24 @@ fun LibraryScreen(
             return buildSmpEntries()
         }
 
-        val visibleSource = source.filterNot { entry ->
-            entry.isDirectory &&
-                !isPrompterFolderUri(entry.uri) &&
-                !isSmpFolderUri(entry.uri) &&
-                shouldHideFromMainLibrary(entry.name)
+        val isFilesViewMode = libraryViewMode == LIBRARY_VIEW_MODE_FILES
+        val visibleSource = if (isFilesViewMode) {
+            source
+        } else {
+            source.filterNot { entry ->
+                entry.isDirectory &&
+                    !isPrompterFolderUri(entry.uri) &&
+                    !isSmpFolderUri(entry.uri) &&
+                    shouldHideFromMainLibrary(entry.name)
+            }
         }
 
         val root = backend.getRootUri()
         val isRootFolder = root != null && folderUri.toString() == root.toString()
-        if (!isRootFolder) {
+        if (!isRootFolder || isFilesViewMode) {
             Log.i(
                 LIB_SMP_TRACE_TAG,
-                "step=decorate_entries folder=$folderUri root=$root isRoot=false sourceCount=${source.size} visibleCount=${visibleSource.size}"
+                "step=decorate_entries folder=$folderUri root=$root isRoot=$isRootFolder filesView=$isFilesViewMode sourceCount=${source.size} visibleCount=${visibleSource.size}"
             )
             return visibleSource
         }
@@ -951,10 +969,12 @@ fun LibraryScreen(
             "step=effect_folder_change_start storageMode=$storageMode currentFolderUri=$currentFolderUri root=$root entriesSize=${entries.size}"
         )
 
-        val shouldRedirectToRoot = !isPrompterFolderUri(currentFolder) &&
-            !isSmpFolderUri(currentFolder) &&
-            resolveFolderName(context, currentFolder)
-                ?.let(::shouldHideFromMainLibrary) == true
+        val shouldRedirectToRoot =
+            libraryViewMode != LIBRARY_VIEW_MODE_FILES &&
+                !isPrompterFolderUri(currentFolder) &&
+                !isSmpFolderUri(currentFolder) &&
+                resolveFolderName(context, currentFolder)
+                    ?.let(::shouldHideFromMainLibrary) == true
 
         val folderToShow = if (shouldRedirectToRoot) root else currentFolder
         if (currentFolderUri?.toString() != folderToShow.toString()) {
@@ -1008,6 +1028,10 @@ fun LibraryScreen(
     var showMoveBrowser by remember { mutableStateOf(false) }
     var moveBrowserFolder by remember { mutableStateOf<Uri?>(null) }
     var moveBrowserStack by remember { mutableStateOf<List<Uri>>(emptyList()) }
+    var pendingCopyUri by remember { mutableStateOf<Uri?>(null) }
+    var showCopyBrowser by remember { mutableStateOf(false) }
+    var copyBrowserFolder by remember { mutableStateOf<Uri?>(null) }
+    var copyBrowserStack by remember { mutableStateOf<List<Uri>>(emptyList()) }
 
     var renameTarget by remember { mutableStateOf<LibraryEntry?>(null) }
     var renameText by remember { mutableStateOf("") }
@@ -2007,13 +2031,21 @@ fun LibraryScreen(
 
             indexAll = backend.loadIndex()
             val backendInitialFolder = backend.chooseInitialFolder(root, indexAll)
-            val folderToShow = root
+            val folderToShow = if (libraryViewMode == LIBRARY_VIEW_MODE_FILES) {
+                backendInitialFolder
+            } else {
+                root
+            }
             Log.i(
                 "LIB_SCAN_DIAG",
                 "mount root=$root indexSize=${indexAll.size} willFullScan=${indexAll.isEmpty()} backendInitialFolder=$backendInitialFolder folderToShow=$folderToShow"
             )
             currentFolderUri = folderToShow
-            folderStack = emptyList()
+            folderStack = if (libraryViewMode == LIBRARY_VIEW_MODE_FILES) {
+                initialFolderStack(root, folderToShow)
+            } else {
+                emptyList()
+            }
 
             if (indexAll.isEmpty()) {
                 startLoading(sScanning, determinate = false)
@@ -2140,7 +2172,17 @@ fun LibraryScreen(
                             }
                             val folderToShow = currentFolderUri
                                 ?.takeUnless { isPrompterFolderUri(it) || isSmpFolderUri(it) }
-                                ?: rootNow
+                                ?: if (libraryViewMode == LIBRARY_VIEW_MODE_FILES) {
+                                    resolveFilesInitialFolder(rootNow)
+                                } else {
+                                    rootNow
+                                }
+                            if (libraryViewMode == LIBRARY_VIEW_MODE_FILES &&
+                                currentFolderUri?.toString() != folderToShow.toString()
+                            ) {
+                                currentFolderUri = folderToShow
+                                folderStack = initialFolderStack(rootNow, folderToShow)
+                            }
                             runGlobalScan(
                                 root = rootNow,
                                 folderToShow = folderToShow
@@ -2245,6 +2287,7 @@ fun LibraryScreen(
                         libraryViewMode = LIBRARY_VIEW_MODE_SONGS
                         selectedSongs = emptySet()
                         stopQuickPlay()
+                        LibraryFolderCache.clear()
                     }
                 )
                 LibraryViewModeButton(
@@ -2252,9 +2295,29 @@ fun LibraryScreen(
                     selected = !isSongViewMode,
                     accent = accent,
                     onClick = {
+                        val previousFolder = currentFolderUri
                         libraryViewMode = LIBRARY_VIEW_MODE_FILES
                         selectedSongs = emptySet()
                         stopQuickPlay()
+                        LibraryFolderCache.clear()
+                        val root = backend.getRootUri() ?: return@LibraryViewModeButton
+                        val folderToShow = previousFolder
+                            ?.takeUnless { isPrompterFolderUri(it) || isSmpFolderUri(it) }
+                            ?: resolveFilesInitialFolder(root)
+                        currentFolderUri = folderToShow
+                        if (previousFolder == null ||
+                            isPrompterFolderUri(previousFolder) ||
+                            isSmpFolderUri(previousFolder)
+                        ) {
+                            folderStack = initialFolderStack(root, folderToShow)
+                        }
+                        scope.launch {
+                            loadFolderEntriesAsync(
+                                folderUri = folderToShow,
+                                forceRefresh = true,
+                                clearVisibleOnMiss = true
+                            )
+                        }
                     }
                 )
             }
@@ -2495,6 +2558,20 @@ fun LibraryScreen(
 
                                 onShareOne = { uri ->
                                     shareSmpSong(uri)
+                                },
+
+                                onCopyOne = { uri ->
+                                    pendingCopyUri = uri
+
+                                    val root = backend.getRootUri()
+                                    if (root == null) {
+                                        showCopyBrowser = false
+                                        return@LibraryList
+                                    }
+
+                                    copyBrowserFolder = root
+                                    copyBrowserStack = emptyList()
+                                    showCopyBrowser = true
                                 },
 
                                 onMoveOne = { uri ->
@@ -2936,6 +3013,9 @@ fun LibraryScreen(
                 root = backend.getRootUri(),
                 moveBrowserFolder = moveBrowserFolder,
                 moveBrowserStack = moveBrowserStack,
+                titleText = stringResource(R.string.library_move_browser_title),
+                actionText = stringResource(R.string.library_move_browser_here),
+                otherFolderText = stringResource(R.string.library_move_browser_other_folder),
                 onGoUp = {
                     val root = backend.getRootUri()
                     val newStack = moveBrowserStack.dropLast(1)
@@ -2987,6 +3067,71 @@ fun LibraryScreen(
                 onOtherFolder = {
                     showMoveBrowser = false
                     moveToFolderLauncher.launch(null)
+                }
+            )
+
+            MoveBrowserDialog(
+                show = showCopyBrowser && pendingCopyUri != null,
+                indexAll = indexAll,
+                root = backend.getRootUri(),
+                moveBrowserFolder = copyBrowserFolder,
+                moveBrowserStack = copyBrowserStack,
+                titleText = stringResource(R.string.library_copy_browser_title),
+                actionText = stringResource(R.string.library_copy_browser_here),
+                otherFolderText = stringResource(R.string.common_cancel),
+                onGoUp = {
+                    val root = backend.getRootUri()
+                    val newStack = copyBrowserStack.dropLast(1)
+                    val parent = newStack.lastOrNull() ?: root
+                    copyBrowserStack = newStack
+                    copyBrowserFolder = parent
+                },
+                onEnterFolder = { folderUri ->
+                    val root = backend.getRootUri()
+                    val from = copyBrowserFolder ?: root ?: folderUri
+                    copyBrowserStack = copyBrowserStack + from
+                    copyBrowserFolder = folderUri
+                },
+                onMoveHere = {
+                    val rootTree = backend.getRootUri() ?: return@MoveBrowserDialog
+                    val dest = copyBrowserFolder ?: rootTree
+                    val src = pendingCopyUri ?: return@MoveBrowserDialog
+
+                    showCopyBrowser = false
+
+                    scope.launch {
+                        startLoading(sCopying, determinate = true)
+                        try {
+                            val result = backend.copyFile(
+                                mainHandler = mainHandler,
+                                srcUri = src,
+                                destUri = dest,
+                                indexAll = indexAll,
+                                onProgress = { p, label -> moveProgress = p; moveLabel = label }
+                            )
+
+                            if (result.ok) {
+                                runGlobalScan(
+                                    root = rootTree,
+                                    folderToShow = currentFolderUri ?: dest
+                                )
+                            } else {
+                                Toast.makeText(context, sCopyFailed, Toast.LENGTH_SHORT).show()
+                            }
+                        } finally {
+                            pendingCopyUri = null
+                            showCopyBrowser = false
+                            stopLoadingNice()
+                        }
+                    }
+                },
+                onDismiss = {
+                    showCopyBrowser = false
+                    pendingCopyUri = null
+                },
+                onOtherFolder = {
+                    showCopyBrowser = false
+                    pendingCopyUri = null
                 }
             )
 

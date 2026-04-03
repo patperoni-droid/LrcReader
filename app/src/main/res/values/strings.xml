@@ -145,6 +145,7 @@
     <string name="library_delete_smp_confirm_text">Supprimer uniquement le morceau SMP interne. Le fichier legacy source ne sera pas supprimé.</string>
     <string name="library_delete_smp_failed">Suppression du morceau SMP impossible.</string>
     <string name="library_share_smp_failed">Partage du morceau SMP impossible.</string>
+    <string name="library_copy_failed">Copie impossible.</string>
     <string name="library_rename_title">Renommer</string>
     <string name="library_new_name_label">Nouveau nom</string>
 
@@ -153,12 +154,15 @@
     <string name="library_move_browser_here">📥 Déplacer ici</string>
     <string name="library_move_browser_folder_entry">📁 %1$s</string>
     <string name="library_move_browser_other_folder">Autre dossier…</string>
+    <string name="library_copy_browser_title">Copier vers…</string>
+    <string name="library_copy_browser_here">📥 Copier ici</string>
 
     <string name="library_list_cd_play">Lire (bibliothèque)</string>
     <string name="library_list_edit_lrc">Éditer ce .lrc</string>
     <string name="library_list_convert_to_smp">Convertir en SMP</string>
     <string name="library_list_import_backup">Importer ce backup</string>
     <string name="library_list_assign_to_playlist">Attribuer à une playlist</string>
+    <string name="library_list_copy_to_folder">Copier vers un dossier</string>
     <string name="library_list_move_to_folder">Déplacer vers un dossier</string>
     <string name="library_list_rename">Renommer</string>
     <string name="library_list_delete_permanently">Supprimer définitivement</string>

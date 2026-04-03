@@ -602,6 +602,72 @@ fun moveLibraryFileWithProgress(
     }
 }
 
+fun copyLibraryFileWithProgress(
+    context: Context,
+    sourceUri: Uri,
+    destFolderTreeUri: Uri,
+    onProgress: (progress01: Float?, label: String) -> Unit
+): MoveResult {
+    val cr = context.contentResolver
+
+    return try {
+        val srcDoc = DocumentFile.fromSingleUri(context, sourceUri) ?: return MoveResult(false)
+        val destDir = DocumentFile.fromTreeUri(context, destFolderTreeUri) ?: return MoveResult(false)
+        if (!srcDoc.isFile) return MoveResult(false)
+
+        val total = runCatching { srcDoc.length() }.getOrNull()?.coerceAtLeast(0L) ?: 0L
+        var copied = 0L
+
+        val mime = srcDoc.type ?: "application/octet-stream"
+        val name = srcDoc.name ?: "file"
+        if (destDir.findFile(name) != null) return MoveResult(false)
+        val destFile = destDir.createFile(mime, name) ?: return MoveResult(false)
+
+        onProgress(0f, "Copie…")
+
+        var lastEmitAt = 0L
+        var lastPct = -1
+
+        cr.openInputStream(srcDoc.uri).use { input ->
+            cr.openOutputStream(destFile.uri, "w").use { output ->
+                if (input == null || output == null) return MoveResult(false)
+                val buffer = ByteArray(256 * 1024)
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read <= 0) break
+                    output.write(buffer, 0, read)
+                    copied += read.toLong()
+
+                    if (total > 0L) {
+                        val p = (copied.toDouble() / total.toDouble()).toFloat().coerceIn(0f, 1f)
+                        val pct = (p * 100f).toInt()
+                        val now = android.os.SystemClock.uptimeMillis()
+                        if (pct != lastPct && (now - lastEmitAt) > 40) {
+                            lastEmitAt = now
+                            lastPct = pct
+                            onProgress(p, "Copie…")
+                        }
+                    } else {
+                        val now = android.os.SystemClock.uptimeMillis()
+                        if ((now - lastEmitAt) > 200) {
+                            lastEmitAt = now
+                            onProgress(null, "Copie…")
+                        }
+                    }
+                }
+                output.flush()
+            }
+        }
+
+        onProgress(1f, "Finalisation…")
+        MoveResult(ok = true, newUri = destFile.uri)
+
+    } catch (e: Exception) {
+        android.util.Log.e("COPY", "copyLibraryFileWithProgress exception", e)
+        MoveResult(false)
+    }
+}
+
 
 /**
  * Renomme le fichier en créant un nouveau fichier dans le même dossier

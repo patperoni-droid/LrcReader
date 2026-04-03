@@ -146,7 +146,16 @@ class LibraryBackendSaf(
 
     override fun chooseInitialFolder(root: Uri, indexAll: List<LibraryIndexCache.CachedEntry>): Uri {
         val resolvedRoot = getRootUri() ?: return root
-        return if (isUsableLibraryRoot(root, resolvedRoot)) root else resolvedRoot
+        val effectiveRoot = if (isUsableLibraryRoot(root, resolvedRoot)) root else resolvedRoot
+        val rootDoc = DocumentFile.fromTreeUri(context, effectiveRoot)
+            ?: DocumentFile.fromSingleUri(context, effectiveRoot)
+            ?: return effectiveRoot
+        val backingTracks = rootDoc.listFiles().firstOrNull { child ->
+            child.isDirectory &&
+                (child.name?.equals("BackingTracks", ignoreCase = true) == true ||
+                    child.name?.equals("BackingTrack", ignoreCase = true) == true)
+        }
+        return backingTracks?.uri ?: effectiveRoot
     }
 
     override fun loadIndex(): List<LibraryIndexCache.CachedEntry> {
@@ -223,8 +232,11 @@ class LibraryBackendSaf(
         }
             .toMutableList()
 
-        if (fromIndex.isEmpty()) {
-            val real = folderDoc?.listFiles().orEmpty().mapNotNull { f ->
+        val realChildren = folderDoc?.let { doc ->
+            runCatching { doc.listFiles().toList() }.getOrNull()
+        }
+        val visibleFromFolder = realChildren
+            ?.mapNotNull { f ->
                 val n = f.name ?: return@mapNotNull null
                 if (!f.isDirectory && isHiddenLibraryTransportFile(n)) {
                     return@mapNotNull null
@@ -239,10 +251,11 @@ class LibraryBackendSaf(
                     )
                 }
             }
-            fromIndex.addAll(real)
-        }
+            ?.toMutableList()
 
-        val djDoc = folderDoc?.listFiles()
+        val visibleEntries = visibleFromFolder ?: fromIndex
+
+        val djDoc = realChildren
             ?.firstOrNull { it.isDirectory && it.name.equals("DJ", ignoreCase = true) }
 
         val rootUri = getRootUri()
@@ -252,16 +265,16 @@ class LibraryBackendSaf(
             rootNorm != null && folderNorm == rootNorm
         }.getOrDefault(false)
 
-        val alreadyHasDj = fromIndex.any { it.isDirectory && it.name.equals("DJ", ignoreCase = true) }
+        val alreadyHasDj = visibleEntries.any { it.isDirectory && it.name.equals("DJ", ignoreCase = true) }
         if (djDoc != null) {
-            if (!alreadyHasDj) fromIndex.add(asDjEntry(djDoc.uri, djDoc.name ?: "DJ"))
+            if (!alreadyHasDj) visibleEntries.add(asDjEntry(djDoc.uri, djDoc.name ?: "DJ"))
         } else if (isRootFolder && !alreadyHasDj) {
             // DJ reste hors scan bibliothèque pour les perfs, mais doit rester visible au root SPL_Music.
             val placeholderUri = folderUri.buildUpon().appendQueryParameter("dj_placeholder", "1").build()
-            fromIndex.add(asDjEntry(placeholderUri, "DJ"))
+            visibleEntries.add(asDjEntry(placeholderUri, "DJ"))
         }
 
-        return fromIndex.sortedWith(
+        return visibleEntries.sortedWith(
             compareByDescending<LibraryEntry> { it.isDirectory }
                 .thenBy { it.name.lowercase() }
         )
@@ -345,6 +358,23 @@ class LibraryBackendSaf(
         onProgress: (Float?, String?) -> Unit
     ): MoveResult {
         return libraryMoveOneFile(
+            context = context,
+            mainHandler = mainHandler,
+            srcUri = srcUri,
+            destUri = destUri,
+            indexAll = indexAll,
+            onProgress = onProgress
+        )
+    }
+
+    override suspend fun copyFile(
+        mainHandler: Handler,
+        srcUri: Uri,
+        destUri: Uri,
+        indexAll: List<LibraryIndexCache.CachedEntry>,
+        onProgress: (Float?, String?) -> Unit
+    ): MoveResult {
+        return libraryCopyOneFile(
             context = context,
             mainHandler = mainHandler,
             srcUri = srcUri,

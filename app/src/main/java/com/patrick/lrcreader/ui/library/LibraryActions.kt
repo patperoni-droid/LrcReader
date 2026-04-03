@@ -15,6 +15,7 @@ import com.patrick.lrcreader.ui.LibraryEntry
 import com.patrick.lrcreader.ui.MoveResult
 import com.patrick.lrcreader.ui.asTreeDocumentUri
 import com.patrick.lrcreader.ui.buildFullIndex
+import com.patrick.lrcreader.ui.copyLibraryFileWithProgress
 import com.patrick.lrcreader.ui.deleteLibraryFile
 import com.patrick.lrcreader.ui.findUriByNameInFolder
 import com.patrick.lrcreader.ui.isAudioOrVideo
@@ -143,6 +144,36 @@ suspend fun libraryMoveOneFile(
             context = context,
             sourceUri = srcUri,
             sourceParentTreeUri = srcParentFixed,
+            destFolderTreeUri = destFixed
+        ) { progress, label ->
+            mainHandler.post {
+                onProgress(progress, label)
+            }
+        }
+    }
+}
+
+suspend fun libraryCopyOneFile(
+    context: Context,
+    mainHandler: Handler,
+    srcUri: Uri,
+    destUri: Uri,
+    indexAll: List<LibraryIndexCache.CachedEntry>,
+    onProgress: (Float?, String?) -> Unit,
+): MoveResult {
+    val rootTree = resolveUsableWorkspaceSnapshot(
+        context = context,
+        expectedMode = StorageModePrefs.Mode.SAF,
+        stage = "library_actions:copy_one_file"
+    )?.workspaceRootUri
+        ?: return MoveResult(false, null)
+
+    val destFixed = asTreeDocumentUri(rootTree, destUri)
+
+    return withContext(Dispatchers.IO) {
+        copyLibraryFileWithProgress(
+            context = context,
+            sourceUri = srcUri,
             destFolderTreeUri = destFixed
         ) { progress, label ->
             mainHandler.post {

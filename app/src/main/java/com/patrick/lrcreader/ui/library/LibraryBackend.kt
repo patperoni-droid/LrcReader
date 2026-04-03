@@ -89,6 +89,14 @@ interface LibraryBackend {
         onProgress: (Float?, String?) -> Unit
     ): MoveResult
 
+    suspend fun copyFile(
+        mainHandler: Handler,
+        srcUri: Uri,
+        destUri: Uri,
+        indexAll: List<LibraryIndexCache.CachedEntry>,
+        onProgress: (Float?, String?) -> Unit
+    ): MoveResult
+
     suspend fun planDelete(
         target: Uri,
         indexAll: List<LibraryIndexCache.CachedEntry>

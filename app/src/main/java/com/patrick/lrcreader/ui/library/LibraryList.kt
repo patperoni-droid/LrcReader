@@ -76,6 +76,7 @@ fun LibraryList(
 
     onAssignOne: (Uri) -> Unit,
     onShareOne: (Uri) -> Unit,
+    onCopyOne: (Uri) -> Unit,
     onMoveOne: (Uri) -> Unit,
     onRenameOne: (LibraryEntry) -> Unit,
     onDeleteOne: (Uri) -> Unit
@@ -335,6 +336,12 @@ fun LibraryList(
                                     )
                                 }
                                 if (!isSmp) {
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(stringResource(R.string.library_list_copy_to_folder), color = Color.White)
+                                        },
+                                        onClick = { menuOpen = false; onCopyOne(uri) }
+                                    )
                                     DropdownMenuItem(
                                         text = {
                                             Text(stringResource(R.string.library_list_move_to_folder), color = Color.White)

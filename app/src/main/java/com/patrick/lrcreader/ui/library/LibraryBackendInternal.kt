@@ -182,6 +182,35 @@ class LibraryBackendInternal(
         )
     }
 
+    override suspend fun copyFile(
+        mainHandler: Handler,
+        srcUri: Uri,
+        destUri: Uri,
+        indexAll: List<LibraryIndexCache.CachedEntry>,
+        onProgress: (Float?, String?) -> Unit
+    ): MoveResult = withContext(Dispatchers.IO) {
+        if (srcUri.scheme != "file" || destUri.scheme != "file") return@withContext MoveResult(false)
+        val srcFile = File(srcUri.path ?: return@withContext MoveResult(false))
+        val destDir = File(destUri.path ?: return@withContext MoveResult(false))
+        if (!srcFile.exists() || !srcFile.isFile || !destDir.exists() || !destDir.isDirectory) {
+            return@withContext MoveResult(false)
+        }
+
+        val out = File(destDir, srcFile.name)
+        if (out.exists()) return@withContext MoveResult(false)
+
+        mainHandler.post { onProgress(null, "Copie…") }
+
+        runCatching {
+            srcFile.inputStream().use { input ->
+                out.outputStream().use { output -> input.copyTo(output) }
+            }
+        }.fold(
+            onSuccess = { MoveResult(ok = true, newUri = Uri.fromFile(out)) },
+            onFailure = { MoveResult(ok = false) }
+        )
+    }
+
     override suspend fun planDelete(
         target: Uri,
         indexAll: List<LibraryIndexCache.CachedEntry>

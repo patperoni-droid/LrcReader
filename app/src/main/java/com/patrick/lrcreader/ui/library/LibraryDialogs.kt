@@ -131,6 +131,9 @@ fun MoveBrowserDialog(
     root: Uri?,
     moveBrowserFolder: Uri?,
     moveBrowserStack: List<Uri>,
+    titleText: String,
+    actionText: String,
+    otherFolderText: String,
     onGoUp: () -> Unit,
     onEnterFolder: (Uri) -> Unit,
     onMoveHere: () -> Unit,
@@ -151,7 +154,7 @@ fun MoveBrowserDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.library_move_browser_title), color = Color.White) },
+        title = { Text(titleText, color = Color.White) },
         text = {
             Column {
                 if (moveBrowserStack.isNotEmpty()) {
@@ -166,7 +169,7 @@ fun MoveBrowserDialog(
                 }
 
                 Text(
-                    stringResource(R.string.library_move_browser_here),
+                    actionText,
                     color = Color(0xFFFFC107),
                     modifier = Modifier
                         .fillMaxWidth()
@@ -193,7 +196,7 @@ fun MoveBrowserDialog(
         confirmButton = {},
         dismissButton = {
             TextButton(onClick = onOtherFolder) {
-                Text(stringResource(R.string.library_move_browser_other_folder), color = Color.Gray)
+                Text(otherFolderText, color = Color.Gray)
             }
         },
         containerColor = Color(0xFF222222)
