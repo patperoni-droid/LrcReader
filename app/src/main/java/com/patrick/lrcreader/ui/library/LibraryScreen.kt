@@ -2047,6 +2047,48 @@ fun LibraryScreen(
         }
     )
 
+    val copyToFolderLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree(),
+        onResult = { destUri ->
+            val srcUris = pendingCopySelection
+            if (destUri != null && srcUris.isNotEmpty()) {
+                scope.launch {
+                    startLoading(sCopying, determinate = true)
+                    try {
+                        persistTreePermIfPossible(context, destUri)
+                        val copiedCount = runSelectionTransfer(
+                            label = sCopying,
+                            sources = srcUris,
+                            dest = destUri
+                        ) { srcUri, targetUri, onProgress ->
+                            backend.copyFile(
+                                mainHandler = mainHandler,
+                                srcUri = srcUri,
+                                destUri = targetUri,
+                                indexAll = indexAll,
+                                onProgress = onProgress
+                            )
+                        }
+
+                        val root = backend.getRootUri()
+                        val refreshFolder = currentFolderUri ?: destUri
+                        if (copiedCount > 0 && root != null) {
+                            runGlobalScan(root = root, folderToShow = refreshFolder)
+                        }
+                        if (copiedCount < srcUris.size) {
+                            Toast.makeText(context, sCopyFailed, Toast.LENGTH_SHORT).show()
+                        }
+                    } finally {
+                        pendingCopySelection = emptyList()
+                        stopLoadingNice()
+                    }
+                }
+            } else {
+                pendingCopySelection = emptyList()
+            }
+        }
+    )
+
     val importAudioLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenMultipleDocuments()
     ) { pickedUris ->
@@ -3246,7 +3288,7 @@ fun LibraryScreen(
                 moveBrowserStack = copyBrowserStack,
                 titleText = stringResource(R.string.library_copy_browser_title),
                 actionText = stringResource(R.string.library_copy_browser_here),
-                otherFolderText = stringResource(R.string.common_cancel),
+                otherFolderText = stringResource(R.string.library_move_browser_other_folder),
                 onGoUp = {
                     val root = backend.getRootUri()
                     val newStack = copyBrowserStack.dropLast(1)
@@ -3307,7 +3349,7 @@ fun LibraryScreen(
                 },
                 onOtherFolder = {
                     showCopyBrowser = false
-                    pendingCopySelection = emptyList()
+                    copyToFolderLauncher.launch(null)
                 }
             )
 
