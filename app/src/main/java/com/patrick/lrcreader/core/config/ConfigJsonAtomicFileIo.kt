@@ -24,7 +24,7 @@ internal object ConfigJsonAtomicFileIo {
         defaultRawJson: String,
         tag: String
     ): Boolean {
-        val storage = resolveStorage(context) ?: return false
+        val storage = resolveWriteStorage(context) ?: return false
         return when (storage) {
             is Storage.FileStorage -> ensureFileInitialized(storage.configDir, fileName, defaultRawJson, tag)
             is Storage.SafStorage -> ensureSafInitialized(context, storage.configDir, fileName, defaultRawJson, tag)
@@ -37,13 +37,16 @@ internal object ConfigJsonAtomicFileIo {
         tag: String,
         defaultRawJson: String
     ): String? {
-        val storage = resolveStorage(context) ?: return null
-        if (!ensureInitialized(context, fileName, defaultRawJson, tag)) return null
+        val storage = resolveReadStorage(context) ?: return null
 
         return when (storage) {
-            is Storage.FileStorage -> runCatching {
-                File(storage.configDir, fileName).readText(Charsets.UTF_8)
-            }.getOrNull()
+            is Storage.FileStorage -> {
+                val target = File(storage.configDir, fileName)
+                if (!target.isFile) return null
+                runCatching {
+                    target.readText(Charsets.UTF_8)
+                }.getOrNull()
+            }
 
             is Storage.SafStorage -> {
                 val target = findConfigFileForName(storage.configDir, fileName) ?: return null
@@ -63,7 +66,7 @@ internal object ConfigJsonAtomicFileIo {
         tag: String,
         defaultRawJson: String
     ): Boolean {
-        val storage = resolveStorage(context) ?: return false
+        val storage = resolveWriteStorage(context) ?: return false
         if (!ensureInitialized(context, fileName, defaultRawJson, tag)) return false
 
         return when (storage) {
@@ -266,7 +269,33 @@ internal object ConfigJsonAtomicFileIo {
         }
     }
 
-    private fun resolveStorage(context: Context): Storage? {
+    private fun resolveReadStorage(context: Context): Storage? {
+        val rootUri = BackupFolderPrefs.getLibraryRootUri(context) ?: return null
+
+        return when (rootUri.scheme) {
+            "file" -> {
+                val rootPath = rootUri.path ?: return null
+                Storage.FileStorage(File(File(rootPath), CONFIG_DIR_NAME))
+            }
+
+            "content" -> {
+                val normalizedRootUri = normalizeRootTreeUri(rootUri)
+                val rootDoc = DocumentFile.fromTreeUri(context, normalizedRootUri)
+                    ?: DocumentFile.fromTreeUri(context, rootUri)
+                    ?: DocumentFile.fromSingleUri(context, rootUri)
+                    ?: return null
+                if (!rootDoc.isDirectory) return null
+
+                val configDir = runCatching { findExistingDirIgnoreCase(rootDoc, CONFIG_DIR_NAME) }.getOrNull()
+                    ?: return null
+                Storage.SafStorage(configDir)
+            }
+
+            else -> null
+        }
+    }
+
+    private fun resolveWriteStorage(context: Context): Storage? {
         val rootUri = BackupFolderPrefs.getLibraryRootUri(context) ?: return null
 
         return when (rootUri.scheme) {
@@ -289,6 +318,12 @@ internal object ConfigJsonAtomicFileIo {
             }
 
             else -> null
+        }
+    }
+
+    private fun findExistingDirIgnoreCase(parent: DocumentFile, name: String): DocumentFile? {
+        return parent.listFiles().firstOrNull {
+            it.isDirectory && (it.name ?: "").equals(name, ignoreCase = true)
         }
     }
 

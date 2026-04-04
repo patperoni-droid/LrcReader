@@ -125,15 +125,11 @@ internal object PlaylistStateStore {
         val loadStart = SystemClock.elapsedRealtime()
         Log.d("BOOTSTEP", "PlaylistStateStore.loadFromDisk:start")
         val state = try {
-            if (!PlaylistStateAtomicIo.ensureInitialized(context)) {
+            val raw = PlaylistStateAtomicIo.readRaw(context)
+            if (raw.isNullOrBlank()) {
                 PlaylistState.empty()
             } else {
-                val raw = PlaylistStateAtomicIo.readRaw(context)
-                if (raw.isNullOrBlank()) {
-                    PlaylistState.empty()
-                } else {
-                    PlaylistState.fromJson(raw)
-                }
+                PlaylistState.fromJson(raw)
             }
         } catch (t: Throwable) {
             Log.e(TAG, "readStateLocked: parse failed", t)

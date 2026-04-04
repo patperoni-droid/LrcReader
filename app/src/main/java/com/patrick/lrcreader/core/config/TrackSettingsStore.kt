@@ -165,15 +165,11 @@ object TrackSettingsStore {
         cachedState?.let { return it }
 
         val state = try {
-            if (!TrackSettingsAtomicIo.ensureInitialized(context)) {
+            val raw = TrackSettingsAtomicIo.readRaw(context)
+            if (raw.isNullOrBlank()) {
                 TrackSettingsState.empty()
             } else {
-                val raw = TrackSettingsAtomicIo.readRaw(context)
-                if (raw.isNullOrBlank()) {
-                    TrackSettingsState.empty()
-                } else {
-                    TrackSettingsState.fromJson(raw)
-                }
+                TrackSettingsState.fromJson(raw)
             }
         } catch (t: Throwable) {
             Log.e(TAG, "readStateLocked: parse failed", t)

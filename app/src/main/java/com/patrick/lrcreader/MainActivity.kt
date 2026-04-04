@@ -66,11 +66,7 @@ import com.patrick.lrcreader.core.history.PlaySource
 import com.patrick.lrcreader.core.light.LightCueDispatcher
 import com.patrick.lrcreader.core.lyrics.LyricsMemoryCache
 import com.patrick.lrcreader.core.lyrics.LyricsResolver
-import com.patrick.lrcreader.core.config.MidiCuesConfigStore
-import com.patrick.lrcreader.core.config.NotesConfigStore
-import com.patrick.lrcreader.core.config.PlaylistStateStore
 import com.patrick.lrcreader.core.config.TitleAliasesStore
-import com.patrick.lrcreader.core.config.TrackSettingsStore
 import com.patrick.lrcreader.smp.SmpImporter
 import com.patrick.lrcreader.smp.SmpAutoMigration
 import com.patrick.lrcreader.smp.SmpAutoMigrationResult
@@ -395,16 +391,27 @@ class MainActivity : AppCompatActivity() {
                     var migratedTitleAliases = 0
                     withContext(Dispatchers.IO) {
                         mark("compose.ensureInitialized.io:start root=$rootKey")
-                        val sessionInitOk = runCatching { SessionPrefs.ensureInitialized(ctx) }.getOrDefault(false)
-                        val trimInitOk = runCatching { EditSoundPrefs.ensureInitialized(ctx) }.getOrDefault(false)
-                        runCatching { EditSoundPrefs.warmCache(ctx) }
+                        val sessionInitOk = runCatching {
+                            SessionPrefs.getLastSessionState(ctx)
+                            true
+                        }.getOrDefault(false)
+                        val trimInitOk = runCatching {
+                            EditSoundPrefs.warmCache(ctx)
+                            true
+                        }.getOrDefault(false)
                         runCatching { FillerSoundPrefs.warmCache(ctx) }
-                        val textSongsInitOk = runCatching { TextSongRepository.ensureInitialized(ctx) }.getOrDefault(false)
-                        val trackInitOk = runCatching { TrackSettingsStore.ensureInitialized(ctx) }.getOrDefault(false)
-                        val aliasInitOk = runCatching { TitleAliasesStore.ensureInitialized(ctx) }.getOrDefault(false)
-                        val notesInitOk = runCatching { NotesConfigStore.ensureInitialized(ctx) }.getOrDefault(false)
-                        val midiInitOk = runCatching { MidiCuesConfigStore.ensureInitialized(ctx) }.getOrDefault(false)
-                        val playlistInitOk = runCatching { PlaylistStateStore.ensureInitialized(ctx) }.getOrDefault(false)
+                        val textSongsInitOk = runCatching {
+                            TextSongRepository.listAll(ctx)
+                            true
+                        }.getOrDefault(false)
+                        val aliasInitOk = runCatching {
+                            TitleAliasesStore.getAll(ctx)
+                            true
+                        }.getOrDefault(false)
+                        val trackInitOk = true
+                        val notesInitOk = true
+                        val midiInitOk = true
+                        val playlistInitOk = true
                         migratedTitleAliases = runCatching {
                             TitleAliasesStore.migrateFromLegacyTitlesIfMissing(
                                 context = ctx,

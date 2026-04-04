@@ -115,7 +115,7 @@ class LibraryBackendSaf(
 
         val backingTracks = ensureDirSmart(rootDoc, "BackingTracks", aliases = listOf("backingtracks", "backingtrack"))
         val backups = ensureDirSmart(rootDoc, "Backups", aliases = listOf("backups"))
-        val dj = ensureDirSmart(rootDoc, "DJ", aliases = listOf("dj"))
+        val dj = findDirIgnoreCase(rootDoc, listOf("DJ", "dj"))
 
         Log.i(tag, "root dirs backingTracks=${backingTracks?.uri} backups=${backups?.uri} dj=${dj?.uri}")
 

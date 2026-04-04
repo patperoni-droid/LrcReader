@@ -29,6 +29,7 @@ fun LibraryHeader(
     titleColor: Color,
     subtitleColor: Color,
     currentFolderUri: Uri?,
+    isFilesViewMode: Boolean,
     canGoBack: Boolean,
     onBack: () -> Unit,
     onPickRoot: () -> Unit,
@@ -149,6 +150,12 @@ fun LibraryHeader(
                         }
                     )
                 }
+            } else if (isFilesViewMode) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.library_header_rescan)) },
+                    enabled = hasRoot,
+                    onClick = { actionsExpanded = false; onRescan() }
+                )
             } else {
                 DropdownMenuItem(
                     text = { Text(stringResource(R.string.library_header_choose_folder)) },

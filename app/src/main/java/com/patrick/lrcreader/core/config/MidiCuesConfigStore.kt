@@ -59,15 +59,11 @@ internal object MidiCuesConfigStore {
         cachedState?.let { return it }
 
         val state = try {
-            if (!MidiCuesConfigAtomicIo.ensureInitialized(context)) {
+            val raw = MidiCuesConfigAtomicIo.readRaw(context)
+            if (raw.isNullOrBlank()) {
                 MidiCuesConfigState.empty()
             } else {
-                val raw = MidiCuesConfigAtomicIo.readRaw(context)
-                if (raw.isNullOrBlank()) {
-                    MidiCuesConfigState.empty()
-                } else {
-                    MidiCuesConfigState.fromJson(raw)
-                }
+                MidiCuesConfigState.fromJson(raw)
             }
         } catch (t: Throwable) {
             Log.e(TAG, "readStateLocked: parse failed", t)

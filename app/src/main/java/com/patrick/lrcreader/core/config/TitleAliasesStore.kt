@@ -386,20 +386,16 @@ object TitleAliasesStore {
         cachedState?.let { return it }
 
         val state = try {
-            if (!ensureInitialized(context)) {
+            val raw = ConfigJsonAtomicFileIo.readRaw(
+                context = context,
+                fileName = FILE_NAME,
+                tag = TAG,
+                defaultRawJson = TitleAliasesState.empty().toJson().toString(2)
+            )
+            if (raw.isNullOrBlank()) {
                 TitleAliasesState.empty()
             } else {
-                val raw = ConfigJsonAtomicFileIo.readRaw(
-                    context = context,
-                    fileName = FILE_NAME,
-                    tag = TAG,
-                    defaultRawJson = TitleAliasesState.empty().toJson().toString(2)
-                )
-                if (raw.isNullOrBlank()) {
-                    TitleAliasesState.empty()
-                } else {
-                    TitleAliasesState.fromJson(raw)
-                }
+                TitleAliasesState.fromJson(raw)
             }
         } catch (t: Throwable) {
             Log.e(TAG, "readStateLocked: parse failed", t)

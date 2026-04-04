@@ -2278,6 +2278,7 @@ fun LibraryScreen(
                 titleColor = titleColor,
                 subtitleColor = subtitleColor,
                 currentFolderUri = headerFolderUri,
+                isFilesViewMode = !isSongViewMode,
                 canGoBack = !isSongViewMode && folderStack.isNotEmpty(),
 
                 onBack = {

@@ -7,7 +7,6 @@ import androidx.documentfile.provider.DocumentFile
 import com.patrick.lrcreader.core.BackupFolderPrefs
 import com.patrick.lrcreader.core.BackupFolderPrefsInternal
 import com.patrick.lrcreader.core.BackupFolderPrefsSaf
-import com.patrick.lrcreader.core.DjFolderPrefs
 import com.patrick.lrcreader.core.InternalStoragePaths
 import com.patrick.lrcreader.core.StorageModePrefs
 import com.patrick.lrcreader.core.WorkspaceResolver
@@ -97,13 +96,15 @@ internal fun ensureWorkspaceLibraryFolders(
                 }
                 val smpDir = findExistingFileDirIgnoreCase(backingTracksDir, listOf("SMP", "smp"))
                     ?: backingTracksDir
+                val djDir = findExistingFileDirIgnoreCase(rootDir, listOf("DJ", "dj"))
+                    ?: File(rootDir, "DJ")
                 val folders = WorkspaceLibraryFolders(
                     snapshot = snapshot,
                     rootUri = rootUri,
                     backingTracksUri = Uri.fromFile(backingTracksDir),
                     audioUri = Uri.fromFile(audioDir),
                     smpUri = Uri.fromFile(smpDir),
-                    djUri = Uri.fromFile(ensureFileDir(File(rootDir, "DJ"))),
+                    djUri = Uri.fromFile(djDir),
                     backupsUri = Uri.fromFile(ensureFileDir(File(rootDir, "Backups")))
                 )
                 if (createLegacyAudioTextDirs) {
@@ -182,10 +183,10 @@ internal fun ensureWorkspaceLibraryFolders(
                     createIfMissing = false
                 )
             }
-            val dj = resolveDocumentDir(rootDoc, "DJ", aliases = listOf("dj"), createIfMissing = true)
+            val dj = resolveDocumentDir(rootDoc, "DJ", aliases = listOf("dj"), createIfMissing = false)
             val backups = resolveDocumentDir(rootDoc, "Backups", aliases = listOf("backups"), createIfMissing = true)
 
-            if (backingTracks == null || dj == null || backups == null || (createLegacyAudioTextDirs && audio == null)) {
+            if (backingTracks == null || backups == null || (createLegacyAudioTextDirs && audio == null)) {
                 Log.e(
                     WORKSPACE_C1_TAG,
                     "stage=$stage error=saf_folder_resolution_failed root=$rootUri backing=${backingTracks?.uri} audio=${audio?.uri} smp=${smp?.uri} dj=${dj?.uri} backups=${backups?.uri} lyrics=${lyrics?.uri} accords=${accords?.uri} midi=${midi?.uri} videos=${videos?.uri}"
@@ -199,7 +200,7 @@ internal fun ensureWorkspaceLibraryFolders(
                 backingTracksUri = backingTracks.uri,
                 audioUri = audio?.uri ?: backingTracks.uri,
                 smpUri = smp?.uri ?: backingTracks.uri,
-                djUri = dj.uri,
+                djUri = dj?.uri ?: rootDoc.uri,
                 backupsUri = backups.uri
             )
             Log.i(
@@ -254,7 +255,6 @@ internal fun initializeSafWorkspaceFromPickedTree(
         createLegacyAudioTextDirs = false
     ) ?: return null
 
-    DjFolderPrefs.save(context, folders.djUri)
     return folders
 }
 
@@ -275,7 +275,6 @@ internal fun initializeInternalWorkspace(
         createLegacyAudioTextDirs = false
     ) ?: return null
 
-    DjFolderPrefs.save(context, folders.djUri)
     return folders
 }
 

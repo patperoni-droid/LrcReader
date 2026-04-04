@@ -99,6 +99,18 @@ object SessionPrefs {
     }
 
     private fun writeJsonState(context: Context, state: JsonSessionState) {
+        val existingRaw = ConfigJsonAtomicFileIo.readRaw(
+            context = context,
+            fileName = CONFIG_FILE_NAME,
+            tag = TAG,
+            defaultRawJson = defaultJsonState().toJson().toString(2)
+        )
+        val hasExistingJson = !existingRaw.isNullOrBlank()
+        if (!hasExistingJson && !state.requiresPortableJsonPersistence()) {
+            Log.d(TAG, "SessionPrefs.writeJsonState skipped no_portable_payload file=$CONFIG_FILE_NAME")
+            return
+        }
+
         val ok = ConfigJsonAtomicFileIo.writeRawAtomic(
             context = context,
             fileName = CONFIG_FILE_NAME,
@@ -109,6 +121,14 @@ object SessionPrefs {
         if (!ok) {
             Log.w(TAG, "SessionPrefs.writeJsonState skipped/failed file=$CONFIG_FILE_NAME")
         }
+    }
+
+    private fun JsonSessionState.requiresPortableJsonPersistence(): Boolean {
+        return !quickPlaylist.isNullOrBlank() ||
+            !openedPlaylist.isNullOrBlank() ||
+            !lastTrackUri.isNullOrBlank() ||
+            !lastSongId.isNullOrBlank() ||
+            !lastPlaylistName.isNullOrBlank()
     }
 
     private fun mutateJsonState(

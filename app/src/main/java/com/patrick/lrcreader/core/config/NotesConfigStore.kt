@@ -94,15 +94,11 @@ internal object NotesConfigStore {
         cachedState?.let { return it }
 
         val state = try {
-            if (!NotesConfigAtomicIo.ensureInitialized(context)) {
+            val raw = NotesConfigAtomicIo.readRaw(context)
+            if (raw.isNullOrBlank()) {
                 NotesConfigState.empty()
             } else {
-                val raw = NotesConfigAtomicIo.readRaw(context)
-                if (raw.isNullOrBlank()) {
-                    NotesConfigState.empty()
-                } else {
-                    NotesConfigState.fromJson(raw)
-                }
+                NotesConfigState.fromJson(raw)
             }
         } catch (t: Throwable) {
             Log.e(TAG, "readStateLocked: parse failed", t)

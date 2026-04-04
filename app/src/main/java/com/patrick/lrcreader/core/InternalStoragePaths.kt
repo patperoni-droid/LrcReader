@@ -26,10 +26,7 @@ object InternalStoragePaths {
         if (!root.exists()) root.mkdirs()
 
         // Dossiers racine (on garde tes noms actuels)
-        listOf(
-            "DJ",
-            "Backups"
-        ).forEach { name ->
+        listOf("Backups").forEach { name ->
             File(root, name).mkdirs()
         }
 

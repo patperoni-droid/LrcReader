@@ -15,7 +15,7 @@ internal object TrackSettingsAtomicIo {
     private const val FILE_MIME = "application/json"
 
     fun ensureInitialized(context: Context): Boolean {
-        val storage = resolveStorage(context) ?: return false
+        val storage = resolveWriteStorage(context) ?: return false
         return when (storage) {
             is Storage.FileStorage -> ensureFileInitialized(storage)
             is Storage.SafStorage -> ensureSafInitialized(context, storage)
@@ -23,11 +23,11 @@ internal object TrackSettingsAtomicIo {
     }
 
     fun readRaw(context: Context): String? {
-        val storage = resolveStorage(context) ?: return null
-        if (!ensureInitialized(context)) return null
+        val storage = resolveReadStorage(context) ?: return null
 
         return when (storage) {
             is Storage.FileStorage -> {
+                if (!storage.settingsFile.isFile) return null
                 runCatching {
                     storage.settingsFile.readText(Charsets.UTF_8)
                 }.getOrNull()
@@ -45,7 +45,7 @@ internal object TrackSettingsAtomicIo {
     }
 
     fun writeRawAtomic(context: Context, rawJson: String): Boolean {
-        val storage = resolveStorage(context) ?: return false
+        val storage = resolveWriteStorage(context) ?: return false
         if (!ensureInitialized(context)) return false
 
         return when (storage) {
@@ -177,7 +177,33 @@ internal object TrackSettingsAtomicIo {
         }
     }
 
-    private fun resolveStorage(context: Context): Storage? {
+    private fun resolveReadStorage(context: Context): Storage? {
+        val rootUri = BackupFolderPrefs.getLibraryRootUri(context) ?: return null
+
+        return when (rootUri.scheme) {
+            "file" -> {
+                val rootPath = rootUri.path ?: return null
+                val rootDir = File(rootPath)
+                val configDir = File(rootDir, CONFIG_DIR_NAME)
+                val settingsFile = File(configDir, FILE_NAME)
+                Storage.FileStorage(configDir, settingsFile)
+            }
+
+            "content" -> {
+                val rootDoc = DocumentFile.fromTreeUri(context, rootUri)
+                    ?: DocumentFile.fromSingleUri(context, rootUri)
+                    ?: return null
+                if (!rootDoc.isDirectory) return null
+
+                val configDir = findExistingDirIgnoreCase(rootDoc, CONFIG_DIR_NAME) ?: return null
+                Storage.SafStorage(configDir)
+            }
+
+            else -> null
+        }
+    }
+
+    private fun resolveWriteStorage(context: Context): Storage? {
         val rootUri = BackupFolderPrefs.getLibraryRootUri(context) ?: return null
 
         return when (rootUri.scheme) {
@@ -200,6 +226,12 @@ internal object TrackSettingsAtomicIo {
             }
 
             else -> null
+        }
+    }
+
+    private fun findExistingDirIgnoreCase(parent: DocumentFile, name: String): DocumentFile? {
+        return parent.listFiles().firstOrNull {
+            it.isDirectory && (it.name ?: "").equals(name, ignoreCase = true)
         }
     }
 
