@@ -2948,6 +2948,11 @@ class MainActivity : AppCompatActivity() {
                                         onDeleteSmpSong = { songId ->
                                             deleteSmpSongById(songId)
                                         },
+                                        onOpenPlaylistFromLibrary = { name ->
+                                            selectedQuickPlaylist = name
+                                            openedPlaylist = name
+                                            setTabAndPersist(BottomTab.QuickPlaylists, reason = "libraryOpenPlaylist")
+                                        },
                                         onPlayFromLibrary = { uriString ->
                                             Log.d(
                                                 SMP_PLAY_TRACE_TAG,
@@ -3128,23 +3133,6 @@ class MainActivity : AppCompatActivity() {
                             onClick = {
                                 isMoreMenuOpen = false
                                 isNotesOpen = true
-                                // ✅ si on est sur “Fond sonore” (overlay), il faut le fermer sinon on reste bloqué dessus
-                                isFillerSettingsOpen = false
-                                isGlobalMixOpen = false
-                                isSearchOpen = false
-                                textPrompterId = null
-                                isMixerPreviewOpen = false
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.main_menu_library)) },
-                            onClick = {
-                                isMoreMenuOpen = false
-                                if (selectedTab is BottomTab.Library) {
-                                    libraryTabReselectSignal++
-                                } else {
-                                    setTabAndPersist(BottomTab.Library, reason = "menuLibrary")
-                                }
                                 // ✅ si on est sur “Fond sonore” (overlay), il faut le fermer sinon on reste bloqué dessus
                                 isFillerSettingsOpen = false
                                 isGlobalMixOpen = false

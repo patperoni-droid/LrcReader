@@ -61,7 +61,7 @@ sealed class BottomTab(val id: String, val labelRes: Int) {
     // Accessibles via menu
     object Library : BottomTab("library", R.string.tab_library) {
         @Composable override fun Icon() =
-            Icon(Icons.Filled.Menu, contentDescription = null)
+            Icon(Icons.Filled.Folder, contentDescription = null)
     }
 
     object AllPlaylists : BottomTab("all", R.string.tab_all_playlists) {
@@ -92,6 +92,7 @@ fun BottomTabsBar(
         BottomTab.Player,
         BottomTab.Filler,
         BottomTab.Dj,
+        BottomTab.Library,
         BottomTab.Search,
         BottomTab.More
     )

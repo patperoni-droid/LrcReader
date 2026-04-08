@@ -3,6 +3,10 @@
 
     <!-- 🔥 Permission micro pour l'accordeur -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
 
     <application
         android:localeConfig="@xml/locales_config"

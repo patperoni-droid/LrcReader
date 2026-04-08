@@ -201,6 +201,9 @@ fun QuickPlaylistsScreen(
     var currentListColor by remember { mutableStateOf(Color.White) } // ✅ plus de couleur "globale" de playlist
 
     var showMenu by remember { mutableStateOf(false) }
+    var showActionsMenu by remember { mutableStateOf(false) }
+    var showSavePlaylistDialog by remember { mutableStateOf(false) }
+    var savePlaylistName by remember { mutableStateOf("") }
     var playlistSearchQuery by rememberSaveable(internalSelected) { mutableStateOf("") }
     var isSearchVisible by rememberSaveable(internalSelected) { mutableStateOf(false) }
 
@@ -442,6 +445,42 @@ fun QuickPlaylistsScreen(
         if (overwriteOriginal) {
             overwriteOriginalOrder(context, playlist, snapshot)
             originalOrderByPlaylist[playlist] = snapshot
+        }
+    }
+
+    fun isExistingPlaylist(name: String?): Boolean {
+        val clean = name?.trim().orEmpty()
+        return clean.isNotEmpty() && playlists.contains(clean)
+    }
+
+    fun saveExistingPlaylist(playlist: String) {
+        persistSongsOrder(playlist, overwriteOriginal = true)
+        internalSelected = playlist
+        onSelectedPlaylistChange(playlist)
+    }
+
+    fun createPlaylistFromCurrent(name: String) {
+        val clean = name.trim()
+        if (clean.isEmpty()) return
+        PlaylistRepository.addPlaylist(clean)
+        val snapshot = songs.toList()
+        snapshot.forEach { uri ->
+            PlaylistRepository.assignSongToPlaylist(clean, uri)
+        }
+        saveManualOrder(context, clean, snapshot)
+        overwriteOriginalOrder(context, clean, snapshot)
+        originalOrderByPlaylist[clean] = snapshot
+        internalSelected = clean
+        onSelectedPlaylistChange(clean)
+    }
+
+    fun requestSaveCurrentPlaylist() {
+        val current = internalSelected?.trim()
+        if (isExistingPlaylist(current)) {
+            saveExistingPlaylist(current!!)
+        } else {
+            savePlaylistName = current.orEmpty()
+            showSavePlaylistDialog = true
         }
     }
 
@@ -820,6 +859,50 @@ fun QuickPlaylistsScreen(
                                 imageVector = Icons.Filled.Folder,
                                 contentDescription = stringResource(R.string.quickplaylists_add_track_button),
                                 tint = Color(0xFF81C784)
+                            )
+                        }
+                    }
+
+                    Box {
+                        IconButton(
+                            onClick = { showActionsMenu = true }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.MoreVert,
+                                contentDescription = stringResource(R.string.quickplaylists_cd_playlist_actions),
+                                tint = Color(0xFFB0BEC5)
+                            )
+                        }
+
+                        DropdownMenu(
+                            expanded = showActionsMenu,
+                            onDismissRequest = { showActionsMenu = false },
+                            modifier = Modifier.background(menuBg)
+                        ) {
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = stringResource(R.string.common_save),
+                                        color = Color.White
+                                    )
+                                },
+                                onClick = {
+                                    showActionsMenu = false
+                                    requestSaveCurrentPlaylist()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = stringResource(R.string.quickplaylists_open_playlist_action),
+                                        color = Color.White
+                                    )
+                                },
+                                enabled = playlists.isNotEmpty(),
+                                onClick = {
+                                    showActionsMenu = false
+                                    showMenu = true
+                                }
                             )
                         }
                     }
@@ -1858,7 +1941,7 @@ fun QuickPlaylistsScreen(
         )
     }
 
-// dialog création titre texte (ancienne méthode)
+    // dialog création titre texte (ancienne méthode)
     if (showCreateTextDialog && internalSelected != null) {
         AlertDialog(
             onDismissRequest = { showCreateTextDialog = false },
@@ -1900,6 +1983,49 @@ fun QuickPlaylistsScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showCreateTextDialog = false }) {
+                    Text(stringResource(R.string.common_cancel), color = Color.White)
+                }
+            },
+            containerColor = Color(0xFF222222)
+        )
+    }
+
+    if (showSavePlaylistDialog) {
+        AlertDialog(
+            onDismissRequest = { showSavePlaylistDialog = false },
+            title = { Text(stringResource(R.string.all_playlists_create_title), color = Color.White) },
+            text = {
+                OutlinedTextField(
+                    value = savePlaylistName,
+                    onValueChange = { savePlaylistName = it },
+                    label = { Text(stringResource(R.string.all_playlists_name_label)) },
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val clean = savePlaylistName.trim()
+                        if (clean.isEmpty()) return@TextButton
+                        if (isExistingPlaylist(clean)) {
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.quickplaylists_playlist_exists),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                            return@TextButton
+                        }
+                        createPlaylistFromCurrent(clean)
+                        showSavePlaylistDialog = false
+                    }
+                ) {
+                    Text(stringResource(R.string.common_ok), color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showSavePlaylistDialog = false }
+                ) {
                     Text(stringResource(R.string.common_cancel), color = Color.White)
                 }
             },

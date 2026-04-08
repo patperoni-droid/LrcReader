@@ -5,6 +5,7 @@
     <string name="dj_title">DJ</string>
     <string name="dj_no_folder_selected">Dossier DJ non autorisé</string>
     <string name="dj_fixed_folder_path">Documents/SPL_Music/DJ</string>
+    <string name="dj_global_music_label">Toute la musique</string>
 
     <string name="dj_cd_back">Retour</string>
     <string name="dj_cd_search">Rechercher</string>
@@ -13,10 +14,14 @@
 
     <string name="dj_menu_choose_folder">Autoriser le dossier DJ</string>
     <string name="dj_menu_reauthorize_folder">Réautoriser le dossier DJ</string>
+    <string name="dj_menu_use_legacy_folder">Utiliser un dossier DJ legacy…</string>
     <string name="dj_menu_scan_refresh">Réanalyser le dossier DJ</string>
-    <string name="dj_menu_import_music">Importer des musiques (→ backingtracks)</string>
+    <string name="dj_menu_scan_refresh_global">Réanalyser la musique du téléphone</string>
+    <string name="dj_menu_import_music">Importer des musiques (→ %1$s)</string>
+    <string name="live_tracks_label">Mes morceaux live</string>
 
     <string name="dj_search_placeholder">Recherche (tous dossiers DJ)…</string>
+    <string name="dj_search_placeholder_global">Recherche (toute la musique)…</string>
 
     <string name="dj_scan_already_running">Scan DJ déjà en cours…</string>
     <string name="dj_scan_done">Scan DJ terminé (%1$d entrées)</string>
@@ -28,6 +33,7 @@
     <string name="dj_authorize_hint">Quand le navigateur s’ouvre, sélectionnez le dossier &quot;DJ&quot;.</string>
     <string name="dj_empty_title">Aucun morceau DJ trouvé</string>
     <string name="dj_empty_body">Aucun morceau DJ n’a été trouvé dans :\n\n%1$s\n\nAjoute tes fichiers DJ dans ce dossier puis reviens dans l’écran DJ. L’app relancera l’analyse automatiquement si le contenu a changé.</string>
+    <string name="dj_empty_global_body">Aucun fichier audio n’a été trouvé dans %1$s.\n\nVérifie l’accès à la musique ou relance l’analyse.</string>
     <string name="dj_reauthorize_action">Réautoriser le dossier DJ</string>
 
     <!-- Communs -->
@@ -102,6 +108,9 @@
 
     <string name="quickplaylists_select">Sélectionne une playlist</string>
     <string name="quickplaylists_empty">Aucune playlist.\nCrée ta première playlist.</string>
+    <string name="quickplaylists_open_playlist_action">Ouvrir une playlist</string>
+    <string name="quickplaylists_cd_playlist_actions">Actions playlist</string>
+    <string name="quickplaylists_playlist_exists">Cette playlist existe déjà.</string>
 
     <string name="tab_home">Accueil</string>
     <string name="tab_playlists">Playlists</string>
@@ -136,7 +145,7 @@
     <string name="library_header_forget_folder">Oublier le dossier</string>
 
     <string name="library_assign_to_playlist_title">Ajouter à une playlist</string>
-    <string name="library_assign_to_playlist_empty">Aucune playlist.\nVa dans l’onglet “Toutes” pour en créer.</string>
+    <string name="library_assign_to_playlist_empty">Aucune playlist.\nCrée-en une pour continuer.</string>
 
     <string name="library_delete_file_title">Supprimer le fichier</string>
     <string name="library_delete_file_confirm_text">Supprimer définitivement ce fichier ?</string>
@@ -158,6 +167,8 @@
     <string name="library_move_browser_other_folder">Autre dossier…</string>
     <string name="library_copy_browser_title">Copier vers…</string>
     <string name="library_copy_browser_here">📥 Copier ici</string>
+    <string name="library_transfer_reuse_title">Dossiers déjà autorisés</string>
+    <string name="library_transfer_reuse_message">Réutilise un dossier déjà autorisé ou choisis-en un autre.</string>
 
     <string name="library_list_cd_play">Lire (bibliothèque)</string>
     <string name="library_list_edit_lrc">Éditer ce .lrc</string>
@@ -168,11 +179,12 @@
     <string name="library_list_move_to_folder">Déplacer vers un dossier</string>
     <string name="library_list_rename">Renommer</string>
     <string name="library_list_delete_permanently">Supprimer définitivement</string>
-    <string name="library_view_mode_songs">Morceaux</string>
+    <string name="library_view_mode_songs">Live</string>
     <string name="library_view_mode_files">Fichiers</string>
-    <string name="library_smp_folder">Backing Tracks</string>
-    <string name="library_legacy_backing_tracks_folder">Backing Tracks (legacy)</string>
-    <string name="library_smp_empty_state">Aucun backing track SMP pour l’instant.\nImporte ou convertis un morceau pour le voir apparaître ici.</string>
+    <string name="library_view_mode_playlists">Playlists</string>
+    <string name="library_smp_folder">Mes morceaux live</string>
+    <string name="library_legacy_backing_tracks_folder">Mes morceaux live</string>
+    <string name="library_smp_empty_state">Aucun morceau live SMP pour l’instant.\nImporte ou convertis un morceau pour le voir apparaître ici.</string>
     <string name="library_smp_detected_importing">Fichier SMP détecté, import du morceau…</string>
 
     <string name="library_delete_backing_track_title">Supprimer ce morceau ?</string>
@@ -322,14 +334,20 @@
 
     <!-- Setup install -->
     <string name="setup_title">Installation</string>
-    <string name="setup_workspace_explainer">Choisis le dossier de travail de SPL.\nTu peux utiliser le dossier recommandé ou choisir le tien.</string>
-    <string name="setup_use_recommended_workspace">Utiliser le dossier recommandé</string>
+    <string name="setup_music_access_title">Accès à votre musique</string>
+    <string name="setup_music_access_message">Pour lire vos fichiers audio et utiliser le mode DJ, l’application a besoin d’accéder à votre musique.</string>
+    <string name="setup_music_access_button">Autoriser l’accès à la musique</string>
+    <string name="setup_music_access_denied">Accès à la musique refusé. Vous pourrez l’autoriser plus tard.</string>
+    <string name="setup_workspace_title">Choisissez votre dossier de travail</string>
+    <string name="setup_workspace_explainer">Ce dossier sera utilisé pour organiser vos morceaux, vos fichiers SMP et vos sauvegardes.</string>
+    <string name="setup_workspace_music_recommended">Dossier recommandé : Music</string>
+    <string name="setup_use_music_workspace">Utiliser le dossier Music</string>
     <string name="setup_choose_workspace">Choisir mon dossier</string>
-    <string name="setup_workspace_hint">Tu pourras importer ta musique ou installer la démo juste après.</string>
     <string name="setup_workspace_unavailable_title">Ce dossier ne convient pas</string>
-    <string name="setup_workspace_unavailable_message">Choisis un autre dossier de travail, ou utilise le dossier recommandé.</string>
+    <string name="setup_workspace_unavailable_message">Choisissez le dossier Music ou un autre dossier de travail.</string>
     <string name="setup_choose_another_workspace">Choisir un autre dossier</string>
-    <string name="setup_workspace_recommended_error">Impossible de préparer le dossier recommandé.</string>
+    <string name="setup_workspace_recommended_error">Impossible d’ouvrir le dossier recommandé.</string>
+    <string name="setup_workspace_prepare_error">Impossible de préparer ce dossier de travail.</string>
     <string name="setup_documents_folder_explainer">SPL va créer et utiliser ce dossier :\nDocuments / SPL_Music</string>
     <string name="setup_allow_documents">Autoriser Documents</string>
     <string name="setup_control_hint">Tu gardes le contrôle : SPL ne touche qu’à son dossier.</string>
@@ -341,6 +359,9 @@
     <string name="setup_import_prompt_subtitle">Tu peux importer ta musique, installer la démo, ou le faire plus tard depuis la bibliothèque.</string>
     <string name="setup_import_later">Plus tard</string>
     <string name="setup_import_now">Importer ma musique</string>
+    <string name="setup_complete_title">Configuration terminée</string>
+    <string name="setup_complete_message">Votre espace est prêt. Vous pouvez maintenant importer vos morceaux ou commencer à jouer.</string>
+    <string name="setup_complete_start">Commencer</string>
     <string name="setup_install_demo">Installer la démo</string>
     <string name="setup_install_demo_progress">Installation de la démo…</string>
     <string name="setup_install_demo_success">Démo installée.</string>

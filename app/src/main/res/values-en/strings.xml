@@ -5,6 +5,7 @@
     <string name="dj_title">DJ</string>
     <string name="dj_no_folder_selected">DJ folder not authorized</string>
     <string name="dj_fixed_folder_path">Documents/SPL_Music/DJ</string>
+    <string name="dj_global_music_label">All music</string>
 
     <string name="dj_cd_back">Back</string>
     <string name="dj_cd_search">Search</string>
@@ -13,10 +14,14 @@
 
     <string name="dj_menu_choose_folder">Authorize DJ folder</string>
     <string name="dj_menu_reauthorize_folder">Re-authorize DJ folder</string>
+    <string name="dj_menu_use_legacy_folder">Use legacy DJ folder…</string>
     <string name="dj_menu_scan_refresh">Re-scan DJ folder</string>
-    <string name="dj_menu_import_music">Import music (→ backingtracks)</string>
+    <string name="dj_menu_scan_refresh_global">Re-scan phone music</string>
+    <string name="dj_menu_import_music">Import music (→ %1$s)</string>
+    <string name="live_tracks_label">My Live Tracks</string>
 
     <string name="dj_search_placeholder">Search (all DJ folders)…</string>
+    <string name="dj_search_placeholder_global">Search (all music)…</string>
 
     <string name="dj_scan_already_running">DJ scan already running…</string>
     <string name="dj_scan_done">DJ scan complete (%1$d entries)</string>
@@ -28,6 +33,7 @@
     <string name="dj_authorize_hint">When the browser opens, select the &quot;DJ&quot; folder.</string>
     <string name="dj_empty_title">No DJ tracks found</string>
     <string name="dj_empty_body">No DJ tracks were found in:\n\n%1$s\n\nAdd your DJ files to that folder, then return to the DJ screen. The app will re-scan automatically if the content changed.</string>
+    <string name="dj_empty_global_body">No audio files were found in %1$s.\n\nCheck music access or refresh the scan.</string>
     <string name="dj_reauthorize_action">Re-authorize DJ folder</string>
 
     <!-- Common -->
@@ -108,6 +114,9 @@
     <!-- Quick playlists -->
     <string name="quickplaylists_select">Select a playlist</string>
     <string name="quickplaylists_empty">No playlist.\nCreate your first playlist.</string>
+    <string name="quickplaylists_open_playlist_action">Open a playlist</string>
+    <string name="quickplaylists_cd_playlist_actions">Playlist actions</string>
+    <string name="quickplaylists_playlist_exists">This playlist already exists.</string>
 
     <string name="tab_home">Home</string>
     <string name="tab_playlists">Playlists</string>
@@ -140,7 +149,7 @@
     <string name="library_header_forget_folder">Forget folder</string>
 
     <string name="library_assign_to_playlist_title">Add to a playlist</string>
-    <string name="library_assign_to_playlist_empty">No playlist.\nGo to the “All” tab to create one.</string>
+    <string name="library_assign_to_playlist_empty">No playlist.\nCreate one to continue.</string>
 
     <string name="library_delete_file_title">Delete file</string>
     <string name="library_delete_file_confirm_text">Delete this file permanently?</string>
@@ -159,6 +168,8 @@
     <string name="library_move_browser_other_folder">Other folder…</string>
     <string name="library_copy_browser_title">Copy to…</string>
     <string name="library_copy_browser_here">📥 Copy here</string>
+    <string name="library_transfer_reuse_title">Authorized folders</string>
+    <string name="library_transfer_reuse_message">Reuse an authorized folder or choose another one.</string>
 
     <string name="library_list_cd_play">Play (library)</string>
     <string name="library_list_edit_lrc">Edit this .lrc</string>
@@ -168,11 +179,12 @@
     <string name="library_list_move_to_folder">Move to a folder</string>
     <string name="library_list_rename">Rename</string>
     <string name="library_list_delete_permanently">Delete permanently</string>
-    <string name="library_view_mode_songs">Songs</string>
+    <string name="library_view_mode_songs">Live</string>
     <string name="library_view_mode_files">Files</string>
-    <string name="library_smp_folder">Backing Tracks</string>
-    <string name="library_legacy_backing_tracks_folder">Backing Tracks (legacy)</string>
-    <string name="library_smp_empty_state">No SMP backing tracks yet.\nImport or convert a song to see it appear here.</string>
+    <string name="library_view_mode_playlists">Playlists</string>
+    <string name="library_smp_folder">My Live Tracks</string>
+    <string name="library_legacy_backing_tracks_folder">My Live Tracks</string>
+    <string name="library_smp_empty_state">No SMP live tracks yet.\nImport or convert a song to see it appear here.</string>
     <string name="library_smp_detected_importing">SMP file detected, importing track…</string>
 
     <string name="library_delete_backing_track_title">Delete this track?</string>
@@ -282,14 +294,20 @@
 
     <!-- Setup install -->
     <string name="setup_title">Installation</string>
-    <string name="setup_workspace_explainer">Choose SPL\'s work folder.\nYou can use the recommended folder or pick your own.</string>
-    <string name="setup_use_recommended_workspace">Use recommended folder</string>
+    <string name="setup_music_access_title">Access your music</string>
+    <string name="setup_music_access_message">To play your audio files and use DJ mode, the app needs access to your music.</string>
+    <string name="setup_music_access_button">Allow music access</string>
+    <string name="setup_music_access_denied">Music access was denied. You can allow it later.</string>
+    <string name="setup_workspace_title">Choose your work folder</string>
+    <string name="setup_workspace_explainer">This folder will be used to organize your songs, SMP files, and backups.</string>
+    <string name="setup_workspace_music_recommended">Recommended folder: Music</string>
+    <string name="setup_use_music_workspace">Use Music folder</string>
     <string name="setup_choose_workspace">Choose my folder</string>
-    <string name="setup_workspace_hint">Right after that, you can import your music or install the demo.</string>
     <string name="setup_workspace_unavailable_title">This folder won\'t work</string>
-    <string name="setup_workspace_unavailable_message">Choose another work folder, or use the recommended folder.</string>
+    <string name="setup_workspace_unavailable_message">Choose the Music folder or another work folder.</string>
     <string name="setup_choose_another_workspace">Choose another folder</string>
-    <string name="setup_workspace_recommended_error">Could not prepare the recommended folder.</string>
+    <string name="setup_workspace_recommended_error">Could not open the recommended folder.</string>
+    <string name="setup_workspace_prepare_error">Could not prepare this work folder.</string>
     <string name="setup_documents_folder_explainer">SPL will create and use this folder:\nDocuments / SPL_Music</string>
     <string name="setup_allow_documents">Allow Documents</string>
     <string name="setup_control_hint">You stay in control: SPL only touches its own folder.</string>
@@ -301,6 +319,9 @@
     <string name="setup_import_prompt_subtitle">You can import your music, install the demo, or do it later from the library.</string>
     <string name="setup_import_later">Later</string>
     <string name="setup_import_now">Import my music</string>
+    <string name="setup_complete_title">Setup complete</string>
+    <string name="setup_complete_message">Your space is ready. You can now import your songs or start playing.</string>
+    <string name="setup_complete_start">Start</string>
     <string name="setup_install_demo">Install demo</string>
     <string name="setup_install_demo_progress">Installing demo…</string>
     <string name="setup_install_demo_success">Demo installed.</string>

@@ -29,7 +29,9 @@ fun LibraryHeader(
     titleColor: Color,
     subtitleColor: Color,
     currentFolderUri: Uri?,
+    folderNameOverride: String? = null,
     isFilesViewMode: Boolean,
+    showActions: Boolean = true,
     canGoBack: Boolean,
     onBack: () -> Unit,
     onPickRoot: () -> Unit,
@@ -51,18 +53,23 @@ fun LibraryHeader(
     val sPrompter = stringResource(R.string.main_menu_prompter)
     val sSmpFolder = stringResource(R.string.library_smp_folder)
     val sLegacyBackingTracksFolder = stringResource(R.string.library_legacy_backing_tracks_folder)
+    val sFilesView = stringResource(R.string.library_view_mode_files)
 
     val folderName = remember(
         currentFolderUri,
+        folderNameOverride,
         sNoFolderSelected,
         sPrompter,
         sSmpFolder,
-        sLegacyBackingTracksFolder
+        sLegacyBackingTracksFolder,
+        sFilesView
     ) {
+        folderNameOverride ?: (
         currentFolderUri?.let { u ->
             when (u.scheme) {
                 "spl-prompter" -> sPrompter
                 "spl-smp" -> sSmpFolder
+                "spl-shared-audio" -> sharedAudioFolderDisplayName(u, sFilesView)
                 "file" -> {
                     val rawName = File(u.path ?: "").name.ifBlank { "SPL_Music" }
                     if (isLegacyBackingTracksFolderName(rawName)) sLegacyBackingTracksFolder else rawName
@@ -73,7 +80,7 @@ fun LibraryHeader(
                     if (isLegacyBackingTracksFolderName(rawName)) sLegacyBackingTracksFolder else rawName
                 }
             }
-        } ?: sNoFolderSelected
+        } ?: sNoFolderSelected)
     }
 
     val hasRoot = currentFolderUri != null
@@ -106,96 +113,98 @@ fun LibraryHeader(
             Text(folderName, color = subtitleColor, fontSize = 11.sp)
         }
 
-        IconButton(onClick = { actionsExpanded = true }) {
-            Icon(
-                Icons.Default.MoreVert,
-                contentDescription = stringResource(R.string.library_header_cd_actions),
-                tint = Color.White
-            )
-        }
+        if (showActions) {
+            IconButton(onClick = { actionsExpanded = true }) {
+                Icon(
+                    Icons.Default.MoreVert,
+                    contentDescription = stringResource(R.string.library_header_cd_actions),
+                    tint = Color.White
+                )
+            }
 
-        DropdownMenu(
-            expanded = actionsExpanded,
-            onDismissRequest = { actionsExpanded = false }
-        ) {
-            if (isSelectionContext) {
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.library_bottom_copy)) },
-                    onClick = {
-                        actionsExpanded = false
-                        onCopySelection?.invoke()
-                    }
-                )
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.library_bottom_move)) },
-                    onClick = {
-                        actionsExpanded = false
-                        onMoveSelection?.invoke()
-                    }
-                )
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.library_bottom_delete)) },
-                    onClick = {
-                        actionsExpanded = false
-                        onDeleteSelection?.invoke()
-                    }
-                )
-                if (onClearSelection != null) {
-                    HorizontalDivider()
+            DropdownMenu(
+                expanded = actionsExpanded,
+                onDismissRequest = { actionsExpanded = false }
+            ) {
+                if (isSelectionContext) {
                     DropdownMenuItem(
-                        text = { Text(stringResource(R.string.library_bottom_clear_selection)) },
+                        text = { Text(stringResource(R.string.library_bottom_copy)) },
                         onClick = {
                             actionsExpanded = false
-                            onClearSelection()
+                            onCopySelection?.invoke()
                         }
                     )
-                }
-            } else if (isFilesViewMode) {
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.library_header_rescan)) },
-                    enabled = hasRoot,
-                    onClick = { actionsExpanded = false; onRescan() }
-                )
-            } else {
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.library_header_choose_folder)) },
-                    onClick = {
-                        actionsExpanded = false
-                        onPickRoot()
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.library_bottom_move)) },
+                        onClick = {
+                            actionsExpanded = false
+                            onMoveSelection?.invoke()
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.library_bottom_delete)) },
+                        onClick = {
+                            actionsExpanded = false
+                            onDeleteSelection?.invoke()
+                        }
+                    )
+                    if (onClearSelection != null) {
+                        HorizontalDivider()
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.library_bottom_clear_selection)) },
+                            onClick = {
+                                actionsExpanded = false
+                                onClearSelection()
+                            }
+                        )
                     }
-                )
+                } else if (isFilesViewMode) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.library_header_rescan)) },
+                        enabled = hasRoot,
+                        onClick = { actionsExpanded = false; onRescan() }
+                    )
+                } else {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.library_header_choose_folder)) },
+                        onClick = {
+                            actionsExpanded = false
+                            onPickRoot()
+                        }
+                    )
 
-                HorizontalDivider()
+                    HorizontalDivider()
 
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.library_header_rescan)) },
-                    enabled = hasRoot,
-                    onClick = { actionsExpanded = false; onRescan() }
-                )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.library_header_rescan)) },
+                        enabled = hasRoot,
+                        onClick = { actionsExpanded = false; onRescan() }
+                    )
 
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.library_header_import_music)) },
-                    enabled = hasRoot,
-                    onClick = { actionsExpanded = false; onImportBackingTracks() }
-                )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.library_header_import_music)) },
+                        enabled = hasRoot,
+                        onClick = { actionsExpanded = false; onImportBackingTracks() }
+                    )
 
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.library_header_convert_folder_to_smp)) },
-                    enabled = canConvertFolder,
-                    onClick = { actionsExpanded = false; onConvertFolderToSmp() }
-                )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.library_header_convert_folder_to_smp)) },
+                        enabled = canConvertFolder,
+                        onClick = { actionsExpanded = false; onConvertFolderToSmp() }
+                    )
 
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.library_header_import_smp)) },
-                    enabled = hasRoot,
-                    onClick = { actionsExpanded = false; onImportSmp() }
-                )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.library_header_import_smp)) },
+                        enabled = hasRoot,
+                        onClick = { actionsExpanded = false; onImportSmp() }
+                    )
 
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.library_header_forget_folder)) },
-                    enabled = hasRoot,
-                    onClick = { actionsExpanded = false; onForget() }
-                )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.library_header_forget_folder)) },
+                        enabled = hasRoot,
+                        onClick = { actionsExpanded = false; onForget() }
+                    )
+                }
             }
         }
     }

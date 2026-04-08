@@ -5,6 +5,7 @@
     <string name="dj_title">DJ</string>
     <string name="dj_no_folder_selected">La carpeta DJ no está autorizada</string>
     <string name="dj_fixed_folder_path">Documents/SPL_Music/DJ</string>
+    <string name="dj_global_music_label">Toda la música</string>
 
     <string name="dj_cd_back">Atrás</string>
     <string name="dj_cd_search">Buscar</string>
@@ -12,10 +13,14 @@
     <string name="dj_cd_stop">Detener DJ</string>
 
     <string name="dj_menu_choose_folder">Autorizar carpeta DJ…</string>
+    <string name="dj_menu_use_legacy_folder">Usar carpeta DJ legacy…</string>
     <string name="dj_menu_scan_refresh">Volver a escanear la carpeta DJ</string>
-    <string name="dj_menu_import_music">Importar música (→ backingtracks)</string>
+    <string name="dj_menu_scan_refresh_global">Volver a escanear la música del teléfono</string>
+    <string name="dj_menu_import_music">Importar música (→ %1$s)</string>
+    <string name="live_tracks_label">Mis pistas en vivo</string>
 
     <string name="dj_search_placeholder">Buscar (todas las carpetas DJ)…</string>
+    <string name="dj_search_placeholder_global">Buscar (toda la música)…</string>
 
     <string name="dj_scan_already_running">El escaneo DJ ya está en curso…</string>
     <string name="dj_scan_done">Escaneo DJ completado (%1$d entradas)</string>
@@ -26,6 +31,7 @@
     <string name="dj_authorize_body">El modo DJ usa la carpeta obligatoria de SPL:\n\n%1$s\n\nColoca allí tus pistas DJ y luego autorízala para activar el escaneo automático.</string>
     <string name="dj_empty_title">No se encontraron pistas DJ</string>
     <string name="dj_empty_body">No se encontraron pistas DJ en:\n\n%1$s\n\nAñade tus archivos DJ a esa carpeta y vuelve a la pantalla DJ. La app volverá a escanear automáticamente si el contenido cambió.</string>
+    <string name="dj_empty_global_body">No se encontraron archivos de audio en %1$s.\n\nComprueba el acceso a la música o vuelve a escanear.</string>
     <string name="dj_reauthorize_action">Volver a autorizar la carpeta DJ</string>
 
     <!-- Common -->
@@ -106,6 +112,9 @@
     <!-- Quick playlists -->
     <string name="quickplaylists_select">Selecciona una lista de reproducción</string>
     <string name="quickplaylists_empty">No hay listas de reproducción.\nCrea tu primera lista.</string>
+    <string name="quickplaylists_open_playlist_action">Abrir una lista de reproducción</string>
+    <string name="quickplaylists_cd_playlist_actions">Acciones de la lista</string>
+    <string name="quickplaylists_playlist_exists">Esta lista ya existe.</string>
 
     <string name="tab_home">Inicio</string>
     <string name="tab_playlists">Listas</string>
@@ -138,7 +147,7 @@
     <string name="library_header_forget_folder">Olvidar carpeta</string>
 
     <string name="library_assign_to_playlist_title">Agregar a una lista de reproducción</string>
-    <string name="library_assign_to_playlist_empty">No hay listas de reproducción.\nVe a la pestaña “Todo” para crear una.</string>
+    <string name="library_assign_to_playlist_empty">No hay listas de reproducción.\nCrea una para continuar.</string>
 
     <string name="library_delete_file_title">Eliminar archivo</string>
     <string name="library_delete_file_confirm_text">¿Eliminar este archivo permanentemente?</string>
@@ -152,6 +161,8 @@
     <string name="library_move_browser_here">📥 Mover aquí</string>
     <string name="library_move_browser_folder_entry">📁 %1$s</string>
     <string name="library_move_browser_other_folder">Otra carpeta…</string>
+    <string name="library_transfer_reuse_title">Carpetas autorizadas</string>
+    <string name="library_transfer_reuse_message">Reutiliza una carpeta autorizada o elige otra.</string>
 
     <string name="library_list_cd_play">Reproducir (biblioteca)</string>
     <string name="library_list_edit_lrc">Editar este .lrc</string>
@@ -160,8 +171,12 @@
     <string name="library_list_move_to_folder">Mover a una carpeta</string>
     <string name="library_list_rename">Renombrar</string>
     <string name="library_list_delete_permanently">Eliminar permanentemente</string>
-    <string name="library_smp_folder">Backing Tracks</string>
-    <string name="library_legacy_backing_tracks_folder">Backing Tracks (legacy)</string>
+    <string name="library_view_mode_songs">Live</string>
+    <string name="library_view_mode_files">Archivos</string>
+    <string name="library_view_mode_playlists">Playlists</string>
+    <string name="library_smp_folder">Mis pistas en vivo</string>
+    <string name="library_legacy_backing_tracks_folder">Mis pistas en vivo</string>
+    <string name="library_smp_empty_state">Aún no hay pistas en vivo SMP.\nImporta o convierte una canción para verla aquí.</string>
 
     <string name="library_delete_backing_track_title">¿Eliminar esta pista?</string>
     <string name="library_delete_audio_question">Solo pista</string>

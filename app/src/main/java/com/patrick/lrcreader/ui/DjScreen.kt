@@ -44,6 +44,10 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.patrick.lrcreader.core.BackupFolderPrefs
 import com.patrick.lrcreader.core.DjFolderPrefs
 import com.patrick.lrcreader.core.DjIndexCache
+import com.patrick.lrcreader.core.buildDjGlobalAudioIndex
+import com.patrick.lrcreader.core.djGlobalRootUri
+import com.patrick.lrcreader.core.hasDjGlobalAudioAccess
+import com.patrick.lrcreader.core.isDjGlobalRoot
 import com.patrick.lrcreader.core.DjScanState
 import com.patrick.lrcreader.core.PlaybackCoordinator
 import com.patrick.lrcreader.core.dj.DjEngine
@@ -73,6 +77,7 @@ fun DjScreen(
 
     var isLoading by remember { mutableStateOf(false) }
     var hasResolvedDjAccess by remember { mutableStateOf(false) }
+    var isGlobalAudioMode by remember { mutableStateOf(hasDjGlobalAudioAccess(context)) }
 
     var menuOpen by remember { mutableStateOf(false) }
     var isQueuePanelOpen by remember { mutableStateOf(false) }
@@ -111,6 +116,9 @@ fun DjScreen(
 
     fun djRootDisplayName(root: Uri?): String {
         if (root == null) return context.getString(R.string.dj_no_folder_selected)
+        if (isDjGlobalRoot(root)) {
+            return context.getString(R.string.dj_global_music_label)
+        }
         if (root.scheme == "file") {
             return File(root.path ?: "").name.ifBlank { context.getString(R.string.common_ellipsis) }
         }
@@ -132,6 +140,16 @@ fun DjScreen(
     }
 
     suspend fun shouldAutoScanDj(root: Uri, currentIndex: List<DjIndexCache.Entry>): Boolean {
+        if (isDjGlobalRoot(root)) {
+            val meta = DjIndexCache.loadScanMeta(context)
+            if (currentIndex.isEmpty()) return true
+            if (meta?.rootUriString != root.toString()) return true
+            if (!DjScanState.isScanning.value && System.currentTimeMillis() - meta.verifiedAtMs < DJ_SIGNATURE_RECHECK_COOLDOWN_MS) {
+                return false
+            }
+            return true
+        }
+
         if (!DjFolderPrefs.isScanned(context)) return true
         if (currentIndex.isEmpty()) return true
 
@@ -215,7 +233,9 @@ fun DjScreen(
             DjScanState.start()
             try {
                 val djRootAccessible = withContext(Dispatchers.IO) {
-                    if (djRoot.scheme == "file") {
+                    if (isDjGlobalRoot(djRoot)) {
+                        hasDjGlobalAudioAccess(context)
+                    } else if (djRoot.scheme == "file") {
                         File(djRoot.path ?: "").isDirectory
                     } else {
                         val doc = DocumentFile.fromTreeUri(context, djRoot)
@@ -228,19 +248,34 @@ fun DjScreen(
                 }
 
                 val newDjIndex = withContext(Dispatchers.IO) {
-                    buildDjFullIndex(context, djRoot)
+                    if (isDjGlobalRoot(djRoot)) {
+                        buildDjGlobalAudioIndex(context)
+                    } else {
+                        buildDjFullIndex(context, djRoot)
+                    }
                 }
                 DjIndexCache.save(context, newDjIndex)
-                withContext(Dispatchers.IO) {
-                    computeDjFolderSignature(context, djRoot)
-                }?.let { signature ->
+                if (isDjGlobalRoot(djRoot)) {
+                    val latestModifiedMs = newDjIndex.maxOfOrNull { it.lastModifiedMs } ?: 0L
                     DjIndexCache.saveScanMeta(
                         context = context,
                         rootUri = djRoot,
-                        signature = signature.hash,
-                        rootLastModifiedMs = signature.rootLastModifiedMs,
-                        itemCount = signature.itemCount
+                        signature = "media:${newDjIndex.size}:$latestModifiedMs",
+                        rootLastModifiedMs = latestModifiedMs,
+                        itemCount = newDjIndex.size
                     )
+                } else {
+                    withContext(Dispatchers.IO) {
+                        computeDjFolderSignature(context, djRoot)
+                    }?.let { signature ->
+                        DjIndexCache.saveScanMeta(
+                            context = context,
+                            rootUri = djRoot,
+                            signature = signature.hash,
+                            rootLastModifiedMs = signature.rootLastModifiedMs,
+                            itemCount = signature.itemCount
+                        )
+                    }
                 }
                 DjFolderPrefs.setScanned(context, true)
 
@@ -271,10 +306,16 @@ fun DjScreen(
     }
 
     suspend fun refreshDjState(forceSignatureCheck: Boolean) {
-        val root = DjFolderPrefs.getOrAdoptFromLibraryRoot(context)
+        val globalAudioEnabled = hasDjGlobalAudioAccess(context)
+        isGlobalAudioMode = globalAudioEnabled
+        val root = if (globalAudioEnabled) {
+            djGlobalRootUri()
+        } else {
+            DjFolderPrefs.getOrAdoptFromLibraryRoot(context)
+        }
         android.util.Log.i(
             DJ_FOLDER_TAG,
-            "refreshDjState forceSignatureCheck=$forceSignatureCheck resolvedRoot=$root"
+            "refreshDjState forceSignatureCheck=$forceSignatureCheck globalAudioEnabled=$globalAudioEnabled resolvedRoot=$root"
         )
         syncBrowserToRoot(root)
 
@@ -442,6 +483,12 @@ fun DjScreen(
     val deckAGlow = Color(0xFF4CAF50)
     val deckBGlow = Color(0xFFE040FB)
     val fixedDjPath = stringResource(R.string.dj_fixed_folder_path)
+    val globalMusicLabel = stringResource(R.string.dj_global_music_label)
+    val scanRefreshLabel = if (isGlobalAudioMode) {
+        stringResource(R.string.dj_menu_scan_refresh_global)
+    } else {
+        stringResource(R.string.dj_menu_scan_refresh)
+    }
 
     // Liste visible (filtre dans le dossier courant)
     val visibleEntries = remember(entries, searchQuery) {
@@ -468,7 +515,9 @@ fun DjScreen(
         searchQuery.isBlank() &&
         visibleEntries.isEmpty() &&
         allAudioEntries.isEmpty()
-    val authorizeMenuLabel = if (needsDjAuthorization) {
+    val authorizeMenuLabel = if (isGlobalAudioMode) {
+        stringResource(R.string.dj_menu_use_legacy_folder)
+    } else if (needsDjAuthorization) {
         stringResource(R.string.dj_menu_choose_folder)
     } else {
         stringResource(R.string.dj_menu_reauthorize_folder)
@@ -567,11 +616,15 @@ fun DjScreen(
                     )
 
                     DropdownMenuItem(
-                        text = { Text(stringResource(R.string.dj_menu_scan_refresh)) },
+                        text = { Text(scanRefreshLabel) },
                         onClick = {
                             menuOpen = false
 
-                            val djRoot = DjFolderPrefs.getOrAdoptFromLibraryRoot(context)
+                            val djRoot = if (isGlobalAudioMode) {
+                                djGlobalRootUri()
+                            } else {
+                                DjFolderPrefs.getOrAdoptFromLibraryRoot(context)
+                            }
                             syncBrowserToRoot(djRoot)
 
                             if (djRoot == null) {
@@ -587,7 +640,14 @@ fun DjScreen(
                     Divider()
 
                     DropdownMenuItem(
-                        text = { Text(stringResource(R.string.dj_menu_import_music)) },
+                        text = {
+                            Text(
+                                stringResource(
+                                    R.string.dj_menu_import_music,
+                                    stringResource(R.string.live_tracks_label)
+                                )
+                            )
+                        },
                         onClick = {
                             menuOpen = false
                             pickAudioFilesLauncher.launch(
@@ -618,7 +678,11 @@ fun DjScreen(
                     ),
                     placeholder = {
                         Text(
-                            text = stringResource(R.string.dj_search_placeholder),
+                            text = if (isGlobalAudioMode) {
+                                stringResource(R.string.dj_search_placeholder_global)
+                            } else {
+                                stringResource(R.string.dj_search_placeholder)
+                            },
                             fontSize = 12.sp,
                             color = Color(0x77FFFFFF)
                         )
@@ -891,7 +955,11 @@ fun DjScreen(
                                 fontSize = 16.sp
                             )
                             Text(
-                                text = stringResource(R.string.dj_empty_body, fixedDjPath),
+                                text = if (isGlobalAudioMode) {
+                                    stringResource(R.string.dj_empty_global_body, globalMusicLabel)
+                                } else {
+                                    stringResource(R.string.dj_empty_body, fixedDjPath)
+                                },
                                 color = sub,
                                 fontSize = 13.sp
                             )
@@ -901,10 +969,16 @@ fun DjScreen(
                                         browserVm.rootFolderUri?.let { launchDjScan(it, showToast = true) }
                                     }
                                 ) {
-                                    Text(stringResource(R.string.dj_menu_scan_refresh))
+                                    Text(scanRefreshLabel)
                                 }
                                 TextButton(onClick = { pickDjFolderLauncher.launch(null) }) {
-                                    Text(stringResource(R.string.dj_reauthorize_action))
+                                    Text(
+                                        if (isGlobalAudioMode) {
+                                            stringResource(R.string.dj_menu_use_legacy_folder)
+                                        } else {
+                                            stringResource(R.string.dj_reauthorize_action)
+                                        }
+                                    )
                                 }
                             }
                         }

@@ -5,6 +5,7 @@ import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.provider.DocumentsContract
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -12,6 +13,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -44,11 +47,13 @@ import com.patrick.lrcreader.core.BackupManager
 import com.patrick.lrcreader.core.DjFolderPrefs
 import com.patrick.lrcreader.core.ImportAudioManager
 import com.patrick.lrcreader.core.LibraryIndexCache
+import com.patrick.lrcreader.core.LibraryTransferFolderPrefs
 import com.patrick.lrcreader.core.PlaylistRepository
 import com.patrick.lrcreader.core.SmpPreparationNoticePrefs
 import com.patrick.lrcreader.core.TextSongRepository
 import com.patrick.lrcreader.core.WorkspaceResolver
 import com.patrick.lrcreader.core.buildSmpItem
+import com.patrick.lrcreader.core.hasDjGlobalAudioAccess
 import com.patrick.lrcreader.core.getSmpSongId
 import com.patrick.lrcreader.core.config.TitleAliasesStore
 import com.patrick.lrcreader.core.search.SearchEngine
@@ -78,6 +83,7 @@ private val PROMPTER_FOLDER_URI: Uri = Uri.parse("spl-prompter://folder")
 private val SMP_FOLDER_URI: Uri = Uri.parse("spl-smp://folder")
 private const val LIBRARY_VIEW_MODE_SONGS = "songs"
 private const val LIBRARY_VIEW_MODE_FILES = "files"
+private const val LIBRARY_VIEW_MODE_PLAYLISTS = "playlists"
 private const val IMPORT_PROOF_TAG = "IMPORT_PROOF"
 private const val IMPORT_TRACE_TAG = "IMPORT_TRACE"
 private const val SMP_VIEW_TRACE_TAG = "SMP_VIEW_TRACE"
@@ -93,6 +99,190 @@ private val buildSmpEntriesTraceCounter = AtomicInteger(0)
 
 private fun isPrompterFolderUri(uri: Uri?): Boolean = uri?.scheme == "spl-prompter"
 private fun isSmpFolderUri(uri: Uri?): Boolean = uri?.scheme == "spl-smp"
+private fun isLegacyLiveTracksFolderName(name: String): Boolean {
+    val normalized = name.trim()
+    return normalized.equals("BackingTracks", ignoreCase = true) ||
+        normalized.equals("BackingTrack", ignoreCase = true)
+}
+
+private fun normalizeToTreeUri(uri: Uri): Uri? {
+    val authority = uri.authority ?: return null
+    val docId = runCatching { DocumentsContract.getTreeDocumentId(uri) }.getOrNull()
+        ?: runCatching { DocumentsContract.getDocumentId(uri) }.getOrNull()
+        ?: return null
+    return DocumentsContract.buildTreeDocumentUri(authority, docId)
+}
+
+private fun parentTreeDocumentId(docId: String): String? {
+    val colonIndex = docId.indexOf(':')
+    if (colonIndex < 0) {
+        val slashIndex = docId.lastIndexOf('/')
+        return if (slashIndex > 0) docId.substring(0, slashIndex) else null
+    }
+
+    val volume = docId.substring(0, colonIndex)
+    val relativePath = docId.substring(colonIndex + 1).trim('/')
+    if (relativePath.isBlank()) return null
+
+    val slashIndex = relativePath.lastIndexOf('/')
+    return if (slashIndex >= 0) {
+        "$volume:${relativePath.substring(0, slashIndex)}"
+    } else {
+        "$volume:"
+    }
+}
+
+private fun isReadableDirectoryUri(context: android.content.Context, uri: Uri): Boolean {
+    return when (uri.scheme) {
+        "file" -> {
+            val path = uri.path ?: return false
+            File(path).isDirectory
+        }
+
+        else -> {
+            val doc = DocumentFile.fromTreeUri(context, uri)
+                ?: DocumentFile.fromSingleUri(context, uri)
+                ?: return false
+            runCatching {
+                doc.isDirectory && doc.exists()
+            }.getOrDefault(false)
+        }
+    }
+}
+
+private fun resolveBroadestReadableTreeUri(
+    context: android.content.Context,
+    treeUri: Uri?
+): Uri? {
+    val normalizedTreeUri = treeUri?.let(::normalizeToTreeUri) ?: return null
+    val authority = normalizedTreeUri.authority ?: return normalizedTreeUri
+    var currentDocId = runCatching { DocumentsContract.getTreeDocumentId(normalizedTreeUri) }.getOrNull()
+        ?: return normalizedTreeUri
+    var bestUri: Uri? = null
+
+    while (true) {
+        val candidate = DocumentsContract.buildTreeDocumentUri(authority, currentDocId)
+        if (isReadableDirectoryUri(context, candidate)) {
+            bestUri = candidate
+        }
+        val parentDocId = parentTreeDocumentId(currentDocId) ?: break
+        currentDocId = parentDocId
+    }
+
+    return bestUri ?: normalizedTreeUri
+}
+
+private fun resolveFilesNavigationRootForLibrary(
+    context: android.content.Context,
+    storageMode: StorageModePrefs.Mode,
+    setupTreeUri: Uri?,
+    workspaceRootUri: Uri?
+): Uri? {
+    if (hasDjGlobalAudioAccess(context)) {
+        return SHARED_AUDIO_ROOT_URI
+    }
+    return when (storageMode) {
+        StorageModePrefs.Mode.SAF ->
+            resolveBroadestReadableTreeUri(context, setupTreeUri) ?: setupTreeUri ?: workspaceRootUri
+        StorageModePrefs.Mode.INTERNAL -> workspaceRootUri
+    }
+}
+
+private fun resolveLibraryNavigationRoot(
+    libraryViewMode: String,
+    filesNavigationRoot: Uri?,
+    workspaceRootUri: Uri?
+): Uri? {
+    return if (libraryViewMode == LIBRARY_VIEW_MODE_FILES) {
+        filesNavigationRoot ?: workspaceRootUri
+    } else {
+        workspaceRootUri
+    }
+}
+
+private fun resolveFilesInitialFolderForLibrary(filesNavigationRoot: Uri?): Uri? {
+    return filesNavigationRoot
+}
+
+private fun isUriInsideTree(candidate: Uri, treeUri: Uri?): Boolean {
+    if (treeUri == null) return false
+
+    if (candidate.scheme == "file" && treeUri.scheme == "file") {
+        val candidatePath = candidate.path ?: return false
+        val treePath = treeUri.path ?: return false
+        val normalizedCandidate = runCatching { File(candidatePath).canonicalPath }.getOrElse { candidatePath }
+        val normalizedTree = runCatching { File(treePath).canonicalPath }.getOrElse { treePath }
+        return normalizedCandidate == normalizedTree ||
+            normalizedCandidate.startsWith("$normalizedTree/")
+    }
+
+    if (candidate.authority != treeUri.authority) return false
+
+    val treeDocId = runCatching { DocumentsContract.getTreeDocumentId(treeUri) }.getOrNull()
+        ?: runCatching { DocumentsContract.getDocumentId(treeUri) }.getOrNull()
+        ?: return false
+
+    val candidateDocId = runCatching { DocumentsContract.getTreeDocumentId(candidate) }.getOrNull()
+        ?: runCatching { DocumentsContract.getDocumentId(candidate) }.getOrNull()
+        ?: return false
+
+    return candidateDocId.equals(treeDocId, ignoreCase = true) ||
+        candidateDocId.startsWith("$treeDocId/", ignoreCase = true)
+}
+
+private fun isWorkspaceLiveTracksFolderEntry(
+    entry: LibraryEntry,
+    workspaceRootUri: Uri?
+): Boolean {
+    return entry.isDirectory &&
+        isLegacyLiveTracksFolderName(entry.name) &&
+        isUriInsideTree(entry.uri, workspaceRootUri)
+}
+
+private fun buildAuthorizedTransferFolderOption(
+    context: android.content.Context,
+    uri: Uri
+): AuthorizedTransferFolderOption {
+    val title = runCatching {
+        DocumentFile.fromTreeUri(context, uri)?.name
+            ?: DocumentFile.fromSingleUri(context, uri)?.name
+    }.getOrNull()
+        ?.takeIf { it.isNotBlank() }
+        ?: uri.lastPathSegment
+        ?: uri.toString()
+
+    val subtitle = runCatching { DocumentsContract.getTreeDocumentId(uri) }.getOrNull()
+        ?: runCatching { DocumentsContract.getDocumentId(uri) }.getOrNull()
+        ?: uri.toString()
+
+    return AuthorizedTransferFolderOption(
+        uri = uri,
+        title = title,
+        subtitle = subtitle
+    )
+}
+
+private fun buildFilesInitialFolderStack(root: Uri, folderToShow: Uri): List<Uri> {
+    return if (folderToShow.toString() == root.toString()) emptyList() else listOf(root)
+}
+
+private fun resolveFilesBackTarget(
+    folderStack: List<Uri>,
+    filesNavigationRoot: Uri?,
+    workspaceRootUri: Uri?
+): Uri? {
+    return folderStack.lastOrNull() ?: filesNavigationRoot ?: workspaceRootUri
+}
+
+private fun shouldResetFilesNavigationStack(
+    previousFolder: Uri?,
+    folderStack: List<Uri>
+): Boolean {
+    return previousFolder == null ||
+        isPrompterFolderUri(previousFolder) ||
+        isSmpFolderUri(previousFolder) ||
+        folderStack.isEmpty()
+}
 
 private fun summarizeLibraryEntries(entries: List<LibraryEntry>, limit: Int = 20): String {
     val rendered = entries.take(limit).joinToString(", ") { entry ->
@@ -122,6 +312,11 @@ private data class BatchProgressVisualBounds(
     val floor: Float,
     val ceiling: Float
 )
+
+private enum class ExternalTransferKind {
+    MOVE,
+    COPY
+}
 
 private val HIDDEN_LEGACY_FOLDER_NAMES = setOf(
     "backingtracks",
@@ -172,9 +367,15 @@ private fun resolveFolderName(context: android.content.Context, uri: Uri): Strin
         "spl-prompter",
         "spl-smp" -> null
         else -> {
-            (DocumentFile.fromTreeUri(context, uri) ?: DocumentFile.fromSingleUri(context, uri))
-                ?.name
-                ?.takeIf { it.isNotBlank() }
+            if (isSharedAudioFolderUri(uri)) {
+                null
+            } else {
+                runCatching {
+                    (DocumentFile.fromTreeUri(context, uri) ?: DocumentFile.fromSingleUri(context, uri))
+                        ?.name
+                        ?.takeIf { it.isNotBlank() }
+                }.getOrNull()
+            }
         }
     }
 }
@@ -226,6 +427,7 @@ fun LibraryScreen(
     onImportGeneratedSmp: suspend (Uri) -> com.patrick.lrcreader.smp.SongUnit?,
     onImportGeneratedSmpFailureReason: () -> String? = { null },
     onDeleteSmpSong: suspend (String) -> Boolean = { false },
+    onOpenPlaylistFromLibrary: (String) -> Unit = {},
     onPlayFromLibrary: (String) -> Unit
 ) {
     val context = LocalContext.current
@@ -280,6 +482,8 @@ fun LibraryScreen(
     val sSmpDetectedImporting = stringResource(R.string.library_smp_detected_importing)
     val sSongsView = stringResource(R.string.library_view_mode_songs)
     val sFilesView = stringResource(R.string.library_view_mode_files)
+    val sPlaylistsView = stringResource(R.string.library_view_mode_playlists)
+    val sPlaylistsEmpty = stringResource(R.string.all_playlists_empty)
     val sConvertSmpSingleSuccess = stringResource(R.string.library_convert_smp_success_single)
     val sConvertSmpSingleFailed = stringResource(R.string.library_convert_smp_failed_single)
     val sConvertSmpNoMp3 = stringResource(R.string.library_convert_smp_no_mp3)
@@ -309,8 +513,34 @@ fun LibraryScreen(
 
     Log.e("SIG_LIB", "BOOT storageMode=$storageMode backend=${backend.javaClass.simpleName}")
 
-    val initialFolder = remember(workspaceVersion, storageMode, workspaceSnapshot.workspaceRootUri) {
+    val workspaceRootUri = remember(workspaceVersion, storageMode, workspaceSnapshot.workspaceRootUri) {
         backend.getRootUri()
+    }
+    val hasGlobalAudioAccess = hasDjGlobalAudioAccess(context)
+    val filesNavigationRoot = remember(
+        context,
+        hasGlobalAudioAccess,
+        workspaceVersion,
+        storageMode,
+        workspaceSnapshot.setupTreeUri,
+        workspaceSnapshot.workspaceRootUri
+    ) {
+        resolveFilesNavigationRootForLibrary(
+            context = context,
+            storageMode = storageMode,
+            setupTreeUri = workspaceSnapshot.setupTreeUri,
+            workspaceRootUri = workspaceRootUri
+        )
+    }
+
+    val initialFolder = remember(
+        filesNavigationRoot,
+        workspaceVersion,
+        storageMode,
+        workspaceSnapshot.setupTreeUri,
+        workspaceSnapshot.workspaceRootUri
+    ) {
+        filesNavigationRoot
     }
     var libraryViewMode by rememberSaveable { mutableStateOf(LIBRARY_VIEW_MODE_SONGS) }
     var currentFolderUri by remember { mutableStateOf<Uri?>(initialFolder) }
@@ -345,17 +575,6 @@ fun LibraryScreen(
         mutableStateOf<SmpBatchImportProcessor.Progress?>(null)
     }
     var lastLoggedMoveProgressBucket by remember { mutableIntStateOf(-1) }
-
-    fun initialFolderStack(root: Uri, folderToShow: Uri): List<Uri> {
-        return if (folderToShow.toString() == root.toString()) emptyList() else listOf(root)
-    }
-
-    fun resolveFilesInitialFolder(
-        root: Uri,
-        indexSnapshot: List<LibraryIndexCache.CachedEntry> = indexAll
-    ): Uri {
-        return backend.chooseInitialFolder(root, indexSnapshot)
-    }
 
     fun normalizeSelection(selection: Collection<Uri>): List<Uri> {
         return selection.distinctBy { it.toString() }
@@ -695,7 +914,13 @@ fun LibraryScreen(
 
         val isFilesViewMode = libraryViewMode == LIBRARY_VIEW_MODE_FILES
         val visibleSource = if (isFilesViewMode) {
-            source
+            source.map { entry ->
+                if (isWorkspaceLiveTracksFolderEntry(entry, workspaceRootUri)) {
+                    entry.copy(uri = SMP_FOLDER_URI, name = sSmpFolder)
+                } else {
+                    entry
+                }
+            }
         } else {
             source.filterNot { entry ->
                 entry.isDirectory &&
@@ -775,6 +1000,13 @@ fun LibraryScreen(
         }
         val fresh = if (isPrompterFolderUri(folderUri) || isSmpFolderUri(folderUri)) {
             emptyList()
+        } else if (isSharedAudioFolderUri(folderUri)) {
+            buildSharedAudioEntriesForFolder(
+                context = context,
+                folderUri = folderUri,
+                liveTracksUri = SMP_FOLDER_URI,
+                liveTracksLabel = sSmpFolder
+            )
         } else {
             backend.listFolder(
                 folderUri = folderUri,
@@ -846,6 +1078,18 @@ fun LibraryScreen(
 
     suspend fun runGlobalScan(root: Uri, folderToShow: Uri) {
         LibraryFolderCache.clear()
+        if (isSharedAudioFolderUri(folderToShow)) {
+            val refreshed = withContext(Dispatchers.IO) {
+                buildEntriesForFolder(
+                    folderUri = folderToShow,
+                    useCache = false,
+                    currentFolderForLog = folderToShow
+                )
+            }
+            applyEntriesIfCurrent(folderToShow, refreshed)
+            LibraryFolderCache.put(folderToShow, refreshed)
+            return
+        }
         backend.scanAll(
             root = root,
             folderToShow = folderToShow,
@@ -859,11 +1103,15 @@ fun LibraryScreen(
     }
 
     suspend fun refreshLibraryFolder(folderUri: Uri?) {
-        val root = backend.getRootUri() ?: return
+        val root = resolveLibraryNavigationRoot(
+            libraryViewMode = libraryViewMode,
+            filesNavigationRoot = filesNavigationRoot,
+            workspaceRootUri = workspaceRootUri
+        ) ?: return
         val folderToShow = folderUri ?: root
         currentFolderUri = folderToShow
         runGlobalScan(
-            root = root,
+            root = workspaceRootUri ?: root,
             folderToShow = folderToShow
         )
     }
@@ -963,7 +1211,11 @@ fun LibraryScreen(
             )
             return@LaunchedEffect
         }
-        val root = backend.getRootUri() ?: run {
+        val root = resolveLibraryNavigationRoot(
+            libraryViewMode = libraryViewMode,
+            filesNavigationRoot = filesNavigationRoot,
+            workspaceRootUri = workspaceRootUri
+        ) ?: run {
             val durationMs = SystemClock.elapsedRealtime() - startMs
             Log.i(
                 LIBRARY_PERF_TRACE_TAG,
@@ -1041,6 +1293,9 @@ fun LibraryScreen(
     var showCopyBrowser by remember { mutableStateOf(false) }
     var copyBrowserFolder by remember { mutableStateOf<Uri?>(null) }
     var copyBrowserStack by remember { mutableStateOf<List<Uri>>(emptyList()) }
+    var showAuthorizedTransferFoldersDialog by remember { mutableStateOf(false) }
+    var authorizedTransferFolders by remember { mutableStateOf<List<AuthorizedTransferFolderOption>>(emptyList()) }
+    var pendingExternalTransferKind by remember { mutableStateOf<ExternalTransferKind?>(null) }
 
     var renameTarget by remember { mutableStateOf<LibraryEntry?>(null) }
     var renameText by remember { mutableStateOf("") }
@@ -1077,6 +1332,21 @@ fun LibraryScreen(
         showCopyBrowser = true
     }
 
+    fun dismissAuthorizedTransferFolders(clearPendingSelection: Boolean) {
+        val kind = pendingExternalTransferKind
+        showAuthorizedTransferFoldersDialog = false
+        authorizedTransferFolders = emptyList()
+        pendingExternalTransferKind = null
+
+        if (!clearPendingSelection) return
+
+        when (kind) {
+            ExternalTransferKind.MOVE -> pendingMoveSelection = emptyList()
+            ExternalTransferKind.COPY -> pendingCopySelection = emptyList()
+            null -> Unit
+        }
+    }
+
     fun toggleSelection(uri: Uri) {
         selectedSongs = if (selectedSongs.contains(uri)) selectedSongs - uri else selectedSongs + uri
     }
@@ -1093,6 +1363,9 @@ fun LibraryScreen(
     var searchQuery by remember { mutableStateOf("") }
     var isSearchVisible by remember { mutableStateOf(false) }
     val isSongViewMode = libraryViewMode == LIBRARY_VIEW_MODE_SONGS
+    val isFilesViewMode = libraryViewMode == LIBRARY_VIEW_MODE_FILES
+    val isPlaylistsViewMode = libraryViewMode == LIBRARY_VIEW_MODE_PLAYLISTS
+    val playlistRepoVersion = PlaylistRepository.version.value
     val titleAliasVersion = TitleAliasesStore.version.intValue
     data class SearchableLibraryEntry(
         val entry: LibraryEntry,
@@ -1100,6 +1373,10 @@ fun LibraryScreen(
     )
     data class SearchableLibrarySong(
         val item: LibrarySongItem,
+        val indexedItem: SearchEngine.IndexedItem
+    )
+    data class SearchableLibraryPlaylist(
+        val name: String,
         val indexedItem: SearchEngine.IndexedItem
     )
     val searchableEntries = remember(entries, titleAliasVersion, context) {
@@ -1137,6 +1414,19 @@ fun LibraryScreen(
             )
         }
     }
+    val playlists = remember(playlistRepoVersion) { PlaylistRepository.getPlaylists() }
+    val searchablePlaylists = remember(playlists) {
+        playlists.map { playlistName ->
+            SearchableLibraryPlaylist(
+                name = playlistName,
+                indexedItem = SearchEngine.index(
+                    id = playlistName,
+                    displayTitle = playlistName,
+                    fallbackName = playlistName
+                )
+            )
+        }
+    }
     val filteredEntries = remember(searchQuery, searchableEntries) {
         val normalizedQuery = SearchEngine.normalize(searchQuery)
         if (normalizedQuery.isBlank()) {
@@ -1163,6 +1453,20 @@ fun LibraryScreen(
             searchableSongItems
                 .filter { it.indexedItem.id in filteredIds }
                 .map { it.item }
+        }
+    }
+    val filteredPlaylists = remember(searchQuery, searchablePlaylists) {
+        val normalizedQuery = SearchEngine.normalize(searchQuery)
+        if (normalizedQuery.isBlank()) {
+            searchablePlaylists.map { it.name }
+        } else {
+            val filteredIds = SearchEngine.filter(
+                items = searchablePlaylists.map { it.indexedItem },
+                query = searchQuery
+            ).asSequence().map { it.id }.toSet()
+            searchablePlaylists
+                .filter { it.indexedItem.id in filteredIds }
+                .map { it.name }
         }
     }
     suspend fun injectSmpEntriesAndCheckVisible(
@@ -1202,9 +1506,17 @@ fun LibraryScreen(
             ?.let { resolveFolderName(context, it) }
             ?.let(::isBackupFolderName) == true
     }
-    val activeSearchableCount = if (isSongViewMode) searchableSongItems.size else searchableEntries.size
-    val activeFilteredCount = if (isSongViewMode) filteredSongItems.size else filteredEntries.size
-    LaunchedEffect(searchQuery, activeSearchableCount, activeFilteredCount, currentFolderUri, isSongViewMode) {
+    val activeSearchableCount = when {
+        isSongViewMode -> searchableSongItems.size
+        isFilesViewMode -> searchableEntries.size
+        else -> searchablePlaylists.size
+    }
+    val activeFilteredCount = when {
+        isSongViewMode -> filteredSongItems.size
+        isFilesViewMode -> filteredEntries.size
+        else -> filteredPlaylists.size
+    }
+    LaunchedEffect(searchQuery, activeSearchableCount, activeFilteredCount, currentFolderUri, libraryViewMode) {
         if (BuildConfig.DEBUG) {
             val normalizedQuery = SearchEngine.normalize(searchQuery)
             val itemsBefore = activeSearchableCount
@@ -1235,7 +1547,11 @@ fun LibraryScreen(
 
     LaunchedEffect(reselectRootSignal) {
         if (reselectRootSignal == 0) return@LaunchedEffect
-        val root = backend.getRootUri() ?: return@LaunchedEffect
+        val root = resolveLibraryNavigationRoot(
+            libraryViewMode = libraryViewMode,
+            filesNavigationRoot = filesNavigationRoot,
+            workspaceRootUri = workspaceRootUri
+        ) ?: return@LaunchedEffect
         val currentFolder = currentFolderUri ?: root
         if (currentFolder.toString() == root.toString()) return@LaunchedEffect
 
@@ -1921,6 +2237,89 @@ fun LibraryScreen(
         return successCount
     }
 
+    fun prepareTransferDestination(destUri: Uri): Uri {
+        persistTreePermIfPossible(context, destUri)
+        return LibraryTransferFolderPrefs.rememberAuthorizedFolder(context, destUri)
+    }
+
+    fun runMoveSelectionToDestination(destUri: Uri) {
+        val srcUris = pendingMoveSelection
+        if (srcUris.isEmpty()) {
+            pendingMoveSelection = emptyList()
+            return
+        }
+
+        val preparedDest = prepareTransferDestination(destUri)
+        scope.launch {
+            startLoading(sMoving, determinate = true)
+            try {
+                val movedCount = runSelectionTransfer(
+                    label = sMoving,
+                    sources = srcUris,
+                    dest = preparedDest
+                ) { srcUri, targetUri, onProgress ->
+                    backend.move(
+                        mainHandler = mainHandler,
+                        srcUri = srcUri,
+                        destUri = targetUri,
+                        indexAll = indexAll,
+                        onProgress = onProgress
+                    ).also(::libraryLogMove)
+                }
+
+                val root = backend.getRootUri()
+                val refreshFolder = currentFolderUri ?: preparedDest
+                if (movedCount > 0 && root != null) {
+                    runGlobalScan(root = root, folderToShow = refreshFolder)
+                    selectedSongs = emptySet()
+                }
+            } finally {
+                pendingMoveSelection = emptyList()
+                stopLoadingNice()
+            }
+        }
+    }
+
+    fun runCopySelectionToDestination(destUri: Uri) {
+        val srcUris = pendingCopySelection
+        if (srcUris.isEmpty()) {
+            pendingCopySelection = emptyList()
+            return
+        }
+
+        val preparedDest = prepareTransferDestination(destUri)
+        scope.launch {
+            startLoading(sCopying, determinate = true)
+            try {
+                val copiedCount = runSelectionTransfer(
+                    label = sCopying,
+                    sources = srcUris,
+                    dest = preparedDest
+                ) { srcUri, targetUri, onProgress ->
+                    backend.copyFile(
+                        mainHandler = mainHandler,
+                        srcUri = srcUri,
+                        destUri = targetUri,
+                        indexAll = indexAll,
+                        onProgress = onProgress
+                    )
+                }
+
+                val root = backend.getRootUri()
+                val refreshFolder = currentFolderUri ?: preparedDest
+                if (copiedCount > 0 && root != null) {
+                    runGlobalScan(root = root, folderToShow = refreshFolder)
+                }
+                if (copiedCount < srcUris.size) {
+                    Toast.makeText(context, sCopyFailed, Toast.LENGTH_SHORT).show()
+                }
+            } finally {
+                pendingCopySelection = emptyList()
+                stopLoadingNice()
+            }
+        }
+    }
+
     fun resolveEntryDisplayName(uri: Uri): String {
         return runCatching {
             DocumentFile.fromSingleUri(context, uri)?.name
@@ -2026,37 +2425,8 @@ fun LibraryScreen(
     val moveToFolderLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree(),
         onResult = { destUri ->
-            val srcUris = pendingMoveSelection
-            if (destUri != null && srcUris.isNotEmpty()) {
-                scope.launch {
-                    startLoading(sMoving, determinate = true)
-                    try {
-                        persistTreePermIfPossible(context, destUri)
-                        val movedCount = runSelectionTransfer(
-                            label = sMoving,
-                            sources = srcUris,
-                            dest = destUri
-                        ) { srcUri, targetUri, onProgress ->
-                            backend.move(
-                                mainHandler = mainHandler,
-                                srcUri = srcUri,
-                                destUri = targetUri,
-                                indexAll = indexAll,
-                                onProgress = onProgress
-                            ).also(::libraryLogMove)
-                        }
-
-                        val root = backend.getRootUri()
-                        val refreshFolder = currentFolderUri ?: destUri
-                        if (movedCount > 0 && root != null) {
-                            runGlobalScan(root = root, folderToShow = refreshFolder)
-                            selectedSongs = emptySet()
-                        }
-                    } finally {
-                        pendingMoveSelection = emptyList()
-                        stopLoadingNice()
-                    }
-                }
+            if (destUri != null && pendingMoveSelection.isNotEmpty()) {
+                runMoveSelectionToDestination(destUri)
             } else {
                 pendingMoveSelection = emptyList()
             }
@@ -2066,44 +2436,37 @@ fun LibraryScreen(
     val copyToFolderLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree(),
         onResult = { destUri ->
-            val srcUris = pendingCopySelection
-            if (destUri != null && srcUris.isNotEmpty()) {
-                scope.launch {
-                    startLoading(sCopying, determinate = true)
-                    try {
-                        persistTreePermIfPossible(context, destUri)
-                        val copiedCount = runSelectionTransfer(
-                            label = sCopying,
-                            sources = srcUris,
-                            dest = destUri
-                        ) { srcUri, targetUri, onProgress ->
-                            backend.copyFile(
-                                mainHandler = mainHandler,
-                                srcUri = srcUri,
-                                destUri = targetUri,
-                                indexAll = indexAll,
-                                onProgress = onProgress
-                            )
-                        }
-
-                        val root = backend.getRootUri()
-                        val refreshFolder = currentFolderUri ?: destUri
-                        if (copiedCount > 0 && root != null) {
-                            runGlobalScan(root = root, folderToShow = refreshFolder)
-                        }
-                        if (copiedCount < srcUris.size) {
-                            Toast.makeText(context, sCopyFailed, Toast.LENGTH_SHORT).show()
-                        }
-                    } finally {
-                        pendingCopySelection = emptyList()
-                        stopLoadingNice()
-                    }
-                }
+            if (destUri != null && pendingCopySelection.isNotEmpty()) {
+                runCopySelectionToDestination(destUri)
             } else {
                 pendingCopySelection = emptyList()
             }
         }
     )
+
+    fun launchTransferFolderPicker(kind: ExternalTransferKind) {
+        dismissAuthorizedTransferFolders(clearPendingSelection = false)
+        when (kind) {
+            ExternalTransferKind.MOVE -> moveToFolderLauncher.launch(null)
+            ExternalTransferKind.COPY -> copyToFolderLauncher.launch(null)
+        }
+    }
+
+    fun openAuthorizedTransferFolders(kind: ExternalTransferKind) {
+        val root = backend.getRootUri()
+        val reusableFolders = LibraryTransferFolderPrefs.getReusableFolders(context)
+            .filterNot { uri -> isUriInsideTree(uri, root) }
+            .map { uri -> buildAuthorizedTransferFolderOption(context, uri) }
+
+        if (reusableFolders.isEmpty()) {
+            launchTransferFolderPicker(kind)
+            return
+        }
+
+        pendingExternalTransferKind = kind
+        authorizedTransferFolders = reusableFolders
+        showAuthorizedTransferFoldersDialog = true
+    }
 
     val importAudioLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenMultipleDocuments()
@@ -2160,9 +2523,9 @@ fun LibraryScreen(
             withContext(Dispatchers.IO) {
                 backend.ensureBaseFolders()
             }
-            val root = backend.getRootUri()
+            val workspaceRoot = workspaceRootUri
 
-            if (root == null) {
+            if (workspaceRoot == null) {
                 effectResult = "no_root"
                 currentFolderUri = null
                 entries = emptyList()
@@ -2175,19 +2538,20 @@ fun LibraryScreen(
             }
 
             indexAll = backend.loadIndex()
-            val backendInitialFolder = backend.chooseInitialFolder(root, indexAll)
+            val filesRoot = filesNavigationRoot ?: workspaceRoot
+            val backendInitialFolder = resolveFilesInitialFolderForLibrary(filesRoot) ?: workspaceRoot
             val folderToShow = if (libraryViewMode == LIBRARY_VIEW_MODE_FILES) {
                 backendInitialFolder
             } else {
-                root
+                workspaceRoot
             }
             Log.i(
                 "LIB_SCAN_DIAG",
-                "mount root=$root indexSize=${indexAll.size} willFullScan=${indexAll.isEmpty()} backendInitialFolder=$backendInitialFolder folderToShow=$folderToShow"
+                "mount root=$workspaceRoot filesRoot=$filesRoot indexSize=${indexAll.size} willFullScan=${indexAll.isEmpty()} backendInitialFolder=$backendInitialFolder folderToShow=$folderToShow"
             )
             currentFolderUri = folderToShow
             folderStack = if (libraryViewMode == LIBRARY_VIEW_MODE_FILES) {
-                initialFolderStack(root, folderToShow)
+                buildFilesInitialFolderStack(filesRoot, folderToShow)
             } else {
                 emptyList()
             }
@@ -2196,7 +2560,7 @@ fun LibraryScreen(
                 startLoading(sScanning, determinate = false)
                 try {
                     runGlobalScan(
-                        root = root,
+                        root = workspaceRoot,
                         folderToShow = folderToShow
                     )
                 } finally {
@@ -2236,6 +2600,8 @@ fun LibraryScreen(
             sPrompterFolder
         } else if (isSmpFolderUri(u)) {
             sSmpFolder
+        } else if (isSharedAudioFolderUri(u)) {
+            sharedAudioFolderDisplayName(u, sFilesView)
         } else if (u.scheme == "file") {
             java.io.File(u.path ?: "").name.ifBlank { "SPL_Music" }
         } else {
@@ -2243,10 +2609,15 @@ fun LibraryScreen(
             doc?.name ?: "SPL_Music"
         }
     } ?: sNoFolderSelected
-    val headerFolderUri = if (isSongViewMode && currentFolderUri != null) SMP_FOLDER_URI else currentFolderUri
+    val headerFolderUri = when {
+        isSongViewMode && currentFolderUri != null -> SMP_FOLDER_URI
+        isPlaylistsViewMode -> null
+        else -> currentFolderUri
+    }
+    val headerFolderNameOverride = if (isPlaylistsViewMode) sPlaylistsView else null
     val showSelectionBottomBar = selectedSongs.isNotEmpty() && isSongViewMode
     val selectionBottomPadding = if (showSelectionBottomBar) bottomBarHeight else 0.dp
-    val isFilesSelectionContext = !isSongViewMode && selectedSongs.isNotEmpty()
+    val isFilesSelectionContext = isFilesViewMode && selectedSongs.isNotEmpty()
     val isSetupDone = workspaceSnapshot.isUsable
     if (!isSetupDone) {
         DarkBlueGradientBackground {
@@ -2278,11 +2649,17 @@ fun LibraryScreen(
                 titleColor = titleColor,
                 subtitleColor = subtitleColor,
                 currentFolderUri = headerFolderUri,
-                isFilesViewMode = !isSongViewMode,
-                canGoBack = !isSongViewMode && folderStack.isNotEmpty(),
+                folderNameOverride = headerFolderNameOverride,
+                isFilesViewMode = isFilesViewMode,
+                showActions = !isPlaylistsViewMode,
+                canGoBack = isFilesViewMode && folderStack.isNotEmpty(),
 
                 onBack = {
-                    val parentUri = folderStack.lastOrNull() ?: backend.getRootUri()
+                    val parentUri = resolveFilesBackTarget(
+                        folderStack = folderStack,
+                        filesNavigationRoot = filesNavigationRoot,
+                        workspaceRootUri = workspaceRootUri
+                    )
                     val newStack = folderStack.dropLast(1)
                     Log.i(
                         LIB_SMP_TRACE_TAG,
@@ -2303,7 +2680,8 @@ fun LibraryScreen(
                 onRescan = {
 
                     scope.launch {
-                        val rootNow = backend.getRootUri() ?: return@launch
+                        val workspaceRootNow = workspaceRootUri ?: return@launch
+                        val filesRootNow = filesNavigationRoot ?: workspaceRootNow
                         startLoading(sScanning, determinate = false)
                         try {
                             val syncedArchiveCount = onSyncWorkspaceSmpArchives()
@@ -2327,18 +2705,18 @@ fun LibraryScreen(
                             val folderToShow = currentFolderUri
                                 ?.takeUnless { isPrompterFolderUri(it) || isSmpFolderUri(it) }
                                 ?: if (libraryViewMode == LIBRARY_VIEW_MODE_FILES) {
-                                    resolveFilesInitialFolder(rootNow)
+                                    resolveFilesInitialFolderForLibrary(filesRootNow) ?: workspaceRootNow
                                 } else {
-                                    rootNow
+                                    workspaceRootNow
                                 }
                             if (libraryViewMode == LIBRARY_VIEW_MODE_FILES &&
                                 currentFolderUri?.toString() != folderToShow.toString()
                             ) {
                                 currentFolderUri = folderToShow
-                                folderStack = initialFolderStack(rootNow, folderToShow)
+                                folderStack = buildFilesInitialFolderStack(filesRootNow, folderToShow)
                             }
                             runGlobalScan(
-                                root = rootNow,
+                                root = workspaceRootNow,
                                 folderToShow = folderToShow
                             )
                         } finally {
@@ -2467,7 +2845,7 @@ fun LibraryScreen(
                 )
                 LibraryViewModeButton(
                     label = sFilesView,
-                    selected = !isSongViewMode,
+                    selected = isFilesViewMode,
                     accent = accent,
                     onClick = {
                         val previousFolder = currentFolderUri
@@ -2475,16 +2853,26 @@ fun LibraryScreen(
                         selectedSongs = emptySet()
                         stopQuickPlay()
                         LibraryFolderCache.clear()
-                        val root = backend.getRootUri() ?: return@LibraryViewModeButton
-                        val folderToShow = previousFolder
-                            ?.takeUnless { isPrompterFolderUri(it) || isSmpFolderUri(it) }
-                            ?: resolveFilesInitialFolder(root)
+                        val root = filesNavigationRoot ?: workspaceRootUri
+                            ?: return@LibraryViewModeButton
+                        val folderToShow = if (isSharedAudioFolderUri(root)) {
+                            previousFolder
+                                ?.takeIf(::isSharedAudioFolderUri)
+                                ?: resolveFilesInitialFolderForLibrary(root)
+                                ?: root
+                        } else {
+                            previousFolder
+                                ?.takeUnless { isPrompterFolderUri(it) || isSmpFolderUri(it) }
+                                ?: resolveFilesInitialFolderForLibrary(root)
+                                ?: root
+                        }
                         currentFolderUri = folderToShow
-                        if (previousFolder == null ||
-                            isPrompterFolderUri(previousFolder) ||
-                            isSmpFolderUri(previousFolder)
-                        ) {
-                            folderStack = initialFolderStack(root, folderToShow)
+                        val shouldResetStack = shouldResetFilesNavigationStack(
+                            previousFolder = previousFolder,
+                            folderStack = folderStack
+                        )
+                        if (shouldResetStack) {
+                            folderStack = buildFilesInitialFolderStack(root, folderToShow)
                         }
                         scope.launch {
                             loadFolderEntriesAsync(
@@ -2495,12 +2883,74 @@ fun LibraryScreen(
                         }
                     }
                 )
+                LibraryViewModeButton(
+                    label = sPlaylistsView,
+                    selected = isPlaylistsViewMode,
+                    accent = accent,
+                    onClick = {
+                        libraryViewMode = LIBRARY_VIEW_MODE_PLAYLISTS
+                        selectedSongs = emptySet()
+                        stopQuickPlay()
+                    }
+                )
             }
 
             Spacer(Modifier.height(10.dp))
             Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
 
-                if (currentFolderUri == null) {
+                if (isPlaylistsViewMode) {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        if (isSearchVisible) {
+                            OutlinedTextField(
+                                value = searchQuery,
+                                onValueChange = { searchQuery = it },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .focusRequester(searchFocusRequester),
+                                singleLine = true,
+                                placeholder = { Text(sSearch, color = subtitleColor) },
+                                trailingIcon = {
+                                    if (searchQuery.isNotEmpty()) {
+                                        IconButton(onClick = { searchQuery = "" }) {
+                                            Icon(Icons.Default.Close, contentDescription = null)
+                                        }
+                                    }
+                                }
+                            )
+                            Spacer(Modifier.height(8.dp))
+                        }
+
+                        if (filteredPlaylists.isEmpty()) {
+                            Text(
+                                text = sPlaylistsEmpty,
+                                color = subtitleColor,
+                                fontSize = 13.sp
+                            )
+                        } else {
+                            LazyColumn(
+                                modifier = Modifier.fillMaxSize(),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                items(filteredPlaylists, key = { it }) { playlistName ->
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(cardBg, RoundedCornerShape(12.dp))
+                                            .border(1.dp, rowBorder, RoundedCornerShape(12.dp))
+                                            .clickable { onOpenPlaylistFromLibrary(playlistName) }
+                                            .padding(horizontal = 14.dp, vertical = 12.dp)
+                                    ) {
+                                        Text(
+                                            text = playlistName,
+                                            color = titleColor,
+                                            fontSize = 15.sp
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else if (currentFolderUri == null) {
                     Text(
                         text = sNoFolderHint,
                         color = subtitleColor,
@@ -2624,13 +3074,19 @@ fun LibraryScreen(
 
                                 onOpenFolder = { entry ->
                                     if (entry.disabled) return@LibraryList
+                                    val targetEntry =
+                                        if (isWorkspaceLiveTracksFolderEntry(entry, workspaceRootUri)) {
+                                            entry.copy(uri = SMP_FOLDER_URI, name = sSmpFolder)
+                                        } else {
+                                            entry
+                                        }
                                     Log.i(
                                         LIB_SMP_TRACE_TAG,
-                                        "step=navigation_open_folder from=$currentFolderUri to=${entry.uri} name=${entry.name} stackBefore=${folderStack.size}"
+                                        "step=navigation_open_folder from=$currentFolderUri to=${targetEntry.uri} name=${targetEntry.name} stackBefore=${folderStack.size}"
                                     )
                                     currentFolderUri?.let { folderStack = folderStack + it }
-                                    currentFolderUri = entry.uri
-                                    if (!showCachedEntries(entry.uri)) {
+                                    currentFolderUri = targetEntry.uri
+                                    if (!showCachedEntries(targetEntry.uri)) {
                                         entries = emptyList()
                                     }
                                     searchQuery = ""
@@ -2884,6 +3340,13 @@ fun LibraryScreen(
                     showAssignDialog = false
                     val selection = selectedSongs
                     selectedSongs = emptySet()
+                    prepareLibraryPlaylistAssignment(playlistName, selection)
+                },
+                onCreatePlaylist = { playlistName ->
+                    showAssignDialog = false
+                    val selection = selectedSongs
+                    selectedSongs = emptySet()
+                    PlaylistRepository.createIfNotExists(playlistName)
                     prepareLibraryPlaylistAssignment(playlistName, selection)
                 }
             )
@@ -3329,7 +3792,7 @@ fun LibraryScreen(
                 },
                 onOtherFolder = {
                     showMoveBrowser = false
-                    moveToFolderLauncher.launch(null)
+                    openAuthorizedTransferFolders(ExternalTransferKind.MOVE)
                 }
             )
 
@@ -3402,7 +3865,30 @@ fun LibraryScreen(
                 },
                 onOtherFolder = {
                     showCopyBrowser = false
-                    copyToFolderLauncher.launch(null)
+                    openAuthorizedTransferFolders(ExternalTransferKind.COPY)
+                }
+            )
+
+            AuthorizedTransferFoldersDialog(
+                show = showAuthorizedTransferFoldersDialog &&
+                    pendingExternalTransferKind != null &&
+                    authorizedTransferFolders.isNotEmpty(),
+                folders = authorizedTransferFolders,
+                onDismiss = {
+                    dismissAuthorizedTransferFolders(clearPendingSelection = true)
+                },
+                onChooseFolder = { destUri ->
+                    val kind = pendingExternalTransferKind
+                    dismissAuthorizedTransferFolders(clearPendingSelection = false)
+                    when (kind) {
+                        ExternalTransferKind.MOVE -> runMoveSelectionToDestination(destUri)
+                        ExternalTransferKind.COPY -> runCopySelectionToDestination(destUri)
+                        null -> Unit
+                    }
+                },
+                onChooseAnotherFolder = {
+                    val kind = pendingExternalTransferKind ?: return@AuthorizedTransferFoldersDialog
+                    launchTransferFolderPicker(kind)
                 }
             )
 

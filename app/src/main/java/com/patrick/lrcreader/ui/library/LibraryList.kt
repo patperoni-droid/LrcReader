@@ -51,6 +51,12 @@ private fun isConvertibleToSmpByName(name: String): Boolean {
     return lower.endsWith(".mp3") || lower.endsWith(".wav") || lower.endsWith(".wave")
 }
 
+private fun isLegacyBackingTracksFolderName(name: String): Boolean {
+    val normalized = name.trim()
+    return normalized.equals("BackingTracks", ignoreCase = true) ||
+        normalized.equals("BackingTrack", ignoreCase = true)
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun LibraryList(
@@ -87,6 +93,7 @@ fun LibraryList(
     val context = LocalContext.current
     val aliasVersion = TitleAliasesStore.version.intValue
     val selectionMode = selectedSongs.isNotEmpty()
+    val liveTracksLabel = stringResource(R.string.live_tracks_label)
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -97,6 +104,8 @@ fun LibraryList(
                 val uri = entry.uri
                 val isSelected = selectedSongs.contains(uri)
                 var menuOpen by remember { mutableStateOf(false) }
+                val displayName =
+                    if (isLegacyBackingTracksFolderName(entry.name)) liveTracksLabel else entry.name
 
                 Row(
                     modifier = Modifier
@@ -120,7 +129,7 @@ fun LibraryList(
                     Spacer(Modifier.width(10.dp))
 
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(entry.name, color = Color.White, fontSize = 15.sp)
+                        Text(displayName, color = Color.White, fontSize = 15.sp)
                     }
 
                     Box {
