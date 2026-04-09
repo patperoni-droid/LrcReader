@@ -136,7 +136,9 @@ object PlaylistRepository {
             var moved = false
             if (list != null) {
                 val idx = list.indexOf(uri).takeIf { it >= 0 }
-                    ?: songId?.let { currentSongId ->
+                    ?: songId?.takeIf { currentSongId ->
+                        playlistSongIdOccurrenceCount(pl, currentSongId) == 1
+                    }?.let { currentSongId ->
                         list.indexOfFirst { item -> resolveSongIdForState(pl, item) == currentSongId }
                             .takeIf { it >= 0 }
                     }
@@ -263,11 +265,18 @@ object PlaylistRepository {
 
     fun isSongPlayed(playlistName: String, uri: String): Boolean {
         val cleanUri = normalizeUriKey(uri) ?: return false
-        val songId = resolveSongIdForState(playlistName, cleanUri)
-        if (songId != null && playedSongIds[playlistName]?.contains(songId) == true) {
+        if (playedSongs[playlistName]?.contains(cleanUri) == true) {
             return true
         }
-        return playedSongs[playlistName]?.contains(cleanUri) == true
+        val songId = resolveSongIdForState(playlistName, cleanUri)
+        if (
+            songId != null &&
+            playlistSongIdOccurrenceCount(playlistName, songId) == 1 &&
+            playedSongIds[playlistName]?.contains(songId) == true
+        ) {
+            return true
+        }
+        return false
     }
 
     fun markSongPlayed(playlistName: String, uri: String) {
@@ -622,15 +631,10 @@ object PlaylistRepository {
         uri: String,
         songId: String?
     ): Boolean {
-        if (songId != null) {
-            val songSet = playedSongIds.getOrPut(playlistName) { mutableSetOf() }
-            val added = songSet.add(songId)
-            val removedLegacy = playedSongs[playlistName]?.remove(uri) == true
-            return added || removedLegacy
-        }
-
         val legacySet = playedSongs.getOrPut(playlistName) { mutableSetOf() }
-        return legacySet.add(uri)
+        val added = legacySet.add(uri)
+        val removedSongId = songId?.let { playedSongIds[playlistName]?.remove(it) == true } == true
+        return added || removedSongId
     }
 
     private fun setSongReviewState(
@@ -661,9 +665,7 @@ object PlaylistRepository {
         nextSongId: String
     ) {
         if (previousSongId != null && previousSongId != nextSongId) {
-            if (playedSongIds[playlistName]?.remove(previousSongId) == true) {
-                playedSongIds.getOrPut(playlistName) { mutableSetOf() }.add(nextSongId)
-            }
+            playedSongIds[playlistName]?.remove(previousSongId)
             if (reviewSongIds[playlistName]?.remove(previousSongId) == true) {
                 reviewSongIds.getOrPut(playlistName) { mutableSetOf() }.add(nextSongId)
             }
@@ -678,8 +680,9 @@ object PlaylistRepository {
             }
         }
 
-        if (playedSongs[playlistName]?.remove(uri) == true) {
-            playedSongIds.getOrPut(playlistName) { mutableSetOf() }.add(nextSongId)
+        if (playedSongs[playlistName]?.contains(uri) == true && previousSongId != nextSongId) {
+            playedSongs[playlistName]?.remove(uri)
+            playedSongs.getOrPut(playlistName) { mutableSetOf() }.add(uri)
         }
         if (reviewSongs[playlistName]?.remove(uri) == true) {
             reviewSongIds.getOrPut(playlistName) { mutableSetOf() }.add(nextSongId)
@@ -697,5 +700,9 @@ object PlaylistRepository {
         return playlists[playlistName]?.any { item ->
             resolveSongIdForState(playlistName, item) == songId
         } ?: false
+    }
+
+    private fun playlistSongIdOccurrenceCount(playlistName: String, songId: String): Int {
+        return playlists[playlistName]?.count { item -> resolveSongIdForState(playlistName, item) == songId } ?: 0
     }
 }
