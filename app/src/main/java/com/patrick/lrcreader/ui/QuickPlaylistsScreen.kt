@@ -311,15 +311,16 @@ fun QuickPlaylistsScreen(
                 val restoredManual = withContext(Dispatchers.Default) {
                     loadManualOrder(context, pl, raw)
                 }
+                val hasPlayedItems = raw.any { PlaylistRepository.isSongPlayed(pl, it) }
                 var portableApplied = false
-                if (restoredManual != null && restoredManual != raw) {
+                if (!hasPlayedItems && restoredManual != null && restoredManual != raw) {
                     PlaylistRepository.updatePlayListOrder(pl, restoredManual)
                     portableApplied = true
                 }
                 portableStampByPlaylist[pl] = portableStamp
                 Log.d(
                     "BOOTSTEP",
-                    "QuickPlaylists.applyPortableOrder playlist=$pl applied=$portableApplied ms=${SystemClock.elapsedRealtime() - portableStart} rawSize=${raw.size}"
+                    "QuickPlaylists.applyPortableOrder playlist=$pl applied=$portableApplied hasPlayedItems=$hasPlayedItems ms=${SystemClock.elapsedRealtime() - portableStart} rawSize=${raw.size}"
                 )
             }
 
@@ -1152,13 +1153,30 @@ fun QuickPlaylistsScreen(
                                     Row(
                                         modifier = Modifier
                                             .weight(1f)
-                                            .clickable {
-                                                collapsedGroupIds = if (isCollapsed) {
-                                                    collapsedGroupIds - headerKey
-                                                } else {
-                                                    collapsedGroupIds + headerKey
+                                            .combinedClickable(
+                                                onClick = {
+                                                    collapsedGroupIds = if (isCollapsed) {
+                                                        collapsedGroupIds - headerKey
+                                                    } else {
+                                                        collapsedGroupIds + headerKey
+                                                    }
+                                                },
+                                                onLongClick = {
+                                                    val currentPlaylist = internalSelected
+                                                        ?: return@combinedClickable
+                                                    if (groupRange.isEmpty()) return@combinedClickable
+                                                    val groupQueue = (groupRange.first + 1..groupRange.last)
+                                                        .map { idx -> songs[idx] }
+                                                        .filter { item ->
+                                                            !isGroupHeader(item) &&
+                                                                !isGroupEnd(item) &&
+                                                                isPlayableAudioItem(item)
+                                                        }
+                                                    if (groupQueue.isNotEmpty()) {
+                                                        onPlayFromHere(groupQueue, 0, currentPlaylist)
+                                                    }
                                                 }
-                                            },
+                                            ),
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
