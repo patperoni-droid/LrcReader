@@ -69,6 +69,7 @@ import kotlinx.coroutines.yield
 
 private val INLINE_LRC_TIME_TAG_REGEX =
     Regex("""\[(\d{1,2}):(\d{1,2})(?:\.(\d{1,3}))?]""")
+private val LRC_TIMESTAMP_HINT_REGEX = Regex("""\[\d{1,2}:\d{2}""")
 
 // ─────────────────────────────
 //  ÉDITEUR DE PAROLES
@@ -149,6 +150,9 @@ fun LyricsEditorSection(
             .map { line -> line.trim().replace(INLINE_LRC_TIME_TAG_REGEX, "").trim() }
             .filter { it.isNotEmpty() }
 
+    fun rawContainsLrcTimestamps(raw: String): Boolean =
+        LRC_TIMESTAMP_HINT_REGEX.containsMatchIn(raw)
+
     val timingPreviewText = remember(rawTextFieldValue.text, editingLines) {
         buildLyricsTimingPreviewText(
             rawText = rawTextFieldValue.text,
@@ -171,7 +175,7 @@ fun LyricsEditorSection(
     }
 
     fun applyLinesToRawDraft(lines: List<LrcLine>) {
-        val nextRaw = lines.joinToString("\n") { it.text }
+        val nextRaw = linesToEditorRawText(lines)
         rawTextFieldValue = TextFieldValue(
             text = nextRaw,
             selection = TextRange(nextRaw.length)
@@ -180,6 +184,9 @@ fun LyricsEditorSection(
     }
 
     fun buildLinesFromRawDraft(): List<LrcLine> {
+        if (rawContainsLrcTimestamps(rawTextFieldValue.text)) {
+            return parseLrc(rawTextFieldValue.text).filter { it.text.isNotBlank() }
+        }
         val simpleLines = rawToPlainLines(rawTextFieldValue.text)
         if (simpleLines.isEmpty()) return emptyList()
         return if (editingLines.isEmpty()) {
@@ -360,7 +367,17 @@ fun LyricsEditorSection(
     // 🔹 Enregistrer
     fun handleSave() {
         if (isPersistBusy) return
-        val simpleLines = rawToPlainLines(rawTextFieldValue.text)
+        val rawHasTimestamps = rawContainsLrcTimestamps(rawTextFieldValue.text)
+        val parsedRawLines = if (rawHasTimestamps) {
+            parseLrc(rawTextFieldValue.text).filter { it.text.isNotBlank() }
+        } else {
+            emptyList()
+        }
+        val simpleLines = if (rawHasTimestamps) {
+            parsedRawLines.map { it.text }
+        } else {
+            rawToPlainLines(rawTextFieldValue.text)
+        }
         scope.launch {
             isPersistBusy = true
             try {
@@ -376,7 +393,9 @@ fun LyricsEditorSection(
 
                 val finalLines: List<LrcLine> = when (currentEditTab) {
                     0 -> {
-                        if (editingLines.isEmpty()) {
+                        if (rawHasTimestamps) {
+                            parsedRawLines
+                        } else if (editingLines.isEmpty()) {
                             simpleLines.map { txt -> LrcLine(timeMs = 0L, text = txt) }
                         } else {
                             mergeLyricsWithOldTimings(
@@ -999,6 +1018,16 @@ private fun buildLyricsTimingPreviewText(
     }
 
     return previewLines.joinToString("\n") { line ->
+        if (line.timeMs > 0L) {
+            "[${formatLrcTime(line.timeMs)}] ${line.text}"
+        } else {
+            line.text
+        }
+    }
+}
+
+private fun linesToEditorRawText(lines: List<LrcLine>): String {
+    return lines.joinToString("\n") { line ->
         if (line.timeMs > 0L) {
             "[${formatLrcTime(line.timeMs)}] ${line.text}"
         } else {

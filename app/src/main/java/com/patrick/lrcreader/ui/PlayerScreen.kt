@@ -477,6 +477,9 @@ fun PlayerScreen(
     fun plainLyricsText(lines: List<LrcLine>): String =
         lines.joinToString("\n") { line -> line.text.replace(inlineLrcTimeTagRegex, "").trim() }
 
+    fun editorLyricsText(lines: List<LrcLine>): String =
+        if (lines.any { it.timeMs > 0L }) linesToLrcText(lines) else plainLyricsText(lines)
+
     fun showAccordsTrackChangedBlockedToast() {
         Toast.makeText(
             context,
@@ -1374,7 +1377,7 @@ fun PlayerScreen(
                 seekToMs = seekToMs,
 
                 onSaveSortedLines = { sorted ->
-                    rawLyricsText = sorted.joinToString("\n") { it.text }
+                    rawLyricsText = editorLyricsText(sorted)
                     editingLines = sorted
                     if (editingTargetMode == LyricsViewMode.LYRICS) {
                         onParsedLinesChange(sorted)
@@ -1974,7 +1977,7 @@ fun PlayerScreen(
                                     parsedLines
                                 }
                                 if (sourceLines.isNotEmpty()) {
-                                    rawLyricsText = plainLyricsText(sourceLines)
+                                    rawLyricsText = editorLyricsText(sourceLines)
                                     editingLines = sourceLines
                                 } else {
                                     rawLyricsText = ""
