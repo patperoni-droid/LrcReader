@@ -115,6 +115,9 @@
     <string name="quickplaylists_open_playlist_action">Ouvrir une playlist</string>
     <string name="quickplaylists_cd_playlist_actions">Actions playlist</string>
     <string name="quickplaylists_playlist_exists">Cette playlist existe déjà.</string>
+    <string name="quickplaylists_playlist_saved">Playlist enregistrée.</string>
+    <string name="quickplaylists_playlist_created">Playlist créée.</string>
+    <string name="quickplaylists_playlist_save_failed">Impossible d’enregistrer la playlist.</string>
 
     <string name="tab_home">Accueil</string>
     <string name="tab_playlists">Playlists</string>
@@ -468,6 +471,8 @@
     <string name="all_playlists_delete_confirm">Supprimer définitivement « %1$s » ?</string>
     <string name="all_playlists_meta_loading">%1$d titres • …</string>
     <string name="all_playlists_meta_ready">%1$d titres • %2$s</string>
+    <string name="library_playlist_actions_cd">Actions de la playlist</string>
+    <string name="library_share_playlist_failed">Partage de la playlist impossible.</string>
 
     <!-- Notes -->
     <string name="notes_title">Mes notes</string>

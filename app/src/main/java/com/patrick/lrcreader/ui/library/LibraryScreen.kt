@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
@@ -74,6 +75,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
 import com.patrick.lrcreader.core.StorageModePrefs
 import androidx.compose.runtime.saveable.rememberSaveable
 import java.io.File
@@ -1299,6 +1302,10 @@ fun LibraryScreen(
 
     var renameTarget by remember { mutableStateOf<LibraryEntry?>(null) }
     var renameText by remember { mutableStateOf("") }
+    var playlistMenuTarget by remember { mutableStateOf<String?>(null) }
+    var playlistRenameTarget by remember { mutableStateOf<String?>(null) }
+    var playlistRenameText by remember { mutableStateOf("") }
+    var playlistDeleteTarget by remember { mutableStateOf<String?>(null) }
     var editPrompterId by remember { mutableStateOf<String?>(null) }
     var editPrompterTitle by remember { mutableStateOf("") }
     var editPrompterContent by remember { mutableStateOf("") }
@@ -1996,6 +2003,55 @@ fun LibraryScreen(
             } finally {
                 stopLoadingNice()
             }
+        }
+    }
+
+    fun sharePlaylist(playlistName: String) {
+        runCatching {
+            val tracksJson = JSONArray().apply {
+                PlaylistRepository.getAllItemsRaw(playlistName).forEach { item ->
+                    put(
+                        JSONObject().apply {
+                            put("uri", item.uri)
+                            item.songId?.takeIf { it.isNotBlank() }?.let { put("songId", it) }
+                        }
+                    )
+                }
+            }
+            val playlistJson = JSONObject().apply {
+                put("name", playlistName)
+                put("tracks", tracksJson)
+            }
+
+            val safeFileName = playlistName
+                .replace(Regex("[^A-Za-z0-9._-]+"), "_")
+                .trim('_')
+                .ifBlank { "playlist" }
+            val cacheFile = File(context.cacheDir, "${safeFileName}.json")
+            cacheFile.writeText(playlistJson.toString(2))
+
+            val shareUri = FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                cacheFile
+            )
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "application/json"
+                putExtra(Intent.EXTRA_STREAM, shareUri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(
+                Intent.createChooser(
+                    shareIntent,
+                    context.getString(R.string.backup_share)
+                )
+            )
+        }.onFailure {
+            Toast.makeText(
+                context,
+                context.getString(R.string.library_share_playlist_failed),
+                Toast.LENGTH_SHORT
+            ).show()
         }
     }
 
@@ -2932,19 +2988,65 @@ fun LibraryScreen(
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 items(filteredPlaylists, key = { it }) { playlistName ->
-                                    Box(
+                                    Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .background(cardBg, RoundedCornerShape(12.dp))
                                             .border(1.dp, rowBorder, RoundedCornerShape(12.dp))
-                                            .clickable { onOpenPlaylistFromLibrary(playlistName) }
-                                            .padding(horizontal = 14.dp, vertical = 12.dp)
+                                            .padding(start = 14.dp, top = 8.dp, end = 8.dp, bottom = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text(
-                                            text = playlistName,
-                                            color = titleColor,
-                                            fontSize = 15.sp
-                                        )
+                                        Box(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .clickable { onOpenPlaylistFromLibrary(playlistName) }
+                                                .padding(vertical = 4.dp)
+                                        ) {
+                                            Text(
+                                                text = playlistName,
+                                                color = titleColor,
+                                                fontSize = 15.sp
+                                            )
+                                        }
+                                        Box {
+                                            IconButton(
+                                                modifier = Modifier.zIndex(1f),
+                                                onClick = { playlistMenuTarget = playlistName }
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.MoreVert,
+                                                    contentDescription = stringResource(R.string.library_playlist_actions_cd),
+                                                    tint = titleColor
+                                                )
+                                            }
+                                            androidx.compose.material3.DropdownMenu(
+                                                expanded = playlistMenuTarget == playlistName,
+                                                onDismissRequest = { playlistMenuTarget = null }
+                                            ) {
+                                                androidx.compose.material3.DropdownMenuItem(
+                                                    text = { Text(stringResource(R.string.common_rename)) },
+                                                    onClick = {
+                                                        playlistMenuTarget = null
+                                                        playlistRenameTarget = playlistName
+                                                        playlistRenameText = playlistName
+                                                    }
+                                                )
+                                                androidx.compose.material3.DropdownMenuItem(
+                                                    text = { Text(stringResource(R.string.library_delete_action)) },
+                                                    onClick = {
+                                                        playlistMenuTarget = null
+                                                        playlistDeleteTarget = playlistName
+                                                    }
+                                                )
+                                                androidx.compose.material3.DropdownMenuItem(
+                                                    text = { Text(stringResource(R.string.backup_share)) },
+                                                    onClick = {
+                                                        playlistMenuTarget = null
+                                                        sharePlaylist(playlistName)
+                                                    }
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -3661,6 +3763,81 @@ fun LibraryScreen(
                 enabled = !isLoading,
                 onConfirm = commitAliasRename
             )
+
+            if (playlistRenameTarget != null) {
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = { playlistRenameTarget = null },
+                    title = {
+                        androidx.compose.material3.Text(stringResource(R.string.all_playlists_rename_title))
+                    },
+                    text = {
+                        OutlinedTextField(
+                            value = playlistRenameText,
+                            onValueChange = { playlistRenameText = it },
+                            label = { Text(stringResource(R.string.all_playlists_name_label)) },
+                            singleLine = true
+                        )
+                    },
+                    confirmButton = {
+                        androidx.compose.material3.TextButton(
+                            onClick = {
+                                val oldName = playlistRenameTarget ?: return@TextButton
+                                val renamed = PlaylistRepository.renamePlaylist(oldName, playlistRenameText.trim())
+                                if (renamed) {
+                                    playlistRenameTarget = null
+                                }
+                            }
+                        ) {
+                            androidx.compose.material3.Text(stringResource(R.string.common_ok))
+                        }
+                    },
+                    dismissButton = {
+                        androidx.compose.material3.TextButton(
+                            onClick = { playlistRenameTarget = null }
+                        ) {
+                            androidx.compose.material3.Text(stringResource(R.string.common_cancel))
+                        }
+                    }
+                )
+            }
+
+            if (playlistDeleteTarget != null) {
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = { playlistDeleteTarget = null },
+                    title = {
+                        androidx.compose.material3.Text(stringResource(R.string.all_playlists_delete_title))
+                    },
+                    text = {
+                        androidx.compose.material3.Text(
+                            stringResource(
+                                R.string.all_playlists_delete_confirm,
+                                playlistDeleteTarget ?: ""
+                            )
+                        )
+                    },
+                    confirmButton = {
+                        androidx.compose.material3.TextButton(
+                            onClick = {
+                                val target = playlistDeleteTarget ?: return@TextButton
+                                PlaylistRepository.deletePlaylist(target)
+                                playlistDeleteTarget = null
+                            }
+                        ) {
+                            androidx.compose.material3.Text(
+                                stringResource(R.string.common_erase),
+                                color = Color(0xFFFF6464)
+                            )
+                        }
+                    },
+                    dismissButton = {
+                        androidx.compose.material3.TextButton(
+                            onClick = { playlistDeleteTarget = null }
+                        ) {
+                            androidx.compose.material3.Text(stringResource(R.string.common_cancel))
+                        }
+                    }
+                )
+            }
 
             if (showEditPrompterDialog && editPrompterId != null) {
                 androidx.compose.material3.AlertDialog(

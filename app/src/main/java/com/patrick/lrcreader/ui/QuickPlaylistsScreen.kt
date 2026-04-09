@@ -455,9 +455,22 @@ fun QuickPlaylistsScreen(
     }
 
     fun saveExistingPlaylist(playlist: String) {
+        if (!isExistingPlaylist(playlist)) {
+            Toast.makeText(
+                context,
+                context.getString(R.string.quickplaylists_playlist_save_failed),
+                Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
         persistSongsOrder(playlist, overwriteOriginal = true)
         internalSelected = playlist
         onSelectedPlaylistChange(playlist)
+        Toast.makeText(
+            context,
+            context.getString(R.string.quickplaylists_playlist_saved),
+            Toast.LENGTH_SHORT
+        ).show()
     }
 
     fun createEmptyPlaylist(name: String) {
@@ -470,7 +483,14 @@ fun QuickPlaylistsScreen(
 
     fun createPlaylistFromCurrent(name: String) {
         val clean = name.trim()
-        if (clean.isEmpty()) return
+        if (clean.isEmpty() || isExistingPlaylist(clean)) {
+            Toast.makeText(
+                context,
+                context.getString(R.string.quickplaylists_playlist_save_failed),
+                Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
         PlaylistRepository.addPlaylist(clean)
         val snapshot = songs.toList()
         snapshot.forEach { uri ->
@@ -481,6 +501,11 @@ fun QuickPlaylistsScreen(
         originalOrderByPlaylist[clean] = snapshot
         internalSelected = clean
         onSelectedPlaylistChange(clean)
+        Toast.makeText(
+            context,
+            context.getString(R.string.quickplaylists_playlist_created),
+            Toast.LENGTH_SHORT
+        ).show()
     }
 
     fun requestSaveCurrentPlaylist() {

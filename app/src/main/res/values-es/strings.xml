@@ -119,6 +119,9 @@
     <string name="quickplaylists_open_playlist_action">Abrir una lista de reproducción</string>
     <string name="quickplaylists_cd_playlist_actions">Acciones de la lista</string>
     <string name="quickplaylists_playlist_exists">Esta lista ya existe.</string>
+    <string name="quickplaylists_playlist_saved">Lista guardada.</string>
+    <string name="quickplaylists_playlist_created">Lista creada.</string>
+    <string name="quickplaylists_playlist_save_failed">No se pudo guardar la lista de reproducción.</string>
 
     <string name="tab_home">Inicio</string>
     <string name="tab_playlists">Listas</string>
@@ -362,6 +365,8 @@
     <string name="all_playlists_delete_confirm">¿Eliminar permanentemente “%1$s”?</string>
     <string name="all_playlists_meta_loading">%1$d pistas • …</string>
     <string name="all_playlists_meta_ready">%1$d pistas • %2$s</string>
+    <string name="library_playlist_actions_cd">Acciones de la lista</string>
+    <string name="library_share_playlist_failed">No se pudo compartir la lista de reproducción.</string>
 
     <!-- Notes -->
     <string name="notes_title">Mis notas</string>

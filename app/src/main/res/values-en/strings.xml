@@ -121,6 +121,9 @@
     <string name="quickplaylists_open_playlist_action">Open a playlist</string>
     <string name="quickplaylists_cd_playlist_actions">Playlist actions</string>
     <string name="quickplaylists_playlist_exists">This playlist already exists.</string>
+    <string name="quickplaylists_playlist_saved">Playlist saved.</string>
+    <string name="quickplaylists_playlist_created">Playlist created.</string>
+    <string name="quickplaylists_playlist_save_failed">Unable to save the playlist.</string>
 
     <string name="tab_home">Home</string>
     <string name="tab_playlists">Playlists</string>
@@ -440,6 +443,8 @@
     <string name="all_playlists_delete_confirm">Permanently delete “%1$s”?</string>
     <string name="all_playlists_meta_loading">%1$d tracks • …</string>
     <string name="all_playlists_meta_ready">%1$d tracks • %2$s</string>
+    <string name="library_playlist_actions_cd">Playlist actions</string>
+    <string name="library_share_playlist_failed">Unable to share the playlist.</string>
 
     <!-- Notes -->
     <string name="notes_title">My notes</string>
