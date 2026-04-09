@@ -2,6 +2,7 @@ package com.patrick.lrcreader.core
 
 import androidx.compose.runtime.mutableStateOf
 import android.os.SystemClock
+import android.util.Log
 
 /**
  * Petit repo en mémoire pour gérer :
@@ -15,6 +16,7 @@ import android.os.SystemClock
  * Tout est encore en RAM, mais prêt pour être sauvegardé par BackupManager.
  */
 object PlaylistRepository {
+    private const val PERSIST_LOG_TAG = "PLAYLIST_PERSIST"
 
     // nom de playlist -> liste de chansons (Uri en String) dans l’ordre
     private val playlists: MutableMap<String, MutableList<String>> = linkedMapOf()
@@ -162,6 +164,9 @@ object PlaylistRepository {
         if (clean.isEmpty()) return
         if (!playlists.containsKey(clean)) {
             playlists[clean] = mutableListOf()
+            debugPersistLog {
+                "repo.addPlaylist name=$clean playlists=${playlists.keys.joinToString(prefix = "[", postfix = "]")}"
+            }
             bump()
         }
     }
@@ -200,6 +205,9 @@ object PlaylistRepository {
             )
         }
         if (changed) {
+            debugPersistLog {
+                "repo.assignSong playlist=$playlistName size=${list.size} uri=$cleanSongUri songId=${resolvedSongId ?: "null"}"
+            }
             bump()
         }
     }
@@ -590,6 +598,10 @@ object PlaylistRepository {
     }
 
     fun touch() = bump()
+
+    private fun debugPersistLog(message: () -> String) {
+        runCatching { Log.d(PERSIST_LOG_TAG, message()) }
+    }
 
     private fun normalizeUriKey(uri: String?): String? =
         uri?.trim()?.takeIf { it.isNotEmpty() }

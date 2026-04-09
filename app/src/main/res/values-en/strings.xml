@@ -114,6 +114,10 @@
     <!-- Quick playlists -->
     <string name="quickplaylists_select">Select a playlist</string>
     <string name="quickplaylists_empty">No playlist.\nCreate your first playlist.</string>
+    <string name="quickplaylists_create_playlist_action">Create a playlist</string>
+    <string name="quickplaylists_save_current_list_action">Save current list</string>
+    <string name="quickplaylists_no_playlists_title">No playlists yet</string>
+    <string name="quickplaylists_no_playlists_subtitle">Create your first playlist to get started</string>
     <string name="quickplaylists_open_playlist_action">Open a playlist</string>
     <string name="quickplaylists_cd_playlist_actions">Playlist actions</string>
     <string name="quickplaylists_playlist_exists">This playlist already exists.</string>

@@ -66,6 +66,7 @@ import com.patrick.lrcreader.core.history.PlaySource
 import com.patrick.lrcreader.core.light.LightCueDispatcher
 import com.patrick.lrcreader.core.lyrics.LyricsMemoryCache
 import com.patrick.lrcreader.core.lyrics.LyricsResolver
+import com.patrick.lrcreader.core.config.PlaylistStateStore
 import com.patrick.lrcreader.core.config.TitleAliasesStore
 import com.patrick.lrcreader.smp.SmpImporter
 import com.patrick.lrcreader.smp.SmpAutoMigration
@@ -367,6 +368,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 val shouldShowSetup = forceSetup || !canUseWorkspace
                 var configInitDoneForRoot by remember { mutableStateOf<String?>(null) }
+                var playlistStateReadyForRoot by remember { mutableStateOf<String?>(null) }
                 var legacyTrimByUri by remember { mutableStateOf<Map<String, EditPrefs.EditData>>(emptyMap()) }
 
                 LaunchedEffect(savedRoot, canUseWorkspace, workspaceSnapshot.status) {
@@ -411,7 +413,10 @@ class MainActivity : AppCompatActivity() {
                         val trackInitOk = true
                         val notesInitOk = true
                         val midiInitOk = true
-                        val playlistInitOk = true
+                        val playlistInitOk = runCatching {
+                            PlaylistStateStore.restorePlaylistsIntoRepository(ctx)
+                            true
+                        }.getOrDefault(false)
                         migratedTitleAliases = runCatching {
                             TitleAliasesStore.migrateFromLegacyTitlesIfMissing(
                                 context = ctx,
@@ -429,6 +434,7 @@ class MainActivity : AppCompatActivity() {
                         PlaylistRepository.touch()
                     }
                     configInitDoneForRoot = rootKey
+                    playlistStateReadyForRoot = rootKey
                     mark("compose.ensureInitialized.effect:end root=$rootKey")
                 }
 
@@ -902,11 +908,22 @@ class MainActivity : AppCompatActivity() {
 
 
                 val audioPlayerEpoch by AudioEngine.playerEpoch.collectAsState()
+                val playlistRepoVersion = PlaylistRepository.version.value
                 val exoPlayer = remember(audioPlayerEpoch) {
                     mark("compose.AudioEngine.getPlayer:before")
                     val player = AudioEngine.getPlayer(ctx) {}
                     mark("compose.AudioEngine.getPlayer:after")
                     player
+                }
+
+                LaunchedEffect(savedRoot, canUseWorkspace, playlistStateReadyForRoot, playlistRepoVersion) {
+                    val rootKey = savedRoot?.toString()
+                    if (!canUseWorkspace || rootKey == null || playlistStateReadyForRoot != rootKey) {
+                        return@LaunchedEffect
+                    }
+                    withContext(Dispatchers.IO) {
+                        PlaylistStateStore.savePlaylistsSnapshot(ctx)
+                    }
                 }
 
                 val embeddedLyricsListener = remember(audioPlayerEpoch) {
@@ -3296,12 +3313,16 @@ class MainActivity : AppCompatActivity() {
     override fun onStop() {
         super.onStop()
         persistSession(reason = "onStop")
+        runCatching { PlaylistStateStore.savePlaylistsSnapshot(this) }
+            .onFailure { Log.e("BOOTSTEP", "PlaylistStateStore.savePlaylistsSnapshot:onStop failed", it) }
         BackupManager.autoSaveToDefaultBackupFile(this)
     }
 
     override fun onPause() {
         super.onPause()
         persistSession(reason = "onPause")
+        runCatching { PlaylistStateStore.savePlaylistsSnapshot(this) }
+            .onFailure { Log.e("BOOTSTEP", "PlaylistStateStore.savePlaylistsSnapshot:onPause failed", it) }
     }
 
 }

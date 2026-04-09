@@ -11,6 +11,7 @@ import kotlinx.coroutines.sync.withLock
 internal object PlaylistStateStore {
 
     private const val TAG = "PlaylistStateStore"
+    private const val PERSIST_LOG_TAG = "PLAYLIST_PERSIST"
 
     private val mutex = Mutex()
     private var cachedState: PlaylistState? = null
@@ -90,6 +91,72 @@ internal object PlaylistStateStore {
         }
     }
 
+    fun restorePlaylistsIntoRepository(context: Context): Boolean {
+        return withLockBlocking {
+            val state = readStateLocked(context)
+            Log.d(
+                PERSIST_LOG_TAG,
+                "restore.begin playlists=${state.playlists.keys.sorted()} counts=${
+                    state.playlists.toSortedMap().entries.joinToString { "${it.key}:${it.value.items.size}" }
+                }"
+            )
+            PlaylistRepository.clearAll()
+            state.playlists
+                .toSortedMap()
+                .forEach { (playlistName, entry) ->
+                    if (!entry.exists && entry.items.isEmpty()) return@forEach
+                    PlaylistRepository.addPlaylist(playlistName)
+                    entry.items.forEach { item ->
+                        PlaylistRepository.assignSongToPlaylist(
+                            playlistName = playlistName,
+                            songUri = item.uri,
+                            songId = item.songId
+                        )
+                    }
+                }
+            Log.d(
+                PERSIST_LOG_TAG,
+                "restore.end playlists=${PlaylistRepository.getPlaylists()} counts=${
+                    PlaylistRepository.getPlaylists().joinToString { "$it:${PlaylistRepository.getAllItemsRaw(it).size}" }
+                }"
+            )
+            true
+        }
+    }
+
+    fun savePlaylistsSnapshot(context: Context): Boolean {
+        return withLockBlocking {
+            val current = readStateLocked(context)
+            Log.d(
+                PERSIST_LOG_TAG,
+                "save.begin playlists=${PlaylistRepository.getPlaylists()} counts=${
+                    PlaylistRepository.getPlaylists().joinToString { "$it:${PlaylistRepository.getAllItemsRaw(it).size}" }
+                }"
+            )
+            val nextMap = linkedMapOf<String, PlaylistStateEntry>()
+            PlaylistRepository.getPlaylists().sorted().forEach { playlistName ->
+                val previous = current.playlists[playlistName] ?: PlaylistStateEntry()
+                nextMap[playlistName] = previous.copy(
+                    exists = true,
+                    items = PlaylistRepository.getAllItemsRaw(playlistName).map { item ->
+                        PlaylistStateItem(
+                            uri = item.uri,
+                            songId = item.songId?.trim()?.ifBlank { null }
+                        )
+                    },
+                    updatedAt = System.currentTimeMillis()
+                )
+            }
+            writeStateLocked(
+                context = context,
+                state = current.copy(
+                    schemaVersion = PlaylistState.SCHEMA_VERSION,
+                    playlists = nextMap
+                )
+            )
+        }
+    }
+
     private fun writePlaylistEntryLocked(
         context: Context,
         playlistName: String,
@@ -103,20 +170,14 @@ internal object PlaylistStateStore {
             nextMap[playlistName] = entry
         }
 
-        val next = current.copy(
-            schemaVersion = PlaylistState.SCHEMA_VERSION,
-            playlists = nextMap
+        return writeStateLocked(
+            context = context,
+            state = current.copy(
+                schemaVersion = PlaylistState.SCHEMA_VERSION,
+                playlists = nextMap
+            ),
+            failureLabel = "writePlaylistEntryLocked: write failed playlist=$playlistName"
         )
-
-        val raw = next.toJson().toString(2)
-        val saved = PlaylistStateAtomicIo.writeRawAtomic(context, raw)
-        if (saved) {
-            cachedState = next
-            return true
-        }
-
-        Log.e(TAG, "writePlaylistEntryLocked: write failed playlist=$playlistName")
-        return false
     }
 
     private fun readStateLocked(context: Context): PlaylistState {
@@ -145,6 +206,30 @@ internal object PlaylistStateStore {
 
         cachedState = state
         return state
+    }
+
+    private fun writeStateLocked(
+        context: Context,
+        state: PlaylistState,
+        failureLabel: String = "writeStateLocked: write failed"
+    ): Boolean {
+        val raw = state.toJson().toString(2)
+        Log.d(
+            PERSIST_LOG_TAG,
+            "write.begin rawLength=${raw.length} playlists=${state.playlists.keys.sorted()} counts=${
+                state.playlists.toSortedMap().entries.joinToString { "${it.key}:${it.value.items.size}" }
+            }"
+        )
+        val saved = PlaylistStateAtomicIo.writeRawAtomic(context, raw)
+        if (saved) {
+            cachedState = state
+            Log.d(PERSIST_LOG_TAG, "write.success rawLength=${raw.length}")
+            return true
+        }
+
+        Log.e(TAG, failureLabel)
+        Log.e(PERSIST_LOG_TAG, "write.failed rawLength=${raw.length}")
+        return false
     }
 
     private data class Conversion(

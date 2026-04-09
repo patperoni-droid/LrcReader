@@ -108,6 +108,10 @@
 
     <string name="quickplaylists_select">Sélectionne une playlist</string>
     <string name="quickplaylists_empty">Aucune playlist.\nCrée ta première playlist.</string>
+    <string name="quickplaylists_create_playlist_action">Créer une playlist</string>
+    <string name="quickplaylists_save_current_list_action">Enregistrer la liste en cours</string>
+    <string name="quickplaylists_no_playlists_title">Aucune playlist pour le moment</string>
+    <string name="quickplaylists_no_playlists_subtitle">Créez votre première playlist pour commencer</string>
     <string name="quickplaylists_open_playlist_action">Ouvrir une playlist</string>
     <string name="quickplaylists_cd_playlist_actions">Actions playlist</string>
     <string name="quickplaylists_playlist_exists">Cette playlist existe déjà.</string>

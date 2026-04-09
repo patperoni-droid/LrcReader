@@ -1,6 +1,8 @@
 package com.patrick.lrcreader.core.config
 
 import android.content.Context
+import android.net.Uri
+import android.provider.DocumentsContract
 import android.util.Log
 import androidx.documentfile.provider.DocumentFile
 import com.patrick.lrcreader.core.BackupFolderPrefs
@@ -9,6 +11,7 @@ import java.io.File
 internal object PlaylistStateAtomicIo {
 
     private const val TAG = "PlaylistStateAtomicIo"
+    private const val PERSIST_LOG_TAG = "PLAYLIST_PERSIST"
     private const val CONFIG_DIR_NAME = "Config"
     private const val FILE_NAME = "playlist_state.json"
     private const val FILE_MIME = "application/json"
@@ -38,6 +41,11 @@ internal object PlaylistStateAtomicIo {
                     context.contentResolver.openInputStream(target.uri)
                         ?.bufferedReader(Charsets.UTF_8)
                         ?.use { it.readText() }
+                }.onSuccess {
+                    Log.d(
+                        PERSIST_LOG_TAG,
+                        "io.read.success file=$FILE_NAME dir=${storage.configDir.uri} len=${it?.length ?: 0}"
+                    )
                 }.getOrNull()
             }
         }
@@ -105,15 +113,20 @@ internal object PlaylistStateAtomicIo {
             val target = findFileIgnoreCase(dir, FILE_NAME) ?: dir.createFile(FILE_MIME, FILE_NAME)
             if (target == null) {
                 Log.e(TAG, "writeSafAtomic: createFile final failed dir=${dir.uri}")
+                Log.e(PERSIST_LOG_TAG, "io.write.createFile.failed dir=${dir.uri}")
                 return false
             }
             val ok = writeSafDirect(context, target, bytes)
             if (!ok) {
                 Log.d(TAG, "writeSafAtomic: direct write failed dir=${dir.uri} file=$FILE_NAME uri=${target.uri}")
+                Log.e(PERSIST_LOG_TAG, "io.write.direct.failed dir=${dir.uri} file=$FILE_NAME uri=${target.uri}")
+            } else {
+                Log.d(PERSIST_LOG_TAG, "io.write.success dir=${dir.uri} file=$FILE_NAME uri=${target.uri} len=${rawJson.length}")
             }
             ok
         }.getOrElse {
             Log.e(TAG, "writeSafAtomic exception", it)
+            Log.e(PERSIST_LOG_TAG, "io.write.exception dir=${dir.uri} file=$FILE_NAME", it)
             false
         }
     }
@@ -189,9 +202,7 @@ internal object PlaylistStateAtomicIo {
             }
 
             "content" -> {
-                val rootDoc = DocumentFile.fromTreeUri(context, rootUri)
-                    ?: DocumentFile.fromSingleUri(context, rootUri)
-                    ?: return null
+                val rootDoc = resolveWorkspaceRootDoc(context, rootUri) ?: return null
                 if (!rootDoc.isDirectory) return null
 
                 val configDir = findExistingDirIgnoreCase(rootDoc, CONFIG_DIR_NAME) ?: return null
@@ -217,9 +228,7 @@ internal object PlaylistStateAtomicIo {
             }
 
             "content" -> {
-                val rootDoc = DocumentFile.fromTreeUri(context, rootUri)
-                    ?: DocumentFile.fromSingleUri(context, rootUri)
-                    ?: return null
+                val rootDoc = resolveWorkspaceRootDoc(context, rootUri) ?: return null
                 if (!rootDoc.isDirectory) return null
 
                 val configDir = findOrCreateDirIgnoreCase(rootDoc, CONFIG_DIR_NAME) ?: return null
@@ -248,6 +257,59 @@ internal object PlaylistStateAtomicIo {
         return parent.listFiles().firstOrNull {
             it.isFile && (it.name ?: "").equals(name, ignoreCase = true)
         }
+    }
+
+    private fun resolveWorkspaceRootDoc(context: Context, rootUri: Uri): DocumentFile? {
+        resolveWorkspaceRootFromSetupTree(context)?.let { resolved ->
+            Log.d(PERSIST_LOG_TAG, "io.root.resolve via=setupTree root=${resolved.uri}")
+            return resolved
+        }
+        val normalizedRootUri = normalizeRootTreeUri(rootUri)
+        val direct = DocumentFile.fromTreeUri(context, normalizedRootUri)
+            ?: DocumentFile.fromTreeUri(context, rootUri)
+            ?: DocumentFile.fromSingleUri(context, rootUri)
+        if (direct == null) {
+            Log.e(PERSIST_LOG_TAG, "io.root.resolve failed root=$rootUri normalized=$normalizedRootUri")
+            return null
+        }
+        Log.d(PERSIST_LOG_TAG, "io.root.resolve via=storedRoot root=${direct.uri}")
+        return direct
+    }
+
+    private fun resolveWorkspaceRootFromSetupTree(context: Context): DocumentFile? {
+        val setupTreeUri = BackupFolderPrefs.getSetupTreeUri(context) ?: return null
+        val baseDoc = DocumentFile.fromTreeUri(context, setupTreeUri) ?: return null
+        if (!baseDoc.isDirectory) return null
+        if (isWorkspaceRootDirectory(baseDoc)) {
+            return baseDoc
+        }
+        return baseDoc.listFiles().firstOrNull { child ->
+            child.isDirectory && (child.name ?: "").equals("SPL_Music", ignoreCase = true)
+        }
+    }
+
+    private fun isWorkspaceRootDirectory(doc: DocumentFile): Boolean {
+        val cleanName = doc.name?.trim()
+        if (cleanName.equals("SPL_Music", ignoreCase = true)) {
+            return true
+        }
+        return runCatching {
+            doc.listFiles().any { child ->
+                child.isDirectory && (
+                    (child.name ?: "").equals("BackingTracks", ignoreCase = true) ||
+                        (child.name ?: "").equals("BackingTrack", ignoreCase = true)
+                    )
+            }
+        }.getOrDefault(false)
+    }
+
+    private fun normalizeRootTreeUri(rootUri: Uri): Uri {
+        if (rootUri.scheme != "content") return rootUri
+        val authority = rootUri.authority ?: return rootUri
+        val docId = runCatching { DocumentsContract.getDocumentId(rootUri) }.getOrNull() ?: return rootUri
+        return runCatching {
+            DocumentsContract.buildTreeDocumentUri(authority, docId)
+        }.getOrDefault(rootUri)
     }
 
     private sealed class Storage {
