@@ -93,32 +93,31 @@ internal object PlaylistStateStore {
 
     fun restorePlaylistsIntoRepository(context: Context): Boolean {
         return withLockBlocking {
-            val state = readStateLocked(context)
+            val internalState = readStateLocked(context)
+            val workspaceState = WorkspacePlaylistFilesStore.readAll(context)
+            val state = mergeWorkspacePlaylists(
+                internalState = internalState,
+                workspaceState = workspaceState
+            )
             Log.d(
                 PERSIST_LOG_TAG,
-                "restore.begin playlists=${state.playlists.keys.sorted()} counts=${
+                "restore.begin internal=${internalState.playlists.keys.sorted()} workspace=${workspaceState.playlists.keys.sorted()} merged=${state.playlists.keys.sorted()} counts=${
                     state.playlists.toSortedMap().entries.joinToString { "${it.key}:${it.value.items.size}" }
                 }"
             )
             PlaylistRepository.clearAll()
-            state.playlists
-                .toSortedMap()
-                .forEach { (playlistName, entry) ->
-                    if (!entry.exists && entry.items.isEmpty()) return@forEach
-                    PlaylistRepository.addPlaylist(playlistName)
-                    entry.items.forEach { item ->
-                        PlaylistRepository.assignSongToPlaylist(
-                            playlistName = playlistName,
-                            songUri = item.uri,
-                            songId = item.songId
-                        )
-                    }
-                }
+            restoreStateIntoRepository(state)
+            cachedState = state
+            val workspaceMigrated = if (shouldSyncWorkspaceFiles(state, workspaceState)) {
+                WorkspacePlaylistFilesStore.syncFromRepository(context)
+            } else {
+                true
+            }
             Log.d(
                 PERSIST_LOG_TAG,
                 "restore.end playlists=${PlaylistRepository.getPlaylists()} counts=${
                     PlaylistRepository.getPlaylists().joinToString { "$it:${PlaylistRepository.getAllItemsRaw(it).size}" }
-                }"
+                } workspaceMigrated=$workspaceMigrated"
             )
             true
         }
@@ -147,13 +146,19 @@ internal object PlaylistStateStore {
                     updatedAt = System.currentTimeMillis()
                 )
             }
-            writeStateLocked(
+            val internalSaved = writeStateLocked(
                 context = context,
                 state = current.copy(
                     schemaVersion = PlaylistState.SCHEMA_VERSION,
                     playlists = nextMap
                 )
             )
+            val workspaceSaved = WorkspacePlaylistFilesStore.syncFromRepository(context)
+            Log.d(
+                PERSIST_LOG_TAG,
+                "save.end internalSaved=$internalSaved workspaceSaved=$workspaceSaved playlists=${PlaylistRepository.getPlaylists()}"
+            )
+            internalSaved || workspaceSaved
         }
     }
 
@@ -178,6 +183,78 @@ internal object PlaylistStateStore {
             ),
             failureLabel = "writePlaylistEntryLocked: write failed playlist=$playlistName"
         )
+    }
+
+    private fun restoreStateIntoRepository(state: PlaylistState) {
+        state.playlists
+            .toSortedMap()
+            .forEach { (playlistName, entry) ->
+                if (!entry.exists && entry.items.isEmpty()) return@forEach
+                PlaylistRepository.addPlaylist(playlistName)
+                entry.items.forEach { item ->
+                    PlaylistRepository.assignSongToPlaylist(
+                        playlistName = playlistName,
+                        songUri = item.uri,
+                        songId = item.songId
+                    )
+                }
+            }
+    }
+
+    private fun mergeWorkspacePlaylists(
+        internalState: PlaylistState,
+        workspaceState: WorkspacePlaylistFilesStore.ReadResult
+    ): PlaylistState {
+        if (workspaceState.playlists.isEmpty()) {
+            return internalState
+        }
+
+        val merged = linkedMapOf<String, PlaylistStateEntry>()
+        val allNames = (internalState.playlists.keys + workspaceState.playlists.keys).toSortedSet()
+        allNames.forEach { playlistName ->
+            val internalEntry = internalState.playlists[playlistName]
+            val workspaceEntry = workspaceState.playlists[playlistName]
+            val nextEntry = when {
+                workspaceEntry != null -> {
+                    (internalEntry ?: PlaylistStateEntry()).copy(
+                        exists = true,
+                        items = workspaceEntry.items,
+                        updatedAt = maxOf(internalEntry?.updatedAt ?: 0L, workspaceEntry.updatedAt)
+                    )
+                }
+
+                internalEntry != null -> internalEntry
+                else -> null
+            } ?: return@forEach
+
+            if (!nextEntry.isEmpty()) {
+                merged[playlistName] = nextEntry
+            }
+        }
+
+        return internalState.copy(
+            schemaVersion = PlaylistState.SCHEMA_VERSION,
+            playlists = merged
+        )
+    }
+
+    private fun shouldSyncWorkspaceFiles(
+        state: PlaylistState,
+        workspaceState: WorkspacePlaylistFilesStore.ReadResult
+    ): Boolean {
+        val desired = state.playlists
+            .filterValues { it.exists || it.items.isNotEmpty() }
+            .mapValues { (_, entry) -> entry.items }
+
+        if (desired.isEmpty()) {
+            return workspaceState.hasPlaylistFiles
+        }
+        if (desired.size != workspaceState.playlists.size) {
+            return true
+        }
+        return desired.any { (playlistName, items) ->
+            workspaceState.playlists[playlistName]?.items != items
+        }
     }
 
     private fun readStateLocked(context: Context): PlaylistState {
