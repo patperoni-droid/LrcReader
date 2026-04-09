@@ -903,22 +903,25 @@ fun QuickPlaylistsScreen(
                             onClick = {
                                 val pl = internalSelected ?: return@IconButton
 
+                                val currentRaw = PlaylistRepository.getAllSongsRaw(pl)
+                                val restored = loadManualOrder(context, pl, currentRaw)
+                                    ?.takeIf { it.isNotEmpty() }
+                                    ?: originalOrderByPlaylist[pl]
+                                        ?.takeIf { it.isNotEmpty() }
+                                    ?: loadOriginalOrder(context, pl)
+                                    ?: currentRaw
+
                                 // 1) on efface le statut "joué"
                                 PlaylistRepository.resetPlayedFor(pl)
 
-                                // 2) ✅ on restaure l'ordre d'origine (persistant)
-                                val original = originalOrderByPlaylist[pl]
-                                    ?.takeIf { it.isNotEmpty() }
-                                    ?: loadOriginalOrder(context, pl)
-                                    ?: PlaylistRepository.getSongsFor(pl)
-
-                                PlaylistRepository.updatePlayListOrder(pl, original)
-                                saveManualOrder(context, pl, original)
-                                originalOrderByPlaylist[pl] = original
+                                // 2) on restaure l'ordre utilisateur persistant
+                                PlaylistRepository.updatePlayListOrder(pl, restored)
+                                saveManualOrder(context, pl, restored)
+                                originalOrderByPlaylist[pl] = restored
 
                                 // 3) UI
                                 songs.clear()
-                                songs.addAll(original)
+                                songs.addAll(PlaylistRepository.getSongsFor(pl))
 
                                 onSelectedPlaylistChange(pl)
                             }

@@ -311,41 +311,45 @@ internal object PlaylistStateStore {
 
     private data class Conversion(
         val storedKeyByUri: Map<String, String>,
-        val uriByStoredKey: Map<String, String>
+        val urisByStoredKey: Map<String, List<String>>
     )
 
     private fun buildConversion(context: Context, playlistName: String, uris: List<String>): Conversion? {
         if (uris.isEmpty()) return null
 
         val storedKeyByUri = linkedMapOf<String, String>()
-        val uriByStoredKey = linkedMapOf<String, String>()
+        val urisByStoredKey = linkedMapOf<String, MutableList<String>>()
 
         for (uri in uris) {
-            val storedKey = resolveStoredKey(context, playlistName, uri) ?: return null
-            val legacyKey = TrackSettingsPathResolver.resolveRelativeTrackPath(context, uri)
+            val storedKey = resolveStoredKey(uri)
 
             storedKeyByUri[uri] = storedKey
-            if (!uriByStoredKey.containsKey(storedKey)) {
-                uriByStoredKey[storedKey] = uri
-            }
-            if (!legacyKey.isNullOrBlank() && !uriByStoredKey.containsKey(legacyKey)) {
-                uriByStoredKey[legacyKey] = uri
+            urisByStoredKey.getOrPut(storedKey) { mutableListOf() }.add(uri)
+
+            resolveLegacyStoredKeys(context, playlistName, uri).forEach { legacyKey ->
+                urisByStoredKey.getOrPut(legacyKey) { mutableListOf() }.add(uri)
             }
         }
 
         return Conversion(
             storedKeyByUri = storedKeyByUri,
-            uriByStoredKey = uriByStoredKey
+            urisByStoredKey = urisByStoredKey.mapValues { it.value.toList() }
         )
     }
 
-    private fun resolveStoredKey(context: Context, playlistName: String, uri: String): String? {
+    private fun resolveStoredKey(uri: String): String {
+        return "uri:$uri"
+    }
+
+    private fun resolveLegacyStoredKeys(context: Context, playlistName: String, uri: String): List<String> {
+        val keys = linkedSetOf<String>()
         val songId = PlaylistRepository.getPlaylistItem(playlistName, uri)?.songId
             ?.trim()
             ?.takeIf { it.isNotEmpty() }
             ?: SongIdKeyResolver.resolveSongIdFromUri(context, uri)
-        SongIdKeyResolver.songScopedKey(songId)?.let { return it }
-        return TrackSettingsPathResolver.resolveRelativeTrackPath(context, uri)
+        SongIdKeyResolver.songScopedKey(songId)?.let { keys.add(it) }
+        TrackSettingsPathResolver.resolveRelativeTrackPath(context, uri)?.let { keys.add(it) }
+        return keys.toList()
     }
 
     private fun reorderFromStoredOrder(
@@ -355,11 +359,17 @@ internal object PlaylistStateStore {
     ): List<String> {
         val usedUris = linkedSetOf<String>()
         val reordered = mutableListOf<String>()
+        val remainingUrisByStoredKey = conversion.urisByStoredKey
+            .mapValues { (_, uris) -> ArrayDeque(uris) }
 
         desiredStoredOrder.forEach { storedKey ->
-            val uri = conversion.uriByStoredKey[storedKey] ?: return@forEach
-            if (usedUris.add(uri)) {
-                reordered.add(uri)
+            val candidates = remainingUrisByStoredKey[storedKey] ?: return@forEach
+            while (candidates.isNotEmpty()) {
+                val uri = candidates.removeFirst()
+                if (usedUris.add(uri)) {
+                    reordered.add(uri)
+                    break
+                }
             }
         }
 
