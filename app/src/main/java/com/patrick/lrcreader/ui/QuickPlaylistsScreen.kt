@@ -1865,7 +1865,11 @@ fun QuickPlaylistsScreen(
                                         headerKey = option.headerKey
                                     )
                                     if (movedCount > 0) {
-                                        persistSongsOrder(pl, overwriteOriginal = true)
+                                        val snapshot = songs.toList()
+                                        PlaylistRepository.updatePlayListOrder(pl, snapshot)
+                                        scope.launch(Dispatchers.IO) {
+                                            saveManualOrder(context, pl, snapshot)
+                                        }
                                         selectedTrackKeys = emptySet()
                                     }
                                 }
