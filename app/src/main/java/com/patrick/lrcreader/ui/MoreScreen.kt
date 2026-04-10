@@ -243,7 +243,6 @@ private fun MoreRootScreen(
                     // Bloc fonctionnel
                     SettingsHeader(stringResource(R.string.more_section_functions))
                     SettingsItem(stringResource(R.string.more_item_filler), onClick = onOpenFiller)
-                    SettingsItem(stringResource(R.string.more_item_backup_restore), onClick = onOpenBackup)
                     SettingsItem(stringResource(R.string.more_item_history), onClick = onOpenHistory)
 
                     HorizontalDivider(color = Color(0xFF262626))

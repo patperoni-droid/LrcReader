@@ -10,6 +10,7 @@ object FillerSoundPrefs {
     private const val PREFS_NAME = "filler_sound_prefs"
     private const val KEY_URI = "filler_uri"
     private const val KEY_FOLDER_URI = "filler_folder_uri"
+    private const val KEY_USE_CUSTOM_FOLDER = "filler_use_custom_folder"
     private const val KEY_VOLUME = "filler_volume"  // 0f..1f
     private const val KEY_ENABLED = "filler_enabled" // NEW
     @Volatile
@@ -43,10 +44,28 @@ object FillerSoundPrefs {
         return Uri.parse(s)
     }
 
+    fun setUseCustomFolder(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_USE_CUSTOM_FOLDER, enabled)
+            .apply()
+    }
+
+    fun isUsingCustomFolder(context: Context): Boolean {
+        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(KEY_USE_CUSTOM_FOLDER, false)
+    }
+
+    fun getActiveFillerFolder(context: Context): Uri? {
+        if (!isUsingCustomFolder(context)) return null
+        return getFillerFolder(context)
+    }
+
     fun clearFillerFolder(context: Context) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit()
             .remove(KEY_FOLDER_URI)
+            .remove(KEY_USE_CUSTOM_FOLDER)
             .apply()
     }
 

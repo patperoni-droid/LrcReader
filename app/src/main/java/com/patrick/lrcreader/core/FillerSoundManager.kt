@@ -1,6 +1,7 @@
 package com.patrick.lrcreader.core
 
 import android.content.Context
+import android.content.res.AssetFileDescriptor
 import android.media.MediaPlayer
 import android.media.audiofx.Visualizer
 import android.net.Uri
@@ -40,6 +41,11 @@ object FillerSoundManager {
 
     private const val DEFAULT_VOLUME = 0.25f
     private const val CROSSFADE_MS = 1500L
+    private const val ASSET_SCHEME = "asset"
+    private val DEFAULT_ASSET_TRACKS = listOf(
+        "fond_sonore/FS_Lounge_Warm.mp3",
+        "fond_sonore/FS_Lounge_Warm_Alt.mp3"
+    )
 
     fun startFromPlayerPause(context: Context) {
         advanceOnNextStart = true
@@ -68,7 +74,7 @@ object FillerSoundManager {
     private fun internalStart(context: Context) {
         currentVolume = FillerSoundPrefs.getFillerVolume(context)
 
-        val folderUri = FillerSoundPrefs.getFillerFolder(context)
+        val folderUri = FillerSoundPrefs.getActiveFillerFolder(context)
         if (folderUri != null) {
             if (!isFolderUriReadable(context, folderUri)) {
                 folderPlaylist = emptyList()
@@ -116,7 +122,27 @@ object FillerSoundManager {
             }
         }
 
-        val fileUri = FillerSoundPrefs.getFillerUri(context) ?: return
+        val fileUri = FillerSoundPrefs.getFillerUri(context)
+        if (fileUri == null) {
+            val assetPlaylist = buildDefaultAssetPlaylist(context)
+            if (assetPlaylist.isNotEmpty()) {
+                folderPlaylist = assetPlaylist
+                currentFolderUri = null
+                if (folderIndex !in assetPlaylist.indices) {
+                    folderIndex = if (assetPlaylist.size == 1) 0 else Random.nextInt(assetPlaylist.size)
+                }
+                if (advanceOnNextStart && assetPlaylist.size > 1) {
+                    folderIndex = (folderIndex + 1) % assetPlaylist.size
+                }
+                advanceOnNextStart = false
+                runCatching { startFromFolderIndex(context, folderIndex) }
+                    .onFailure {
+                        Log.e("FillerSoundManager", "startFromAssets failed: ${it.message}", it)
+                        fadeOutAndStop(0)
+                    }
+            }
+            return
+        }
         try {
             startFromSingleFile(context, fileUri)
         } catch (e: Exception) {
@@ -211,7 +237,7 @@ object FillerSoundManager {
 
         val mp = MediaPlayer()
         try {
-            mp.setDataSource(context, uri)
+            setDataSource(context, mp, uri)
             mp.isLooping = true
 
             mp.setOnErrorListener { _, what, extra ->
@@ -240,6 +266,25 @@ object FillerSoundManager {
 
     private fun isAudioName(name: String): Boolean {
         return name.endsWith(".mp3", true) || name.endsWith(".wav", true)
+    }
+
+    private fun buildDefaultAssetPlaylist(context: Context): List<Uri> {
+        return DEFAULT_ASSET_TRACKS
+            .filter { assetPath -> runCatching { context.assets.openFd(assetPath).close() }.isSuccess }
+            .map { assetPath -> Uri.parse("$ASSET_SCHEME:///$assetPath") }
+    }
+
+    private fun setDataSource(context: Context, mp: MediaPlayer, uri: Uri) {
+        if (uri.scheme == ASSET_SCHEME) {
+            val assetPath = uri.path?.removePrefix("/")?.takeIf { it.isNotBlank() }
+                ?: throw IllegalArgumentException("Invalid asset uri: $uri")
+            val afd: AssetFileDescriptor = context.assets.openFd(assetPath)
+            afd.use {
+                mp.setDataSource(it.fileDescriptor, it.startOffset, it.length)
+            }
+            return
+        }
+        mp.setDataSource(context, uri)
     }
 
     private fun isFolderUriReadable(context: Context, folderUri: Uri): Boolean {
@@ -313,7 +358,7 @@ object FillerSoundManager {
 
         val mp = MediaPlayer()
         try {
-            mp.setDataSource(context, uri)
+            setDataSource(context, mp, uri)
             mp.isLooping = false
 
             mp.setOnCompletionListener { playNextInFolder(context) }
@@ -354,7 +399,7 @@ object FillerSoundManager {
 
         try {
             val newPlayer = MediaPlayer()
-            newPlayer.setDataSource(context, nextUri)
+            setDataSource(context, newPlayer, nextUri)
             newPlayer.isLooping = false
             newPlayer.prepare()
             newPlayer.setVolume(0f, 0f)

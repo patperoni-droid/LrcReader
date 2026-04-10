@@ -1463,6 +1463,12 @@ class MainActivity : AppCompatActivity() {
                     isPlaying = false
                     LightCueDispatcher.resetGlobal()
                     PlaybackCoordinator.onPlayerStop()
+                    val shouldStartFiller =
+                        PlaybackCoordinator.peekNextTrack() == null && !isChaining
+                    if (shouldStartFiller) {
+                        PlaybackCoordinator.onFillerStart()
+                        runCatching { FillerSoundManager.startIfConfigured(ctx) }
+                    }
                     backingEndedSignal++
                 }
 

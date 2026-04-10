@@ -85,6 +85,14 @@
     <string name="filler_library_missing">⚠️ Go to Library → “Choose Music folder” (once).</string>
 
     <string name="filler_quick_ambiences">Quick ambiences</string>
+    <string name="filler_source_title">Background sound source</string>
+    <string name="filler_source_assets">Default ambience</string>
+    <string name="filler_source_default_title">Default ambience</string>
+    <string name="filler_source_default_subtitle">2 pads included in the app</string>
+    <string name="filler_source_custom_folder">Custom folder</string>
+    <string name="filler_source_custom_subtitle">Use the audio files from a folder</string>
+    <string name="filler_choose_custom_folder">Choose a folder</string>
+    <string name="filler_use_assets">Use integrated assets</string>
 
     <string name="filler_folder_linked">Folder linked to "%1$s"</string>
 

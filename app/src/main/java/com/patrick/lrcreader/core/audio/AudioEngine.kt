@@ -244,7 +244,6 @@ object AudioEngine {
                 }
                 if (state == Player.STATE_ENDED) {
                     onNaturalEndCallback?.invoke()
-                    FillerSoundManager.startIfConfigured(appCtx)
                 }
             }
 

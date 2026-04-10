@@ -83,6 +83,14 @@
     <string name="filler_library_missing">⚠️ Ve a Biblioteca → “Elegir carpeta de música” (una vez).</string>
 
     <string name="filler_quick_ambiences">Ambientes rápidos</string>
+    <string name="filler_source_title">Fuente del sonido de fondo</string>
+    <string name="filler_source_assets">Ambiente predeterminado</string>
+    <string name="filler_source_default_title">Ambiente predeterminado</string>
+    <string name="filler_source_default_subtitle">2 capas incluidas en la aplicación</string>
+    <string name="filler_source_custom_folder">Carpeta personalizada</string>
+    <string name="filler_source_custom_subtitle">Usar los archivos de audio de una carpeta</string>
+    <string name="filler_choose_custom_folder">Elegir una carpeta</string>
+    <string name="filler_use_assets">Usar assets integrados</string>
 
     <string name="filler_folder_linked">Carpeta vinculada a "%1$s"</string>
 

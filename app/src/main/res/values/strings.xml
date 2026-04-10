@@ -82,6 +82,14 @@
     <string name="filler_library_missing">⚠️ Va dans Bibliothèque → “Choisir dossier Music” (1 fois).</string>
 
     <string name="filler_quick_ambiences">Ambiances rapides</string>
+    <string name="filler_source_title">Source du fond sonore</string>
+    <string name="filler_source_assets">Ambiance par défaut</string>
+    <string name="filler_source_default_title">Ambiance par défaut</string>
+    <string name="filler_source_default_subtitle">2 nappes incluses dans l’application</string>
+    <string name="filler_source_custom_folder">Dossier personnalisé</string>
+    <string name="filler_source_custom_subtitle">Utiliser les fichiers audio d’un dossier</string>
+    <string name="filler_choose_custom_folder">Choisir un dossier</string>
+    <string name="filler_use_assets">Utiliser les assets intégrés</string>
 
     <string name="filler_dj_required_title">Ambiances : dossier obligatoire</string>
     <string name="filler_dj_required_text">Pour que les ambiances fonctionnent, elles doivent être placées dans le dossier :\n\nSPL_Music / DJ</string>
