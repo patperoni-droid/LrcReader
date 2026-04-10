@@ -1,5 +1,6 @@
 package com.patrick.lrcreader.ui
 
+import android.content.Intent
 import android.content.Context
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
@@ -7,6 +8,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -19,6 +23,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -85,6 +90,38 @@ fun HistoryScreen(
     }
     val events by eventsFlow.collectAsState(initial = emptyList())
     val scope = rememberCoroutineScope()
+    var showClearConfirm by remember { mutableStateOf(false) }
+
+    fun shareHistory() {
+        if (events.isEmpty()) return
+        val shareText = events.joinToString(separator = "\n") { event ->
+            buildList {
+                add(formatTimestamp(event.timestamp))
+                add(
+                    when (event.source) {
+                        PlaySource.DJ.name -> context.getString(R.string.history_filter_dj)
+                        else -> context.getString(R.string.history_filter_backing)
+                    }
+                )
+                add(
+                    normalizeDisplayTitle(
+                        stripAudioExtension(
+                            event.title.ifBlank { HistoryRepository.UNTITLED_FALLBACK }
+                        )
+                    )
+                )
+                event.artist?.takeIf { it.isNotBlank() }?.let { add(it) }
+            }.joinToString(" • ")
+        }
+        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_SUBJECT, context.getString(R.string.history_title))
+            putExtra(Intent.EXTRA_TEXT, shareText)
+        }
+        context.startActivity(
+            Intent.createChooser(shareIntent, context.getString(R.string.backup_share))
+        )
+    }
 
     val backgroundBrush = Brush.verticalGradient(
         listOf(
@@ -93,13 +130,21 @@ fun HistoryScreen(
             Color(0xFF181410)
         )
     )
+    val topInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
 
     Column(
         modifier = modifier
             .fillMaxSize()
             .background(backgroundBrush)
-            .padding(horizontal = 12.dp, vertical = 10.dp)
+            .padding(
+                start = 12.dp,
+                end = 12.dp,
+                top = topInset + 12.dp,
+                bottom = 10.dp
+            )
     ) {
+        Spacer(Modifier.height(8.dp))
+
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
@@ -119,7 +164,14 @@ fun HistoryScreen(
                 modifier = Modifier.weight(1f)
             )
             TextButton(
-                onClick = { scope.launch { repo.clearAll() } }
+                onClick = { shareHistory() },
+                enabled = events.isNotEmpty()
+            ) {
+                Text(stringResource(R.string.backup_share))
+            }
+            TextButton(
+                onClick = { showClearConfirm = true },
+                enabled = events.isNotEmpty()
             ) {
                 Text(stringResource(R.string.history_clear))
             }
@@ -208,6 +260,29 @@ fun HistoryScreen(
                     }
                 }
             }
+        }
+
+        if (showClearConfirm) {
+            AlertDialog(
+                onDismissRequest = { showClearConfirm = false },
+                title = { Text(stringResource(R.string.history_clear_confirm_title)) },
+                text = { Text(stringResource(R.string.history_clear_confirm_message)) },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            showClearConfirm = false
+                            scope.launch { repo.clearAll() }
+                        }
+                    ) {
+                        Text(stringResource(R.string.common_erase))
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showClearConfirm = false }) {
+                        Text(stringResource(R.string.common_cancel))
+                    }
+                }
+            )
         }
     }
 }

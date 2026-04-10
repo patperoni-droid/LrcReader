@@ -2454,6 +2454,7 @@ class MainActivity : AppCompatActivity() {
                                 },
                                 onMoreClick = {
                                     textPrompterId = null
+                                    isNotesOpen = false
                                     isMoreMenuOpen = true
                                 },
                                 onPlayerReselect = {

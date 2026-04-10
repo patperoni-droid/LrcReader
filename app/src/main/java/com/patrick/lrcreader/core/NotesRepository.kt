@@ -137,6 +137,19 @@ object NotesRepository {
         }
     }
 
+    fun clearAll(context: Context) {
+        withLockBlocking {
+            ensurePortableInitialized(context)
+            prefs(context).edit().remove(KEY_NOTES).apply()
+            runCatching {
+                NotesConfigStore.getAll(context).forEach { scoped ->
+                    NotesConfigStore.delete(context, scoped.note.id)
+                }
+            }
+                .onFailure { Log.w(TAG, "clearAll: JSON clear failed", it) }
+        }
+    }
+
     fun get(context: Context, id: Long): Note? =
         withLockBlocking {
             ensurePortableInitialized(context)

@@ -99,6 +99,7 @@ fun MoreScreen(
         )
 
         MoreSection.History -> HistoryScreen(
+            modifier = modifier,
             context = context,
             onBack = { navigate("root") }
         )

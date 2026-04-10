@@ -1,5 +1,6 @@
 package com.patrick.lrcreader.ui
 
+import android.content.Intent
 import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -27,6 +28,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.core.NotesRepository
@@ -115,7 +119,62 @@ fun NotesScreen(
         mode = NotesUiMode.LIST
     }
 
+    fun shareCurrentNote() {
+        val shareText = buildString {
+            val title = titleText.trim()
+            val content = contentText.trim()
+            if (title.isNotEmpty()) {
+                append(title)
+            }
+            if (title.isNotEmpty() && content.isNotEmpty()) {
+                append("\n\n")
+            }
+            if (content.isNotEmpty()) {
+                append(content)
+            }
+        }.trim()
+        if (shareText.isBlank()) return
+        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_SUBJECT, titleText.trim().ifBlank {
+                context.getString(R.string.notes_title)
+            })
+            putExtra(Intent.EXTRA_TEXT, shareText)
+        }
+        context.startActivity(
+            Intent.createChooser(shareIntent, context.getString(R.string.backup_share))
+        )
+    }
+
+    fun shareAllNotes() {
+        if (notes.isEmpty()) return
+        val shareText = notes.joinToString(separator = "\n\n") { note ->
+            buildString {
+                val title = note.title.trim().ifBlank {
+                    context.getString(R.string.common_untitled)
+                }
+                append(title)
+                val content = note.content.trim()
+                if (content.isNotEmpty()) {
+                    append("\n")
+                    append(content)
+                }
+            }
+        }
+        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_SUBJECT, context.getString(R.string.notes_title))
+            putExtra(Intent.EXTRA_TEXT, shareText)
+        }
+        context.startActivity(
+            Intent.createChooser(shareIntent, context.getString(R.string.backup_share))
+        )
+    }
+
+    val topInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+
     DarkBlueGradientBackground {
+        val canShareCurrentNote = titleText.isNotBlank() || contentText.isNotBlank()
         when (mode) {
 
             NotesUiMode.LIST -> {
@@ -125,7 +184,12 @@ fun NotesScreen(
                 Column(
                     modifier = modifier
                         .fillMaxSize()
-                        .padding(12.dp)
+                        .padding(
+                            start = 12.dp,
+                            end = 12.dp,
+                            top = topInset + 12.dp,
+                            bottom = 12.dp
+                        )
                 ) {
                     // HEADER
                     Row(
@@ -150,12 +214,20 @@ fun NotesScreen(
                             )
                         }
 
-                        IconButton(onClick = { openNewNote() }) {
-                            Icon(
-                                imageVector = Icons.Filled.Add,
-                                contentDescription = stringResource(R.string.common_cd_new_note),
-                                tint = Color(0xFF81C784)
-                            )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            TextButton(
+                                onClick = { shareAllNotes() },
+                                enabled = notes.isNotEmpty()
+                            ) {
+                                Text(stringResource(R.string.backup_share))
+                            }
+                            IconButton(onClick = { openNewNote() }) {
+                                Icon(
+                                    imageVector = Icons.Filled.Add,
+                                    contentDescription = stringResource(R.string.common_cd_new_note),
+                                    tint = Color(0xFF81C784)
+                                )
+                            }
                         }
                     }
 
@@ -287,7 +359,12 @@ fun NotesScreen(
                 Column(
                     modifier = modifier
                         .fillMaxSize()
-                        .padding(12.dp)
+                        .padding(
+                            start = 12.dp,
+                            end = 12.dp,
+                            top = topInset + 12.dp,
+                            bottom = 12.dp
+                        )
                 ) {
                     // HEADER
                     Row(
@@ -318,6 +395,13 @@ fun NotesScreen(
                         }
 
                         Row(verticalAlignment = Alignment.CenterVertically) {
+                            TextButton(
+                                onClick = { shareCurrentNote() },
+                                enabled = canShareCurrentNote
+                            ) {
+                                Text(stringResource(R.string.backup_share))
+                            }
+
                             TextButton(onClick = { saveCurrentNote() }) {
                                 Text(stringResource(R.string.common_save), color = Color(0xFF81C784))
                             }

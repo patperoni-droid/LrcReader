@@ -412,6 +412,8 @@
     <!-- History -->
     <string name="history_title">Historial</string>
     <string name="history_clear">Borrar</string>
+    <string name="history_clear_confirm_title">¿Borrar el historial?</string>
+    <string name="history_clear_confirm_message">Esta acción es irreversible.</string>
     <string name="history_filter_all">Todo</string>
     <string name="history_filter_backing">Backing</string>
     <string name="history_filter_dj">DJ</string>
