@@ -12,36 +12,39 @@ object TrackVolumePrefs {
     private const val TAG = "TrackVolumePrefs"
     private const val TRACKS_DIR_NAME = "tracks"
     private const val SMP_CONFIG_FILE_NAME = "config.json"
+    private const val MIN_DB = -12
+    private const val MAX_DB = 0
 
     fun saveDb(context: Context, uri: String, db: Int) {
+        val safeDb = db.coerceIn(MIN_DB, MAX_DB)
         val smpSaved = resolveInternalSmpConfigFile(context, uri)?.let { configFile ->
-            writeSmpVolumeDb(configFile, db)
+            writeSmpVolumeDb(configFile, safeDb)
         }
         if (smpSaved == true) {
             return
         }
 
-        val jsonOk = TrackSettingsStore.saveVolumeDbByUri(context, uri, db)
+        val jsonOk = TrackSettingsStore.saveVolumeDbByUri(context, uri, safeDb)
         if (!jsonOk) {
             Log.w(TAG, "saveDb: JSON write skipped/failed, fallback prefs only")
         }
 
         context.getSharedPreferences(PREF, Context.MODE_PRIVATE)
             .edit()
-            .putInt(uri, db)
+            .putInt(uri, safeDb)
             .apply()
     }
 
     fun getDb(context: Context, uri: String): Int? {
         resolveInternalSmpConfigFile(context, uri)?.let { configFile ->
-            readSmpVolumeDb(configFile)?.let { return it }
+            readSmpVolumeDb(configFile)?.let { return it.coerceIn(MIN_DB, MAX_DB) }
         }
 
         val fromJson = TrackSettingsStore.getVolumeDbByUri(context, uri)
-        if (fromJson != null) return fromJson
+        if (fromJson != null) return fromJson.coerceIn(MIN_DB, MAX_DB)
 
         val sp = context.getSharedPreferences(PREF, Context.MODE_PRIVATE)
-        return if (sp.contains(uri)) sp.getInt(uri, 0) else null
+        return if (sp.contains(uri)) sp.getInt(uri, 0).coerceIn(MIN_DB, MAX_DB) else null
     }
 
     private fun readSmpVolumeDb(configFile: File): Int? {

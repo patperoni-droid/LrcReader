@@ -102,7 +102,7 @@ class MainActivity : AppCompatActivity() {
     )
 
     companion object {
-        private const val DEFAULT_TRACK_GAIN_DB = -5
+        private const val DEFAULT_TRACK_GAIN_DB = 0
         private const val MIN_TRACK_DB = -12
         private const val MAX_TRACK_DB = 0
         private const val SMP_PLAY_TRACE_TAG = "SMP_PLAY_TRACE"

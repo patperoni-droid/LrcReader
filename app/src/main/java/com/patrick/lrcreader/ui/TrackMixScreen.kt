@@ -772,7 +772,7 @@ private fun EqAnalogFader(
 @Composable
 fun TrackMixScreenPreview() {
     TrackMixScreen(
-        currentTrackGainDb = -5,
+        currentTrackGainDb = 0,
         onTrackGainChange = {},
         onTrackGainCommit = {},
         tempo = 1f,
