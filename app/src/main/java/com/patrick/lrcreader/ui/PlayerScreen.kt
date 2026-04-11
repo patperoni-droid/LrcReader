@@ -2036,8 +2036,21 @@ fun PlayerScreen(
                                 LyricsViewSelector(
                                     selectedMode = selectedViewMode,
                                     hasLyrics = hasLyricsMode,
-                                    hasChords = canSelectChordsMode,
+                                    hasChords = if (EditionConfig.isLite) {
+                                        hasLyricsMode || canSelectChordsMode
+                                    } else {
+                                        canSelectChordsMode
+                                    },
+                                    chordsBlocked = EditionConfig.isLite,
                                     onSelectMode = { mode ->
+                                        if (mode == LyricsViewMode.CHORDS && EditionConfig.isLite) {
+                                            Toast.makeText(
+                                                context,
+                                                context.getString(R.string.timeline_pro_only),
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                            return@LyricsViewSelector
+                                        }
                                         selectedViewMode = mode
                                         currentTrackUri?.let { trackUri ->
                                             TrackLyricsViewPrefs.save(context, trackUri, mode)
@@ -2507,6 +2520,7 @@ private fun LyricsViewSelector(
     selectedMode: LyricsViewMode,
     hasLyrics: Boolean,
     hasChords: Boolean,
+    chordsBlocked: Boolean = false,
     onSelectMode: (LyricsViewMode) -> Unit
 ) {
     Row(
@@ -2529,7 +2543,16 @@ private fun LyricsViewSelector(
             FilterChip(
                 selected = selectedMode == LyricsViewMode.CHORDS,
                 onClick = { onSelectMode(LyricsViewMode.CHORDS) },
-                label = { Text(stringResource(R.string.player_view_chords)) }
+                label = {
+                    Text(
+                        stringResource(R.string.player_view_chords),
+                        color = if (chordsBlocked) {
+                            Color.White.copy(alpha = 0.55f)
+                        } else {
+                            Color.Unspecified
+                        }
+                    )
+                }
             )
         }
     }
