@@ -135,19 +135,29 @@ fun LyricsEditorSection(
     var lineMenuText by remember { mutableStateOf("") }
     val displayedPalette = paletteChords
 
-    LaunchedEffect(rawLyricsText) {
-        if (rawLyricsText != rawTextFieldValue.text) {
+    fun stripInlineTimingTags(raw: String): String =
+        raw.lines()
+            .joinToString("\n") { line -> line.replace(INLINE_LRC_TIME_TAG_REGEX, "").trim() }
+
+    LaunchedEffect(rawLyricsText, showTimingsInLyricsTab) {
+        val targetText = if (showTimingsInLyricsTab) {
+            rawLyricsText
+        } else {
+            stripInlineTimingTags(rawLyricsText)
+        }
+        if (targetText != rawTextFieldValue.text) {
             val nextCursor = rawTextFieldValue.selection.end.coerceAtMost(rawLyricsText.length)
             rawTextFieldValue = TextFieldValue(
-                text = rawLyricsText,
+                text = targetText,
                 selection = TextRange(nextCursor)
             )
         }
     }
 
     fun rawToPlainLines(raw: String): List<String> =
-        raw.lines()
-            .map { line -> line.trim().replace(INLINE_LRC_TIME_TAG_REGEX, "").trim() }
+        stripInlineTimingTags(raw)
+            .lines()
+            .map { line -> line.trim() }
             .filter { it.isNotEmpty() }
 
     fun rawContainsLrcTimestamps(raw: String): Boolean =
@@ -175,7 +185,11 @@ fun LyricsEditorSection(
     }
 
     fun applyLinesToRawDraft(lines: List<LrcLine>) {
-        val nextRaw = linesToEditorRawText(lines)
+        val nextRaw = if (showTimingsInLyricsTab) {
+            linesToEditorRawText(lines)
+        } else {
+            plainLinesToEditorRawText(lines)
+        }
         rawTextFieldValue = TextFieldValue(
             text = nextRaw,
             selection = TextRange(nextRaw.length)
@@ -1034,6 +1048,10 @@ private fun linesToEditorRawText(lines: List<LrcLine>): String {
             line.text
         }
     }
+}
+
+private fun plainLinesToEditorRawText(lines: List<LrcLine>): String {
+    return lines.joinToString("\n") { line -> line.text.trim() }
 }
 
 private suspend fun readImportedLrcText(context: Context, uri: Uri): String? = withContext(Dispatchers.IO) {
