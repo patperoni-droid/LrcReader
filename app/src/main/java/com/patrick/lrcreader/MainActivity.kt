@@ -116,7 +116,7 @@ class MainActivity : AppCompatActivity() {
 
     @Volatile
     private var latestSessionSnapshot = SessionSnapshot(
-        tabKey = TAB_HOME,
+        tabKey = defaultTabKeyForEdition(),
         quickPlaylist = null,
         openedPlaylist = null,
         currentPlayingUri = null,
@@ -158,7 +158,7 @@ class MainActivity : AppCompatActivity() {
         snapshot: SessionSnapshot = latestSessionSnapshot,
         debounced: Boolean = false
     ) {
-        val safeTab = snapshot.tabKey.ifBlank { TAB_HOME }
+        val safeTab = snapshot.tabKey.ifBlank { defaultTabKeyForEdition() }
         val safeUri = snapshot.currentPlayingUri?.takeIf { it.isNotBlank() }
         val safeSongId = resolveSessionSongIdFromTrackUri(safeUri)
         val safePlaylist = snapshot.currentPlayingPlaylist?.takeIf { it.isNotBlank() }
@@ -286,7 +286,7 @@ class MainActivity : AppCompatActivity() {
         val initialLastPlaylist = initialLastSession.playlistName
         mark("SessionPrefs.getTab/getQuick/getOpened:after")
         latestSessionSnapshot = SessionSnapshot(
-            tabKey = initialTabKey ?: TAB_HOME,
+            tabKey = initialTabKey ?: defaultTabKeyForEdition(),
             quickPlaylist = initialQuickPlaylist,
             openedPlaylist = initialOpenedPlaylist,
             currentPlayingUri = initialLastTrackUri,
@@ -938,7 +938,7 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 var selectedTab by remember {
-                    mutableStateOf<BottomTab>(initialTabKey?.let { tabFromKey(it) } ?: BottomTab.Home)
+                    mutableStateOf<BottomTab>(initialTabKey?.let { tabFromKey(it) } ?: defaultTabForEdition())
                 }
                 val tabStateHolder = rememberSaveableStateHolder()
                 var libraryTabReselectSignal by remember { mutableIntStateOf(0) }
@@ -2500,7 +2500,7 @@ class MainActivity : AppCompatActivity() {
                             context = ctx,
                             onBack = { isFillerSettingsOpen = false }
                         )
-                    } else if (isGlobalMixOpen) {
+                    } else if (isGlobalMixOpen && EditionConfig.isPro) {
                         GlobalMixScreen(
                             modifier = contentModifier,
                             playerLevel = playerMasterLevel,
@@ -2517,6 +2517,8 @@ class MainActivity : AppCompatActivity() {
                             onFillerLevelChange = { lvl -> fillerMasterLevel = lvl },
                             onBack = { isGlobalMixOpen = false }
                         )
+                    } else if (isGlobalMixOpen) {
+                        isGlobalMixOpen = false
                     } else {
                         // ✅ overlay PROMPTEUR
                         textPrompterId?.let { tid ->
@@ -2591,20 +2593,48 @@ class MainActivity : AppCompatActivity() {
                                                 onDismiss = { selectedSmpImportedSongDetail = null }
                                             )
                                         }
-                                        MixerHomePreviewScreen(
-                                            modifier = Modifier.fillMaxSize(),
-                                            onBack = {},
-                                            onOpenPlayer = {
-                                                setTabAndPersist(BottomTab.Player, reason = "homeOpenPlayer")
-                                            },
-                                            onOpenFondSonore = { isFillerSettingsOpen = true },
-                                            onOpenDj = {
-                                                setTabAndPersist(BottomTab.Dj, reason = "homeOpenDj")
-                                            },
-                                            onOpenTuner = {
-                                                setTabAndPersist(BottomTab.Tuner, reason = "homeOpenTuner")
-                                            }
-                                        )
+                                        if (EditionConfig.isPro) {
+                                            MixerHomePreviewScreen(
+                                                modifier = Modifier.fillMaxSize(),
+                                                onBack = {},
+                                                onOpenPlayer = {
+                                                    setTabAndPersist(BottomTab.Player, reason = "homeOpenPlayer")
+                                                },
+                                                onOpenFondSonore = { isFillerSettingsOpen = true },
+                                                onOpenDj = {
+                                                    setTabAndPersist(BottomTab.Dj, reason = "homeOpenDj")
+                                                },
+                                                onOpenTuner = {
+                                                    setTabAndPersist(BottomTab.Tuner, reason = "homeOpenTuner")
+                                                }
+                                            )
+                                        } else {
+                                            HomeScreen(
+                                                modifier = Modifier.fillMaxSize(),
+                                                onOpenPlayer = {
+                                                    setTabAndPersist(BottomTab.Player, reason = "homeOpenPlayer")
+                                                },
+                                                onOpenFondSonore = { isFillerSettingsOpen = true },
+                                                onOpenDjMode = {
+                                                    setTabAndPersist(BottomTab.Dj, reason = "homeOpenDj")
+                                                },
+                                                onOpenGlobalMix = {},
+                                                onOpenTuner = {
+                                                    setTabAndPersist(BottomTab.Tuner, reason = "homeOpenTuner")
+                                                },
+                                                onOpenProfile = {},
+                                                onOpenTutorial = {},
+                                                onOpenSettings = {},
+                                                onOpenNotes = {
+                                                    isNotesOpen = true
+                                                    isFillerSettingsOpen = false
+                                                    isGlobalMixOpen = false
+                                                    isSearchOpen = false
+                                                    textPrompterId = null
+                                                    isMixerPreviewOpen = false
+                                                }
+                                            )
+                                        }
                                         if (ENABLE_SMP_DEBUG_HOME_BUTTONS) {
                                             Button(
                                                 onClick = {
@@ -3349,6 +3379,12 @@ private const val TAB_TUNER = "tuner"
 private const val TAB_FILLER = "filler"
 private const val TAB_SEARCH = "search"
 
+private fun defaultTabForEdition(): BottomTab =
+    if (EditionConfig.isPro) BottomTab.Home else BottomTab.QuickPlaylists
+
+private fun defaultTabKeyForEdition(): String =
+    if (EditionConfig.isPro) TAB_HOME else TAB_QUICK
+
 private fun tabKeyOf(tab: BottomTab): String = when (tab) {
     is BottomTab.Home -> TAB_HOME
     is BottomTab.Player -> TAB_PLAYER
@@ -3363,13 +3399,13 @@ private fun tabKeyOf(tab: BottomTab): String = when (tab) {
 }
 
 private fun tabFromKey(key: String): BottomTab = when (key) {
-    TAB_HOME -> BottomTab.Home
+    TAB_HOME -> defaultTabForEdition()
     TAB_PLAYER -> BottomTab.Player
     TAB_QUICK -> BottomTab.QuickPlaylists
     TAB_LIBRARY -> BottomTab.Library
     TAB_ALL -> BottomTab.AllPlaylists
     TAB_MORE -> BottomTab.More
-    TAB_DJ -> BottomTab.Dj
+    TAB_DJ -> if (EditionConfig.isPro) BottomTab.Dj else BottomTab.Home
     TAB_TUNER -> BottomTab.Tuner
     TAB_FILLER -> BottomTab.Filler
     TAB_SEARCH -> BottomTab.Home // on ne “restore” pas un overlay comme un onglet

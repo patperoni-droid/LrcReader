@@ -1,5 +1,6 @@
 package com.patrick.lrcreader.ui
 
+import com.patrick.lrcreader.core.EditionConfig
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -106,26 +107,29 @@ fun HomeScreen(
                     onClick = onOpenFondSonore
                 )
 
-                NeonCardButton(
-                    title = "Mode DJ / Mix",
-                    subtitle = "Crossfade, tempo, limiteur…",
-                    icon = Icons.Filled.Headphones,
-                    accentGradient = Brush.horizontalGradient(
-                        listOf(Color(0xFF26C6DA), Color(0xFF7E57C2))
-                    ),
-                    onClick = onOpenDjMode
-                )
+                if (EditionConfig.isPro) {
+                    NeonCardButton(
+                        title = "Mode DJ / Mix",
+                        subtitle = "Crossfade, tempo, limiteur…",
+                        icon = Icons.Filled.Headphones,
+                        accentGradient = Brush.horizontalGradient(
+                            listOf(Color(0xFF26C6DA), Color(0xFF7E57C2))
+                        ),
+                        onClick = onOpenDjMode
+                    )
+                }
 
-                // 👇 NOUVEAU BOUTON MIXAGE
-                NeonCardButton(
-                    title = "Mixage général",
-                    subtitle = "Volumes Lecteur / DJ / Fond sonore",
-                    icon = Icons.Filled.GraphicEq,
-                    accentGradient = Brush.horizontalGradient(
-                        listOf(Color(0xFFAB47BC), Color(0xFF26C6DA))
-                    ),
-                    onClick = onOpenGlobalMix
-                )
+                if (EditionConfig.isPro) {
+                    NeonCardButton(
+                        title = "Mixage général",
+                        subtitle = "Volumes Lecteur / DJ / Fond sonore",
+                        icon = Icons.Filled.GraphicEq,
+                        accentGradient = Brush.horizontalGradient(
+                            listOf(Color(0xFFAB47BC), Color(0xFF26C6DA))
+                        ),
+                        onClick = onOpenGlobalMix
+                    )
+                }
 
                 NeonCardButton(
                     title = "Accordeur",

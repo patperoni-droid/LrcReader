@@ -59,6 +59,7 @@ import com.patrick.lrcreader.core.AutoReturnPrefs
 import com.patrick.lrcreader.core.AccordsEnsureResult
 import com.patrick.lrcreader.core.AccordsUiTruth
 import com.patrick.lrcreader.core.DisplayPrefs
+import com.patrick.lrcreader.core.EditionConfig
 import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.core.LatestAccordsWriteQueue
 import com.patrick.lrcreader.core.LightIndicatorPrefs
@@ -1963,6 +1964,7 @@ fun PlayerScreen(
                             },
                             highlightColor = highlightColor,
                             onOpenMix = { showMixScreen = true },
+                            showMixAction = EditionConfig.isPro,
                             showEditLyrics = selectedViewMode == LyricsViewMode.LYRICS ||
                                 selectedViewMode == LyricsViewMode.CHORDS,
                             onOpenEditor = {
@@ -2282,7 +2284,7 @@ fun PlayerScreen(
                 }
             }
 
-            if (showMixScreen) {
+            if (showMixScreen && EditionConfig.isPro) {
                 TrackMixScreen(
                     modifier = Modifier.fillMaxSize(),
                     highlightColor = highlightColor,
@@ -2541,6 +2543,7 @@ private fun ReaderHeader(
     onToggleAutoReturn: () -> Unit,
     highlightColor: Color,
     onOpenMix: () -> Unit,
+    showMixAction: Boolean,
     showEditLyrics: Boolean,
     onOpenEditor: () -> Unit,
     showTimeline: Boolean,
@@ -2583,12 +2586,14 @@ private fun ReaderHeader(
                 )
             }
 
-            IconButton(onClick = onOpenMix) {
-                Icon(
-                    imageVector = Icons.Filled.GraphicEq,
-                    contentDescription = stringResource(R.string.player_cd_track_mix),
-                    tint = Color(0xFFFFC107)
-                )
+            if (showMixAction) {
+                IconButton(onClick = onOpenMix) {
+                    Icon(
+                        imageVector = Icons.Filled.GraphicEq,
+                        contentDescription = stringResource(R.string.player_cd_track_mix),
+                        tint = Color(0xFFFFC107)
+                    )
+                }
             }
 
             if (showEditLyrics) {

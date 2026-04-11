@@ -1,5 +1,6 @@
 package com.patrick.lrcreader.ui
 
+import com.patrick.lrcreader.core.EditionConfig
 import com.patrick.lrcreader.exo.R
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -86,16 +87,20 @@ fun BottomTabsBar(
     onMoreClick: () -> Unit,
     onPlayerReselect: () -> Unit
 ) {
-    val tabs = listOf(
-        BottomTab.Home,
-        BottomTab.QuickPlaylists,
-        BottomTab.Player,
-        BottomTab.Filler,
-        BottomTab.Dj,
-        BottomTab.Library,
-        BottomTab.Search,
-        BottomTab.More
-    )
+    val tabs = buildList {
+        if (EditionConfig.isPro) {
+            add(BottomTab.Home)
+        }
+        add(BottomTab.QuickPlaylists)
+        add(BottomTab.Player)
+        add(BottomTab.Filler)
+        if (EditionConfig.isPro) {
+            add(BottomTab.Dj)
+        }
+        add(BottomTab.Library)
+        add(BottomTab.Search)
+        add(BottomTab.More)
+    }
 
     NavigationBar(containerColor = Color.Black, contentColor = Color.White) {
         tabs.forEach { tab ->

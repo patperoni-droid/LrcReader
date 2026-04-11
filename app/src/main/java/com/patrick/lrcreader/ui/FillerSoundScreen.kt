@@ -27,6 +27,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.patrick.lrcreader.core.EditionConfig
 import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.core.FillerSoundPrefs
 import com.patrick.lrcreader.exo.R
@@ -67,6 +68,7 @@ fun FillerSoundScreen(
     val sub = Color(0xFFB0BEC5)
     val card = Color(0xFF1B1B1B)
     val accent = Color(0xFFFFC107)
+    val customFolderAvailable = EditionConfig.isPro
 
     fun normalizeToTreeUri(u: Uri?): Uri? {
         if (u == null) return null
@@ -398,7 +400,7 @@ fun FillerSoundScreen(
             shape = RoundedCornerShape(12.dp)
         ) {
             Column(Modifier.padding(12.dp)) {
-                val isDefaultSource = fillerUri == null
+                val isDefaultSource = !customFolderAvailable || fillerUri == null
                 SourceOptionRow(
                     title = stringResource(R.string.filler_source_default_title),
                     subtitle = stringResource(R.string.filler_source_default_subtitle),
@@ -412,27 +414,29 @@ fun FillerSoundScreen(
                         fillerName = sAssetsIntegrated
                     }
                 )
-                Spacer(Modifier.height(10.dp))
-                SourceOptionRow(
-                    title = stringResource(R.string.filler_source_custom_folder),
-                    subtitle = stringResource(R.string.filler_source_custom_subtitle),
-                    selected = !isDefaultSource,
-                    activeColor = accent,
-                    titleColor = onBg,
-                    subtitleColor = sub,
-                    onClick = {
-                        if (fillerUri != null) {
-                            FillerSoundPrefs.setUseCustomFolder(context, true)
-                        }
-                    }
-                )
-                if (!isDefaultSource) {
+                if (customFolderAvailable) {
                     Spacer(Modifier.height(10.dp))
-                    TextButton(
-                        onClick = { pickFillerFolderLauncher.launch(initialDocumentsUri) },
-                        contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp)
-                    ) {
-                        Text(stringResource(R.string.filler_choose_custom_folder), color = onBg)
+                    SourceOptionRow(
+                        title = stringResource(R.string.filler_source_custom_folder),
+                        subtitle = stringResource(R.string.filler_source_custom_subtitle),
+                        selected = !isDefaultSource,
+                        activeColor = accent,
+                        titleColor = onBg,
+                        subtitleColor = sub,
+                        onClick = {
+                            if (fillerUri != null) {
+                                FillerSoundPrefs.setUseCustomFolder(context, true)
+                            }
+                        }
+                    )
+                    if (!isDefaultSource) {
+                        Spacer(Modifier.height(10.dp))
+                        TextButton(
+                            onClick = { pickFillerFolderLauncher.launch(initialDocumentsUri) },
+                            contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp)
+                        ) {
+                            Text(stringResource(R.string.filler_choose_custom_folder), color = onBg)
+                        }
                     }
                 }
             }
