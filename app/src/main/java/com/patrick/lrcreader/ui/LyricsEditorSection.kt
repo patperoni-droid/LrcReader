@@ -137,7 +137,7 @@ fun LyricsEditorSection(
 
     fun stripInlineTimingTags(raw: String): String =
         raw.lines()
-            .joinToString("\n") { line -> line.replace(INLINE_LRC_TIME_TAG_REGEX, "").trim() }
+            .joinToString("\n") { line -> line.replace(INLINE_LRC_TIME_TAG_REGEX, "") }
 
     LaunchedEffect(rawLyricsText, showTimingsInLyricsTab) {
         val targetText = if (showTimingsInLyricsTab) {
@@ -146,7 +146,7 @@ fun LyricsEditorSection(
             stripInlineTimingTags(rawLyricsText)
         }
         if (targetText != rawTextFieldValue.text) {
-            val nextCursor = rawTextFieldValue.selection.end.coerceAtMost(rawLyricsText.length)
+            val nextCursor = rawTextFieldValue.selection.end.coerceAtMost(targetText.length)
             rawTextFieldValue = TextFieldValue(
                 text = targetText,
                 selection = TextRange(nextCursor)
@@ -1051,7 +1051,7 @@ private fun linesToEditorRawText(lines: List<LrcLine>): String {
 }
 
 private fun plainLinesToEditorRawText(lines: List<LrcLine>): String {
-    return lines.joinToString("\n") { line -> line.text.trim() }
+    return lines.joinToString("\n") { line -> line.text }
 }
 
 private suspend fun readImportedLrcText(context: Context, uri: Uri): String? = withContext(Dispatchers.IO) {
