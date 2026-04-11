@@ -1,5 +1,6 @@
 package com.patrick.lrcreader.ui
 
+import android.widget.Toast
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.text.KeyboardOptions
@@ -38,11 +39,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.patrick.lrcreader.core.EditionConfig
 import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.core.light.LightSceneState
 import com.patrick.lrcreader.exo.R
@@ -75,7 +78,10 @@ fun TimelineEditorSection(
     onRenameMarker: (Int, String, Long?) -> Unit,
     onDeleteMarker: (Int) -> Unit
 ) {
+    val context = LocalContext.current
     val safePositionMs = positionMs.coerceAtLeast(0).toLong()
+    val midiDmxAvailable = EditionConfig.isPro
+    val proMessage = stringResource(R.string.timeline_pro_only)
     var renameIndex by remember(markers) { mutableStateOf<Int?>(null) }
     var renameText by remember(markers) { mutableStateOf("") }
     var renameDurationSeconds by remember(markers) { mutableStateOf("") }
@@ -272,15 +278,28 @@ fun TimelineEditorSection(
         ) {
             TimelineEventPaletteButton(
                 label = stringResource(R.string.timeline_event_midi),
+                enabled = midiDmxAvailable,
                 icon = {
                     Icon(
                         imageVector = Icons.Filled.GraphicEq,
                         contentDescription = null,
-                        tint = Color(0xFF80CBC4)
+                        tint = if (midiDmxAvailable) Color(0xFF80CBC4) else Color(0xFF80CBC4).copy(alpha = 0.45f)
                     )
                 },
-                onClick = { onAddTypedMarker(TimelineMarkerKind.MIDI) },
-                onLongClick = { seekToNextTypedMarker(TimelineMarkerKind.MIDI) }
+                onClick = {
+                    if (midiDmxAvailable) {
+                        onAddTypedMarker(TimelineMarkerKind.MIDI)
+                    } else {
+                        Toast.makeText(context, proMessage, Toast.LENGTH_SHORT).show()
+                    }
+                },
+                onLongClick = {
+                    if (midiDmxAvailable) {
+                        seekToNextTypedMarker(TimelineMarkerKind.MIDI)
+                    } else {
+                        Toast.makeText(context, proMessage, Toast.LENGTH_SHORT).show()
+                    }
+                }
             )
             TimelineEventPaletteButton(
                 label = stringResource(R.string.timeline_event_note),
@@ -296,15 +315,28 @@ fun TimelineEditorSection(
             )
             TimelineEventPaletteButton(
                 label = stringResource(R.string.timeline_event_dmx),
+                enabled = midiDmxAvailable,
                 icon = {
                     Icon(
                         imageVector = Icons.Filled.FlashOn,
                         contentDescription = null,
-                        tint = Color(0xFFFFB74D)
+                        tint = if (midiDmxAvailable) Color(0xFFFFB74D) else Color(0xFFFFB74D).copy(alpha = 0.45f)
                     )
                 },
-                onClick = { onAddTypedMarker(TimelineMarkerKind.DMX) },
-                onLongClick = { seekToNextTypedMarker(TimelineMarkerKind.DMX) }
+                onClick = {
+                    if (midiDmxAvailable) {
+                        onAddTypedMarker(TimelineMarkerKind.DMX)
+                    } else {
+                        Toast.makeText(context, proMessage, Toast.LENGTH_SHORT).show()
+                    }
+                },
+                onLongClick = {
+                    if (midiDmxAvailable) {
+                        seekToNextTypedMarker(TimelineMarkerKind.DMX)
+                    } else {
+                        Toast.makeText(context, proMessage, Toast.LENGTH_SHORT).show()
+                    }
+                }
             )
         }
 
@@ -358,11 +390,19 @@ fun TimelineEditorSection(
                 onEditMarker = { index ->
                     if (index !in markers.indices) return@TimelineScrubColumn
                     if (markers[index].kind == TimelineMarkerKind.MIDI) {
-                        onEditMidiMarker(index)
+                        if (midiDmxAvailable) {
+                            onEditMidiMarker(index)
+                        } else {
+                            Toast.makeText(context, proMessage, Toast.LENGTH_SHORT).show()
+                        }
                         return@TimelineScrubColumn
                     }
                     if (markers[index].kind == TimelineMarkerKind.DMX) {
-                        onEditDmxMarker(index)
+                        if (midiDmxAvailable) {
+                            onEditDmxMarker(index)
+                        } else {
+                            Toast.makeText(context, proMessage, Toast.LENGTH_SHORT).show()
+                        }
                         return@TimelineScrubColumn
                     }
                     renameIndex = index
@@ -457,6 +497,7 @@ fun TimelineEditorSection(
 @Composable
 private fun TimelineEventPaletteButton(
     label: String,
+    enabled: Boolean = true,
     icon: @Composable () -> Unit,
     onClick: () -> Unit,
     onLongClick: () -> Unit
@@ -472,7 +513,7 @@ private fun TimelineEventPaletteButton(
     ) {
         icon()
         Spacer(Modifier.width(6.dp))
-        Text(text = label, color = Color.White)
+        Text(text = label, color = if (enabled) Color.White else Color.White.copy(alpha = 0.45f))
     }
 }
 

@@ -118,6 +118,7 @@
     <string name="common_ok">OK</string>
     <string name="common_cancel">Cancel</string>
     <string name="common_close">Close</string>
+    <string name="timeline_pro_only">Pro version</string>
 
     <!-- Quick playlists -->
     <string name="quickplaylists_select">Select a playlist</string>

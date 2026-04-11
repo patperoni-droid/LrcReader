@@ -317,6 +317,7 @@
     <string name="timeline_event_midi">Cue MIDI</string>
     <string name="timeline_event_note">Note</string>
     <string name="timeline_event_dmx">DMX</string>
+    <string name="timeline_pro_only">Version Pro</string>
     <string name="timeline_markers_title">Repères posés</string>
     <string name="timeline_empty_state">Aucun repère pour ce morceau SMP.</string>
     <string name="timeline_rename_title">Renommer le repère</string>
