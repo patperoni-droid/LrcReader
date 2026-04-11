@@ -889,6 +889,10 @@ class MainActivity : AppCompatActivity() {
 
                         onImportLater = {
                             // rien : on continue sans importer
+                        },
+
+                        onDemoInstalled = { _ ->
+                            LibraryFolderCache.clear()
                         }
                     )
 
