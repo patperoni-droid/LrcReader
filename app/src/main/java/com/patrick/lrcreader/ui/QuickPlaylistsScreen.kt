@@ -640,15 +640,8 @@ fun QuickPlaylistsScreen(
                 if (dragOffsetPx >= rowHeightPx / 2f) {
                     if (isGroupHeader(current)) {
                         val range = findGroupBlockRange(songs, currentIndex)
-                        val next = if (range.isEmpty()) null else findNextReorderIndex(songs, range.last, +1)
-                        if (next != null) {
-                            val nextItem = songs[next]
-                            val newStart = if (isGroupHeader(nextItem)) {
-                                val targetRange = findGroupBlockRange(songs, next)
-                                if (targetRange.isEmpty()) next + 1 else targetRange.last + 1
-                            } else {
-                                next + 1
-                            }
+                        val newStart = if (range.isEmpty()) null else findGroupDragDownInsertIndex(songs, range)
+                        if (newStart != null) {
                             moveBlock(songs, range, newStart)
                             dragOrderChanged = true
                         }
@@ -667,15 +660,8 @@ fun QuickPlaylistsScreen(
                 if (dragOffsetPx <= -rowHeightPx / 2f) {
                     if (isGroupHeader(current)) {
                         val range = findGroupBlockRange(songs, currentIndex)
-                        val prev = if (range.isEmpty()) null else findNextReorderIndex(songs, range.first, -1)
-                        if (prev != null) {
-                            val prevItem = songs[prev]
-                            val newStart = if (isGroupHeader(prevItem)) {
-                                val targetRange = findGroupBlockRange(songs, prev)
-                                if (targetRange.isEmpty()) prev else targetRange.first
-                            } else {
-                                prev
-                            }
+                        val newStart = if (range.isEmpty()) null else findGroupDragUpInsertIndex(songs, range)
+                        if (newStart != null) {
                             moveBlock(songs, range, newStart)
                             dragOrderChanged = true
                         }
@@ -2562,6 +2548,53 @@ private fun findNextReorderIndex(items: List<String>, startIndex: Int, step: Int
     while (cursor in items.indices) {
         if (!isGroupEnd(items[cursor])) return cursor
         cursor += step
+    }
+    return null
+}
+
+private fun findGroupDragUpInsertIndex(items: List<String>, sourceRange: IntRange): Int? {
+    if (sourceRange.isEmpty()) return null
+    var cursor = sourceRange.first - 1
+    while (cursor >= 0) {
+        val candidate = items[cursor]
+        when {
+            isGroupEnd(candidate) -> {
+                cursor--
+            }
+            isGroupHeader(candidate) -> {
+                return cursor
+            }
+            else -> {
+                val containingHeader = findContainingGroupHeaderIndex(items, cursor)
+                return containingHeader ?: cursor
+            }
+        }
+    }
+    return null
+}
+
+private fun findGroupDragDownInsertIndex(items: List<String>, sourceRange: IntRange): Int? {
+    if (sourceRange.isEmpty()) return null
+    var cursor = sourceRange.last + 1
+    while (cursor in items.indices) {
+        val candidate = items[cursor]
+        when {
+            isGroupEnd(candidate) -> {
+                cursor++
+            }
+            isGroupHeader(candidate) -> {
+                val targetRange = findGroupBlockRange(items, cursor)
+                return if (targetRange.isEmpty()) cursor + 1 else targetRange.last + 1
+            }
+            else -> {
+                val containingHeader = findContainingGroupHeaderIndex(items, cursor)
+                if (containingHeader != null) {
+                    val targetRange = findGroupBlockRange(items, containingHeader)
+                    return if (targetRange.isEmpty()) cursor + 1 else targetRange.last + 1
+                }
+                return cursor + 1
+            }
+        }
     }
     return null
 }
