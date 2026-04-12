@@ -45,8 +45,10 @@ import com.patrick.lrcreader.core.BackupFolderPrefs
 import com.patrick.lrcreader.core.DjFolderPrefs
 import com.patrick.lrcreader.core.DjIndexCache
 import com.patrick.lrcreader.core.buildDjGlobalAudioIndex
+import com.patrick.lrcreader.core.djGlobalFolderDisplayName
 import com.patrick.lrcreader.core.djGlobalRootUri
 import com.patrick.lrcreader.core.hasDjGlobalAudioAccess
+import com.patrick.lrcreader.core.isDjGlobalFolder
 import com.patrick.lrcreader.core.isDjGlobalRoot
 import com.patrick.lrcreader.core.DjScanState
 import com.patrick.lrcreader.core.PlaybackCoordinator
@@ -118,6 +120,9 @@ fun DjScreen(
         if (root == null) return context.getString(R.string.dj_no_folder_selected)
         if (isDjGlobalRoot(root)) {
             return context.getString(R.string.dj_global_music_label)
+        }
+        if (isDjGlobalFolder(root)) {
+            return djGlobalFolderDisplayName(root) ?: context.getString(R.string.common_ellipsis)
         }
         if (root.scheme == "file") {
             return File(root.path ?: "").name.ifBlank { context.getString(R.string.common_ellipsis) }
