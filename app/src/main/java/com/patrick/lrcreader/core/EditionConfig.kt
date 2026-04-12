@@ -6,7 +6,7 @@ enum class AppEdition {
 }
 
 object EditionConfig {
-    val current: AppEdition = AppEdition.LITE
+    val current: AppEdition = AppEdition.PRO
 
     val isLite: Boolean
         get() = current == AppEdition.LITE
