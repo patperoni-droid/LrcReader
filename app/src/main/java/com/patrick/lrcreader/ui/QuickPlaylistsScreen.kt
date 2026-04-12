@@ -1093,6 +1093,32 @@ fun QuickPlaylistsScreen(
                                         !isGroupHeader(songs[idx]) && !isGroupEnd(songs[idx])
                                     }
                                 }
+                                var groupDurationMs = 0L
+                                var groupDurationPending = false
+                                if (!groupRange.isEmpty()) {
+                                    for (idx in (groupRange.first + 1)..groupRange.last) {
+                                        val child = songs[idx]
+                                        if (!isPlayableAudioItem(child)) continue
+                                        val durationSource = getSmpSongId(child)?.let { smpPlaybackUriById[it] } ?: child
+                                        val cached = durationCache[durationSource]
+                                        if (cached != null) {
+                                            groupDurationMs += cached
+                                        } else {
+                                            groupDurationPending = true
+                                        }
+                                    }
+                                }
+                                val groupMetaText = buildString {
+                                    append(groupTrackCount)
+                                    append(" • ")
+                                    append(
+                                        when {
+                                            groupTrackCount == 0 -> formatDuration(0L)
+                                            groupDurationPending -> "…"
+                                            else -> formatDuration(groupDurationMs)
+                                        }
+                                    )
+                                }
                                 val folderBlue = Color(0xFF0A6C97)
                                 val folderBlueBorder = Color(0xFF07506F)
                                 val headerText = Color.White
@@ -1182,7 +1208,7 @@ fun QuickPlaylistsScreen(
                                             modifier = Modifier.weight(1f)
                                         )
                                         Text(
-                                            text = groupTrackCount.toString(),
+                                            text = groupMetaText,
                                             color = headerMuted,
                                             fontSize = 11.sp
                                         )
