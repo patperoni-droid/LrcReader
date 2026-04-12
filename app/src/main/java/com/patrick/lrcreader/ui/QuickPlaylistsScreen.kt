@@ -215,6 +215,7 @@ fun QuickPlaylistsScreen(
     val rowHeightPx = with(LocalDensity.current) { rowHeight.toPx() }
     val headerDropPaddingPx = with(LocalDensity.current) { 12.dp.toPx() }
     var draggingUri by remember { mutableStateOf<String?>(null) }
+    var dragOrderChanged by remember { mutableStateOf(false) }
     var dragOffsetPx by remember { mutableStateOf(0f) }
     var dragYInListViewport by remember { mutableStateOf<Float?>(null) }
     var hoverHeaderKey by remember { mutableStateOf<String?>(null) }
@@ -443,10 +444,14 @@ fun QuickPlaylistsScreen(
     fun persistSongsOrder(playlist: String, overwriteOriginal: Boolean = false) {
         val snapshot = songs.toList()
         PlaylistRepository.updatePlayListOrder(playlist, snapshot)
-        saveManualOrder(context, playlist, snapshot)
         if (overwriteOriginal) {
-            overwriteOriginalOrder(context, playlist, snapshot)
             originalOrderByPlaylist[playlist] = snapshot
+        }
+        scope.launch(Dispatchers.IO) {
+            saveManualOrder(context, playlist, snapshot)
+            if (overwriteOriginal) {
+                overwriteOriginalOrder(context, playlist, snapshot)
+            }
         }
     }
 
@@ -545,6 +550,7 @@ fun QuickPlaylistsScreen(
             detectDragGesturesAfterLongPress(
                 onDragStart = {
                     draggingUri = itemKey
+                    dragOrderChanged = false
                     dragOffsetPx = 0f
                     val visibleInfo = listState.layoutInfo.visibleItemsInfo.firstOrNull { info ->
                         (info.key as? String) == itemKey
@@ -583,17 +589,20 @@ fun QuickPlaylistsScreen(
                             headerIndex = headerIndex,
                             mode = "BOTTOM"
                         )
+                        dragOrderChanged = true
                     }
                     draggingUri = null
                     dragOffsetPx = 0f
                     dragYInListViewport = null
                     hoverHeaderKey = null
-                    internalSelected?.let { pl ->
+                    if (dragOrderChanged) internalSelected?.let { pl ->
                         persistSongsOrder(pl, overwriteOriginal = true)
                     }
+                    dragOrderChanged = false
                 },
                 onDragCancel = {
                     draggingUri = null
+                    dragOrderChanged = false
                     dragOffsetPx = 0f
                     dragYInListViewport = null
                     hoverHeaderKey = null
@@ -641,14 +650,13 @@ fun QuickPlaylistsScreen(
                                 next + 1
                             }
                             moveBlock(songs, range, newStart)
-                            internalSelected?.let { pl ->
-                                PlaylistRepository.updatePlayListOrder(pl, songs.toList())
-                            }
+                            dragOrderChanged = true
                         }
                     } else {
                         val next = findNextTrackReorderIndex(songs, currentIndex, +1)
                         if (next != null) {
                             songs.swap(currentIndex, next)
+                            dragOrderChanged = true
                             internalSelected?.let { pl ->
                                 PlaylistRepository.updatePlayListOrder(pl, songs.toList())
                             }
@@ -669,14 +677,13 @@ fun QuickPlaylistsScreen(
                                 prev
                             }
                             moveBlock(songs, range, newStart)
-                            internalSelected?.let { pl ->
-                                PlaylistRepository.updatePlayListOrder(pl, songs.toList())
-                            }
+                            dragOrderChanged = true
                         }
                     } else {
                         val prev = findNextTrackReorderIndex(songs, currentIndex, -1)
                         if (prev != null) {
                             songs.swap(currentIndex, prev)
+                            dragOrderChanged = true
                             internalSelected?.let { pl ->
                                 PlaylistRepository.updatePlayListOrder(pl, songs.toList())
                             }
