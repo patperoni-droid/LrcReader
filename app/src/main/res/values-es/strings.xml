@@ -142,6 +142,8 @@
     <string name="tab_library">Biblioteca</string>
     <string name="tab_all_playlists">Todo</string>
     <string name="tab_tuner">Afinador</string>
+    <string name="more_show_dj_mode">Activar modo DJ</string>
+    <string name="more_show_main_bus">Activar Bus principal</string>
 
     <!-- Library -->
     <string name="library_scanning">Escaneando biblioteca…</string>

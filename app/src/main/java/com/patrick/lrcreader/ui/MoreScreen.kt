@@ -45,6 +45,7 @@ import com.patrick.lrcreader.core.AutoReturnPrefs
 import com.patrick.lrcreader.core.BackupManager
 import com.patrick.lrcreader.core.LegacyLibraryVisibilityPrefs
 import com.patrick.lrcreader.core.LightIndicatorPrefs
+import com.patrick.lrcreader.core.UiEntryPrefs
 import com.patrick.lrcreader.core.config.TitleAliasesStore
 import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.smp.SmpAutoMigrationResult
@@ -57,6 +58,10 @@ fun MoreScreen(
     modifier: Modifier = Modifier,
     context: Context,
     currentWaveformTrackUri: String? = null,
+    showDjTab: Boolean = false,
+    showMainBusTab: Boolean = false,
+    onShowDjTabChange: (Boolean) -> Unit = {},
+    onShowMainBusTabChange: (Boolean) -> Unit = {},
     onAfterImport: (BackupManager.LastPlayed?) -> Unit = {},
     onOpenTuner: () -> Unit = {},     // callback pour l'accordeur
     onWaveformTrackPromotedToSmp: (SmpAutoMigrationResult) -> Unit = {}
@@ -84,6 +89,10 @@ fun MoreScreen(
             onOpenFiller = { navigate("filler") },
             onOpenHistory = { navigate("history") },
             onOpenWaveformPreview = { navigate("waveform_preview") },
+            showDjTab = showDjTab,
+            showMainBusTab = showMainBusTab,
+            onShowDjTabChange = onShowDjTabChange,
+            onShowMainBusTabChange = onShowMainBusTabChange,
             onOpenTuner = onOpenTuner
         )
 
@@ -133,6 +142,10 @@ private fun MoreRootScreen(
     onOpenFiller: () -> Unit,
     onOpenHistory: () -> Unit,
     onOpenWaveformPreview: () -> Unit,
+    showDjTab: Boolean,
+    showMainBusTab: Boolean,
+    onShowDjTabChange: (Boolean) -> Unit,
+    onShowMainBusTabChange: (Boolean) -> Unit,
     onOpenTuner: () -> Unit
 ) {
     val context = LocalContext.current
@@ -152,6 +165,15 @@ private fun MoreRootScreen(
     }
     var showOldWorldInLibrary by remember {
         mutableStateOf(LegacyLibraryVisibilityPrefs.isOldWorldVisible(context))
+    }
+    var showDjMode by remember { mutableStateOf(showDjTab) }
+    var showMainBusMode by remember { mutableStateOf(showMainBusTab) }
+
+    androidx.compose.runtime.LaunchedEffect(showDjTab) {
+        showDjMode = showDjTab
+    }
+    androidx.compose.runtime.LaunchedEffect(showMainBusTab) {
+        showMainBusMode = showMainBusTab
     }
 
     val currentLanguageLabel = when (selectedLanguageTag) {
@@ -263,6 +285,26 @@ private fun MoreRootScreen(
 
                     // Accordeur, dans le bloc Audio
                     SettingsItem(stringResource(R.string.more_item_tuner), onClick = onOpenTuner)
+
+                    SwitchSettingItem(
+                        label = stringResource(R.string.more_show_dj_mode),
+                        checked = showDjMode,
+                        onCheckedChange = { enabled ->
+                            showDjMode = enabled
+                            UiEntryPrefs.setShowDjTab(context, enabled)
+                            onShowDjTabChange(enabled)
+                        }
+                    )
+
+                    SwitchSettingItem(
+                        label = stringResource(R.string.more_show_main_bus),
+                        checked = showMainBusMode,
+                        onCheckedChange = { enabled ->
+                            showMainBusMode = enabled
+                            UiEntryPrefs.setShowMainBusTab(context, enabled)
+                            onShowMainBusTabChange(enabled)
+                        }
+                    )
 
                     // 🔁 Retour auto vers la playlist (ON/OFF)
                     SwitchSettingItem(

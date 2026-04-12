@@ -284,9 +284,15 @@ class MainActivity : AppCompatActivity() {
         val initialLastTrackUri = initialLastSession.trackUri
         val initialLastSongId = initialLastSession.songId
         val initialLastPlaylist = initialLastSession.playlistName
+        val initialShowDjTab = UiEntryPrefs.showDjTab(this)
+        val initialShowMainBusTab = UiEntryPrefs.showMainBusTab(this)
         mark("SessionPrefs.getTab/getQuick/getOpened:after")
         latestSessionSnapshot = SessionSnapshot(
-            tabKey = initialTabKey ?: defaultTabKeyForEdition(),
+            tabKey = sanitizeTabKey(
+                key = initialTabKey,
+                showDjTab = initialShowDjTab,
+                showMainBusTab = initialShowMainBusTab
+            ),
             quickPlaylist = initialQuickPlaylist,
             openedPlaylist = initialOpenedPlaylist,
             currentPlayingUri = initialLastTrackUri,
@@ -942,8 +948,16 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 var selectedTab by remember {
-                    mutableStateOf<BottomTab>(initialTabKey?.let { tabFromKey(it) } ?: defaultTabForEdition())
+                    mutableStateOf(
+                        tabFromKey(
+                            key = initialTabKey ?: defaultTabKeyForEdition(),
+                            showDjTab = initialShowDjTab,
+                            showMainBusTab = initialShowMainBusTab
+                        )
+                    )
                 }
+                var showDjTab by rememberSaveable { mutableStateOf(initialShowDjTab) }
+                var showMainBusTab by rememberSaveable { mutableStateOf(initialShowMainBusTab) }
                 val tabStateHolder = rememberSaveableStateHolder()
                 var libraryTabReselectSignal by remember { mutableIntStateOf(0) }
 
@@ -1530,7 +1544,11 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 fun persistCurrentUiSession(reason: String, tabOverride: BottomTab? = null) {
-                    val tab = tabOverride ?: selectedTab
+                    val tab = sanitizeTab(
+                        tab = tabOverride ?: selectedTab,
+                        showDjTab = showDjTab,
+                        showMainBusTab = showMainBusTab
+                    )
                     latestSessionSnapshot = SessionSnapshot(
                         tabKey = tabKeyOf(tab),
                         quickPlaylist = selectedQuickPlaylist,
@@ -1542,8 +1560,13 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 fun setTabAndPersist(tab: BottomTab, reason: String) {
-                    selectedTab = tab
-                    persistCurrentUiSession(reason = reason, tabOverride = tab)
+                    val safeTab = sanitizeTab(
+                        tab = tab,
+                        showDjTab = showDjTab,
+                        showMainBusTab = showMainBusTab
+                    )
+                    selectedTab = safeTab
+                    persistCurrentUiSession(reason = reason, tabOverride = safeTab)
                 }
 
                 fun setQuickPlaylistAndPersist(name: String?, reason: String) {
@@ -2272,7 +2295,13 @@ class MainActivity : AppCompatActivity() {
                 LaunchedEffect(Unit) {
                     mark("SessionRestore PhaseA:start hasSession=$hasSessionToRestore")
                     if (hasSessionToRestore) {
-                        initialTabKey?.let { selectedTab = tabFromKey(it) }
+                        initialTabKey?.let {
+                            selectedTab = tabFromKey(
+                                key = it,
+                                showDjTab = showDjTab,
+                                showMainBusTab = showMainBusTab
+                            )
+                        }
                         openedPlaylist = initialOpenedPlaylist
                         selectedQuickPlaylist = initialQuickPlaylist ?: initialLastPlaylist
                         isRestoringSession = true
@@ -2323,7 +2352,13 @@ class MainActivity : AppCompatActivity() {
                         "RESTORE playlistQuick=$restoredQuickPlaylist playlistOpened=$restoredOpenedPlaylist lastPlaylist=$lastPlaylist songId=$restoredSongId track=$fallbackLastUri resolvedUri=$lastUri source=SessionPrefs"
                     )
 
-                    restoredTabKey?.let { selectedTab = tabFromKey(it) }
+                    restoredTabKey?.let {
+                        selectedTab = tabFromKey(
+                            key = it,
+                            showDjTab = showDjTab,
+                            showMainBusTab = showMainBusTab
+                        )
+                    }
                     selectedQuickPlaylist = restoredQuickPlaylist ?: lastPlaylist
                     openedPlaylist = restoredOpenedPlaylist
 
@@ -2393,6 +2428,21 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
 
+                LaunchedEffect(showDjTab, showMainBusTab, selectedTab, isGlobalMixOpen) {
+                    val safeTab = sanitizeTab(
+                        tab = selectedTab,
+                        showDjTab = showDjTab,
+                        showMainBusTab = showMainBusTab
+                    )
+                    if (safeTab != selectedTab) {
+                        selectedTab = safeTab
+                        persistCurrentUiSession(reason = "tabVisibilityChanged", tabOverride = safeTab)
+                    }
+                    if (!showMainBusTab && isGlobalMixOpen) {
+                        isGlobalMixOpen = false
+                    }
+                }
+
                 val imeBottomPadding = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
                 val shouldHideBottomBarForPlayerIme =
                     selectedTab is BottomTab.Player && imeBottomPadding > 0.dp
@@ -2403,6 +2453,8 @@ class MainActivity : AppCompatActivity() {
                         if (!shouldHideBottomBarForPlayerIme) {
                             BottomTabsBar(
                                 selected = selectedTab,
+                                showMainBusTab = showMainBusTab,
+                                showDjTab = showDjTab,
                                 onSelected = { tab ->
 
                                     // ✅ fermer les overlays quand on change d'onglet
@@ -3087,6 +3139,14 @@ class MainActivity : AppCompatActivity() {
                                         modifier = contentModifier,
                                         context = ctx,
                                         currentWaveformTrackUri = currentPlayingUri,
+                                        showDjTab = showDjTab,
+                                        showMainBusTab = showMainBusTab,
+                                        onShowDjTabChange = { enabled ->
+                                            showDjTab = enabled
+                                        },
+                                        onShowMainBusTabChange = { enabled ->
+                                            showMainBusTab = enabled
+                                        },
                                         onAfterImport = { refreshKey++ },
                                         onOpenTuner = {
                                             setTabAndPersist(BottomTab.Tuner, reason = "moreOpenTuner")
@@ -3402,18 +3462,57 @@ private fun tabKeyOf(tab: BottomTab): String = when (tab) {
     is BottomTab.Search -> TAB_SEARCH
 }
 
-private fun tabFromKey(key: String): BottomTab = when (key) {
-    TAB_HOME -> defaultTabForEdition()
+private fun sanitizeTab(tab: BottomTab, showDjTab: Boolean, showMainBusTab: Boolean): BottomTab = when (tab) {
+    is BottomTab.Dj -> if (EditionConfig.isPro && showDjTab) BottomTab.Dj else BottomTab.QuickPlaylists
+    is BottomTab.Home -> if (EditionConfig.isPro && showMainBusTab) BottomTab.Home else BottomTab.QuickPlaylists
+    else -> tab
+}
+
+private fun sanitizeTabKey(key: String?, showDjTab: Boolean, showMainBusTab: Boolean): String =
+    tabKeyOf(
+        sanitizeTab(
+            tab = when (key) {
+                TAB_HOME -> if (EditionConfig.isPro) BottomTab.Home else BottomTab.QuickPlaylists
+                TAB_PLAYER -> BottomTab.Player
+                TAB_QUICK -> BottomTab.QuickPlaylists
+                TAB_LIBRARY -> BottomTab.Library
+                TAB_ALL -> BottomTab.AllPlaylists
+                TAB_MORE -> BottomTab.More
+                TAB_DJ -> if (EditionConfig.isPro) BottomTab.Dj else BottomTab.QuickPlaylists
+                TAB_TUNER -> BottomTab.Tuner
+                TAB_FILLER -> BottomTab.Filler
+                TAB_SEARCH -> BottomTab.QuickPlaylists
+                else -> defaultTabForEdition()
+            },
+            showDjTab = showDjTab,
+            showMainBusTab = showMainBusTab
+        )
+    )
+
+private fun tabFromKey(key: String, showDjTab: Boolean, showMainBusTab: Boolean): BottomTab = when (key) {
+    TAB_HOME -> sanitizeTab(
+        tab = defaultTabForEdition(),
+        showDjTab = showDjTab,
+        showMainBusTab = showMainBusTab
+    )
     TAB_PLAYER -> BottomTab.Player
     TAB_QUICK -> BottomTab.QuickPlaylists
     TAB_LIBRARY -> BottomTab.Library
     TAB_ALL -> BottomTab.AllPlaylists
     TAB_MORE -> BottomTab.More
-    TAB_DJ -> if (EditionConfig.isPro) BottomTab.Dj else BottomTab.Home
+    TAB_DJ -> sanitizeTab(
+        tab = if (EditionConfig.isPro) BottomTab.Dj else BottomTab.QuickPlaylists,
+        showDjTab = showDjTab,
+        showMainBusTab = showMainBusTab
+    )
     TAB_TUNER -> BottomTab.Tuner
     TAB_FILLER -> BottomTab.Filler
-    TAB_SEARCH -> BottomTab.Home // on ne “restore” pas un overlay comme un onglet
-    else -> BottomTab.Home
+    TAB_SEARCH -> BottomTab.QuickPlaylists // on ne “restore” pas un overlay comme un onglet
+    else -> sanitizeTab(
+        tab = defaultTabForEdition(),
+        showDjTab = showDjTab,
+        showMainBusTab = showMainBusTab
+    )
 }
 
 /* --------------------------------------------------------------- */

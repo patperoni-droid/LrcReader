@@ -82,19 +82,21 @@ sealed class BottomTab(val id: String, val labelRes: Int) {
 @Composable
 fun BottomTabsBar(
     selected: BottomTab,
+    showMainBusTab: Boolean,
+    showDjTab: Boolean,
     onSelected: (BottomTab) -> Unit,
     onSearchClick: () -> Unit,
     onMoreClick: () -> Unit,
     onPlayerReselect: () -> Unit
 ) {
     val tabs = buildList {
-        if (EditionConfig.isPro) {
+        if (EditionConfig.isPro && showMainBusTab) {
             add(BottomTab.Home)
         }
         add(BottomTab.QuickPlaylists)
         add(BottomTab.Player)
         add(BottomTab.Filler)
-        if (EditionConfig.isPro) {
+        if (EditionConfig.isPro && showDjTab) {
             add(BottomTab.Dj)
         }
         add(BottomTab.Library)
