@@ -291,6 +291,7 @@
     <string name="player_cd_change_style">Change style</string>
     <string name="player_cd_track_mix">Track mix</string>
     <string name="player_cd_edit_lyrics">Edit lyrics</string>
+    <string name="player_cd_open_waveform">Open waveform</string>
 
     <string name="player_next_track">Next: %1$s</string>
     <string name="player_live_note_chip">📝 %1$s</string>
@@ -441,6 +442,7 @@
     <string name="waveform_out_cursor">OUT = CURSOR</string>
     <string name="waveform_detect_silence">Detect silence</string>
     <string name="waveform_saved">Settings saved</string>
+    <string name="waveform_trim_saved">Trim saved</string>
     <string name="waveform_out_cleared">Output point cleared</string>
 
     <!-- All playlists -->

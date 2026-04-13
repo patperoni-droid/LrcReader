@@ -254,6 +254,7 @@
     <string name="player_cd_change_style">Cambiar estilo</string>
     <string name="player_cd_track_mix">Mezcla de pista</string>
     <string name="player_cd_edit_lyrics">Editar letras</string>
+    <string name="player_cd_open_waveform">Abrir forma de onda</string>
 
     <string name="player_next_track">Siguiente: %1$s</string>
     <string name="player_live_note_chip">📝 %1$s</string>
@@ -363,6 +364,7 @@
     <string name="waveform_out_cursor">OUT = CURSOR</string>
     <string name="waveform_detect_silence">Detectar silencios</string>
     <string name="waveform_saved">Ajustes guardados</string>
+    <string name="waveform_trim_saved">Recorte guardado</string>
     <string name="waveform_out_cleared">Punto de salida eliminado</string>
 
     <!-- All playlists -->

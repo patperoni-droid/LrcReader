@@ -34,6 +34,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.ShowChart
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -138,6 +139,8 @@ fun PlayerScreen(
     ensureSmpTrackForLyricsSave: suspend (String) -> SmpAutoMigrationResult? = { null },
     onTrackPromotedToSmp: (SmpAutoMigrationResult) -> Unit = {},
     onRequestShowPlaylist: () -> Unit,
+    currentSongId: String? = null,
+    onOpenWaveform: (String) -> Unit = {},
     getPositionMs: () -> Long,
     getDurationMs: () -> Long,
     seekToMs: (Long) -> Unit
@@ -194,6 +197,7 @@ fun PlayerScreen(
             LrcStorage.isSmpRuntimeTrack(context, trackUri)
         } ?: false
     }
+    val canOpenWaveform = isCurrentTrackSmp && !currentSongId.isNullOrBlank()
     val midiMonitorEvent = remember(lastTriggeredMidiProgramChange, currentTrackUri) {
         val trackUri = currentTrackUri?.takeIf { it.isNotBlank() } ?: return@remember null
         lastTriggeredMidiProgramChange?.takeIf { sent -> sent.trackUri == trackUri }
@@ -1995,6 +1999,10 @@ fun PlayerScreen(
                                     isEditingTimeline = true
                                 }
                             },
+                            showWaveformAction = canOpenWaveform,
+                            onOpenWaveform = {
+                                currentSongId?.takeIf { it.isNotBlank() }?.let(onOpenWaveform)
+                            },
                             onAddLiveNote = {
                                 noteAnchorMs = getPositionMs()
                                 wasPlayingBeforeNote = isPlaying
@@ -2572,6 +2580,8 @@ private fun ReaderHeader(
     onOpenEditor: () -> Unit,
     showTimeline: Boolean,
     onOpenTimeline: () -> Unit,
+    showWaveformAction: Boolean,
+    onOpenWaveform: () -> Unit,
     onAddLiveNote: () -> Unit,
 ) {
     Box(
@@ -2636,6 +2646,16 @@ private fun ReaderHeader(
                         text = stringResource(R.string.player_timeline_short),
                         color = Color(0xFF80CBC4),
                         fontSize = 13.sp
+                    )
+                }
+            }
+
+            if (showWaveformAction) {
+                IconButton(onClick = onOpenWaveform) {
+                    Icon(
+                        imageVector = Icons.Filled.ShowChart,
+                        contentDescription = stringResource(R.string.player_cd_open_waveform),
+                        tint = Color(0xFF90CAF9)
                     )
                 }
             }

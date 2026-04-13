@@ -290,6 +290,7 @@
     <string name="player_cd_change_style">Changer de style</string>
     <string name="player_cd_track_mix">Mixage du titre</string>
     <string name="player_cd_edit_lyrics">Éditer les paroles</string>
+    <string name="player_cd_open_waveform">Ouvrir la waveform</string>
 
     <string name="player_next_track">Prochain: %1$s</string>
     <string name="player_live_note_chip">📝 %1$s</string>
@@ -466,6 +467,7 @@
     <string name="waveform_clear_out" translatable="false">Clear OUT</string>
     <string name="waveform_detect_silence">Détecter les blancs</string>
     <string name="waveform_saved">Réglages enregistrés</string>
+    <string name="waveform_trim_saved">Trim sauvegardé</string>
     <string name="waveform_out_cleared">Point de sortie supprimé</string>
     <string name="waveform_step" translatable="false">Step</string>
     <string name="waveform_in_prefix" translatable="false">IN</string>

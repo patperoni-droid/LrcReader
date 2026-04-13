@@ -988,6 +988,8 @@ class MainActivity : AppCompatActivity() {
                 val currentPlayingSongId = remember(currentPlayingUri) {
                     resolveSessionSongIdFromTrackUri(currentPlayingUri)
                 }
+                var moreNavigationTarget by remember { mutableStateOf<String?>(null) }
+                var moreNavigationToken by remember { mutableStateOf(0) }
                 var isPlaying by remember { mutableStateOf(false) }
                 var parsedLines by remember { mutableStateOf<List<LrcLine>>(emptyList()) }
                 var lyricsLoading by remember { mutableStateOf(false) }
@@ -2888,6 +2890,12 @@ class MainActivity : AppCompatActivity() {
                                             smpCacheRefreshTick++
                                         },
                                         onRequestShowPlaylist = { selectedTab = BottomTab.QuickPlaylists },
+                                        currentSongId = currentPlayingSongId,
+                                        onOpenWaveform = {
+                                            moreNavigationTarget = "waveform_preview"
+                                            moreNavigationToken += 1
+                                            setTabAndPersist(BottomTab.More, reason = "playerOpenWaveform")
+                                        },
                                         getPositionMs = { exoPlayer.currentPosition },
                                         getDurationMs = { exoPlayer.duration },
                                         seekToMs = { ms -> exoPlayer.seekTo(ms) }
@@ -3163,6 +3171,8 @@ class MainActivity : AppCompatActivity() {
                                         modifier = contentModifier,
                                         context = ctx,
                                         currentWaveformSongId = currentPlayingSongId,
+                                        requestedRoute = moreNavigationTarget,
+                                        requestedRouteToken = moreNavigationToken,
                                         showDjTab = showDjTab,
                                         showMainBusTab = showMainBusTab,
                                         onShowDjTabChange = { enabled ->

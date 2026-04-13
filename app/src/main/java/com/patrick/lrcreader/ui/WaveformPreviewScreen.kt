@@ -377,13 +377,6 @@ fun WaveformPreviewScreen(
                 .fillMaxHeight(),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            TextButton(
-                onClick = onBack,
-                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
-            ) {
-                Text(stringResource(R.string.common_back_arrow), color = Color(0xFFF1F1F1), fontSize = 12.sp)
-            }
-
             Text(
                 text = stringResource(R.string.waveform_title),
                 color = Color(0xFFF5F5F5),
@@ -799,7 +792,7 @@ fun WaveformPreviewScreen(
                                 saveWaveformTrimEdit(
                                     startMs = inMs,
                                     endMs = outMs,
-                                    successMessage = context.getString(R.string.waveform_saved)
+                                    successMessage = context.getString(R.string.waveform_trim_saved)
                                 )
                             }
                         },

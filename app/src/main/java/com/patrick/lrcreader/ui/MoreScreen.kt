@@ -25,6 +25,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
@@ -55,6 +56,8 @@ fun MoreScreen(
     modifier: Modifier = Modifier,
     context: Context,
     currentWaveformSongId: String? = null,
+    requestedRoute: String? = null,
+    requestedRouteToken: Int = 0,
     showDjTab: Boolean = false,
     showMainBusTab: Boolean = false,
     onShowDjTabChange: (Boolean) -> Unit = {},
@@ -63,6 +66,11 @@ fun MoreScreen(
     onOpenTuner: () -> Unit = {}     // callback pour l'accordeur
 ) {
     var current by remember { mutableStateOf(MoreSection.Root) }
+
+    LaunchedEffect(requestedRouteToken) {
+        val route = requestedRoute ?: return@LaunchedEffect
+        current = MoreSection.entries.firstOrNull { it.route == route } ?: MoreSection.Root
+    }
 
     fun navigate(route: String) {
         current = MoreSection.entries.firstOrNull { it.route == route } ?: MoreSection.Root
