@@ -362,7 +362,7 @@
     <string name="waveform_step_ms">Paso %1$dms</string>
     <string name="waveform_in_cursor">IN = CURSOR</string>
     <string name="waveform_out_cursor">OUT = CURSOR</string>
-    <string name="waveform_detect_silence">Detectar silencios</string>
+    <string name="waveform_detect_silence">Recorte auto</string>
     <string name="waveform_match_volume">LUFS -14</string>
     <string name="waveform_match_volume_target">Objetivo: -14 LUFS</string>
     <string name="waveform_level_adjusted">Nivel ajustado: %1$.1f dB</string>

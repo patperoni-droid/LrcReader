@@ -465,7 +465,7 @@
     <string name="waveform_stop" translatable="false">Stop</string>
     <string name="waveform_save" translatable="false">Save</string>
     <string name="waveform_clear_out" translatable="false">Clear OUT</string>
-    <string name="waveform_detect_silence">Détecter les blancs</string>
+    <string name="waveform_detect_silence">Trim auto</string>
     <string name="waveform_match_volume">LUFS -14</string>
     <string name="waveform_match_volume_target">Cible : -14 LUFS</string>
     <string name="waveform_level_adjusted">Niveau ajusté : %1$.1f dB</string>
