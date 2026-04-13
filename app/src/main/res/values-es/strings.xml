@@ -352,9 +352,7 @@
 
     <!-- Waveform preview -->
     <string name="waveform_title">Forma de onda</string>
-    <string name="waveform_choose_file">Elegir un archivo…</string>
-    <string name="waveform_no_file_selected">Ningún archivo</string>
-    <string name="waveform_choose_track">Elegir una pista</string>
+    <string name="waveform_no_song_selected">No hay ninguna canción SMP seleccionada</string>
     <string name="waveform_analyzing">Analizando…</string>
     <string name="waveform_generate_error">No se pudo generar la forma de onda</string>
     <string name="waveform_no_data">No hay datos de forma de onda</string>
@@ -363,6 +361,9 @@
     <string name="waveform_step_ms">Paso %1$dms</string>
     <string name="waveform_in_cursor">IN = CURSOR</string>
     <string name="waveform_out_cursor">OUT = CURSOR</string>
+    <string name="waveform_detect_silence">Detectar silencios</string>
+    <string name="waveform_saved">Ajustes guardados</string>
+    <string name="waveform_out_cleared">Punto de salida eliminado</string>
 
     <!-- All playlists -->
     <string name="all_playlists_header_title">LISTAS DE REPRODUCCIÓN</string>

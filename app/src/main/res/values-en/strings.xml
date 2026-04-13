@@ -430,9 +430,7 @@
 
     <!-- Waveform preview -->
     <string name="waveform_title">Waveform</string>
-    <string name="waveform_choose_file">Choose a file…</string>
-    <string name="waveform_no_file_selected">No file</string>
-    <string name="waveform_choose_track">Choose a track</string>
+    <string name="waveform_no_song_selected">No SMP song selected</string>
     <string name="waveform_analyzing">Analyzing…</string>
     <string name="waveform_generate_error">Unable to generate waveform</string>
     <string name="waveform_no_data">No waveform data</string>
@@ -441,6 +439,9 @@
     <string name="waveform_step_ms">Step %1$dms</string>
     <string name="waveform_in_cursor">IN = CURSOR</string>
     <string name="waveform_out_cursor">OUT = CURSOR</string>
+    <string name="waveform_detect_silence">Detect silence</string>
+    <string name="waveform_saved">Settings saved</string>
+    <string name="waveform_out_cleared">Output point cleared</string>
 
     <!-- All playlists -->
     <string name="all_playlists_header_title">PLAYLISTS</string>

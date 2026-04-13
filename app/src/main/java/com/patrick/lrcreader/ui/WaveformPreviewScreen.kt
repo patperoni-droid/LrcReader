@@ -1,17 +1,12 @@
 package com.patrick.lrcreader.ui
 
 import android.content.Context
-import android.content.Intent
-import android.database.Cursor
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.media.MediaMetadataRetriever
 import android.net.Uri
-import android.provider.OpenableColumns
 import android.util.Log
 import android.widget.Toast
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -39,7 +34,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -74,12 +68,12 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import com.patrick.lrcreader.core.EditSoundPrefs
 import com.patrick.lrcreader.core.WaveformSessionPrefs
+import com.patrick.lrcreader.core.config.SongIdKeyResolver
 import com.patrick.lrcreader.core.waveform.WaveformExtractor
 import com.patrick.lrcreader.core.waveform.WaveformPeaksCache
 import com.patrick.lrcreader.exo.BuildConfig
 import com.patrick.lrcreader.exo.R
-import com.patrick.lrcreader.smp.SmpAutoMigration
-import com.patrick.lrcreader.smp.SmpAutoMigrationResult
+import com.patrick.lrcreader.smp.SmpLibraryScanner
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -108,9 +102,7 @@ private enum class DragTarget {
 fun WaveformPreviewScreen(
     modifier: Modifier = Modifier,
     onBack: () -> Unit,
-    initialUri: Uri? = null,
-    initialName: String? = null,
-    onTrackPromotedToSmp: (SmpAutoMigrationResult) -> Unit = {}
+    initialSongId: String? = null
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -118,8 +110,9 @@ fun WaveformPreviewScreen(
     val exoPlayer = remember(appContext) {
         ExoPlayer.Builder(appContext).build().apply { playWhenReady = false }
     }
-    val smpAutoMigration = remember(appContext) { SmpAutoMigration(appContext) }
+    val smpLibraryScanner = remember(appContext) { SmpLibraryScanner(appContext) }
 
+    var selectedSongId by remember { mutableStateOf<String?>(null) }
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
     var selectedName by remember { mutableStateOf("") }
     var peaks by remember { mutableStateOf<List<Float>>(emptyList()) }
@@ -133,42 +126,34 @@ fun WaveformPreviewScreen(
     var playheadMs by remember { mutableIntStateOf(0) }
     var stepMs by remember { mutableIntStateOf(50) }
     var isPlayingWave by remember { mutableStateOf(false) }
+    var isDetectingSilence by remember { mutableStateOf(false) }
     var restoredScrollPx by remember { mutableStateOf<Int?>(null) }
-    var lastInitialUri by remember { mutableStateOf<String?>(null) }
+    var lastInitialSongId by remember { mutableStateOf<String?>(null) }
 
-    fun loadAudioUri(uri: Uri, displayNameHint: String? = null, requestPersistable: Boolean) {
-        val uriString = uri.toString()
-        val restoreSameUriSession = WaveformSessionPrefs.loadUri(context) == uriString
-        val restoredZoom = if (restoreSameUriSession) {
+    fun loadAudioUri(songId: String, uri: Uri, displayNameHint: String? = null) {
+        val restoreSameSongSession = WaveformSessionPrefs.loadSongId(context) == songId
+        val restoredZoom = if (restoreSameSongSession) {
             WaveformSessionPrefs.loadZoom(context).coerceIn(ZOOM_MIN, ZOOM_MAX)
         } else {
             ZOOM_MIN
         }
-        val restoredPlayhead = if (restoreSameUriSession) {
+        val restoredPlayhead = if (restoreSameSongSession) {
             WaveformSessionPrefs.loadPlayhead(context).coerceAtLeast(0)
         } else {
             0
         }
-        val restoredScroll = if (restoreSameUriSession) {
+        val restoredScroll = if (restoreSameSongSession) {
             WaveformSessionPrefs.loadScroll(context).coerceAtLeast(0)
         } else {
             0
         }
 
-        if (requestPersistable) {
-            runCatching {
-                context.contentResolver.takePersistableUriPermission(
-                    uri,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION
-                )
-            }
-        }
-
+        selectedSongId = songId
         selectedUri = uri
-        selectedName = displayNameHint?.takeIf { it.isNotBlank() } ?: queryDisplayName(context, uri)
+        selectedName = displayNameHint?.takeIf { it.isNotBlank() } ?: songId
         zoom = restoredZoom
         restoredScrollPx = restoredScroll
-        WaveformSessionPrefs.saveUri(context, uriString)
+        WaveformSessionPrefs.saveSongId(context, songId)
         WaveformSessionPrefs.saveTitle(context, selectedName)
         WaveformSessionPrefs.saveZoom(context, zoom)
 
@@ -237,13 +222,6 @@ fun WaveformPreviewScreen(
         }
     }
 
-    val openAudioLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
-    ) { uri ->
-        if (uri == null) return@rememberLauncherForActivityResult
-        loadAudioUri(uri = uri, displayNameHint = null, requestPersistable = true)
-    }
-
     DisposableEffect(Unit) {
         onDispose {
             analysisJob?.cancel()
@@ -277,23 +255,48 @@ fun WaveformPreviewScreen(
         }
     }
 
-    LaunchedEffect(initialUri, initialName) {
-        val uri = initialUri ?: return@LaunchedEffect
-        val key = uri.toString()
-        if (key == lastInitialUri) return@LaunchedEffect
-        lastInitialUri = key
-        loadAudioUri(uri = uri, displayNameHint = initialName, requestPersistable = false)
+    suspend fun resolveSongTarget(songId: String): Pair<Uri, String>? = withContext(Dispatchers.IO) {
+        val cleanSongId = songId.trim().ifBlank { return@withContext null }
+        val song = smpLibraryScanner.findSongById(cleanSongId) ?: return@withContext null
+        val runtimeTrackUri = SongIdKeyResolver.resolveRuntimeTrackUri(appContext, cleanSongId)
+            ?: return@withContext null
+        val runtimeUri = runCatching { Uri.parse(runtimeTrackUri) }.getOrNull() ?: return@withContext null
+        runtimeUri to song.title
     }
 
-    LaunchedEffect(initialUri, selectedUri) {
-        if (initialUri != null || selectedUri != null) return@LaunchedEffect
-        val savedUriString = WaveformSessionPrefs.loadUri(context) ?: return@LaunchedEffect
-        val savedUri = runCatching { Uri.parse(savedUriString) }.getOrNull() ?: return@LaunchedEffect
-        loadAudioUri(
-            uri = savedUri,
-            displayNameHint = WaveformSessionPrefs.loadTitle(context),
-            requestPersistable = false
-        )
+    LaunchedEffect(initialSongId) {
+        val songId = initialSongId?.trim()?.takeIf { it.isNotBlank() }
+        if (songId == null) {
+            selectedSongId = null
+            selectedUri = null
+            selectedName = ""
+            peaks = emptyList()
+            hasError = false
+            isLoading = false
+            durationMs = 0
+            inMs = 0
+            outMs = 0
+            playheadMs = 0
+            return@LaunchedEffect
+        }
+        if (songId == lastInitialSongId) return@LaunchedEffect
+        lastInitialSongId = songId
+        val resolved = resolveSongTarget(songId)
+        if (resolved == null) {
+            selectedSongId = songId
+            selectedUri = null
+            selectedName = ""
+            peaks = emptyList()
+            hasError = true
+            isLoading = false
+            durationMs = 0
+            inMs = 0
+            outMs = 0
+            playheadMs = 0
+            return@LaunchedEffect
+        }
+        val (resolvedUri, resolvedTitle) = resolved
+        loadAudioUri(songId = songId, uri = resolvedUri, displayNameHint = resolvedTitle)
     }
 
     fun nudgePlayhead(deltaMs: Int) {
@@ -308,46 +311,25 @@ fun WaveformPreviewScreen(
     suspend fun saveWaveformTrimEdit(startMs: Int, endMs: Int, successMessage: String) {
         val sourceUri = selectedUri ?: return
         if (durationMs <= 0) return
-        val sourceWasInternalSmp = smpAutoMigration.isInternalSmpTrackUri(sourceUri.toString())
-
-        val persisted = withContext(Dispatchers.IO) {
-            val migration = smpAutoMigration.migrateLegacyTrackFromIsolatedDocument(sourceUri.toString())
-            val targetUri = migration?.trackUriString?.let(Uri::parse) ?: sourceUri
+        withContext(Dispatchers.IO) {
             if (BuildConfig.DEBUG) {
-                val key = EditSoundPrefs.trimKeyForUri(targetUri)
+                val key = EditSoundPrefs.trimKeyForUri(sourceUri)
                 Log.d(
                     "TRIM",
-                    "save key=$key uri=$targetUri entryMs=$startMs exitMs=$endMs store=EditSoundPrefs"
+                    "save key=$key uri=$sourceUri entryMs=$startMs exitMs=$endMs store=EditSoundPrefs"
                 )
             }
             EditSoundPrefs.save(
                 context = appContext,
-                uri = targetUri,
+                uri = sourceUri,
                 startMs = startMs,
                 endMs = endMs
             )
-            Triple(targetUri, migration?.song?.title, migration)
-        }
-
-        val (targetUri, migratedTitle, migration) = persisted
-        if (targetUri.toString() != sourceUri.toString()) {
-            loadAudioUri(
-                uri = targetUri,
-                displayNameHint = migratedTitle ?: selectedName,
-                requestPersistable = false
-            )
-        }
-        migration?.let(onTrackPromotedToSmp)
-        val migrationSucceeded = migration != null || sourceWasInternalSmp
-        val toastMessage = if (migrationSucceeded) {
-            successMessage
-        } else {
-            "Réglages enregistrés localement. Migration SMP échouée."
         }
         Toast.makeText(
             context,
-            toastMessage,
-            if (migrationSucceeded) Toast.LENGTH_SHORT else Toast.LENGTH_LONG
+            successMessage,
+            Toast.LENGTH_SHORT
         ).show()
     }
 
@@ -381,15 +363,8 @@ fun WaveformPreviewScreen(
                 fontWeight = FontWeight.SemiBold
             )
 
-            OutlinedButton(
-                onClick = { openAudioLauncher.launch(arrayOf("audio/*")) },
-                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
-            ) {
-                Text(stringResource(R.string.waveform_choose_file), fontSize = 12.sp)
-            }
-
             Text(
-                text = if (selectedName.isBlank()) stringResource(R.string.waveform_no_file_selected) else selectedName,
+                text = if (selectedName.isBlank()) stringResource(R.string.waveform_no_song_selected) else selectedName,
                 color = Color(0xFFBFC4C8),
                 fontSize = 12.sp,
                 maxLines = 1,
@@ -408,7 +383,13 @@ fun WaveformPreviewScreen(
             ) {
                 when {
                     selectedUri == null -> {
-                        CenterText(stringResource(R.string.waveform_choose_track))
+                        CenterText(
+                            if (hasError) {
+                                stringResource(R.string.waveform_generate_error)
+                            } else {
+                                stringResource(R.string.waveform_no_song_selected)
+                            }
+                        )
                     }
 
                     isLoading -> {
@@ -646,6 +627,7 @@ fun WaveformPreviewScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 val controlsEnabled = selectedUri != null && durationMs > 0
+                val detectEnabled = controlsEnabled && peaks.isNotEmpty() && !isLoading && !isDetectingSilence
                 val hasOutTrim = controlsEnabled && outMs in 1 until durationMs
 
                 Row(
@@ -722,6 +704,49 @@ fun WaveformPreviewScreen(
                 ) {
                     TextButton(
                         onClick = {
+                            if (!detectEnabled) return@TextButton
+                            val snapshotPeaks = peaks.toList()
+                            val snapshotDurationMs = durationMs
+                            val currentInMs = inMs
+                            val currentOutMs = outMs
+                            isDetectingSilence = true
+                            scope.launch {
+                                try {
+                                    val detection = withContext(Dispatchers.Default) {
+                                        detectSilenceTrimFromPeaks(
+                                            peaks = snapshotPeaks,
+                                            durationMs = snapshotDurationMs
+                                        )
+                                    } ?: return@launch
+
+                                    val targetInMs = detection.inMs ?: currentInMs
+                                    val targetOutMs = detection.outMs ?: currentOutMs
+                                    if (targetInMs == currentInMs && targetOutMs == currentOutMs) {
+                                        return@launch
+                                    }
+
+                                    val (newInMs, newOutMs) = normalizeInOut(
+                                        inMs = targetInMs,
+                                        outMs = targetOutMs,
+                                        durationMs = snapshotDurationMs
+                                    )
+                                    if (newInMs != inMs || newOutMs != outMs) {
+                                        inMs = newInMs
+                                        outMs = newOutMs
+                                    }
+                                } finally {
+                                    isDetectingSilence = false
+                                }
+                            }
+                        },
+                        enabled = detectEnabled,
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text(stringResource(R.string.waveform_detect_silence), fontSize = 12.sp)
+                    }
+
+                    TextButton(
+                        onClick = {
                             if (selectedUri == null) return@TextButton
                             if (durationMs <= 0) return@TextButton
                             outMs = durationMs
@@ -729,7 +754,7 @@ fun WaveformPreviewScreen(
                                 saveWaveformTrimEdit(
                                     startMs = inMs,
                                     endMs = 0,
-                                    successMessage = "Point de sortie supprimé ✅"
+                                    successMessage = context.getString(R.string.waveform_out_cleared)
                                 )
                             }
                         },
@@ -746,7 +771,7 @@ fun WaveformPreviewScreen(
                                 saveWaveformTrimEdit(
                                     startMs = inMs,
                                     endMs = outMs,
-                                    successMessage = "Réglages enregistrés ✅"
+                                    successMessage = context.getString(R.string.waveform_saved)
                                 )
                             }
                         },
@@ -1076,32 +1101,6 @@ private fun CenterText(text: String) {
     }
 }
 
-private fun queryDisplayName(context: Context, uri: Uri): String {
-    val fallback = uri.lastPathSegment
-        ?.substringAfterLast('/')
-        ?.ifBlank { "audio" }
-        ?: "audio"
-
-    return runCatching {
-        var cursor: Cursor? = null
-        try {
-            cursor = context.contentResolver.query(uri, null, null, null, null)
-            if (cursor != null && cursor.moveToFirst()) {
-                val idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                if (idx >= 0) {
-                    cursor.getString(idx)?.ifBlank { fallback } ?: fallback
-                } else {
-                    fallback
-                }
-            } else {
-                fallback
-            }
-        } finally {
-            cursor?.close()
-        }
-    }.getOrElse { fallback }
-}
-
 private fun normalizeInOut(
     inMs: Int,
     outMs: Int,
@@ -1120,6 +1119,40 @@ private fun normalizeInOut(
         safeOut = durationMs
     }
     return safeIn to safeOut
+}
+
+private data class SilenceTrimDetection(
+    val inMs: Int?,
+    val outMs: Int?
+)
+
+private fun detectSilenceTrimFromPeaks(
+    peaks: List<Float>,
+    durationMs: Int
+): SilenceTrimDetection? {
+    if (durationMs <= 0 || peaks.isEmpty()) return null
+    val peakCount = peaks.size
+    val msPerPeak = durationMs.toFloat() / peakCount.toFloat()
+    val firstNonZeroIndex = peaks.indexOfFirst { it > 0f }
+        .takeIf { it >= 0 }
+    val lastNonZeroIndex = peaks.indexOfLast { it > 0f }
+        .takeIf { it >= 0 }
+
+    if (firstNonZeroIndex == null && lastNonZeroIndex == null) return null
+
+    val detectedInMs = firstNonZeroIndex
+        ?.takeIf { it > -100 }
+        ?.let { (it * msPerPeak).roundToInt().coerceIn(0, durationMs) }
+
+    val detectedOutMs = lastNonZeroIndex
+        ?.takeIf { it < peakCount - 1 }
+        ?.let { ((it + 1) * msPerPeak).roundToInt().coerceIn(0, durationMs) }
+
+    if (detectedInMs == null && detectedOutMs == null) return null
+    return SilenceTrimDetection(
+        inMs = detectedInMs,
+        outMs = detectedOutMs
+    )
 }
 
 private fun formatWaveformMs(ms: Int): String {

@@ -4,7 +4,7 @@ import android.content.Context
 
 object WaveformSessionPrefs {
     private const val PREFS_NAME = "waveform_session_prefs"
-    private const val KEY_LAST_URI = "last_uri"
+    private const val KEY_LAST_SONG_ID = "last_song_id"
     private const val KEY_LAST_TITLE = "last_title"
     private const val KEY_LAST_ZOOM = "last_zoom"
     private const val KEY_LAST_PLAYHEAD_MS = "last_playhead_ms"
@@ -13,12 +13,12 @@ object WaveformSessionPrefs {
     private fun prefs(context: Context) =
         context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
-    fun saveUri(context: Context, uriString: String) {
-        prefs(context).edit().putString(KEY_LAST_URI, uriString).apply()
+    fun saveSongId(context: Context, songId: String) {
+        prefs(context).edit().putString(KEY_LAST_SONG_ID, songId).apply()
     }
 
-    fun loadUri(context: Context): String? =
-        prefs(context).getString(KEY_LAST_URI, null)
+    fun loadSongId(context: Context): String? =
+        prefs(context).getString(KEY_LAST_SONG_ID, null)
 
     fun saveTitle(context: Context, title: String) {
         prefs(context).edit().putString(KEY_LAST_TITLE, title).apply()

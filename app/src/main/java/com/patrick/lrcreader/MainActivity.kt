@@ -3138,7 +3138,7 @@ class MainActivity : AppCompatActivity() {
                                     is BottomTab.More -> MoreScreen(
                                         modifier = contentModifier,
                                         context = ctx,
-                                        currentWaveformTrackUri = currentPlayingUri,
+                                        currentWaveformSongId = currentPlayingSongId,
                                         showDjTab = showDjTab,
                                         showMainBusTab = showMainBusTab,
                                         onShowDjTabChange = { enabled ->
@@ -3150,10 +3150,6 @@ class MainActivity : AppCompatActivity() {
                                         onAfterImport = { refreshKey++ },
                                         onOpenTuner = {
                                             setTabAndPersist(BottomTab.Tuner, reason = "moreOpenTuner")
-                                        },
-                                        onWaveformTrackPromotedToSmp = { migration ->
-                                            smpSongsById = smpSongsById + (migration.song.id to migration.song)
-                                            smpCacheRefreshTick++
                                         }
                                     )
 
