@@ -263,9 +263,6 @@ private fun MoreRootScreen(
                     HorizontalDivider(color = Color(0xFF262626))
 
                     // Bloc interface / audio
-                    SettingsHeader(stringResource(R.string.more_section_audio_interface))
-                    SettingsItem(stringResource(R.string.more_item_editing), onClick = onOpenWaveformPreview)
-                    SettingsItem(stringResource(R.string.more_item_audio), onClick = {})
                     SettingsItem(
                         label = stringResource(R.string.more_item_language),
                         subtitle = stringResource(
@@ -309,15 +306,6 @@ private fun MoreRootScreen(
                     )
 
                     SwitchSettingItem(
-                        label = stringResource(R.string.more_show_old_world_library),
-                        checked = showOldWorldInLibrary,
-                        onCheckedChange = { enabled ->
-                            showOldWorldInLibrary = enabled
-                            LegacyLibraryVisibilityPrefs.setOldWorldVisible(context, enabled)
-                        }
-                    )
-
-                    SwitchSettingItem(
                         label = stringResource(R.string.more_show_light_indicator),
                         checked = showLightIndicator,
                         onCheckedChange = { enabled ->
@@ -328,8 +316,6 @@ private fun MoreRootScreen(
 
                     HorizontalDivider(color = Color(0xFF262626))
 
-                    SettingsHeader(stringResource(R.string.more_section_advanced))
-                    SettingsItem(stringResource(R.string.more_item_advanced), onClick = {})
                     SettingsItem(stringResource(R.string.more_item_test_bluetooth_midi), onClick = {
                         MidiOutput.init(context)
 

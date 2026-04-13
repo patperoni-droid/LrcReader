@@ -500,4 +500,5 @@
     <string name="main_menu_prompter">📝 Prompter</string>
     <string name="main_menu_more">Ajustes / Más</string>
     <string name="main_menu_tuner">Afinador</string>
+    <string name="more_show_light_indicator">Mostrar indicador DMX</string>
 </resources>
