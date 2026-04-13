@@ -149,9 +149,9 @@ data class SmpConfig(
                 title = songUnit.title.takeIf { it.isNotBlank() },
                 id = songUnit.id.takeIf { it.isNotBlank() },
                 files = FilesConfig.fromSongUnit(songUnit),
-                playback = resolvePlaybackFromAudioPath(
+                playback = resolvePlaybackForSongUnit(
                     context = context,
-                    audioPath = songUnit.audioPath
+                    songUnit = songUnit
                 )
             )
         }
@@ -264,8 +264,72 @@ data class SmpConfig(
             }
         }
 
-        private fun resolvePlaybackFromAudioPath(context: Context, audioPath: String?): PlaybackConfig? {
-            val audioFile = audioPath
+        fun readPlaybackFromSongUnit(songUnit: SongUnit): PlaybackConfig? {
+            val configFile = songUnit.storageFolder
+                ?.takeIf { it.isNotBlank() }
+                ?.let(::File)
+                ?.takeIf { it.isDirectory }
+                ?.let { File(it, "config.json") }
+                ?.takeIf { it.isFile }
+                ?: return null
+            return runCatching {
+                fromJsonOrNull(configFile.readText(Charsets.UTF_8))?.playback
+            }.getOrNull()
+        }
+
+        fun writeTrimPlaybackToSongUnit(
+            songUnit: SongUnit,
+            startMs: Int,
+            endMs: Int
+        ): Boolean {
+            val songDir = songUnit.storageFolder
+                ?.takeIf { it.isNotBlank() }
+                ?.let(::File)
+                ?.takeIf { it.isDirectory }
+                ?: return false
+            val configFile = File(songDir, "config.json")
+            if (!configFile.isFile) return false
+
+            val tmpFile = File(songDir, "config.json.tmp")
+            return runCatching {
+                val currentConfig = fromJsonOrNull(configFile.readText(Charsets.UTF_8))
+                    ?: SmpConfig(
+                        title = songUnit.title.takeIf { it.isNotBlank() },
+                        id = songUnit.id.takeIf { it.isNotBlank() },
+                        files = FilesConfig.fromSongUnit(songUnit)
+                    )
+                val nextPlayback = PlaybackConfig.fromStoredValues(
+                    startMs = startMs.toLong(),
+                    endMs = endMs.toLong(),
+                    tempo = currentConfig.playback?.tempo,
+                    pitchSemi = currentConfig.playback?.pitchSemi,
+                    volumeDb = currentConfig.playback?.volumeDb
+                )
+                val nextConfig = currentConfig.copy(
+                    title = currentConfig.title ?: songUnit.title.takeIf { it.isNotBlank() },
+                    id = currentConfig.id ?: songUnit.id.takeIf { it.isNotBlank() },
+                    files = currentConfig.files ?: FilesConfig.fromSongUnit(songUnit),
+                    playback = nextPlayback
+                )
+                val rawJson = nextConfig.toJsonString()
+                tmpFile.writeText(rawJson, Charsets.UTF_8)
+                if (configFile.exists() && !configFile.delete()) {
+                    Log.w(TAG, "writeTrimPlaybackToSongUnit delete failed path=${configFile.absolutePath}")
+                }
+                if (!tmpFile.renameTo(configFile)) {
+                    configFile.writeText(rawJson, Charsets.UTF_8)
+                    tmpFile.delete()
+                }
+                true
+            }.getOrElse { error ->
+                Log.w(TAG, "writeTrimPlaybackToSongUnit failed path=${configFile.absolutePath}", error)
+                runCatching { tmpFile.delete() }
+                false
+            }
+        }
+
+        private fun resolvePlaybackForSongUnit(context: Context, songUnit: SongUnit): PlaybackConfig? {
+            val audioFile = songUnit.audioPath
                 ?.takeIf { it.isNotBlank() }
                 ?.let(::File)
                 ?: return null
@@ -273,26 +337,16 @@ data class SmpConfig(
             val storedTempo = TrackTempoPrefs.getTempo(context, audioUri.toString())
             val storedPitchSemi = TrackPitchPrefs.getSemi(context, audioUri.toString())
             val storedVolumeDb = TrackVolumePrefs.getDb(context, audioUri.toString())
+            val configPlayback = readPlaybackFromSongUnit(songUnit)
 
             val currentEdit = EditSoundPrefs.get(context, audioUri)
-            if (currentEdit != null) {
-                return PlaybackConfig.fromWaveformEdit(
-                    startMs = currentEdit.startMs,
-                    endMs = currentEdit.endMs
-                )?.copy(
-                    tempo = storedTempo,
-                    pitchSemi = storedPitchSemi,
-                    volumeDb = storedVolumeDb
-                )
-            }
-
             val legacyEdit = EditPrefs.getEdit(context, audioUri.toString())
             return PlaybackConfig.fromStoredValues(
-                startMs = legacyEdit?.startMs,
-                endMs = legacyEdit?.endMs,
-                tempo = storedTempo,
-                pitchSemi = storedPitchSemi,
-                volumeDb = storedVolumeDb
+                startMs = configPlayback?.trimStartMs ?: currentEdit?.startMs?.toLong() ?: legacyEdit?.startMs,
+                endMs = configPlayback?.trimEndMs ?: currentEdit?.endMs?.toLong() ?: legacyEdit?.endMs,
+                tempo = storedTempo ?: configPlayback?.tempo,
+                pitchSemi = storedPitchSemi ?: configPlayback?.pitchSemi,
+                volumeDb = storedVolumeDb ?: configPlayback?.volumeDb
             )
         }
 

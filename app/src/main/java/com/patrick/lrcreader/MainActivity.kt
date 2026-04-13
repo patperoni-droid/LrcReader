@@ -73,6 +73,7 @@ import com.patrick.lrcreader.smp.SmpAutoMigration
 import com.patrick.lrcreader.smp.SmpAutoMigrationResult
 import com.patrick.lrcreader.smp.SmpBatchImportProcessor
 import com.patrick.lrcreader.smp.SmpConverter
+import com.patrick.lrcreader.smp.SmpConfig
 import com.patrick.lrcreader.smp.SmpImportedSongDetail
 import com.patrick.lrcreader.smp.SmpImportedUiSignal
 import com.patrick.lrcreader.smp.SmpArchiveFinalizeScheduler
@@ -1398,55 +1399,78 @@ class MainActivity : AppCompatActivity() {
                     val mode: String
                 )
 
-                fun cancelTrimWatcher() {
-                    trimStopJob?.cancel()
-                    trimStopJob = null
-                }
+	                fun cancelTrimWatcher() {
+	                    trimStopJob?.cancel()
+	                    trimStopJob = null
+	                }
 
-                fun resolveTrimConfig(requestedUri: String, activeUri: String?): TrimConfig {
-                    val candidates = buildList {
-                        add(requestedUri)
-                        if (!activeUri.isNullOrBlank() && activeUri != requestedUri) add(activeUri)
-                    }
+	                fun resolveSmpPlaybackTrim(songId: String?): SmpConfig.PlaybackConfig? {
+	                    val cleanSongId = songId?.trim().takeUnless { it.isNullOrEmpty() } ?: return null
+	                    val song = smpSongsById[cleanSongId] ?: runCatching {
+	                        smpLibraryScanner.findSongById(cleanSongId)
+	                    }.getOrNull()?.also { scannedSong ->
+	                        smpSongsById = smpSongsById + (scannedSong.id to scannedSong)
+	                    } ?: return null
+	                    return SmpConfig.readPlaybackFromSongUnit(song)
+	                }
 
-                    val editSound = candidates.asSequence()
-                        .mapNotNull { candidate -> EditSoundPrefs.resolveCached(Uri.parse(candidate)) }
-                        .firstOrNull()
-                    val legacyCandidate = if (editSound == null) {
-                        candidates.asSequence()
-                            .mapNotNull { candidate ->
-                                legacyTrimByUri[candidate]?.let { edit -> candidate to edit }
-                            }
-                            .firstOrNull()
+	                fun resolveTrimConfig(requestedUri: String, activeUri: String?): TrimConfig {
+	                    val candidates = buildList {
+	                        add(requestedUri)
+	                        if (!activeUri.isNullOrBlank() && activeUri != requestedUri) add(activeUri)
+	                    }
+	                    val smpPlayback = candidates.asSequence()
+	                        .mapNotNull { candidate -> resolveSessionSongIdFromTrackUri(candidate) }
+	                        .mapNotNull(::resolveSmpPlaybackTrim)
+	                        .firstOrNull { it.trimStartMs != null || it.trimEndMs != null }
+
+	                    val editSound = candidates.asSequence()
+	                        .mapNotNull { candidate -> EditSoundPrefs.resolveCached(Uri.parse(candidate)) }
+	                        .firstOrNull()
+	                    val legacyCandidate = if (smpPlayback == null && editSound == null) {
+	                        candidates.asSequence()
+	                            .mapNotNull { candidate ->
+	                                legacyTrimByUri[candidate]?.let { edit -> candidate to edit }
+	                            }
+	                            .firstOrNull()
                     } else {
                         null
                     }
 
-                    val store = when {
-                        editSound != null -> "EditSoundPrefs"
-                        legacyCandidate != null -> "EditPrefs"
-                        else -> "none"
-                    }
-                    val key = when {
-                        editSound != null -> editSound.key
-                        legacyCandidate != null -> legacyCandidate.first
-                        !activeUri.isNullOrBlank() -> runCatching {
-                            EditSoundPrefs.trimKeyForUri(Uri.parse(activeUri))
-                        }.getOrDefault(activeUri)
+	                    val store = when {
+	                        smpPlayback != null -> "SmpConfig"
+	                        editSound != null -> "EditSoundPrefs"
+	                        legacyCandidate != null -> "EditPrefs"
+	                        else -> "none"
+	                    }
+	                    val key = when {
+	                        smpPlayback != null -> candidates.asSequence()
+	                            .mapNotNull(::resolveSessionSongIdFromTrackUri)
+	                            .firstOrNull()
+	                            ?: runCatching {
+	                                EditSoundPrefs.trimKeyForUri(Uri.parse(activeUri ?: requestedUri))
+	                            }.getOrDefault(activeUri ?: requestedUri)
+	                        editSound != null -> editSound.key
+	                        legacyCandidate != null -> legacyCandidate.first
+	                        !activeUri.isNullOrBlank() -> runCatching {
+	                            EditSoundPrefs.trimKeyForUri(Uri.parse(activeUri))
+	                        }.getOrDefault(activeUri)
                         else -> runCatching {
                             EditSoundPrefs.trimKeyForUri(Uri.parse(requestedUri))
                         }.getOrDefault(requestedUri)
-                    }
-                    val rawEntry = (
-                            editSound?.info?.startMs?.toLong()
-                                ?: legacyCandidate?.second?.startMs
-                                ?: 0L
-                            ).coerceAtLeast(0L)
-                    val rawExit = (
-                            editSound?.info?.endMs?.toLong()
-                                ?: legacyCandidate?.second?.endMs
-                                ?: 0L
-                            ).coerceAtLeast(0L)
+	                    }
+	                    val rawEntry = (
+	                            smpPlayback?.trimStartMs
+	                                ?: editSound?.info?.startMs?.toLong()
+	                                ?: legacyCandidate?.second?.startMs
+	                                ?: 0L
+	                            ).coerceAtLeast(0L)
+	                    val rawExit = (
+	                            smpPlayback?.trimEndMs
+	                                ?: editSound?.info?.endMs?.toLong()
+	                                ?: legacyCandidate?.second?.endMs
+	                                ?: 0L
+	                            ).coerceAtLeast(0L)
 
                     if (rawExit > 0L && rawExit <= rawEntry) {
                         if (BuildConfig.DEBUG) {

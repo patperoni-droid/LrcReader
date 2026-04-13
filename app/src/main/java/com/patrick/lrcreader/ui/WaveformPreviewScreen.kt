@@ -73,6 +73,8 @@ import com.patrick.lrcreader.core.waveform.WaveformExtractor
 import com.patrick.lrcreader.core.waveform.WaveformPeaksCache
 import com.patrick.lrcreader.exo.BuildConfig
 import com.patrick.lrcreader.exo.R
+import com.patrick.lrcreader.core.EditPrefs
+import com.patrick.lrcreader.smp.SmpConfig
 import com.patrick.lrcreader.smp.SmpLibraryScanner
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Dispatchers
@@ -199,10 +201,25 @@ fun WaveformPreviewScreen(
                 if (durationMs > 0) {
                     playheadMs = restoredPlayhead.coerceIn(0, durationMs)
                     WaveformSessionPrefs.savePlayhead(context, playheadMs)
+                    val savedConfigPlayback = selectedSongId
+                        ?.let { songId -> smpLibraryScanner.findSongById(songId) }
+                        ?.let(SmpConfig::readPlaybackFromSongUnit)
                     val saved = EditSoundPrefs.get(context, uri)
-                    val savedOutMs = saved?.endMs?.takeIf { it > 0 } ?: durationMs
+                    val legacySaved = if (saved == null) {
+                        EditPrefs.getEdit(context, uri.toString())
+                    } else {
+                        null
+                    }
+                    val savedStartMs = savedConfigPlayback?.trimStartMs?.toInt()
+                        ?: saved?.startMs
+                        ?: legacySaved?.startMs?.toInt()
+                        ?: 0
+                    val savedOutMs = savedConfigPlayback?.trimEndMs?.toInt()
+                        ?: saved?.endMs?.takeIf { it > 0 }
+                        ?: legacySaved?.endMs?.toInt()?.takeIf { it > 0 }
+                        ?: durationMs
                     val (safeIn, safeOut) = normalizeInOut(
-                        inMs = saved?.startMs ?: 0,
+                        inMs = savedStartMs,
                         outMs = savedOutMs,
                         durationMs = durationMs
                     )
@@ -310,21 +327,32 @@ fun WaveformPreviewScreen(
 
     suspend fun saveWaveformTrimEdit(startMs: Int, endMs: Int, successMessage: String) {
         val sourceUri = selectedUri ?: return
+        val songId = selectedSongId ?: return
         if (durationMs <= 0) return
         withContext(Dispatchers.IO) {
+            val songUnit = smpLibraryScanner.findSongById(songId)
+            val savedToSmp = songUnit?.let { song ->
+                SmpConfig.writeTrimPlaybackToSongUnit(
+                    songUnit = song,
+                    startMs = startMs,
+                    endMs = endMs
+                )
+            } == true
             if (BuildConfig.DEBUG) {
                 val key = EditSoundPrefs.trimKeyForUri(sourceUri)
                 Log.d(
                     "TRIM",
-                    "save key=$key uri=$sourceUri entryMs=$startMs exitMs=$endMs store=EditSoundPrefs"
+                    "save key=$key uri=$sourceUri entryMs=$startMs exitMs=$endMs store=${if (savedToSmp) "SmpConfig" else "EditSoundPrefs"}"
                 )
             }
-            EditSoundPrefs.save(
-                context = appContext,
-                uri = sourceUri,
-                startMs = startMs,
-                endMs = endMs
-            )
+            if (!savedToSmp) {
+                EditSoundPrefs.save(
+                    context = appContext,
+                    uri = sourceUri,
+                    startMs = startMs,
+                    endMs = endMs
+                )
+            }
         }
         Toast.makeText(
             context,
