@@ -5,11 +5,15 @@ import com.patrick.lrcreader.core.notes.LiveNote
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 
 object SmpAnnotationsStore {
 
     const val ANNOTATIONS_FILE_NAME = "annotations.json"
     private const val TAG = "SmpAnnotationsStore"
+    private val fileLocks = ConcurrentHashMap<String, ReentrantLock>()
 
     fun read(annotationsFile: File): List<LiveNote> {
         if (!annotationsFile.isFile) {
@@ -25,33 +29,41 @@ object SmpAnnotationsStore {
         }
     }
 
-    fun write(annotationsFile: File, notes: List<LiveNote>): Boolean {
-        val songDir = annotationsFile.parentFile ?: return false
-        val tmpFile = File(songDir, "${annotationsFile.name}.tmp")
-        val normalized = notes.sortedWith(
-            compareBy<LiveNote> { it.timeMs }
-                .thenBy { it.durationMs }
-                .thenBy { it.text }
-        )
-        val rawJson = liveNotesToJsonString(normalized)
+    fun awaitIdle(annotationsFile: File) {
+        lockFor(annotationsFile).withLock {
+            // Wait for any in-flight write on this annotations file to complete.
+        }
+    }
 
-        return runCatching {
-            songDir.mkdirs()
-            tmpFile.writeText(rawJson, Charsets.UTF_8)
-            if (annotationsFile.exists() && !annotationsFile.delete()) {
-                Log.w(TAG, "Suppression annotations.json impossible: ${annotationsFile.absolutePath}")
-            }
-            if (!tmpFile.renameTo(annotationsFile)) {
+    fun write(annotationsFile: File, notes: List<LiveNote>): Boolean {
+        return lockFor(annotationsFile).withLock {
+            val songDir = annotationsFile.parentFile ?: return false
+            val tmpFile = File(songDir, "${annotationsFile.name}.tmp")
+            val normalized = notes.sortedWith(
+                compareBy<LiveNote> { it.timeMs }
+                    .thenBy { it.durationMs }
+                    .thenBy { it.text }
+            )
+            val rawJson = liveNotesToJsonString(normalized)
+
+            runCatching {
+                songDir.mkdirs()
                 tmpFile.writeText(rawJson, Charsets.UTF_8)
-                annotationsFile.writeText(rawJson, Charsets.UTF_8)
-                tmpFile.delete()
+                if (annotationsFile.exists() && !annotationsFile.delete()) {
+                    Log.w(TAG, "Suppression annotations.json impossible: ${annotationsFile.absolutePath}")
+                }
+                if (!tmpFile.renameTo(annotationsFile)) {
+                    tmpFile.writeText(rawJson, Charsets.UTF_8)
+                    annotationsFile.writeText(rawJson, Charsets.UTF_8)
+                    tmpFile.delete()
+                }
+                syncExistingMeta(songDir, annotationsFile.name)
+                true
+            }.getOrElse { error ->
+                Log.e(TAG, "Ecriture annotations.json impossible: ${annotationsFile.absolutePath}", error)
+                runCatching { tmpFile.delete() }
+                false
             }
-            syncExistingMeta(songDir, annotationsFile.name)
-            true
-        }.getOrElse { error ->
-            Log.e(TAG, "Ecriture annotations.json impossible: ${annotationsFile.absolutePath}", error)
-            runCatching { tmpFile.delete() }
-            false
         }
     }
 
@@ -107,5 +119,10 @@ object SmpAnnotationsStore {
         if (!SmpMetaStore.write(songDir, nextMeta)) {
             Log.w(TAG, "Synchronisation meta.json impossible après sauvegarde annotations: ${songDir.absolutePath}")
         }
+    }
+
+    private fun lockFor(annotationsFile: File): ReentrantLock {
+        val key = runCatching { annotationsFile.canonicalPath }.getOrElse { annotationsFile.absolutePath }
+        return fileLocks.getOrPut(key) { ReentrantLock() }
     }
 }

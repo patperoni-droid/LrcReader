@@ -111,6 +111,11 @@ class SmpLibraryScanner(private val context: Context) {
             audioPath = audioFile?.absolutePath,
             lyricsPath = resolveOptionalPath(songDir, meta?.lyricsFile, "lyrics.lrc"),
             chordsPath = resolveOptionalPath(songDir, meta?.chordsFile, "chords.lrc"),
+            timelinePath = resolveOptionalPath(
+                songDir,
+                meta?.timelineFile ?: config?.files?.timeline,
+                SmpTimelineStore.TIMELINE_FILE_NAME
+            ),
             waveformPath = resolveOptionalPath(songDir, meta?.waveformFile, WAVEFORM_FILE_NAME),
             annotationsPath = resolveOptionalPath(songDir, meta?.annotationsFile, "annotations.json"),
             midiPath = midiPath,

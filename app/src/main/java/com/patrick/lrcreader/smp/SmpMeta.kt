@@ -11,6 +11,7 @@ data class SmpMeta(
     val audioFile: String = "audio.mp3",
     val lyricsFile: String? = "lyrics.lrc",
     val chordsFile: String? = "chords.lrc",
+    val timelineFile: String? = SmpTimelineStore.TIMELINE_FILE_NAME,
     val waveformFile: String? = "waveform.json",
     val midiCuesFile: String? = "midi_cues.json",
     val annotationsFile: String? = "annotations.json",
@@ -25,6 +26,7 @@ data class SmpMeta(
             put("audioFile", audioFile)
             put("lyricsFile", lyricsFile)
             put("chordsFile", chordsFile)
+            put("timelineFile", timelineFile)
             put("waveformFile", waveformFile)
             put("midiCuesFile", midiCuesFile)
             put("annotationsFile", annotationsFile)
@@ -46,6 +48,7 @@ data class SmpMeta(
                 audioFile = resolveAudioFileName(songUnit.audioPath),
                 lyricsFile = resolveFixedFileName(songUnit.lyricsPath, "lyrics.lrc"),
                 chordsFile = resolveFixedFileName(songUnit.chordsPath, "chords.lrc"),
+                timelineFile = resolveFixedFileName(songUnit.timelinePath, SmpTimelineStore.TIMELINE_FILE_NAME),
                 waveformFile = resolveFixedFileName(songUnit.waveformPath, "waveform.json"),
                 midiCuesFile = resolveFixedFileName(songUnit.midiPath, "midi_cues.json"),
                 annotationsFile = resolveFixedFileName(songUnit.annotationsPath, "annotations.json"),
@@ -67,6 +70,7 @@ data class SmpMeta(
                     audioFile = json.optString("audioFile").trim().ifBlank { "audio.mp3" },
                     lyricsFile = json.optOptionalString("lyricsFile") ?: "lyrics.lrc",
                     chordsFile = json.optOptionalString("chordsFile") ?: "chords.lrc",
+                    timelineFile = json.optOptionalString("timelineFile") ?: SmpTimelineStore.TIMELINE_FILE_NAME,
                     waveformFile = json.optOptionalString("waveformFile") ?: "waveform.json",
                     midiCuesFile = json.optOptionalString("midiCuesFile") ?: "midi_cues.json",
                     annotationsFile = json.optOptionalString("annotationsFile") ?: "annotations.json",

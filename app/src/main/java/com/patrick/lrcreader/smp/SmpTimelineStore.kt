@@ -4,11 +4,15 @@ import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 
 object SmpTimelineStore {
 
     const val TIMELINE_FILE_NAME = "timeline.json"
     private const val TAG = "SmpTimelineStore"
+    private val fileLocks = ConcurrentHashMap<String, ReentrantLock>()
 
     fun read(timelineFile: File): List<TimelineMarker> {
         if (!timelineFile.isFile) {
@@ -24,50 +28,58 @@ object SmpTimelineStore {
         }
     }
 
-    fun write(timelineFile: File, markers: List<TimelineMarker>): Boolean {
-        val songDir = timelineFile.parentFile ?: return false
-        val tmpFile = File(songDir, "${timelineFile.name}.tmp")
-        val normalized = markers
-            .mapNotNull { marker ->
-                val label = marker.label.trim()
-                if (label.isEmpty()) {
-                    null
-                } else {
-                    val normalizedDurationMs = if (marker.kind == TimelineMarkerKind.NOTE) {
-                        marker.durationMs?.coerceAtLeast(1L)
-                    } else {
-                        null
-                    }
-                    TimelineMarker(
-                        timeMs = marker.timeMs.coerceAtLeast(0L),
-                        label = label,
-                        kind = marker.kind,
-                        durationMs = normalizedDurationMs
-                    )
-                }
-            }
-            .sortedWith(
-                compareBy<TimelineMarker> { it.timeMs }
-                    .thenBy { it.label.lowercase() }
-            )
-        val rawJson = markersToJsonString(normalized)
+    fun awaitIdle(timelineFile: File) {
+        lockFor(timelineFile).withLock {
+            // Wait for any in-flight timeline write to complete.
+        }
+    }
 
-        return runCatching {
-            songDir.mkdirs()
-            tmpFile.writeText(rawJson, Charsets.UTF_8)
-            if (timelineFile.exists() && !timelineFile.delete()) {
-                Log.w(TAG, "Suppression timeline.json impossible: ${timelineFile.absolutePath}")
-            }
-            if (!tmpFile.renameTo(timelineFile)) {
+    fun write(timelineFile: File, markers: List<TimelineMarker>): Boolean {
+        return lockFor(timelineFile).withLock {
+            val songDir = timelineFile.parentFile ?: return false
+            val tmpFile = File(songDir, "${timelineFile.name}.tmp")
+            val normalized = markers
+                .mapNotNull { marker ->
+                    val label = marker.label.trim()
+                    if (label.isEmpty()) {
+                        null
+                    } else {
+                        val normalizedDurationMs = if (marker.kind == TimelineMarkerKind.NOTE) {
+                            marker.durationMs?.coerceAtLeast(1L)
+                        } else {
+                            null
+                        }
+                        TimelineMarker(
+                            timeMs = marker.timeMs.coerceAtLeast(0L),
+                            label = label,
+                            kind = marker.kind,
+                            durationMs = normalizedDurationMs
+                        )
+                    }
+                }
+                .sortedWith(
+                    compareBy<TimelineMarker> { it.timeMs }
+                        .thenBy { it.label.lowercase() }
+                )
+            val rawJson = markersToJsonString(normalized)
+
+            runCatching {
+                songDir.mkdirs()
                 tmpFile.writeText(rawJson, Charsets.UTF_8)
-                timelineFile.writeText(rawJson, Charsets.UTF_8)
-                tmpFile.delete()
+                if (timelineFile.exists() && !timelineFile.delete()) {
+                    Log.w(TAG, "Suppression timeline.json impossible: ${timelineFile.absolutePath}")
+                }
+                if (!tmpFile.renameTo(timelineFile)) {
+                    tmpFile.writeText(rawJson, Charsets.UTF_8)
+                    timelineFile.writeText(rawJson, Charsets.UTF_8)
+                    tmpFile.delete()
+                }
+                true
+            }.getOrElse { error ->
+                Log.e(TAG, "Ecriture timeline.json impossible: ${timelineFile.absolutePath}", error)
+                runCatching { tmpFile.delete() }
+                false
             }
-            true
-        }.getOrElse { error ->
-            Log.e(TAG, "Ecriture timeline.json impossible: ${timelineFile.absolutePath}", error)
-            runCatching { tmpFile.delete() }
-            false
         }
     }
 
@@ -137,5 +149,10 @@ object SmpTimelineStore {
                     .thenBy { it.label.lowercase() }
             )
         }.getOrDefault(emptyList())
+    }
+
+    private fun lockFor(timelineFile: File): ReentrantLock {
+        val key = runCatching { timelineFile.canonicalPath }.getOrElse { timelineFile.absolutePath }
+        return fileLocks.getOrPut(key) { ReentrantLock() }
     }
 }

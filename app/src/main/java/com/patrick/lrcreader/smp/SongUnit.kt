@@ -7,6 +7,7 @@ data class SongUnit(
     val audioPath: String?,
     val lyricsPath: String?,
     val chordsPath: String?,
+    val timelinePath: String? = null,
     val waveformPath: String? = null,
     val annotationsPath: String?,
     val midiPath: String?,

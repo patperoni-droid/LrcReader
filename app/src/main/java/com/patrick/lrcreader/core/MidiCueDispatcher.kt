@@ -135,6 +135,10 @@ object MidiCueDispatcher {
             "SMP_RUNTIME track=$key positionMs=$safePositionMs previousMs=${previousPositionMs ?: "null"} effectivePreviousMs=$effectivePreviousMs rewound=$rewound isPlaying=$isPlaying cues=${formatMidiCueList(runtimeCues)} due=${formatMidiCueList(dueCues)}"
         )
 
+        if (runtimeCues.isEmpty()) {
+            clearTriggeredProgramChange(trackUri = key)
+        }
+
         dueCues.forEachIndexed { index, cue ->
             triggerSmpCue(
                 trackUri = key,
@@ -180,8 +184,17 @@ object MidiCueDispatcher {
         val key = trackUri?.takeIf { it.isNotBlank() } ?: return
         lastLineByTrack.remove(key)
         lastSmpPositionByTrack.remove(key)
+        clearTriggeredProgramChange(trackUri = key)
         Log.d(TAG, "resetForTrack: $key")
         Log.d(TRACE_TAG, "DISPATCH_RESET track=$key")
+    }
+
+    fun clearTriggeredProgramChange(trackUri: String? = null) {
+        val current = _lastTriggeredProgramChange.value ?: return
+        if (trackUri == null || current.trackUri == trackUri) {
+            _lastTriggeredProgramChange.value = null
+            Log.d(TRACE_TAG, "DISPATCH_MONITOR_CLEAR track=${trackUri ?: current.trackUri}")
+        }
     }
 
     private fun triggerSmpCue(

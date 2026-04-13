@@ -40,11 +40,14 @@ object SmpExporter {
             return null
         }
 
-        val config = SmpConfig.fromSongUnit(context, songUnit)
-        val targetFile = resolveAvailableExportFile(exportDir, songUnit)
+        val exportSong = refreshSongUnitForExport(context, songUnit)
+        val config = SmpConfig.fromSongUnit(context, exportSong)
+        val targetFile = resolveAvailableExportFile(exportDir, exportSong)
         val partFile = File(exportDir, "${targetFile.name}.part")
         val ignoredFiles = mutableListOf<String>()
         var exportedFiles = 0
+
+        logAnnotationsState(exportSong, config)
 
         if (partFile.exists() && !partFile.delete()) {
             Log.e(TAG, "Export SMP impossible: suppression du fichier temporaire ${partFile.absolutePath}")
@@ -63,49 +66,56 @@ object SmpExporter {
                 exportedFiles += writeAssetEntry(
                     zipOutput = zipOutput,
                     label = "audio",
-                    sourcePath = songUnit.audioPath,
+                    sourcePath = exportSong.audioPath,
                     entryName = config.files?.audio,
                     ignoredFiles = ignoredFiles
                 )
                 exportedFiles += writeAssetEntry(
                     zipOutput = zipOutput,
                     label = "lyrics",
-                    sourcePath = songUnit.lyricsPath,
+                    sourcePath = exportSong.lyricsPath,
                     entryName = config.files?.lyrics,
                     ignoredFiles = ignoredFiles
                 )
                 exportedFiles += writeAssetEntry(
                     zipOutput = zipOutput,
                     label = "chords",
-                    sourcePath = songUnit.chordsPath,
+                    sourcePath = exportSong.chordsPath,
                     entryName = config.files?.chords,
                     ignoredFiles = ignoredFiles
                 )
                 exportedFiles += writeAssetEntry(
                     zipOutput = zipOutput,
+                    label = "timeline",
+                    sourcePath = exportSong.timelinePath,
+                    entryName = config.files?.timeline,
+                    ignoredFiles = ignoredFiles
+                )
+                exportedFiles += writeAssetEntry(
+                    zipOutput = zipOutput,
                     label = "annotations",
-                    sourcePath = songUnit.annotationsPath,
+                    sourcePath = exportSong.annotationsPath,
                     entryName = config.files?.annotations,
                     ignoredFiles = ignoredFiles
                 )
                 exportedFiles += writeAssetEntry(
                     zipOutput = zipOutput,
                     label = "midiCues",
-                    sourcePath = songUnit.midiPath,
+                    sourcePath = exportSong.midiPath,
                     entryName = config.files?.midiCues,
                     ignoredFiles = ignoredFiles
                 )
                 exportedFiles += writeAssetEntry(
                     zipOutput = zipOutput,
                     label = "dmxCues",
-                    sourcePath = songUnit.dmxPath,
+                    sourcePath = exportSong.dmxPath,
                     entryName = config.files?.dmxCues,
                     ignoredFiles = ignoredFiles
                 )
                 exportedFiles += writeAssetEntry(
                     zipOutput = zipOutput,
                     label = "prompter",
-                    sourcePath = songUnit.prompterPath,
+                    sourcePath = exportSong.prompterPath,
                     entryName = config.files?.prompter,
                     ignoredFiles = ignoredFiles
                 )
@@ -205,5 +215,58 @@ object SmpExporter {
             .trim()
             .trim('.', '_', '-', ' ')
             .ifBlank { "song_export" }
+    }
+
+    private fun refreshSongUnitForExport(context: Context, songUnit: SongUnit): SongUnit {
+        val songDir = songUnit.storageFolder
+            ?.takeIf { it.isNotBlank() }
+            ?.let(::File)
+            ?.takeIf { it.isDirectory }
+            ?: return songUnit
+
+        resolveAnnotationsFileForExport(songDir)?.let { annotationsFile ->
+            SmpAnnotationsStore.awaitIdle(annotationsFile)
+        }
+        SmpTimelineStore.awaitIdle(File(songDir, SmpTimelineStore.TIMELINE_FILE_NAME))
+
+        return SmpLibraryScanner(context).findSongById(songUnit.id) ?: songUnit
+    }
+
+    private fun resolveAnnotationsFileForExport(songDir: File): File? {
+        val metaName = SmpMetaStore.read(songDir)
+            ?.annotationsFile
+            ?.trim()
+            .takeUnless { it.isNullOrBlank() }
+        if (metaName != null) {
+            return File(songDir, metaName)
+        }
+
+        val configName = runCatching {
+            val configFile = File(songDir, CONFIG_ENTRY_NAME)
+            if (!configFile.isFile) {
+                null
+            } else {
+                SmpConfig.fromJsonOrNull(configFile.readText(Charsets.UTF_8))
+                    ?.files
+                    ?.annotations
+                    ?.trim()
+                    .takeUnless { it.isNullOrBlank() }
+            }
+        }.getOrNull()
+        if (configName != null) {
+            return File(songDir, configName)
+        }
+
+        return File(songDir, SmpAnnotationsStore.ANNOTATIONS_FILE_NAME)
+    }
+
+    private fun logAnnotationsState(songUnit: SongUnit, config: SmpConfig) {
+        val annotationsPath = songUnit.annotationsPath
+        val annotationsFile = annotationsPath?.let(::File)
+        val exists = annotationsFile?.isFile == true
+        Log.i(
+            TAG,
+            "Export annotations state: songId=${songUnit.id} path=${annotationsPath ?: "null"} exists=$exists entry=${config.files?.annotations ?: "null"}"
+        )
     }
 }

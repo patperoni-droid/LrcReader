@@ -308,6 +308,7 @@ fun PlayerScreen(
     }
 
     LaunchedEffect(currentTrackUri) {
+        MidiCueDispatcher.clearTriggeredProgramChange()
         val loadedNotes = currentTrackUri?.let { trackUriString ->
             withContext(Dispatchers.IO) {
                 loadSmpLiveNotesForTrack(context, trackUriString)

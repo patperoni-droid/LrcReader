@@ -82,6 +82,7 @@ class SmpReader(private val context: Context) {
             audioPath = finder.audioPath,
             lyricsPath = finder.lyricsPath,
             chordsPath = finder.chordsPath,
+            timelinePath = finder.timelinePath,
             annotationsPath = finder.annotationsPath,
             midiPath = finder.midiPath,
             dmxPath = finder.dmxPath,
@@ -145,6 +146,8 @@ class SmpReader(private val context: Context) {
             private set
         var chordsPath: String? = null
             private set
+        var timelinePath: String? = null
+            private set
         var annotationsPath: String? = null
             private set
         var midiPath: String? = null
@@ -161,6 +164,7 @@ class SmpReader(private val context: Context) {
                 audioPath == null && isAudioFile(fileName) -> audioPath = entryName
                 lyricsPath == null && fileName == "lyrics.lrc" -> lyricsPath = entryName
                 chordsPath == null && fileName == "chords.lrc" -> chordsPath = entryName
+                timelinePath == null && fileName == SmpTimelineStore.TIMELINE_FILE_NAME -> timelinePath = entryName
                 annotationsPath == null && fileName == "annotations.json" -> annotationsPath = entryName
                 midiPath == null && fileName == "midi_cues.json" -> midiPath = entryName
                 dmxPath == null && fileName == "dmx_cues.json" -> dmxPath = entryName

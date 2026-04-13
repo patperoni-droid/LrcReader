@@ -22,6 +22,7 @@ data class SmpConfig(
         val audio: String?,
         val lyrics: String?,
         val chords: String?,
+        val timeline: String?,
         val annotations: String?,
         val midiCues: String?,
         val dmxCues: String?,
@@ -33,6 +34,7 @@ data class SmpConfig(
                     audio = resolveAudioTransportName(songUnit.audioPath),
                     lyrics = resolveFixedTransportName(songUnit.lyricsPath, "lyrics.lrc"),
                     chords = resolveFixedTransportName(songUnit.chordsPath, "chords.lrc"),
+                    timeline = resolveFixedTransportName(songUnit.timelinePath, SmpTimelineStore.TIMELINE_FILE_NAME),
                     annotations = resolveFixedTransportName(songUnit.annotationsPath, "annotations.json"),
                     midiCues = resolveFixedTransportName(songUnit.midiPath, "midi_cues.json"),
                     dmxCues = resolveFixedTransportName(songUnit.dmxPath, "dmx_cues.json"),
@@ -50,6 +52,7 @@ data class SmpConfig(
                 audio?.let { put("audio", it) }
                 lyrics?.let { put("lyrics", it) }
                 chords?.let { put("chords", it) }
+                timeline?.let { put("timeline", it) }
                 annotations?.let { put("annotations", it) }
                 midiCues?.let { put("midiCues", it) }
                 dmxCues?.let { put("dmxCues", it) }
@@ -61,6 +64,7 @@ data class SmpConfig(
             return audio != null ||
                 lyrics != null ||
                 chords != null ||
+                timeline != null ||
                 annotations != null ||
                 midiCues != null ||
                 dmxCues != null ||
@@ -202,6 +206,7 @@ data class SmpConfig(
                 audio = filesJson.optStringOrNull("audio"),
                 lyrics = filesJson.optStringOrNull("lyrics"),
                 chords = filesJson.optStringOrNull("chords"),
+                timeline = filesJson.optStringOrNull("timeline"),
                 annotations = filesJson.optStringOrNull("annotations"),
                 midiCues = filesJson.optStringOrNull("midiCues"),
                 dmxCues = filesJson.optStringOrNull("dmxCues"),
@@ -210,6 +215,7 @@ data class SmpConfig(
                 it.audio != null ||
                     it.lyrics != null ||
                     it.chords != null ||
+                    it.timeline != null ||
                     it.annotations != null ||
                     it.midiCues != null ||
                     it.dmxCues != null ||

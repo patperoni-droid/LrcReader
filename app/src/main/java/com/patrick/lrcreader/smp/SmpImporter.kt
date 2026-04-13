@@ -184,6 +184,7 @@ class SmpImporter(private val context: Context) {
                 audioPath = audioPath,
                 lyricsPath = extracted.lyricsFileName?.let { File(destinationDir, it).absolutePath },
                 chordsPath = extracted.chordsFileName?.let { File(destinationDir, it).absolutePath },
+                timelinePath = extracted.timelineFileName?.let { File(destinationDir, it).absolutePath },
                 waveformPath = extracted.waveformFileName?.let { File(destinationDir, it).absolutePath },
                 annotationsPath = extracted.annotationsFileName?.let { File(destinationDir, it).absolutePath },
                 midiPath = extracted.midiFileName?.let { File(destinationDir, it).absolutePath },
@@ -306,6 +307,7 @@ class SmpImporter(private val context: Context) {
             audioFileName = extractedFiles.audioFileName,
             lyricsFileName = extractedFiles.lyricsFileName,
             chordsFileName = extractedFiles.chordsFileName,
+            timelineFileName = extractedFiles.timelineFileName,
             waveformFileName = extractedFiles.waveformFileName,
             annotationsFileName = extractedFiles.annotationsFileName,
             midiFileName = extractedFiles.midiFileName,
@@ -323,6 +325,7 @@ class SmpImporter(private val context: Context) {
             isAudioFile(fileName) -> fileName
             fileName == "lyrics.lrc" -> fileName
             fileName == "chords.lrc" -> fileName
+            fileName == SmpTimelineStore.TIMELINE_FILE_NAME -> fileName
             fileName == WAVEFORM_FILE_NAME -> fileName
             fileName == "annotations.json" -> fileName
             fileName == "midi_cues.json" -> fileName
@@ -561,6 +564,7 @@ class SmpImporter(private val context: Context) {
         val audioFileName: String?,
         val lyricsFileName: String?,
         val chordsFileName: String?,
+        val timelineFileName: String?,
         val waveformFileName: String?,
         val annotationsFileName: String?,
         val midiFileName: String?,
@@ -576,6 +580,8 @@ class SmpImporter(private val context: Context) {
         var lyricsFileName: String? = null
             private set
         var chordsFileName: String? = null
+            private set
+        var timelineFileName: String? = null
             private set
         var waveformFileName: String? = null
             private set
@@ -594,6 +600,7 @@ class SmpImporter(private val context: Context) {
                 isAudioFile(fileName) -> audioFileName = fileName
                 fileName == "lyrics.lrc" -> lyricsFileName = fileName
                 fileName == "chords.lrc" -> chordsFileName = fileName
+                fileName == SmpTimelineStore.TIMELINE_FILE_NAME -> timelineFileName = fileName
                 fileName == WAVEFORM_FILE_NAME -> waveformFileName = fileName
                 fileName == "annotations.json" -> annotationsFileName = fileName
                 fileName == "midi_cues.json" -> midiFileName = fileName
@@ -606,6 +613,7 @@ class SmpImporter(private val context: Context) {
             return audioFileName != null ||
                 lyricsFileName != null ||
                 chordsFileName != null ||
+                timelineFileName != null ||
                 waveformFileName != null ||
                 annotationsFileName != null ||
                 midiFileName != null ||
