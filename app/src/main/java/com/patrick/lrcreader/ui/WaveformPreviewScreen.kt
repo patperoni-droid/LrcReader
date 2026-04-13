@@ -9,6 +9,8 @@ import android.util.Log
 import android.widget.Toast
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.horizontalScroll
@@ -67,6 +69,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import com.patrick.lrcreader.core.EditSoundPrefs
+import com.patrick.lrcreader.core.TrackVolumePrefs
 import com.patrick.lrcreader.core.WaveformSessionPrefs
 import com.patrick.lrcreader.core.config.SongIdKeyResolver
 import com.patrick.lrcreader.core.waveform.WaveformExtractor
@@ -87,12 +90,17 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.abs
 import kotlin.math.hypot
+import kotlin.math.ln
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
+import kotlin.math.sqrt
 
 private const val ZOOM_MIN = 1f
 private const val ZOOM_MAX = 120f
+private const val MATCH_VOLUME_TARGET_LUFS = -14f
+private const val MATCH_VOLUME_MIN_DB = -12
+private const val MATCH_VOLUME_MAX_DB = 0
 
 private enum class DragTarget {
     NONE,
@@ -125,10 +133,13 @@ fun WaveformPreviewScreen(
     var durationMs by remember { mutableIntStateOf(0) }
     var inMs by remember { mutableIntStateOf(0) }
     var outMs by remember { mutableIntStateOf(0) }
+    var pendingVolumeDb by remember { mutableIntStateOf(0) }
+    var estimatedTrackLufs by remember { mutableStateOf<Float?>(null) }
     var playheadMs by remember { mutableIntStateOf(0) }
     var stepMs by remember { mutableIntStateOf(50) }
     var isPlayingWave by remember { mutableStateOf(false) }
     var isDetectingSilence by remember { mutableStateOf(false) }
+    var isMatchingVolume by remember { mutableStateOf(false) }
     var restoredScrollPx by remember { mutableStateOf<Int?>(null) }
     var lastInitialSongId by remember { mutableStateOf<String?>(null) }
 
@@ -168,6 +179,8 @@ fun WaveformPreviewScreen(
         durationMs = 0
         inMs = 0
         outMs = 0
+        pendingVolumeDb = 0
+        estimatedTrackLufs = null
         playheadMs = 0
         runCatching {
             exoPlayer.setMediaItem(MediaItem.fromUri(uri))
@@ -198,6 +211,7 @@ fun WaveformPreviewScreen(
                 val (newPeaks, newDurationMs) = result.getOrNull() ?: (emptyList<Float>() to 0)
                 peaks = newPeaks
                 durationMs = newDurationMs.coerceAtLeast(0)
+                estimatedTrackLufs = estimateLufsFromPeaks(newPeaks.toFloatArray())
                 if (durationMs > 0) {
                     playheadMs = restoredPlayhead.coerceIn(0, durationMs)
                     WaveformSessionPrefs.savePlayhead(context, playheadMs)
@@ -218,6 +232,9 @@ fun WaveformPreviewScreen(
                         ?: saved?.endMs?.takeIf { it > 0 }
                         ?: legacySaved?.endMs?.toInt()?.takeIf { it > 0 }
                         ?: durationMs
+                    pendingVolumeDb = (savedConfigPlayback?.volumeDb
+                        ?: TrackVolumePrefs.getDb(context, uri.toString())
+                        ?: 0).coerceIn(MATCH_VOLUME_MIN_DB, MATCH_VOLUME_MAX_DB)
                     val (safeIn, safeOut) = normalizeInOut(
                         inMs = savedStartMs,
                         outMs = savedOutMs,
@@ -232,6 +249,8 @@ fun WaveformPreviewScreen(
                 durationMs = 0
                 inMs = 0
                 outMs = 0
+                pendingVolumeDb = 0
+                estimatedTrackLufs = null
                 playheadMs = 0
                 hasError = true
             }
@@ -293,6 +312,8 @@ fun WaveformPreviewScreen(
             durationMs = 0
             inMs = 0
             outMs = 0
+            pendingVolumeDb = 0
+            estimatedTrackLufs = null
             playheadMs = 0
             return@LaunchedEffect
         }
@@ -309,6 +330,8 @@ fun WaveformPreviewScreen(
             durationMs = 0
             inMs = 0
             outMs = 0
+            pendingVolumeDb = 0
+            estimatedTrackLufs = null
             playheadMs = 0
             return@LaunchedEffect
         }
@@ -325,7 +348,13 @@ fun WaveformPreviewScreen(
         if (isPlayingWave) exoPlayer.play()
     }
 
-    suspend fun saveWaveformTrimEdit(startMs: Int, endMs: Int, successMessage: String) {
+    suspend fun saveWaveformTrimEdit(
+        startMs: Int,
+        endMs: Int,
+        volumeDb: Int,
+        persistVolume: Boolean,
+        successMessage: String
+    ) {
         val sourceUri = selectedUri ?: return
         val songId = selectedSongId ?: return
         if (durationMs <= 0) return
@@ -351,6 +380,13 @@ fun WaveformPreviewScreen(
                     uri = sourceUri,
                     startMs = startMs,
                     endMs = endMs
+                )
+            }
+            if (persistVolume) {
+                TrackVolumePrefs.saveDb(
+                    context = appContext,
+                    uri = sourceUri.toString(),
+                    db = volumeDb
                 )
             }
         }
@@ -649,7 +685,9 @@ fun WaveformPreviewScreen(
             ) {
                 val controlsEnabled = selectedUri != null && durationMs > 0
                 val detectEnabled = controlsEnabled && peaks.isNotEmpty() && !isLoading && !isDetectingSilence
+                val matchVolumeEnabled = controlsEnabled && peaks.isNotEmpty() && !isLoading && !isMatchingVolume
                 val hasOutTrim = controlsEnabled && outMs in 1 until durationMs
+                val effectiveLufs = estimatedTrackLufs?.plus(pendingVolumeDb.toFloat())
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -775,6 +813,8 @@ fun WaveformPreviewScreen(
                                 saveWaveformTrimEdit(
                                     startMs = inMs,
                                     endMs = 0,
+                                    volumeDb = pendingVolumeDb,
+                                    persistVolume = false,
                                     successMessage = context.getString(R.string.waveform_out_cleared)
                                 )
                             }
@@ -787,11 +827,43 @@ fun WaveformPreviewScreen(
 
                     TextButton(
                         onClick = {
+                            if (!matchVolumeEnabled) return@TextButton
+                            val snapshotPeaks = peaks.toFloatArray()
+                            isMatchingVolume = true
+                            scope.launch {
+                                try {
+                                    val matchedVolumeDb = withContext(Dispatchers.Default) {
+                                        estimateMatchedVolumeDbFromPeaks(snapshotPeaks)
+                                    } ?: return@launch
+                                    pendingVolumeDb = matchedVolumeDb
+                                    Toast.makeText(
+                                        context,
+                                        context.getString(
+                                            R.string.waveform_level_adjusted,
+                                            matchedVolumeDb.toFloat()
+                                        ),
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                } finally {
+                                    isMatchingVolume = false
+                                }
+                            }
+                        },
+                        enabled = matchVolumeEnabled,
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text(stringResource(R.string.waveform_match_volume), fontSize = 12.sp)
+                    }
+
+                    TextButton(
+                        onClick = {
                             if (durationMs <= 0) return@TextButton
                             scope.launch {
                                 saveWaveformTrimEdit(
                                     startMs = inMs,
                                     endMs = outMs,
+                                    volumeDb = pendingVolumeDb,
+                                    persistVolume = true,
                                     successMessage = context.getString(R.string.waveform_trim_saved)
                                 )
                             }
@@ -802,6 +874,18 @@ fun WaveformPreviewScreen(
                         Text(stringResource(R.string.waveform_save), fontSize = 12.sp)
                     }
                 }
+
+                Text(
+                    text = stringResource(R.string.waveform_match_volume_target),
+                    color = Color(0xFFB9C2C8),
+                    fontSize = 11.sp
+                )
+
+                LufsLevelIndicator(
+                    currentLufs = effectiveLufs,
+                    targetLufs = MATCH_VOLUME_TARGET_LUFS,
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
         }
     }
@@ -1146,6 +1230,128 @@ private data class SilenceTrimDetection(
     val inMs: Int?,
     val outMs: Int?
 )
+
+@Composable
+private fun LufsLevelIndicator(
+    currentLufs: Float?,
+    targetLufs: Float,
+    modifier: Modifier = Modifier
+) {
+    val scaleMin = -30f
+    val scaleMax = -6f
+    val targetFraction = ((targetLufs - scaleMin) / (scaleMax - scaleMin)).coerceIn(0f, 1f)
+    val currentFraction = currentLufs
+        ?.let { ((it - scaleMin) / (scaleMax - scaleMin)).coerceIn(0f, 1f) }
+        ?: 0f
+    val animatedCurrentFraction by animateFloatAsState(
+        targetValue = currentFraction,
+        animationSpec = tween(durationMillis = 280),
+        label = "lufs_current_fraction"
+    )
+
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = if (currentLufs != null) {
+                    stringResource(R.string.waveform_lufs_current_value, currentLufs)
+                } else {
+                    stringResource(R.string.waveform_lufs_current)
+                },
+                color = Color(0xFFE9EEF3),
+                fontSize = 11.sp
+            )
+            Text(
+                text = stringResource(R.string.waveform_lufs_target_label),
+                color = Color(0xFFB9C2C8),
+                fontSize = 11.sp
+            )
+        }
+
+        BoxWithConstraints(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(28.dp)
+        ) {
+            val barColor = Color(0xFF1E252C)
+            val targetColor = Color(0xFFFFC857)
+            val currentColor = Color(0xFF64D2FF)
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(8.dp)
+                    .align(Alignment.Center)
+                    .background(barColor, RoundedCornerShape(999.dp))
+            )
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(animatedCurrentFraction)
+                    .height(8.dp)
+                    .align(Alignment.CenterStart)
+                    .background(
+                        Brush.horizontalGradient(
+                            listOf(Color(0xFF2A3844), currentColor)
+                        ),
+                        RoundedCornerShape(999.dp)
+                    )
+            )
+
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .width(2.dp)
+                    .align(Alignment.CenterStart)
+                    .padding(start = maxWidth * targetFraction)
+                    .background(targetColor, RoundedCornerShape(999.dp))
+            )
+
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .width(10.dp)
+                    .align(Alignment.CenterStart)
+                    .padding(start = maxWidth * animatedCurrentFraction)
+            ) {
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    drawCircle(
+                        color = currentColor,
+                        radius = size.minDimension / 2f
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun estimateLufsFromPeaks(peaks: FloatArray): Float? {
+    if (peaks.isEmpty()) return null
+    var sumSquares = 0.0
+    var nonZeroSeen = false
+    peaks.forEach { peak ->
+        val sample = peak.coerceIn(0f, 1f)
+        if (sample > 0f) {
+            nonZeroSeen = true
+        }
+        sumSquares += sample * sample
+    }
+    if (!nonZeroSeen) return null
+    val rms = sqrt((sumSquares / peaks.size).toFloat()).coerceAtLeast(1e-4f)
+    return (20f * (ln(rms) / ln(10f)))
+}
+
+private fun estimateMatchedVolumeDbFromPeaks(peaks: FloatArray): Int? {
+    val currentLufs = estimateLufsFromPeaks(peaks) ?: return null
+    val gainDb = MATCH_VOLUME_TARGET_LUFS - currentLufs
+    return gainDb.roundToInt().coerceIn(MATCH_VOLUME_MIN_DB, MATCH_VOLUME_MAX_DB)
+}
 
 private fun detectSilenceTrimFromPeaks(
     peaks: List<Float>,

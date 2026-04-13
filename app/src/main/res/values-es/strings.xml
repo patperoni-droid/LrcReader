@@ -363,6 +363,12 @@
     <string name="waveform_in_cursor">IN = CURSOR</string>
     <string name="waveform_out_cursor">OUT = CURSOR</string>
     <string name="waveform_detect_silence">Detectar silencios</string>
+    <string name="waveform_match_volume">LUFS -14</string>
+    <string name="waveform_match_volume_target">Objetivo: -14 LUFS</string>
+    <string name="waveform_level_adjusted">Nivel ajustado: %1$.1f dB</string>
+    <string name="waveform_lufs_current">Actual</string>
+    <string name="waveform_lufs_current_value">Actual %1$.1f LUFS</string>
+    <string name="waveform_lufs_target_label">Objetivo -14 LUFS</string>
     <string name="waveform_saved">Ajustes guardados</string>
     <string name="waveform_trim_saved">Recorte guardado</string>
     <string name="waveform_out_cleared">Punto de salida eliminado</string>
