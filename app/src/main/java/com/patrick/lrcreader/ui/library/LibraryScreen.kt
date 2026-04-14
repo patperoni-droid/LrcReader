@@ -54,6 +54,7 @@ import com.patrick.lrcreader.core.ImportAudioManager
 import com.patrick.lrcreader.core.LibraryIndexCache
 import com.patrick.lrcreader.core.LibraryTransferFolderPrefs
 import com.patrick.lrcreader.core.PlaylistRepository
+import com.patrick.lrcreader.core.PlaylistTrackLimitPolicy
 import com.patrick.lrcreader.core.SmpPreparationNoticePrefs
 import com.patrick.lrcreader.core.TrackVolumePrefs
 import com.patrick.lrcreader.core.TextSongRepository
@@ -364,7 +365,8 @@ private fun summarizeSmpSongs(
 private data class PendingPlaylistAssignRequest(
     val playlistName: String,
     val directItemUris: List<String>,
-    val batchPlan: SmpBatchImportProcessor.BatchPlan?
+    val batchPlan: SmpBatchImportProcessor.BatchPlan?,
+    val limitedTrackCount: Int
 )
 
 private data class BatchProgressVisualBounds(
@@ -2390,6 +2392,14 @@ fun LibraryScreen(
 
     fun runLibraryPlaylistAssignment(request: PendingPlaylistAssignRequest) {
         scope.launch {
+            if (!PlaylistTrackLimitPolicy.canAddTracks(context, request.playlistName, request.limitedTrackCount)) {
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.playlist_track_limit_reached),
+                    Toast.LENGTH_LONG
+                ).show()
+                return@launch
+            }
             val hasBatchWork = request.batchPlan != null
             if (hasBatchWork) {
                 startLoading(sBatchPreparing, determinate = true)
@@ -2512,10 +2522,24 @@ fun LibraryScreen(
                 null
             }
 
+            val limitedTrackCount =
+                PlaylistTrackLimitPolicy.countLimitedTrackItems(directItemUris) +
+                    (batchPlan?.supportedCount ?: 0)
+
+            if (!PlaylistTrackLimitPolicy.canAddTracks(context, playlistName, limitedTrackCount)) {
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.playlist_track_limit_reached),
+                    Toast.LENGTH_LONG
+                ).show()
+                return@launch
+            }
+
             val request = PendingPlaylistAssignRequest(
                 playlistName = playlistName,
                 directItemUris = directItemUris,
-                batchPlan = batchPlan
+                batchPlan = batchPlan,
+                limitedTrackCount = limitedTrackCount
             )
 
             Log.i(

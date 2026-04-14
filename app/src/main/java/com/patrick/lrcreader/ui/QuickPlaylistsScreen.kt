@@ -90,6 +90,7 @@ import com.patrick.lrcreader.core.isGroupHeader
 import com.patrick.lrcreader.core.isPlayableAudioItem
 import com.patrick.lrcreader.core.getSmpSongId
 import com.patrick.lrcreader.core.PlaylistRepository
+import com.patrick.lrcreader.core.PlaylistTrackLimitPolicy
 import com.patrick.lrcreader.core.renameGroupHeader
 import com.patrick.lrcreader.core.TextSongRepository
 import com.patrick.lrcreader.core.config.PlaylistStateStore
@@ -618,8 +619,17 @@ fun QuickPlaylistsScreen(
             ).show()
             return
         }
-        PlaylistRepository.addPlaylist(clean)
         val snapshot = songs.toList()
+        val limitedTrackCount = PlaylistTrackLimitPolicy.countLimitedTrackItems(snapshot)
+        if (!PlaylistTrackLimitPolicy.canAddTracks(context, clean, limitedTrackCount)) {
+            Toast.makeText(
+                context,
+                context.getString(R.string.playlist_track_limit_reached),
+                Toast.LENGTH_LONG
+            ).show()
+            return
+        }
+        PlaylistRepository.addPlaylist(clean)
         snapshot.forEach { uri ->
             PlaylistRepository.assignSongToPlaylist(clean, uri)
         }

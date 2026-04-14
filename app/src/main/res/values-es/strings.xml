@@ -205,6 +205,7 @@
     <string name="library_lufs_hint_title">Normalización de volumen</string>
     <string name="library_lufs_hint_message">Aquí puedes equilibrar el volumen de tus pistas.\n\nEsto evita grandes diferencias de nivel entre canciones, para un resultado más cómodo y profesional en directo.\n\nUtilizamos una referencia cercana a -14 LUFS, un estándar ampliamente utilizado.\n\nPuedes aplicar o quitar este ajuste en cualquier momento.</string>
     <string name="library_lufs_hint_do_not_show_again">No volver a mostrar</string>
+    <string name="playlist_track_limit_reached">Has alcanzado el límite de 10 pistas. Pasa a la versión completa para añadir más títulos.</string>
     <string name="library_smp_folder">Mis pistas en vivo</string>
     <string name="library_legacy_backing_tracks_folder">Mis pistas en vivo</string>
     <string name="library_smp_empty_state">Aún no hay pistas en vivo SMP.\nImporta o convierte una canción para verla aquí.</string>

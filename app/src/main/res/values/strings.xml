@@ -212,6 +212,7 @@
     <string name="library_lufs_hint_title">Uniformisation du volume</string>
     <string name="library_lufs_hint_message">Ici, vous pouvez harmoniser le volume de vos morceaux.\n\nCela permet d’éviter les différences de niveau entre les titres, pour un rendu plus confortable et professionnel en live.\n\nNous utilisons une référence proche de -14 LUFS, un standard largement utilisé.\n\nVous pouvez appliquer ou retirer ce réglage à tout moment.</string>
     <string name="library_lufs_hint_do_not_show_again">Ne plus afficher</string>
+    <string name="playlist_track_limit_reached">Vous avez atteint la limite de 10 morceaux. Passez à la version complète pour ajouter plus de titres.</string>
     <string name="library_smp_folder">Mes morceaux live</string>
     <string name="library_legacy_backing_tracks_folder">Mes morceaux live</string>
     <string name="library_smp_empty_state">Aucun morceau live SMP pour l’instant.\nImporte ou convertis un morceau pour le voir apparaître ici.</string>

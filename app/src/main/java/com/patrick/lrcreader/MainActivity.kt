@@ -766,6 +766,15 @@ class MainActivity : AppCompatActivity() {
                             Toast.makeText(ctx, sBatchUnsupportedOnly, Toast.LENGTH_SHORT).show()
                             return@launch
                         }
+                        if (!PlaylistTrackLimitPolicy.canAddTracks(ctx, targetPlaylist, plan.supportedCount)) {
+                            pendingPlaylistTrackTarget = null
+                            Toast.makeText(
+                                ctx,
+                                ctx.getString(R.string.playlist_track_limit_reached),
+                                Toast.LENGTH_LONG
+                            ).show()
+                            return@launch
+                        }
 
                         if (plan.hasAudioToPrepare && SmpPreparationNoticePrefs.shouldShow(ctx)) {
                             pendingPlaylistBatchPlan = plan

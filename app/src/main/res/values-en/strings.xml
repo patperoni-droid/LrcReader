@@ -213,6 +213,7 @@
     <string name="library_lufs_hint_title">Volume normalization</string>
     <string name="library_lufs_hint_message">Here you can balance the volume of your tracks.\n\nThis helps avoid large level differences between songs, for a more comfortable and professional live experience.\n\nWe use a reference close to -14 LUFS, a widely used standard.\n\nYou can apply or remove this setting at any time.</string>
     <string name="library_lufs_hint_do_not_show_again">Do not show again</string>
+    <string name="playlist_track_limit_reached">You have reached the 10-track limit. Upgrade to the full version to add more tracks.</string>
     <string name="library_smp_folder">My Live Tracks</string>
     <string name="library_legacy_backing_tracks_folder">My Live Tracks</string>
     <string name="library_smp_empty_state">No SMP live tracks yet.\nImport or convert a song to see it appear here.</string>
