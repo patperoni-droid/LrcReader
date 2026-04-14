@@ -20,6 +20,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
@@ -625,6 +626,7 @@ fun LibraryScreen(
         mutableStateOf<SmpBatchImportProcessor.Progress?>(null)
     }
     var lastLoggedMoveProgressBucket by remember { mutableIntStateOf(-1) }
+    var songItemsLoading by remember { mutableStateOf(false) }
 
     SideEffect {
         LibraryScreenUiCache.put(
@@ -1584,6 +1586,18 @@ fun LibraryScreen(
         isFilesViewMode -> filteredEntries.size
         else -> filteredPlaylists.size
     }
+    val hasVisibleLibraryContent = when {
+        isSongViewMode -> searchableSongItems.isNotEmpty()
+        isFilesViewMode -> searchableEntries.isNotEmpty()
+        else -> searchablePlaylists.isNotEmpty()
+    }
+    val showInitialLibraryLoadingState = currentFolderUri != null &&
+        !hasVisibleLibraryContent &&
+        (
+            isLoading ||
+                !initialLoadDone ||
+                (isSongViewMode && songItemsLoading)
+            )
     LaunchedEffect(searchQuery, activeSearchableCount, activeFilteredCount, currentFolderUri, libraryViewMode) {
         if (BuildConfig.DEBUG) {
             val normalizedQuery = SearchEngine.normalize(searchQuery)
@@ -1639,7 +1653,12 @@ fun LibraryScreen(
 
     LaunchedEffect(initialLoadDone, smpRefreshVersion, titleAliasVersion) {
         if (!initialLoadDone) return@LaunchedEffect
-        songItems = buildLibrarySongItemsAsync()
+        songItemsLoading = true
+        try {
+            songItems = buildLibrarySongItemsAsync()
+        } finally {
+            songItemsLoading = false
+        }
     }
 
     LaunchedEffect(
@@ -3026,8 +3045,24 @@ fun LibraryScreen(
 
             Spacer(Modifier.height(10.dp))
             Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-
-                if (isPlaylistsViewMode) {
+                if (showInitialLibraryLoadingState) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            CircularProgressIndicator(color = accent)
+                            Text(
+                                text = sScanning,
+                                color = subtitleColor,
+                                fontSize = 14.sp
+                            )
+                        }
+                    }
+                } else if (isPlaylistsViewMode) {
                     Column(modifier = Modifier.fillMaxSize()) {
                         if (isSearchVisible) {
                             OutlinedTextField(
