@@ -195,9 +195,12 @@
     <string name="library_view_mode_lufs">LUFS</string>
     <string name="library_lufs_active">LUFS activo</string>
     <string name="library_lufs_apply">Aplicar LUFS</string>
+    <string name="library_lufs_remove">Quitar LUFS</string>
     <string name="library_lufs_processing">Procesando LUFS...</string>
     <string name="library_lufs_apply_confirm">¿Normalizar %1$d pistas? Esta operación puede tardar.</string>
     <string name="library_lufs_apply_done">%1$d pistas procesadas</string>
+    <string name="library_lufs_remove_confirm">¿Quitar el modo LUFS de %1$d pistas?</string>
+    <string name="library_lufs_remove_done">%1$d pistas pasaron a modo manual</string>
     <string name="library_smp_folder">Mis pistas en vivo</string>
     <string name="library_legacy_backing_tracks_folder">Mis pistas en vivo</string>
     <string name="library_smp_empty_state">Aún no hay pistas en vivo SMP.\nImporta o convierte una canción para verla aquí.</string>

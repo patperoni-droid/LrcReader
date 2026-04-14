@@ -115,6 +115,11 @@ private val importedSmpEffectPerfCounter = AtomicInteger(0)
 private val uiEntriesSnapshotPerfCounter = AtomicInteger(0)
 private val buildSmpEntriesTraceCounter = AtomicInteger(0)
 
+private enum class LufsBatchAction {
+    APPLY,
+    REMOVE
+}
+
 private data class LibraryScreenUiSnapshot(
     val currentFolderUri: Uri?,
     val folderStack: List<Uri>,
@@ -524,6 +529,7 @@ fun LibraryScreen(
     val sPlaylistsEmpty = stringResource(R.string.all_playlists_empty)
     val sLufsActive = stringResource(R.string.library_lufs_active)
     val sApplyLufs = stringResource(R.string.library_lufs_apply)
+    val sRemoveLufs = stringResource(R.string.library_lufs_remove)
     val sLufsProcessing = stringResource(R.string.library_lufs_processing)
     val sConvertSmpSingleSuccess = stringResource(R.string.library_convert_smp_success_single)
     val sConvertSmpSingleFailed = stringResource(R.string.library_convert_smp_failed_single)
@@ -1495,16 +1501,7 @@ fun LibraryScreen(
     val isPlaylistsViewMode = libraryViewMode == LIBRARY_VIEW_MODE_PLAYLISTS
     val isSongBasedViewMode = isSongViewMode || isLufsViewMode
     var selectedSongIds by remember { mutableStateOf<Set<String>>(emptySet()) }
-    val autoSelectedLufsSongIds = remember(songItems) {
-        songItems.filter { it.isLufsActive }.map { it.songId }.toSet()
-    }
-    LaunchedEffect(isLufsViewMode, autoSelectedLufsSongIds) {
-        if (!isLufsViewMode) return@LaunchedEffect
-        if (selectedSongIds.isEmpty() && autoSelectedLufsSongIds.isNotEmpty()) {
-            selectedSongIds = autoSelectedLufsSongIds
-        }
-    }
-    var showApplyLufsConfirm by remember { mutableStateOf(false) }
+    var pendingLufsBatchAction by remember { mutableStateOf<LufsBatchAction?>(null) }
     var isApplyingLufs by remember { mutableStateOf(false) }
     var lufsProgressCurrent by remember { mutableIntStateOf(0) }
     var lufsProgressTotal by remember { mutableIntStateOf(0) }
@@ -2169,7 +2166,7 @@ fun LibraryScreen(
                             item
                         }
                     }
-                    selectedSongIds = selectedSongIds + processedSongIds
+                    selectedSongIds = selectedSongIds - processedSongIds
                 }
                 isApplyingLufs = false
                 lufsProgressCurrent = 0
@@ -2178,6 +2175,73 @@ fun LibraryScreen(
                 Toast.makeText(
                     context,
                     context.getString(R.string.library_lufs_apply_done, processedCount),
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+    }
+
+    fun removeLufsFromSelectedSongs(selection: Set<String>) {
+        if (selection.isEmpty() || isApplyingLufs) return
+
+        scope.launch {
+            val songIds = selection.toList()
+            isApplyingLufs = true
+            lufsProgressCurrent = 0
+            lufsProgressTotal = songIds.size
+            lufsProgressTitle = ""
+            var processedCount = 0
+            val processedSongIds = mutableSetOf<String>()
+
+            try {
+                songIds.forEachIndexed { index, songId ->
+                    val songTitle = songItems.firstOrNull { it.songId == songId }?.displayTitle ?: songId
+                    lufsProgressCurrent = index + 1
+                    lufsProgressTitle = songTitle
+
+                    val processed = withContext(Dispatchers.IO) {
+                        runCatching {
+                            val song = smpLibraryScanner.findSongById(songId) ?: return@runCatching false
+                            val runtimeTrackUri = SongIdKeyResolver.resolveRuntimeTrackUri(context, songId)
+                                ?: return@runCatching false
+                            val currentVolumeDb = TrackVolumePrefs.getDb(context, runtimeTrackUri)
+                                ?: SmpConfig.readPlaybackFromSongUnit(song)?.volumeDb
+                                ?: return@runCatching false
+                            TrackVolumePrefs.saveDb(
+                                context = context,
+                                uri = runtimeTrackUri,
+                                db = currentVolumeDb,
+                                source = SmpConfig.PlaybackConfig.VOLUME_SOURCE_MANUAL
+                            )
+                            true
+                        }.getOrElse { error ->
+                            Log.w("LIBRARY_LUFS", "removeLufs failed songId=$songId", error)
+                            false
+                        }
+                    }
+
+                    if (processed) {
+                        processedCount += 1
+                        processedSongIds += songId
+                    }
+                }
+            } finally {
+                if (processedSongIds.isNotEmpty()) {
+                    songItems = songItems.map { item ->
+                        if (item.songId in processedSongIds) {
+                            item.copy(volumeSource = SmpConfig.PlaybackConfig.VOLUME_SOURCE_MANUAL)
+                        } else {
+                            item
+                        }
+                    }
+                }
+                isApplyingLufs = false
+                lufsProgressCurrent = 0
+                lufsProgressTotal = 0
+                lufsProgressTitle = ""
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.library_lufs_remove_done, processedCount),
                     Toast.LENGTH_SHORT
                 ).show()
             }
@@ -3438,11 +3502,22 @@ fun LibraryScreen(
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        androidx.compose.material3.TextButton(
-                                            onClick = { showApplyLufsConfirm = true },
-                                            enabled = selectedSongIds.isNotEmpty() && !isApplyingLufs
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Text(sApplyLufs)
+                                            androidx.compose.material3.TextButton(
+                                                onClick = { pendingLufsBatchAction = LufsBatchAction.APPLY },
+                                                enabled = selectedSongIds.isNotEmpty() && !isApplyingLufs
+                                            ) {
+                                                Text(sApplyLufs)
+                                            }
+                                            androidx.compose.material3.TextButton(
+                                                onClick = { pendingLufsBatchAction = LufsBatchAction.REMOVE },
+                                                enabled = selectedSongIds.isNotEmpty() && !isApplyingLufs
+                                            ) {
+                                                Text(sRemoveLufs)
+                                            }
                                         }
                                         if (isApplyingLufs && lufsProgressTotal > 0) {
                                             Text(
@@ -3848,35 +3923,47 @@ fun LibraryScreen(
                     prepareLibraryPlaylistAssignment(playlistName, selection)
                 }
             )
-            if (showApplyLufsConfirm) {
+            if (pendingLufsBatchAction != null) {
+                val batchAction = pendingLufsBatchAction!!
+                val confirmTitle = when (batchAction) {
+                    LufsBatchAction.APPLY -> sApplyLufs
+                    LufsBatchAction.REMOVE -> sRemoveLufs
+                }
+                val confirmMessage = context.getString(
+                    when (batchAction) {
+                        LufsBatchAction.APPLY -> R.string.library_lufs_apply_confirm
+                        LufsBatchAction.REMOVE -> R.string.library_lufs_remove_confirm
+                    },
+                    selectedSongIds.size
+                )
                 androidx.compose.material3.AlertDialog(
                     onDismissRequest = {
                         if (isApplyingLufs) return@AlertDialog
-                        showApplyLufsConfirm = false
+                        pendingLufsBatchAction = null
                     },
-                    title = { Text(text = sApplyLufs, color = titleColor) },
+                    title = { Text(text = confirmTitle, color = titleColor) },
                     text = {
                         Text(
-                            text = context.getString(
-                                R.string.library_lufs_apply_confirm,
-                                selectedSongIds.size
-                            ),
+                            text = confirmMessage,
                             color = subtitleColor
                         )
                     },
                     confirmButton = {
                         androidx.compose.material3.TextButton(
                             onClick = {
-                                showApplyLufsConfirm = false
-                                applyLufsToSelectedSongs(selectedSongIds)
+                                pendingLufsBatchAction = null
+                                when (batchAction) {
+                                    LufsBatchAction.APPLY -> applyLufsToSelectedSongs(selectedSongIds)
+                                    LufsBatchAction.REMOVE -> removeLufsFromSelectedSongs(selectedSongIds)
+                                }
                             }
                         ) {
-                            Text(sApplyLufs)
+                            Text(confirmTitle)
                         }
                     },
                     dismissButton = {
                         androidx.compose.material3.TextButton(
-                            onClick = { showApplyLufsConfirm = false }
+                            onClick = { pendingLufsBatchAction = null }
                         ) {
                             Text(stringResource(R.string.common_cancel))
                         }

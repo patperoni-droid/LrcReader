@@ -202,9 +202,12 @@
     <string name="library_view_mode_lufs">LUFS</string>
     <string name="library_lufs_active">LUFS actif</string>
     <string name="library_lufs_apply">Appliquer LUFS</string>
+    <string name="library_lufs_remove">Retirer LUFS</string>
     <string name="library_lufs_processing">Traitement LUFS en cours…</string>
     <string name="library_lufs_apply_confirm">Uniformiser le volume de %1$d morceaux ? Cette opération peut prendre un moment.</string>
     <string name="library_lufs_apply_done">%1$d morceaux traités</string>
+    <string name="library_lufs_remove_confirm">Retirer le mode LUFS de %1$d morceaux ?</string>
+    <string name="library_lufs_remove_done">%1$d morceaux mis en mode manuel</string>
     <string name="library_smp_folder">Mes morceaux live</string>
     <string name="library_legacy_backing_tracks_folder">Mes morceaux live</string>
     <string name="library_smp_empty_state">Aucun morceau live SMP pour l’instant.\nImporte ou convertis un morceau pour le voir apparaître ici.</string>
