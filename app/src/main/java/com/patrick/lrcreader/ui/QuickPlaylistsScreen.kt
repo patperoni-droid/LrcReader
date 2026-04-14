@@ -34,6 +34,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -101,6 +102,29 @@ import kotlinx.coroutines.yield
 import java.io.File
 import java.net.URLDecoder
 
+private data class QuickPlaylistUiSnapshot(
+    val loadStamp: String,
+    val songs: List<String>,
+    val playlistTotalMs: Long,
+    val durationCache: Map<String, Long>,
+    val originalOrder: List<String>?,
+    val portableStamp: String?,
+    val smpSongsById: Map<String, com.patrick.lrcreader.smp.SongUnit>,
+    val loaded: Boolean,
+    val firstVisibleItemIndex: Int,
+    val firstVisibleItemScrollOffset: Int
+)
+
+private object QuickPlaylistsUiCache {
+    private val snapshots = mutableMapOf<String, QuickPlaylistUiSnapshot>()
+
+    fun get(playlist: String?): QuickPlaylistUiSnapshot? = snapshots[playlist.orEmpty()]
+
+    fun put(playlist: String?, snapshot: QuickPlaylistUiSnapshot) {
+        snapshots[playlist.orEmpty()] = snapshot
+    }
+}
+
 /**
  * QuickPlaylistsScreen + titres "texte seul" (prompteur).
  */
@@ -162,16 +186,48 @@ fun QuickPlaylistsScreen(
         mutableStateOf<String?>(selectedPlaylist ?: openedPlaylist ?: playlists.firstOrNull())
     }
     val resolvedPlaylistSelection = internalSelected ?: selectedPlaylist ?: openedPlaylist ?: playlists.firstOrNull()
+    val playlistLoadStamp = remember(
+        resolvedPlaylistSelection,
+        refreshKey,
+        repoVersion,
+        libraryLoadedSignal,
+        playlistsReady,
+        titleAliasVersion
+    ) {
+        buildString {
+            append("playlist=").append(resolvedPlaylistSelection.orEmpty())
+            append("|refreshKey=").append(refreshKey)
+            append("|repoVersion=").append(repoVersion)
+            append("|libraryLoadedSignal=").append(libraryLoadedSignal)
+            append("|playlistsReady=").append(playlistsReady)
+            append("|titleAliasVersion=").append(titleAliasVersion)
+        }
+    }
+    val cachedPlaylistSnapshot = remember(resolvedPlaylistSelection) {
+        QuickPlaylistsUiCache.get(resolvedPlaylistSelection)
+    }
     val isMiniTunerVisible by MiniTunerVisibilityStore.state(context).collectAsState()
 
-    val songs = remember { mutableStateListOf<String>() }
+    val songs = remember(resolvedPlaylistSelection) {
+        mutableStateListOf<String>().apply {
+            addAll(cachedPlaylistSnapshot?.songs.orEmpty())
+        }
+    }
     val smpSongIdsInPlaylist by remember {
         derivedStateOf {
             songs.mapNotNull { getSmpSongId(it) }.toSet()
         }
     }
+    var playlistContentLoaded by remember(resolvedPlaylistSelection) {
+        mutableStateOf(cachedPlaylistSnapshot?.loaded == true)
+    }
     val smpSongsById = remember(refreshKey, libraryLoadedSignal, repoVersion, smpSongIdsInPlaylist) {
-        if (smpSongIdsInPlaylist.isEmpty()) {
+        if (
+            cachedPlaylistSnapshot?.loaded == true &&
+            cachedPlaylistSnapshot.loadStamp == playlistLoadStamp
+        ) {
+            cachedPlaylistSnapshot.smpSongsById
+        } else if (smpSongIdsInPlaylist.isEmpty()) {
             emptyMap()
         } else {
             smpLibraryScanner.listSongs()
@@ -195,9 +251,21 @@ fun QuickPlaylistsScreen(
     // - On le fixe au premier chargement d'une playlist
     // - Et on le met à jour quand TU réordonnes à la main (drag)
     // ✅ Durée playlist (cache par titre) + affichage mini dans le header
-    val durationCache = remember { mutableStateMapOf<String, Long>() } // uriString -> ms
-    var playlistTotalMs by remember { mutableStateOf(-1L) } // -1 = loading
-    val originalOrderByPlaylist = remember { mutableStateMapOf<String, List<String>>() }
+    val durationCache = remember(resolvedPlaylistSelection) {
+        mutableStateMapOf<String, Long>().apply {
+            putAll(cachedPlaylistSnapshot?.durationCache.orEmpty())
+        }
+    } // uriString -> ms
+    var playlistTotalMs by remember(resolvedPlaylistSelection) {
+        mutableStateOf(cachedPlaylistSnapshot?.playlistTotalMs ?: -1L)
+    } // -1 = loading
+    val originalOrderByPlaylist = remember(resolvedPlaylistSelection) {
+        mutableStateMapOf<String, List<String>>().apply {
+            resolvedPlaylistSelection?.let { playlist ->
+                cachedPlaylistSnapshot?.originalOrder?.let { put(playlist, it) }
+            }
+        }
+    }
     var currentListColor by remember { mutableStateOf(Color.White) } // ✅ plus de couleur "globale" de playlist
 
     var showMenu by remember { mutableStateOf(false) }
@@ -208,7 +276,12 @@ fun QuickPlaylistsScreen(
     var playlistSearchQuery by rememberSaveable(internalSelected) { mutableStateOf("") }
     var isSearchVisible by rememberSaveable(internalSelected) { mutableStateOf(false) }
 
-    val listState = rememberLazyListState()
+    val listState = rememberSaveable(resolvedPlaylistSelection, saver = LazyListState.Saver) {
+        LazyListState(
+            firstVisibleItemIndex = cachedPlaylistSnapshot?.firstVisibleItemIndex ?: 0,
+            firstVisibleItemScrollOffset = cachedPlaylistSnapshot?.firstVisibleItemScrollOffset ?: 0
+        )
+    }
     val searchFocusRequester = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
     val rowHeight = 56.dp
@@ -246,8 +319,32 @@ fun QuickPlaylistsScreen(
     // 🔸 version des couleurs par titre : on incrémente pour forcer recompose après un choix
     var songColorsVersion by remember { mutableStateOf(0) }
     var previousSongsSize by remember { mutableIntStateOf(0) }
-    val portableStampByPlaylist = remember { mutableStateMapOf<String, String>() }
+    val portableStampByPlaylist = remember(resolvedPlaylistSelection) {
+        mutableStateMapOf<String, String>().apply {
+            resolvedPlaylistSelection?.let { playlist ->
+                cachedPlaylistSnapshot?.portableStamp?.let { put(playlist, it) }
+            }
+        }
+    }
     var quickEnterAtMs by remember { mutableLongStateOf(0L) }
+
+    SideEffect {
+        QuickPlaylistsUiCache.put(
+            resolvedPlaylistSelection,
+            QuickPlaylistUiSnapshot(
+                loadStamp = playlistLoadStamp,
+                songs = songs.toList(),
+                playlistTotalMs = playlistTotalMs,
+                durationCache = durationCache.toMap(),
+                originalOrder = resolvedPlaylistSelection?.let { originalOrderByPlaylist[it] },
+                portableStamp = resolvedPlaylistSelection?.let { portableStampByPlaylist[it] },
+                smpSongsById = smpSongsById,
+                loaded = playlistContentLoaded,
+                firstVisibleItemIndex = listState.firstVisibleItemIndex,
+                firstVisibleItemScrollOffset = listState.firstVisibleItemScrollOffset
+            )
+        )
+    }
 
     LaunchedEffect(Unit) {
         quickEnterAtMs = SystemClock.elapsedRealtime()
@@ -289,6 +386,27 @@ fun QuickPlaylistsScreen(
             "BOOTSTEP",
             "QuickPlaylists.enter openedPlaylist=$pl selectedPlaylist=$selectedPlaylist reason=internalSelected"
         )
+        if (
+            pl != null &&
+            cachedPlaylistSnapshot?.loaded == true &&
+            cachedPlaylistSnapshot.loadStamp == playlistLoadStamp
+        ) {
+            playlistContentLoaded = true
+            if (songs != cachedPlaylistSnapshot.songs) {
+                songs.clear()
+                songs.addAll(cachedPlaylistSnapshot.songs)
+            }
+            playlistTotalMs = cachedPlaylistSnapshot.playlistTotalMs
+            cachedPlaylistSnapshot.originalOrder?.let { originalOrderByPlaylist[pl] = it }
+            cachedPlaylistSnapshot.portableStamp?.let { portableStampByPlaylist[pl] = it }
+            durationCache.clear()
+            durationCache.putAll(cachedPlaylistSnapshot.durationCache)
+            Log.d(
+                "BOOTSTEP",
+                "QuickPlaylists.restoreSnapshot playlist=$pl size=${cachedPlaylistSnapshot.songs.size} totalMs=${cachedPlaylistSnapshot.playlistTotalMs}"
+            )
+            return@LaunchedEffect
+        }
         if (pl != null) {
             val raw = PlaylistRepository.getAllSongsRaw(pl)
             if (!playlistsReady) {
@@ -298,6 +416,7 @@ fun QuickPlaylistsScreen(
                     "BOOTSTEP",
                     "QuickPlaylists.wait playlistsReady=false playlist=$pl rawSize=${raw.size} keepFallback=true"
                 )
+                playlistContentLoaded = false
                 return@LaunchedEffect
             }
 
@@ -366,6 +485,7 @@ fun QuickPlaylistsScreen(
                 }
                 acc
             }
+            playlistContentLoaded = true
         }
     }
 
