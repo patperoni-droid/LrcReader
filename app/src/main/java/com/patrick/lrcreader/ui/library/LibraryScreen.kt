@@ -1,5 +1,6 @@
 package com.patrick.lrcreader.ui.library
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Handler
@@ -99,6 +100,22 @@ private const val LIBRARY_VIEW_MODE_SONGS = "songs"
 private const val LIBRARY_VIEW_MODE_FILES = "files"
 private const val LIBRARY_VIEW_MODE_PLAYLISTS = "playlists"
 private const val LIBRARY_VIEW_MODE_LUFS = "lufs"
+
+private object LibraryLufsHintPrefs {
+    private const val PREFS_NAME = "library_lufs_hint_prefs"
+    private const val KEY_DISMISSED = "lufs_hint_dismissed"
+
+    fun isDismissed(context: Context): Boolean =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(KEY_DISMISSED, false)
+
+    fun setDismissed(context: Context, dismissed: Boolean) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_DISMISSED, dismissed)
+            .apply()
+    }
+}
 private const val LIBRARY_LUFS_TARGET = -14f
 private const val LIBRARY_LUFS_MIN_DB = -12
 private const val LIBRARY_LUFS_MAX_DB = 0
@@ -531,6 +548,9 @@ fun LibraryScreen(
     val sApplyLufs = stringResource(R.string.library_lufs_apply)
     val sRemoveLufs = stringResource(R.string.library_lufs_remove)
     val sLufsProcessing = stringResource(R.string.library_lufs_processing)
+    val sLufsHintTitle = stringResource(R.string.library_lufs_hint_title)
+    val sLufsHintMessage = stringResource(R.string.library_lufs_hint_message)
+    val sLufsHintDoNotShowAgain = stringResource(R.string.library_lufs_hint_do_not_show_again)
     val sConvertSmpSingleSuccess = stringResource(R.string.library_convert_smp_success_single)
     val sConvertSmpSingleFailed = stringResource(R.string.library_convert_smp_failed_single)
     val sConvertSmpNoMp3 = stringResource(R.string.library_convert_smp_no_mp3)
@@ -1500,6 +1520,9 @@ fun LibraryScreen(
     val isFilesViewMode = libraryViewMode == LIBRARY_VIEW_MODE_FILES
     val isPlaylistsViewMode = libraryViewMode == LIBRARY_VIEW_MODE_PLAYLISTS
     val isSongBasedViewMode = isSongViewMode || isLufsViewMode
+    var hasShownLufsHintThisSession by rememberSaveable { mutableStateOf(false) }
+    var showLufsHintDialog by remember { mutableStateOf(false) }
+    var lufsHintDoNotShowAgainChecked by remember { mutableStateOf(false) }
     var selectedSongIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var pendingLufsBatchAction by remember { mutableStateOf<LufsBatchAction?>(null) }
     var isApplyingLufs by remember { mutableStateOf(false) }
@@ -1520,6 +1543,16 @@ fun LibraryScreen(
         val name: String,
         val indexedItem: SearchEngine.IndexedItem
     )
+
+    LaunchedEffect(isLufsViewMode) {
+        if (!isLufsViewMode || hasShownLufsHintThisSession) return@LaunchedEffect
+        hasShownLufsHintThisSession = true
+        if (!LibraryLufsHintPrefs.isDismissed(context)) {
+            lufsHintDoNotShowAgainChecked = false
+            showLufsHintDialog = true
+        }
+    }
+
     val searchableEntries = remember(entries, titleAliasVersion, context) {
         entries
             .asSequence()
@@ -3923,6 +3956,57 @@ fun LibraryScreen(
                     prepareLibraryPlaylistAssignment(playlistName, selection)
                 }
             )
+            if (showLufsHintDialog) {
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = {
+                        if (lufsHintDoNotShowAgainChecked) {
+                            LibraryLufsHintPrefs.setDismissed(context, true)
+                        }
+                        showLufsHintDialog = false
+                    },
+                    title = {
+                        Text(
+                            text = sLufsHintTitle,
+                            color = titleColor
+                        )
+                    },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Text(
+                                text = sLufsHintMessage,
+                                color = subtitleColor
+                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                androidx.compose.material3.Checkbox(
+                                    checked = lufsHintDoNotShowAgainChecked,
+                                    onCheckedChange = { checked ->
+                                        lufsHintDoNotShowAgainChecked = checked
+                                    }
+                                )
+                                Text(
+                                    text = sLufsHintDoNotShowAgain,
+                                    color = subtitleColor
+                                )
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        androidx.compose.material3.TextButton(
+                            onClick = {
+                                if (lufsHintDoNotShowAgainChecked) {
+                                    LibraryLufsHintPrefs.setDismissed(context, true)
+                                }
+                                showLufsHintDialog = false
+                            }
+                        ) {
+                            Text(stringResource(R.string.common_ok))
+                        }
+                    }
+                )
+            }
             if (pendingLufsBatchAction != null) {
                 val batchAction = pendingLufsBatchAction!!
                 val confirmTitle = when (batchAction) {
