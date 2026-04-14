@@ -6,9 +6,11 @@ data class LibrarySongItem(
     val song: SongUnit,
     val playbackItem: String,
     val displayTitle: String,
-    val fallbackTitle: String
+    val fallbackTitle: String,
+    val volumeSource: String = "manual"
 ) {
     val songId: String get() = song.id
+    val isLufsActive: Boolean get() = volumeSource == "lufs"
     val audioAvailable: Boolean get() = song.audioPath != null
     val hasLyrics: Boolean get() = song.lyricsPath != null
     val hasChords: Boolean get() = song.chordsPath != null

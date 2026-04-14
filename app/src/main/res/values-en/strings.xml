@@ -200,6 +200,8 @@
     <string name="library_view_mode_songs">Live</string>
     <string name="library_view_mode_files">Files</string>
     <string name="library_view_mode_playlists">Playlists</string>
+    <string name="library_view_mode_lufs">LUFS</string>
+    <string name="library_lufs_active">LUFS active</string>
     <string name="library_smp_folder">My Live Tracks</string>
     <string name="library_legacy_backing_tracks_folder">My Live Tracks</string>
     <string name="library_smp_empty_state">No SMP live tracks yet.\nImport or convert a song to see it appear here.</string>

@@ -192,6 +192,8 @@
     <string name="library_view_mode_songs">Live</string>
     <string name="library_view_mode_files">Archivos</string>
     <string name="library_view_mode_playlists">Playlists</string>
+    <string name="library_view_mode_lufs">LUFS</string>
+    <string name="library_lufs_active">LUFS activo</string>
     <string name="library_smp_folder">Mis pistas en vivo</string>
     <string name="library_legacy_backing_tracks_folder">Mis pistas en vivo</string>
     <string name="library_smp_empty_state">Aún no hay pistas en vivo SMP.\nImporta o convierte una canción para verla aquí.</string>

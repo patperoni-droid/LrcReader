@@ -62,6 +62,7 @@ import com.patrick.lrcreader.core.search.SearchEngine
 import com.patrick.lrcreader.exo.BuildConfig
 import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.smp.SmpBatchImportProcessor
+import com.patrick.lrcreader.smp.SmpConfig
 import com.patrick.lrcreader.smp.SmpConverter
 import com.patrick.lrcreader.smp.SmpExporter
 import com.patrick.lrcreader.smp.SmpImportedUiSignal
@@ -88,6 +89,7 @@ private val SMP_FOLDER_URI: Uri = Uri.parse("spl-smp://folder")
 private const val LIBRARY_VIEW_MODE_SONGS = "songs"
 private const val LIBRARY_VIEW_MODE_FILES = "files"
 private const val LIBRARY_VIEW_MODE_PLAYLISTS = "playlists"
+private const val LIBRARY_VIEW_MODE_LUFS = "lufs"
 private const val IMPORT_PROOF_TAG = "IMPORT_PROOF"
 private const val IMPORT_TRACE_TAG = "IMPORT_TRACE"
 private const val SMP_VIEW_TRACE_TAG = "SMP_VIEW_TRACE"
@@ -506,7 +508,9 @@ fun LibraryScreen(
     val sSongsView = stringResource(R.string.library_view_mode_songs)
     val sFilesView = stringResource(R.string.library_view_mode_files)
     val sPlaylistsView = stringResource(R.string.library_view_mode_playlists)
+    val sLufsView = stringResource(R.string.library_view_mode_lufs)
     val sPlaylistsEmpty = stringResource(R.string.all_playlists_empty)
+    val sLufsActive = stringResource(R.string.library_lufs_active)
     val sConvertSmpSingleSuccess = stringResource(R.string.library_convert_smp_success_single)
     val sConvertSmpSingleFailed = stringResource(R.string.library_convert_smp_failed_single)
     val sConvertSmpNoMp3 = stringResource(R.string.library_convert_smp_no_mp3)
@@ -868,7 +872,9 @@ fun LibraryScreen(
                     song = song,
                     playbackItem = playbackItem,
                     displayTitle = resolveSongDisplayTitle(song.id, fallbackTitle),
-                    fallbackTitle = fallbackTitle
+                    fallbackTitle = fallbackTitle,
+                    volumeSource = SmpConfig.readPlaybackFromSongUnit(song)?.volumeSource
+                        ?: SmpConfig.PlaybackConfig.VOLUME_SOURCE_MANUAL
                 )
             }
             .sortedBy { it.displayTitle.lowercase() }
@@ -1433,8 +1439,20 @@ fun LibraryScreen(
     var searchQuery by remember { mutableStateOf("") }
     var isSearchVisible by remember { mutableStateOf(false) }
     val isSongViewMode = libraryViewMode == LIBRARY_VIEW_MODE_SONGS
+    val isLufsViewMode = libraryViewMode == LIBRARY_VIEW_MODE_LUFS
     val isFilesViewMode = libraryViewMode == LIBRARY_VIEW_MODE_FILES
     val isPlaylistsViewMode = libraryViewMode == LIBRARY_VIEW_MODE_PLAYLISTS
+    val isSongBasedViewMode = isSongViewMode || isLufsViewMode
+    var selectedSongIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    val autoSelectedLufsSongIds = remember(songItems) {
+        songItems.filter { it.isLufsActive }.map { it.songId }.toSet()
+    }
+    LaunchedEffect(isLufsViewMode, autoSelectedLufsSongIds) {
+        if (!isLufsViewMode) return@LaunchedEffect
+        if (selectedSongIds.isEmpty() && autoSelectedLufsSongIds.isNotEmpty()) {
+            selectedSongIds = autoSelectedLufsSongIds
+        }
+    }
     val playlistRepoVersion = PlaylistRepository.version.value
     val titleAliasVersion = TitleAliasesStore.version.intValue
     data class SearchableLibraryEntry(
@@ -1577,17 +1595,17 @@ fun LibraryScreen(
             ?.let(::isBackupFolderName) == true
     }
     val activeSearchableCount = when {
-        isSongViewMode -> searchableSongItems.size
+        isSongBasedViewMode -> searchableSongItems.size
         isFilesViewMode -> searchableEntries.size
         else -> searchablePlaylists.size
     }
     val activeFilteredCount = when {
-        isSongViewMode -> filteredSongItems.size
+        isSongBasedViewMode -> filteredSongItems.size
         isFilesViewMode -> filteredEntries.size
         else -> filteredPlaylists.size
     }
     val hasVisibleLibraryContent = when {
-        isSongViewMode -> searchableSongItems.isNotEmpty()
+        isSongBasedViewMode -> searchableSongItems.isNotEmpty()
         isFilesViewMode -> searchableEntries.isNotEmpty()
         else -> searchablePlaylists.isNotEmpty()
     }
@@ -1596,7 +1614,7 @@ fun LibraryScreen(
         (
             isLoading ||
                 !initialLoadDone ||
-                (isSongViewMode && songItemsLoading)
+                (isSongBasedViewMode && songItemsLoading)
             )
     LaunchedEffect(searchQuery, activeSearchableCount, activeFilteredCount, currentFolderUri, libraryViewMode) {
         if (BuildConfig.DEBUG) {
@@ -3041,6 +3059,16 @@ fun LibraryScreen(
                         stopQuickPlay()
                     }
                 )
+                LibraryViewModeButton(
+                    label = sLufsView,
+                    selected = isLufsViewMode,
+                    accent = accent,
+                    onClick = {
+                        libraryViewMode = LIBRARY_VIEW_MODE_LUFS
+                        selectedSongs = emptySet()
+                        stopQuickPlay()
+                    }
+                )
             }
 
             Spacer(Modifier.height(10.dp))
@@ -3160,7 +3188,7 @@ fun LibraryScreen(
                             }
                         }
                     }
-                } else if (currentFolderUri == null) {
+                } else if (currentFolderUri == null && !isSongBasedViewMode) {
                     Text(
                         text = sNoFolderHint,
                         color = subtitleColor,
@@ -3250,6 +3278,73 @@ fun LibraryScreen(
                                         pendingDeleteSmpUri = uri
                                     }
                                 )
+                            }
+                        } else if (isLufsViewMode) {
+                            if (searchableSongItems.isEmpty()) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(horizontal = 12.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = sSmpEmptyState,
+                                        color = subtitleColor,
+                                        fontSize = 13.sp
+                                    )
+                                }
+                            } else {
+                                LazyColumn(
+                                    modifier = Modifier.fillMaxSize(),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    items(filteredSongItems, key = { it.songId }) { song ->
+                                        val isSelected = selectedSongIds.contains(song.songId)
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .background(cardBg, RoundedCornerShape(10.dp))
+                                                .border(1.dp, rowBorder, RoundedCornerShape(10.dp))
+                                                .clickable {
+                                                    selectedSongIds = if (isSelected) {
+                                                        selectedSongIds - song.songId
+                                                    } else {
+                                                        selectedSongIds + song.songId
+                                                    }
+                                                }
+                                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            androidx.compose.material3.Checkbox(
+                                                checked = isSelected,
+                                                onCheckedChange = { checked ->
+                                                    selectedSongIds = if (checked) {
+                                                        selectedSongIds + song.songId
+                                                    } else {
+                                                        selectedSongIds - song.songId
+                                                    }
+                                                }
+                                            )
+
+                                            Spacer(Modifier.width(10.dp))
+
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = song.displayTitle,
+                                                    color = titleColor,
+                                                    fontSize = 15.sp
+                                                )
+                                                if (song.isLufsActive) {
+                                                    Text(
+                                                        text = sLufsActive,
+                                                        color = accent,
+                                                        fontSize = 11.sp
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         } else {
                             val isEmptySmpFolder =
