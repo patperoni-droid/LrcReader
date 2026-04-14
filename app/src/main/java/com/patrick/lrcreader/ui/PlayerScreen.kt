@@ -11,9 +11,7 @@ import com.patrick.lrcreader.core.readSyltAsLrcFromUri
 import com.patrick.lrcreader.core.readUsltFromUri
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.OutlinedTextField
 import com.patrick.lrcreader.core.notes.LiveNote
 import com.patrick.lrcreader.core.notes.LiveNoteManager
 import com.patrick.lrcreader.core.PlayerBusController
@@ -38,7 +36,6 @@ import androidx.compose.material.icons.filled.ShowChart
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -169,14 +166,6 @@ fun PlayerScreen(
     val sTimelineSaveFailed = stringResource(R.string.timeline_save_failed)
     val sLightGenerateFailed = stringResource(R.string.light_generate_failed)
     val midiCueTraceTag = "MIDI_CUE_TRACE"
-
-    // 📝 Notes LIVE (création depuis le lecteur)
-    var showAddNoteDialog by rememberSaveable(currentTrackUri) { mutableStateOf(false) }
-    var noteDraftText by rememberSaveable(currentTrackUri) { mutableStateOf("") }
-    // durée par défaut (en ms)
-    var noteDraftDurationMs by rememberSaveable(currentTrackUri) { mutableStateOf(30_000L) }
-    var noteAnchorMs by rememberSaveable(currentTrackUri) { mutableStateOf<Long?>(null) }      // timecode gelé
-    var wasPlayingBeforeNote by rememberSaveable(currentTrackUri) { mutableStateOf(false) }    // pour relancer après
 
     // 🔊 Brancher ExoPlayer au bus principal (fader LECTEUR)
     var activeLiveNote by remember { mutableStateOf<LiveNote?>(null) }
@@ -2007,12 +1996,6 @@ fun PlayerScreen(
                             onOpenWaveform = {
                                 currentSongId?.takeIf { it.isNotBlank() }?.let(onOpenWaveform)
                             },
-                            onAddLiveNote = {
-                                noteAnchorMs = getPositionMs()
-                                wasPlayingBeforeNote = isPlaying
-                                if (isPlaying) onIsPlayingChange(false)
-                                showAddNoteDialog = true
-                            },
                         )
 
                         if (!nextTrackTitle.isNullOrBlank()) {
@@ -2349,101 +2332,6 @@ fun PlayerScreen(
         }
     }
 
-    // ─────────────────────────────────────────────────────────────
-    //  POPUP : ajouter une note LIVE au timecode courant
-    // ─────────────────────────────────────────────────────────────
-    if (showAddNoteDialog) {
-        AlertDialog(
-            onDismissRequest = {
-                if (wasPlayingBeforeNote) onIsPlayingChange(true)
-                noteAnchorMs = null
-                wasPlayingBeforeNote = false
-                noteDraftText = ""
-                showAddNoteDialog = false
-            },
-            title = { Text(stringResource(R.string.player_add_note_title), color = Color.White) },
-            text = {
-                Column {
-                    OutlinedTextField(
-                        value = noteDraftText,
-                        onValueChange = { noteDraftText = it },
-                        label = { Text(stringResource(R.string.player_add_note_label_hint)) },
-                        singleLine = false,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    Spacer(Modifier.height(12.dp))
-
-                    Text(
-                        text = stringResource(
-                            R.string.player_note_duration_seconds,
-                            (noteDraftDurationMs / 1000L).toInt()
-                        ),
-                        color = Color(0xFFB0BEC5),
-                        fontSize = 12.sp
-                    )
-
-                    Spacer(Modifier.height(8.dp))
-
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilledTonalButton(onClick = { noteDraftDurationMs = 10_000L }) {
-                            Text(stringResource(R.string.player_note_preset_10s))
-                        }
-                        FilledTonalButton(onClick = { noteDraftDurationMs = 30_000L }) {
-                            Text(stringResource(R.string.player_note_preset_30s))
-                        }
-                        FilledTonalButton(onClick = { noteDraftDurationMs = 60_000L }) {
-                            Text(stringResource(R.string.player_note_preset_60s))
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    val text = noteDraftText.trim()
-                    val trackUriForPersistence = currentTrackUri
-                    if (text.isNotEmpty()) {
-                        val startMs = noteAnchorMs ?: getPositionMs()
-                        val note = LiveNote(
-                            timeMs = startMs,
-                            durationMs = noteDraftDurationMs,
-                            text = text
-                        )
-                        LiveNoteManager.addNote(note)
-                        activeLiveNote = note
-                        val liveNotesSnapshot = LiveNoteManager.snapshot()
-                        scope.launch {
-                            persistLiveNotesWithAutoMigration(
-                                trackUriString = trackUriForPersistence,
-                                notes = liveNotesSnapshot
-                            )
-                        }
-                    }
-
-                    if (wasPlayingBeforeNote) onIsPlayingChange(true)
-                    noteAnchorMs = null
-                    wasPlayingBeforeNote = false
-                    noteDraftText = ""
-                    showAddNoteDialog = false
-                }) {
-                    Text(stringResource(R.string.common_ok), color = Color(0xFFFFC107))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    if (wasPlayingBeforeNote) onIsPlayingChange(true)
-                    noteAnchorMs = null
-                    wasPlayingBeforeNote = false
-                    noteDraftText = ""
-                    showAddNoteDialog = false
-                }) {
-                    Text(stringResource(R.string.common_cancel), color = Color(0xFFB0BEC5))
-                }
-            },
-            containerColor = Color(0xFF222222)
-        )
-    }
-
     val timelineMidiMarkerIndex = editingTimelineMidiMarkerIndex
     val timelineMidiTrackUri = currentTrackUri?.takeIf { it.isNotBlank() }
     if (
@@ -2587,7 +2475,6 @@ private fun ReaderHeader(
     onOpenTimeline: () -> Unit,
     showWaveformAction: Boolean,
     onOpenWaveform: () -> Unit,
-    onAddLiveNote: () -> Unit,
 ) {
     Box(
         modifier = Modifier
@@ -2663,10 +2550,6 @@ private fun ReaderHeader(
                         tint = Color(0xFF90CAF9)
                     )
                 }
-            }
-
-            IconButton(onClick = onAddLiveNote) {
-                Text(stringResource(R.string.player_add_note_icon), color = Color.White, fontSize = 16.sp)
             }
         }
     }
