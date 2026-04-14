@@ -433,7 +433,7 @@ fun PlayerScreen(
     var dragPosMs by remember(currentTrackUri) { mutableStateOf(0) }
 
 
-    var hasRequestedPlaylist by rememberSaveable(currentTrackUri) { mutableStateOf(false) }
+    var hasRequestedPlaylist by remember(currentTrackUri) { mutableStateOf(false) }
     var autoReturnArmed by rememberSaveable(currentTrackUri) { mutableStateOf(false) }
 
     LaunchedEffect(currentTrackUri) {
