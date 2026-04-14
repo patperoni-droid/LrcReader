@@ -77,15 +77,20 @@ data class SmpConfig(
         val trimEndMs: Long?,
         val tempo: Float? = null,
         val pitchSemi: Int? = null,
-        val volumeDb: Int? = null
+        val volumeDb: Int? = null,
+        val volumeSource: String? = null
     ) {
         companion object {
+            const val VOLUME_SOURCE_MANUAL = "manual"
+            const val VOLUME_SOURCE_LUFS = "lufs"
+
             fun fromStoredValues(
                 startMs: Long?,
                 endMs: Long?,
                 tempo: Float? = null,
                 pitchSemi: Int? = null,
-                volumeDb: Int? = null
+                volumeDb: Int? = null,
+                volumeSource: String? = null
             ): PlaybackConfig? {
                 val trimStartMs = startMs?.takeIf { it > 0L }
                 val trimEndMs = endMs?.takeIf { it > 0L }
@@ -96,6 +101,12 @@ data class SmpConfig(
                     ?.coerceIn(-6, 6)
                     ?.takeIf { it != 0 }
                 val playbackVolumeDb = volumeDb
+                val playbackVolumeSource = when {
+                    playbackVolumeDb == null -> null
+                    volumeSource.isNullOrBlank() -> VOLUME_SOURCE_MANUAL
+                    volumeSource.equals(VOLUME_SOURCE_LUFS, ignoreCase = true) -> VOLUME_SOURCE_LUFS
+                    else -> VOLUME_SOURCE_MANUAL
+                }
                 if (trimStartMs == null && trimEndMs == null && playbackTempo == null && playbackPitchSemi == null && playbackVolumeDb == null) {
                     return null
                 }
@@ -104,7 +115,8 @@ data class SmpConfig(
                     trimEndMs = trimEndMs,
                     tempo = playbackTempo,
                     pitchSemi = playbackPitchSemi,
-                    volumeDb = playbackVolumeDb
+                    volumeDb = playbackVolumeDb,
+                    volumeSource = playbackVolumeSource
                 )
             }
 
@@ -127,6 +139,7 @@ data class SmpConfig(
                 tempo?.let { put("tempo", it.toDouble()) }
                 pitchSemi?.let { put("pitchSemi", it) }
                 volumeDb?.let { put("volumeDb", it) }
+                volumeSource?.let { put("volumeSource", it) }
             }
         }
     }
@@ -191,12 +204,18 @@ data class SmpConfig(
             val tempo = playbackJson.optFloatOrNull("tempo")
             val pitchSemi = playbackJson.optIntOrNull("pitchSemi")
             val volumeDb = playbackJson.optIntOrNull("volumeDb")
+            val volumeSource = if (volumeDb != null) {
+                playbackJson.optStringOrNull("volumeSource") ?: PlaybackConfig.VOLUME_SOURCE_MANUAL
+            } else {
+                null
+            }
             return PlaybackConfig.fromStoredValues(
                 startMs = trimStartMs,
                 endMs = trimEndMs,
                 tempo = tempo,
                 pitchSemi = pitchSemi,
-                volumeDb = volumeDb
+                volumeDb = volumeDb,
+                volumeSource = volumeSource
             )
         }
 
@@ -309,7 +328,8 @@ data class SmpConfig(
                     endMs = endMs.toLong(),
                     tempo = currentConfig.playback?.tempo,
                     pitchSemi = currentConfig.playback?.pitchSemi,
-                    volumeDb = currentConfig.playback?.volumeDb
+                    volumeDb = currentConfig.playback?.volumeDb,
+                    volumeSource = currentConfig.playback?.volumeSource
                 )
                 val nextConfig = currentConfig.copy(
                     title = currentConfig.title ?: songUnit.title.takeIf { it.isNotBlank() },
@@ -352,7 +372,8 @@ data class SmpConfig(
                 endMs = configPlayback?.trimEndMs ?: currentEdit?.endMs?.toLong() ?: legacyEdit?.endMs,
                 tempo = storedTempo ?: configPlayback?.tempo,
                 pitchSemi = storedPitchSemi ?: configPlayback?.pitchSemi,
-                volumeDb = storedVolumeDb ?: configPlayback?.volumeDb
+                volumeDb = storedVolumeDb ?: configPlayback?.volumeDb,
+                volumeSource = configPlayback?.volumeSource
             )
         }
 

@@ -15,10 +15,15 @@ object TrackVolumePrefs {
     private const val MIN_DB = -12
     private const val MAX_DB = 0
 
-    fun saveDb(context: Context, uri: String, db: Int) {
+    fun saveDb(
+        context: Context,
+        uri: String,
+        db: Int,
+        source: String = SmpConfig.PlaybackConfig.VOLUME_SOURCE_MANUAL
+    ) {
         val safeDb = db.coerceIn(MIN_DB, MAX_DB)
         val smpSaved = resolveInternalSmpConfigFile(context, uri)?.let { configFile ->
-            writeSmpVolumeDb(configFile, safeDb)
+            writeSmpVolumeDb(configFile, safeDb, source)
         }
         if (smpSaved == true) {
             return
@@ -62,7 +67,7 @@ object TrackVolumePrefs {
         }
     }
 
-    private fun writeSmpVolumeDb(configFile: File, db: Int): Boolean {
+    private fun writeSmpVolumeDb(configFile: File, db: Int, source: String): Boolean {
         val songDir = configFile.parentFile ?: return false
         val tmpFile = File(songDir, "$SMP_CONFIG_FILE_NAME.tmp")
 
@@ -74,7 +79,8 @@ object TrackVolumePrefs {
                 endMs = currentConfig.playback?.trimEndMs,
                 tempo = currentConfig.playback?.tempo,
                 pitchSemi = currentConfig.playback?.pitchSemi,
-                volumeDb = db
+                volumeDb = db,
+                volumeSource = source
             )
             val nextConfig = currentConfig.copy(playback = nextPlayback)
             val rawJson = nextConfig.toJsonString()

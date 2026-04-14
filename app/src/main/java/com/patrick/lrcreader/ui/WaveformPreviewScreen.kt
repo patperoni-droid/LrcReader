@@ -134,6 +134,7 @@ fun WaveformPreviewScreen(
     var inMs by remember { mutableIntStateOf(0) }
     var outMs by remember { mutableIntStateOf(0) }
     var pendingVolumeDb by remember { mutableIntStateOf(0) }
+    var pendingVolumeSource by remember { mutableStateOf<String?>(null) }
     var estimatedTrackLufs by remember { mutableStateOf<Float?>(null) }
     var playheadMs by remember { mutableIntStateOf(0) }
     var stepMs by remember { mutableIntStateOf(50) }
@@ -180,6 +181,7 @@ fun WaveformPreviewScreen(
         inMs = 0
         outMs = 0
         pendingVolumeDb = 0
+        pendingVolumeSource = null
         estimatedTrackLufs = null
         playheadMs = 0
         runCatching {
@@ -235,6 +237,7 @@ fun WaveformPreviewScreen(
                     pendingVolumeDb = (savedConfigPlayback?.volumeDb
                         ?: TrackVolumePrefs.getDb(context, uri.toString())
                         ?: 0).coerceIn(MATCH_VOLUME_MIN_DB, MATCH_VOLUME_MAX_DB)
+                    pendingVolumeSource = savedConfigPlayback?.volumeSource
                     val (safeIn, safeOut) = normalizeInOut(
                         inMs = savedStartMs,
                         outMs = savedOutMs,
@@ -250,6 +253,7 @@ fun WaveformPreviewScreen(
                 inMs = 0
                 outMs = 0
                 pendingVolumeDb = 0
+                pendingVolumeSource = null
                 estimatedTrackLufs = null
                 playheadMs = 0
                 hasError = true
@@ -313,6 +317,7 @@ fun WaveformPreviewScreen(
             inMs = 0
             outMs = 0
             pendingVolumeDb = 0
+            pendingVolumeSource = null
             estimatedTrackLufs = null
             playheadMs = 0
             return@LaunchedEffect
@@ -331,6 +336,7 @@ fun WaveformPreviewScreen(
             inMs = 0
             outMs = 0
             pendingVolumeDb = 0
+            pendingVolumeSource = null
             estimatedTrackLufs = null
             playheadMs = 0
             return@LaunchedEffect
@@ -352,6 +358,7 @@ fun WaveformPreviewScreen(
         startMs: Int,
         endMs: Int,
         volumeDb: Int,
+        volumeSource: String?,
         persistVolume: Boolean,
         successMessage: String
     ) {
@@ -386,7 +393,8 @@ fun WaveformPreviewScreen(
                 TrackVolumePrefs.saveDb(
                     context = appContext,
                     uri = sourceUri.toString(),
-                    db = volumeDb
+                    db = volumeDb,
+                    source = volumeSource ?: SmpConfig.PlaybackConfig.VOLUME_SOURCE_MANUAL
                 )
             }
         }
@@ -814,6 +822,7 @@ fun WaveformPreviewScreen(
                                     startMs = inMs,
                                     endMs = 0,
                                     volumeDb = pendingVolumeDb,
+                                    volumeSource = pendingVolumeSource,
                                     persistVolume = false,
                                     successMessage = context.getString(R.string.waveform_out_cleared)
                                 )
@@ -836,6 +845,7 @@ fun WaveformPreviewScreen(
                                         estimateMatchedVolumeDbFromPeaks(snapshotPeaks)
                                     } ?: return@launch
                                     pendingVolumeDb = matchedVolumeDb
+                                    pendingVolumeSource = SmpConfig.PlaybackConfig.VOLUME_SOURCE_LUFS
                                     Toast.makeText(
                                         context,
                                         context.getString(
@@ -863,6 +873,7 @@ fun WaveformPreviewScreen(
                                     startMs = inMs,
                                     endMs = outMs,
                                     volumeDb = pendingVolumeDb,
+                                    volumeSource = pendingVolumeSource,
                                     persistVolume = true,
                                     successMessage = context.getString(R.string.waveform_trim_saved)
                                 )

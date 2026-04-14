@@ -92,7 +92,8 @@ object TrackPitchPrefs {
                 endMs = currentConfig.playback?.trimEndMs,
                 tempo = currentConfig.playback?.tempo,
                 pitchSemi = semi,
-                volumeDb = currentConfig.playback?.volumeDb
+                volumeDb = currentConfig.playback?.volumeDb,
+                volumeSource = currentConfig.playback?.volumeSource
             )
             val nextConfig = currentConfig.copy(playback = nextPlayback)
             val rawJson = nextConfig.toJsonString()
