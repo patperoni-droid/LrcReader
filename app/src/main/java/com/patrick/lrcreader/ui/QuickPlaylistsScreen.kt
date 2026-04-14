@@ -273,6 +273,7 @@ fun QuickPlaylistsScreen(
     var showCreatePlaylistDialog by remember { mutableStateOf(false) }
     var createPlaylistName by remember { mutableStateOf("") }
     var showSavePlaylistDialog by remember { mutableStateOf(false) }
+    var showResetPlaylistDialog by remember { mutableStateOf(false) }
     var savePlaylistName by remember { mutableStateOf("") }
     var playlistSearchQuery by rememberSaveable(internalSelected) { mutableStateOf("") }
     var isSearchVisible by rememberSaveable(internalSelected) { mutableStateOf(false) }
@@ -1026,29 +1027,7 @@ fun QuickPlaylistsScreen(
                     if (internalSelected != null) {
                         IconButton(
                             onClick = {
-                                val pl = internalSelected ?: return@IconButton
-
-                                val currentRaw = PlaylistRepository.getAllSongsRaw(pl)
-                                val restored = loadManualOrder(context, pl, currentRaw)
-                                    ?.takeIf { it.isNotEmpty() }
-                                    ?: originalOrderByPlaylist[pl]
-                                        ?.takeIf { it.isNotEmpty() }
-                                    ?: loadOriginalOrder(context, pl)
-                                    ?: currentRaw
-
-                                // 1) on efface le statut "joué"
-                                PlaylistRepository.resetPlayedFor(pl)
-
-                                // 2) on restaure l'ordre utilisateur persistant
-                                PlaylistRepository.updatePlayListOrder(pl, restored)
-                                saveManualOrder(context, pl, restored)
-                                originalOrderByPlaylist[pl] = restored
-
-                                // 3) UI
-                                songs.clear()
-                                songs.addAll(PlaylistRepository.getSongsFor(pl))
-
-                                onSelectedPlaylistChange(pl)
+                                showResetPlaylistDialog = true
                             }
                         ) {
                             Icon(
@@ -2237,6 +2216,64 @@ fun QuickPlaylistsScreen(
                 TextButton(
                     onClick = { showSavePlaylistDialog = false }
                 ) {
+                    Text(stringResource(R.string.common_cancel), color = Color.White)
+                }
+            },
+            containerColor = Color(0xFF222222)
+        )
+    }
+
+    if (showResetPlaylistDialog) {
+        AlertDialog(
+            onDismissRequest = { showResetPlaylistDialog = false },
+            title = {
+                Text(
+                    stringResource(R.string.quickplaylists_reset_confirm_title),
+                    color = Color.White
+                )
+            },
+            text = {
+                Text(
+                    text = stringResource(R.string.quickplaylists_reset_confirm_message),
+                    color = Color.LightGray
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val pl = internalSelected
+                        showResetPlaylistDialog = false
+                        if (pl.isNullOrBlank()) return@TextButton
+
+                        val currentRaw = PlaylistRepository.getAllSongsRaw(pl)
+                        val restored = loadManualOrder(context, pl, currentRaw)
+                            ?.takeIf { it.isNotEmpty() }
+                            ?: originalOrderByPlaylist[pl]
+                                ?.takeIf { it.isNotEmpty() }
+                            ?: loadOriginalOrder(context, pl)
+                            ?: currentRaw
+
+                        PlaylistRepository.resetPlayedFor(pl)
+                        PlaylistRepository.updatePlayListOrder(pl, restored)
+                        saveManualOrder(context, pl, restored)
+                        originalOrderByPlaylist[pl] = restored
+
+                        songs.clear()
+                        songs.addAll(PlaylistRepository.getSongsFor(pl))
+
+                        onSelectedPlaylistChange(pl)
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.quickplaylists_reset_done),
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                ) {
+                    Text(stringResource(R.string.common_reset), color = Color(0xFFFFB74D))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showResetPlaylistDialog = false }) {
                     Text(stringResource(R.string.common_cancel), color = Color.White)
                 }
             },

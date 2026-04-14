@@ -410,6 +410,9 @@
     <!-- Common visible labels -->
     <string name="common_back_arrow">← Back</string>
     <string name="common_reset">Reset</string>
+    <string name="quickplaylists_reset_confirm_title">Reset playlist?</string>
+    <string name="quickplaylists_reset_confirm_message">Played tracks will be returned to their initial position.</string>
+    <string name="quickplaylists_reset_done">Playlist reset</string>
     <string name="common_rename">Rename</string>
     <string name="common_erase">Delete</string>
     <string name="common_assign_to_playlist">Assign to a playlist</string>

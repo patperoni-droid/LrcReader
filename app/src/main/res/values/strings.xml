@@ -450,6 +450,9 @@
     <!-- Common visible labels -->
     <string name="common_back_arrow">← Retour</string>
     <string name="common_reset">Réinitialiser</string>
+    <string name="quickplaylists_reset_confirm_title">Réinitialiser la playlist ?</string>
+    <string name="quickplaylists_reset_confirm_message">Les morceaux joués seront remis à leur position initiale.</string>
+    <string name="quickplaylists_reset_done">Playlist réinitialisée</string>
     <string name="common_rename">Renommer</string>
     <string name="common_erase">Effacer</string>
     <string name="common_assign_to_playlist">Attribuer à une playlist</string>
