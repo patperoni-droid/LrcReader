@@ -1,6 +1,7 @@
 package com.patrick.lrcreader.core
 
 import androidx.compose.runtime.mutableStateOf
+import android.net.Uri
 import android.os.SystemClock
 import android.util.Log
 
@@ -257,6 +258,50 @@ object PlaylistRepository {
         current.clear()
         current.addAll(newOrder)
         bump()
+    }
+
+    fun normalizeSmpItemsForPlaylist(playlistName: String): Boolean {
+        val list = playlists[playlistName] ?: return false
+        val items = playlistItems[playlistName] ?: return false
+        var changed = false
+
+        val snapshot = list.toList()
+        snapshot.forEach { uri ->
+            val cleanUri = normalizeUriKey(uri) ?: return@forEach
+            val songId = normalizeSongId(items[cleanUri]?.songId) ?: return@forEach
+            val normalizedUri = normalizeSmpPlaylistUri(cleanUri, songId)
+            if (normalizedUri == cleanUri) return@forEach
+
+            val index = list.indexOf(cleanUri)
+            if (index >= 0) {
+                list[index] = normalizedUri
+                changed = true
+            }
+
+            val previousItem = items.remove(cleanUri)
+            if (previousItem != null) {
+                val existingNormalizedItem = items[normalizedUri]
+                val nextItem = (existingNormalizedItem ?: previousItem).copy(
+                    uri = normalizedUri,
+                    songId = songId
+                )
+                if (existingNormalizedItem != nextItem) {
+                    items[normalizedUri] = nextItem
+                    changed = true
+                }
+            }
+
+            migratePlaylistUriState(
+                playlistName = playlistName,
+                oldUri = cleanUri,
+                newUri = normalizedUri
+            )
+        }
+
+        if (changed) {
+            bump()
+        }
+        return changed
     }
 
     // -------------------------------------------------
@@ -617,6 +662,44 @@ object PlaylistRepository {
 
     private fun normalizeSongId(songId: String?): String? =
         songId?.trim()?.takeIf { it.isNotEmpty() }
+
+    private fun normalizeSmpPlaylistUri(uri: String, songId: String): String {
+        val normalizedSongId = normalizeSongId(songId) ?: return uri
+        val existingSongId = normalizeSongId(getSmpSongId(uri))
+        if (existingSongId == normalizedSongId) return buildSmpItem(normalizedSongId)
+        if (!looksLikeSmpArchiveUri(uri)) return uri
+        return buildSmpItem(normalizedSongId)
+    }
+
+    private fun looksLikeSmpArchiveUri(uri: String): Boolean {
+        val decoded = runCatching { Uri.decode(uri).lowercase() }.getOrElse { uri.lowercase() }
+        return decoded.endsWith(".smp") || decoded.endsWith(".smp.zip")
+    }
+
+    private fun migratePlaylistUriState(
+        playlistName: String,
+        oldUri: String,
+        newUri: String
+    ) {
+        if (oldUri == newUri) return
+        playedSongs[playlistName]?.let { set ->
+            if (set.remove(oldUri)) {
+                set.add(newUri)
+            }
+        }
+        reviewSongs[playlistName]?.let { set ->
+            if (set.remove(oldUri)) {
+                set.add(newUri)
+            }
+        }
+        customTitles[playlistName]?.let { map ->
+            val title = map.remove(oldUri) ?: return@let
+            map.putIfAbsent(newUri, title)
+        }
+        if (playlistName == nowPlayingPlaylist && nowPlayingUri == oldUri) {
+            nowPlayingUri = newUri
+        }
+    }
 
     private fun resolveSongIdForState(playlistName: String, uri: String): String? {
         return normalizeSongId(

@@ -408,6 +408,7 @@ fun QuickPlaylistsScreen(
             return@LaunchedEffect
         }
         if (pl != null) {
+            PlaylistRepository.normalizeSmpItemsForPlaylist(pl)
             val raw = PlaylistRepository.getAllSongsRaw(pl)
             if (!playlistsReady) {
                 songs.clear()
