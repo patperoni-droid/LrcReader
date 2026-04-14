@@ -52,6 +52,13 @@ object TrackVolumePrefs {
         return if (sp.contains(uri)) sp.getInt(uri, 0).coerceIn(MIN_DB, MAX_DB) else null
     }
 
+    fun getSource(context: Context, uri: String): String {
+        resolveInternalSmpConfigFile(context, uri)?.let { configFile ->
+            readSmpVolumeSource(configFile)?.let { return it }
+        }
+        return SmpConfig.PlaybackConfig.VOLUME_SOURCE_MANUAL
+    }
+
     private fun readSmpVolumeDb(configFile: File): Int? {
         if (!configFile.isFile) {
             return null
@@ -63,6 +70,22 @@ object TrackVolumePrefs {
                 ?.volumeDb
         }.getOrElse { error ->
             Log.w(TAG, "getDb: SMP config read failed path=${configFile.absolutePath}", error)
+            null
+        }
+    }
+
+    private fun readSmpVolumeSource(configFile: File): String? {
+        if (!configFile.isFile) {
+            return null
+        }
+
+        return runCatching {
+            SmpConfig.fromJsonOrNull(configFile.readText(Charsets.UTF_8))
+                ?.playback
+                ?.volumeSource
+                ?: SmpConfig.PlaybackConfig.VOLUME_SOURCE_MANUAL
+        }.getOrElse { error ->
+            Log.w(TAG, "getSource: SMP config read failed path=${configFile.absolutePath}", error)
             null
         }
     }

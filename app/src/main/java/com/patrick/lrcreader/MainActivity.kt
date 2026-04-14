@@ -999,6 +999,9 @@ class MainActivity : AppCompatActivity() {
                 var playlistSessionWriteJob by remember { mutableStateOf<Job?>(null) }
                 var lastPlaylistTapStartedAtMs by remember { mutableStateOf(0L) }
                 var currentTrackGainDb by remember { mutableStateOf(DEFAULT_TRACK_GAIN_DB) }
+                var currentTrackVolumeSource by remember {
+                    mutableStateOf(SmpConfig.PlaybackConfig.VOLUME_SOURCE_MANUAL)
+                }
                 var currentLyricsColor by remember { mutableStateOf(Color.White) }
                 var refreshKey by remember { mutableStateOf(0) }
 
@@ -1683,16 +1686,24 @@ class MainActivity : AppCompatActivity() {
                         "PLAY_INTERNAL requestUri=$uriString playlist=$playlistName token=$myToken currentMedia=${exoPlayer.currentMediaItem?.localConfiguration?.uri}"
                     )
 
-                    val (loadedTrackGainDb, loadedTempo, loadedPitchSemi) = withContext(Dispatchers.IO) {
-                        Triple(
-                            clampTrackDb(TrackVolumePrefs.getDb(ctx, uriString) ?: DEFAULT_TRACK_GAIN_DB),
-                            TrackTempoPrefs.getTempo(ctx, uriString) ?: 1f,
-                            TrackPitchPrefs.getSemi(ctx, uriString) ?: 0
+                    data class LoadedTrackMixSettings(
+                        val gainDb: Int,
+                        val volumeSource: String,
+                        val tempo: Float,
+                        val pitchSemi: Int
+                    )
+                    val loadedTrackMixSettings = withContext(Dispatchers.IO) {
+                        LoadedTrackMixSettings(
+                            gainDb = clampTrackDb(TrackVolumePrefs.getDb(ctx, uriString) ?: DEFAULT_TRACK_GAIN_DB),
+                            volumeSource = TrackVolumePrefs.getSource(ctx, uriString),
+                            tempo = TrackTempoPrefs.getTempo(ctx, uriString) ?: 1f,
+                            pitchSemi = TrackPitchPrefs.getSemi(ctx, uriString) ?: 0
                         )
                     }
-                    currentTrackGainDb = loadedTrackGainDb
-                    currentTrackTempo = loadedTempo
-                    currentTrackPitchSemi = loadedPitchSemi
+                    currentTrackGainDb = loadedTrackMixSettings.gainDb
+                    currentTrackVolumeSource = loadedTrackMixSettings.volumeSource
+                    currentTrackTempo = loadedTrackMixSettings.tempo
+                    currentTrackPitchSemi = loadedTrackMixSettings.pitchSemi
 
                     var lyricsResolveSeq = 0
                     val result = runCatching {
@@ -2409,6 +2420,7 @@ class MainActivity : AppCompatActivity() {
                         currentTrackGainDb = clampTrackDb(
                             TrackVolumePrefs.getDb(ctx, lastUri) ?: DEFAULT_TRACK_GAIN_DB
                         )
+                        currentTrackVolumeSource = TrackVolumePrefs.getSource(ctx, lastUri)
 
                         currentTrackTempo = TrackTempoPrefs.getTempo(ctx, lastUri) ?: 1f
                         currentTrackPitchSemi = TrackPitchPrefs.getSemi(ctx, lastUri) ?: 0
@@ -2778,12 +2790,19 @@ class MainActivity : AppCompatActivity() {
                                         currentTrackUri = currentPlayingUri,
                                         nextTrackTitle = nextTrack?.title,
                                         currentTrackGainDb = currentTrackGainDb,
+                                        currentTrackVolumeSource = currentTrackVolumeSource,
                                         onTrackGainChange = { db ->
+                                            if (currentTrackVolumeSource == SmpConfig.PlaybackConfig.VOLUME_SOURCE_LUFS) {
+                                                return@PlayerScreen
+                                            }
                                             val safeDb = clampTrackDb(db)
                                             currentTrackGainDb = safeDb
                                             AudioEngine.applyTrackGainDb(safeDb)
                                         },
                                         onTrackGainCommit = { db ->
+                                            if (currentTrackVolumeSource == SmpConfig.PlaybackConfig.VOLUME_SOURCE_LUFS) {
+                                                return@PlayerScreen
+                                            }
                                             val safeDb = clampTrackDb(db)
                                             currentTrackGainDb = safeDb
                                             AudioEngine.applyTrackGainDb(safeDb)

@@ -580,6 +580,7 @@
     <string name="track_mix_eq_mid">MID</string>
     <string name="track_mix_eq_high">HIGH</string>
     <string name="track_mix_touch_to_return">TOUCH HERE TO RETURN</string>
+    <string name="track_mix_lufs_volume_locked">Disable LUFS mode to adjust volume manually</string>
 
     <!-- Library components -->
     <string name="library_bottom_assign">Assign</string>

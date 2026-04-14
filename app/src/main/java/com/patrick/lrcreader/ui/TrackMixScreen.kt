@@ -47,6 +47,7 @@ fun TrackMixScreen(
     highlightColor: Color = Color(0xFFE040FB),
 
     currentTrackGainDb: Int,
+    currentTrackVolumeSource: String,
     onTrackGainChange: (Int) -> Unit,
     onTrackGainCommit: (Int) -> Unit,
 
@@ -68,6 +69,7 @@ fun TrackMixScreen(
     val maxTempo = 1.2f
     val minSemi = -6
     val maxSemi = 6
+    val isLufsVolumeLocked = currentTrackVolumeSource == com.patrick.lrcreader.smp.SmpConfig.PlaybackConfig.VOLUME_SOURCE_LUFS
 
     var displayGainDb by remember(currentTrackUri) {
         mutableIntStateOf(currentTrackGainDb.coerceIn(minDb, maxDb))
@@ -203,6 +205,7 @@ fun TrackMixScreen(
                             tickColor = Color(0xFF5C6068),
                             knobColor = Color(0xFFECECEC),
                             height = 210.dp,
+                            enabled = !isLufsVolumeLocked,
                             onChange = { v ->
                                 gain01 = v
                                 val newDb = (minDb + v * (maxDb - minDb))
@@ -222,7 +225,17 @@ fun TrackMixScreen(
                             labelMax = "$maxDb"
                         )
                         Spacer(Modifier.height(6.dp))
-                        Text(stringResource(R.string.track_mix_anti_clip), color = Color(0xFF9AA6AF), fontSize = 10.sp)
+                        Text(
+                            text = stringResource(
+                                if (isLufsVolumeLocked) {
+                                    R.string.track_mix_lufs_volume_locked
+                                } else {
+                                    R.string.track_mix_anti_clip
+                                }
+                            ),
+                            color = if (isLufsVolumeLocked) Color(0xFFFFCC80) else Color(0xFF9AA6AF),
+                            fontSize = 10.sp
+                        )
                     }
 
                     Column(
@@ -477,6 +490,7 @@ private fun AnalogFader(
     tickColor: Color,
     knobColor: Color,
     height: androidx.compose.ui.unit.Dp,
+    enabled: Boolean = true,
     onChange: (Float) -> Unit,
     onCommit: (Float) -> Unit = {},
     labelMin: String,
@@ -502,7 +516,8 @@ private fun AnalogFader(
                     .height(height)
                     .background(Color(0xFF0F1012), shape)
                     .border(1.dp, Color(0xFF3A3C42), shape)
-                    .pointerInput(Unit) {
+                    .pointerInput(enabled) {
+                        if (!enabled) return@pointerInput
                         var startValue = 0f
                         var accDragPx = 0f
 
@@ -571,13 +586,13 @@ private fun AnalogFader(
 
                 val knobY = 12f + (h - 24f) * (1f - v)
                 drawRoundRect(
-                    color = Color(0xFF3C3F46),
+                    color = Color(0xFF3C3F46).copy(alpha = if (enabled) 1f else 0.55f),
                     topLeft = Offset(w * 0.18f, knobY - 10f),
                     size = Size(w * 0.64f, 20f),
                     cornerRadius = CornerRadius(8f)
                 )
                 drawCircle(
-                    color = knobColor,
+                    color = knobColor.copy(alpha = if (enabled) 1f else 0.55f),
                     radius = 5.5f,
                     center = Offset(w / 2f, knobY)
                 )
@@ -773,6 +788,7 @@ private fun EqAnalogFader(
 fun TrackMixScreenPreview() {
     TrackMixScreen(
         currentTrackGainDb = 0,
+        currentTrackVolumeSource = com.patrick.lrcreader.smp.SmpConfig.PlaybackConfig.VOLUME_SOURCE_MANUAL,
         onTrackGainChange = {},
         onTrackGainCommit = {},
         tempo = 1f,
