@@ -81,6 +81,7 @@ fun TimelineEditorSection(
     val context = LocalContext.current
     val safePositionMs = positionMs.coerceAtLeast(0).toLong()
     val midiDmxAvailable = EditionConfig.isPro
+    val dmxUiVisible = midiDmxAvailable && EditionConfig.isDmxUiEnabled
     val proMessage = stringResource(R.string.timeline_pro_only)
     var renameIndex by remember(markers) { mutableStateOf<Int?>(null) }
     var renameText by remember(markers) { mutableStateOf("") }
@@ -313,41 +314,45 @@ fun TimelineEditorSection(
                 onClick = { onAddTypedMarker(TimelineMarkerKind.NOTE) },
                 onLongClick = { seekToNextTypedMarker(TimelineMarkerKind.NOTE) }
             )
-            TimelineEventPaletteButton(
-                label = stringResource(R.string.timeline_event_dmx),
-                enabled = midiDmxAvailable,
-                icon = {
-                    Icon(
-                        imageVector = Icons.Filled.FlashOn,
-                        contentDescription = null,
-                        tint = if (midiDmxAvailable) Color(0xFFFFB74D) else Color(0xFFFFB74D).copy(alpha = 0.45f)
-                    )
-                },
-                onClick = {
-                    if (midiDmxAvailable) {
-                        onAddTypedMarker(TimelineMarkerKind.DMX)
-                    } else {
-                        Toast.makeText(context, proMessage, Toast.LENGTH_SHORT).show()
+            if (dmxUiVisible) {
+                TimelineEventPaletteButton(
+                    label = stringResource(R.string.timeline_event_dmx),
+                    enabled = midiDmxAvailable,
+                    icon = {
+                        Icon(
+                            imageVector = Icons.Filled.FlashOn,
+                            contentDescription = null,
+                            tint = if (midiDmxAvailable) Color(0xFFFFB74D) else Color(0xFFFFB74D).copy(alpha = 0.45f)
+                        )
+                    },
+                    onClick = {
+                        if (midiDmxAvailable) {
+                            onAddTypedMarker(TimelineMarkerKind.DMX)
+                        } else {
+                            Toast.makeText(context, proMessage, Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    onLongClick = {
+                        if (midiDmxAvailable) {
+                            seekToNextTypedMarker(TimelineMarkerKind.DMX)
+                        } else {
+                            Toast.makeText(context, proMessage, Toast.LENGTH_SHORT).show()
+                        }
                     }
-                },
-                onLongClick = {
-                    if (midiDmxAvailable) {
-                        seekToNextTypedMarker(TimelineMarkerKind.DMX)
-                    } else {
-                        Toast.makeText(context, proMessage, Toast.LENGTH_SHORT).show()
-                    }
-                }
-            )
+                )
+            }
         }
 
-        TextButton(
-            onClick = onGenerateLights,
-            enabled = durationMs > 0
-        ) {
-            Text(
-                text = stringResource(R.string.light_generate_action),
-                color = if (durationMs > 0) Color(0xFF80CBC4) else Color(0xFFB0BEC5)
-            )
+        if (dmxUiVisible) {
+            TextButton(
+                onClick = onGenerateLights,
+                enabled = durationMs > 0
+            ) {
+                Text(
+                    text = stringResource(R.string.light_generate_action),
+                    color = if (durationMs > 0) Color(0xFF80CBC4) else Color(0xFFB0BEC5)
+                )
+            }
         }
 
         Spacer(Modifier.height(10.dp))
@@ -356,14 +361,16 @@ fun TimelineEditorSection(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            TextButton(
-                onClick = onPasteDmxCueHere,
-                enabled = canPasteDmxCue
-            ) {
-                Text(
-                    text = "Coller ici",
-                    color = if (canPasteDmxCue) Color(0xFFFFB74D) else Color(0xFFB0BEC5)
-                )
+            if (dmxUiVisible) {
+                TextButton(
+                    onClick = onPasteDmxCueHere,
+                    enabled = canPasteDmxCue
+                ) {
+                    Text(
+                        text = "Coller ici",
+                        color = if (canPasteDmxCue) Color(0xFFFFB74D) else Color(0xFFB0BEC5)
+                    )
+                }
             }
             Spacer(Modifier.weight(1f))
             Text(
@@ -398,6 +405,7 @@ fun TimelineEditorSection(
                         return@TimelineScrubColumn
                     }
                     if (markers[index].kind == TimelineMarkerKind.DMX) {
+                        if (!dmxUiVisible) return@TimelineScrubColumn
                         if (midiDmxAvailable) {
                             onEditDmxMarker(index)
                         } else {
@@ -418,7 +426,7 @@ fun TimelineEditorSection(
                 onCopyDmxMarker = onCopyDmxMarker
             )
 
-            if (showLightPreview) {
+            if (dmxUiVisible && showLightPreview) {
                 LightSimulatorPreview(
                     sceneState = lightPreviewSceneState,
                     modifier = Modifier

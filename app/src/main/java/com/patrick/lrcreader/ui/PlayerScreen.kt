@@ -150,6 +150,7 @@ fun PlayerScreen(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val showLightIndicator = remember(context) { LightIndicatorPrefs.isEnabled(context) }
+    val dmxUiVisible = EditionConfig.isPro && EditionConfig.isDmxUiEnabled
     val lastTriggeredMidiProgramChange by MidiCueDispatcher.lastTriggeredProgramChange.collectAsState()
     val simulatedLightScene by LightCueDispatcher.sceneState.collectAsState()
     val isLaboBuild = remember(context.packageName) { context.packageName.endsWith(".labo") }
@@ -202,11 +203,11 @@ fun PlayerScreen(
             LightSceneState.off(trackUri = currentTrackUri)
         }
     }
-    val timelineEditorEntries = remember(context, timelineMarkers, timelineLightCues) {
+    val timelineEditorEntries = remember(context, timelineMarkers, timelineLightCues, dmxUiVisible) {
         buildTimelineEditorEntries(
             context = context,
             timelineMarkers = timelineMarkers,
-            lightCues = timelineLightCues
+            lightCues = if (dmxUiVisible) timelineLightCues else emptyList()
         )
     }
     val timelineEditorMarkers = remember(timelineEditorEntries) {
@@ -1852,9 +1853,9 @@ fun PlayerScreen(
                     val source = entry.source as? TimelineEditorMarkerSource.Light ?: return@onEditDmxMarker
                     editingTimelineLightCueTimeMs = source.timeMs
                 },
-                showLightPreview = showLightIndicator && hasLightCues,
+                showLightPreview = dmxUiVisible && showLightIndicator && hasLightCues,
                 lightPreviewSceneState = currentTrackLightScene,
-                canPasteDmxCue = canPasteTimelineDmxCue,
+                canPasteDmxCue = dmxUiVisible && canPasteTimelineDmxCue,
                 onPasteDmxCueHere = {
                     val trackUri = currentTrackUri ?: return@TimelineEditorSection
                     val clipboard = timelineDmxClipboard
@@ -2185,7 +2186,7 @@ fun PlayerScreen(
                                 }
                             }
 
-                            if (showLightIndicator && hasLightCues) {
+                            if (dmxUiVisible && showLightIndicator && hasLightCues) {
                                 if (showLightTestDialog) {
                                     LightTestDialog(
                                         onRed = { LightPreviewTestController.showRed(currentTrackUri) },
@@ -2351,6 +2352,7 @@ fun PlayerScreen(
     val timelineLightCueTimeMs = editingTimelineLightCueTimeMs
     val timelineLightTrackUri = currentTrackUri?.takeIf { it.isNotBlank() }
     if (
+        dmxUiVisible &&
         isEditingTimeline &&
         showLightGenerationDialog &&
         timelineLightTrackUri != null
@@ -2383,6 +2385,7 @@ fun PlayerScreen(
         )
     }
     if (
+        dmxUiVisible &&
         isEditingTimeline &&
         timelineLightCueTimeMs != null &&
         timelineLightTrackUri != null
