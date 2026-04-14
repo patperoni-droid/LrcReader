@@ -100,6 +100,25 @@ private val importedSmpEffectPerfCounter = AtomicInteger(0)
 private val uiEntriesSnapshotPerfCounter = AtomicInteger(0)
 private val buildSmpEntriesTraceCounter = AtomicInteger(0)
 
+private data class LibraryScreenUiSnapshot(
+    val currentFolderUri: Uri?,
+    val folderStack: List<Uri>,
+    val entries: List<LibraryEntry>,
+    val songItems: List<LibrarySongItem>,
+    val indexAll: List<LibraryIndexCache.CachedEntry>,
+    val initialLoadDone: Boolean
+)
+
+private object LibraryScreenUiCache {
+    private val snapshots = mutableMapOf<String, LibraryScreenUiSnapshot>()
+
+    fun get(key: String): LibraryScreenUiSnapshot? = snapshots[key]
+
+    fun put(key: String, snapshot: LibraryScreenUiSnapshot) {
+        snapshots[key] = snapshot
+    }
+}
+
 private fun isPrompterFolderUri(uri: Uri?): Boolean = uri?.scheme == "spl-prompter"
 private fun isSmpFolderUri(uri: Uri?): Boolean = uri?.scheme == "spl-smp"
 private fun isLegacyLiveTracksFolderName(name: String): Boolean {
@@ -545,11 +564,35 @@ fun LibraryScreen(
     ) {
         filesNavigationRoot
     }
+    val libraryUiCacheKey = remember(
+        workspaceVersion,
+        storageMode,
+        filesNavigationRoot,
+        workspaceSnapshot.workspaceRootUri
+    ) {
+        buildString {
+            append("workspaceVersion=").append(workspaceVersion)
+            append("|storageMode=").append(storageMode.name)
+            append("|filesRoot=").append(filesNavigationRoot?.toString().orEmpty())
+            append("|workspaceRoot=").append(workspaceSnapshot.workspaceRootUri?.toString().orEmpty())
+        }
+    }
+    val cachedUiSnapshot = remember(libraryUiCacheKey) {
+        LibraryScreenUiCache.get(libraryUiCacheKey)
+    }
     var libraryViewMode by rememberSaveable { mutableStateOf(LIBRARY_VIEW_MODE_SONGS) }
-    var currentFolderUri by remember { mutableStateOf<Uri?>(initialFolder) }
-    var folderStack by remember { mutableStateOf<List<Uri>>(emptyList()) }
-    var entries by remember { mutableStateOf<List<LibraryEntry>>(emptyList()) }
-    var songItems by remember { mutableStateOf<List<LibrarySongItem>>(emptyList()) }
+    var currentFolderUri by remember(libraryUiCacheKey) {
+        mutableStateOf(cachedUiSnapshot?.currentFolderUri ?: initialFolder)
+    }
+    var folderStack by remember(libraryUiCacheKey) {
+        mutableStateOf(cachedUiSnapshot?.folderStack ?: emptyList())
+    }
+    var entries by remember(libraryUiCacheKey) {
+        mutableStateOf(cachedUiSnapshot?.entries ?: emptyList())
+    }
+    var songItems by remember(libraryUiCacheKey) {
+        mutableStateOf(cachedUiSnapshot?.songItems ?: emptyList())
+    }
     var selectedSongs by remember { mutableStateOf<Set<Uri>>(emptySet()) }
 
     var isLoading by remember { mutableStateOf(false) }
@@ -557,12 +600,16 @@ fun LibraryScreen(
     var moveProgress by remember { mutableStateOf<Float?>(null) }
     var moveLabel by remember { mutableStateOf<String?>(null) }
 
-    var indexAll by remember { mutableStateOf<List<LibraryIndexCache.CachedEntry>>(emptyList()) }
+    var indexAll by remember(libraryUiCacheKey) {
+        mutableStateOf(cachedUiSnapshot?.indexAll ?: emptyList())
+    }
     var importTargetFolderUri by remember { mutableStateOf<Uri?>(null) }
     val smpConverter = remember(context) { SmpConverter(context) }
     val smpBatchProcessor = remember(context) { SmpBatchImportProcessor(context, smpConverter) }
     val smpLibraryScanner = remember(context) { SmpLibraryScanner(context) }
-    var initialLoadDone by remember { mutableStateOf(false) }
+    var initialLoadDone by remember(libraryUiCacheKey) {
+        mutableStateOf(cachedUiSnapshot?.initialLoadDone == true)
+    }
     var lastHandledImportedSmpRefresh by remember { mutableIntStateOf(-1) }
     var importedAutoOpenDeferredRetryRequestVersion by remember { mutableIntStateOf(-1) }
     var importedAutoOpenDeferredRetryToken by remember { mutableIntStateOf(0) }
@@ -578,6 +625,20 @@ fun LibraryScreen(
         mutableStateOf<SmpBatchImportProcessor.Progress?>(null)
     }
     var lastLoggedMoveProgressBucket by remember { mutableIntStateOf(-1) }
+
+    SideEffect {
+        LibraryScreenUiCache.put(
+            libraryUiCacheKey,
+            LibraryScreenUiSnapshot(
+                currentFolderUri = currentFolderUri,
+                folderStack = folderStack,
+                entries = entries,
+                songItems = songItems,
+                indexAll = indexAll,
+                initialLoadDone = initialLoadDone
+            )
+        )
+    }
 
     fun normalizeSelection(selection: Collection<Uri>): List<Uri> {
         return selection.distinctBy { it.toString() }
@@ -2574,6 +2635,18 @@ fun LibraryScreen(
             LIB_SMP_TRACE_TAG,
             "step=effect_initial_load_start workspaceVersion=$workspaceVersion workspaceStatus=${workspaceSnapshot.status} workspaceRoot=${workspaceSnapshot.workspaceRootUri} currentFolderUri=$currentFolderUri initialLoadDone=$initialLoadDone entriesSize=${entries.size}"
         )
+        if (cachedUiSnapshot?.initialLoadDone == true) {
+            val durationMs = SystemClock.elapsedRealtime() - startMs
+            Log.i(
+                LIBRARY_PERF_TRACE_TAG,
+                "step=effect_initial_load_end call=$callId durationMs=$durationMs result=reuse_cached_snapshot currentFolderUri=$currentFolderUri entriesSize=${entries.size}"
+            )
+            Log.i(
+                LIB_SMP_TRACE_TAG,
+                "step=effect_initial_load_reused workspaceVersion=$workspaceVersion workspaceStatus=${workspaceSnapshot.status} currentFolderUri=$currentFolderUri initialLoadDone=$initialLoadDone entriesSize=${entries.size} entries=${summarizeLibraryEntries(entries)}"
+            )
+            return@LaunchedEffect
+        }
         initialLoadDone = false
         try {
             withContext(Dispatchers.IO) {

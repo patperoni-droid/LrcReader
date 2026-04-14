@@ -44,6 +44,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -145,7 +146,9 @@ fun PlayerScreen(
     getDurationMs: () -> Long,
     seekToMs: (Long) -> Unit
 ) {
-    val listState = rememberLazyListState()
+    val listState = rememberSaveable(currentTrackUri, saver = LazyListState.Saver) {
+        LazyListState()
+    }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val showLightIndicator = remember(context) { LightIndicatorPrefs.isEnabled(context) }
@@ -167,21 +170,21 @@ fun PlayerScreen(
     val midiCueTraceTag = "MIDI_CUE_TRACE"
 
     // 📝 Notes LIVE (création depuis le lecteur)
-    var showAddNoteDialog by remember { mutableStateOf(false) }
-    var noteDraftText by remember { mutableStateOf("") }
+    var showAddNoteDialog by rememberSaveable(currentTrackUri) { mutableStateOf(false) }
+    var noteDraftText by rememberSaveable(currentTrackUri) { mutableStateOf("") }
     // durée par défaut (en ms)
-    var noteDraftDurationMs by remember { mutableStateOf(30_000L) }
-    var noteAnchorMs by remember { mutableStateOf<Long?>(null) }      // timecode gelé
-    var wasPlayingBeforeNote by remember { mutableStateOf(false) }    // pour relancer après
+    var noteDraftDurationMs by rememberSaveable(currentTrackUri) { mutableStateOf(30_000L) }
+    var noteAnchorMs by rememberSaveable(currentTrackUri) { mutableStateOf<Long?>(null) }      // timecode gelé
+    var wasPlayingBeforeNote by rememberSaveable(currentTrackUri) { mutableStateOf(false) }    // pour relancer après
 
     // 🔊 Brancher ExoPlayer au bus principal (fader LECTEUR)
     var activeLiveNote by remember { mutableStateOf<LiveNote?>(null) }
     var activeLiveNoteFromTimeline by remember { mutableStateOf(false) }
     var lastLiveNoteTraceKey by remember(currentTrackUri) { mutableStateOf<String?>(null) }
-    var isEditingTimeline by remember { mutableStateOf(false) }
-    var editingTimelineMidiMarkerIndex by remember(currentTrackUri) { mutableStateOf<Int?>(null) }
-    var editingTimelineLightCueTimeMs by remember(currentTrackUri) { mutableStateOf<Long?>(null) }
-    var showLightGenerationDialog by remember(currentTrackUri) { mutableStateOf(false) }
+    var isEditingTimeline by rememberSaveable(currentTrackUri) { mutableStateOf(false) }
+    var editingTimelineMidiMarkerIndex by rememberSaveable(currentTrackUri) { mutableStateOf<Int?>(null) }
+    var editingTimelineLightCueTimeMs by rememberSaveable(currentTrackUri) { mutableStateOf<Long?>(null) }
+    var showLightGenerationDialog by rememberSaveable(currentTrackUri) { mutableStateOf(false) }
     var timelineLightPreviewPositionMs by remember(currentTrackUri) { mutableStateOf<Long?>(null) }
     var timelineMarkers by remember(currentTrackUri) { mutableStateOf<List<TimelineMarker>>(emptyList()) }
     var timelineLightCues by remember(currentTrackUri) { mutableStateOf<List<LightCue>>(emptyList()) }
@@ -224,7 +227,7 @@ fun PlayerScreen(
         val clipboard = timelineDmxClipboard
         clipboard != null && current.isNotBlank() && clipboard.trackUri == current
     }
-    var showLightTestDialog by remember { mutableStateOf(false) }
+    var showLightTestDialog by rememberSaveable(currentTrackUri) { mutableStateOf(false) }
     var hasLightCues by remember(currentTrackUri) { mutableStateOf(false) }
     LaunchedEffect(exoPlayer) {
         PlayerBusController.attachPlayer(context, exoPlayer)
@@ -406,9 +409,9 @@ fun PlayerScreen(
     }
 
     val lyricsDelayMs = 0L
-    var userOffsetMs by remember(currentTrackUri) { mutableStateOf(-100L) }
+    var userOffsetMs by rememberSaveable(currentTrackUri) { mutableStateOf(-100L) }
     var isConcertMode by remember { mutableStateOf(DisplayPrefs.isConcertMode(context)) }
-    var selectedViewMode by remember(currentTrackUri) {
+    var selectedViewMode by rememberSaveable(currentTrackUri) {
         mutableStateOf(
             currentTrackUri
                 ?.let { TrackLyricsViewPrefs.get(context, it) }
@@ -440,8 +443,8 @@ fun PlayerScreen(
     var dragPosMs by remember(currentTrackUri) { mutableStateOf(0) }
 
 
-    var hasRequestedPlaylist by remember(currentTrackUri) { mutableStateOf(false) }
-    var autoReturnArmed by remember(currentTrackUri) { mutableStateOf(false) }
+    var hasRequestedPlaylist by rememberSaveable(currentTrackUri) { mutableStateOf(false) }
+    var autoReturnArmed by rememberSaveable(currentTrackUri) { mutableStateOf(false) }
 
     LaunchedEffect(currentTrackUri) {
         autoReturnArmed = false
@@ -469,7 +472,7 @@ fun PlayerScreen(
     var rawLyricsText by remember(currentTrackUri) { mutableStateOf("") }
     var editingLines by remember(currentTrackUri) { mutableStateOf<List<LrcLine>>(emptyList()) }
     var editingLinesDirty by remember(currentTrackUri) { mutableStateOf(false) }
-    var currentEditTab by remember { mutableStateOf(0) }
+    var currentEditTab by rememberSaveable(currentTrackUri) { mutableStateOf(0) }
     val inlineLrcTimeTagRegex = remember { Regex("""\[(\d{1,2}):(\d{1,2})(?:\.(\d{1,3}))?]""") }
 
     fun updateResolvedLyricsFileName(newValue: String?, reason: String) {
