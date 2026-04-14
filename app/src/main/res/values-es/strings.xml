@@ -144,6 +144,7 @@
     <string name="tab_tuner">Afinador</string>
     <string name="more_show_dj_mode">Activar modo DJ</string>
     <string name="more_show_main_bus">Activar Bus principal</string>
+    <string name="more_working_folder">Carpeta de trabajo</string>
 
     <!-- Library -->
     <string name="library_scanning">Escaneando biblioteca…</string>

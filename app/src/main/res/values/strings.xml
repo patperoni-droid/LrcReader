@@ -139,6 +139,7 @@
     <string name="tab_tuner">Accordeur</string>
     <string name="more_show_dj_mode">Activer le mode DJ</string>
     <string name="more_show_main_bus">Activer le Bus principal</string>
+    <string name="more_working_folder">Dossier de travail</string>
 
     <!-- Library -->
     <string name="library_scanning">Analyse de la bibliothèque…</string>

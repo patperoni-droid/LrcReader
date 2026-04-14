@@ -46,6 +46,7 @@ import com.patrick.lrcreader.core.BackupManager
 import com.patrick.lrcreader.core.LegacyLibraryVisibilityPrefs
 import com.patrick.lrcreader.core.LightIndicatorPrefs
 import com.patrick.lrcreader.core.UiEntryPrefs
+import com.patrick.lrcreader.core.WorkspaceResolver
 import com.patrick.lrcreader.exo.R
 
 /* ─────────────────────────────
@@ -173,6 +174,15 @@ private fun MoreRootScreen(
         "en" -> stringResource(R.string.settings_language_en)
         "es" -> stringResource(R.string.settings_language_es)
         else -> stringResource(R.string.settings_language_auto)
+    }
+    val workspaceSnapshot = remember(context) { WorkspaceResolver.resolve(context) }
+    val workingFolderPath = remember(workspaceSnapshot) {
+        workspaceSnapshot.workspaceRootUri?.let { uri ->
+            when (uri.scheme?.lowercase()) {
+                "file" -> uri.path.orEmpty()
+                else -> uri.toString()
+            }
+        }?.takeIf { it.isNotBlank() } ?: "—"
     }
 
     fun applyLanguageSelection(languageTag: String?) {
@@ -324,6 +334,10 @@ private fun MoreRootScreen(
 
                         testPcIndex = (testPcIndex + 1) % testProgramChanges.size
                     })
+                    SettingsInfoItem(
+                        label = stringResource(R.string.more_working_folder),
+                        value = workingFolderPath
+                    )
                     Spacer(modifier = Modifier.height(12.dp))
 
                     Text(
@@ -452,6 +466,31 @@ private fun SwitchSettingItem(
                 onCheckedChange = onCheckedChange
             )
         }
+    }
+    HorizontalDivider(color = Color(0xFF1E1E1E))
+}
+
+@Composable
+private fun SettingsInfoItem(
+    label: String,
+    value: String
+) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 14.dp, vertical = 12.dp)
+    ) {
+        Text(
+            text = label,
+            color = Color(0xFFF5F5F5),
+            fontSize = 14.sp
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = value,
+            color = Color(0xFF9E9E9E),
+            fontSize = 12.sp
+        )
     }
     HorizontalDivider(color = Color(0xFF1E1E1E))
 }
