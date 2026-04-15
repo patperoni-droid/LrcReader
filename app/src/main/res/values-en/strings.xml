@@ -393,6 +393,7 @@
     <string name="lyrics_editor_import_choose_lrc">Choose a .lrc file</string>
     <string name="lyrics_editor_import_failed">Import failed</string>
     <string name="lyrics_editor_import_empty">Empty file</string>
+    <string name="lyrics_editor_undo">Undo</string>
     <string name="lyrics_editor_merge">Merge</string>
     <string name="lyrics_editor_merge_non_adjacent_error">Cannot merge non-adjacent lines</string>
 

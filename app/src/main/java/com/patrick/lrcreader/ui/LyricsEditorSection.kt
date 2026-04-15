@@ -134,6 +134,7 @@ fun LyricsEditorSection(
     var lineMenuIndex by remember { mutableStateOf<Int?>(null) }
     var lineMenuText by remember { mutableStateOf("") }
     var selectedSyncLineIndices by remember(currentTrackUri) { mutableStateOf<Set<Int>>(emptySet()) }
+    var previousEditingLines by remember(currentTrackUri) { mutableStateOf<List<LrcLine>?>(null) }
     val displayedPalette = paletteChords
 
     fun stripInlineTimingTags(raw: String): String =
@@ -198,6 +199,21 @@ fun LyricsEditorSection(
         onRawLyricsTextChange(nextRaw)
     }
 
+    fun rememberUndoSnapshot() {
+        previousEditingLines = editingLines.map { it.copy() }
+    }
+
+    fun applyEditingLinesWithUndo(
+        lines: List<LrcLine>,
+        updateRawDraft: Boolean = true
+    ) {
+        rememberUndoSnapshot()
+        onEditingLinesChange(lines)
+        if (updateRawDraft) {
+            applyLinesToRawDraft(lines)
+        }
+    }
+
     fun buildLinesFromRawDraft(): List<LrcLine> {
         if (rawContainsLrcTimestamps(rawTextFieldValue.text)) {
             return parseLrc(rawTextFieldValue.text).filter { it.text.isNotBlank() }
@@ -220,7 +236,7 @@ fun LyricsEditorSection(
         when (targetTab) {
             1 -> {
                 val normalizedLines = buildLinesFromRawDraft()
-                onEditingLinesChange(normalizedLines)
+                applyEditingLinesWithUndo(normalizedLines, updateRawDraft = false)
             }
             0 -> {
                 applyLinesToRawDraft(editingLines)
@@ -260,7 +276,7 @@ fun LyricsEditorSection(
                 current = editingLines,
                 newLine = captured
             )
-            onEditingLinesChange(updated)
+            applyEditingLinesWithUndo(updated)
             scope.launch {
                 // Let Compose render the new tag first, then persist.
                 yield()
@@ -321,10 +337,11 @@ fun LyricsEditorSection(
 
     fun tagLineAt(index: Int) {
         val now = positionMs.coerceAtLeast(0)
-        onEditingLinesChange(
+        applyEditingLinesWithUndo(
             editingLines.mapIndexed { i, old ->
                 if (i == index) old.copy(timeMs = now.toLong()) else old
-            }
+            },
+            updateRawDraft = false
         )
 
         // auto-scroll
@@ -387,8 +404,7 @@ fun LyricsEditorSection(
                 }
             }
         }
-        onEditingLinesChange(nextLines)
-        applyLinesToRawDraft(nextLines)
+        applyEditingLinesWithUndo(nextLines)
         selectedSyncLineIndices = setOf(firstIndex)
     }
 
@@ -450,6 +466,7 @@ fun LyricsEditorSection(
                 if (simpleLines.isEmpty()) {
                     val deleted = onDeletePersisted()
                     if (!deleted) return@launch
+                    previousEditingLines = editingLines.map { it.copy() }
                     onEditingLinesChange(emptyList())
                     onRawLyricsTextChange("")
                     rawTextFieldValue = TextFieldValue("", TextRange(0))
@@ -478,6 +495,7 @@ fun LyricsEditorSection(
                 val persisted = onPersistLines(finalLines)
                 if (!persisted) return@launch
 
+                previousEditingLines = null
                 onSaveSortedLines(finalLines)
             } finally {
                 isPersistBusy = false
@@ -536,6 +554,7 @@ fun LyricsEditorSection(
                     text = importedText,
                     selection = TextRange(importedText.length)
                 )
+                previousEditingLines = editingLines.map { it.copy() }
                 onEditingLinesChange(parsed)
                 onImportedLinesApplied(parsed)
                 Log.d("LRC_IMPORT", "imported uri=$pickedUri lines=${parsed.size}")
@@ -763,6 +782,22 @@ fun LyricsEditorSection(
                         horizontalArrangement = Arrangement.End,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        TextButton(
+                            onClick = {
+                                val previous = previousEditingLines ?: return@TextButton
+                                onEditingLinesChange(previous)
+                                applyLinesToRawDraft(previous)
+                                selectedSyncLineIndices = emptySet()
+                                previousEditingLines = null
+                            },
+                            enabled = previousEditingLines != null
+                        ) {
+                            Text(
+                                text = stringResource(R.string.lyrics_editor_undo),
+                                color = if (previousEditingLines != null) Color(0xFF80CBC4) else Color.DarkGray,
+                                fontSize = 11.sp
+                            )
+                        }
                         if (selectedSyncLineIndices.size > 1) {
                             TextButton(
                                 onClick = { mergeSelectedSyncLines() }
@@ -778,7 +813,7 @@ fun LyricsEditorSection(
                             onClick = {
                                 if (showChordPalette) {
                                     val cleared = emptyList<LrcLine>()
-                                    onEditingLinesChange(cleared)
+                                    applyEditingLinesWithUndo(cleared)
                                     rawTextFieldValue = TextFieldValue("", TextRange(0))
                                     onRawLyricsTextChange("")
                                     selectedSyncLineIndices = emptySet()
@@ -787,7 +822,10 @@ fun LyricsEditorSection(
                                         onPersistLines(cleared)
                                     }
                                 } else {
-                                    onEditingLinesChange(editingLines.map { it.copy(timeMs = 0L) })
+                                    applyEditingLinesWithUndo(
+                                        editingLines.map { it.copy(timeMs = 0L) },
+                                        updateRawDraft = false
+                                    )
                                     selectedSyncLineIndices = emptySet()
                                 }
                             }
@@ -970,8 +1008,7 @@ fun LyricsEditorSection(
                                         val list = editingLines.toMutableList()
                                         if (idx in list.indices) {
                                             list[idx] = list[idx].copy(text = lineMenuText.trim())
-                                            onEditingLinesChange(list)
-                                            applyLinesToRawDraft(list)
+                                            applyEditingLinesWithUndo(list)
                                         } else if (BuildConfig.DEBUG) {
                                             Log.w("LrcDebug", "EDIT_LINE_SKIPPED invalidIndex idx=$idx size=${list.size}")
                                         }
@@ -982,15 +1019,14 @@ fun LyricsEditorSection(
                             dismissButton = {
                                 Row {
                                     TextButton(
-                                        onClick = {
-                                            val list = editingLines.toMutableList()
-                                            if (idx in list.indices) {
-                                                list.removeAt(idx)
-                                                onEditingLinesChange(list)
-                                                applyLinesToRawDraft(list)
-                                                selectedSyncLineIndices = selectedSyncLineIndices.filter { it in list.indices }.toSet()
-                                            } else if (BuildConfig.DEBUG) {
-                                                Log.w("LrcDebug", "DELETE_LINE_SKIPPED invalidIndex idx=$idx size=${list.size}")
+                                    onClick = {
+                                        val list = editingLines.toMutableList()
+                                        if (idx in list.indices) {
+                                            list.removeAt(idx)
+                                            applyEditingLinesWithUndo(list)
+                                            selectedSyncLineIndices = selectedSyncLineIndices.filter { it in list.indices }.toSet()
+                                        } else if (BuildConfig.DEBUG) {
+                                            Log.w("LrcDebug", "DELETE_LINE_SKIPPED invalidIndex idx=$idx size=${list.size}")
                                             }
 
                                             lineMenuIndex = null
