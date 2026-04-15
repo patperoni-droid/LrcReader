@@ -336,6 +336,8 @@
     <string name="lyrics_editor_import_choose_lrc">Elige un archivo .lrc</string>
     <string name="lyrics_editor_import_failed">Importación imposible</string>
     <string name="lyrics_editor_import_empty">Archivo vacío</string>
+    <string name="lyrics_editor_merge">Agrupar</string>
+    <string name="lyrics_editor_merge_non_adjacent_error">No se pueden agrupar líneas no adyacentes</string>
 
     <!-- Common content descriptions -->
     <string name="common_cd_back">Atrás</string>

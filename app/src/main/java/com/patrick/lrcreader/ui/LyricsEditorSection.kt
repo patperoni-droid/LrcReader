@@ -133,6 +133,7 @@ fun LyricsEditorSection(
 
     var lineMenuIndex by remember { mutableStateOf<Int?>(null) }
     var lineMenuText by remember { mutableStateOf("") }
+    var selectedSyncLineIndices by remember(currentTrackUri) { mutableStateOf<Set<Int>>(emptySet()) }
     val displayedPalette = paletteChords
 
     fun stripInlineTimingTags(raw: String): String =
@@ -314,6 +315,10 @@ fun LyricsEditorSection(
         highlightedCapturedIndex = null
     }
 
+    LaunchedEffect(editingLines.size) {
+        selectedSyncLineIndices = selectedSyncLineIndices.filter { it in editingLines.indices }.toSet()
+    }
+
     fun tagLineAt(index: Int) {
         val now = positionMs.coerceAtLeast(0)
         onEditingLinesChange(
@@ -338,6 +343,53 @@ fun LyricsEditorSection(
                 }
             }
         }
+    }
+
+    fun toggleSyncLineSelection(index: Int) {
+        selectedSyncLineIndices = if (index in selectedSyncLineIndices) {
+            selectedSyncLineIndices - index
+        } else {
+            selectedSyncLineIndices + index
+        }
+    }
+
+    fun mergeSelectedSyncLines() {
+        val selected = selectedSyncLineIndices.toList().sorted()
+        if (selected.size < 2) return
+        val isAdjacent = selected.zipWithNext().all { (a, b) -> b == a + 1 }
+        if (!isAdjacent) {
+            Toast.makeText(
+                context,
+                context.getString(R.string.lyrics_editor_merge_non_adjacent_error),
+                Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
+
+        val firstIndex = selected.first()
+        val selectedLines = selected.mapNotNull { editingLines.getOrNull(it) }
+        if (selectedLines.size < 2) return
+
+        val mergedText = selectedLines
+            .map { it.text.trim() }
+            .filter { it.isNotEmpty() }
+            .joinToString(" ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+
+        val mergedLine = selectedLines.first().copy(text = mergedText)
+        val nextLines = buildList {
+            editingLines.forEachIndexed { index, line ->
+                when {
+                    index == firstIndex -> add(mergedLine)
+                    index in selectedSyncLineIndices -> Unit
+                    else -> add(line)
+                }
+            }
+        }
+        onEditingLinesChange(nextLines)
+        applyLinesToRawDraft(nextLines)
+        selectedSyncLineIndices = setOf(firstIndex)
     }
 
     @Composable
@@ -711,6 +763,17 @@ fun LyricsEditorSection(
                         horizontalArrangement = Arrangement.End,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        if (selectedSyncLineIndices.size > 1) {
+                            TextButton(
+                                onClick = { mergeSelectedSyncLines() }
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.lyrics_editor_merge),
+                                    color = Color(0xFF80CBC4),
+                                    fontSize = 11.sp
+                                )
+                            }
+                        }
                         TextButton(
                             onClick = {
                                 if (showChordPalette) {
@@ -718,12 +781,14 @@ fun LyricsEditorSection(
                                     onEditingLinesChange(cleared)
                                     rawTextFieldValue = TextFieldValue("", TextRange(0))
                                     onRawLyricsTextChange("")
+                                    selectedSyncLineIndices = emptySet()
                                     scope.launch {
                                         yield()
                                         onPersistLines(cleared)
                                     }
                                 } else {
                                     onEditingLinesChange(editingLines.map { it.copy(timeMs = 0L) })
+                                    selectedSyncLineIndices = emptySet()
                                 }
                             }
                         ) {
@@ -764,6 +829,7 @@ fun LyricsEditorSection(
                             itemsIndexed(editingLines) { index, line ->
                                 val timeLabel =
                                     if (line.timeMs > 0) formatLrcTime(line.timeMs) else "--:--.--"
+                                val isSelected = index in selectedSyncLineIndices
 
                                 val hasCueForThisLine =
                                     enableCueEditing && cuesForTrack.any { it.lineIndex == index }
@@ -771,7 +837,18 @@ fun LyricsEditorSection(
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(vertical = 4.dp),
+                                        .padding(vertical = 4.dp)
+                                        .pointerInput(index, selectedSyncLineIndices) {
+                                            detectTapGestures(
+                                                onLongPress = {
+                                                    selectedSyncLineIndices = if (selectedSyncLineIndices.isEmpty()) {
+                                                        setOf(index)
+                                                    } else {
+                                                        selectedSyncLineIndices + index
+                                                    }
+                                                }
+                                            )
+                                        },
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     // Colonne gauche : TAG + time
@@ -809,20 +886,31 @@ fun LyricsEditorSection(
 
                                         Text(
                                             text = line.text,
-                                            color = if (index == highlightedCapturedIndex) {
-                                                Color(0xFFFFF176)
-                                            } else {
-                                                Color.White
+                                            color = when {
+                                                isSelected -> Color(0xFF80CBC4)
+                                                index == highlightedCapturedIndex -> Color(0xFFFFF176)
+                                                else -> Color.White
                                             },
                                             fontSize = 16.sp,
                                             modifier = Modifier.pointerInput(index, line.text) {
                                                 detectTapGestures(
+                                                    onTap = {
+                                                        if (selectedSyncLineIndices.isNotEmpty()) {
+                                                            toggleSyncLineSelection(index)
+                                                        } else {
+                                                            lineMenuIndex = index
+                                                            lineMenuText = line.text
+                                                        }
+                                                    },
                                                     onLongPress = {
-                                                        lineMenuIndex = index
-                                                        lineMenuText = line.text
+                                                        if (selectedSyncLineIndices.isEmpty()) {
+                                                            selectedSyncLineIndices = setOf(index)
+                                                        } else {
+                                                            selectedSyncLineIndices = selectedSyncLineIndices + index
+                                                        }
                                                     }
                                                 )
-                                            }
+                                            }.padding(vertical = 4.dp)
                                         )
                                     }
 
@@ -836,12 +924,12 @@ fun LyricsEditorSection(
                                                 runCatching { FillerSoundManager.fadeOutAndStop(200) }
                                             }
                                         },
-                                        enabled = line.timeMs > 0L
+                                        enabled = line.timeMs > 0L && selectedSyncLineIndices.isEmpty()
                                     ) {
                                         Icon(
                                             imageVector = Icons.Filled.PlayArrow,
                                             contentDescription = stringResource(R.string.lyrics_editor_cd_play_from_line),
-                                            tint = if (line.timeMs > 0L) Color.White else Color.DarkGray
+                                            tint = if (line.timeMs > 0L && selectedSyncLineIndices.isEmpty()) Color.White else Color.DarkGray
                                         )
                                     }
                                 }
@@ -883,6 +971,7 @@ fun LyricsEditorSection(
                                         if (idx in list.indices) {
                                             list[idx] = list[idx].copy(text = lineMenuText.trim())
                                             onEditingLinesChange(list)
+                                            applyLinesToRawDraft(list)
                                         } else if (BuildConfig.DEBUG) {
                                             Log.w("LrcDebug", "EDIT_LINE_SKIPPED invalidIndex idx=$idx size=${list.size}")
                                         }
@@ -898,6 +987,8 @@ fun LyricsEditorSection(
                                             if (idx in list.indices) {
                                                 list.removeAt(idx)
                                                 onEditingLinesChange(list)
+                                                applyLinesToRawDraft(list)
+                                                selectedSyncLineIndices = selectedSyncLineIndices.filter { it in list.indices }.toSet()
                                             } else if (BuildConfig.DEBUG) {
                                                 Log.w("LrcDebug", "DELETE_LINE_SKIPPED invalidIndex idx=$idx size=${list.size}")
                                             }
