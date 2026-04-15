@@ -423,7 +423,7 @@ fun PlayerScreen(
     var lyricsUiVisibleLogged by remember(currentTrackUri) { mutableStateOf(false) }
 
     var lyricsBoxHeightPx by remember { mutableStateOf(0) }
-    var currentLrcIndex by remember { mutableStateOf(0) }
+    var currentLrcIndex by remember(currentTrackUri) { mutableStateOf(0) }
 
     var lastMidiIndex by remember(currentTrackUri) { mutableStateOf(-1) }
     var userScrolling by remember { mutableStateOf(false) }
@@ -435,12 +435,31 @@ fun PlayerScreen(
 
 
     var hasRequestedPlaylist by remember(currentTrackUri) { mutableStateOf(false) }
-    var autoReturnArmed by rememberSaveable(currentTrackUri) { mutableStateOf(false) }
+    var autoReturnArmed by remember(currentTrackUri) { mutableStateOf(false) }
+    var autoReturnInitialObservedPositionMs by remember(currentTrackUri) { mutableIntStateOf(-1) }
 
     LaunchedEffect(currentTrackUri) {
         autoReturnArmed = false
-        delay(1500L) // laisse Exo stabiliser duration/position après changement de titre
-        autoReturnArmed = true
+        autoReturnInitialObservedPositionMs = -1
+    }
+
+    LaunchedEffect(currentTrackUri, durationMs, positionMs, isPlaying, autoReturnArmed) {
+        if (currentTrackUri == null || autoReturnArmed || !isPlaying || durationMs <= 0) return@LaunchedEffect
+
+        if (autoReturnInitialObservedPositionMs < 0) {
+            autoReturnInitialObservedPositionMs = positionMs
+        }
+
+        val safeStartWindowMs = minOf(5_000, durationMs.coerceAtLeast(1))
+        val playbackRestartedNearStart = positionMs in 0..safeStartWindowMs
+        val playbackPositionDroppedFromInitial =
+            autoReturnInitialObservedPositionMs > 0 &&
+                positionMs >= 0 &&
+                positionMs + 3_000 < autoReturnInitialObservedPositionMs
+
+        if (playbackRestartedNearStart || playbackPositionDroppedFromInitial) {
+            autoReturnArmed = true
+        }
     }
     var isAutoReturnEnabled by remember {
         mutableStateOf(AutoReturnPrefs.isEnabled(context))
@@ -1156,6 +1175,13 @@ fun PlayerScreen(
             lastMidiIndex = -1
         }
         recomputeCurrentIndexForActiveView()
+    }
+
+    LaunchedEffect(currentTrackUri) {
+        currentLrcIndex = 0
+        if (selectedViewMode == LyricsViewMode.LYRICS) {
+            runCatching { listState.scrollToItem(0) }
+        }
     }
 
     fun centerCurrentLineLazy(state: LazyListState) {

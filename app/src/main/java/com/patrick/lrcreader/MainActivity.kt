@@ -1548,16 +1548,6 @@ class MainActivity : AppCompatActivity() {
                     backingEndedSignal++
                 }
 
-                DisposableEffect(exoPlayer) {
-                    val listener = object : Player.Listener {
-                        override fun onPlaybackStateChanged(playbackState: Int) {
-                            if (playbackState == Player.STATE_ENDED) onEnded.value.invoke()
-                        }
-                    }
-                    exoPlayer.addListener(listener)
-                    onDispose { exoPlayer.removeListener(listener) }
-                }
-
                 PlaybackCoordinator.stopPlayer = {
                     cancelTrimWatcher()
                     runCatching { exoPlayer.pause() }
