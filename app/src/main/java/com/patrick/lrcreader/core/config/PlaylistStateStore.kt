@@ -18,6 +18,15 @@ internal object PlaylistStateStore {
     private var diskReadCount: Long = 0
     private var diskReadTotalMs: Long = 0
 
+    data class RestoreResult(
+        val success: Boolean,
+        val restoredPlaylistCount: Int,
+        val internalPlaylistCount: Int,
+        val workspacePlaylistCount: Int,
+        val workspaceHasPlaylistFiles: Boolean,
+        val validated: Boolean
+    )
+
     fun ensureInitialized(context: Context): Boolean {
         return PlaylistStateAtomicIo.ensureInitialized(context)
     }
@@ -91,7 +100,7 @@ internal object PlaylistStateStore {
         }
     }
 
-    fun restorePlaylistsIntoRepository(context: Context): Boolean {
+    fun restorePlaylistsIntoRepository(context: Context): RestoreResult {
         return withLockBlocking {
             val internalState = readStateLocked(context)
             val workspaceState = WorkspacePlaylistFilesStore.readAll(context)
@@ -119,21 +128,49 @@ internal object PlaylistStateStore {
                     PlaylistRepository.getPlaylists().joinToString { "$it:${PlaylistRepository.getAllItemsRaw(it).size}" }
                 } workspaceMigrated=$workspaceMigrated"
             )
-            true
+            val restoredPlaylistCount = PlaylistRepository.getPlaylists().size
+            val validated = restoredPlaylistCount > 0 ||
+                (
+                    !workspaceState.hasPlaylistFiles &&
+                        internalState.playlists.isEmpty() &&
+                        workspaceState.playlists.isEmpty()
+                    )
+            Log.d(
+                PERSIST_LOG_TAG,
+                "restore.validation restored=$restoredPlaylistCount internal=${internalState.playlists.size} workspace=${workspaceState.playlists.size} workspaceHasFiles=${workspaceState.hasPlaylistFiles} validated=$validated"
+            )
+            RestoreResult(
+                success = true,
+                restoredPlaylistCount = restoredPlaylistCount,
+                internalPlaylistCount = internalState.playlists.size,
+                workspacePlaylistCount = workspaceState.playlists.size,
+                workspaceHasPlaylistFiles = workspaceState.hasPlaylistFiles,
+                validated = validated
+            )
         }
     }
 
     fun savePlaylistsSnapshot(context: Context): Boolean {
         return withLockBlocking {
             val current = readStateLocked(context)
+            val workspaceState = WorkspacePlaylistFilesStore.readAll(context)
+            val repoPlaylists = PlaylistRepository.getPlaylists()
+            val repoIsEmpty = repoPlaylists.isEmpty()
+            if (repoIsEmpty && workspaceState.hasPlaylistFiles) {
+                Log.e(
+                    PERSIST_LOG_TAG,
+                    "save.blocked reason=suspect_empty_repo internal=${current.playlists.size} workspace=${workspaceState.playlists.size} workspaceHasFiles=${workspaceState.hasPlaylistFiles}"
+                )
+                return@withLockBlocking false
+            }
             Log.d(
                 PERSIST_LOG_TAG,
-                "save.begin playlists=${PlaylistRepository.getPlaylists()} counts=${
-                    PlaylistRepository.getPlaylists().joinToString { "$it:${PlaylistRepository.getAllItemsRaw(it).size}" }
+                "save.begin playlists=$repoPlaylists counts=${
+                    repoPlaylists.joinToString { "$it:${PlaylistRepository.getAllItemsRaw(it).size}" }
                 }"
             )
             val nextMap = linkedMapOf<String, PlaylistStateEntry>()
-            PlaylistRepository.getPlaylists().sorted().forEach { playlistName ->
+            repoPlaylists.sorted().forEach { playlistName ->
                 val previous = current.playlists[playlistName] ?: PlaylistStateEntry()
                 nextMap[playlistName] = previous.copy(
                     exists = true,
@@ -156,7 +193,7 @@ internal object PlaylistStateStore {
             val workspaceSaved = WorkspacePlaylistFilesStore.syncFromRepository(context)
             Log.d(
                 PERSIST_LOG_TAG,
-                "save.end internalSaved=$internalSaved workspaceSaved=$workspaceSaved playlists=${PlaylistRepository.getPlaylists()}"
+                "save.end internalSaved=$internalSaved workspaceSaved=$workspaceSaved playlists=$repoPlaylists"
             )
             internalSaved || workspaceSaved
         }

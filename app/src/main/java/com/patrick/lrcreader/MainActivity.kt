@@ -398,7 +398,7 @@ class MainActivity : AppCompatActivity() {
                     var loadedLegacyTrimByUri: Map<String, EditPrefs.EditData> = emptyMap()
                     val legacyCustomTitlesSnapshot = PlaylistRepository.getAnyCustomTitlesSnapshot()
                     var migratedTitleAliases = 0
-                    withContext(Dispatchers.IO) {
+                    val playlistRestoreResult = withContext(Dispatchers.IO) {
                         mark("compose.ensureInitialized.io:start root=$rootKey")
                         val sessionInitOk = runCatching {
                             SessionPrefs.getLastSessionState(ctx)
@@ -420,10 +420,19 @@ class MainActivity : AppCompatActivity() {
                         val trackInitOk = true
                         val notesInitOk = true
                         val midiInitOk = true
-                        val playlistInitOk = runCatching {
+                        val playlistRestoreResult = runCatching {
                             PlaylistStateStore.restorePlaylistsIntoRepository(ctx)
-                            true
-                        }.getOrDefault(false)
+                        }.getOrElse {
+                            Log.e("BOOTSTEP", "Playlist restore failed root=$rootKey", it)
+                            PlaylistStateStore.RestoreResult(
+                                success = false,
+                                restoredPlaylistCount = 0,
+                                internalPlaylistCount = 0,
+                                workspacePlaylistCount = 0,
+                                workspaceHasPlaylistFiles = false,
+                                validated = false
+                            )
+                        }
                         migratedTitleAliases = runCatching {
                             TitleAliasesStore.migrateFromLegacyTitlesIfMissing(
                                 context = ctx,
@@ -432,8 +441,15 @@ class MainActivity : AppCompatActivity() {
                         }.getOrDefault(0)
                         loadedLegacyTrimByUri = runCatching { EditPrefs.getAllEdits(ctx) }.getOrDefault(emptyMap())
                         mark(
-                            "compose.ensureInitialized.io:end root=$rootKey session=$sessionInitOk trim=$trimInitOk textSongs=$textSongsInitOk track=$trackInitOk alias=$aliasInitOk aliasMigrated=$migratedTitleAliases notes=$notesInitOk midi=$midiInitOk playlist=$playlistInitOk"
+                            "compose.ensureInitialized.io:end root=$rootKey session=$sessionInitOk trim=$trimInitOk textSongs=$textSongsInitOk track=$trackInitOk alias=$aliasInitOk aliasMigrated=$migratedTitleAliases notes=$notesInitOk midi=$midiInitOk playlistSuccess=${playlistRestoreResult.success} playlistValidated=${playlistRestoreResult.validated} playlistRestored=${playlistRestoreResult.restoredPlaylistCount} playlistInternal=${playlistRestoreResult.internalPlaylistCount} playlistWorkspace=${playlistRestoreResult.workspacePlaylistCount} playlistWorkspaceHasFiles=${playlistRestoreResult.workspaceHasPlaylistFiles}"
                         )
+                        if (!playlistRestoreResult.validated) {
+                            Log.e(
+                                "PLAYLIST_PERSIST",
+                                "restore.not_ready root=$rootKey restored=${playlistRestoreResult.restoredPlaylistCount} internal=${playlistRestoreResult.internalPlaylistCount} workspace=${playlistRestoreResult.workspacePlaylistCount} workspaceHasFiles=${playlistRestoreResult.workspaceHasPlaylistFiles}"
+                            )
+                        }
+                        playlistRestoreResult
                     }
 
                     legacyTrimByUri = loadedLegacyTrimByUri
@@ -441,7 +457,11 @@ class MainActivity : AppCompatActivity() {
                         PlaylistRepository.touch()
                     }
                     configInitDoneForRoot = rootKey
-                    playlistStateReadyForRoot = rootKey
+                    if (playlistRestoreResult.validated) {
+                        playlistStateReadyForRoot = rootKey
+                    } else {
+                        playlistStateReadyForRoot = null
+                    }
                     mark("compose.ensureInitialized.effect:end root=$rootKey")
                 }
 
