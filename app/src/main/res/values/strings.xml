@@ -630,6 +630,15 @@
     <string name="track_mix_eq_high">HIGH</string>
     <string name="track_mix_touch_to_return">TOUCH HERE TO RETURN</string>
     <string name="track_mix_lufs_volume_locked">Désactivez le mode LUFS pour régler le volume manuellement</string>
+    <string name="lyrics_editor_hint_title">Synchroniser vos paroles</string>
+    <string name="lyrics_editor_hint_message">Lancez la musique, puis appuyez sur “Tag” au bon moment pour caler chaque phrase.
+
+Vous pouvez modifier votre texte à tout moment.
+
+Et voilà !
+
+N’oubliez pas d’enregistrer 😉</string>
+    <string name="lyrics_editor_hint_do_not_show_again">Ne plus afficher</string>
 
     <!-- Library components -->
     <string name="library_bottom_assign">Attribuer</string>

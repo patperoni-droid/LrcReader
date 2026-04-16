@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
@@ -67,6 +68,22 @@ import kotlinx.coroutines.yield
 private val INLINE_LRC_TIME_TAG_REGEX =
     Regex("""\[(\d{1,2}):(\d{1,2})(?:\.(\d{1,3}))?]""")
 private val LRC_TIMESTAMP_HINT_REGEX = Regex("""\[\d{1,2}:\d{2}""")
+
+private object LyricsEditorHintPrefs {
+    private const val PREFS_NAME = "lyrics_editor_hint_prefs"
+    private const val KEY_DISMISSED = "lyrics_editor_hint_dismissed"
+
+    fun isDismissed(context: Context): Boolean =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(KEY_DISMISSED, false)
+
+    fun setDismissed(context: Context, dismissed: Boolean) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_DISMISSED, dismissed)
+            .apply()
+    }
+}
 
 // ─────────────────────────────
 //  ÉDITEUR DE PAROLES
@@ -129,7 +146,21 @@ fun LyricsEditorSection(
     var lineMenuText by remember { mutableStateOf("") }
     var selectedSyncLineIndices by remember(currentTrackUri) { mutableStateOf<Set<Int>>(emptySet()) }
     var previousEditingLines by remember(currentTrackUri) { mutableStateOf<List<LrcLine>?>(null) }
+    var showEditorHintDialog by remember { mutableStateOf(false) }
+    var editorHintDoNotShowAgain by remember { mutableStateOf(false) }
+    var hasShownEditorHintThisSession by remember { mutableStateOf(false) }
     val displayedPalette = paletteChords
+
+    LaunchedEffect(currentEditTab) {
+        if (
+            currentEditTab == 1 &&
+            !hasShownEditorHintThisSession &&
+            !LyricsEditorHintPrefs.isDismissed(context)
+        ) {
+            hasShownEditorHintThisSession = true
+            showEditorHintDialog = true
+        }
+    }
 
     fun stripInlineTimingTags(raw: String): String =
         raw.lines()
@@ -502,6 +533,54 @@ fun LyricsEditorSection(
             .fillMaxSize()
             .padding(horizontal = 16.dp, vertical = 6.dp)
     ) {
+        if (showEditorHintDialog) {
+            AlertDialog(
+                onDismissRequest = { showEditorHintDialog = false },
+                title = {
+                    Text(
+                        text = stringResource(R.string.lyrics_editor_hint_title),
+                        color = Color.White
+                    )
+                },
+                text = {
+                    Column {
+                        Text(
+                            text = stringResource(R.string.lyrics_editor_hint_message),
+                            color = Color(0xFFB0BEC5)
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Checkbox(
+                                checked = editorHintDoNotShowAgain,
+                                onCheckedChange = { editorHintDoNotShowAgain = it }
+                            )
+                            Text(
+                                text = stringResource(R.string.lyrics_editor_hint_do_not_show_again),
+                                color = Color.White
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            if (editorHintDoNotShowAgain) {
+                                LyricsEditorHintPrefs.setDismissed(context, true)
+                            }
+                            showEditorHintDialog = false
+                        }
+                    ) {
+                        Text(
+                            text = stringResource(R.string.common_ok),
+                            color = Color(0xFF80CBC4)
+                        )
+                    }
+                }
+            )
+        }
+
         // Onglets + Enregistrer
         Row(
             modifier = Modifier.fillMaxWidth(),

@@ -602,6 +602,15 @@
     <string name="track_mix_eq_high">HIGH</string>
     <string name="track_mix_touch_to_return">TOUCH HERE TO RETURN</string>
     <string name="track_mix_lufs_volume_locked">Disable LUFS mode to adjust volume manually</string>
+    <string name="lyrics_editor_hint_title">Sync your lyrics</string>
+    <string name="lyrics_editor_hint_message">Start the music, then press “Tag” at the right moment to line up each phrase.
+
+You can edit your text at any time.
+
+And that’s it!
+
+Don’t forget to save 😉</string>
+    <string name="lyrics_editor_hint_do_not_show_again">Do not show again</string>
 
     <!-- Library components -->
     <string name="library_bottom_assign">Assign</string>

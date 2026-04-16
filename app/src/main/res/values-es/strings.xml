@@ -513,6 +513,15 @@
     <string name="track_mix_eq_high">HIGH</string>
     <string name="track_mix_touch_to_return">TOUCH HERE TO RETURN</string>
     <string name="track_mix_lufs_volume_locked">Desactiva el modo LUFS para ajustar el volumen manualmente</string>
+    <string name="lyrics_editor_hint_title">Sincronizar tus letras</string>
+    <string name="lyrics_editor_hint_message">Pon la música y pulsa “Tag” en el momento adecuado para ajustar cada frase.
+
+Puedes modificar tu texto en cualquier momento.
+
+¡Y ya está!
+
+No olvides guardar 😉</string>
+    <string name="lyrics_editor_hint_do_not_show_again">No volver a mostrar</string>
 
     <!-- Library components -->
     <string name="library_bottom_assign">Asignar</string>
