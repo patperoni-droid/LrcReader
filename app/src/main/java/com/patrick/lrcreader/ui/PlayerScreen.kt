@@ -472,6 +472,8 @@ fun PlayerScreen(
     var showMixScreen by remember { mutableStateOf(false) }
     LaunchedEffect(closeMixSignal) {
         showMixScreen = false
+        isEditingLyrics = false
+        editingTrackUri = null
         isEditingTimeline = false
         editingTimelineMidiMarkerIndex = null
         editingTimelineLightCueTimeMs = null
