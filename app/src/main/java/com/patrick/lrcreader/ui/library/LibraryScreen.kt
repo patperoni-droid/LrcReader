@@ -52,6 +52,7 @@ import com.patrick.lrcreader.core.BackupManager
 import com.patrick.lrcreader.core.DjFolderPrefs
 import com.patrick.lrcreader.core.ImportAudioManager
 import com.patrick.lrcreader.core.LibraryIndexCache
+import com.patrick.lrcreader.core.LibraryFullModePolicy
 import com.patrick.lrcreader.core.LibraryTransferFolderPrefs
 import com.patrick.lrcreader.core.PlaylistRepository
 import com.patrick.lrcreader.core.PlaylistTrackLimitPolicy
@@ -489,7 +490,7 @@ fun LibraryScreen(
     onImportGeneratedSmpFailureReason: () -> String? = { null },
     onDeleteSmpSong: suspend (String) -> Boolean = { false },
     onOpenPlaylistFromLibrary: (String) -> Unit = {},
-    onPlayFromLibrary: (String) -> Unit
+    onPlayFromLibrary: (String, Boolean) -> Unit
 ) {
     val context = LocalContext.current
     Log.e("SIG_LIB", "SIG#0 TOP composable 2026-02-08 18:00 Z")
@@ -505,6 +506,11 @@ fun LibraryScreen(
 
     val scope = rememberCoroutineScope()
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
+    var isLibraryFullModeEnabled by remember {
+        mutableStateOf(LibraryFullModePolicy.isFullModeEnabled(context))
+    }
+    var hiddenTapCount by remember { mutableIntStateOf(0) }
+    var hiddenTapLastAtMs by remember { mutableLongStateOf(0L) }
 
     // Strings (pré-calculés, utilisables partout, y compris dans les callbacks)
     val sScanning = stringResource(R.string.library_scanning)
@@ -517,6 +523,7 @@ fun LibraryScreen(
     val sSearch = stringResource(R.string.common_search_placeholder)
     val sNoFolderHint = stringResource(R.string.library_no_folder_hint)
     val sNoFolderSelected = stringResource(R.string.library_no_folder_selected)
+    val sLibraryFullModeEnabled = stringResource(R.string.library_full_mode_enabled)
     val sBackupImportAction = stringResource(R.string.library_list_import_backup)
     val sBackupImporting = stringResource(R.string.backup_import_in_progress)
     val sBackupImportSuccess = stringResource(R.string.backup_import_success)
@@ -558,6 +565,20 @@ fun LibraryScreen(
     val sConvertSmpNoMp3 = stringResource(R.string.library_convert_smp_no_mp3)
     val sCopying = stringResource(R.string.library_copying)
     val sBatchPreparing = stringResource(R.string.smp_batch_progress_title)
+
+    fun handleHiddenFullModeTap() {
+        if (isLibraryFullModeEnabled) return
+        val now = SystemClock.elapsedRealtime()
+        hiddenTapCount = if (now - hiddenTapLastAtMs <= 1_200L) hiddenTapCount + 1 else 1
+        hiddenTapLastAtMs = now
+        if (hiddenTapCount >= 5) {
+            LibraryFullModePolicy.enableLocalFullMode(context)
+            isLibraryFullModeEnabled = true
+            hiddenTapCount = 0
+            hiddenTapLastAtMs = 0L
+            Toast.makeText(context, sLibraryFullModeEnabled, Toast.LENGTH_SHORT).show()
+        }
+    }
     val sBatchUnsupportedOnly = stringResource(R.string.smp_batch_unsupported_only)
     val sBatchStageConverting = stringResource(R.string.smp_batch_stage_converting)
     val sBatchStageImporting = stringResource(R.string.smp_batch_stage_importing)
@@ -3249,7 +3270,8 @@ fun LibraryScreen(
                     { selectedSongs = emptySet() }
                 } else {
                     null
-                }
+                },
+                onSecretMultiTap = { handleHiddenFullModeTap() }
             )
 
             Spacer(Modifier.height(10.dp))
@@ -3508,13 +3530,14 @@ fun LibraryScreen(
                                     rowBorder = rowBorder,
                                     accent = accent,
                                     bottomPadding = selectionBottomPadding,
+                                    showRichIndicators = isLibraryFullModeEnabled,
                                     selectedSongs = selectedSongs,
                                     onToggleSelect = { uri ->
                                         toggleSelection(uri)
                                     },
                                     onOpenPlayer = { song ->
                                         stopQuickPlay()
-                                        onPlayFromLibrary(song.playbackItem)
+                                        onPlayFromLibrary(song.playbackItem, isLibraryFullModeEnabled)
                                     },
                                     onAssignOne = { uri ->
                                         selectedSongs = setOf(uri)
@@ -3725,7 +3748,7 @@ fun LibraryScreen(
 
                                 onOpenPlayer = { uri ->
                                     stopQuickPlay()
-                                    onPlayFromLibrary(uri.toString())
+                                    onPlayFromLibrary(uri.toString(), isLibraryFullModeEnabled)
                                 },
 
                                 onQuickPlay = { uri ->

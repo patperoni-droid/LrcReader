@@ -1,6 +1,8 @@
 package com.patrick.lrcreader.ui.library
 
 import android.net.Uri
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -45,6 +47,7 @@ fun LibraryHeader(
     onMoveSelection: (() -> Unit)? = null,
     onDeleteSelection: (() -> Unit)? = null,
     onClearSelection: (() -> Unit)? = null,
+    onSecretMultiTap: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -108,7 +111,21 @@ fun LibraryHeader(
             }
         }
 
-        Column(modifier = Modifier.weight(1f)) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .then(
+                    if (onSecretMultiTap != null) {
+                        Modifier.clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = onSecretMultiTap
+                        )
+                    } else {
+                        Modifier
+                    }
+                )
+        ) {
             Text(stringResource(R.string.library_title), color = titleColor, fontSize = 20.sp)
             Text(folderName, color = subtitleColor, fontSize = 11.sp)
         }

@@ -77,6 +77,7 @@ fun LibrarySongsList(
     rowBorder: Color,
     accent: Color,
     bottomPadding: Dp,
+    showRichIndicators: Boolean = true,
     selectedSongs: Set<Uri>,
     onToggleSelect: (Uri) -> Unit,
     onOpenPlayer: (LibrarySongItem) -> Unit,
@@ -183,11 +184,13 @@ fun LibrarySongsList(
                     )
 
                     if (
-                        song.hasLyrics ||
-                        song.hasChords ||
-                        song.hasMidi ||
-                        song.hasLight ||
-                        song.hasNotes
+                        showRichIndicators && (
+                            song.hasLyrics ||
+                                song.hasChords ||
+                                song.hasMidi ||
+                                song.hasLight ||
+                                song.hasNotes
+                            )
                     ) {
                         Spacer(Modifier.width(8.dp))
                         LibrarySongIndicators(song)

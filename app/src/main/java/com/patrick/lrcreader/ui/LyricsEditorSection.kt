@@ -4,11 +4,8 @@ import android.content.Context
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.SystemClock
-import android.provider.OpenableColumns
 import android.util.Log
 import android.widget.Toast
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -99,10 +96,8 @@ fun LyricsEditorSection(
 
     // ✅ callback sauvegarde
     onSaveSortedLines: (List<LrcLine>) -> Unit,
-    onImportedLinesApplied: (List<LrcLine>) -> Unit,
     onPersistLines: suspend (List<LrcLine>) -> Boolean,
     onDeletePersisted: suspend () -> Boolean,
-    showImportButton: Boolean = true,
     mainTabLabelRes: Int = R.string.lyrics_editor_tab_lyrics,
     inputLabelRes: Int = R.string.lyrics_editor_input_label,
     enableCueEditing: Boolean = true,
@@ -114,7 +109,6 @@ fun LyricsEditorSection(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val lazyListState = rememberLazyListState()
-    var isImportBusy by remember { mutableStateOf(false) }
     var isPersistBusy by remember { mutableStateOf(false) }
     var showTimingsInLyricsTab by remember(currentTrackUri) { mutableStateOf(false) }
     var rawTextFieldValue by remember(currentTrackUri, showChordPalette) {
@@ -503,70 +497,6 @@ fun LyricsEditorSection(
         }
     }
 
-    val importLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
-    ) { pickedUri ->
-        val trackUri = currentTrackUri
-        if (pickedUri == null) {
-            Log.d("LRC_IMPORT", "picker cancelled")
-            return@rememberLauncherForActivityResult
-        }
-        if (trackUri.isNullOrBlank() || isImportBusy) {
-            return@rememberLauncherForActivityResult
-        }
-
-        val displayName = queryDisplayName(context, pickedUri)
-        val nameOk = displayName?.lowercase()?.endsWith(".lrc") == true
-        val mime = runCatching { context.contentResolver.getType(pickedUri) }.getOrNull()
-        val mimeOk = mime?.startsWith("text/") == true
-        if (BuildConfig.DEBUG) {
-            Log.d(
-                "LRC_IMPORT",
-                "picked uri=$pickedUri displayName=$displayName mime=$mime nameOk=$nameOk mimeOk=$mimeOk"
-            )
-        }
-        if (!(nameOk || mimeOk)) {
-            Toast.makeText(context, context.getString(R.string.lyrics_editor_import_choose_lrc), Toast.LENGTH_SHORT).show()
-            return@rememberLauncherForActivityResult
-        }
-
-        isImportBusy = true
-        scope.launch {
-            try {
-                val importedText = readImportedLrcText(context, pickedUri)
-                if (importedText == null) {
-                    Log.e("LRC_IMPORT", "failed to read uri=$pickedUri")
-                    Toast.makeText(context, context.getString(R.string.lyrics_editor_import_failed), Toast.LENGTH_SHORT).show()
-                    return@launch
-                }
-
-                if (importedText.isBlank()) {
-                    Log.w("LRC_IMPORT", "empty file uri=$pickedUri")
-                    Toast.makeText(context, context.getString(R.string.lyrics_editor_import_empty), Toast.LENGTH_SHORT).show()
-                    return@launch
-                }
-
-                val parsed = withContext(Dispatchers.IO) { parseLrc(importedText) }
-                onPersistLines(parsed)
-
-                onRawLyricsTextChange(importedText)
-                rawTextFieldValue = TextFieldValue(
-                    text = importedText,
-                    selection = TextRange(importedText.length)
-                )
-                previousEditingLines = editingLines.map { it.copy() }
-                onEditingLinesChange(parsed)
-                onImportedLinesApplied(parsed)
-                Log.d("LRC_IMPORT", "imported uri=$pickedUri lines=${parsed.size}")
-            } catch (t: Throwable) {
-                Log.e("LRC_IMPORT", "import failed uri=$pickedUri", t)
-                Toast.makeText(context, context.getString(R.string.lyrics_editor_import_failed), Toast.LENGTH_SHORT).show()
-            } finally {
-                isImportBusy = false
-            }
-        }
-    }
-
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -593,18 +523,6 @@ fun LyricsEditorSection(
                         onClick = { switchEditTab(1) },
                         text = { Text(stringResource(R.string.lyrics_editor_tab_sync)) }
                     )
-                }
-            }
-
-            if (showImportButton) {
-                TextButton(
-                    enabled = currentTrackUri != null && !isImportBusy && !isPersistBusy,
-                    onClick = {
-                        importLauncher.launch(arrayOf("*/*"))
-                    },
-                    modifier = Modifier.padding(start = 4.dp)
-                ) {
-                    Text(stringResource(R.string.lyrics_editor_import_lrc), color = Color.White)
                 }
             }
 
@@ -1179,55 +1097,4 @@ private fun linesToEditorRawText(lines: List<LrcLine>): String {
 
 private fun plainLinesToEditorRawText(lines: List<LrcLine>): String {
     return lines.joinToString("\n") { line -> line.text }
-}
-
-private suspend fun readImportedLrcText(context: Context, uri: Uri): String? = withContext(Dispatchers.IO) {
-    val bytes = runCatching {
-        context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-    }.getOrNull() ?: return@withContext null
-
-    if (bytes.isEmpty()) return@withContext ""
-
-    decodeTextWithFallback(bytes)?.trimEnd('\u0000')
-}
-
-private fun decodeTextWithFallback(bytes: ByteArray): String? {
-    if (bytes.size >= 3 &&
-        bytes[0] == 0xEF.toByte() &&
-        bytes[1] == 0xBB.toByte() &&
-        bytes[2] == 0xBF.toByte()
-    ) {
-        return decodeStrict(bytes.copyOfRange(3, bytes.size), Charsets.UTF_8)
-    }
-    if (bytes.size >= 2 && bytes[0] == 0xFF.toByte() && bytes[1] == 0xFE.toByte()) {
-        return decodeStrict(bytes.copyOfRange(2, bytes.size), Charsets.UTF_16LE)
-    }
-    if (bytes.size >= 2 && bytes[0] == 0xFE.toByte() && bytes[1] == 0xFF.toByte()) {
-        return decodeStrict(bytes.copyOfRange(2, bytes.size), Charsets.UTF_16BE)
-    }
-
-    return decodeStrict(bytes, Charsets.UTF_8)
-        ?: decodeStrict(bytes, Charsets.UTF_16LE)
-        ?: decodeStrict(bytes, Charsets.UTF_16BE)
-        ?: decodeStrict(bytes, Charsets.ISO_8859_1)
-}
-
-private fun decodeStrict(bytes: ByteArray, charset: Charset): String? {
-    return runCatching {
-        charset.newDecoder()
-            .onMalformedInput(CodingErrorAction.REPORT)
-            .onUnmappableCharacter(CodingErrorAction.REPORT)
-            .decode(ByteBuffer.wrap(bytes))
-            .toString()
-    }.getOrNull()
-}
-
-private fun queryDisplayName(context: Context, uri: Uri): String? {
-    return runCatching {
-        context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
-            ?.use { cursor ->
-                val idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                if (idx >= 0 && cursor.moveToFirst()) cursor.getString(idx) else null
-            }
-    }.getOrNull()
 }

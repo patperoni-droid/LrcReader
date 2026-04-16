@@ -1412,9 +1412,6 @@ fun PlayerScreen(
                     isEditingLyrics = false
                     editingTrackUri = null
                 },
-                onImportedLinesApplied = { imported ->
-                    onParsedLinesChange(imported)
-                },
                 onPersistLines = persistLines@{ lines ->
                     if (editingTargetMode == LyricsViewMode.CHORDS) {
                         val lockedTrackUri = resolveAccordsEditTargetTrack(
@@ -1800,7 +1797,6 @@ fun PlayerScreen(
                     }
                     true
                 },
-                showImportButton = editingTargetMode == LyricsViewMode.LYRICS,
                 mainTabLabelRes = if (editingTargetMode == LyricsViewMode.LYRICS) {
                     R.string.lyrics_editor_tab_lyrics
                 } else {

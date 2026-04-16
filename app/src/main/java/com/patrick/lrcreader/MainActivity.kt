@@ -1660,7 +1660,8 @@ class MainActivity : AppCompatActivity() {
                 suspend fun playWithCrossfadeInternal(
                     uriString: String,
                     playlistName: String?,
-                    playlistItemKey: String? = null
+                    playlistItemKey: String? = null,
+                    openPlayerScreen: Boolean = true
                 ) {
                     val backingTitle = TitleAliasesStore.getTitleForTrack(ctx, uriString)
                         ?: indexAll.firstOrNull { it.uriString == uriString }?.name
@@ -1945,23 +1946,26 @@ class MainActivity : AppCompatActivity() {
                         PlaybackCoordinator.onPlayerStop()
                     }
 
-                    selectedTab = BottomTab.Player
-                    latestSessionSnapshot = SessionSnapshot(
-                        tabKey = TAB_PLAYER,
-                        quickPlaylist = selectedQuickPlaylist,
-                        openedPlaylist = openedPlaylist,
-                        currentPlayingUri = currentPlayingUri,
-                        currentPlayingPlaylist = currentPlayingPlaylist
-                    )
-                    persistSession(reason = "playStart")
+                    if (openPlayerScreen) {
+                        selectedTab = BottomTab.Player
+                        latestSessionSnapshot = SessionSnapshot(
+                            tabKey = TAB_PLAYER,
+                            quickPlaylist = selectedQuickPlaylist,
+                            openedPlaylist = openedPlaylist,
+                            currentPlayingUri = currentPlayingUri,
+                            currentPlayingPlaylist = currentPlayingPlaylist
+                        )
+                        persistSession(reason = "playStart")
+                    }
                 }
 
-                val playWithCrossfade: (String, String?, String?) -> Unit = { uriString, playlistName, playlistItemKey ->
+                val playWithCrossfade: (String, String?, String?, Boolean) -> Unit = { uriString, playlistName, playlistItemKey, openPlayerScreen ->
                     scope.launch {
                         playWithCrossfadeInternal(
                             uriString = uriString,
                             playlistName = playlistName,
-                            playlistItemKey = playlistItemKey
+                            playlistItemKey = playlistItemKey,
+                            openPlayerScreen = openPlayerScreen
                         )
                     }
                 }
@@ -2267,7 +2271,8 @@ class MainActivity : AppCompatActivity() {
                                 playWithCrossfade(
                                     resolvedTarget.uri,
                                     resolvedTarget.playlist,
-                                    chainQueue[playableIndex]
+                                    chainQueue[playableIndex],
+                                    true
                                 )
                                 currentPlayingUri = resolvedTarget.uri
                                 setQuickPlaylistAndPersist(resolvedTarget.playlist, reason = "chainPlay")
@@ -2302,11 +2307,12 @@ class MainActivity : AppCompatActivity() {
                                     false
                                 } else {
                                     stopChainPlayback()
-                                    playWithCrossfade(
-                                        resolvedTarget.uri,
-                                        resolvedTarget.playlist,
-                                        forcedNext.uri
-                                    )
+                                playWithCrossfade(
+                                    resolvedTarget.uri,
+                                    resolvedTarget.playlist,
+                                    forcedNext.uri,
+                                    true
+                                )
                                     currentPlayingUri = resolvedTarget.uri
                                     setQuickPlaylistAndPersist(resolvedTarget.playlist, reason = "nextTrackTrigger")
                                     currentLyricsColor = Color.White
@@ -3133,7 +3139,7 @@ class MainActivity : AppCompatActivity() {
                                             openedPlaylist = name
                                             setTabAndPersist(BottomTab.QuickPlaylists, reason = "libraryOpenPlaylist")
                                         },
-                                        onPlayFromLibrary = { uriString ->
+                                        onPlayFromLibrary = { uriString, openRichPlayer ->
                                             Log.d(
                                                 SMP_PLAY_TRACE_TAG,
                                                 "LIBRARY_TAP item=$uriString"
@@ -3168,11 +3174,14 @@ class MainActivity : AppCompatActivity() {
                                                     playWithCrossfade(
                                                         resolvedTarget.uri,
                                                         resolvedTarget.playlist,
-                                                        null
+                                                        null,
+                                                        openRichPlayer
                                                     )
                                                     currentPlayingUri = resolvedTarget.uri
                                                     currentLyricsColor = Color.White
-                                                    setTabAndPersist(BottomTab.Player, reason = "libraryPlay")
+                                                    if (openRichPlayer) {
+                                                        setTabAndPersist(BottomTab.Player, reason = "libraryPlay")
+                                                    }
                                                 }
 
                                                 is PlaybackRouter.Target.Prompter -> {
@@ -3263,7 +3272,8 @@ class MainActivity : AppCompatActivity() {
                                                 source = "search_player_tap",
                                                 playlistName = null
                                             )
-                                            playWithCrossfade(uriString, null, null)
+                                            playWithCrossfade(uriString, null, null, true)
+
                                             currentPlayingUri = uriString
                                             setTabAndPersist(BottomTab.Player, reason = "searchPlayPlayer")
                                         }
@@ -3283,7 +3293,8 @@ class MainActivity : AppCompatActivity() {
                                             playWithCrossfade(
                                                 uriString,
                                                 selectedQuickPlaylist,
-                                                uriString
+                                                uriString,
+                                                true
                                             )
                                             currentPlayingUri = uriString
                                             currentLyricsColor = Color(0xFFE040FB)

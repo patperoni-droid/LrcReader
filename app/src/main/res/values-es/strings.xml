@@ -194,6 +194,7 @@
     <string name="library_view_mode_files">Archivos</string>
     <string name="library_view_mode_playlists">Playlists</string>
     <string name="library_view_mode_lufs">LUFS</string>
+    <string name="library_full_mode_enabled">Modo completo activado</string>
     <string name="library_lufs_active">LUFS activo</string>
     <string name="library_lufs_apply">Aplicar LUFS</string>
     <string name="library_lufs_remove">Quitar LUFS</string>
