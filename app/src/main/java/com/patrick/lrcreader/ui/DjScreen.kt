@@ -1,10 +1,12 @@
 package com.patrick.lrcreader.ui
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.widget.Toast
+import android.os.Build
 import android.webkit.MimeTypeMap
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.LinearEasing
@@ -23,7 +25,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
@@ -52,6 +56,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.patrick.lrcreader.core.BackupFolderPrefs
 import com.patrick.lrcreader.core.DjFolderPrefs
 import com.patrick.lrcreader.core.DjIndexCache
+import com.patrick.lrcreader.core.DjMediaFolderNode
 import com.patrick.lrcreader.core.DjBusController
 import com.patrick.lrcreader.core.buildDjGlobalAudioIndex
 import com.patrick.lrcreader.core.djGlobalFolderDisplayName
@@ -60,6 +65,7 @@ import com.patrick.lrcreader.core.hasDjGlobalAudioAccess
 import com.patrick.lrcreader.core.isDjGlobalFolder
 import com.patrick.lrcreader.core.isDjGlobalRoot
 import com.patrick.lrcreader.core.DjScanState
+import com.patrick.lrcreader.core.loadDjMediaFolderTree
 import com.patrick.lrcreader.core.PlaybackCoordinator
 import com.patrick.lrcreader.core.dj.DjEngine
 import com.patrick.lrcreader.core.dj.DjQueuedTrack
@@ -94,6 +100,9 @@ fun DjScreen(
     var menuOpen by remember { mutableStateOf(false) }
     var isQueuePanelOpen by remember { mutableStateOf(false) }
     var isDjVolumeFaderOpen by remember { mutableStateOf(false) }
+    var isDjFolderPickerOpen by remember { mutableStateOf(false) }
+    var djMediaFolderRoots by remember { mutableStateOf<List<DjMediaFolderNode>>(emptyList()) }
+    var djFolderPickerStack by remember { mutableStateOf<List<DjMediaFolderNode>>(emptyList()) }
 
     // 🔍 état recherche
     var isSearchOpen by remember { mutableStateOf(false) }
@@ -358,6 +367,61 @@ fun DjScreen(
         }
     }
 
+    fun startDjFolderPlayback(tracks: List<DjQueuedTrack>) {
+        if (tracks.isEmpty()) {
+            Toast.makeText(
+                context,
+                context.getString(R.string.dj_folder_play_empty),
+                Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
+
+        PlaybackCoordinator.onDjStart()
+        DjEngine.clearQueue()
+        DjEngine.setQueueAutoPlay(true)
+        DjEngine.selectTrackFromList(tracks.first().uri, tracks.first().title)
+        tracks.drop(1).forEach { item ->
+            DjEngine.addToQueue(item.uri, item.title)
+        }
+
+        Toast.makeText(
+            context,
+            context.getString(R.string.dj_folder_play_started, tracks.size),
+            Toast.LENGTH_SHORT
+        ).show()
+    }
+
+    fun openDjFolderPlayChooser() {
+        scope.launch {
+            isLoading = true
+            try {
+                djMediaFolderRoots = withContext(Dispatchers.IO) {
+                    loadDjMediaFolderTree(context)
+                }
+                djFolderPickerStack = emptyList()
+                isDjFolderPickerOpen = true
+            } finally {
+                isLoading = false
+            }
+        }
+    }
+
+    val requestDjAudioPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+        onResult = { granted ->
+            if (granted) {
+                openDjFolderPlayChooser()
+            } else {
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.dj_folder_play_permission_required),
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+    )
+
     val pickDjFolderLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree(),
         onResult = { uri ->
@@ -441,28 +505,7 @@ fun DjScreen(
                         .toList()
                 }
 
-                if (tracks.isEmpty()) {
-                    Toast.makeText(
-                        context,
-                        context.getString(R.string.dj_folder_play_empty),
-                        Toast.LENGTH_SHORT
-                    ).show()
-                    return@launch
-                }
-
-                PlaybackCoordinator.onDjStart()
-                DjEngine.clearQueue()
-                DjEngine.setQueueAutoPlay(true)
-                DjEngine.selectTrackFromList(tracks.first().uri, tracks.first().title)
-                tracks.drop(1).forEach { item ->
-                    DjEngine.addToQueue(item.uri, item.title)
-                }
-
-                Toast.makeText(
-                    context,
-                    context.getString(R.string.dj_folder_play_started, tracks.size),
-                    Toast.LENGTH_SHORT
-                ).show()
+                startDjFolderPlayback(tracks)
             }
         }
     )
@@ -618,7 +661,34 @@ fun DjScreen(
             .background(backgroundBrush)
             .imePadding()
     ) {
-        Column(
+        if (isDjFolderPickerOpen) {
+            val currentPickerFolder = djFolderPickerStack.lastOrNull()
+            DjFolderPickerScreen(
+                currentFolder = currentPickerFolder,
+                rootFolders = djMediaFolderRoots,
+                isLoading = isLoading,
+                onBack = {
+                    if (djFolderPickerStack.isNotEmpty()) {
+                        djFolderPickerStack = djFolderPickerStack.dropLast(1)
+                    } else {
+                        isDjFolderPickerOpen = false
+                    }
+                },
+                onOpenFolder = { folder ->
+                    djFolderPickerStack = djFolderPickerStack + folder
+                },
+                onSelectFolder = { folder ->
+                    isDjFolderPickerOpen = false
+                    djFolderPickerStack = emptyList()
+                    startDjFolderPlayback(folder.recursiveTracks)
+                },
+                onChooseManualFolder = {
+                    isDjFolderPickerOpen = false
+                    pickDjAutoFolderLauncher.launch(null)
+                }
+            )
+        } else {
+            Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(14.dp)
@@ -659,7 +729,13 @@ fun DjScreen(
                     Spacer(Modifier.width(10.dp))
 
                     FilledTonalButton(
-                        onClick = { pickDjAutoFolderLauncher.launch(null) },
+                        onClick = {
+                            if (hasDjGlobalAudioAccess(context)) {
+                                openDjFolderPlayChooser()
+                            } else {
+                                requestDjAudioPermissionLauncher.launch(requiredDjAudioPermission())
+                            }
+                        },
                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
                         colors = ButtonDefaults.filledTonalButtonColors(
                             containerColor = Color.White.copy(alpha = 0.10f),
@@ -1131,6 +1207,7 @@ fun DjScreen(
                 }
             }
         }
+        }
 
         Column(
             modifier = Modifier
@@ -1179,5 +1256,13 @@ fun DjScreen(
                 )
             }
         }
+    }
+}
+
+private fun requiredDjAudioPermission(): String {
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        Manifest.permission.READ_MEDIA_AUDIO
+    } else {
+        Manifest.permission.READ_EXTERNAL_STORAGE
     }
 }

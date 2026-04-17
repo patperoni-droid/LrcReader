@@ -8,10 +8,25 @@ import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
 import androidx.core.content.ContextCompat
+import com.patrick.lrcreader.core.dj.DjQueuedTrack
 import java.io.File
 
 private val DJ_GLOBAL_ROOT_URI: Uri = Uri.parse("dj-global://media")
 private const val DJ_GLOBAL_FOLDER_AUTHORITY = "folder"
+
+data class DjMediaFolder(
+    val folderPath: String,
+    val folderName: String,
+    val tracks: List<DjQueuedTrack>
+)
+
+data class DjMediaFolderNode(
+    val folderPath: String,
+    val folderName: String,
+    val childFolders: List<DjMediaFolderNode>,
+    val directTracks: List<DjQueuedTrack>,
+    val recursiveTracks: List<DjQueuedTrack>
+)
 
 fun djGlobalRootUri(): Uri = DJ_GLOBAL_ROOT_URI
 
@@ -116,6 +131,140 @@ fun buildDjGlobalAudioIndex(context: Context): List<DjIndexCache.Entry> {
             }
         }.orEmpty()
     }.getOrDefault(emptyList())
+}
+
+fun loadDjMediaFolders(context: Context): List<DjMediaFolder> {
+    if (!hasDjGlobalAudioAccess(context)) return emptyList()
+
+    val collection = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+    val projection = mutableListOf(
+        MediaStore.Audio.Media._ID,
+        MediaStore.Audio.Media.TITLE,
+        MediaStore.Audio.Media.DISPLAY_NAME,
+        MediaStore.Audio.Media.SIZE
+    )
+    val folderPathColumnName = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        projection += MediaStore.Audio.Media.RELATIVE_PATH
+        MediaStore.Audio.Media.RELATIVE_PATH
+    } else {
+        projection += MediaStore.Audio.Media.DATA
+        MediaStore.Audio.Media.DATA
+    }
+    val selection = "${MediaStore.Audio.Media.IS_MUSIC} != 0 AND ${MediaStore.Audio.Media.SIZE} > 0"
+    val sortOrder = "${MediaStore.Audio.Media.TITLE} COLLATE NOCASE ASC"
+
+    return runCatching {
+        context.contentResolver.query(
+            collection,
+            projection.toTypedArray(),
+            selection,
+            null,
+            sortOrder
+        )?.use { cursor ->
+            val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
+            val titleColumn = cursor.getColumnIndex(MediaStore.Audio.Media.TITLE)
+            val displayNameColumn = cursor.getColumnIndex(MediaStore.Audio.Media.DISPLAY_NAME)
+            val sizeColumn = cursor.getColumnIndex(MediaStore.Audio.Media.SIZE)
+            val folderPathColumn = cursor.getColumnIndex(folderPathColumnName)
+
+            val grouped = linkedMapOf<String, MutableList<DjQueuedTrack>>()
+            while (cursor.moveToNext()) {
+                val sizeBytes = if (sizeColumn >= 0) cursor.getLong(sizeColumn) else 0L
+                if (sizeBytes <= 0L) continue
+
+                val id = cursor.getLong(idColumn)
+                val itemUri = ContentUris.withAppendedId(collection, id).toString()
+                val title = if (titleColumn >= 0) cursor.getString(titleColumn) else null
+                val displayName = if (displayNameColumn >= 0) cursor.getString(displayNameColumn) else null
+                val cleanName = title?.takeIf { it.isNotBlank() }
+                    ?: sanitizeDjAudioName(displayName)
+                    ?: itemUri
+                val rawFolderPath = if (folderPathColumn >= 0) cursor.getString(folderPathColumn) else null
+                val normalizedFolderPath = normalizeDjFolderPath(rawFolderPath)
+                grouped.getOrPut(normalizedFolderPath) { mutableListOf() }
+                    .add(DjQueuedTrack(uri = itemUri, title = cleanName))
+            }
+
+            grouped.entries
+                .map { (folderPath, tracks) ->
+                    val sortedTracks = tracks.sortedBy { it.title.lowercase() }
+                    val folderName = folderPath
+                        .substringAfterLast('/', folderPath)
+                        .ifBlank { "Music" }
+                    DjMediaFolder(
+                        folderPath = folderPath,
+                        folderName = folderName,
+                        tracks = sortedTracks
+                    )
+                }
+                .sortedWith(
+                    compareBy<DjMediaFolder> { it.folderName.lowercase() }
+                        .thenBy { it.folderPath.lowercase() }
+                )
+        }.orEmpty()
+    }.getOrDefault(emptyList())
+}
+
+fun loadDjMediaFolderTree(context: Context): List<DjMediaFolderNode> {
+    val folders = loadDjMediaFolders(context)
+    if (folders.isEmpty()) return emptyList()
+
+    data class Builder(
+        val path: String,
+        val name: String,
+        val children: MutableMap<String, Builder> = linkedMapOf(),
+        val directTracks: MutableList<DjQueuedTrack> = mutableListOf()
+    )
+
+    fun builderPath(parentPath: String, segment: String): String {
+        return if (parentPath.isBlank()) segment else "$parentPath/$segment"
+    }
+
+    fun buildNode(builder: Builder): DjMediaFolderNode {
+        val builtChildren = builder.children.values
+            .map(::buildNode)
+            .sortedWith(compareBy<DjMediaFolderNode> { it.folderName.lowercase() }.thenBy { it.folderPath.lowercase() })
+        val directTracks = builder.directTracks.sortedBy { it.title.lowercase() }
+        val recursiveTracks = buildList {
+            addAll(directTracks)
+            builtChildren.forEach { child ->
+                addAll(child.recursiveTracks)
+            }
+        }
+        return DjMediaFolderNode(
+            folderPath = builder.path,
+            folderName = builder.name,
+            childFolders = builtChildren,
+            directTracks = directTracks,
+            recursiveTracks = recursiveTracks
+        )
+    }
+
+    val root = Builder(path = "", name = "")
+    folders.forEach { folder ->
+        val segments = folder.folderPath
+            .split('/')
+            .mapNotNull { it.trim().takeIf(String::isNotEmpty) }
+        if (segments.isEmpty()) {
+            root.directTracks += folder.tracks
+            return@forEach
+        }
+
+        var current = root
+        segments.forEach { segment ->
+            current = current.children.getOrPut(segment) {
+                Builder(
+                    path = builderPath(current.path, segment),
+                    name = segment
+                )
+            }
+        }
+        current.directTracks += folder.tracks
+    }
+
+    return root.children.values
+        .map(::buildNode)
+        .sortedWith(compareBy<DjMediaFolderNode> { it.folderName.lowercase() }.thenBy { it.folderPath.lowercase() })
 }
 
 private fun ensureDjGlobalFolderEntries(

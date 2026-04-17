@@ -23,6 +23,14 @@
     <string name="dj_folder_play_button">FOLDER ▶</string>
     <string name="dj_folder_play_empty">No hay archivos de audio en esta carpeta</string>
     <string name="dj_folder_play_started">Reproducción de carpeta iniciada (%1$d pistas)</string>
+    <string name="dj_folder_play_no_media_folders">No se encontraron carpetas de audio en la música del teléfono.</string>
+    <string name="dj_folder_play_choose_manual">Elegir una carpeta manualmente</string>
+    <string name="dj_folder_play_permission_required">Autoriza el acceso a la música para elegir una carpeta de audio.</string>
+    <string name="dj_folder_picker_title">Elegir una carpeta</string>
+    <string name="dj_folder_picker_play_this">Reproducir esta carpeta</string>
+    <string name="dj_folder_picker_no_subfolders">No hay subcarpetas de audio aquí.</string>
+    <string name="dj_folder_picker_folder_meta">%1$d subcarpetas • %2$d pistas</string>
+    <string name="dj_folder_picker_play_folder_cd">Reproducir esta carpeta DJ</string>
 
     <string name="dj_search_placeholder">Buscar (todas las carpetas DJ)…</string>
     <string name="dj_search_placeholder_global">Buscar (toda la música)…</string>

@@ -24,6 +24,14 @@
     <string name="dj_folder_play_button">FOLDER ▶</string>
     <string name="dj_folder_play_empty">Aucun fichier audio dans ce dossier</string>
     <string name="dj_folder_play_started">Lecture du dossier lancée (%1$d morceaux)</string>
+    <string name="dj_folder_play_no_media_folders">Aucun dossier audio trouvé via la musique du téléphone.</string>
+    <string name="dj_folder_play_choose_manual">Choisir un dossier manuellement</string>
+    <string name="dj_folder_play_permission_required">Autorise l’accès à la musique pour choisir un dossier audio.</string>
+    <string name="dj_folder_picker_title">Choisir un dossier</string>
+    <string name="dj_folder_picker_play_this">Lire ce dossier</string>
+    <string name="dj_folder_picker_no_subfolders">Aucun sous-dossier audio ici.</string>
+    <string name="dj_folder_picker_folder_meta">%1$d sous-dossiers • %2$d morceaux</string>
+    <string name="dj_folder_picker_play_folder_cd">Lire ce dossier DJ</string>
 
     <string name="dj_search_placeholder">Recherche (tous dossiers DJ)…</string>
     <string name="dj_search_placeholder_global">Recherche (toute la musique)…</string>

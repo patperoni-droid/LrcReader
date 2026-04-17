@@ -24,6 +24,14 @@
     <string name="dj_folder_play_button">FOLDER ▶</string>
     <string name="dj_folder_play_empty">No audio files in this folder</string>
     <string name="dj_folder_play_started">Folder playback started (%1$d tracks)</string>
+    <string name="dj_folder_play_no_media_folders">No audio folders found in the phone music library.</string>
+    <string name="dj_folder_play_choose_manual">Choose a folder manually</string>
+    <string name="dj_folder_play_permission_required">Allow music access to choose an audio folder.</string>
+    <string name="dj_folder_picker_title">Choose a folder</string>
+    <string name="dj_folder_picker_play_this">Play this folder</string>
+    <string name="dj_folder_picker_no_subfolders">No audio subfolders here.</string>
+    <string name="dj_folder_picker_folder_meta">%1$d subfolders • %2$d tracks</string>
+    <string name="dj_folder_picker_play_folder_cd">Play this DJ folder</string>
 
     <string name="dj_search_placeholder">Search (all DJ folders)…</string>
     <string name="dj_search_placeholder_global">Search (all music)…</string>
