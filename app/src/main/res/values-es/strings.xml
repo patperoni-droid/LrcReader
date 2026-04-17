@@ -20,6 +20,9 @@
     <string name="dj_menu_scan_refresh_global">Volver a escanear la música del teléfono</string>
     <string name="dj_menu_import_music">Importar música (→ %1$s)</string>
     <string name="live_tracks_label">Mis pistas en vivo</string>
+    <string name="dj_folder_play_button">FOLDER ▶</string>
+    <string name="dj_folder_play_empty">No hay archivos de audio en esta carpeta</string>
+    <string name="dj_folder_play_started">Reproducción de carpeta iniciada (%1$d pistas)</string>
 
     <string name="dj_search_placeholder">Buscar (todas las carpetas DJ)…</string>
     <string name="dj_search_placeholder_global">Buscar (toda la música)…</string>

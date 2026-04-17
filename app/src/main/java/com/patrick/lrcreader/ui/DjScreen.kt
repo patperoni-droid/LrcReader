@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import android.webkit.MimeTypeMap
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.LinearEasing
@@ -61,6 +62,7 @@ import com.patrick.lrcreader.core.isDjGlobalRoot
 import com.patrick.lrcreader.core.DjScanState
 import com.patrick.lrcreader.core.PlaybackCoordinator
 import com.patrick.lrcreader.core.dj.DjEngine
+import com.patrick.lrcreader.core.dj.DjQueuedTrack
 import com.patrick.lrcreader.exo.R
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -400,6 +402,71 @@ fun DjScreen(
         }
     )
 
+    val pickDjAutoFolderLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree(),
+        onResult = { uri ->
+            if (uri == null) return@rememberLauncherForActivityResult
+
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            }
+
+            scope.launch {
+                val tracks = withContext(Dispatchers.IO) {
+                    val root = DocumentFile.fromTreeUri(context, uri) ?: return@withContext emptyList()
+                    root.listFiles()
+                        .asSequence()
+                        .filter { it.isFile }
+                        .filter { doc ->
+                            val mime = doc.type?.lowercase().orEmpty()
+                            if (mime.startsWith("audio/")) return@filter true
+                            val name = doc.name.orEmpty()
+                            val ext = name.substringAfterLast('.', "").lowercase()
+                            MimeTypeMap.getSingleton()
+                                .getMimeTypeFromExtension(ext)
+                                ?.lowercase()
+                                ?.startsWith("audio/") == true
+                        }
+                        .sortedBy { it.name.orEmpty().lowercase() }
+                        .mapNotNull { doc ->
+                            val trackUri = doc.uri.toString().takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                            val trackTitle = doc.name?.substringBeforeLast('.')?.takeIf { it.isNotBlank() }
+                                ?: doc.name
+                                ?: trackUri
+                            DjQueuedTrack(uri = trackUri, title = trackTitle)
+                        }
+                        .toList()
+                }
+
+                if (tracks.isEmpty()) {
+                    Toast.makeText(
+                        context,
+                        context.getString(R.string.dj_folder_play_empty),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    return@launch
+                }
+
+                PlaybackCoordinator.onDjStart()
+                DjEngine.clearQueue()
+                DjEngine.setQueueAutoPlay(true)
+                DjEngine.selectTrackFromList(tracks.first().uri, tracks.first().title)
+                tracks.drop(1).forEach { item ->
+                    DjEngine.addToQueue(item.uri, item.title)
+                }
+
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.dj_folder_play_started, tracks.size),
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+    )
+
     // ✅ Import MP3 vers SPL Music/backingtracks
     val pickAudioFilesLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenMultipleDocuments(),
@@ -588,6 +655,22 @@ fun DjScreen(
                         color = Color.White,
                         fontSize = 20.sp
                     )
+
+                    Spacer(Modifier.width(10.dp))
+
+                    FilledTonalButton(
+                        onClick = { pickDjAutoFolderLauncher.launch(null) },
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                        colors = ButtonDefaults.filledTonalButtonColors(
+                            containerColor = Color.White.copy(alpha = 0.10f),
+                            contentColor = onBg
+                        )
+                    ) {
+                        Text(
+                            text = stringResource(R.string.dj_folder_play_button),
+                            fontSize = 12.sp
+                        )
+                    }
 
                     Spacer(Modifier.width(10.dp))
 

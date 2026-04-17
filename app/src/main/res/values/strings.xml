@@ -21,6 +21,9 @@
     <string name="dj_menu_scan_refresh_global">Réanalyser la musique du téléphone</string>
     <string name="dj_menu_import_music">Importer des musiques (→ %1$s)</string>
     <string name="live_tracks_label">Mes morceaux live</string>
+    <string name="dj_folder_play_button">FOLDER ▶</string>
+    <string name="dj_folder_play_empty">Aucun fichier audio dans ce dossier</string>
+    <string name="dj_folder_play_started">Lecture du dossier lancée (%1$d morceaux)</string>
 
     <string name="dj_search_placeholder">Recherche (tous dossiers DJ)…</string>
     <string name="dj_search_placeholder_global">Recherche (toute la musique)…</string>
