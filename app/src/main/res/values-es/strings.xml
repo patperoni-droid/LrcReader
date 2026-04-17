@@ -10,7 +10,9 @@
     <string name="dj_cd_back">Atrás</string>
     <string name="dj_cd_search">Buscar</string>
     <string name="dj_cd_options">Opciones</string>
+    <string name="dj_cd_volume">Volumen DJ</string>
     <string name="dj_cd_stop">Detener DJ</string>
+    <string name="dj_level_button">DJ LEVEL</string>
 
     <string name="dj_menu_choose_folder">Autorizar carpeta DJ…</string>
     <string name="dj_menu_use_legacy_folder">Usar carpeta DJ legacy…</string>

@@ -12,6 +12,10 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -21,6 +25,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Stop
@@ -37,6 +43,7 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -44,6 +51,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.patrick.lrcreader.core.BackupFolderPrefs
 import com.patrick.lrcreader.core.DjFolderPrefs
 import com.patrick.lrcreader.core.DjIndexCache
+import com.patrick.lrcreader.core.DjBusController
 import com.patrick.lrcreader.core.buildDjGlobalAudioIndex
 import com.patrick.lrcreader.core.djGlobalFolderDisplayName
 import com.patrick.lrcreader.core.djGlobalRootUri
@@ -83,6 +91,7 @@ fun DjScreen(
 
     var menuOpen by remember { mutableStateOf(false) }
     var isQueuePanelOpen by remember { mutableStateOf(false) }
+    var isDjVolumeFaderOpen by remember { mutableStateOf(false) }
 
     // 🔍 état recherche
     var isSearchOpen by remember { mutableStateOf(false) }
@@ -416,6 +425,7 @@ fun DjScreen(
 
     // état DJ global
     val djState by DjEngine.state.collectAsState()
+    val djUiLevel by DjBusController.uiLevel.collectAsState()
 
     // --------------------- animation platines rondes ---------------------
     val infinite = rememberInfiniteTransition(label = "dj-discs")
@@ -494,6 +504,12 @@ fun DjScreen(
     } else {
         stringResource(R.string.dj_menu_scan_refresh)
     }
+    val sliderHeight = 450.dp
+    val sliderWidth = 60.dp
+    val overhangRight = 18.dp
+    val blockPaddingEnd = 10.dp
+    val buttonOffsetX = 30.dp
+    val buttonOffsetY = 0.dp
 
     // Liste visible (filtre dans le dossier courant)
     val visibleEntries = remember(entries, searchQuery) {
@@ -1030,6 +1046,54 @@ fun DjScreen(
                     Spacer(Modifier.width(8.dp))
                     Text(stringResource(R.string.common_loading), color = sub, fontSize = 12.sp)
                 }
+            }
+        }
+
+        Column(
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .padding(end = blockPaddingEnd)
+                .zIndex(9999f),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(
+                modifier = Modifier
+                    .height(sliderHeight)
+                    .width(sliderWidth + overhangRight + 9.dp),
+                contentAlignment = Alignment.CenterEnd
+            ) {
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = isDjVolumeFaderOpen,
+                    enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(),
+                    exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut()
+                ) {
+                    VerticalTransparentSpeedSlider(
+                        value = djUiLevel.coerceIn(0f, 1f),
+                        onValueChange = { DjBusController.setUiLevel(it.coerceIn(0f, 1f)) },
+                        valueRange = 0f..1f,
+                        height = sliderHeight,
+                        width = sliderWidth,
+                        overhangRight = overhangRight
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            FilledTonalIconButton(
+                onClick = { isDjVolumeFaderOpen = !isDjVolumeFaderOpen },
+                modifier = Modifier
+                    .size(40.dp)
+                    .offset(x = buttonOffsetX, y = buttonOffsetY)
+            ) {
+                Icon(
+                    imageVector = if (isDjVolumeFaderOpen) {
+                        Icons.Filled.KeyboardArrowRight
+                    } else {
+                        Icons.Filled.KeyboardArrowLeft
+                    },
+                    contentDescription = stringResource(R.string.common_cd_toggle_slider)
+                )
             }
         }
     }

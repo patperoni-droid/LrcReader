@@ -10,7 +10,9 @@
     <string name="dj_cd_back">Back</string>
     <string name="dj_cd_search">Search</string>
     <string name="dj_cd_options">Options</string>
+    <string name="dj_cd_volume">DJ volume</string>
     <string name="dj_cd_stop">Stop DJ</string>
+    <string name="dj_level_button">DJ LEVEL</string>
 
     <string name="dj_menu_choose_folder">Authorize DJ folder</string>
     <string name="dj_menu_reauthorize_folder">Re-authorize DJ folder</string>
