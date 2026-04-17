@@ -333,34 +333,6 @@ fun TrackMixScreen(
                 }
             }
 
-            Spacer(Modifier.height(12.dp))
-
-            PlateCard(plate = plate, bevel = bevel) {
-                Column(Modifier.padding(12.dp)) {
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(stringResource(R.string.track_mix_equalizer), color = textMain, fontSize = 12.sp, letterSpacing = 2.sp)
-                        Text(stringResource(R.string.track_mix_three_bands), color = textSub, fontSize = 11.sp)
-                    }
-
-                    Spacer(Modifier.height(10.dp))
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(240.dp),
-                        horizontalArrangement = Arrangement.SpaceEvenly
-                    ) {
-                        EqAnalogFader(stringResource(R.string.track_mix_eq_low), lowGain, { lowGain = it; applyAndSaveEq() }, Color(0xFF4CAF50))
-                        EqAnalogFader(stringResource(R.string.track_mix_eq_mid), midGain, { midGain = it; applyAndSaveEq() }, amber)
-                        EqAnalogFader(stringResource(R.string.track_mix_eq_high), highGain, { highGain = it; applyAndSaveEq() }, Color(0xFF42A5F5))
-                    }
-                }
-            }
-
             Spacer(Modifier.weight(1f))
 
             Box(
