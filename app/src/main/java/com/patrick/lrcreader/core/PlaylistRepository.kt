@@ -18,6 +18,7 @@ import android.util.Log
  */
 object PlaylistRepository {
     private const val PERSIST_LOG_TAG = "PLAYLIST_PERSIST"
+    private const val DEMO_TITLES_TAG = "DEMO_TITLES"
 
     // nom de playlist -> liste de chansons (Uri en String) dans l’ordre
     private val playlists: MutableMap<String, MutableList<String>> = linkedMapOf()
@@ -489,6 +490,10 @@ object PlaylistRepository {
                 map.put(cleanUri, clean) != clean
             }
         }
+        Log.i(
+            DEMO_TITLES_TAG,
+            "repo:rename playlist=$playlistName uri=$cleanUri songId=${songId ?: "null"} newTitle=$clean changed=$changed storedTitle=${getCustomTitle(playlistName, cleanUri) ?: "null"}"
+        )
         if (changed) {
             bump()
         }

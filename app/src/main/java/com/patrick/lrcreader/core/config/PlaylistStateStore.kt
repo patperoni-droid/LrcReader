@@ -12,6 +12,8 @@ internal object PlaylistStateStore {
 
     private const val TAG = "PlaylistStateStore"
     private const val PERSIST_LOG_TAG = "PLAYLIST_PERSIST"
+    private const val DEMO_TITLES_TAG = "DEMO_TITLES"
+    private const val DEMO_PLAYLIST_NAME = "SPL Demo"
 
     private val mutex = Mutex()
     private var cachedState: PlaylistState? = null
@@ -172,14 +174,26 @@ internal object PlaylistStateStore {
             val nextMap = linkedMapOf<String, PlaylistStateEntry>()
             repoPlaylists.sorted().forEach { playlistName ->
                 val previous = current.playlists[playlistName] ?: PlaylistStateEntry()
+                val items = PlaylistRepository.getAllItemsRaw(playlistName).map { item ->
+                    PlaylistStateItem(
+                        uri = item.uri,
+                        songId = item.songId?.trim()?.ifBlank { null },
+                        customTitle = PlaylistRepository.getCustomTitle(playlistName, item.uri)
+                            ?.trim()
+                            ?.ifBlank { null }
+                    )
+                }
+                if (playlistName == DEMO_PLAYLIST_NAME) {
+                    items.forEach { item ->
+                        Log.i(
+                            DEMO_TITLES_TAG,
+                            "snapshot:save playlist=$playlistName uri=${item.uri} songId=${item.songId ?: "null"} customTitle=${item.customTitle ?: "null"}"
+                        )
+                    }
+                }
                 nextMap[playlistName] = previous.copy(
                     exists = true,
-                    items = PlaylistRepository.getAllItemsRaw(playlistName).map { item ->
-                        PlaylistStateItem(
-                            uri = item.uri,
-                            songId = item.songId?.trim()?.ifBlank { null }
-                        )
-                    },
+                    items = items,
                     updatedAt = System.currentTimeMillis()
                 )
             }
@@ -229,11 +243,32 @@ internal object PlaylistStateStore {
                 if (!entry.exists && entry.items.isEmpty()) return@forEach
                 PlaylistRepository.addPlaylist(playlistName)
                 entry.items.forEach { item ->
+                    if (playlistName == DEMO_PLAYLIST_NAME) {
+                        Log.i(
+                            DEMO_TITLES_TAG,
+                            "snapshot:restore playlist=$playlistName uri=${item.uri} songId=${item.songId ?: "null"} customTitle=${item.customTitle ?: "null"}"
+                        )
+                    }
                     PlaylistRepository.assignSongToPlaylist(
                         playlistName = playlistName,
                         songUri = item.uri,
                         songId = item.songId
                     )
+                    item.customTitle
+                        ?.takeIf { it.isNotBlank() }
+                        ?.let { customTitle ->
+                            if (playlistName == DEMO_PLAYLIST_NAME) {
+                                Log.i(
+                                    DEMO_TITLES_TAG,
+                                    "snapshot:restore_rename playlist=$playlistName uri=${item.uri} songId=${item.songId ?: "null"} customTitle=$customTitle"
+                                )
+                            }
+                            PlaylistRepository.renameSongInPlaylist(
+                                playlistName = playlistName,
+                                uri = item.uri,
+                                newTitle = customTitle
+                            )
+                        }
                 }
             }
     }

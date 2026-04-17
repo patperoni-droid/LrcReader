@@ -10,6 +10,7 @@ import com.patrick.lrcreader.core.LibrarySnapshot
 import com.patrick.lrcreader.core.PlaylistRepository
 import com.patrick.lrcreader.core.StorageModePrefs
 import com.patrick.lrcreader.core.WorkspaceResolver
+import com.patrick.lrcreader.core.config.PlaylistStateStore
 import com.patrick.lrcreader.exo.BuildConfig
 import com.patrick.lrcreader.smp.SmpSecureImportPipeline
 import kotlinx.coroutines.Dispatchers
@@ -19,6 +20,7 @@ import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 
 private const val TAG = "SETUP_DEMO"
+private const val DEMO_TITLES_TAG = "DEMO_TITLES"
 private const val DEMO_PLAYLIST_NAME = "SPL Demo"
 
 data class DemoInstallResult(
@@ -35,7 +37,8 @@ private data class DemoInstallPaths(
 
 private data class DemoImportedSong(
     val playlistItemUri: String,
-    val songId: String
+    val songId: String,
+    val title: String
 )
 
 suspend fun installDemoLibrary(context: Context): DemoInstallResult = withContext(Dispatchers.IO) {
@@ -84,10 +87,23 @@ suspend fun installDemoLibrary(context: Context): DemoInstallResult = withContex
         )
         PlaylistRepository.createIfNotExists(DEMO_PLAYLIST_NAME)
         importedSongs.forEach { importedSong ->
+            Log.i(
+                DEMO_TITLES_TAG,
+                "setup_demo:playlist_prepare playlist=$DEMO_PLAYLIST_NAME uri=${importedSong.playlistItemUri} songId=${importedSong.songId} title=${importedSong.title}"
+            )
             PlaylistRepository.assignSongToPlaylist(
                 playlistName = DEMO_PLAYLIST_NAME,
                 songUri = importedSong.playlistItemUri,
                 songId = importedSong.songId
+            )
+            PlaylistRepository.renameSongInPlaylist(
+                playlistName = DEMO_PLAYLIST_NAME,
+                uri = importedSong.playlistItemUri,
+                newTitle = importedSong.title
+            )
+            Log.i(
+                DEMO_TITLES_TAG,
+                "setup_demo:playlist_renamed playlist=$DEMO_PLAYLIST_NAME uri=${importedSong.playlistItemUri} songId=${importedSong.songId} title=${importedSong.title}"
             )
         }
         PlaylistRepository.updatePlayListOrder(DEMO_PLAYLIST_NAME, importedAudioUris)
@@ -95,7 +111,11 @@ suspend fun installDemoLibrary(context: Context): DemoInstallResult = withContex
             TAG,
             "playlist:end name=$DEMO_PLAYLIST_NAME finalCount=${PlaylistRepository.getAllSongsRaw(DEMO_PLAYLIST_NAME).size}"
         )
-        Log.i(TAG, "backup:autoSave skipped playlist=$DEMO_PLAYLIST_NAME reason=keep_demo_install_responsive")
+        val playlistsSaved = PlaylistStateStore.savePlaylistsSnapshot(context)
+        Log.i(
+            TAG,
+            "playlist:persist name=$DEMO_PLAYLIST_NAME finalCount=${PlaylistRepository.getAllSongsRaw(DEMO_PLAYLIST_NAME).size} saved=$playlistsSaved"
+        )
 
         stage = "refresh_start"
         val refreshRootUri = copyRootUri
@@ -227,9 +247,14 @@ private fun importCopiedDemoSmp(
             "demo import runtime-ready archive finalize pending issue asset=$assetName songId=${importedSong.id} requestId=${importResult.archiveRequestId} archiveState=${importResult.archiveState} failureReason=$archiveFailureReason"
         )
     }
+    Log.i(
+        DEMO_TITLES_TAG,
+        "setup_demo:imported asset=$assetName songId=${importedSong.id} title=${importedSong.title}"
+    )
     return DemoImportedSong(
         playlistItemUri = buildDemoSmpItem(importedSong.id),
-        songId = importedSong.id
+        songId = importedSong.id,
+        title = importedSong.title
     )
 }
 

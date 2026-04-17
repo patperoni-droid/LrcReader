@@ -50,7 +50,10 @@ internal object WorkspacePlaylistFilesStore {
                 items = PlaylistRepository.getAllItemsRaw(playlistName).map { item ->
                     PlaylistStateItem(
                         uri = item.uri,
-                        songId = item.songId?.trim()?.ifBlank { null }
+                        songId = item.songId?.trim()?.ifBlank { null },
+                        customTitle = PlaylistRepository.getCustomTitle(playlistName, item.uri)
+                            ?.trim()
+                            ?.ifBlank { null }
                     )
                 },
                 updatedAt = now
@@ -281,6 +284,7 @@ internal object WorkspacePlaylistFilesStore {
                             JSONObject().apply {
                                 put("uri", item.uri)
                                 put("songId", item.songId ?: JSONObject.NULL)
+                                put("customTitle", item.customTitle ?: JSONObject.NULL)
                             }
                         )
                     }
@@ -298,7 +302,8 @@ internal object WorkspacePlaylistFilesStore {
             if (uri.isEmpty()) continue
             out += PlaylistStateItem(
                 uri = uri,
-                songId = obj.optString("songId", "").trim().ifBlank { null }
+                songId = obj.optString("songId", "").trim().ifBlank { null },
+                customTitle = obj.optString("customTitle", "").trim().ifBlank { null }
             )
         }
         return out

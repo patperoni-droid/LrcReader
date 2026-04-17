@@ -905,6 +905,8 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
 
+                var pendingDemoPlaylistName by rememberSaveable { mutableStateOf<String?>(null) }
+
 
                 if (shouldShowSetup) {
 
@@ -927,7 +929,8 @@ class MainActivity : AppCompatActivity() {
                             // rien : on continue sans importer
                         },
 
-                        onDemoInstalled = { _ ->
+                        onDemoInstalled = { result ->
+                            pendingDemoPlaylistName = result.playlistName
                             LibraryFolderCache.clear()
                         }
                     )
@@ -1637,6 +1640,14 @@ class MainActivity : AppCompatActivity() {
                 fun setOpenedPlaylistAndPersist(name: String?, reason: String) {
                     openedPlaylist = name
                     persistCurrentUiSession(reason = reason)
+                }
+
+                LaunchedEffect(pendingDemoPlaylistName) {
+                    val demoPlaylistName = pendingDemoPlaylistName?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+                    selectedQuickPlaylist = demoPlaylistName
+                    openedPlaylist = demoPlaylistName
+                    setTabAndPersist(BottomTab.QuickPlaylists, reason = "demoInstallOpenPlaylist")
+                    pendingDemoPlaylistName = null
                 }
 
                 fun armPlaylistPlaybackState(

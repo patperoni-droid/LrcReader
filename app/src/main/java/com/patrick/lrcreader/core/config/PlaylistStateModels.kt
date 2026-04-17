@@ -15,7 +15,8 @@ internal data class PlaylistStateEntry(
 
 internal data class PlaylistStateItem(
     val uri: String,
-    val songId: String? = null
+    val songId: String? = null,
+    val customTitle: String? = null
 )
 
 internal data class PlaylistState(
@@ -41,6 +42,7 @@ internal data class PlaylistState(
                             JSONObject().apply {
                                 put("uri", item.uri)
                                 put("songId", item.songId ?: JSONObject.NULL)
+                                put("customTitle", item.customTitle ?: JSONObject.NULL)
                             }
                         )
                     }
@@ -115,7 +117,8 @@ internal data class PlaylistState(
                 val uri = obj.optString("uri", "").trim()
                 if (uri.isEmpty()) continue
                 val songId = obj.optString("songId", "").trim().ifBlank { null }
-                out.add(PlaylistStateItem(uri = uri, songId = songId))
+                val customTitle = obj.optString("customTitle", "").trim().ifBlank { null }
+                out.add(PlaylistStateItem(uri = uri, songId = songId, customTitle = customTitle))
             }
             return out
         }

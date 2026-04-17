@@ -116,6 +116,8 @@ private data class QuickPlaylistUiSnapshot(
     val firstVisibleItemScrollOffset: Int
 )
 
+private const val DEMO_TITLES_TAG = "DEMO_TITLES"
+
 private object QuickPlaylistsUiCache {
     private val snapshots = mutableMapOf<String, QuickPlaylistUiSnapshot>()
 
@@ -1430,6 +1432,21 @@ fun QuickPlaylistsScreen(
 
                             // 🔹 NOM D’AFFICHAGE
                             val _forceNotes = notesVersion
+                            val smpAliasTitle = if (smpSongId != null) {
+                                TitleAliasesStore.getTitleForTrack(context, uriString)
+                            } else {
+                                null
+                            }
+                            val smpCustomTitle = if (smpSongId != null) {
+                                PlaylistRepository.getAnyCustomTitleForUri(uriString)
+                            } else {
+                                null
+                            }
+                            val smpResolvedTitle = if (smpSongId != null) {
+                                smpTitleById[smpSongId]
+                            } else {
+                                null
+                            }
                             val displayName = if (uriString.startsWith("prompter://")) {
                                 val isPrompter = uriString.startsWith("prompter://")
                                 val prefix = if (isPrompter) "📝 " else ""   // ou 📜 si tu préfères
@@ -1447,9 +1464,9 @@ fun QuickPlaylistsScreen(
                                 }
                             } else {
                                 if (smpSongId != null) {
-                                    TitleAliasesStore.getTitleForTrack(context, uriString)
-                                        ?: PlaylistRepository.getAnyCustomTitleForUri(uriString)
-                                        ?: smpTitleById[smpSongId]
+                                    smpAliasTitle
+                                        ?: smpCustomTitle
+                                        ?: smpResolvedTitle
                                         ?: "SMP $smpSongId"
                                 } else {
                                     // 👉 Audio normal (alias global)
@@ -1457,6 +1474,12 @@ fun QuickPlaylistsScreen(
                                         ?: PlaylistRepository.getAnyCustomTitleForUri(uriString)
                                         ?: baseNameClean
                                 }
+                            }
+                            if (internalSelected == "SPL Demo" && smpSongId != null) {
+                                Log.i(
+                                    DEMO_TITLES_TAG,
+                                    "ui:resolve playlist=SPL Demo uri=$uriString songId=$smpSongId alias=${smpAliasTitle ?: "null"} custom=${smpCustomTitle ?: "null"} smpTitle=${smpResolvedTitle ?: "null"} final=$displayName fallback=${displayName == "SMP $smpSongId"}"
+                                )
                             }
 
                             val isPlayed = internalSelected?.let {
