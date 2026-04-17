@@ -141,7 +141,7 @@ fun PlayerScreen(
     currentSongId: String? = null,
     onOpenWaveform: (String) -> Unit = {},
     getPositionMs: () -> Long,
-    getDurationMs: () -> Long,
+    getEffectiveDurationMs: () -> Long,
     seekToMs: (Long) -> Unit
 ) {
     val listState = rememberSaveable(currentTrackUri, saver = LazyListState.Saver) {
@@ -1238,7 +1238,7 @@ fun PlayerScreen(
     // ---------- Suivi lecture + index ligne courante + MIDI ----------
     LaunchedEffect(isPlaying, activeDisplayLines, selectedViewMode, userOffsetMs, currentTrackUri) {
         while (true) {
-            val d = getDurationMs().toInt()
+            val d = getEffectiveDurationMs().toInt()
             if (d > 0) durationMs = d
 
             val p = getPositionMs().toInt()

@@ -1525,13 +1525,25 @@ class MainActivity : AppCompatActivity() {
                     val entryMs = rawEntry
                     val exitMs = rawExit.takeIf { it > 0L }
                     val mode = if (entryMs > 0L || exitMs != null) "seek-stop" else "none"
-                    return TrimConfig(
-                        key = key,
-                        store = store,
-                        entryMs = entryMs,
-                        exitMs = exitMs,
-                        mode = mode
+	                    return TrimConfig(
+	                        key = key,
+	                        store = store,
+	                        entryMs = entryMs,
+	                        exitMs = exitMs,
+	                        mode = mode
+	                    )
+	                }
+
+                fun resolveEffectiveDurationMs(requestedUri: String?, activeUri: String?): Long {
+                    val effectiveRequestedUri = requestedUri?.takeIf { it.isNotBlank() }
+                        ?: activeUri?.takeIf { it.isNotBlank() }
+                        ?: return exoPlayer.duration
+                    val trimConfig = resolveTrimConfig(
+                        requestedUri = effectiveRequestedUri,
+                        activeUri = activeUri
                     )
+                    return trimConfig.exitMs?.takeIf { trimConfig.mode == "seek-stop" && it > 0L }
+                        ?: exoPlayer.duration
                 }
 
                 val onEnded = rememberUpdatedState {
@@ -1885,6 +1897,9 @@ class MainActivity : AppCompatActivity() {
                                         )
                                     }
                                 }
+                            },
+                            onNaturalEnd = {
+                                onEnded.value.invoke()
                             },
                             onError = {
                                 cancelTrimWatcher()
@@ -2941,7 +2956,15 @@ class MainActivity : AppCompatActivity() {
                                             setTabAndPersist(BottomTab.More, reason = "playerOpenWaveform")
                                         },
                                         getPositionMs = { exoPlayer.currentPosition },
-                                        getDurationMs = { exoPlayer.duration },
+                                        getEffectiveDurationMs = {
+                                            resolveEffectiveDurationMs(
+                                                requestedUri = currentPlayingUri,
+                                                activeUri = exoPlayer.currentMediaItem
+                                                    ?.localConfiguration
+                                                    ?.uri
+                                                    ?.toString()
+                                            )
+                                        },
                                         seekToMs = { ms -> exoPlayer.seekTo(ms) }
                                     )
 
@@ -2949,6 +2972,13 @@ class MainActivity : AppCompatActivity() {
                                         modifier = contentModifier,
                                         onPlaySong = { uri, playlistName, color ->
                                             stopChainPlayback()
+                                            PlaybackCoordinator.peekNextTrack()
+                                                ?.takeIf { armed -> armed.uri == uri }
+                                                ?.let {
+                                                    PlaybackCoordinator.clearNextTrack(
+                                                        reason = "manualPlayMatch"
+                                                    )
+                                                }
                                             Log.d(
                                                 SMP_PLAY_TRACE_TAG,
                                                 "PLAYLIST_TAP item=$uri playlist=$playlistName"
