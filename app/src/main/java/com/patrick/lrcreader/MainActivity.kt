@@ -3410,6 +3410,8 @@ class MainActivity : AppCompatActivity() {
                             text = { Text(stringResource(R.string.main_menu_more)) },
                             onClick = {
                                 isMoreMenuOpen = false
+                                moreNavigationTarget = "root"
+                                moreNavigationToken += 1
                                 setTabAndPersist(BottomTab.More, reason = "menuMore")
                                 // ✅ si on est sur “Fond sonore” (overlay), il faut le fermer sinon on reste bloqué dessus
                                 isFillerSettingsOpen = false
