@@ -2,6 +2,8 @@
 package com.patrick.lrcreader.ui
 
 
+import android.os.SystemClock
+import android.widget.Toast
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -70,6 +72,18 @@ fun TrackMixScreen(
     val minSemi = -6
     val maxSemi = 6
     val isLufsVolumeLocked = currentTrackVolumeSource == com.patrick.lrcreader.smp.SmpConfig.PlaybackConfig.VOLUME_SOURCE_LUFS
+    var lastLockedVolumeFeedbackAtMs by remember { mutableLongStateOf(0L) }
+
+    fun showLockedVolumeFeedback() {
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastLockedVolumeFeedbackAtMs < 1200L) return
+        lastLockedVolumeFeedbackAtMs = now
+        Toast.makeText(
+            context,
+            context.getString(R.string.track_mix_lufs_volume_locked),
+            Toast.LENGTH_SHORT
+        ).show()
+    }
 
     var displayGainDb by remember(currentTrackUri) {
         mutableIntStateOf(currentTrackGainDb.coerceIn(minDb, maxDb))
@@ -176,7 +190,6 @@ fun TrackMixScreen(
 
             ConsoleHeader(
                 title = stringResource(R.string.track_mix_console_title),
-                subtitle = currentTrackUri?.takeLast(26) ?: stringResource(R.string.track_mix_no_track),
                 accent = amber
             )
 
@@ -206,6 +219,7 @@ fun TrackMixScreen(
                             knobColor = Color(0xFFECECEC),
                             height = 210.dp,
                             enabled = !isLufsVolumeLocked,
+                            onDisabledInteraction = ::showLockedVolumeFeedback,
                             onChange = { v ->
                                 gain01 = v
                                 val newDb = (minDb + v * (maxDb - minDb))
@@ -223,18 +237,6 @@ fun TrackMixScreen(
                             },
                             labelMin = "$minDb",
                             labelMax = "$maxDb"
-                        )
-                        Spacer(Modifier.height(6.dp))
-                        Text(
-                            text = stringResource(
-                                if (isLufsVolumeLocked) {
-                                    R.string.track_mix_lufs_volume_locked
-                                } else {
-                                    R.string.track_mix_anti_clip
-                                }
-                            ),
-                            color = if (isLufsVolumeLocked) Color(0xFFFFCC80) else Color(0xFF9AA6AF),
-                            fontSize = 10.sp
                         )
                     }
 
@@ -386,7 +388,7 @@ fun TrackMixScreen(
 /* ───────────────────────────────────────────── */
 
 @Composable
-private fun ConsoleHeader(title: String, subtitle: String, accent: Color) {
+private fun ConsoleHeader(title: String, accent: Color, subtitle: String? = null) {
     val shape = RoundedCornerShape(14.dp)
     val grad = Brush.horizontalGradient(
         listOf(Color(0xFF3B2A20), Color(0xFF4E382A), Color(0xFF3B2A20))
@@ -399,8 +401,10 @@ private fun ConsoleHeader(title: String, subtitle: String, accent: Color) {
             .padding(vertical = 10.dp, horizontal = 12.dp)
     ) {
         Text(title, color = Color(0xFFFFF3D6), fontSize = 14.sp, letterSpacing = 3.sp)
-        Spacer(Modifier.height(2.dp))
-        Text(subtitle, color = accent.copy(alpha = 0.85f), fontSize = 11.sp)
+        if (!subtitle.isNullOrBlank()) {
+            Spacer(Modifier.height(2.dp))
+            Text(subtitle, color = accent.copy(alpha = 0.85f), fontSize = 11.sp)
+        }
     }
 }
 
@@ -491,6 +495,7 @@ private fun AnalogFader(
     knobColor: Color,
     height: androidx.compose.ui.unit.Dp,
     enabled: Boolean = true,
+    onDisabledInteraction: (() -> Unit)? = null,
     onChange: (Float) -> Unit,
     onCommit: (Float) -> Unit = {},
     labelMin: String,
@@ -517,7 +522,12 @@ private fun AnalogFader(
                     .background(Color(0xFF0F1012), shape)
                     .border(1.dp, Color(0xFF3A3C42), shape)
                     .pointerInput(enabled) {
-                        if (!enabled) return@pointerInput
+                        if (!enabled) {
+                            detectTapGestures(
+                                onTap = { onDisabledInteraction?.invoke() }
+                            )
+                            return@pointerInput
+                        }
                         var startValue = 0f
                         var accDragPx = 0f
 
@@ -547,6 +557,15 @@ private fun AnalogFader(
                                 val next = (startValue + delta01).coerceIn(0f, 1f)
 
                                 onChangeState.value(next)
+                            }
+                        )
+                    }
+                    .pointerInput(enabled) {
+                        if (enabled) return@pointerInput
+                        detectVerticalDragGestures(
+                            onDragStart = { onDisabledInteraction?.invoke() },
+                            onVerticalDrag = { change, _ ->
+                                change.consume()
                             }
                         )
                     }
