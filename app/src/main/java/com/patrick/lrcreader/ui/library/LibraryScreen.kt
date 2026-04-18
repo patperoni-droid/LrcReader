@@ -1,5 +1,6 @@
 package com.patrick.lrcreader.ui.library
 
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -50,6 +51,7 @@ import com.patrick.lrcreader.core.BackupFolderPrefsInternal
 import com.patrick.lrcreader.core.BackupFolderPrefsSaf
 import com.patrick.lrcreader.core.BackupManager
 import com.patrick.lrcreader.core.DjFolderPrefs
+import com.patrick.lrcreader.core.EditionConfig
 import com.patrick.lrcreader.core.ImportAudioManager
 import com.patrick.lrcreader.core.LibraryIndexCache
 import com.patrick.lrcreader.core.LibraryFullModePolicy
@@ -560,6 +562,9 @@ fun LibraryScreen(
     val sLufsHintTitle = stringResource(R.string.library_lufs_hint_title)
     val sLufsHintMessage = stringResource(R.string.library_lufs_hint_message)
     val sLufsHintDoNotShowAgain = stringResource(R.string.library_lufs_hint_do_not_show_again)
+    val sLufsLiteDialogTitle = stringResource(R.string.library_lufs_lite_dialog_title)
+    val sLufsLiteDialogMessage = stringResource(R.string.library_lufs_lite_dialog_message)
+    val sUpgradeToPro = stringResource(R.string.library_upgrade_to_pro)
     val sConvertSmpSingleSuccess = stringResource(R.string.library_convert_smp_success_single)
     val sConvertSmpSingleFailed = stringResource(R.string.library_convert_smp_failed_single)
     val sConvertSmpNoMp3 = stringResource(R.string.library_convert_smp_no_mp3)
@@ -1545,6 +1550,7 @@ fun LibraryScreen(
     val isSongBasedViewMode = isSongViewMode || isLufsViewMode
     var hasShownLufsHintThisSession by rememberSaveable { mutableStateOf(false) }
     var showLufsHintDialog by remember { mutableStateOf(false) }
+    var showLufsLiteDialog by remember { mutableStateOf(false) }
     var lufsHintDoNotShowAgainChecked by remember { mutableStateOf(false) }
     var selectedSongIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var pendingLufsBatchAction by remember { mutableStateOf<LufsBatchAction?>(null) }
@@ -1573,6 +1579,24 @@ fun LibraryScreen(
         if (!LibraryLufsHintPrefs.isDismissed(context)) {
             lufsHintDoNotShowAgainChecked = false
             showLufsHintDialog = true
+        }
+    }
+
+    val openUpgradeToPro: () -> Unit = remember(context) {
+        {
+            val marketIntent = Intent(
+                Intent.ACTION_VIEW,
+                Uri.parse("market://search?q=Stage Music Player Pro")
+            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val webIntent = Intent(
+                Intent.ACTION_VIEW,
+                Uri.parse("https://play.google.com/store/search?q=Stage%20Music%20Player%20Pro&c=apps")
+            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            try {
+                context.startActivity(marketIntent)
+            } catch (_: ActivityNotFoundException) {
+                context.startActivity(webIntent)
+            }
         }
     }
 
@@ -3345,9 +3369,13 @@ fun LibraryScreen(
                     selected = isLufsViewMode,
                     accent = accent,
                     onClick = {
-                        libraryViewMode = LIBRARY_VIEW_MODE_LUFS
-                        selectedSongs = emptySet()
-                        stopQuickPlay()
+                        if (EditionConfig.isLite) {
+                            showLufsLiteDialog = true
+                        } else {
+                            libraryViewMode = LIBRARY_VIEW_MODE_LUFS
+                            selectedSongs = emptySet()
+                            stopQuickPlay()
+                        }
                     }
                 )
             }
@@ -4003,6 +4031,40 @@ fun LibraryScreen(
                     prepareLibraryPlaylistAssignment(playlistName, selection)
                 }
             )
+            if (showLufsLiteDialog) {
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = { showLufsLiteDialog = false },
+                    title = {
+                        Text(
+                            text = sLufsLiteDialogTitle,
+                            color = titleColor
+                        )
+                    },
+                    text = {
+                        Text(
+                            text = sLufsLiteDialogMessage,
+                            color = subtitleColor
+                        )
+                    },
+                    confirmButton = {
+                        androidx.compose.material3.TextButton(
+                            onClick = {
+                                showLufsLiteDialog = false
+                                openUpgradeToPro()
+                            }
+                        ) {
+                            Text(sUpgradeToPro)
+                        }
+                    },
+                    dismissButton = {
+                        androidx.compose.material3.TextButton(
+                            onClick = { showLufsLiteDialog = false }
+                        ) {
+                            Text(stringResource(R.string.common_close))
+                        }
+                    }
+                )
+            }
             if (showLufsHintDialog) {
                 androidx.compose.material3.AlertDialog(
                     onDismissRequest = {
