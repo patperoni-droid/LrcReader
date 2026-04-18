@@ -103,6 +103,8 @@
     <string name="filler_source_custom_subtitle">Utiliser les fichiers audio d’un dossier</string>
     <string name="filler_choose_custom_folder">Choisir un dossier</string>
     <string name="filler_use_assets">Utiliser les assets intégrés</string>
+    <string name="filler_custom_folder_pro_dialog_title">Fond sonore personnalisé</string>
+    <string name="filler_custom_folder_pro_dialog_message">Créez des ambiances illimitées avec vos propres nappes ou morceaux.\n\nDisponible dans la version Pro.</string>
 
     <string name="filler_dj_required_title">Ambiances : dossier obligatoire</string>
     <string name="filler_dj_required_text">Pour que les ambiances fonctionnent, elles doivent être placées dans le dossier :\n\nSPL_Music / DJ</string>

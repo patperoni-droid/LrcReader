@@ -106,6 +106,8 @@
     <string name="filler_source_custom_subtitle">Use the audio files from a folder</string>
     <string name="filler_choose_custom_folder">Choose a folder</string>
     <string name="filler_use_assets">Use integrated assets</string>
+    <string name="filler_custom_folder_pro_dialog_title">Custom background sound</string>
+    <string name="filler_custom_folder_pro_dialog_message">Create unlimited ambiences with your own pads or tracks.\n\nAvailable in the Pro version.</string>
 
     <string name="filler_folder_linked">Folder linked to "%1$s"</string>
 

@@ -104,6 +104,8 @@
     <string name="filler_source_custom_subtitle">Usar los archivos de audio de una carpeta</string>
     <string name="filler_choose_custom_folder">Elegir una carpeta</string>
     <string name="filler_use_assets">Usar assets integrados</string>
+    <string name="filler_custom_folder_pro_dialog_title">Sonido de fondo personalizado</string>
+    <string name="filler_custom_folder_pro_dialog_message">Crea ambientes ilimitados con tus propias capas o canciones.\n\nDisponible en la versión Pro.</string>
 
     <string name="filler_folder_linked">Carpeta vinculada a "%1$s"</string>
 

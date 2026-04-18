@@ -1,5 +1,6 @@
 package com.patrick.lrcreader.ui
 
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -69,6 +70,9 @@ fun FillerSoundScreen(
     val card = Color(0xFF1B1B1B)
     val accent = Color(0xFFFFC107)
     val customFolderAvailable = EditionConfig.isPro
+    val sCustomFolderProDialogTitle = stringResource(R.string.filler_custom_folder_pro_dialog_title)
+    val sCustomFolderProDialogMessage = stringResource(R.string.filler_custom_folder_pro_dialog_message)
+    val sUpgradeToPro = stringResource(R.string.library_upgrade_to_pro)
 
     fun normalizeToTreeUri(u: Uri?): Uri? {
         if (u == null) return null
@@ -87,6 +91,7 @@ fun FillerSoundScreen(
     var isEnabled by remember { mutableStateOf(FillerSoundPrefs.isEnabled(context)) }
     var isUsingCustomSource by remember { mutableStateOf(FillerSoundPrefs.isUsingCustomFolder(context)) }
     var fillerUri by remember { mutableStateOf(FillerSoundPrefs.getActiveFillerFolder(context)) }
+    var showCustomFolderProDialog by remember { mutableStateOf(false) }
 
     // ⚠️ NE PAS mettre stringResource() dans remember { ... }
     var fillerName by remember(fillerUri) {
@@ -144,6 +149,24 @@ fun FillerSoundScreen(
             ).show()
         }
     )
+
+    val openUpgradeToPro: () -> Unit = remember(context) {
+        {
+            val marketIntent = Intent(
+                Intent.ACTION_VIEW,
+                Uri.parse("market://search?q=Stage Music Player Pro")
+            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val webIntent = Intent(
+                Intent.ACTION_VIEW,
+                Uri.parse("https://play.google.com/store/search?q=Stage%20Music%20Player%20Pro&c=apps")
+            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            try {
+                context.startActivity(marketIntent)
+            } catch (_: ActivityNotFoundException) {
+                context.startActivity(webIntent)
+            }
+        }
+    }
 
     // ─────────────────────────────────────────────────────────────
     //  UI
@@ -416,20 +439,24 @@ fun FillerSoundScreen(
                         fillerName = sAssetsIntegrated
                     }
                 )
-                if (customFolderAvailable) {
-                    Spacer(Modifier.height(10.dp))
-                    SourceOptionRow(
-                        title = stringResource(R.string.filler_source_custom_folder),
-                        subtitle = stringResource(R.string.filler_source_custom_subtitle),
-                        selected = !isDefaultSource,
-                        activeColor = accent,
-                        titleColor = onBg,
-                        subtitleColor = sub,
-                        onClick = {
+                Spacer(Modifier.height(10.dp))
+                SourceOptionRow(
+                    title = stringResource(R.string.filler_source_custom_folder),
+                    subtitle = stringResource(R.string.filler_source_custom_subtitle),
+                    selected = !isDefaultSource,
+                    activeColor = accent,
+                    titleColor = onBg,
+                    subtitleColor = sub,
+                    onClick = {
+                        if (EditionConfig.isLite) {
+                            showCustomFolderProDialog = true
+                        } else {
                             FillerSoundPrefs.setUseCustomFolder(context, true)
                             isUsingCustomSource = true
                         }
-                    )
+                    }
+                )
+                if (customFolderAvailable) {
                     Spacer(Modifier.height(10.dp))
                     TextButton(
                         onClick = { pickFillerFolderLauncher.launch(initialDocumentsUri) },
@@ -439,6 +466,41 @@ fun FillerSoundScreen(
                     }
                 }
             }
+        }
+
+        if (showCustomFolderProDialog) {
+            AlertDialog(
+                onDismissRequest = { showCustomFolderProDialog = false },
+                title = {
+                    Text(
+                        text = sCustomFolderProDialogTitle,
+                        color = onBg
+                    )
+                },
+                text = {
+                    Text(
+                        text = sCustomFolderProDialogMessage,
+                        color = sub
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            showCustomFolderProDialog = false
+                            openUpgradeToPro()
+                        }
+                    ) {
+                        Text(sUpgradeToPro)
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = { showCustomFolderProDialog = false }
+                    ) {
+                        Text(stringResource(R.string.common_close))
+                    }
+                }
+            )
         }
 
         Spacer(Modifier.height(8.dp))
