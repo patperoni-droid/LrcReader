@@ -386,6 +386,8 @@
     <string name="dj_queue_title">Queue</string>
     <string name="dj_queue_title_count">Queue (%1$d)</string>
     <string name="dj_queue_auto">Auto</string>
+    <string name="dj_lite_limit_title">DJ mode</string>
+    <string name="dj_lite_limit_message">Prepare your tracks and let DJ mode chain them automatically.\n\nPerfect for keeping your parties going without interruption.\n\nFree version limited. Upgrade to Pro for unlimited use.</string>
     <string name="dj_choose_folder_for_tracks">Choose a folder for your DJ tracks.</string>
 
     <!-- Lyrics editor section -->

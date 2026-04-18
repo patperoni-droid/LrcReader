@@ -1,6 +1,7 @@
 package com.patrick.lrcreader.ui
 
 import android.Manifest
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -113,6 +114,27 @@ fun DjScreen(
 
     // ✅ pour lancer des traitements lourds hors UI
     val scope = rememberCoroutineScope()
+    val sDjLiteLimitTitle = stringResource(R.string.dj_lite_limit_title)
+    val sDjLiteLimitMessage = stringResource(R.string.dj_lite_limit_message)
+    val sUpgradeToPro = stringResource(R.string.library_upgrade_to_pro)
+
+    val openUpgradeToPro: () -> Unit = remember(context) {
+        {
+            val marketIntent = Intent(
+                Intent.ACTION_VIEW,
+                Uri.parse("market://search?q=Stage Music Player Pro")
+            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val webIntent = Intent(
+                Intent.ACTION_VIEW,
+                Uri.parse("https://play.google.com/store/search?q=Stage%20Music%20Player%20Pro&c=apps")
+            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            try {
+                context.startActivity(marketIntent)
+            } catch (_: ActivityNotFoundException) {
+                context.startActivity(webIntent)
+            }
+        }
+    }
 
     fun cachedToDjEntry(e: DjIndexCache.Entry): DjEntry {
         return DjEntry(
@@ -1253,6 +1275,41 @@ fun DjScreen(
                         Icons.Filled.KeyboardArrowLeft
                     },
                     contentDescription = stringResource(R.string.common_cd_toggle_slider)
+                )
+            }
+
+            if (djState.showLiteAutoPlayLimitDialog) {
+                AlertDialog(
+                    onDismissRequest = { DjEngine.consumeLiteAutoLimitDialog() },
+                    title = {
+                        Text(
+                            text = sDjLiteLimitTitle,
+                            color = onBg
+                        )
+                    },
+                    text = {
+                        Text(
+                            text = sDjLiteLimitMessage,
+                            color = sub
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                DjEngine.consumeLiteAutoLimitDialog()
+                                openUpgradeToPro()
+                            }
+                        ) {
+                            Text(sUpgradeToPro)
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(
+                            onClick = { DjEngine.consumeLiteAutoLimitDialog() }
+                        ) {
+                            Text(stringResource(R.string.common_close))
+                        }
+                    }
                 )
             }
         }

@@ -96,7 +96,7 @@ fun BottomTabsBar(
         add(BottomTab.QuickPlaylists)
         add(BottomTab.Player)
         add(BottomTab.Filler)
-        if (EditionConfig.isPro && showDjTab) {
+        if (showDjTab) {
             add(BottomTab.Dj)
         }
         add(BottomTab.Library)

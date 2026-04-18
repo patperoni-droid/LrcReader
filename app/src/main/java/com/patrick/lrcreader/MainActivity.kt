@@ -3585,7 +3585,7 @@ private fun tabKeyOf(tab: BottomTab): String = when (tab) {
 }
 
 private fun sanitizeTab(tab: BottomTab, showDjTab: Boolean, showMainBusTab: Boolean): BottomTab = when (tab) {
-    is BottomTab.Dj -> if (EditionConfig.isPro && showDjTab) BottomTab.Dj else BottomTab.QuickPlaylists
+    is BottomTab.Dj -> if (showDjTab) BottomTab.Dj else BottomTab.QuickPlaylists
     is BottomTab.Home -> if (EditionConfig.isPro && showMainBusTab) BottomTab.Home else BottomTab.QuickPlaylists
     else -> tab
 }
@@ -3600,7 +3600,7 @@ private fun sanitizeTabKey(key: String?, showDjTab: Boolean, showMainBusTab: Boo
                 TAB_LIBRARY -> BottomTab.Library
                 TAB_ALL -> BottomTab.AllPlaylists
                 TAB_MORE -> BottomTab.More
-                TAB_DJ -> if (EditionConfig.isPro) BottomTab.Dj else BottomTab.QuickPlaylists
+                TAB_DJ -> BottomTab.Dj
                 TAB_TUNER -> BottomTab.Tuner
                 TAB_FILLER -> BottomTab.Filler
                 TAB_SEARCH -> BottomTab.QuickPlaylists
@@ -3623,7 +3623,7 @@ private fun tabFromKey(key: String, showDjTab: Boolean, showMainBusTab: Boolean)
     TAB_ALL -> BottomTab.AllPlaylists
     TAB_MORE -> BottomTab.More
     TAB_DJ -> sanitizeTab(
-        tab = if (EditionConfig.isPro) BottomTab.Dj else BottomTab.QuickPlaylists,
+        tab = BottomTab.Dj,
         showDjTab = showDjTab,
         showMainBusTab = showMainBusTab
     )

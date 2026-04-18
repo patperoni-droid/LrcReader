@@ -329,6 +329,8 @@
     <string name="dj_queue_title">Cola</string>
     <string name="dj_queue_title_count">Cola (%1$d)</string>
     <string name="dj_queue_auto">Auto</string>
+    <string name="dj_lite_limit_title">Modo DJ</string>
+    <string name="dj_lite_limit_message">Prepara tus pistas y deja que el modo DJ las encadene automáticamente.\n\nIdeal para animar tus fiestas sin interrupciones.\n\nVersión gratuita limitada. Pásate a la versión Pro para un uso ilimitado.</string>
     <string name="dj_choose_folder_for_tracks">Elige una carpeta para tus pistas DJ.</string>
 
     <!-- Lyrics editor section -->

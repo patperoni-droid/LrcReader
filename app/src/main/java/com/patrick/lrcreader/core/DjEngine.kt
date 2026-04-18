@@ -6,6 +6,7 @@ import android.media.audiofx.Visualizer
 import android.net.Uri
 import android.os.SystemClock
 import android.util.Log
+import com.patrick.lrcreader.core.EditionConfig
 import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.core.MeterManager
 import com.patrick.lrcreader.core.PlaybackCoordinator
@@ -27,6 +28,8 @@ data class DjQueuedTrack(
 
 data class DjUiState(
     val queueAutoPlay: Boolean = false,
+    val autoPlayBlocked: Boolean = false,
+    val showLiteAutoPlayLimitDialog: Boolean = false,
     val activeSlot: Int = 0,              // 0 = rien, 1 = A, 2 = B
     val playingUri: String? = null,
 
@@ -51,6 +54,7 @@ data class DjUiState(
 object DjEngine {
     private const val METER_TAG = "METER"
     private const val VIS_LOG_EVERY_MS = 1000L
+    private const val LITE_DJ_AUTO_LIMIT_MS = 10 * 60 * 1000L
 
     private lateinit var appContext: Context
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -82,12 +86,17 @@ object DjEngine {
 
     // ✅ mode auto-play de la queue
     private var queueAutoPlay: Boolean = false
+    private var liteDjSessionStartedAtMs: Long? = null
+    private var liteDjAutoBlocked: Boolean = false
+    private var liteDjAutoLimitDialogPending: Boolean = false
 
     private val queueInternal = mutableListOf<DjQueuedTrack>()
 
     private val _state = MutableStateFlow(
         DjUiState(
             queueAutoPlay = queueAutoPlay,
+            autoPlayBlocked = liteDjAutoBlocked,
+            showLiteAutoPlayLimitDialog = liteDjAutoLimitDialogPending,
             activeSlot = activeSlot,
             playingUri = playingUri,
             progress = progress,
@@ -147,6 +156,8 @@ object DjEngine {
     private fun pushState(currentPositionMs: Int = 0) {
         _state.value = DjUiState(
             queueAutoPlay = queueAutoPlay,
+            autoPlayBlocked = liteDjAutoBlocked,
+            showLiteAutoPlayLimitDialog = liteDjAutoLimitDialogPending,
             activeSlot = activeSlot,
             playingUri = playingUri,
             progress = progress,
@@ -329,8 +340,49 @@ object DjEngine {
     private fun fmtLevel(value: Float): String = String.format(Locale.US, "%.2f", value)
 
     fun setQueueAutoPlay(enabled: Boolean) {
-        queueAutoPlay = enabled
+        updateLiteDjAutoLimitIfNeeded()
+        queueAutoPlay = enabled && !liteDjAutoBlocked
         pushState()
+    }
+
+    fun consumeLiteAutoLimitDialog() {
+        if (!liteDjAutoLimitDialogPending) return
+        liteDjAutoLimitDialogPending = false
+        pushState()
+    }
+
+    private fun markLiteDjSessionStartedIfNeeded() {
+        if (EditionConfig.isPro) return
+        if (liteDjSessionStartedAtMs == null) {
+            liteDjSessionStartedAtMs = SystemClock.elapsedRealtime()
+        }
+    }
+
+    private fun updateLiteDjAutoLimitIfNeeded(nowMs: Long = SystemClock.elapsedRealtime()) {
+        if (EditionConfig.isPro) return
+        val startedAtMs = liteDjSessionStartedAtMs ?: return
+        if (liteDjAutoBlocked) return
+        if (nowMs - startedAtMs < LITE_DJ_AUTO_LIMIT_MS) return
+
+        liteDjAutoBlocked = true
+        liteDjAutoLimitDialogPending = true
+        queueAutoPlay = false
+        autoMixTriggeredForUri = null
+        autoMixJob?.cancel()
+        autoMixJob = null
+        pushState()
+    }
+
+    private fun canAutoTransitionAfterCurrentTrack(
+        remainingMs: Int,
+        nowMs: Long = SystemClock.elapsedRealtime()
+    ): Boolean {
+        updateLiteDjAutoLimitIfNeeded(nowMs)
+        if (liteDjAutoBlocked) return false
+        if (EditionConfig.isPro) return true
+        val startedAtMs = liteDjSessionStartedAtMs ?: return true
+        val limitAtMs = startedAtMs + LITE_DJ_AUTO_LIMIT_MS
+        return nowMs + remainingMs < limitAtMs
     }
 
     private fun startTimelineIfNeeded() {
@@ -359,6 +411,10 @@ object DjEngine {
                         (posMs.toFloat() / currentDurationMs.toFloat()).coerceIn(0f, 1f)
                     } else 0f
 
+                if (playingUri != null) {
+                    updateLiteDjAutoLimitIfNeeded()
+                }
+
                 // ✅ AUTO-MIX : 10s avant la fin (mode danse)
                 val curUri = playingUri
                 if (queueAutoPlay && curUri != null && currentDurationMs > 0) {
@@ -366,6 +422,7 @@ object DjEngine {
                     val canTrigger =
                         queueInternal.isNotEmpty() &&
                                 remaining <= AUTO_MIX_BEFORE_END_MS &&
+                                canAutoTransitionAfterCurrentTrack(remaining) &&
                                 autoMixTriggeredForUri != curUri
 
                     if (canTrigger) {
@@ -422,6 +479,7 @@ object DjEngine {
         ensureContext()
 
         scope.launch {
+            markLiteDjSessionStartedIfNeeded()
             if (activeSlot == 0) {
                 // 👉 Première mise en lecture DJ
                 PlaybackCoordinator.onDjStart()
@@ -538,6 +596,8 @@ object DjEngine {
         // On ne réagit que si c’est bien la platine active
         if (slot != activeSlot) return
 
+        updateLiteDjAutoLimitIfNeeded()
+
         // ✅ mode auto OFF ou queue vide => on laisse finir (comportement actuel)
         if (!queueAutoPlay || queueInternal.isEmpty()) return
 
@@ -604,7 +664,9 @@ object DjEngine {
         pushState()
     }
     private suspend fun autoMixNextFromQueueDance() {
+        updateLiteDjAutoLimitIfNeeded()
         if (!queueAutoPlay) return
+        if (liteDjAutoBlocked) return
         if (queueInternal.isEmpty()) return
         if (playingUri == null) return
 
@@ -864,6 +926,9 @@ object DjEngine {
         autoMixTriggeredForUri = null
         autoMixJob?.cancel()
         autoMixJob = null
+        liteDjSessionStartedAtMs = null
+        liteDjAutoBlocked = false
+        liteDjAutoLimitDialogPending = false
         // on garde masterLevel et queueAutoPlay tels quels
 
         if (clearQueue) {

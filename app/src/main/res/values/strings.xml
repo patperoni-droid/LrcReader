@@ -426,6 +426,8 @@
     <string name="dj_queue_title">File d’attente</string>
     <string name="dj_queue_title_count">File d’attente (%1$d)</string>
     <string name="dj_queue_auto">Auto</string>
+    <string name="dj_lite_limit_title">Mode DJ</string>
+    <string name="dj_lite_limit_message">Préparez vos morceaux et laissez le mode DJ enchaîner automatiquement.\n\nIdéal pour animer vos soirées sans interruption.\n\nVersion gratuite limitée. Passez en version Pro pour une utilisation illimitée.</string>
     <string name="dj_choose_folder_for_tracks">Choisis un dossier pour tes titres DJ.</string>
 
     <!-- Lyrics editor section -->

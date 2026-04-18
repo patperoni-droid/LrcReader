@@ -12,7 +12,11 @@ object UiEntryPrefs {
         context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     fun showDjTab(context: Context): Boolean =
-        prefs(context).getBoolean(KEY_SHOW_DJ_TAB, false)
+        if (EditionConfig.isLite) {
+            true
+        } else {
+            prefs(context).getBoolean(KEY_SHOW_DJ_TAB, false)
+        }
 
     fun setShowDjTab(context: Context, value: Boolean) {
         prefs(context).edit { putBoolean(KEY_SHOW_DJ_TAB, value) }
