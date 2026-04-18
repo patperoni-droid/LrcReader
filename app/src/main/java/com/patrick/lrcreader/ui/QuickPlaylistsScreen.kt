@@ -279,6 +279,7 @@ fun QuickPlaylistsScreen(
     var savePlaylistName by remember { mutableStateOf("") }
     var playlistSearchQuery by rememberSaveable(internalSelected) { mutableStateOf("") }
     var isSearchVisible by rememberSaveable(internalSelected) { mutableStateOf(false) }
+    var lastHandledSearchToggleSignal by rememberSaveable(internalSelected) { mutableIntStateOf(0) }
 
     val listState = rememberSaveable(resolvedPlaylistSelection, saver = LazyListState.Saver) {
         LazyListState(
@@ -852,6 +853,8 @@ fun QuickPlaylistsScreen(
 
     LaunchedEffect(searchToggleSignal) {
         if (searchToggleSignal == 0) return@LaunchedEffect
+        if (searchToggleSignal == lastHandledSearchToggleSignal) return@LaunchedEffect
+        lastHandledSearchToggleSignal = searchToggleSignal
         if (isSearchVisible) {
             playlistSearchQuery = ""
             isSearchVisible = false
