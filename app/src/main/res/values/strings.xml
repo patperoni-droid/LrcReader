@@ -19,7 +19,7 @@
     <string name="dj_menu_use_legacy_folder">Utiliser un dossier DJ legacy…</string>
     <string name="dj_menu_scan_refresh">Réanalyser le dossier DJ</string>
     <string name="dj_menu_scan_refresh_global">Réanalyser la musique du téléphone</string>
-    <string name="dj_menu_import_music">Importer des musiques (→ %1$s)</string>
+    <string name="dj_menu_import_music">Importer des musiques</string>
     <string name="live_tracks_label">Mes morceaux live</string>
     <string name="dj_folder_play_button">FOLDER ▶</string>
     <string name="dj_folder_play_empty">Aucun fichier audio dans ce dossier</string>

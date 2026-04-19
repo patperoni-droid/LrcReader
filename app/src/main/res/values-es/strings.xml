@@ -18,7 +18,7 @@
     <string name="dj_menu_use_legacy_folder">Usar carpeta DJ legacy…</string>
     <string name="dj_menu_scan_refresh">Volver a escanear la carpeta DJ</string>
     <string name="dj_menu_scan_refresh_global">Volver a escanear la música del teléfono</string>
-    <string name="dj_menu_import_music">Importar música (→ %1$s)</string>
+    <string name="dj_menu_import_music">Importar música</string>
     <string name="live_tracks_label">Mis pistas en vivo</string>
     <string name="dj_folder_play_button">FOLDER ▶</string>
     <string name="dj_folder_play_empty">No hay archivos de audio en esta carpeta</string>

@@ -19,7 +19,7 @@
     <string name="dj_menu_use_legacy_folder">Use legacy DJ folder…</string>
     <string name="dj_menu_scan_refresh">Re-scan DJ folder</string>
     <string name="dj_menu_scan_refresh_global">Re-scan phone music</string>
-    <string name="dj_menu_import_music">Import music (→ %1$s)</string>
+    <string name="dj_menu_import_music">Import music</string>
     <string name="live_tracks_label">My Live Tracks</string>
     <string name="dj_folder_play_button">FOLDER ▶</string>
     <string name="dj_folder_play_empty">No audio files in this folder</string>

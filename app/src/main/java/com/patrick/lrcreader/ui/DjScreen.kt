@@ -670,9 +670,7 @@ fun DjScreen(
         searchQuery.isBlank() &&
         visibleEntries.isEmpty() &&
         allAudioEntries.isEmpty()
-    val authorizeMenuLabel = if (isGlobalAudioMode) {
-        stringResource(R.string.dj_menu_use_legacy_folder)
-    } else if (needsDjAuthorization) {
+    val authorizeMenuLabel = if (needsDjAuthorization) {
         stringResource(R.string.dj_menu_choose_folder)
     } else {
         stringResource(R.string.dj_menu_reauthorize_folder)
@@ -811,13 +809,15 @@ fun DjScreen(
                     onDismissRequest = { menuOpen = false }
                 ) {
 
-                    DropdownMenuItem(
-                        text = { Text(authorizeMenuLabel) },
-                        onClick = {
-                            menuOpen = false
-                            pickDjFolderLauncher.launch(null)
-                        }
-                    )
+                    if (!isGlobalAudioMode) {
+                        DropdownMenuItem(
+                            text = { Text(authorizeMenuLabel) },
+                            onClick = {
+                                menuOpen = false
+                                pickDjFolderLauncher.launch(null)
+                            }
+                        )
+                    }
 
                     DropdownMenuItem(
                         text = { Text(scanRefreshLabel) },
@@ -845,12 +845,7 @@ fun DjScreen(
 
                     DropdownMenuItem(
                         text = {
-                            Text(
-                                stringResource(
-                                    R.string.dj_menu_import_music,
-                                    stringResource(R.string.live_tracks_label)
-                                )
-                            )
+                            Text(stringResource(R.string.dj_menu_import_music))
                         },
                         onClick = {
                             menuOpen = false
