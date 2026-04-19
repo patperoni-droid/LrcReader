@@ -232,6 +232,8 @@
     <string name="library_lufs_lite_dialog_title">LUFS - Uniform level</string>
     <string name="library_lufs_lite_dialog_message">All your tracks at the same volume, automatically.\n\nAvailable in the Pro version.</string>
     <string name="library_upgrade_to_pro">Go Pro</string>
+    <string name="waveform_save_pro_dialog_title">Pro Save</string>
+    <string name="waveform_save_pro_dialog_message">Trim your tracks and save your settings with the Pro version.</string>
     <string name="playlist_track_limit_reached">You have reached the 10-track limit. Upgrade to the full version to add more tracks.</string>
     <string name="library_smp_folder">My Live Tracks</string>
     <string name="library_legacy_backing_tracks_folder">My Live Tracks</string>

@@ -406,6 +406,8 @@
     <string name="waveform_detect_silence">Recorte auto</string>
     <string name="waveform_match_volume">LUFS -14</string>
     <string name="waveform_match_volume_target">Objetivo: -14 LUFS</string>
+    <string name="waveform_save_pro_dialog_title">Guardado Pro</string>
+    <string name="waveform_save_pro_dialog_message">Recorta tus pistas y guarda tus ajustes con la versión Pro.</string>
     <string name="waveform_level_adjusted">Nivel ajustado: %1$.1f dB</string>
     <string name="waveform_lufs_current">Actual</string>
     <string name="waveform_lufs_current_value">Actual %1$.1f LUFS</string>

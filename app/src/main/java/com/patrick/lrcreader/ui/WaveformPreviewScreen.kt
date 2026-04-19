@@ -1,6 +1,8 @@
 package com.patrick.lrcreader.ui
 
+import android.content.ActivityNotFoundException
 import android.content.Context
+import android.content.Intent
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.media.MediaMetadataRetriever
@@ -35,6 +37,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
@@ -69,6 +72,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import com.patrick.lrcreader.core.EditSoundPrefs
+import com.patrick.lrcreader.core.EditionConfig
 import com.patrick.lrcreader.core.TrackVolumePrefs
 import com.patrick.lrcreader.core.WaveformSessionPrefs
 import com.patrick.lrcreader.core.config.SongIdKeyResolver
@@ -141,8 +145,30 @@ fun WaveformPreviewScreen(
     var isPlayingWave by remember { mutableStateOf(false) }
     var isDetectingSilence by remember { mutableStateOf(false) }
     var isMatchingVolume by remember { mutableStateOf(false) }
+    var showWaveformSaveProDialog by remember { mutableStateOf(false) }
     var restoredScrollPx by remember { mutableStateOf<Int?>(null) }
     var lastInitialSongId by remember { mutableStateOf<String?>(null) }
+    val sWaveformSaveProTitle = stringResource(R.string.waveform_save_pro_dialog_title)
+    val sWaveformSaveProMessage = stringResource(R.string.waveform_save_pro_dialog_message)
+    val sUpgradeToPro = stringResource(R.string.library_upgrade_to_pro)
+
+    val openUpgradeToPro: () -> Unit = remember(context) {
+        {
+            val marketIntent = Intent(
+                Intent.ACTION_VIEW,
+                Uri.parse("market://search?q=Stage Music Player Pro")
+            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val webIntent = Intent(
+                Intent.ACTION_VIEW,
+                Uri.parse("https://play.google.com/store/search?q=Stage%20Music%20Player%20Pro&c=apps")
+            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            try {
+                context.startActivity(marketIntent)
+            } catch (_: ActivityNotFoundException) {
+                context.startActivity(webIntent)
+            }
+        }
+    }
 
     fun loadAudioUri(songId: String, uri: Uri, displayNameHint: String? = null) {
         val restoreSameSongSession = WaveformSessionPrefs.loadSongId(context) == songId
@@ -868,6 +894,10 @@ fun WaveformPreviewScreen(
                     TextButton(
                         onClick = {
                             if (durationMs <= 0) return@TextButton
+                            if (EditionConfig.isLite) {
+                                showWaveformSaveProDialog = true
+                                return@TextButton
+                            }
                             scope.launch {
                                 saveWaveformTrimEdit(
                                     startMs = inMs,
@@ -884,6 +914,31 @@ fun WaveformPreviewScreen(
                     ) {
                         Text(stringResource(R.string.waveform_save), fontSize = 12.sp)
                     }
+                }
+
+                if (showWaveformSaveProDialog) {
+                    AlertDialog(
+                        onDismissRequest = { showWaveformSaveProDialog = false },
+                        title = { Text(text = sWaveformSaveProTitle) },
+                        text = { Text(text = sWaveformSaveProMessage) },
+                        confirmButton = {
+                            TextButton(
+                                onClick = {
+                                    showWaveformSaveProDialog = false
+                                    openUpgradeToPro()
+                                }
+                            ) {
+                                Text(sUpgradeToPro)
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(
+                                onClick = { showWaveformSaveProDialog = false }
+                            ) {
+                                Text(stringResource(R.string.common_close))
+                            }
+                        }
+                    )
                 }
 
                 Text(
