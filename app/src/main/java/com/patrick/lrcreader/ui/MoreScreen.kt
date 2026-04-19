@@ -57,6 +57,7 @@ fun MoreScreen(
     modifier: Modifier = Modifier,
     context: Context,
     currentWaveformSongId: String? = null,
+    currentPlayingSongId: String? = null,
     requestedRoute: String? = null,
     requestedRouteToken: Int = 0,
     showDjTab: Boolean = false,
@@ -64,7 +65,8 @@ fun MoreScreen(
     onShowDjTabChange: (Boolean) -> Unit = {},
     onShowMainBusTabChange: (Boolean) -> Unit = {},
     onAfterImport: (BackupManager.LastPlayed?) -> Unit = {},
-    onOpenTuner: () -> Unit = {}     // callback pour l'accordeur
+    onOpenTuner: () -> Unit = {},     // callback pour l'accordeur
+    onStopCurrentPlayback: () -> Unit = {}
 ) {
     var current by remember { mutableStateOf(MoreSection.Root) }
 
@@ -111,7 +113,9 @@ fun MoreScreen(
         MoreSection.WaveformPreview -> WaveformPreviewScreen(
             modifier = modifier,
             onBack = { navigate("root") },
-            initialSongId = currentWaveformSongId
+            initialSongId = currentWaveformSongId,
+            currentPlayingSongId = currentPlayingSongId,
+            onStopCurrentPlayback = onStopCurrentPlayback
         )
     }
 }

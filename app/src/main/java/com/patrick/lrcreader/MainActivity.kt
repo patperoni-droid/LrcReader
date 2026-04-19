@@ -3259,6 +3259,7 @@ class MainActivity : AppCompatActivity() {
                                         modifier = contentModifier,
                                         context = ctx,
                                         currentWaveformSongId = currentPlayingSongId,
+                                        currentPlayingSongId = currentPlayingSongId,
                                         requestedRoute = moreNavigationTarget,
                                         requestedRouteToken = moreNavigationToken,
                                         showDjTab = showDjTab,
@@ -3270,6 +3271,11 @@ class MainActivity : AppCompatActivity() {
                                             showMainBusTab = enabled
                                         },
                                         onAfterImport = { refreshKey++ },
+                                        onStopCurrentPlayback = {
+                                            isPlaying = false
+                                            exoPlayer.pause()
+                                            exoPlayer.playWhenReady = false
+                                        },
                                         onOpenTuner = {
                                             setTabAndPersist(BottomTab.Tuner, reason = "moreOpenTuner")
                                         }

@@ -116,7 +116,9 @@ private enum class DragTarget {
 fun WaveformPreviewScreen(
     modifier: Modifier = Modifier,
     onBack: () -> Unit,
-    initialSongId: String? = null
+    initialSongId: String? = null,
+    currentPlayingSongId: String? = null,
+    onStopCurrentPlayback: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -783,6 +785,12 @@ fun WaveformPreviewScreen(
                             playheadMs = if (durationMs > 0) current.coerceIn(0, durationMs) else current
                             WaveformSessionPrefs.savePlayhead(context, playheadMs)
                             isPlayingWave = false
+                            if (
+                                selectedSongId != null &&
+                                selectedSongId == currentPlayingSongId
+                            ) {
+                                onStopCurrentPlayback()
+                            }
                         },
                         enabled = selectedUri != null && durationMs > 0,
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
