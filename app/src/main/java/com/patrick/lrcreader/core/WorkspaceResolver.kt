@@ -12,6 +12,7 @@ import java.util.concurrent.atomic.AtomicInteger
 object WorkspaceResolver {
 
     private const val WORKSPACE_PERF_TRACE_TAG = "WORKSPACE_PERF_TRACE"
+    private const val ANR_WORKSPACE_TAG = "ANR_WORKSPACE"
     private val resolveCallCounter = AtomicInteger(0)
 
     enum class Status {
@@ -54,9 +55,14 @@ object WorkspaceResolver {
     fun resolve(context: Context): Snapshot {
         val callId = resolveCallCounter.incrementAndGet()
         val startMs = SystemClock.elapsedRealtime()
+        val threadName = Thread.currentThread().name
         Log.i(
             WORKSPACE_PERF_TRACE_TAG,
             "step=resolve_start call=$callId timeMs=$startMs"
+        )
+        Log.e(
+            ANR_WORKSPACE_TAG,
+            "resolve:start call=$callId thread=$threadName"
         )
         val mode = StorageModePrefs.get(context)
         val setupTreeUri = resolveSetupTreeUri(context, mode)
@@ -90,6 +96,10 @@ object WorkspaceResolver {
         Log.i(
             WORKSPACE_PERF_TRACE_TAG,
             "step=resolve_done call=$callId durationMs=$durationMs mode=$mode status=${snapshot.status} root=${snapshot.workspaceRootUri} setupTree=${snapshot.setupTreeUri} detail=${snapshot.detail}"
+        )
+        Log.e(
+            ANR_WORKSPACE_TAG,
+            "resolve:end call=$callId durationMs=$durationMs thread=$threadName mode=$mode status=${snapshot.status} root=${snapshot.workspaceRootUri} setupTree=${snapshot.setupTreeUri}"
         )
         return snapshot
     }
@@ -275,7 +285,13 @@ object WorkspaceResolver {
     }
 
     private fun probeDirectory(context: Context, uri: Uri): DirectorySnapshot? {
-        return when (uri.scheme) {
+        val startMs = SystemClock.elapsedRealtime()
+        val threadName = Thread.currentThread().name
+        Log.e(
+            ANR_WORKSPACE_TAG,
+            "probe:start uri=$uri scheme=${uri.scheme} thread=$threadName"
+        )
+        val result = when (uri.scheme) {
             "file" -> {
                 val path = uri.path ?: return null
                 val file = File(path)
@@ -303,6 +319,11 @@ object WorkspaceResolver {
 
             else -> null
         }
+        Log.e(
+            ANR_WORKSPACE_TAG,
+            "probe:end uri=$uri scheme=${uri.scheme} durationMs=${SystemClock.elapsedRealtime() - startMs} thread=$threadName readable=${result?.isReadableDirectory} childCount=${result?.childNames?.size ?: 0}"
+        )
+        return result
     }
 
     private fun findChildDirectoryUri(

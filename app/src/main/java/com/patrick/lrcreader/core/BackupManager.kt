@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
+import android.os.SystemClock
 import android.util.Log
 import androidx.documentfile.provider.DocumentFile
 import org.json.JSONArray
@@ -22,6 +23,7 @@ object BackupManager {
     private const val IMPORT_LOG_TAG = "BACKUP_IMPORT"
     private const val BOOT_TAG = "BOOTSTEP"
     private const val AUTO_BACKUP_TAG = "AUTO_BACKUP"
+    private const val ANR_BACKUP_TAG = "ANR_BACKUP"
 
     data class LastPlayed(
         val uri: String,
@@ -910,27 +912,48 @@ object BackupManager {
         writer: AutoBackupWriter,
         jsonOverride: String? = null
     ): AutoBackupResult {
+        val startMs = SystemClock.elapsedRealtime()
+        val threadName = Thread.currentThread().name
+        Log.e(ANR_BACKUP_TAG, "autosave:start thread=$threadName")
+        val resolveStartMs = SystemClock.elapsedRealtime()
         val snapshot = snapshotOverride ?: WorkspaceResolver.resolve(context)
+        val resolveDurationMs = SystemClock.elapsedRealtime() - resolveStartMs
         logAutoBackupInfo(
             "step=start workspaceStatus=${snapshot.status} workspaceRoot=${snapshot.workspaceRootUri} setupTree=${snapshot.setupTreeUri}"
         )
+        Log.e(
+            ANR_BACKUP_TAG,
+            "autosave:resolve_done durationMs=$resolveDurationMs thread=$threadName status=${snapshot.status} root=${snapshot.workspaceRootUri}"
+        )
 
         if (!snapshot.isUsable || snapshot.workspaceRootUri == null) {
-            return autoBackupFailure(
+            val failure = autoBackupFailure(
                 code = AutoBackupCode.FAILED_NO_WORKSPACE,
                 snapshot = snapshot,
                 detail = "workspace not usable"
             )
+            Log.e(
+                ANR_BACKUP_TAG,
+                "autosave:end durationMs=${SystemClock.elapsedRealtime() - startMs} thread=$threadName result=${failure.code}"
+            )
+            return failure
         }
 
+        val exportStartMs = SystemClock.elapsedRealtime()
         val json = jsonOverride ?: exportState(
             context = context,
             lastPlayer = null,
             libraryFolders = emptyList()
         )
+        val exportDurationMs = SystemClock.elapsedRealtime() - exportStartMs
+        Log.e(
+            ANR_BACKUP_TAG,
+            "autosave:export_done durationMs=$exportDurationMs thread=$threadName jsonLength=${json.length}"
+        )
 
         val rootUri = snapshot.workspaceRootUri
-        return when (rootUri.scheme) {
+        val writeStartMs = SystemClock.elapsedRealtime()
+        val result = when (rootUri.scheme) {
             "content" -> writer.writeSaf(
                 context = context,
                 snapshot = snapshot,
@@ -952,6 +975,11 @@ object BackupManager {
                 detail = "unsupported root scheme=${rootUri.scheme}"
             )
         }
+        Log.e(
+            ANR_BACKUP_TAG,
+            "autosave:end durationMs=${SystemClock.elapsedRealtime() - startMs} resolveDurationMs=$resolveDurationMs exportDurationMs=$exportDurationMs writeDurationMs=${SystemClock.elapsedRealtime() - writeStartMs} thread=$threadName result=${result.code}"
+        )
+        return result
     }
 
     internal fun workerActionForAutoBackup(result: AutoBackupResult): AutoBackupWorkerAction {

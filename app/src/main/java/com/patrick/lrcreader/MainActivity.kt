@@ -2408,13 +2408,30 @@ class MainActivity : AppCompatActivity() {
                 LaunchedEffect(canUseStorage, playlistsReady, rootKey, sessionRestored) {
                     if (sessionRestored) return@LaunchedEffect
 
+                    val restoreStartMs = SystemClock.elapsedRealtime()
+                    val restoreThreadName = Thread.currentThread().name
+                    Log.e(
+                        "ANR_RESTORE",
+                        "session_restore:start thread=$restoreThreadName canUseStorage=$canUseStorage playlistsReady=$playlistsReady root=$rootKey"
+                    )
                     mark("SessionRestore PhaseB:start canUseStorage=$canUseStorage playlistsReady=$playlistsReady root=$rootKey")
-                    if (!canUseStorage || !playlistsReady) return@LaunchedEffect
+                    if (!canUseStorage || !playlistsReady) {
+                        Log.e(
+                            "ANR_RESTORE",
+                            "session_restore:skip durationMs=${SystemClock.elapsedRealtime() - restoreStartMs} thread=$restoreThreadName canUseStorage=$canUseStorage playlistsReady=$playlistsReady"
+                        )
+                        return@LaunchedEffect
+                    }
 
+                    val prefsStartMs = SystemClock.elapsedRealtime()
                     val restoredTabKey = SessionPrefs.getTab(ctx)
                     val restoredQuickPlaylist = SessionPrefs.getQuickPlaylist(ctx)
                     val restoredOpenedPlaylist = SessionPrefs.getOpenedPlaylist(ctx)
                     val restoredLastSession = SessionPrefs.getLastSessionState(ctx)
+                    Log.e(
+                        "ANR_RESTORE",
+                        "session_restore:prefs_done durationMs=${SystemClock.elapsedRealtime() - prefsStartMs} thread=$restoreThreadName"
+                    )
                     val lastPlaylist = restoredLastSession.playlistName
                     var restoredSongId = restoredLastSession.songId?.takeIf { it.isNotBlank() }
                     val fallbackLastUri = restoredLastSession.trackUri?.takeIf { it.isNotBlank() }
@@ -2455,14 +2472,24 @@ class MainActivity : AppCompatActivity() {
                         currentPlayingPlaylist = lastPlaylist
                         currentPlayingPlaylistItemKey = null
 
+                        val lyricsLoadStartMs = SystemClock.elapsedRealtime()
                         val overrideText = withContext(Dispatchers.IO) {
                             LrcStorage.loadForTrack(ctx, lastUri)?.takeIf { it.isNotBlank() }
                         }
+                        Log.e(
+                            "ANR_RESTORE",
+                            "session_restore:lyrics_load_done durationMs=${SystemClock.elapsedRealtime() - lyricsLoadStartMs} thread=$restoreThreadName uri=$lastUri hasLyrics=${!overrideText.isNullOrBlank()}"
+                        )
                         Log.d(
                             "SMP_TRACE",
                             "RESTORE_LOAD uri=$lastUri playlist=$lastPlaylist loadedLyrics=${!overrideText.isNullOrBlank()} lyricsHash=${overrideText?.hashCode()}"
                         )
+                        val parseStartMs = SystemClock.elapsedRealtime()
                         parsedLines = if (overrideText != null) parseLrc(overrideText) else emptyList()
+                        Log.e(
+                            "ANR_RESTORE",
+                            "session_restore:parse_done durationMs=${SystemClock.elapsedRealtime() - parseStartMs} thread=$restoreThreadName parsedLines=${parsedLines.size}"
+                        )
 
                         // IMPORTANT:
                         // -5 dB est la valeur par défaut volontaire (headroom).
@@ -2479,6 +2506,10 @@ class MainActivity : AppCompatActivity() {
 
                     sessionRestored = true
                     isRestoringSession = false
+                    Log.e(
+                        "ANR_RESTORE",
+                        "session_restore:end durationMs=${SystemClock.elapsedRealtime() - restoreStartMs} thread=$restoreThreadName restored=${sessionRestored} hasLastUri=${!lastUri.isNullOrBlank()}"
+                    )
                     mark(
                         "SessionRestore PhaseB:end tab=$restoredTabKey quick=$restoredQuickPlaylist opened=$restoredOpenedPlaylist hasLastUri=${!lastUri.isNullOrBlank()} restoring=$isRestoringSession"
                     )
@@ -3540,18 +3571,38 @@ class MainActivity : AppCompatActivity() {
         }
     }
     override fun onStop() {
+        val startMs = SystemClock.elapsedRealtime()
+        val threadName = Thread.currentThread().name
+        Log.e("ANR_TRACE", "onStop:start thread=$threadName")
         super.onStop()
         persistSession(reason = "onStop")
+        val playlistsStartMs = SystemClock.elapsedRealtime()
         runCatching { PlaylistStateStore.savePlaylistsSnapshot(this) }
             .onFailure { Log.e("BOOTSTEP", "PlaylistStateStore.savePlaylistsSnapshot:onStop failed", it) }
+        Log.e(
+            "ANR_TRACE",
+            "onStop:after_savePlaylists durationMs=${SystemClock.elapsedRealtime() - playlistsStartMs} thread=$threadName"
+        )
+        val backupStartMs = SystemClock.elapsedRealtime()
         BackupManager.autoSaveToDefaultBackupFile(this)
+        Log.e(
+            "ANR_TRACE",
+            "onStop:end durationMs=${SystemClock.elapsedRealtime() - startMs} backupDurationMs=${SystemClock.elapsedRealtime() - backupStartMs} thread=$threadName"
+        )
     }
 
     override fun onPause() {
+        val startMs = SystemClock.elapsedRealtime()
+        val threadName = Thread.currentThread().name
+        Log.e("ANR_TRACE", "onPause:start thread=$threadName")
         super.onPause()
         persistSession(reason = "onPause")
         runCatching { PlaylistStateStore.savePlaylistsSnapshot(this) }
             .onFailure { Log.e("BOOTSTEP", "PlaylistStateStore.savePlaylistsSnapshot:onPause failed", it) }
+        Log.e(
+            "ANR_TRACE",
+            "onPause:end durationMs=${SystemClock.elapsedRealtime() - startMs} thread=$threadName"
+        )
     }
 
 }

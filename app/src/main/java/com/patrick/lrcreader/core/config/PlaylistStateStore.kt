@@ -14,6 +14,7 @@ internal object PlaylistStateStore {
     private const val PERSIST_LOG_TAG = "PLAYLIST_PERSIST"
     private const val DEMO_TITLES_TAG = "DEMO_TITLES"
     private const val DEMO_PLAYLIST_NAME = "SPL Demo"
+    private const val ANR_PLAYLIST_TAG = "ANR_PLAYLIST"
 
     private val mutex = Mutex()
     private var cachedState: PlaylistState? = null
@@ -153,15 +154,26 @@ internal object PlaylistStateStore {
     }
 
     fun savePlaylistsSnapshot(context: Context): Boolean {
+        val startMs = SystemClock.elapsedRealtime()
+        val threadName = Thread.currentThread().name
+        Log.e(ANR_PLAYLIST_TAG, "save:start thread=$threadName")
         return withLockBlocking {
             val current = readStateLocked(context)
             val workspaceState = WorkspacePlaylistFilesStore.readAll(context)
             val repoPlaylists = PlaylistRepository.getPlaylists()
+            Log.e(
+                ANR_PLAYLIST_TAG,
+                "save:inside_lock thread=$threadName playlistCount=${repoPlaylists.size}"
+            )
             val repoIsEmpty = repoPlaylists.isEmpty()
             if (repoIsEmpty && workspaceState.hasPlaylistFiles) {
                 Log.e(
                     PERSIST_LOG_TAG,
                     "save.blocked reason=suspect_empty_repo internal=${current.playlists.size} workspace=${workspaceState.playlists.size} workspaceHasFiles=${workspaceState.hasPlaylistFiles}"
+                )
+                Log.e(
+                    ANR_PLAYLIST_TAG,
+                    "save:end blocked=true durationMs=${SystemClock.elapsedRealtime() - startMs} thread=$threadName playlistCount=${repoPlaylists.size}"
                 )
                 return@withLockBlocking false
             }
@@ -208,6 +220,10 @@ internal object PlaylistStateStore {
             Log.d(
                 PERSIST_LOG_TAG,
                 "save.end internalSaved=$internalSaved workspaceSaved=$workspaceSaved playlists=$repoPlaylists"
+            )
+            Log.e(
+                ANR_PLAYLIST_TAG,
+                "save:end durationMs=${SystemClock.elapsedRealtime() - startMs} thread=$threadName playlistCount=${repoPlaylists.size} internalSaved=$internalSaved workspaceSaved=$workspaceSaved"
             )
             internalSaved || workspaceSaved
         }
@@ -455,9 +471,24 @@ internal object PlaylistStateStore {
     }
 
     private fun <T> withLockBlocking(block: () -> T): T {
+        val waitStartMs = SystemClock.elapsedRealtime()
+        val threadName = Thread.currentThread().name
         return runBlocking {
             mutex.withLock {
-                block()
+                val acquiredMs = SystemClock.elapsedRealtime()
+                Log.e(
+                    ANR_PLAYLIST_TAG,
+                    "lock:acquired waitMs=${acquiredMs - waitStartMs} thread=$threadName"
+                )
+                val lockStartMs = acquiredMs
+                try {
+                    block()
+                } finally {
+                    Log.e(
+                        ANR_PLAYLIST_TAG,
+                        "lock:released holdMs=${SystemClock.elapsedRealtime() - lockStartMs} thread=$threadName"
+                    )
+                }
             }
         }
     }
