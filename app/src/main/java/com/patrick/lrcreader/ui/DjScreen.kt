@@ -71,6 +71,7 @@ import com.patrick.lrcreader.core.PlaybackCoordinator
 import com.patrick.lrcreader.core.dj.DjEngine
 import com.patrick.lrcreader.core.dj.DjQueuedTrack
 import com.patrick.lrcreader.exo.R
+import com.patrick.lrcreader.ui.theme.SplColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -642,6 +643,7 @@ fun DjScreen(
     val blockPaddingEnd = 10.dp
     val buttonOffsetX = 30.dp
     val buttonOffsetY = 0.dp
+    val djLevelPercent = (djUiLevel.coerceIn(0f, 1f) * 100f).roundToInt()
 
     // Liste visible (filtre dans le dossier courant)
     val visibleEntries = remember(entries, searchQuery) {
@@ -1234,10 +1236,13 @@ fun DjScreen(
         Column(
             modifier = Modifier
                 .align(Alignment.CenterEnd)
-                .padding(end = blockPaddingEnd)
+                .fillMaxHeight()
+                .padding(end = blockPaddingEnd, bottom = 16.dp)
                 .zIndex(9999f),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            Spacer(modifier = Modifier.weight(1f))
+
             Box(
                 modifier = Modifier
                     .height(sliderHeight)
@@ -1255,6 +1260,22 @@ fun DjScreen(
                         valueRange = 0f..1f,
                         height = sliderHeight,
                         width = sliderWidth,
+                        trackThickness = 4.dp,
+                        trackVerticalPadding = 24.dp,
+                        trackColor = SplColors.Outline.copy(alpha = 0.35f),
+                        filledTrackColor = SplColors.Accent.copy(alpha = 0.78f),
+                        centeredFilledTrack = true,
+                        thumbColor = Color.White.copy(alpha = 0.94f),
+                        thumbShadowElevation = 4.dp,
+                        thumbContent = {
+                            Text(
+                                text = djLevelPercent.toString(),
+                                color = Color(0xFF111111),
+                                fontSize = 11.sp
+                            )
+                        },
+                        bottomLabel = stringResource(R.string.track_mix_level),
+                        bottomLabelColor = SplColors.SubText.copy(alpha = 0.90f),
                         overhangRight = overhangRight
                     )
                 }
