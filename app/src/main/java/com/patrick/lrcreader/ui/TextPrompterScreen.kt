@@ -48,11 +48,13 @@ import com.patrick.lrcreader.core.TextSongRepository
 import com.patrick.lrcreader.exo.BuildConfig
 import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.ui.theme.DarkBlueGradientBackground
+import com.patrick.lrcreader.ui.theme.SplColors
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.navigationBars
+import java.util.Locale
 
 private data class SongInfo(
     val title: String?,
@@ -290,6 +292,7 @@ fun TextPrompterScreen(
         // ✅ Réglages fins : bouton slider
         val buttonOffsetX = 30.dp
         val buttonOffsetY = -0.dp
+        val speedLabel = String.format(Locale.US, "%.1f", speedFactor)
 
         Box(
             modifier = modifier
@@ -490,6 +493,22 @@ fun TextPrompterScreen(
                             valueRange = (0f..1f),
                             height = sliderHeight,
                             width = sliderWidth,
+                            trackThickness = 4.dp,
+                            trackVerticalPadding = 24.dp,
+                            trackColor = SplColors.Outline.copy(alpha = 0.35f),
+                            filledTrackColor = SplColors.Accent.copy(alpha = 0.78f),
+                            centeredFilledTrack = true,
+                            thumbColor = Color.White.copy(alpha = 0.94f),
+                            thumbShadowElevation = 4.dp,
+                            thumbContent = {
+                                Text(
+                                    text = speedLabel,
+                                    color = Color(0xFF111111),
+                                    fontSize = 11.sp
+                                )
+                            },
+                            bottomLabel = stringResource(R.string.track_mix_speed),
+                            bottomLabelColor = SplColors.SubText.copy(alpha = 0.90f),
                             overhangRight = overhangRight
                         )
                     }
