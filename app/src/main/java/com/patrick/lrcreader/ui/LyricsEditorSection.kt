@@ -150,6 +150,21 @@ fun LyricsEditorSection(
     var editorHintDoNotShowAgain by remember { mutableStateOf(false) }
     var hasShownEditorHintThisSession by remember { mutableStateOf(false) }
     val displayedPalette = paletteChords
+    val editorHintTitleRes = if (showChordPalette) {
+        R.string.chords_editor_hint_title
+    } else {
+        R.string.lyrics_editor_hint_title
+    }
+    val editorHintMessageRes = if (showChordPalette) {
+        R.string.chords_editor_hint_message
+    } else {
+        R.string.lyrics_editor_hint_message
+    }
+    val editorHintDoNotShowAgainRes = if (showChordPalette) {
+        R.string.chords_editor_hint_do_not_show_again
+    } else {
+        R.string.lyrics_editor_hint_do_not_show_again
+    }
 
     LaunchedEffect(currentEditTab) {
         if (
@@ -307,18 +322,6 @@ fun LyricsEditorSection(
                 yield()
                 onPersistLines(updated)
             }
-
-            val plainChordLine = captured.text
-            val nextRaw = if (rawTextFieldValue.text.isBlank()) {
-                plainChordLine
-            } else {
-                rawTextFieldValue.text + "\n" + plainChordLine
-            }
-            rawTextFieldValue = TextFieldValue(
-                text = nextRaw,
-                selection = TextRange(nextRaw.length)
-            )
-            onRawLyricsTextChange(nextRaw)
             pendingCapturedLine = captured
 
             if (BuildConfig.DEBUG) {
@@ -538,14 +541,14 @@ fun LyricsEditorSection(
                 onDismissRequest = { showEditorHintDialog = false },
                 title = {
                     Text(
-                        text = stringResource(R.string.lyrics_editor_hint_title),
+                        text = stringResource(editorHintTitleRes),
                         color = Color.White
                     )
                 },
                 text = {
                     Column {
                         Text(
-                            text = stringResource(R.string.lyrics_editor_hint_message),
+                            text = stringResource(editorHintMessageRes),
                             color = Color(0xFFB0BEC5)
                         )
                         Spacer(Modifier.height(12.dp))
@@ -557,7 +560,7 @@ fun LyricsEditorSection(
                                 onCheckedChange = { editorHintDoNotShowAgain = it }
                             )
                             Text(
-                                text = stringResource(R.string.lyrics_editor_hint_do_not_show_again),
+                                text = stringResource(editorHintDoNotShowAgainRes),
                                 color = Color.White
                             )
                         }

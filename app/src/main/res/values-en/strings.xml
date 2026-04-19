@@ -637,6 +637,11 @@ And that’s it!
 
 Don’t forget to save 😉</string>
     <string name="lyrics_editor_hint_do_not_show_again">Do not show again</string>
+    <string name="chords_editor_hint_title">Chord synchronization</string>
+    <string name="chords_editor_hint_message">Start the music, then tap your chords at the right moment to synchronize them.
+
+Don’t forget to save.</string>
+    <string name="chords_editor_hint_do_not_show_again">Do not show again</string>
 
     <!-- Library components -->
     <string name="library_bottom_assign">Assign</string>
