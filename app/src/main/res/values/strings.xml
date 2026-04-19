@@ -354,6 +354,8 @@
     <string name="timeline_event_note">Note</string>
     <string name="timeline_event_dmx">DMX</string>
     <string name="timeline_pro_only">Version Pro</string>
+    <string name="timeline_config_pro_dialog_title">Fonction Pro</string>
+    <string name="timeline_config_pro_dialog_message">Configurez vos actions et préparez votre show avec la version Pro.</string>
     <string name="timeline_markers_title">Repères posés</string>
     <string name="timeline_empty_state">Aucun repère pour ce morceau SMP.</string>
     <string name="timeline_rename_title">Renommer le repère</string>
@@ -651,6 +653,8 @@
     <string name="track_mix_eq_mid">MID</string>
     <string name="track_mix_eq_high">HIGH</string>
     <string name="track_mix_touch_to_return">TOUCH HERE TO RETURN</string>
+    <string name="track_mix_lite_dialog_title">Réglages Pro</string>
+    <string name="track_mix_lite_dialog_message">Pour que vos réglages restent mémorisés, passez à la version Pro.</string>
     <string name="track_mix_lufs_volume_locked">Désactivez le mode LUFS pour régler le volume manuellement</string>
     <string name="lyrics_editor_hint_title">Synchroniser vos paroles</string>
     <string name="lyrics_editor_hint_message">Lancez la musique, puis appuyez sur “Tag” au bon moment pour caler chaque phrase.

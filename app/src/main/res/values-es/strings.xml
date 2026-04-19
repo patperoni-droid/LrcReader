@@ -132,6 +132,8 @@
     <string name="common_cancel">Cancelar</string>
     <string name="common_close">Cerrar</string>
     <string name="timeline_pro_only">Versión Pro</string>
+    <string name="timeline_config_pro_dialog_title">Función Pro</string>
+    <string name="timeline_config_pro_dialog_message">Configura tus acciones y prepara tu show con la versión Pro.</string>
 
     <!-- Quick playlists -->
     <string name="quickplaylists_select">Selecciona una lista de reproducción</string>
@@ -534,6 +536,8 @@
     <string name="track_mix_eq_mid">MID</string>
     <string name="track_mix_eq_high">HIGH</string>
     <string name="track_mix_touch_to_return">TOUCH HERE TO RETURN</string>
+    <string name="track_mix_lite_dialog_title">Ajustes Pro</string>
+    <string name="track_mix_lite_dialog_message">Para que tus ajustes queden guardados, pásate a la versión Pro.</string>
     <string name="track_mix_lufs_volume_locked">Desactiva el modo LUFS para ajustar el volumen manualmente</string>
     <string name="lyrics_editor_hint_title">Sincronizar tus letras</string>
     <string name="lyrics_editor_hint_message">Pon la música y pulsa “Tag” en el momento adecuado para ajustar cada frase.

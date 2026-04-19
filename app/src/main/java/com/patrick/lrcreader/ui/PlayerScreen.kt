@@ -108,6 +108,7 @@ import kotlinx.coroutines.withContext
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.pow
 
 private const val DEFAULT_TIMELINE_LIGHT_CUE_ARGB = 0xFFFF0000L
 private const val DMX_PLAYBACK_POLL_INTERVAL_MS = 20L
@@ -151,6 +152,7 @@ fun PlayerScreen(
     val context = LocalContext.current
     val showLightIndicator = remember(context) { LightIndicatorPrefs.isEnabled(context) }
     val dmxUiVisible = EditionConfig.isPro && EditionConfig.isDmxUiEnabled
+    val timelineDmxUiVisible = true
     val lastTriggeredMidiProgramChange by MidiCueDispatcher.lastTriggeredProgramChange.collectAsState()
     val simulatedLightScene by LightCueDispatcher.sceneState.collectAsState()
     val isLaboBuild = remember(context.packageName) { context.packageName.endsWith(".labo") }
@@ -166,6 +168,9 @@ fun PlayerScreen(
     val sDeleteLiveNote = stringResource(R.string.player_cd_delete_live_note)
     val sTimelineSaveFailed = stringResource(R.string.timeline_save_failed)
     val sLightGenerateFailed = stringResource(R.string.light_generate_failed)
+    val sTrackMixProTitle = stringResource(R.string.track_mix_lite_dialog_title)
+    val sTrackMixProMessage = stringResource(R.string.track_mix_lite_dialog_message)
+    val sUpgradeToPro = stringResource(R.string.library_upgrade_to_pro)
     val midiCueTraceTag = "MIDI_CUE_TRACE"
 
     // 🔊 Brancher ExoPlayer au bus principal (fader LECTEUR)
@@ -203,11 +208,11 @@ fun PlayerScreen(
             LightSceneState.off(trackUri = currentTrackUri)
         }
     }
-    val timelineEditorEntries = remember(context, timelineMarkers, timelineLightCues, dmxUiVisible) {
+    val timelineEditorEntries = remember(context, timelineMarkers, timelineLightCues, timelineDmxUiVisible) {
         buildTimelineEditorEntries(
             context = context,
             timelineMarkers = timelineMarkers,
-            lightCues = if (dmxUiVisible) timelineLightCues else emptyList()
+            lightCues = if (timelineDmxUiVisible) timelineLightCues else emptyList()
         )
     }
     val timelineEditorMarkers = remember(timelineEditorEntries) {
@@ -220,6 +225,10 @@ fun PlayerScreen(
     }
     var showLightTestDialog by rememberSaveable(currentTrackUri) { mutableStateOf(false) }
     var hasLightCues by remember(currentTrackUri) { mutableStateOf(false) }
+    var liteTrackMixTempo by remember(currentTrackUri) { mutableFloatStateOf(tempo) }
+    var liteTrackMixPitchSemi by remember(currentTrackUri) { mutableIntStateOf(pitchSemi) }
+    var liteTrackMixModified by remember(currentTrackUri) { mutableStateOf(false) }
+    var showTrackMixProDialog by remember { mutableStateOf(false) }
     LaunchedEffect(exoPlayer) {
         PlayerBusController.attachPlayer(context, exoPlayer)
     }
@@ -232,6 +241,22 @@ fun PlayerScreen(
             LightPreviewTestController.stop()
             timelineLightPreviewPositionMs = null
         }
+    }
+    LaunchedEffect(currentTrackUri) {
+        liteTrackMixTempo = tempo
+        liteTrackMixPitchSemi = pitchSemi
+        liteTrackMixModified = false
+    }
+
+    fun applyLiteTrackMixToPlayer(speed: Float, pitchSemi: Int) {
+        val safeSpeed = speed.coerceIn(0.5f, 2.0f)
+        val semiClamped = pitchSemi.coerceIn(-6, 6)
+        val pitchFactor = 2f.pow(semiClamped / 12f)
+        AudioEngine.setSpeedPitch(
+            speed = safeSpeed,
+            pitch = pitchFactor,
+            reason = "PlayerScreen.liteTrackMixSession"
+        )
     }
 
     // 🔊 bus LECTEUR (réapplique le mix sur Exo)
@@ -471,7 +496,11 @@ fun PlayerScreen(
     var editingResolvedLrcFileName by remember { mutableStateOf<String?>(null) }
     var showMixScreen by remember { mutableStateOf(false) }
     LaunchedEffect(closeMixSignal) {
-        showMixScreen = false
+        if (EditionConfig.isLite && showMixScreen && liteTrackMixModified) {
+            showTrackMixProDialog = true
+        } else {
+            showMixScreen = false
+        }
         isEditingLyrics = false
         editingTrackUri = null
         isEditingTimeline = false
@@ -479,6 +508,16 @@ fun PlayerScreen(
         editingTimelineLightCueTimeMs = null
         showLightGenerationDialog = false
         timelineLightPreviewPositionMs = null
+    }
+    LaunchedEffect(tempo, showMixScreen) {
+        if (!EditionConfig.isLite || !showMixScreen) {
+            liteTrackMixTempo = tempo
+        }
+    }
+    LaunchedEffect(pitchSemi, showMixScreen) {
+        if (!EditionConfig.isLite || !showMixScreen) {
+            liteTrackMixPitchSemi = pitchSemi
+        }
     }
 
     var rawLyricsText by remember(currentTrackUri) { mutableStateOf("") }
@@ -1877,9 +1916,9 @@ fun PlayerScreen(
                     val source = entry.source as? TimelineEditorMarkerSource.Light ?: return@onEditDmxMarker
                     editingTimelineLightCueTimeMs = source.timeMs
                 },
-                showLightPreview = dmxUiVisible && showLightIndicator && hasLightCues,
+                showLightPreview = timelineDmxUiVisible && showLightIndicator && hasLightCues,
                 lightPreviewSceneState = currentTrackLightScene,
-                canPasteDmxCue = dmxUiVisible && canPasteTimelineDmxCue,
+                canPasteDmxCue = timelineDmxUiVisible && canPasteTimelineDmxCue,
                 onPasteDmxCueHere = {
                     val trackUri = currentTrackUri ?: return@TimelineEditorSection
                     val clipboard = timelineDmxClipboard
@@ -1987,7 +2026,7 @@ fun PlayerScreen(
                             },
                             highlightColor = highlightColor,
                             onOpenMix = { showMixScreen = true },
-                            showMixAction = EditionConfig.isPro,
+                            showMixAction = true,
                             showEditLyrics = selectedViewMode == LyricsViewMode.LYRICS ||
                                 selectedViewMode == LyricsViewMode.CHORDS,
                             onOpenEditor = {
@@ -2318,7 +2357,7 @@ fun PlayerScreen(
                 }
             }
 
-            if (showMixScreen && EditionConfig.isPro) {
+            if (showMixScreen) {
                 TrackMixScreen(
                     modifier = Modifier.fillMaxSize(),
                     highlightColor = highlightColor,
@@ -2326,7 +2365,7 @@ fun PlayerScreen(
                     currentTrackVolumeSource = currentTrackVolumeSource,
                     onTrackGainChange = onTrackGainChange,
                     onTrackGainCommit = onTrackGainCommit,
-                    tempo = tempo,
+                    tempo = if (EditionConfig.isLite) liteTrackMixTempo else tempo,
                     onTempoChange = { newTempo ->
                         if (!isHqAvailable) {
                             val now = android.os.SystemClock.elapsedRealtime()
@@ -2336,9 +2375,20 @@ fun PlayerScreen(
                             }
                             return@TrackMixScreen
                         }
-                        onTempoChange(newTempo)
+                        if (EditionConfig.isLite) {
+                            if (liteTrackMixTempo != newTempo) {
+                                liteTrackMixModified = true
+                            }
+                            liteTrackMixTempo = newTempo
+                            applyLiteTrackMixToPlayer(
+                                speed = liteTrackMixTempo,
+                                pitchSemi = liteTrackMixPitchSemi
+                            )
+                        } else {
+                            onTempoChange(newTempo)
+                        }
                     },
-                    pitchSemi = pitchSemi,
+                    pitchSemi = if (EditionConfig.isLite) liteTrackMixPitchSemi else pitchSemi,
                     onPitchSemiChange = { newSemi ->
                         if (!isHqAvailable) {
                             val now = android.os.SystemClock.elapsedRealtime()
@@ -2348,13 +2398,86 @@ fun PlayerScreen(
                             }
                             return@TrackMixScreen
                         }
-                        onPitchSemiChange(newSemi)
+                        if (EditionConfig.isLite) {
+                            val clamped = newSemi.coerceIn(-6, 6)
+                            if (liteTrackMixPitchSemi != clamped) {
+                                liteTrackMixModified = true
+                            }
+                            liteTrackMixPitchSemi = clamped
+                            applyLiteTrackMixToPlayer(
+                                speed = liteTrackMixTempo,
+                                pitchSemi = liteTrackMixPitchSemi
+                            )
+                        } else {
+                            onPitchSemiChange(newSemi)
+                        }
                     },
                     currentTrackUri = currentTrackUri,
-                    onClose = { showMixScreen = false }
+                    onClose = {
+                        if (EditionConfig.isLite && liteTrackMixModified) {
+                            showTrackMixProDialog = true
+                        } else {
+                            showMixScreen = false
+                        }
+                    }
                 )
             }
         }
+    }
+
+    if (showTrackMixProDialog) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = {
+                showTrackMixProDialog = false
+                showMixScreen = false
+            },
+            title = {
+                Text(
+                    text = sTrackMixProTitle,
+                    color = Color.White
+                )
+            },
+            text = {
+                Text(
+                    text = sTrackMixProMessage,
+                    color = Color.White
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showTrackMixProDialog = false
+                        showMixScreen = false
+                        val marketIntent = android.content.Intent(
+                            android.content.Intent.ACTION_VIEW,
+                            android.net.Uri.parse("market://search?q=Stage Music Player Pro")
+                        ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                        val webIntent = android.content.Intent(
+                            android.content.Intent.ACTION_VIEW,
+                            android.net.Uri.parse("https://play.google.com/store/search?q=Stage%20Music%20Player%20Pro&c=apps")
+                        ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                        try {
+                            context.startActivity(marketIntent)
+                        } catch (_: android.content.ActivityNotFoundException) {
+                            context.startActivity(webIntent)
+                        }
+                    }
+                ) {
+                    Text(sUpgradeToPro, color = Color(0xFF80CBC4))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showTrackMixProDialog = false
+                        showMixScreen = false
+                    }
+                ) {
+                    Text(stringResource(R.string.common_close), color = Color(0xFFB0BEC5))
+                }
+            },
+            containerColor = Color(0xFF222222)
+        )
     }
 
     val timelineMidiMarkerIndex = editingTimelineMidiMarkerIndex
@@ -2409,7 +2532,7 @@ fun PlayerScreen(
         )
     }
     if (
-        dmxUiVisible &&
+        timelineDmxUiVisible &&
         isEditingTimeline &&
         timelineLightCueTimeMs != null &&
         timelineLightTrackUri != null

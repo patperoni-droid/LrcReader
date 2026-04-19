@@ -1,5 +1,8 @@
 package com.patrick.lrcreader.ui
 
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -29,6 +32,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.DialogProperties
+import com.patrick.lrcreader.core.EditionConfig
 import com.patrick.lrcreader.core.light.LightAction
 import com.patrick.lrcreader.core.light.LightCue
 import com.patrick.lrcreader.exo.R
@@ -57,7 +61,11 @@ fun TimelineLightCueEditorPopup(
     onClose: () -> Unit
 ) {
     val context = LocalContext.current
+    val isLite = EditionConfig.isLite
     val safeMarkerTimeMs = markerTimeMs.coerceAtLeast(0L)
+    val sTimelineProDialogTitle = stringResource(R.string.timeline_config_pro_dialog_title)
+    val sTimelineProDialogMessage = stringResource(R.string.timeline_config_pro_dialog_message)
+    val sUpgradeToPro = stringResource(R.string.library_upgrade_to_pro)
     val existing = remember(context, trackUri, safeMarkerTimeMs) {
         SmpLightCueBridge.getCueAtTime(context, trackUri, safeMarkerTimeMs)
     }
@@ -97,6 +105,33 @@ fun TimelineLightCueEditorPopup(
     var fadeOutPresetMs by remember(existing) {
         mutableStateOf(existing?.fadeOutMs?.coerceAtLeast(0L) ?: 0L)
     }
+    var showTimelineConfigProDialog by remember { mutableStateOf(false) }
+
+    val openUpgradeToPro: () -> Unit = remember(context) {
+        {
+            val marketIntent = Intent(
+                Intent.ACTION_VIEW,
+                Uri.parse("market://search?q=Stage Music Player Pro")
+            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val webIntent = Intent(
+                Intent.ACTION_VIEW,
+                Uri.parse("https://play.google.com/store/search?q=Stage%20Music%20Player%20Pro&c=apps")
+            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            try {
+                context.startActivity(marketIntent)
+            } catch (_: ActivityNotFoundException) {
+                context.startActivity(webIntent)
+            }
+        }
+    }
+
+    fun onLiteConfigAttempt(block: () -> Unit) {
+        if (isLite) {
+            showTimelineConfigProDialog = true
+        } else {
+            block()
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onClose,
@@ -127,17 +162,17 @@ fun TimelineLightCueEditorPopup(
                 ) {
                     FilterChip(
                         selected = cueType == EditableLightCueType.COLOR,
-                        onClick = { cueType = EditableLightCueType.COLOR },
+                        onClick = { onLiteConfigAttempt { cueType = EditableLightCueType.COLOR } },
                         label = { CompactChipText(stringResource(R.string.light_cue_type_color)) }
                     )
                     FilterChip(
                         selected = cueType == EditableLightCueType.STROBE,
-                        onClick = { cueType = EditableLightCueType.STROBE },
+                        onClick = { onLiteConfigAttempt { cueType = EditableLightCueType.STROBE } },
                         label = { CompactChipText(stringResource(R.string.light_cue_type_strobe)) }
                     )
                     FilterChip(
                         selected = cueType == EditableLightCueType.BLACKOUT,
-                        onClick = { cueType = EditableLightCueType.BLACKOUT },
+                        onClick = { onLiteConfigAttempt { cueType = EditableLightCueType.BLACKOUT } },
                         label = { CompactChipText(stringResource(R.string.light_cue_type_blackout)) }
                     )
                 }
@@ -150,22 +185,22 @@ fun TimelineLightCueEditorPopup(
                         LightColorChip(
                             label = stringResource(R.string.light_color_red),
                             selected = colorArgb == POPUP_RED_ARGB,
-                            onClick = { colorArgb = POPUP_RED_ARGB }
+                            onClick = { onLiteConfigAttempt { colorArgb = POPUP_RED_ARGB } }
                         )
                         LightColorChip(
                             label = stringResource(R.string.light_color_blue),
                             selected = colorArgb == POPUP_BLUE_ARGB,
-                            onClick = { colorArgb = POPUP_BLUE_ARGB }
+                            onClick = { onLiteConfigAttempt { colorArgb = POPUP_BLUE_ARGB } }
                         )
                         LightColorChip(
                             label = stringResource(R.string.light_color_green),
                             selected = colorArgb == POPUP_GREEN_ARGB,
-                            onClick = { colorArgb = POPUP_GREEN_ARGB }
+                            onClick = { onLiteConfigAttempt { colorArgb = POPUP_GREEN_ARGB } }
                         )
                         LightColorChip(
                             label = stringResource(R.string.light_color_white),
                             selected = colorArgb == POPUP_WHITE_ARGB,
-                            onClick = { colorArgb = POPUP_WHITE_ARGB }
+                            onClick = { onLiteConfigAttempt { colorArgb = POPUP_WHITE_ARGB } }
                         )
                     }
 
@@ -177,7 +212,9 @@ fun TimelineLightCueEditorPopup(
                             modifier = Modifier.weight(1f),
                             value = intensityPercentText,
                             onValueChange = { input ->
-                                intensityPercentText = input.filter { it.isDigit() }
+                                onLiteConfigAttempt {
+                                    intensityPercentText = input.filter { it.isDigit() }
+                                }
                             },
                             label = stringResource(R.string.light_cue_intensity_label),
                             keyboardType = KeyboardType.Number
@@ -186,7 +223,9 @@ fun TimelineLightCueEditorPopup(
                             modifier = Modifier.weight(1f),
                             value = fadeMsText,
                             onValueChange = { input ->
-                                fadeMsText = input.filter { it.isDigit() }
+                                onLiteConfigAttempt {
+                                    fadeMsText = input.filter { it.isDigit() }
+                                }
                             },
                             label = stringResource(R.string.light_cue_fade_label),
                             keyboardType = KeyboardType.Number
@@ -199,7 +238,9 @@ fun TimelineLightCueEditorPopup(
                         modifier = Modifier.fillMaxWidth(),
                         value = hzText,
                         onValueChange = { input ->
-                            hzText = input.filter { it.isDigit() || it == '.' || it == ',' }
+                            onLiteConfigAttempt {
+                                hzText = input.filter { it.isDigit() || it == '.' || it == ',' }
+                            }
                         },
                         label = stringResource(R.string.light_cue_strobe_hz_label),
                         keyboardType = KeyboardType.Decimal
@@ -229,9 +270,11 @@ fun TimelineLightCueEditorPopup(
                                         label = presetMs.toPresetLabel(),
                                         selected = durationPresetMs == presetMs,
                                         onClick = {
-                                            durationPresetMs = presetMs
-                                            if (presetMs == 0L) {
-                                                fadeOutPresetMs = 0L
+                                            onLiteConfigAttempt {
+                                                durationPresetMs = presetMs
+                                                if (presetMs == 0L) {
+                                                    fadeOutPresetMs = 0L
+                                                }
                                             }
                                         }
                                     )
@@ -257,8 +300,10 @@ fun TimelineLightCueEditorPopup(
                                         selected = fadeOutPresetMs == presetMs,
                                         enabled = durationPresetMs > 0L,
                                         onClick = {
-                                            if (durationPresetMs > 0L) {
-                                                fadeOutPresetMs = presetMs
+                                            onLiteConfigAttempt {
+                                                if (durationPresetMs > 0L) {
+                                                    fadeOutPresetMs = presetMs
+                                                }
                                             }
                                         }
                                     )
@@ -273,7 +318,9 @@ fun TimelineLightCueEditorPopup(
                         modifier = Modifier.fillMaxWidth(),
                         value = fadeMsText,
                         onValueChange = { input ->
-                            fadeMsText = input.filter { it.isDigit() }
+                            onLiteConfigAttempt {
+                                fadeMsText = input.filter { it.isDigit() }
+                            }
                         },
                         label = stringResource(R.string.light_cue_fade_label),
                         keyboardType = KeyboardType.Number
@@ -284,49 +331,51 @@ fun TimelineLightCueEditorPopup(
         confirmButton = {
             TextButton(
                 onClick = {
-                    val normalizedIntensity = (intensityPercentText.toFloatOrNull() ?: 100f)
-                        .coerceIn(0f, 100f) / 100f
-                    val normalizedFadeMs = fadeMsText.toLongOrNull()?.coerceAtLeast(0L) ?: 0L
-                    val normalizedHz = hzText
-                        .replace(',', '.')
-                        .toFloatOrNull()
-                        ?.coerceAtLeast(0.1f)
-                        ?: DEFAULT_STROBE_HZ
-                    val normalizedDurationMs = durationPresetMs.takeIf { it > 0L }
-                    val normalizedFadeOutMs = fadeOutPresetMs
-                        .takeIf { durationPresetMs > 0L && it > 0L }
+                    onLiteConfigAttempt {
+                        val normalizedIntensity = (intensityPercentText.toFloatOrNull() ?: 100f)
+                            .coerceIn(0f, 100f) / 100f
+                        val normalizedFadeMs = fadeMsText.toLongOrNull()?.coerceAtLeast(0L) ?: 0L
+                        val normalizedHz = hzText
+                            .replace(',', '.')
+                            .toFloatOrNull()
+                            ?.coerceAtLeast(0.1f)
+                            ?: DEFAULT_STROBE_HZ
+                        val normalizedDurationMs = durationPresetMs.takeIf { it > 0L }
+                        val normalizedFadeOutMs = fadeOutPresetMs
+                            .takeIf { durationPresetMs > 0L && it > 0L }
 
-                    val cue = when (cueType) {
-                        EditableLightCueType.COLOR -> LightCue(
-                            timeMs = safeMarkerTimeMs,
-                            action = LightAction.Color(argb = colorArgb),
-                            intensity = normalizedIntensity,
-                            fadeMs = normalizedFadeMs,
-                            durationMs = normalizedDurationMs,
-                            fadeOutMs = normalizedFadeOutMs
+                        val cue = when (cueType) {
+                            EditableLightCueType.COLOR -> LightCue(
+                                timeMs = safeMarkerTimeMs,
+                                action = LightAction.Color(argb = colorArgb),
+                                intensity = normalizedIntensity,
+                                fadeMs = normalizedFadeMs,
+                                durationMs = normalizedDurationMs,
+                                fadeOutMs = normalizedFadeOutMs
+                            )
+                            EditableLightCueType.STROBE -> LightCue(
+                                timeMs = safeMarkerTimeMs,
+                                action = LightAction.Strobe(hz = normalizedHz),
+                                intensity = 1f,
+                                fadeMs = 0L,
+                                durationMs = normalizedDurationMs,
+                                fadeOutMs = normalizedFadeOutMs
+                            )
+                            EditableLightCueType.BLACKOUT -> LightCue(
+                                timeMs = safeMarkerTimeMs,
+                                action = LightAction.Blackout,
+                                intensity = 1f,
+                                fadeMs = normalizedFadeMs
+                            )
+                        }
+
+                        SmpLightCueBridge.upsertCueAtTime(
+                            context = context,
+                            trackUriString = trackUri,
+                            cue = cue
                         )
-                        EditableLightCueType.STROBE -> LightCue(
-                            timeMs = safeMarkerTimeMs,
-                            action = LightAction.Strobe(hz = normalizedHz),
-                            intensity = 1f,
-                            fadeMs = 0L,
-                            durationMs = normalizedDurationMs,
-                            fadeOutMs = normalizedFadeOutMs
-                        )
-                        EditableLightCueType.BLACKOUT -> LightCue(
-                            timeMs = safeMarkerTimeMs,
-                            action = LightAction.Blackout,
-                            intensity = 1f,
-                            fadeMs = normalizedFadeMs
-                        )
+                        onSaved()
                     }
-
-                    SmpLightCueBridge.upsertCueAtTime(
-                        context = context,
-                        trackUriString = trackUri,
-                        cue = cue
-                    )
-                    onSaved()
                 }
             ) {
                 Text(stringResource(R.string.common_ok), color = Color(0xFF80CBC4))
@@ -337,12 +386,14 @@ fun TimelineLightCueEditorPopup(
                 if (existing != null) {
                     TextButton(
                         onClick = {
-                            SmpLightCueBridge.deleteCueAtTime(
-                                context = context,
-                                trackUriString = trackUri,
-                                timeMs = safeMarkerTimeMs
-                            )
-                            onSaved()
+                            onLiteConfigAttempt {
+                                SmpLightCueBridge.deleteCueAtTime(
+                                    context = context,
+                                    trackUriString = trackUri,
+                                    timeMs = safeMarkerTimeMs
+                                )
+                                onSaved()
+                            }
                         }
                     ) {
                         Text(stringResource(R.string.lyrics_editor_delete), color = Color(0xFFFF8A80))
@@ -355,6 +406,30 @@ fun TimelineLightCueEditorPopup(
         },
         containerColor = Color(0xFF222222)
     )
+
+    if (showTimelineConfigProDialog) {
+        AlertDialog(
+            onDismissRequest = { showTimelineConfigProDialog = false },
+            title = { Text(text = sTimelineProDialogTitle, color = Color.White) },
+            text = { Text(text = sTimelineProDialogMessage, color = Color.White) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showTimelineConfigProDialog = false
+                        openUpgradeToPro()
+                    }
+                ) {
+                    Text(sUpgradeToPro, color = Color(0xFF80CBC4))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showTimelineConfigProDialog = false }) {
+                    Text(stringResource(R.string.common_close), color = Color(0xFFB0BEC5))
+                }
+            },
+            containerColor = Color(0xFF222222)
+        )
+    }
 }
 
 @Composable

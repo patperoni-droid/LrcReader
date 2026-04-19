@@ -1,5 +1,8 @@
 package com.patrick.lrcreader.ui
 
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -80,18 +83,40 @@ fun TimelineEditorSection(
 ) {
     val context = LocalContext.current
     val safePositionMs = positionMs.coerceAtLeast(0).toLong()
-    val midiDmxAvailable = EditionConfig.isPro
-    val dmxUiVisible = midiDmxAvailable && EditionConfig.isDmxUiEnabled
+    val isLite = EditionConfig.isLite
+    val dmxUiVisible = true
     val proMessage = stringResource(R.string.timeline_pro_only)
+    val sTimelineProDialogTitle = stringResource(R.string.timeline_config_pro_dialog_title)
+    val sTimelineProDialogMessage = stringResource(R.string.timeline_config_pro_dialog_message)
+    val sUpgradeToPro = stringResource(R.string.library_upgrade_to_pro)
     var renameIndex by remember(markers) { mutableStateOf<Int?>(null) }
     var renameText by remember(markers) { mutableStateOf("") }
     var renameDurationSeconds by remember(markers) { mutableStateOf("") }
     var paletteDraft by remember { mutableStateOf("") }
     var showPaletteInput by remember { mutableStateOf(false) }
+    var showTimelineConfigProDialog by remember { mutableStateOf(false) }
     val paletteNavigationIndexByLabel = remember(markers) { mutableStateMapOf<String, Int>() }
     val paletteNavigationIndexByKind = remember(markers) { mutableStateMapOf<TimelineMarkerKind, Int>() }
     var focusRequestTimeMs by remember { mutableLongStateOf(-1L) }
     var focusRequestToken by remember { mutableIntStateOf(0) }
+
+    val openUpgradeToPro: () -> Unit = remember(context) {
+        {
+            val marketIntent = Intent(
+                Intent.ACTION_VIEW,
+                Uri.parse("market://search?q=Stage Music Player Pro")
+            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val webIntent = Intent(
+                Intent.ACTION_VIEW,
+                Uri.parse("https://play.google.com/store/search?q=Stage%20Music%20Player%20Pro&c=apps")
+            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            try {
+                context.startActivity(marketIntent)
+            } catch (_: ActivityNotFoundException) {
+                context.startActivity(webIntent)
+            }
+        }
+    }
 
     fun requestFocusAt(timeMs: Long) {
         val targetTimeMs = timeMs.coerceAtLeast(0L)
@@ -279,28 +304,15 @@ fun TimelineEditorSection(
         ) {
             TimelineEventPaletteButton(
                 label = stringResource(R.string.timeline_event_midi),
-                enabled = midiDmxAvailable,
                 icon = {
                     Icon(
                         imageVector = Icons.Filled.GraphicEq,
                         contentDescription = null,
-                        tint = if (midiDmxAvailable) Color(0xFF80CBC4) else Color(0xFF80CBC4).copy(alpha = 0.45f)
+                        tint = Color(0xFF80CBC4)
                     )
                 },
-                onClick = {
-                    if (midiDmxAvailable) {
-                        onAddTypedMarker(TimelineMarkerKind.MIDI)
-                    } else {
-                        Toast.makeText(context, proMessage, Toast.LENGTH_SHORT).show()
-                    }
-                },
-                onLongClick = {
-                    if (midiDmxAvailable) {
-                        seekToNextTypedMarker(TimelineMarkerKind.MIDI)
-                    } else {
-                        Toast.makeText(context, proMessage, Toast.LENGTH_SHORT).show()
-                    }
-                }
+                onClick = { onAddTypedMarker(TimelineMarkerKind.MIDI) },
+                onLongClick = { seekToNextTypedMarker(TimelineMarkerKind.MIDI) }
             )
             TimelineEventPaletteButton(
                 label = stringResource(R.string.timeline_event_note),
@@ -317,35 +329,28 @@ fun TimelineEditorSection(
             if (dmxUiVisible) {
                 TimelineEventPaletteButton(
                     label = stringResource(R.string.timeline_event_dmx),
-                    enabled = midiDmxAvailable,
                     icon = {
                         Icon(
                             imageVector = Icons.Filled.FlashOn,
                             contentDescription = null,
-                            tint = if (midiDmxAvailable) Color(0xFFFFB74D) else Color(0xFFFFB74D).copy(alpha = 0.45f)
+                            tint = Color(0xFFFFB74D)
                         )
                     },
-                    onClick = {
-                        if (midiDmxAvailable) {
-                            onAddTypedMarker(TimelineMarkerKind.DMX)
-                        } else {
-                            Toast.makeText(context, proMessage, Toast.LENGTH_SHORT).show()
-                        }
-                    },
-                    onLongClick = {
-                        if (midiDmxAvailable) {
-                            seekToNextTypedMarker(TimelineMarkerKind.DMX)
-                        } else {
-                            Toast.makeText(context, proMessage, Toast.LENGTH_SHORT).show()
-                        }
-                    }
+                    onClick = { onAddTypedMarker(TimelineMarkerKind.DMX) },
+                    onLongClick = { seekToNextTypedMarker(TimelineMarkerKind.DMX) }
                 )
             }
         }
 
         if (dmxUiVisible) {
             TextButton(
-                onClick = onGenerateLights,
+                onClick = {
+                    if (isLite) {
+                        showTimelineConfigProDialog = true
+                    } else {
+                        onGenerateLights()
+                    }
+                },
                 enabled = durationMs > 0
             ) {
                 Text(
@@ -363,7 +368,13 @@ fun TimelineEditorSection(
         ) {
             if (dmxUiVisible) {
                 TextButton(
-                    onClick = onPasteDmxCueHere,
+                    onClick = {
+                        if (isLite) {
+                            showTimelineConfigProDialog = true
+                        } else {
+                            onPasteDmxCueHere()
+                        }
+                    },
                     enabled = canPasteDmxCue
                 ) {
                     Text(
@@ -397,20 +408,20 @@ fun TimelineEditorSection(
                 onEditMarker = { index ->
                     if (index !in markers.indices) return@TimelineScrubColumn
                     if (markers[index].kind == TimelineMarkerKind.MIDI) {
-                        if (midiDmxAvailable) {
+                        if (!isLite) {
                             onEditMidiMarker(index)
                         } else {
-                            Toast.makeText(context, proMessage, Toast.LENGTH_SHORT).show()
+                            showTimelineConfigProDialog = true
                         }
                         return@TimelineScrubColumn
                     }
                     if (markers[index].kind == TimelineMarkerKind.DMX) {
                         if (!dmxUiVisible) return@TimelineScrubColumn
-                        if (midiDmxAvailable) {
-                            onEditDmxMarker(index)
-                        } else {
-                            Toast.makeText(context, proMessage, Toast.LENGTH_SHORT).show()
-                        }
+                        onEditDmxMarker(index)
+                        return@TimelineScrubColumn
+                    }
+                    if (markers[index].kind == TimelineMarkerKind.NOTE && isLite) {
+                        showTimelineConfigProDialog = true
                         return@TimelineScrubColumn
                     }
                     renameIndex = index
@@ -494,6 +505,40 @@ fun TimelineEditorSection(
             dismissButton = {
                 TextButton(onClick = { renameIndex = null }) {
                     Text(stringResource(R.string.common_cancel), color = Color(0xFFB0BEC5))
+                }
+            },
+            containerColor = Color(0xFF222222)
+        )
+    }
+
+    if (showTimelineConfigProDialog) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showTimelineConfigProDialog = false },
+            title = {
+                Text(
+                    text = sTimelineProDialogTitle,
+                    color = Color.White
+                )
+            },
+            text = {
+                Text(
+                    text = sTimelineProDialogMessage,
+                    color = Color.White
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showTimelineConfigProDialog = false
+                        openUpgradeToPro()
+                    }
+                ) {
+                    Text(sUpgradeToPro, color = Color(0xFF80CBC4))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showTimelineConfigProDialog = false }) {
+                    Text(stringResource(R.string.common_close), color = Color(0xFFB0BEC5))
                 }
             },
             containerColor = Color(0xFF222222)
