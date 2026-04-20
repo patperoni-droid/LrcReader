@@ -302,26 +302,6 @@ class MainActivity : AppCompatActivity() {
 
         mark("DjEngine.init:deferred/lazy (DjScreen)")
 
-        mark("WorkspaceResolver.resolve(onCreate):before")
-        val startupWorkspaceSnapshot = WorkspaceResolver.resolve(this)
-        val root = startupWorkspaceSnapshot
-            .takeIf { it.isUsable }
-            ?.workspaceRootUri
-        Log.i(
-            "WORKSPACE_C1",
-            "stage=main_activity:on_create status=${startupWorkspaceSnapshot.status} mode=${startupWorkspaceSnapshot.mode} root=$root detail=${startupWorkspaceSnapshot.detail}"
-        )
-        mark("WorkspaceResolver.resolve(onCreate):after root=$root")
-        if (root != null) {
-            mark("LibraryIndexCache.load(onCreate):before")
-            val cached = LibraryIndexCache.load(this)
-            mark("LibraryIndexCache.load(onCreate):after size=${cached?.size ?: 0}")
-            if (!cached.isNullOrEmpty()) {
-                LibrarySnapshot.rootFolderUri = root
-                LibrarySnapshot.entries = cached.map { it.uriString }
-                LibrarySnapshot.isReady = true
-            }
-        }
         // ✅ Auto backup : planifie le worker à chaque démarrage (WorkManager gère le "unique")
         mark("AutoBackupScheduler.ensureScheduled:before")
         AutoBackupScheduler.ensureScheduled(this)
@@ -332,8 +312,31 @@ class MainActivity : AppCompatActivity() {
 
 
         mark("BackupManager.autoRestoreFromDefaultBackupFile:deferred")
-        mark("setContent:before")
-        setContent {
+        lifecycleScope.launch {
+            mark("WorkspaceResolver.resolve(onCreate):before")
+            val startupWorkspaceSnapshot = withContext(Dispatchers.IO) {
+                WorkspaceResolver.resolve(this@MainActivity)
+            }
+            val root = startupWorkspaceSnapshot
+                .takeIf { it.isUsable }
+                ?.workspaceRootUri
+            Log.i(
+                "WORKSPACE_C1",
+                "stage=main_activity:on_create status=${startupWorkspaceSnapshot.status} mode=${startupWorkspaceSnapshot.mode} root=$root detail=${startupWorkspaceSnapshot.detail}"
+            )
+            mark("WorkspaceResolver.resolve(onCreate):after root=$root")
+            if (root != null) {
+                mark("LibraryIndexCache.load(onCreate):before")
+                val cached = withContext(Dispatchers.IO) { LibraryIndexCache.load(this@MainActivity) }
+                mark("LibraryIndexCache.load(onCreate):after size=${cached?.size ?: 0}")
+                if (!cached.isNullOrEmpty()) {
+                    LibrarySnapshot.rootFolderUri = root
+                    LibrarySnapshot.entries = cached.map { it.uriString }
+                    LibrarySnapshot.isReady = true
+                }
+            }
+            mark("setContent:before")
+            setContent {
             LaunchedEffect(Unit) {
                 mark("setContent:entered")
             }
@@ -350,9 +353,13 @@ class MainActivity : AppCompatActivity() {
 
                 var isImporting by remember { mutableStateOf(false) }
                 val scope = rememberCoroutineScope()
-                val workspaceSnapshot = remember(setupTick) {
+                var workspaceSnapshot by remember { mutableStateOf(startupWorkspaceSnapshot) }
+                LaunchedEffect(setupTick) {
+                    if (setupTick == 0) return@LaunchedEffect
                     mark("compose.WorkspaceResolver.resolve:before")
-                    WorkspaceResolver.resolve(ctx).also { snapshot ->
+                    workspaceSnapshot = withContext(Dispatchers.IO) {
+                        WorkspaceResolver.resolve(ctx)
+                    }.also { snapshot ->
                         mark(
                             "compose.WorkspaceResolver.resolve:after status=${snapshot.status} mode=${snapshot.mode} root=${snapshot.workspaceRootUri} setupTree=${snapshot.setupTreeUri}"
                         )
@@ -3568,6 +3575,7 @@ class MainActivity : AppCompatActivity() {
             }
         } else {
             mark("BackupRestore.bg.launch:skip alreadyStarted")
+            }
         }
     }
     override fun onStop() {
@@ -3576,18 +3584,24 @@ class MainActivity : AppCompatActivity() {
         Log.e("ANR_TRACE", "onStop:start thread=$threadName")
         super.onStop()
         persistSession(reason = "onStop")
-        val playlistsStartMs = SystemClock.elapsedRealtime()
-        runCatching { PlaylistStateStore.savePlaylistsSnapshot(this) }
-            .onFailure { Log.e("BOOTSTEP", "PlaylistStateStore.savePlaylistsSnapshot:onStop failed", it) }
+        lifecycleScope.launch(Dispatchers.IO) {
+            val playlistsStartMs = SystemClock.elapsedRealtime()
+            runCatching { PlaylistStateStore.savePlaylistsSnapshot(this@MainActivity) }
+                .onFailure { Log.e("BOOTSTEP", "PlaylistStateStore.savePlaylistsSnapshot:onStop failed", it) }
+            Log.e(
+                "ANR_TRACE",
+                "onStop:after_savePlaylists durationMs=${SystemClock.elapsedRealtime() - playlistsStartMs} thread=${Thread.currentThread().name}"
+            )
+            val backupStartMs = SystemClock.elapsedRealtime()
+            BackupManager.autoSaveToDefaultBackupFile(this@MainActivity)
+            Log.e(
+                "ANR_TRACE",
+                "onStop:bg_end totalDurationMs=${SystemClock.elapsedRealtime() - startMs} backupDurationMs=${SystemClock.elapsedRealtime() - backupStartMs} thread=${Thread.currentThread().name}"
+            )
+        }
         Log.e(
             "ANR_TRACE",
-            "onStop:after_savePlaylists durationMs=${SystemClock.elapsedRealtime() - playlistsStartMs} thread=$threadName"
-        )
-        val backupStartMs = SystemClock.elapsedRealtime()
-        BackupManager.autoSaveToDefaultBackupFile(this)
-        Log.e(
-            "ANR_TRACE",
-            "onStop:end durationMs=${SystemClock.elapsedRealtime() - startMs} backupDurationMs=${SystemClock.elapsedRealtime() - backupStartMs} thread=$threadName"
+            "onStop:end durationMs=${SystemClock.elapsedRealtime() - startMs} thread=$threadName"
         )
     }
 
@@ -3597,8 +3611,10 @@ class MainActivity : AppCompatActivity() {
         Log.e("ANR_TRACE", "onPause:start thread=$threadName")
         super.onPause()
         persistSession(reason = "onPause")
-        runCatching { PlaylistStateStore.savePlaylistsSnapshot(this) }
-            .onFailure { Log.e("BOOTSTEP", "PlaylistStateStore.savePlaylistsSnapshot:onPause failed", it) }
+        lifecycleScope.launch(Dispatchers.IO) {
+            runCatching { PlaylistStateStore.savePlaylistsSnapshot(this@MainActivity) }
+                .onFailure { Log.e("BOOTSTEP", "PlaylistStateStore.savePlaylistsSnapshot:onPause failed", it) }
+        }
         Log.e(
             "ANR_TRACE",
             "onPause:end durationMs=${SystemClock.elapsedRealtime() - startMs} thread=$threadName"

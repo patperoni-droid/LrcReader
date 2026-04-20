@@ -44,6 +44,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -298,6 +299,7 @@ fun QuickPlaylistsScreen(
     var dragYInListViewport by remember { mutableStateOf<Float?>(null) }
     var hoverHeaderKey by remember { mutableStateOf<String?>(null) }
     var collapsedGroupIds by rememberSaveable { mutableStateOf(setOf<String>()) }
+    var activePlayingGroupHeaderKey by rememberSaveable(internalSelected) { mutableStateOf<String?>(null) }
 
     var renameTarget by remember { mutableStateOf<String?>(null) }
     var renameText by remember { mutableStateOf("") }
@@ -563,6 +565,12 @@ fun QuickPlaylistsScreen(
             )
         }
         previousSongsSize = songs.size
+    }
+    LaunchedEffect(songs, activePlayingGroupHeaderKey) {
+        val activeKey = activePlayingGroupHeaderKey ?: return@LaunchedEffect
+        if (activeKey !in songs) {
+            activePlayingGroupHeaderKey = null
+        }
     }
 
     val menuBg = Color(0xFF1B1B1B)
@@ -1196,6 +1204,7 @@ fun QuickPlaylistsScreen(
                             if (isGroupHeader(uriString)) {
                                 val groupTitle = getGroupTitle(uriString).uppercase()
                                 val headerKey = uriString
+                                val isActivePlayingGroup = activePlayingGroupHeaderKey == headerKey
                                 val isDraggingThis = draggingUri == uriString
                                 val isCollapsed = collapsedGroupIds.contains(headerKey)
                                 val isDraggingTrack = draggingUri?.let { !isGroupHeader(it) } == true
@@ -1236,6 +1245,8 @@ fun QuickPlaylistsScreen(
                                 }
                                 val folderBlue = Color(0xFF0A6C97)
                                 val folderBlueBorder = Color(0xFF07506F)
+                                val activeGroupRed = Color(0xFFD32F2F)
+                                val activeGroupRedBorder = Color(0xFF9A0007)
                                 val headerText = Color.White
                                 val headerMuted = Color.White.copy(alpha = 0.75f)
                                 val headerChevron = Color.White.copy(alpha = 0.60f)
@@ -1245,12 +1256,12 @@ fun QuickPlaylistsScreen(
                                 val rowBorder = if (isDropTargetHeader) {
                                     Color.White.copy(alpha = 0.70f)
                                 } else {
-                                    folderBlueBorder
+                                    if (isActivePlayingGroup) activeGroupRedBorder else folderBlueBorder
                                 }
                                 val rowBackground = if (isDropTargetHeader) {
                                     Color(0xFF1184B8)
                                 } else {
-                                    folderBlue
+                                    if (isActivePlayingGroup) activeGroupRed else folderBlue
                                 }
 
                                 Row(
@@ -1283,6 +1294,16 @@ fun QuickPlaylistsScreen(
                                             .size(18.dp)
                                             .padding(end = 8.dp)
                                     )
+                                    if (isActivePlayingGroup) {
+                                        Icon(
+                                            imageVector = Icons.Filled.PlayArrow,
+                                            contentDescription = null,
+                                            tint = headerText,
+                                            modifier = Modifier
+                                                .size(18.dp)
+                                                .padding(end = 8.dp)
+                                        )
+                                    }
 
                                     Row(
                                         modifier = Modifier
@@ -1307,6 +1328,7 @@ fun QuickPlaylistsScreen(
                                                                 isPlayableAudioItem(item)
                                                         }
                                                     if (groupQueue.isNotEmpty()) {
+                                                        activePlayingGroupHeaderKey = headerKey
                                                         onPlayFromHere(groupQueue, 0, currentPlaylist)
                                                     }
                                                 }
@@ -1403,6 +1425,9 @@ fun QuickPlaylistsScreen(
                                                         val headerIndex = songs.indexOf(uriString)
                                                         if (removeGroupAtHeader(songs, headerIndex)) {
                                                             collapsedGroupIds = collapsedGroupIds - headerKey
+                                                            if (activePlayingGroupHeaderKey == headerKey) {
+                                                                activePlayingGroupHeaderKey = null
+                                                            }
                                                             persistSongsOrder(pl, overwriteOriginal = true)
                                                         }
                                                     }
@@ -1515,11 +1540,17 @@ fun QuickPlaylistsScreen(
                             val isForcedNext = nextTrackUri != null && uriString == nextTrackUri
                             val isSelected = selectedTrackKeys.contains(uriString)
                             val showCurrentMarker = isCurrentPlaying && !isSelected
+                            val containingGroupHeaderIndex = findContainingGroupHeaderIndex(songs, itemIndex)
                             val isInsideGroup =
                                 isPlayableAudioItem(uriString) && isItemInsideGroup(songs, itemIndex)
+                            val activeGroupHeaderKey = containingGroupHeaderIndex?.let { idx -> songs.getOrNull(idx) }
+                            val isInsideActivePlayingGroup =
+                                isInsideGroup && activeGroupHeaderKey == activePlayingGroupHeaderKey
                             val rowShape = RoundedCornerShape(12.dp)
                             val groupTint = Color(0xFF0A6C97).copy(alpha = 0.38f)
                             val groupAccent = Color(0xFF0A6C97).copy(alpha = 0.95f)
+                            val activeGroupTint = Color(0xFFD32F2F).copy(alpha = 0.30f)
+                            val activeGroupAccent = Color(0xFFD32F2F).copy(alpha = 0.92f)
                             val selectedBorderColor = Color(0xCC4FC3F7)
                             val selectedMarkerColor = Color(0xFF4FC3F7)
                             val rowBaseBackground = if (isDraggingThis)
@@ -1554,7 +1585,9 @@ fun QuickPlaylistsScreen(
                                         shape = rowShape
                                     )
                                     .then(
-                                        if (isInsideGroup) {
+                                        if (isInsideActivePlayingGroup) {
+                                            Modifier.background(color = activeGroupTint, shape = rowShape)
+                                        } else if (isInsideGroup) {
                                             Modifier.background(color = groupTint, shape = rowShape)
                                         } else {
                                             Modifier
@@ -1605,7 +1638,7 @@ fun QuickPlaylistsScreen(
                                             .width(3.dp)
                                             .height(26.dp)
                                             .clip(RoundedCornerShape(999.dp))
-                                            .background(groupAccent)
+                                            .background(if (isInsideActivePlayingGroup) activeGroupAccent else groupAccent)
                                     )
                                 }
                                 val isPrompter = uriString.startsWith("prompter://")
@@ -1628,6 +1661,9 @@ fun QuickPlaylistsScreen(
                                             onClick = {
                                                 val currentPlaylist = internalSelected
                                                     ?: return@combinedClickable
+                                                if (activePlayingGroupHeaderKey != null && !isInsideActivePlayingGroup) {
+                                                    activePlayingGroupHeaderKey = null
+                                                }
                                                 // ✅ IMPORTANT : on capture l'ordre "d'origine" AVANT que le système
                                                 // ne pousse une chanson jouée en bas.
                                                 // Persistant => ça survit au redémarrage.
@@ -1744,6 +1780,7 @@ fun QuickPlaylistsScreen(
                                                     val visibleQueue = songs.toList()
                                                     val startIndex = visibleQueue.indexOf(uriString)
                                                     if (startIndex >= 0) {
+                                                        activePlayingGroupHeaderKey = null
                                                         onPlayFromHere(visibleQueue, startIndex, pl)
                                                     }
                                                 }

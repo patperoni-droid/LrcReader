@@ -555,7 +555,7 @@
     <string name="quickplaylists_badge_next_forced">PROCHAIN</string>
     <string name="quickplaylists_badge_next">NEXT</string>
     <string name="quickplaylists_menu_play">Auto Play</string>
-    <string name="quickplaylists_menu_set_next">Jouer ensuite</string>
+    <string name="quickplaylists_menu_set_next">Ajouter à la liste en cours</string>
     <string name="quickplaylists_menu_cancel_next">Annuler PROCHAIN</string>
     <string name="quickplaylists_menu_remove_from_playlist">Retirer de la liste</string>
     <string name="quickplaylists_menu_title_color">Couleur du titre</string>

@@ -17,9 +17,12 @@ internal object PlaylistStateStore {
     private const val ANR_PLAYLIST_TAG = "ANR_PLAYLIST"
 
     private val mutex = Mutex()
+    private val saveCoordinatorLock = Any()
     private var cachedState: PlaylistState? = null
     private var diskReadCount: Long = 0
     private var diskReadTotalMs: Long = 0
+    private var saveInFlight: Boolean = false
+    private var savePending: Boolean = false
 
     data class RestoreResult(
         val success: Boolean,
@@ -157,6 +160,51 @@ internal object PlaylistStateStore {
         val startMs = SystemClock.elapsedRealtime()
         val threadName = Thread.currentThread().name
         Log.e(ANR_PLAYLIST_TAG, "save:start thread=$threadName")
+        synchronized(saveCoordinatorLock) {
+            if (saveInFlight) {
+                savePending = true
+                Log.e(
+                    ANR_PLAYLIST_TAG,
+                    "save:coalesced thread=$threadName pending=true"
+                )
+                return true
+            }
+            saveInFlight = true
+        }
+        var anySaved = false
+        try {
+            while (true) {
+                anySaved = performSavePlaylistsSnapshot(context, startMs, threadName) || anySaved
+                val rerun = synchronized(saveCoordinatorLock) {
+                    if (savePending) {
+                        savePending = false
+                        true
+                    } else {
+                        saveInFlight = false
+                        false
+                    }
+                }
+                if (!rerun) {
+                    return anySaved
+                }
+                Log.e(
+                    ANR_PLAYLIST_TAG,
+                    "save:rerun thread=$threadName reason=pending_request"
+                )
+            }
+        } catch (t: Throwable) {
+            synchronized(saveCoordinatorLock) {
+                saveInFlight = false
+            }
+            throw t
+        }
+    }
+
+    private fun performSavePlaylistsSnapshot(
+        context: Context,
+        startMs: Long,
+        threadName: String
+    ): Boolean {
         return withLockBlocking {
             val current = readStateLocked(context)
             val workspaceState = WorkspacePlaylistFilesStore.readAll(context)
