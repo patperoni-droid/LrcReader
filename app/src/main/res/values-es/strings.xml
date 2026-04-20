@@ -448,8 +448,8 @@
     <string name="quickplaylists_text_fallback_title">(Texto)</string>
     <string name="quickplaylists_badge_next_forced">SIGUIENTE</string>
     <string name="quickplaylists_badge_next">SIGUIENTE</string>
-    <string name="quickplaylists_menu_play">▶ Reproducir</string>
-    <string name="quickplaylists_menu_set_next">Marcar como SIGUIENTE</string>
+    <string name="quickplaylists_menu_play">Auto Play</string>
+    <string name="quickplaylists_menu_set_next">Reproducir después</string>
     <string name="quickplaylists_menu_cancel_next">Cancelar SIGUIENTE</string>
     <string name="quickplaylists_menu_remove_from_playlist">Quitar de la lista de reproducción</string>
     <string name="quickplaylists_menu_title_color">Color del título</string>

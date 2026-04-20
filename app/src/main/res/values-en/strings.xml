@@ -526,8 +526,8 @@
     <string name="quickplaylists_text_fallback_title">(Text)</string>
     <string name="quickplaylists_badge_next_forced">NEXT</string>
     <string name="quickplaylists_badge_next">NEXT</string>
-    <string name="quickplaylists_menu_play">▶ Play</string>
-    <string name="quickplaylists_menu_set_next">Set as NEXT</string>
+    <string name="quickplaylists_menu_play">Auto Play</string>
+    <string name="quickplaylists_menu_set_next">Play next</string>
     <string name="quickplaylists_menu_cancel_next">Cancel NEXT</string>
     <string name="quickplaylists_menu_remove_from_playlist">Remove from playlist</string>
     <string name="quickplaylists_menu_title_color">Title color</string>

@@ -1751,6 +1751,17 @@ fun QuickPlaylistsScreen(
                                             }
                                         )
                                         DropdownMenuItem(
+                                            text = { Text(stringResource(R.string.quickplaylists_menu_set_next), color = Color.White) },
+                                            onClick = {
+                                                onSetNextTrack(
+                                                    uriString,
+                                                    displayName,
+                                                    internalSelected
+                                                )
+                                                menuOpen = false
+                                            }
+                                        )
+                                        DropdownMenuItem(
                                             text = {
                                                 Text(
                                                     stringResource(R.string.quickplaylists_menu_insert_group_above),
@@ -1794,17 +1805,6 @@ fun QuickPlaylistsScreen(
                                                 menuOpen = false
                                             },
                                             enabled = songs.any { isGroupHeader(it) }
-                                        )
-                                        DropdownMenuItem(
-                                            text = { Text(stringResource(R.string.quickplaylists_menu_set_next), color = Color.White) },
-                                            onClick = {
-                                                onSetNextTrack(
-                                                    uriString,
-                                                    displayName,
-                                                    internalSelected
-                                                )
-                                                menuOpen = false
-                                            }
                                         )
                                         if (isInsideGroup) {
                                             DropdownMenuItem(
