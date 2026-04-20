@@ -1085,6 +1085,35 @@ class MainActivity : AppCompatActivity() {
 
                 // ✅ Index pour SearchScreen
                 var indexAll by remember { mutableStateOf<List<LibraryIndexCache.CachedEntry>>(emptyList()) }
+                val effectiveNextTrackTitle = remember(
+                    nextTrack,
+                    nextChainedUri,
+                    chainPlaylist,
+                    smpSongsById,
+                    indexAll
+                ) {
+                    nextTrack?.title?.takeIf { it.isNotBlank() } ?: nextChainedUri?.let { queuedItem ->
+                        val cleanPlaylist = chainPlaylist?.trim()?.takeIf { it.isNotEmpty() }
+                        cleanPlaylist
+                            ?.let { PlaylistRepository.getCustomTitle(it, queuedItem) }
+                            ?.takeIf { it.isNotBlank() }
+                            ?: cleanPlaylist
+                                ?.let { PlaylistRepository.getPlaylistItem(it, queuedItem)?.songId }
+                                ?.trim()
+                                ?.takeIf { it.isNotEmpty() }
+                                ?.let { songId ->
+                                    smpSongsById[songId]?.title?.takeIf { it.isNotBlank() }
+                                }
+                            ?: getSmpSongId(queuedItem)
+                                ?.let { songId ->
+                                    smpSongsById[songId]?.title?.takeIf { it.isNotBlank() }
+                                }
+                            ?: TitleAliasesStore.getTitleForTrack(ctx, queuedItem)?.takeIf { it.isNotBlank() }
+                            ?: PlaylistRepository.getAnyCustomTitleForUri(queuedItem)?.takeIf { it.isNotBlank() }
+                            ?: indexAll.firstOrNull { it.uriString == queuedItem }?.name?.takeIf { it.isNotBlank() }
+                            ?: Uri.parse(queuedItem).lastPathSegment?.takeIf { it.isNotBlank() }
+                    }
+                }
                 suspend fun syncWorkspaceSmpArchivesToRuntime(
                     trigger: String,
                     useAttemptGate: Boolean
@@ -2877,7 +2906,7 @@ class MainActivity : AppCompatActivity() {
                                         onParsedLinesChange = { parsedLines = it },
                                         highlightColor = currentLyricsColor,
                                         currentTrackUri = currentPlayingUri,
-                                        nextTrackTitle = nextTrack?.title,
+                                        nextTrackTitle = effectiveNextTrackTitle,
                                         currentTrackGainDb = currentTrackGainDb,
                                         currentTrackVolumeSource = currentTrackVolumeSource,
                                         onTrackGainChange = { db ->
