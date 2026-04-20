@@ -175,6 +175,8 @@ fun QuickPlaylistsScreen(
     val smpLibraryScanner = remember(context) { SmpLibraryScanner(context) }
     val sQuickplaylistsNewGroupDefault = stringResource(R.string.quickplaylists_group_new_default)
     val sQuickplaylistsCurrentGroup = stringResource(R.string.quickplaylists_group_current)
+    val sQuickplaylistsCreateLiveList = stringResource(R.string.quickplaylists_menu_create_live_list)
+    val sQuickplaylistsAddToLiveList = stringResource(R.string.quickplaylists_menu_add_to_live_list)
     var hasMicPermission by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(
@@ -1935,7 +1937,11 @@ fun QuickPlaylistsScreen(
                                                         modifier = Modifier.size(18.dp)
                                                     )
                                                     Text(
-                                                        stringResource(R.string.quickplaylists_menu_set_next),
+                                                        if (findGroupHeaderKeyByTitle(sQuickplaylistsCurrentGroup) == null) {
+                                                            sQuickplaylistsCreateLiveList
+                                                        } else {
+                                                            sQuickplaylistsAddToLiveList
+                                                        },
                                                         color = Color.White,
                                                         fontSize = 15.sp,
                                                         fontWeight = FontWeight.Medium
