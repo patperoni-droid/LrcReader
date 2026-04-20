@@ -3123,6 +3123,7 @@ class MainActivity : AppCompatActivity() {
                                     playlistsReady = playlistsReady,
                                     nextChainedUri = nextChainedUri,
                                     nextTrackUri = nextTrack?.uri,
+                                    isPlaying = isPlaying,
                                     currentPlayingUri = currentPlayingUri,
                                     currentPlayingPlaylist = currentPlayingPlaylist,
                                     currentPlayingPlaylistItemKey = currentPlayingPlaylistItemKey,

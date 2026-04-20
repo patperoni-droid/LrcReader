@@ -10,6 +10,12 @@ import android.widget.Toast
 import kotlinx.coroutines.withContext
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
 import com.patrick.lrcreader.exo.R
@@ -43,6 +49,7 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
@@ -52,6 +59,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
@@ -64,6 +72,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.focus.FocusRequester
@@ -144,6 +153,7 @@ fun QuickPlaylistsScreen(
     playlistsReady: Boolean = true,
     nextChainedUri: String? = null,
     nextTrackUri: String? = null,
+    isPlaying: Boolean = false,
     currentPlayingUri: String? = null,
     currentPlayingPlaylist: String? = null,
     currentPlayingPlaylistItemKey: String? = null,
@@ -325,6 +335,19 @@ fun QuickPlaylistsScreen(
 
     // 🔸 version des couleurs par titre : on incrémente pour forcer recompose après un choix
     var songColorsVersion by remember { mutableStateOf(0) }
+    val activeGroupPulseTransition = rememberInfiniteTransition(label = "quick_playlists_active_group")
+    val activeGroupPulseFraction by activeGroupPulseTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(
+                durationMillis = 1400,
+                easing = FastOutSlowInEasing
+            ),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "quick_playlists_active_group_fraction"
+    )
     var previousSongsSize by remember { mutableIntStateOf(0) }
     val portableStampByPlaylist = remember(resolvedPlaylistSelection) {
         mutableStateMapOf<String, String>().apply {
@@ -1247,6 +1270,11 @@ fun QuickPlaylistsScreen(
                                 val folderBlueBorder = Color(0xFF07506F)
                                 val activeGroupRed = Color(0xFFD32F2F)
                                 val activeGroupRedBorder = Color(0xFF9A0007)
+                                val animatedActiveGroupRed = if (isActivePlayingGroup && isPlaying) {
+                                    lerp(activeGroupRed, Color(0xFFE14B4B), activeGroupPulseFraction)
+                                } else {
+                                    activeGroupRed
+                                }
                                 val headerText = Color.White
                                 val headerMuted = Color.White.copy(alpha = 0.75f)
                                 val headerChevron = Color.White.copy(alpha = 0.60f)
@@ -1261,7 +1289,7 @@ fun QuickPlaylistsScreen(
                                 val rowBackground = if (isDropTargetHeader) {
                                     Color(0xFF1184B8)
                                 } else {
-                                    if (isActivePlayingGroup) activeGroupRed else folderBlue
+                                    if (isActivePlayingGroup) animatedActiveGroupRed else folderBlue
                                 }
 
                                 Row(
@@ -1769,11 +1797,30 @@ fun QuickPlaylistsScreen(
                                     ) {
                                         DropdownMenuItem(
                                             text = {
-                                                Text(
-                                                    stringResource(R.string.quickplaylists_menu_play),
-                                                    color = Color.White
-                                                )
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .clip(RoundedCornerShape(12.dp))
+                                                        .background(Color(0xFF388E3C).copy(alpha = 0.9f))
+                                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Filled.PlayArrow,
+                                                        contentDescription = null,
+                                                        tint = Color(0xFFFFF3E0),
+                                                        modifier = Modifier.size(20.dp)
+                                                    )
+                                                    Text(
+                                                        stringResource(R.string.quickplaylists_menu_play),
+                                                        color = Color.White,
+                                                        fontSize = 15.sp,
+                                                        fontWeight = FontWeight.SemiBold
+                                                    )
+                                                }
                                             },
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
                                             onClick = {
                                                 val pl = internalSelected
                                                 if (pl != null) {
@@ -1788,7 +1835,31 @@ fun QuickPlaylistsScreen(
                                             }
                                         )
                                         DropdownMenuItem(
-                                            text = { Text(stringResource(R.string.quickplaylists_menu_set_next), color = Color.White) },
+                                            text = {
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .clip(RoundedCornerShape(12.dp))
+                                                        .background(Color(0xFFD32F2F).copy(alpha = 0.85f))
+                                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Filled.LibraryMusic,
+                                                        contentDescription = null,
+                                                        tint = Color(0xFFE0E0E0),
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                    Text(
+                                                        stringResource(R.string.quickplaylists_menu_set_next),
+                                                        color = Color.White,
+                                                        fontSize = 15.sp,
+                                                        fontWeight = FontWeight.Medium
+                                                    )
+                                                }
+                                            },
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
                                             onClick = {
                                                 onSetNextTrack(
                                                     uriString,
@@ -1797,6 +1868,10 @@ fun QuickPlaylistsScreen(
                                                 )
                                                 menuOpen = false
                                             }
+                                        )
+                                        HorizontalDivider(
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                            color = Color(0xFF2F2F2F)
                                         )
                                         DropdownMenuItem(
                                             text = {
