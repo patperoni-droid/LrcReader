@@ -462,6 +462,7 @@
     <string name="quickplaylists_menu_insert_group_above">Insertar grupo arriba</string>
     <string name="quickplaylists_menu_remove_from_group">Quitar del grupo</string>
     <string name="quickplaylists_group_new_default">Nuevo grupo</string>
+    <string name="quickplaylists_group_current">Grupo en curso</string>
     <string name="quickplaylists_edit_prompter_title">Editar prompter ✅ TEST 2026</string>
     <string name="quickplaylists_new_prompter_title">Nuevo título (prompter 2026 )</string>
     <string name="quickplaylists_prompter_text_label">Texto del prompter</string>

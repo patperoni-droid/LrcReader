@@ -174,6 +174,7 @@ fun QuickPlaylistsScreen(
     val context = LocalContext.current
     val smpLibraryScanner = remember(context) { SmpLibraryScanner(context) }
     val sQuickplaylistsNewGroupDefault = stringResource(R.string.quickplaylists_group_new_default)
+    val sQuickplaylistsCurrentGroup = stringResource(R.string.quickplaylists_group_current)
     var hasMicPermission by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(
@@ -477,7 +478,11 @@ fun QuickPlaylistsScreen(
 
             val getSongsStart = SystemClock.elapsedRealtime()
             Log.d("BOOTSTEP", "QuickPlaylists.getSongsFor:before playlist=$pl")
-            val loaded = PlaylistRepository.getSongsFor(pl)
+            val loaded = if (raw.any { isGroupHeader(it) || isGroupEnd(it) }) {
+                raw
+            } else {
+                PlaylistRepository.getSongsFor(pl)
+            }
             Log.d(
                 "BOOTSTEP",
                 "QuickPlaylists.getSongsFor:after playlist=$pl size=${loaded.size} ms=${SystemClock.elapsedRealtime() - getSongsStart}"
@@ -610,6 +615,57 @@ fun QuickPlaylistsScreen(
                 overwriteOriginalOrder(context, playlist, snapshot)
             }
         }
+    }
+
+    fun findGroupHeaderKeyByTitle(title: String): String? {
+        return songs.firstOrNull { item ->
+            isGroupHeader(item) && getGroupTitle(item) == title
+        }
+    }
+
+    fun ensureCurrentGroupHeader(playlist: String): Pair<String, Boolean> {
+        findGroupHeaderKeyByTitle(sQuickplaylistsCurrentGroup)?.let { return it to false }
+        val header = buildGroupHeader(sQuickplaylistsCurrentGroup)
+        val end = getGroupUuid(header)?.let { buildGroupEnd(it) }
+        songs.add(header)
+        if (end != null) {
+            songs.add(end)
+        }
+        persistSongsOrder(playlist, overwriteOriginal = true)
+        return header to true
+    }
+
+    fun moveTrackToGroupHeader(playlist: String, trackIndex: Int, headerKey: String) {
+        if (trackIndex !in songs.indices) return
+        val headerIndex = songs.indexOf(headerKey)
+        if (headerIndex < 0) return
+        moveItemIntoGroup(
+            items = songs,
+            fromIndex = trackIndex,
+            headerIndex = headerIndex,
+            mode = "BOTTOM"
+        )
+        collapsedGroupIds = collapsedGroupIds - headerKey
+        persistSongsOrder(playlist, overwriteOriginal = true)
+    }
+
+    fun findCurrentPlayingTrackIndexInPlaylist(playlist: String): Int? {
+        if (currentPlayingPlaylist == playlist && !currentPlayingPlaylistItemKey.isNullOrBlank()) {
+            val currentItemKey = currentPlayingPlaylistItemKey
+            val byItemKey = songs.indexOfFirst { item ->
+                isPlayableAudioItem(item) &&
+                    canonicalPlaylistPlaybackKey(
+                        playlistItemKey = item,
+                        playbackUri = item
+                    ) == currentItemKey
+            }
+            if (byItemKey >= 0) return byItemKey
+        }
+        val currentUri = currentPlayingUri?.takeIf { it.isNotBlank() } ?: return null
+        val byUri = songs.indexOfFirst { item ->
+            isPlayableAudioItem(item) && item == currentUri
+        }
+        return byUri.takeIf { it >= 0 }
     }
 
     fun isExistingPlaylist(name: String?): Boolean {
@@ -1220,7 +1276,7 @@ fun QuickPlaylistsScreen(
                             .semantics { testTag = "quick_playlists_list" },
                         state = listState
                     ) {
-                        itemsIndexed(visibleRows, key = { _, row -> row.item }) { _, row ->
+                        itemsIndexed(visibleRows, key = { _, row -> "${row.realIndex}:${row.item}" }) { _, row ->
                             val itemIndex = row.realIndex
                             val uriString = row.item
 
@@ -1689,6 +1745,11 @@ fun QuickPlaylistsScreen(
                                             onClick = {
                                                 val currentPlaylist = internalSelected
                                                     ?: return@combinedClickable
+                                                val currentGroupHeaderKey = containingGroupHeaderIndex
+                                                    ?.let { songs.getOrNull(it) }
+                                                val isInsideCurrentQueueGroup =
+                                                    currentGroupHeaderKey != null &&
+                                                        getGroupTitle(currentGroupHeaderKey) == sQuickplaylistsCurrentGroup
                                                 if (activePlayingGroupHeaderKey != null && !isInsideActivePlayingGroup) {
                                                     activePlayingGroupHeaderKey = null
                                                 }
@@ -1696,8 +1757,30 @@ fun QuickPlaylistsScreen(
                                                 // ne pousse une chanson jouée en bas.
                                                 // Persistant => ça survit au redémarrage.
                                                 saveOriginalOrderIfMissing(context, currentPlaylist, songs.toList())
-                                                // ✅ Lance le player
-                                                onPlaySong(uriString, currentPlaylist, Color.White) // ✅ ne teinte plus le lecteur / paroles
+                                                if (isInsideCurrentQueueGroup && containingGroupHeaderIndex != null) {
+                                                    val groupRange = findGroupRange(songs, containingGroupHeaderIndex)
+                                                    val groupQueue = if (groupRange.isEmpty()) {
+                                                        emptyList()
+                                                    } else {
+                                                        ((groupRange.first + 1)..groupRange.last)
+                                                            .map { idx -> songs[idx] }
+                                                            .filter { item ->
+                                                                !isGroupHeader(item) &&
+                                                                    !isGroupEnd(item) &&
+                                                                    isPlayableAudioItem(item)
+                                                            }
+                                                    }
+                                                    val groupStartIndex = groupQueue.indexOf(uriString)
+                                                    if (groupStartIndex >= 0) {
+                                                        activePlayingGroupHeaderKey = currentGroupHeaderKey
+                                                        onPlayFromHere(groupQueue, groupStartIndex, currentPlaylist)
+                                                    } else {
+                                                        onPlaySong(uriString, currentPlaylist, Color.White)
+                                                    }
+                                                } else {
+                                                    // ✅ Lance le player
+                                                    onPlaySong(uriString, currentPlaylist, Color.White) // ✅ ne teinte plus le lecteur / paroles
+                                                }
                                                 // ⚠️ IMPORTANT : on NE rappelle PAS onSelectedPlaylistChange(currentPlaylist) ici,
                                                 // sinon le parent peut recharger la playlist immédiatement (LaunchedEffect),
                                                 // ce qui donne l'impression que le titre "descend direct".
@@ -1861,11 +1944,35 @@ fun QuickPlaylistsScreen(
                                             },
                                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
                                             onClick = {
-                                                onSetNextTrack(
-                                                    uriString,
-                                                    displayName,
-                                                    internalSelected
-                                                )
+                                                val pl = internalSelected
+                                                if (pl != null) {
+                                                    val (headerKey, createdNow) = ensureCurrentGroupHeader(pl)
+                                                    val currentTrackIndex = if (createdNow) {
+                                                        findCurrentPlayingTrackIndexInPlaylist(pl)
+                                                    } else {
+                                                        null
+                                                    }
+                                                    val clickedWasCurrentTrack = currentTrackIndex == itemIndex
+                                                    if (createdNow && currentTrackIndex != null) {
+                                                        moveTrackToGroupHeader(
+                                                            playlist = pl,
+                                                            trackIndex = currentTrackIndex,
+                                                            headerKey = headerKey
+                                                        )
+                                                    }
+                                                    if (!clickedWasCurrentTrack) {
+                                                        val adjustedTrackIndex = when {
+                                                            createdNow && currentTrackIndex != null && currentTrackIndex < itemIndex -> itemIndex - 1
+                                                            else -> itemIndex
+                                                        }
+                                                        moveTrackToGroupHeader(
+                                                            playlist = pl,
+                                                            trackIndex = adjustedTrackIndex,
+                                                            headerKey = headerKey
+                                                        )
+                                                    }
+                                                    activePlayingGroupHeaderKey = headerKey
+                                                }
                                                 menuOpen = false
                                             }
                                         )
