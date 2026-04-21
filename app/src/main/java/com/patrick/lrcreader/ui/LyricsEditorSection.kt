@@ -150,6 +150,7 @@ fun LyricsEditorSection(
     var showEditorHintDialog by remember { mutableStateOf(false) }
     var editorHintDoNotShowAgain by remember { mutableStateOf(false) }
     var hasShownEditorHintThisSession by remember { mutableStateOf(false) }
+    var showChordHelpDialog by remember { mutableStateOf(false) }
     val displayedPalette = paletteChords
     val editorHintTitleRes = if (showChordPalette) {
         R.string.chords_editor_hint_title
@@ -568,47 +569,72 @@ fun LyricsEditorSection(
             .fillMaxSize()
             .padding(horizontal = 16.dp, vertical = 6.dp)
     ) {
-        if (showEditorHintDialog) {
+        if (showEditorHintDialog || showChordHelpDialog) {
+            val isManualChordHelp = showChordHelpDialog && showChordPalette
             AlertDialog(
-                onDismissRequest = { showEditorHintDialog = false },
+                onDismissRequest = {
+                    showEditorHintDialog = false
+                    showChordHelpDialog = false
+                },
                 title = {
                     Text(
-                        text = stringResource(editorHintTitleRes),
+                        text = stringResource(
+                            if (isManualChordHelp) {
+                                R.string.chords_editor_help_title
+                            } else {
+                                editorHintTitleRes
+                            }
+                        ),
                         color = Color.White
                     )
                 },
                 text = {
                     Column {
                         Text(
-                            text = stringResource(editorHintMessageRes),
+                            text = stringResource(
+                                if (isManualChordHelp) {
+                                    R.string.chords_editor_help_message
+                                } else {
+                                    editorHintMessageRes
+                                }
+                            ),
                             color = Color(0xFFB0BEC5)
                         )
-                        Spacer(Modifier.height(12.dp))
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Checkbox(
-                                checked = editorHintDoNotShowAgain,
-                                onCheckedChange = { editorHintDoNotShowAgain = it }
-                            )
-                            Text(
-                                text = stringResource(editorHintDoNotShowAgainRes),
-                                color = Color.White
-                            )
+                        if (!isManualChordHelp) {
+                            Spacer(Modifier.height(12.dp))
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Checkbox(
+                                    checked = editorHintDoNotShowAgain,
+                                    onCheckedChange = { editorHintDoNotShowAgain = it }
+                                )
+                                Text(
+                                    text = stringResource(editorHintDoNotShowAgainRes),
+                                    color = Color.White
+                                )
+                            }
                         }
                     }
                 },
                 confirmButton = {
                     TextButton(
                         onClick = {
-                            if (editorHintDoNotShowAgain) {
+                            if (!isManualChordHelp && editorHintDoNotShowAgain) {
                                 LyricsEditorHintPrefs.setDismissed(context, true)
                             }
                             showEditorHintDialog = false
+                            showChordHelpDialog = false
                         }
                     ) {
                         Text(
-                            text = stringResource(R.string.common_ok),
+                            text = stringResource(
+                                if (isManualChordHelp) {
+                                    R.string.common_close
+                                } else {
+                                    R.string.common_ok
+                                }
+                            ),
                             color = Color(0xFF80CBC4)
                         )
                     }
@@ -636,6 +662,18 @@ fun LyricsEditorSection(
                         selected = currentEditTab == 1,
                         onClick = { switchEditTab(1) },
                         text = { Text(stringResource(R.string.lyrics_editor_tab_sync)) }
+                    )
+                }
+            }
+
+            if (showChordPalette && currentEditTab == 1) {
+                TextButton(
+                    onClick = { showChordHelpDialog = true }
+                ) {
+                    Text(
+                        text = stringResource(R.string.chords_editor_help_action),
+                        color = Color(0xFF90A4AE),
+                        fontSize = 12.sp
                     )
                 }
             }
@@ -804,17 +842,6 @@ fun LyricsEditorSection(
                     if (showChordPalette && displayedPalette.isNotEmpty()) {
                         ChordPaletteChipsRow()
                         Spacer(Modifier.height(8.dp))
-                    }
-
-                    if (showChordPalette) {
-                        Text(
-                            text = "Appuie sur un accord pour le modifier",
-                            color = Color(0xFF90A4AE),
-                            fontSize = 11.sp,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 6.dp)
-                        )
                     }
 
                     // Reset TAGs

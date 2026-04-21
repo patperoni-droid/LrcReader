@@ -645,6 +645,9 @@ Don’t forget to save 😉</string>
 
 Don’t forget to save.</string>
     <string name="chords_editor_hint_do_not_show_again">Do not show again</string>
+    <string name="chords_editor_help_action">Help</string>
+    <string name="chords_editor_help_title">Chord help</string>
+    <string name="chords_editor_help_message">• Tap a chord in the palette to capture it.\n• If the track is stopped, the first tag also starts playback.\n• Tap an existing chord to edit it.\n• Long-press a chord for extra actions when available.\n• Use Save to store your changes.</string>
 
     <!-- Library components -->
     <string name="library_bottom_assign">Assign</string>

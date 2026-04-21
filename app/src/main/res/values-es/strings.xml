@@ -556,6 +556,9 @@ No olvides guardar 😉</string>
 
 No olvides guardar.</string>
     <string name="chords_editor_hint_do_not_show_again">No volver a mostrar</string>
+    <string name="chords_editor_help_action">Ayuda</string>
+    <string name="chords_editor_help_title">Ayuda de acordes</string>
+    <string name="chords_editor_help_message">• Toca un acorde de la paleta para capturarlo.\n• Si la pista está detenida, la primera marca también inicia la reproducción.\n• Toca un acorde existente para editarlo.\n• Mantén pulsado un acorde para ver acciones adicionales si están disponibles.\n• Usa Guardar para registrar tus cambios.</string>
 
     <!-- Library components -->
     <string name="library_bottom_assign">Asignar</string>
