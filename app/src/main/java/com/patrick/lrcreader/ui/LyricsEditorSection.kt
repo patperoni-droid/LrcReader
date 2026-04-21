@@ -68,6 +68,7 @@ import kotlinx.coroutines.yield
 private val INLINE_LRC_TIME_TAG_REGEX =
     Regex("""\[(\d{1,2}):(\d{1,2})(?:\.(\d{1,3}))?]""")
 private val LRC_TIMESTAMP_HINT_REGEX = Regex("""\[\d{1,2}:\d{2}""")
+private const val FIRST_CHORD_TIME_MS = 10L
 
 private object LyricsEditorHintPrefs {
     private const val PREFS_NAME = "lyrics_editor_hint_prefs"
@@ -301,7 +302,38 @@ fun LyricsEditorSection(
     }
 
     fun handlePaletteChordClick(chord: String) {
-        if (showChordPalette && isPlaying) {
+        if (showChordPalette && currentEditTab == 1) {
+            if (!isPlaying) {
+                val firstChordLine = captureLiveChord(
+                    chord = chord,
+                    playerPositionMs = FIRST_CHORD_TIME_MS,
+                    compensationMs = 0L
+                )
+                val existingStartIndex = editingLines.indexOfFirst { it.timeMs in 0L..FIRST_CHORD_TIME_MS }
+                val updated = if (existingStartIndex >= 0) {
+                    editingLines.toMutableList().apply {
+                        this[existingStartIndex] = firstChordLine
+                    }
+                } else {
+                    appendCapturedChordLineSorted(
+                        current = editingLines,
+                        newLine = firstChordLine
+                    )
+                }
+                applyEditingLinesWithUndo(updated)
+                pendingCapturedLine = firstChordLine
+                runCatching { seekToMs(0L) }
+                if (durationMs > 0) {
+                    onIsPlayingChange(true)
+                    runCatching { FillerSoundManager.fadeOutAndStop(200) }
+                }
+                scope.launch {
+                    yield()
+                    onPersistLines(updated)
+                }
+                return
+            }
+
             val nowElapsed = SystemClock.elapsedRealtime()
             if (!isLiveCaptureAllowed(nowElapsed, lastLiveCaptureClickElapsedMs)) {
                 return
