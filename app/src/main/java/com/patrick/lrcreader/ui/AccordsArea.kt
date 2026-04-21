@@ -3,6 +3,8 @@ package com.patrick.lrcreader.ui
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -37,6 +39,7 @@ private enum class ChordsDisplayMode {
     GRID
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun AccordsArea(
     modifier: Modifier = Modifier,
@@ -137,53 +140,37 @@ fun AccordsArea(
             }
 
             ChordsDisplayMode.GRID -> {
-                val rows = remember(parsedLines) {
-                    parsedLines.withIndex().chunked(4)
-                }
-                Column(
+                FlowRow(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 12.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    rows.forEach { row ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 6.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    parsedLines.withIndex().forEach { indexedLine ->
+                        val isActive = indexedLine.index == safeIndex
+                        Surface(
+                            color = if (isActive) {
+                                Color.White.copy(alpha = 0.14f)
+                            } else {
+                                Color.Transparent
+                            },
+                            shape = RoundedCornerShape(12.dp)
                         ) {
-                            row.forEach { indexedLine ->
-                                val isActive = indexedLine.index == safeIndex
-                                Surface(
-                                    modifier = Modifier.weight(1f),
-                                    color = if (isActive) {
-                                        Color.White.copy(alpha = 0.14f)
-                                    } else {
-                                        Color.Transparent
-                                    },
-                                    shape = RoundedCornerShape(12.dp)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 8.dp, vertical = 12.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = formatChord(indexedLine.value.text),
-                                            fontFamily = ChordFont,
-                                            color = if (isActive) Color.White else Color(0xFFCFD8DC),
-                                            fontSize = if (isActive) 34.sp else 30.sp,
-                                            fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium,
-                                            textAlign = TextAlign.Center
-                                        )
-                                    }
-                                }
-                            }
-                            repeat(4 - row.size) {
-                                Spacer(Modifier.weight(1f))
+                            Box(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = formatChord(indexedLine.value.text),
+                                    fontFamily = ChordFont,
+                                    color = if (isActive) Color.White else Color(0xFFCFD8DC),
+                                    fontSize = if (isActive) 34.sp else 30.sp,
+                                    fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium,
+                                    textAlign = TextAlign.Center,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
                             }
                         }
                     }
