@@ -676,6 +676,9 @@ N’oubliez pas de sauvegarder.</string>
     <string name="chords_editor_help_action">Aide</string>
     <string name="chords_editor_help_title">Aide accords</string>
     <string name="chords_editor_help_message">• Touchez un accord de la palette pour le capturer.\n• Si le morceau est à l’arrêt, le premier tag démarre aussi la lecture.\n• Touchez un accord existant pour le modifier.\n• Appui long sur un accord pour les actions supplémentaires si disponible.\n• Utilisez la sauvegarde pour enregistrer vos modifications.</string>
+    <string name="lyrics_editor_unsaved_changes_title">Modifications non sauvegardées</string>
+    <string name="lyrics_editor_unsaved_changes_message">Vous avez des modifications non sauvegardées. Que voulez-vous faire ?</string>
+    <string name="lyrics_editor_discard_changes">Quitter sans sauvegarder</string>
 
     <!-- Library components -->
     <string name="library_bottom_assign">Attribuer</string>

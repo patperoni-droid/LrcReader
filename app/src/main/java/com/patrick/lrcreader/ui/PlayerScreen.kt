@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.ShowChart
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -524,6 +525,8 @@ fun PlayerScreen(
     var editingLines by remember(currentTrackUri) { mutableStateOf<List<LrcLine>>(emptyList()) }
     var editingLinesDirty by remember(currentTrackUri) { mutableStateOf(false) }
     var currentEditTab by rememberSaveable(currentTrackUri) { mutableStateOf(0) }
+    var showUnsavedLyricsDialog by remember { mutableStateOf(false) }
+    var saveAndCloseRequestToken by remember { mutableIntStateOf(0) }
     val inlineLrcTimeTagRegex = remember { Regex("""\[(\d{1,2}):(\d{1,2})(?:\.(\d{1,3}))?]""") }
 
     fun updateResolvedLyricsFileName(newValue: String?, reason: String) {
@@ -539,6 +542,20 @@ fun PlayerScreen(
 
     fun editorLyricsText(lines: List<LrcLine>): String =
         if (lines.any { it.timeMs > 0L }) linesToLrcText(lines) else plainLyricsText(lines)
+
+    fun closeLyricsEditorImmediately() {
+        showUnsavedLyricsDialog = false
+        isEditingLyrics = false
+        editingTrackUri = null
+    }
+
+    fun requestCloseLyricsEditor() {
+        if (editingLinesDirty) {
+            showUnsavedLyricsDialog = true
+        } else {
+            closeLyricsEditorImmediately()
+        }
+    }
 
     fun showAccordsTrackChangedBlockedToast() {
         Toast.makeText(
@@ -1423,12 +1440,12 @@ fun PlayerScreen(
                 highlightColor = highlightColor,
                 currentTrackUri = currentTrackUri,
                 isEditingLyrics = isEditingLyrics,
-                onCloseEditor = {
-                    isEditingLyrics = false
-                    editingTrackUri = null
-                },
+                onCloseEditor = { requestCloseLyricsEditor() },
                 rawLyricsText = rawLyricsText,
-                onRawLyricsTextChange = { rawLyricsText = it },
+                onRawLyricsTextChange = {
+                    rawLyricsText = it
+                    editingLinesDirty = true
+                },
                 editingLines = editingLines,
                 onEditingLinesChange = {
                     editingLines = it
@@ -1446,12 +1463,17 @@ fun PlayerScreen(
                 onSaveSortedLines = { sorted ->
                     rawLyricsText = editorLyricsText(sorted)
                     editingLines = sorted
+                    editingLinesDirty = false
                     if (editingTargetMode == LyricsViewMode.LYRICS) {
                         onParsedLinesChange(sorted)
                         hasLyricsSource = sorted.isNotEmpty()
                     }
-                    isEditingLyrics = false
-                    editingTrackUri = null
+                    closeLyricsEditorImmediately()
+                },
+                onPersistSucceeded = { persisted ->
+                    rawLyricsText = editorLyricsText(persisted)
+                    editingLines = persisted
+                    editingLinesDirty = false
                 },
                 onPersistLines = persistLines@{ lines ->
                     if (editingTargetMode == LyricsViewMode.CHORDS) {
@@ -1850,12 +1872,63 @@ fun PlayerScreen(
                 },
                 enableCueEditing = editingTargetMode == LyricsViewMode.LYRICS,
                 showChordPalette = editingTargetMode == LyricsViewMode.CHORDS,
+                saveAndCloseRequestToken = saveAndCloseRequestToken,
                 chordPaletteStorageKey = if (editingTargetMode == LyricsViewMode.CHORDS) {
                     editingResolvedLrcFileName
                 } else {
                     null
                 }
             )
+            if (showUnsavedLyricsDialog) {
+                AlertDialog(
+                    onDismissRequest = { showUnsavedLyricsDialog = false },
+                    title = {
+                        Text(
+                            text = stringResource(R.string.lyrics_editor_unsaved_changes_title),
+                            color = Color.White
+                        )
+                    },
+                    text = {
+                        Text(
+                            text = stringResource(R.string.lyrics_editor_unsaved_changes_message),
+                            color = Color(0xFFB0BEC5)
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                showUnsavedLyricsDialog = false
+                                saveAndCloseRequestToken++
+                            }
+                        ) {
+                            Text(
+                                text = stringResource(R.string.common_save),
+                                color = Color(0xFF80CBC4)
+                            )
+                        }
+                    },
+                    dismissButton = {
+                        Row {
+                            TextButton(
+                                onClick = { showUnsavedLyricsDialog = false }
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.common_cancel),
+                                    color = Color.LightGray
+                                )
+                            }
+                            TextButton(
+                                onClick = { closeLyricsEditorImmediately() }
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.lyrics_editor_discard_changes),
+                                    color = Color(0xFFFF8A80)
+                                )
+                            }
+                        }
+                    }
+                )
+            }
         } else if (isEditingTimeline) {
             TimelineEditorSection(
                 markers = timelineEditorMarkers,
@@ -2032,6 +2105,8 @@ fun PlayerScreen(
                             onOpenEditor = {
                                 editingTargetMode = selectedViewMode
                                 editingTrackUri = currentTrackUri
+                                editingLinesDirty = false
+                                showUnsavedLyricsDialog = false
                                 // Do not resolve the exact SAF lyrics file synchronously here:
                                 // opening the editor must stay on the UI thread and fast.
                                 editingResolvedLrcFileName = resolvedLyricsLrcFileName

@@ -6,6 +6,7 @@ import android.net.Uri
 import android.os.SystemClock
 import android.util.Log
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -114,15 +115,19 @@ fun LyricsEditorSection(
 
     // ✅ callback sauvegarde
     onSaveSortedLines: (List<LrcLine>) -> Unit,
+    onPersistSucceeded: (List<LrcLine>) -> Unit,
     onPersistLines: suspend (List<LrcLine>) -> Boolean,
     onDeletePersisted: suspend () -> Boolean,
     mainTabLabelRes: Int = R.string.lyrics_editor_tab_lyrics,
     inputLabelRes: Int = R.string.lyrics_editor_input_label,
     enableCueEditing: Boolean = true,
     showChordPalette: Boolean = false,
+    saveAndCloseRequestToken: Int = 0,
     chordPaletteStorageKey: String? = null
 ) {
     if (!isEditingLyrics) return
+
+    BackHandler(onBack = onCloseEditor)
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -330,7 +335,9 @@ fun LyricsEditorSection(
                 }
                 scope.launch {
                     yield()
-                    onPersistLines(updated)
+                    if (onPersistLines(updated)) {
+                        onPersistSucceeded(updated)
+                    }
                 }
                 return
             }
@@ -353,7 +360,9 @@ fun LyricsEditorSection(
             scope.launch {
                 // Let Compose render the new tag first, then persist.
                 yield()
-                onPersistLines(updated)
+                if (onPersistLines(updated)) {
+                    onPersistSucceeded(updated)
+                }
             }
             pendingCapturedLine = captured
 
@@ -561,6 +570,12 @@ fun LyricsEditorSection(
             } finally {
                 isPersistBusy = false
             }
+        }
+    }
+
+    LaunchedEffect(saveAndCloseRequestToken) {
+        if (saveAndCloseRequestToken > 0) {
+            handleSave()
         }
     }
 
@@ -889,7 +904,9 @@ fun LyricsEditorSection(
                                     selectedSyncLineIndices = emptySet()
                                     scope.launch {
                                         yield()
-                                        onPersistLines(cleared)
+                                        if (onPersistLines(cleared)) {
+                                            onPersistSucceeded(cleared)
+                                        }
                                     }
                                 } else {
                                     applyEditingLinesWithUndo(
