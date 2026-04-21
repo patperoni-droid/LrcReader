@@ -774,6 +774,17 @@ fun LyricsEditorSection(
                         Spacer(Modifier.height(8.dp))
                     }
 
+                    if (showChordPalette) {
+                        Text(
+                            text = "Appuie sur un accord pour le modifier",
+                            color = Color(0xFF90A4AE),
+                            fontSize = 11.sp,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 6.dp)
+                        )
+                    }
+
                     // Reset TAGs
                     Row(
                         modifier = Modifier
@@ -981,7 +992,16 @@ fun LyricsEditorSection(
 
                         AlertDialog(
                             onDismissRequest = { lineMenuIndex = null },
-                            title = { Text(text = stringResource(R.string.lyrics_editor_line_dialog_title, idx + 1), color = Color.White) },
+                            title = {
+                                Text(
+                                    text = if (showChordPalette) {
+                                        "Modifier l’accord"
+                                    } else {
+                                        stringResource(R.string.lyrics_editor_line_dialog_title, idx + 1)
+                                    },
+                                    color = Color.White
+                                )
+                            },
                             text = {
                                 Column(Modifier.fillMaxWidth()) {
                                     Text(
@@ -993,7 +1013,15 @@ fun LyricsEditorSection(
                                     OutlinedTextField(
                                         value = lineMenuText,
                                         onValueChange = { lineMenuText = it },
-                                        label = { Text(stringResource(R.string.lyrics_editor_line_text_label)) },
+                                        label = {
+                                            Text(
+                                                if (showChordPalette) {
+                                                    "Saisir un accord (ex: Am, F#maj7, Am/G)"
+                                                } else {
+                                                    stringResource(R.string.lyrics_editor_line_text_label)
+                                                }
+                                            )
+                                        },
                                         singleLine = false,
                                         textStyle = androidx.compose.ui.text.TextStyle(
                                             color = Color.White,
