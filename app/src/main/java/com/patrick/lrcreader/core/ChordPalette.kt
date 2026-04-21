@@ -11,10 +11,17 @@ data class TextInsertionResult(
 private const val LIVE_CHORD_COMPENSATION_MS = 150L
 private const val LIVE_CHORD_DOUBLE_CLICK_GUARD_MS = 80L
 
+private fun normalizePaletteChordToken(token: String): String {
+    return token
+        .trim()
+        .trim(',', ';')
+        .trim()
+}
+
 fun parseChordPaletteInput(raw: String): List<String> {
     return raw
         .split(Regex("""[,\n;]+"""))
-        .map { it.trim() }
+        .map(::normalizePaletteChordToken)
         .filter { it.isNotEmpty() }
         .distinct()
 }
