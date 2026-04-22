@@ -739,17 +739,15 @@ private fun TimelineModeChip(
     enabled: Boolean,
     onClick: () -> Unit
 ) {
-    if (selected) {
-        TextButton(onClick = onClick, enabled = enabled) {
-            Text(text = text, color = Color(0xFF80CBC4))
-        }
-    } else {
-        OutlinedButton(onClick = onClick, enabled = enabled) {
-            Text(
-                text = text,
-                color = if (enabled) Color(0xFFB0BEC5) else Color(0xFF6B6B6B)
-            )
-        }
+    OutlinedButton(onClick = onClick, enabled = enabled) {
+        Text(
+            text = text,
+            color = when {
+                !enabled -> Color(0xFF6B6B6B)
+                selected -> Color(0xFF80CBC4)
+                else -> Color(0xFFB0BEC5)
+            }
+        )
     }
 }
 
