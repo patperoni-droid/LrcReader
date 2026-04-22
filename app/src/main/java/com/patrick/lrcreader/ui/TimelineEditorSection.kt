@@ -888,7 +888,8 @@ private fun TimelineMeasuresEventList(
                     val markerMeasuresStatus = computeTimelineMeasuresStatus(
                         tempoBpm = tempoBpm,
                         measureAnchorMs = measureAnchorMs,
-                        currentPositionMs = marker.timeMs
+                        currentPositionMs = marker.timeMs,
+                        clampBeforeAnchorToFirstMeasure = true
                     )
                     TimelineMeasuresEventListItem(
                         marker = marker,
@@ -919,7 +920,8 @@ private fun TimelineMeasuresEventListItem(
         stringResource(
             R.string.timeline_measures_event_position,
             status.currentBar,
-            status.currentBeat
+            status.currentBeat,
+            status.currentSubdivision
         )
     } ?: formatTimelineMarkerTime(marker.timeMs)
     val rowText = if (markerTitle == kindLabel) {
@@ -1304,6 +1306,7 @@ private fun TimelineGridEmptyState(
 private data class TimelineMeasuresStatus(
     val currentBar: Int,
     val currentBeat: Int,
+    val currentSubdivision: Int,
     val beatIndex: Long
 )
 
@@ -1337,27 +1340,34 @@ private fun formatTimelinePositionLabel(
 private fun computeTimelineMeasuresStatus(
     tempoBpm: Int?,
     measureAnchorMs: Long?,
-    currentPositionMs: Long
+    currentPositionMs: Long,
+    clampBeforeAnchorToFirstMeasure: Boolean = false
 ): TimelineMeasuresStatus? {
     val safeTempoBpm = tempoBpm?.takeIf {
         it in TrackTimelineTempoPrefs.MIN_TEMPO_BPM..TrackTimelineTempoPrefs.MAX_TEMPO_BPM
     } ?: return null
     val safeAnchorMs = measureAnchorMs ?: return null
-    if (currentPositionMs < safeAnchorMs) return null
+    if (currentPositionMs < safeAnchorMs && !clampBeforeAnchorToFirstMeasure) return null
 
     val beatDurationMs = 60_000.0 / safeTempoBpm.toDouble()
     val barDurationMs = beatDurationMs * 4.0
-    if (beatDurationMs <= 0.0 || barDurationMs <= 0.0) return null
+    val subdivisionDurationMs = beatDurationMs / 4.0
+    if (beatDurationMs <= 0.0 || barDurationMs <= 0.0 || subdivisionDurationMs <= 0.0) return null
 
-    val relativeMs = currentPositionMs - safeAnchorMs
+    val relativeMs = (currentPositionMs - safeAnchorMs).coerceAtLeast(0L)
     val beatIndex = kotlin.math.floor(relativeMs / beatDurationMs).toLong()
     val currentBar = (beatIndex / 4L).toInt() + 1
     val barOffsetMs = relativeMs % barDurationMs
     val currentBeat = kotlin.math.floor(barOffsetMs / beatDurationMs).toInt() + 1
+    val beatOffsetMs = relativeMs % beatDurationMs
+    val currentSubdivision = (
+        kotlin.math.floor(beatOffsetMs / subdivisionDurationMs).toInt() + 1
+        ).coerceIn(1, 4)
 
     return TimelineMeasuresStatus(
         currentBar = currentBar.coerceAtLeast(1),
         currentBeat = currentBeat.coerceIn(1, 4),
+        currentSubdivision = currentSubdivision,
         beatIndex = beatIndex.coerceAtLeast(0L)
     )
 }
