@@ -62,6 +62,7 @@ fun TimelineScrubColumn(
     positionMs: Int,
     durationMs: Int,
     isPlaying: Boolean,
+    slotLabel: (Long) -> String = ::formatTimelineScrubTime,
     focusRequestTimeMs: Long? = null,
     focusRequestToken: Int = 0,
     onSeekToMs: (Long) -> Unit,
@@ -246,7 +247,7 @@ fun TimelineScrubColumn(
                 verticalAlignment = Alignment.Top
             ) {
                 Text(
-                    text = formatTimelineScrubTime(slotTimeMs),
+                    text = slotLabel(slotTimeMs),
                     color = if (isCurrentSlot) Color(0xFF80CBC4) else Color(0xFFB0BEC5),
                     fontSize = 12.sp,
                     modifier = Modifier.width(74.dp)

@@ -396,8 +396,13 @@
 
     <!-- Waveform preview -->
     <string name="timeline_dialog_title">Timeline</string>
-    <string name="timeline_mode_time">Tiempo</string>
-    <string name="timeline_mode_measures">Compases</string>
+    <string name="timeline_mode_time">T</string>
+    <string name="timeline_mode_measures">M</string>
+    <string name="timeline_grid_create_action">RG</string>
+    <string name="timeline_grid_edit_action">RG</string>
+    <string name="timeline_grid_create_title">Crear cuadrícula</string>
+    <string name="timeline_grid_edit_title">Ajustar cuadrícula</string>
+    <string name="timeline_grid_missing_message">Aún no hay cuadrícula activa. Crea la cuadrícula para ver la timeline en compases.</string>
     <string name="timeline_add_marker_action">Añadir marca</string>
     <string name="timeline_palette_title">Paleta de marcas</string>
     <string name="timeline_palette_input_label">Nueva etiqueta</string>

@@ -60,6 +60,11 @@ import com.patrick.lrcreader.smp.TimelineMarker
 import com.patrick.lrcreader.smp.TimelineMarkerKind
 
 private enum class TimelineEditorMode {
+    TIMELINE,
+    GRID_SETUP
+}
+
+private enum class TimelineDisplayMode {
     TIME,
     MEASURES
 }
@@ -107,7 +112,8 @@ fun TimelineEditorSection(
     var paletteDraft by remember { mutableStateOf("") }
     var showPaletteInput by remember { mutableStateOf(false) }
     var showTimelineConfigProDialog by remember { mutableStateOf(false) }
-    var editorMode by remember { mutableStateOf(TimelineEditorMode.TIME) }
+    var editorMode by remember { mutableStateOf(TimelineEditorMode.TIMELINE) }
+    var displayMode by remember { mutableStateOf(TimelineDisplayMode.TIME) }
     var measuresTempoDraft by remember { mutableStateOf("") }
     val paletteNavigationIndexByLabel = remember(markers) { mutableStateMapOf<String, Int>() }
     val paletteNavigationIndexByKind = remember(markers) { mutableStateMapOf<TimelineMarkerKind, Int>() }
@@ -183,6 +189,16 @@ fun TimelineEditorSection(
         measuresTempoDraft = measuresTempoBpm?.toString().orEmpty()
     }
 
+    val hasMeasuresGrid = remember(measuresTempoBpm, measureAnchorMs) {
+        measuresTempoBpm != null && measureAnchorMs != null
+    }
+
+    LaunchedEffect(hasMeasuresGrid, displayMode) {
+        if (!hasMeasuresGrid && displayMode == TimelineDisplayMode.MEASURES) {
+            displayMode = TimelineDisplayMode.TIME
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -239,23 +255,63 @@ fun TimelineEditorSection(
             }
 
             Text(
-                text = formatTimelineEditorPosition(positionMs),
+                text = formatTimelinePositionLabel(
+                    displayMode = displayMode,
+                    hasMeasuresGrid = hasMeasuresGrid,
+                    positionMs = safePositionMs,
+                    tempoBpm = measuresTempoBpm,
+                    measureAnchorMs = measureAnchorMs
+                ),
                 color = Color.LightGray,
                 fontSize = 12.sp
             )
 
             Spacer(modifier = Modifier.weight(1f))
 
-            TimelineModeSelector(
-                selectedMode = editorMode,
-                onModeSelected = { editorMode = it }
-            )
+            when (editorMode) {
+                TimelineEditorMode.TIMELINE -> {
+                    TimelineDisplayModeSelector(
+                        selectedMode = displayMode,
+                        hasMeasuresGrid = hasMeasuresGrid,
+                        onModeSelected = { nextMode ->
+                            if (nextMode == TimelineDisplayMode.TIME || hasMeasuresGrid) {
+                                displayMode = nextMode
+                            }
+                        }
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    TextButton(onClick = { editorMode = TimelineEditorMode.GRID_SETUP }) {
+                        Text(
+                            text = stringResource(
+                                if (hasMeasuresGrid) {
+                                    R.string.timeline_grid_edit_action
+                                } else {
+                                    R.string.timeline_grid_create_action
+                                }
+                            ),
+                            color = Color(0xFF80CBC4),
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+                TimelineEditorMode.GRID_SETUP -> {
+                    TextButton(onClick = { editorMode = TimelineEditorMode.TIMELINE }) {
+                        Text(stringResource(R.string.common_close), color = Color(0xFF80CBC4))
+                    }
+                }
+            }
         }
 
         Spacer(Modifier.height(8.dp))
 
         when (editorMode) {
-            TimelineEditorMode.TIME -> {
+            TimelineEditorMode.TIMELINE -> {
+                if (displayMode == TimelineDisplayMode.MEASURES && !hasMeasuresGrid) {
+                    TimelineGridEmptyState(
+                        onOpenGridSetup = { editorMode = TimelineEditorMode.GRID_SETUP }
+                    )
+                    Spacer(Modifier.height(10.dp))
+                }
                 if (!showPaletteInput) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -417,7 +473,13 @@ fun TimelineEditorSection(
                     }
                     Spacer(Modifier.weight(1f))
                     Text(
-                        text = formatTimelineMarkerTime(safePositionMs),
+                        text = formatTimelinePositionLabel(
+                            displayMode = displayMode,
+                            hasMeasuresGrid = hasMeasuresGrid,
+                            positionMs = safePositionMs,
+                            tempoBpm = measuresTempoBpm,
+                            measureAnchorMs = measureAnchorMs
+                        ),
                         color = if (durationMs > 0) Color(0xFF80CBC4) else Color(0xFFB0BEC5),
                         fontSize = 12.sp
                     )
@@ -434,6 +496,15 @@ fun TimelineEditorSection(
                         positionMs = positionMs,
                         durationMs = durationMs,
                         isPlaying = isPlaying,
+                        slotLabel = { slotTimeMs ->
+                            formatTimelinePositionLabel(
+                                displayMode = displayMode,
+                                hasMeasuresGrid = hasMeasuresGrid,
+                                positionMs = slotTimeMs,
+                                tempoBpm = measuresTempoBpm,
+                                measureAnchorMs = measureAnchorMs
+                            )
+                        },
                         focusRequestTimeMs = focusRequestTimeMs.takeIf { it >= 0L },
                         focusRequestToken = focusRequestToken,
                         onSeekToMs = seekToMs,
@@ -479,7 +550,7 @@ fun TimelineEditorSection(
                     }
                 }
             }
-            TimelineEditorMode.MEASURES -> {
+            TimelineEditorMode.GRID_SETUP -> {
                 val sanitizedTempoDraft = measuresTempoDraft.filter { it.isDigit() }.take(3)
                 val parsedTempoBpm = sanitizedTempoDraft.toIntOrNull()
                 val effectiveTempoBpm = parsedTempoBpm ?: measuresTempoBpm
@@ -487,12 +558,18 @@ fun TimelineEditorSection(
                     (parsedTempoBpm == null ||
                         parsedTempoBpm !in TrackTimelineTempoPrefs.MIN_TEMPO_BPM..TrackTimelineTempoPrefs.MAX_TEMPO_BPM)
                 TimelineMeasuresPlaceholder(
+                    title = stringResource(
+                        if (hasMeasuresGrid) {
+                            R.string.timeline_grid_edit_title
+                        } else {
+                            R.string.timeline_grid_create_title
+                        }
+                    ),
                     tempoDraft = measuresTempoDraft,
                     isTempoInvalid = isTempoInvalid,
                     tempoBpm = effectiveTempoBpm,
                     measureAnchorMs = measureAnchorMs,
                     currentPositionMs = safePositionMs,
-                    isPlaying = isPlaying,
                     onMeasureAnchorHere = { anchorMs -> onMeasureAnchorHere(anchorMs) },
                     onTempoDraftChange = { input ->
                         val nextDraft = input.filter { ch -> ch.isDigit() }.take(3)
@@ -608,9 +685,10 @@ fun TimelineEditorSection(
 }
 
 @Composable
-private fun TimelineModeSelector(
-    selectedMode: TimelineEditorMode,
-    onModeSelected: (TimelineEditorMode) -> Unit
+private fun TimelineDisplayModeSelector(
+    selectedMode: TimelineDisplayMode,
+    hasMeasuresGrid: Boolean,
+    onModeSelected: (TimelineDisplayMode) -> Unit
 ) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -618,13 +696,15 @@ private fun TimelineModeSelector(
     ) {
         TimelineModeChip(
             text = stringResource(R.string.timeline_mode_time),
-            selected = selectedMode == TimelineEditorMode.TIME,
-            onClick = { onModeSelected(TimelineEditorMode.TIME) }
+            selected = selectedMode == TimelineDisplayMode.TIME,
+            enabled = true,
+            onClick = { onModeSelected(TimelineDisplayMode.TIME) }
         )
         TimelineModeChip(
             text = stringResource(R.string.timeline_mode_measures),
-            selected = selectedMode == TimelineEditorMode.MEASURES,
-            onClick = { onModeSelected(TimelineEditorMode.MEASURES) }
+            selected = selectedMode == TimelineDisplayMode.MEASURES,
+            enabled = hasMeasuresGrid,
+            onClick = { onModeSelected(TimelineDisplayMode.MEASURES) }
         )
     }
 }
@@ -633,15 +713,19 @@ private fun TimelineModeSelector(
 private fun TimelineModeChip(
     text: String,
     selected: Boolean,
+    enabled: Boolean,
     onClick: () -> Unit
 ) {
     if (selected) {
-        TextButton(onClick = onClick) {
+        TextButton(onClick = onClick, enabled = enabled) {
             Text(text = text, color = Color(0xFF80CBC4))
         }
     } else {
-        OutlinedButton(onClick = onClick) {
-            Text(text = text, color = Color(0xFFB0BEC5))
+        OutlinedButton(onClick = onClick, enabled = enabled) {
+            Text(
+                text = text,
+                color = if (enabled) Color(0xFFB0BEC5) else Color(0xFF6B6B6B)
+            )
         }
     }
 }
@@ -649,12 +733,12 @@ private fun TimelineModeChip(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun TimelineMeasuresPlaceholder(
+    title: String,
     tempoDraft: String,
     isTempoInvalid: Boolean,
     tempoBpm: Int?,
     measureAnchorMs: Long?,
     currentPositionMs: Long,
-    isPlaying: Boolean,
     onMeasureAnchorHere: (Long) -> Unit,
     onTempoDraftChange: (String) -> Unit
 ) {
@@ -686,7 +770,7 @@ private fun TimelineMeasuresPlaceholder(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Text(
-            text = stringResource(R.string.timeline_measures_title),
+            text = title,
             color = Color.White,
             fontSize = 18.sp,
             fontWeight = FontWeight.SemiBold
@@ -791,11 +875,59 @@ private fun TimelineMeasuresPlaceholder(
     }
 }
 
+@Composable
+private fun TimelineGridEmptyState(
+    onOpenGridSetup: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(
+            text = stringResource(R.string.timeline_grid_missing_message),
+            color = Color(0xFFB0BEC5),
+            fontSize = 13.sp
+        )
+        TextButton(onClick = onOpenGridSetup) {
+            Text(
+                text = stringResource(R.string.timeline_grid_create_action),
+                color = Color(0xFF80CBC4)
+            )
+        }
+    }
+}
+
 private data class TimelineMeasuresStatus(
     val currentBar: Int,
     val currentBeat: Int,
     val beatIndex: Long
 )
+
+private fun formatTimelinePositionLabel(
+    displayMode: TimelineDisplayMode,
+    hasMeasuresGrid: Boolean,
+    positionMs: Long,
+    tempoBpm: Int?,
+    measureAnchorMs: Long?
+): String {
+    if (displayMode == TimelineDisplayMode.MEASURES && hasMeasuresGrid) {
+        val status = computeTimelineMeasuresStatus(
+            tempoBpm = tempoBpm,
+            measureAnchorMs = measureAnchorMs,
+            currentPositionMs = positionMs
+        )
+        if (status != null) {
+            return if (status.currentBeat == 1) {
+                status.currentBar.toString()
+            } else {
+                ""
+            }
+        }
+    }
+    return formatTimelineMarkerTime(positionMs)
+}
 
 private fun computeTimelineMeasuresStatus(
     tempoBpm: Int?,

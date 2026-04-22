@@ -345,8 +345,13 @@
     <string name="accords_action_delete">suppression</string>
     <string name="accords_error_action_with_stage">Accords: échec %1$s (%2$s).</string>
     <string name="timeline_dialog_title">Timeline</string>
-    <string name="timeline_mode_time">Temps</string>
-    <string name="timeline_mode_measures">Mesures</string>
+    <string name="timeline_mode_time">T</string>
+    <string name="timeline_mode_measures">M</string>
+    <string name="timeline_grid_create_action">RG</string>
+    <string name="timeline_grid_edit_action">RG</string>
+    <string name="timeline_grid_create_title">Créer la grille</string>
+    <string name="timeline_grid_edit_title">Régler la grille</string>
+    <string name="timeline_grid_missing_message">Aucune grille active. Créez la grille pour afficher la timeline en mesures.</string>
     <string name="timeline_add_marker_action">Ajouter un repère</string>
     <string name="timeline_palette_title">Palette de repères</string>
     <string name="timeline_palette_input_label">Nouveau tag</string>
