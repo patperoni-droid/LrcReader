@@ -231,8 +231,25 @@ fun TimelineEditorSection(
                 fontWeight = FontWeight.SemiBold
             )
             Spacer(modifier = Modifier.weight(1f))
-            TextButton(onClick = onCloseEditor) {
-                Text(stringResource(R.string.common_close), color = Color(0xFFB0BEC5))
+            TextButton(
+                onClick = {
+                    if (editorMode == TimelineEditorMode.GRID_SETUP) {
+                        editorMode = TimelineEditorMode.TIMELINE
+                    } else {
+                        onCloseEditor()
+                    }
+                }
+            ) {
+                Text(
+                    text = stringResource(
+                        if (editorMode == TimelineEditorMode.GRID_SETUP) {
+                            R.string.common_cd_back
+                        } else {
+                            R.string.common_close
+                        }
+                    ),
+                    color = Color(0xFFB0BEC5)
+                )
             }
         }
 
@@ -310,11 +327,7 @@ fun TimelineEditorSection(
                         )
                     }
                 }
-                TimelineEditorMode.GRID_SETUP -> {
-                    TextButton(onClick = { editorMode = TimelineEditorMode.TIMELINE }) {
-                        Text(stringResource(R.string.common_close), color = Color(0xFF80CBC4))
-                    }
-                }
+                TimelineEditorMode.GRID_SETUP -> Unit
             }
         }
 
@@ -575,13 +588,6 @@ fun TimelineEditorSection(
                         parsedTempoBpm !in TrackTimelineTempoPrefs.MIN_TEMPO_BPM..TrackTimelineTempoPrefs.MAX_TEMPO_BPM)
                 TimelineMeasuresPlaceholder(
                     currentSongId = currentSongId,
-                    title = stringResource(
-                        if (hasMeasuresGrid) {
-                            R.string.timeline_grid_edit_title
-                        } else {
-                            R.string.timeline_grid_create_title
-                        }
-                    ),
                     tempoDraft = measuresTempoDraft,
                     isTempoInvalid = isTempoInvalid,
                     tempoBpm = effectiveTempoBpm,
@@ -751,7 +757,6 @@ private fun TimelineModeChip(
 @Composable
 private fun TimelineMeasuresPlaceholder(
     currentSongId: String?,
-    title: String,
     tempoDraft: String,
     isTempoInvalid: Boolean,
     tempoBpm: Int?,
@@ -840,44 +845,30 @@ private fun TimelineMeasuresPlaceholder(
             .padding(top = 8.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text(
-            text = title,
-            color = Color.White,
-            fontSize = 18.sp,
-            fontWeight = FontWeight.SemiBold
-        )
-        OutlinedTextField(
-            value = tempoDraft,
-            onValueChange = onTempoDraftChange,
-            label = { Text(stringResource(R.string.timeline_measures_tempo_label)) },
-            placeholder = { Text(stringResource(R.string.timeline_measures_tempo_placeholder)) },
-            singleLine = true,
-            isError = isTempoInvalid,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        Row(
             modifier = Modifier.fillMaxWidth(),
-            supportingText = {
-                Text(
-                    text = stringResource(
-                        R.string.timeline_measures_tempo_range_hint,
-                        TrackTimelineTempoPrefs.MIN_TEMPO_BPM,
-                        TrackTimelineTempoPrefs.MAX_TEMPO_BPM
-                    )
-                )
-            }
-        )
-        OutlinedTextField(
-            value = stringResource(R.string.timeline_measures_signature_default),
-            onValueChange = {},
-            label = { Text(stringResource(R.string.timeline_measures_signature_label)) },
-            singleLine = true,
-            readOnly = true,
-            modifier = Modifier.fillMaxWidth()
-        )
-        Text(
-            text = stringResource(R.string.timeline_measures_placeholder_message),
-            color = Color(0xFFB0BEC5),
-            fontSize = 13.sp
-        )
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.Top
+        ) {
+            OutlinedTextField(
+                value = tempoDraft,
+                onValueChange = onTempoDraftChange,
+                label = { Text(stringResource(R.string.timeline_measures_tempo_label)) },
+                placeholder = { Text(stringResource(R.string.timeline_measures_tempo_placeholder)) },
+                singleLine = true,
+                isError = isTempoInvalid,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                modifier = Modifier.weight(1f)
+            )
+            OutlinedTextField(
+                value = stringResource(R.string.timeline_measures_signature_default),
+                onValueChange = {},
+                label = { Text(stringResource(R.string.timeline_measures_signature_label)) },
+                singleLine = true,
+                readOnly = true,
+                modifier = Modifier.weight(1f)
+            )
+        }
         TimelineGridWaveformSection(
             peaks = waveformPeaks,
             durationMs = waveformDurationMs,
@@ -938,12 +929,6 @@ private fun TimelineGridWaveformSection(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Text(
-            text = stringResource(R.string.waveform_title),
-            color = Color.White,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Medium
-        )
         Box(
             modifier = Modifier
                 .fillMaxWidth()
