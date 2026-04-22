@@ -482,6 +482,10 @@
     <string name="timeline_measures_anchor_saved">Measure saved at %1$s</string>
     <string name="timeline_measures_anchor_ready">Current position: %1$s</string>
     <string name="timeline_measures_live_position">Bar %1$d • Beat %2$d</string>
+    <string name="timeline_measures_adjust_minus_50">-50 ms</string>
+    <string name="timeline_measures_adjust_minus_10">-10 ms</string>
+    <string name="timeline_measures_adjust_plus_10">+10 ms</string>
+    <string name="timeline_measures_adjust_plus_50">+50 ms</string>
     <string name="timeline_measures_signature_label">Time signature</string>
     <string name="timeline_measures_signature_default">4/4</string>
     <string name="timeline_measures_placeholder_message">Preparing the musical grid.</string>

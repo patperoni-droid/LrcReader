@@ -492,7 +492,8 @@ fun TimelineEditorSection(
                     tempoBpm = effectiveTempoBpm,
                     measureAnchorMs = measureAnchorMs,
                     currentPositionMs = safePositionMs,
-                    onMeasureAnchorHere = { onMeasureAnchorHere(safePositionMs) },
+                    isPlaying = isPlaying,
+                    onMeasureAnchorHere = { anchorMs -> onMeasureAnchorHere(anchorMs) },
                     onTempoDraftChange = { input ->
                         val nextDraft = input.filter { ch -> ch.isDigit() }.take(3)
                         measuresTempoDraft = nextDraft
@@ -645,6 +646,7 @@ private fun TimelineModeChip(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun TimelineMeasuresPlaceholder(
     tempoDraft: String,
@@ -652,16 +654,31 @@ private fun TimelineMeasuresPlaceholder(
     tempoBpm: Int?,
     measureAnchorMs: Long?,
     currentPositionMs: Long,
-    onMeasureAnchorHere: () -> Unit,
+    isPlaying: Boolean,
+    onMeasureAnchorHere: (Long) -> Unit,
     onTempoDraftChange: (String) -> Unit
 ) {
-    val measuresStatus = remember(tempoBpm, measureAnchorMs, currentPositionMs) {
+    var localMeasureAnchorMs by remember(measureAnchorMs) { mutableStateOf(measureAnchorMs) }
+    val savedAnchorMs = localMeasureAnchorMs
+    val measuresStatus = remember(tempoBpm, localMeasureAnchorMs, currentPositionMs) {
         computeTimelineMeasuresStatus(
             tempoBpm = tempoBpm,
-            measureAnchorMs = measureAnchorMs,
+            measureAnchorMs = localMeasureAnchorMs,
             currentPositionMs = currentPositionMs
         )
     }
+
+    LaunchedEffect(measureAnchorMs) {
+        localMeasureAnchorMs = measureAnchorMs
+    }
+
+    fun updateLocalMeasureAnchor(deltaMs: Long) {
+        val baseAnchorMs = localMeasureAnchorMs ?: return
+        val nextAnchorMs = (baseAnchorMs + deltaMs).coerceAtLeast(0L)
+        localMeasureAnchorMs = nextAnchorMs
+        onMeasureAnchorHere(nextAnchorMs)
+    }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -706,17 +723,49 @@ private fun TimelineMeasuresPlaceholder(
             color = Color(0xFFB0BEC5),
             fontSize = 13.sp
         )
-        TextButton(onClick = onMeasureAnchorHere) {
+        TextButton(onClick = {
+            localMeasureAnchorMs = currentPositionMs
+            onMeasureAnchorHere(currentPositionMs)
+        }) {
             Text(
                 text = stringResource(R.string.timeline_measures_anchor_action),
                 color = Color(0xFF80CBC4)
             )
         }
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            OutlinedButton(
+                onClick = { updateLocalMeasureAnchor(-50L) },
+                enabled = localMeasureAnchorMs != null
+            ) {
+                Text(stringResource(R.string.timeline_measures_adjust_minus_50))
+            }
+            OutlinedButton(
+                onClick = { updateLocalMeasureAnchor(-10L) },
+                enabled = localMeasureAnchorMs != null
+            ) {
+                Text(stringResource(R.string.timeline_measures_adjust_minus_10))
+            }
+            OutlinedButton(
+                onClick = { updateLocalMeasureAnchor(10L) },
+                enabled = localMeasureAnchorMs != null
+            ) {
+                Text(stringResource(R.string.timeline_measures_adjust_plus_10))
+            }
+            OutlinedButton(
+                onClick = { updateLocalMeasureAnchor(50L) },
+                enabled = localMeasureAnchorMs != null
+            ) {
+                Text(stringResource(R.string.timeline_measures_adjust_plus_50))
+            }
+        }
         Text(
-            text = if (measureAnchorMs != null) {
+            text = if (savedAnchorMs != null) {
                 stringResource(
                     R.string.timeline_measures_anchor_saved,
-                    formatTimelineMarkerTime(measureAnchorMs)
+                    formatTimelineMarkerTime(savedAnchorMs)
                 )
             } else {
                 stringResource(
@@ -744,7 +793,8 @@ private fun TimelineMeasuresPlaceholder(
 
 private data class TimelineMeasuresStatus(
     val currentBar: Int,
-    val currentBeat: Int
+    val currentBeat: Int,
+    val beatIndex: Long
 )
 
 private fun computeTimelineMeasuresStatus(
@@ -763,13 +813,15 @@ private fun computeTimelineMeasuresStatus(
     if (beatDurationMs <= 0.0 || barDurationMs <= 0.0) return null
 
     val relativeMs = currentPositionMs - safeAnchorMs
-    val currentBar = kotlin.math.floor(relativeMs / barDurationMs).toInt() + 1
+    val beatIndex = kotlin.math.floor(relativeMs / beatDurationMs).toLong()
+    val currentBar = (beatIndex / 4L).toInt() + 1
     val barOffsetMs = relativeMs % barDurationMs
     val currentBeat = kotlin.math.floor(barOffsetMs / beatDurationMs).toInt() + 1
 
     return TimelineMeasuresStatus(
         currentBar = currentBar.coerceAtLeast(1),
-        currentBeat = currentBeat.coerceIn(1, 4)
+        currentBeat = currentBeat.coerceIn(1, 4),
+        beatIndex = beatIndex.coerceAtLeast(0L)
     )
 }
 
