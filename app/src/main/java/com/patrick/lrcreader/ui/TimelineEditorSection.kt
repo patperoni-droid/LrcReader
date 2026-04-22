@@ -482,12 +482,14 @@ fun TimelineEditorSection(
             TimelineEditorMode.MEASURES -> {
                 val sanitizedTempoDraft = measuresTempoDraft.filter { it.isDigit() }.take(3)
                 val parsedTempoBpm = sanitizedTempoDraft.toIntOrNull()
+                val effectiveTempoBpm = parsedTempoBpm ?: measuresTempoBpm
                 val isTempoInvalid = sanitizedTempoDraft.isNotBlank() &&
                     (parsedTempoBpm == null ||
                         parsedTempoBpm !in TrackTimelineTempoPrefs.MIN_TEMPO_BPM..TrackTimelineTempoPrefs.MAX_TEMPO_BPM)
                 TimelineMeasuresPlaceholder(
                     tempoDraft = measuresTempoDraft,
                     isTempoInvalid = isTempoInvalid,
+                    tempoBpm = effectiveTempoBpm,
                     measureAnchorMs = measureAnchorMs,
                     currentPositionMs = safePositionMs,
                     onMeasureAnchorHere = { onMeasureAnchorHere(safePositionMs) },
@@ -647,11 +649,19 @@ private fun TimelineModeChip(
 private fun TimelineMeasuresPlaceholder(
     tempoDraft: String,
     isTempoInvalid: Boolean,
+    tempoBpm: Int?,
     measureAnchorMs: Long?,
     currentPositionMs: Long,
     onMeasureAnchorHere: () -> Unit,
     onTempoDraftChange: (String) -> Unit
 ) {
+    val measuresStatus = remember(tempoBpm, measureAnchorMs, currentPositionMs) {
+        computeTimelineMeasuresStatus(
+            tempoBpm = tempoBpm,
+            measureAnchorMs = measureAnchorMs,
+            currentPositionMs = currentPositionMs
+        )
+    }
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -717,7 +727,50 @@ private fun TimelineMeasuresPlaceholder(
             color = Color(0xFFB0BEC5),
             fontSize = 12.sp
         )
+        if (measuresStatus != null) {
+            Text(
+                text = stringResource(
+                    R.string.timeline_measures_live_position,
+                    measuresStatus.currentBar,
+                    measuresStatus.currentBeat
+                ),
+                color = Color.White,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium
+            )
+        }
     }
+}
+
+private data class TimelineMeasuresStatus(
+    val currentBar: Int,
+    val currentBeat: Int
+)
+
+private fun computeTimelineMeasuresStatus(
+    tempoBpm: Int?,
+    measureAnchorMs: Long?,
+    currentPositionMs: Long
+): TimelineMeasuresStatus? {
+    val safeTempoBpm = tempoBpm?.takeIf {
+        it in TrackTimelineTempoPrefs.MIN_TEMPO_BPM..TrackTimelineTempoPrefs.MAX_TEMPO_BPM
+    } ?: return null
+    val safeAnchorMs = measureAnchorMs ?: return null
+    if (currentPositionMs < safeAnchorMs) return null
+
+    val beatDurationMs = 60_000.0 / safeTempoBpm.toDouble()
+    val barDurationMs = beatDurationMs * 4.0
+    if (beatDurationMs <= 0.0 || barDurationMs <= 0.0) return null
+
+    val relativeMs = currentPositionMs - safeAnchorMs
+    val currentBar = kotlin.math.floor(relativeMs / barDurationMs).toInt() + 1
+    val barOffsetMs = relativeMs % barDurationMs
+    val currentBeat = kotlin.math.floor(barOffsetMs / beatDurationMs).toInt() + 1
+
+    return TimelineMeasuresStatus(
+        currentBar = currentBar.coerceAtLeast(1),
+        currentBeat = currentBeat.coerceIn(1, 4)
+    )
 }
 
 @OptIn(ExperimentalFoundationApi::class)
