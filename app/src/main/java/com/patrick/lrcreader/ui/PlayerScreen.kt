@@ -1946,9 +1946,9 @@ fun PlayerScreen(
                 seekToMs = seekToMs,
                 onAddPaletteTag = { label -> addTimelinePaletteTag(label) },
                 onAddMarker = { label -> addTimelineMarker(label) },
-                onAddTypedMarker = { kind ->
+                onAddTypedMarker = onAddTypedMarker@ { kind ->
                     if (kind == TimelineMarkerKind.DMX) {
-                        val trackUri = currentTrackUri ?: return@TimelineEditorSection
+                        val trackUri = currentTrackUri ?: return@onAddTypedMarker
                         val cue = LightCue(
                             timeMs = getPositionMs().coerceAtLeast(0L),
                             action = LightAction.Color(argb = DEFAULT_TIMELINE_LIGHT_CUE_ARGB),
@@ -1991,11 +1991,11 @@ fun PlayerScreen(
                 showLightPreview = timelineDmxUiVisible && showLightIndicator && hasLightCues,
                 lightPreviewSceneState = currentTrackLightScene,
                 canPasteDmxCue = timelineDmxUiVisible && canPasteTimelineDmxCue,
-                onPasteDmxCueHere = {
-                    val trackUri = currentTrackUri ?: return@TimelineEditorSection
+                onPasteDmxCueHere = onPasteDmxCueHere@ {
+                    val trackUri = currentTrackUri ?: return@onPasteDmxCueHere
                     val clipboard = timelineDmxClipboard
                         ?.takeIf { it.trackUri == trackUri }
-                        ?: return@TimelineEditorSection
+                        ?: return@onPasteDmxCueHere
                     val cueToPaste = clipboard.cue.copy(
                         timeMs = getPositionMs().coerceAtLeast(0L)
                     )
