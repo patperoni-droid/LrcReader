@@ -48,6 +48,7 @@ import com.patrick.lrcreader.core.LrcCleaner
 import com.patrick.lrcreader.core.LrcLine
 import com.patrick.lrcreader.core.appendCapturedChordLineSorted
 import com.patrick.lrcreader.core.captureLiveChord
+import com.patrick.lrcreader.core.clearAllChordsKeepingPaletteAndLyrics
 import com.patrick.lrcreader.core.formatCapturedLiveChordLine
 import com.patrick.lrcreader.core.inferChordPaletteFromText
 import com.patrick.lrcreader.core.isLiveCaptureAllowed
@@ -897,10 +898,11 @@ fun LyricsEditorSection(
                         TextButton(
                             onClick = {
                                 if (showChordPalette) {
-                                    val cleared = emptyList<LrcLine>()
-                                    applyEditingLinesWithUndo(cleared)
-                                    rawTextFieldValue = TextFieldValue("", TextRange(0))
-                                    onRawLyricsTextChange("")
+                                    val cleared = clearAllChordsKeepingPaletteAndLyrics(
+                                        palette = displayedPalette,
+                                        lyrics = editingLines
+                                    ).clearedChordLines
+                                    applyEditingLinesWithUndo(cleared, updateRawDraft = false)
                                     selectedSyncLineIndices = emptySet()
                                     scope.launch {
                                         yield()
