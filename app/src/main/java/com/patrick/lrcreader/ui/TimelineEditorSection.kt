@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -55,6 +56,11 @@ import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.smp.DEFAULT_TIMELINE_NOTE_DURATION_MS
 import com.patrick.lrcreader.smp.TimelineMarker
 import com.patrick.lrcreader.smp.TimelineMarkerKind
+
+private enum class TimelineEditorMode {
+    TIME,
+    MEASURES
+}
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -95,6 +101,8 @@ fun TimelineEditorSection(
     var paletteDraft by remember { mutableStateOf("") }
     var showPaletteInput by remember { mutableStateOf(false) }
     var showTimelineConfigProDialog by remember { mutableStateOf(false) }
+    var editorMode by remember { mutableStateOf(TimelineEditorMode.TIME) }
+    var measuresTempoDraft by remember { mutableStateOf("") }
     val paletteNavigationIndexByLabel = remember(markers) { mutableStateMapOf<String, Int>() }
     val paletteNavigationIndexByKind = remember(markers) { mutableStateMapOf<TimelineMarkerKind, Int>() }
     var focusRequestTimeMs by remember { mutableLongStateOf(-1L) }
@@ -228,221 +236,243 @@ fun TimelineEditorSection(
 
             Spacer(modifier = Modifier.weight(1f))
 
-            if (!showPaletteInput) {
-                TextButton(onClick = { showPaletteInput = true }) {
-                    Text(
-                        text = "Ajouter un repère",
-                        color = Color(0xFF80CBC4),
-                        fontSize = 12.sp
-                    )
-                }
-            }
-        }
-
-        if (showPaletteInput) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                OutlinedTextField(
-                    value = paletteDraft,
-                    onValueChange = { paletteDraft = it },
-                    label = { Text(stringResource(R.string.timeline_palette_input_label)) },
-                    singleLine = true,
-                    modifier = Modifier.weight(1f)
-                )
-                Spacer(Modifier.width(8.dp))
-                TextButton(
-                    onClick = {
-                        val trimmed = paletteDraft.trim()
-                        if (trimmed.isNotEmpty()) {
-                            onAddPaletteTag(trimmed)
-                            paletteDraft = ""
-                            showPaletteInput = false
-                        }
-                    }
-                ) {
-                    Text(
-                        text = stringResource(R.string.timeline_palette_add_action),
-                        color = Color(0xFF80CBC4)
-                    )
-                }
-                TextButton(
-                    onClick = {
-                        paletteDraft = ""
-                        showPaletteInput = false
-                    }
-                ) {
-                    Text(stringResource(R.string.common_cancel), color = Color(0xFFB0BEC5))
-                }
-            }
-            Spacer(Modifier.height(8.dp))
-        }
-
-        if (palette.isNotEmpty()) {
-            FlowRow(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                palette.forEach { label ->
-                    TimelinePaletteTagButton(
-                        label = label,
-                        onClick = { onAddMarker(label) },
-                        onLongClick = { seekToNextPaletteMarker(label) }
-                    )
-                }
-            }
+            TimelineModeSelector(
+                selectedMode = editorMode,
+                onModeSelected = { editorMode = it }
+            )
         }
 
         Spacer(Modifier.height(8.dp))
 
-        FlowRow(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            TimelineEventPaletteButton(
-                label = stringResource(R.string.timeline_event_midi),
-                icon = {
-                    Icon(
-                        imageVector = Icons.Filled.GraphicEq,
-                        contentDescription = null,
-                        tint = Color(0xFF80CBC4)
-                    )
-                },
-                onClick = { onAddTypedMarker(TimelineMarkerKind.MIDI) },
-                onLongClick = { seekToNextTypedMarker(TimelineMarkerKind.MIDI) }
-            )
-            TimelineEventPaletteButton(
-                label = stringResource(R.string.timeline_event_note),
-                icon = {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.StickyNote2,
-                        contentDescription = null,
-                        tint = Color(0xFFFFF176)
-                    )
-                },
-                onClick = { onAddTypedMarker(TimelineMarkerKind.NOTE) },
-                onLongClick = { seekToNextTypedMarker(TimelineMarkerKind.NOTE) }
-            )
-            if (dmxUiVisible) {
-                TimelineEventPaletteButton(
-                    label = stringResource(R.string.timeline_event_dmx),
-                    icon = {
-                        Icon(
-                            imageVector = Icons.Filled.FlashOn,
-                            contentDescription = null,
-                            tint = Color(0xFFFFB74D)
-                        )
-                    },
-                    onClick = { onAddTypedMarker(TimelineMarkerKind.DMX) },
-                    onLongClick = { seekToNextTypedMarker(TimelineMarkerKind.DMX) }
-                )
-            }
-        }
-
-        if (dmxUiVisible) {
-            TextButton(
-                onClick = {
-                    if (isLite) {
-                        showTimelineConfigProDialog = true
-                    } else {
-                        onGenerateLights()
-                    }
-                },
-                enabled = durationMs > 0
-            ) {
-                Text(
-                    text = stringResource(R.string.light_generate_action),
-                    color = if (durationMs > 0) Color(0xFF80CBC4) else Color(0xFFB0BEC5)
-                )
-            }
-        }
-
-        Spacer(Modifier.height(10.dp))
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (dmxUiVisible) {
-                TextButton(
-                    onClick = {
-                        if (isLite) {
-                            showTimelineConfigProDialog = true
-                        } else {
-                            onPasteDmxCueHere()
+        when (editorMode) {
+            TimelineEditorMode.TIME -> {
+                if (!showPaletteInput) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        TextButton(onClick = { showPaletteInput = true }) {
+                            Text(
+                                text = stringResource(R.string.timeline_add_marker_action),
+                                color = Color(0xFF80CBC4),
+                                fontSize = 12.sp
+                            )
                         }
-                    },
-                    enabled = canPasteDmxCue
+                    }
+                }
+
+                if (showPaletteInput) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedTextField(
+                            value = paletteDraft,
+                            onValueChange = { paletteDraft = it },
+                            label = { Text(stringResource(R.string.timeline_palette_input_label)) },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        TextButton(
+                            onClick = {
+                                val trimmed = paletteDraft.trim()
+                                if (trimmed.isNotEmpty()) {
+                                    onAddPaletteTag(trimmed)
+                                    paletteDraft = ""
+                                    showPaletteInput = false
+                                }
+                            }
+                        ) {
+                            Text(
+                                text = stringResource(R.string.timeline_palette_add_action),
+                                color = Color(0xFF80CBC4)
+                            )
+                        }
+                        TextButton(
+                            onClick = {
+                                paletteDraft = ""
+                                showPaletteInput = false
+                            }
+                        ) {
+                            Text(stringResource(R.string.common_cancel), color = Color(0xFFB0BEC5))
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
+
+                if (palette.isNotEmpty()) {
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        palette.forEach { label ->
+                            TimelinePaletteTagButton(
+                                label = label,
+                                onClick = { onAddMarker(label) },
+                                onLongClick = { seekToNextPaletteMarker(label) }
+                            )
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(8.dp))
+
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
+                    TimelineEventPaletteButton(
+                        label = stringResource(R.string.timeline_event_midi),
+                        icon = {
+                            Icon(
+                                imageVector = Icons.Filled.GraphicEq,
+                                contentDescription = null,
+                                tint = Color(0xFF80CBC4)
+                            )
+                        },
+                        onClick = { onAddTypedMarker(TimelineMarkerKind.MIDI) },
+                        onLongClick = { seekToNextTypedMarker(TimelineMarkerKind.MIDI) }
+                    )
+                    TimelineEventPaletteButton(
+                        label = stringResource(R.string.timeline_event_note),
+                        icon = {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.StickyNote2,
+                                contentDescription = null,
+                                tint = Color(0xFFFFF176)
+                            )
+                        },
+                        onClick = { onAddTypedMarker(TimelineMarkerKind.NOTE) },
+                        onLongClick = { seekToNextTypedMarker(TimelineMarkerKind.NOTE) }
+                    )
+                    if (dmxUiVisible) {
+                        TimelineEventPaletteButton(
+                            label = stringResource(R.string.timeline_event_dmx),
+                            icon = {
+                                Icon(
+                                    imageVector = Icons.Filled.FlashOn,
+                                    contentDescription = null,
+                                    tint = Color(0xFFFFB74D)
+                                )
+                            },
+                            onClick = { onAddTypedMarker(TimelineMarkerKind.DMX) },
+                            onLongClick = { seekToNextTypedMarker(TimelineMarkerKind.DMX) }
+                        )
+                    }
+                }
+
+                if (dmxUiVisible) {
+                    TextButton(
+                        onClick = {
+                            if (isLite) {
+                                showTimelineConfigProDialog = true
+                            } else {
+                                onGenerateLights()
+                            }
+                        },
+                        enabled = durationMs > 0
+                    ) {
+                        Text(
+                            text = stringResource(R.string.light_generate_action),
+                            color = if (durationMs > 0) Color(0xFF80CBC4) else Color(0xFFB0BEC5)
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(10.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (dmxUiVisible) {
+                        TextButton(
+                            onClick = {
+                                if (isLite) {
+                                    showTimelineConfigProDialog = true
+                                } else {
+                                    onPasteDmxCueHere()
+                                }
+                            },
+                            enabled = canPasteDmxCue
+                        ) {
+                            Text(
+                                text = stringResource(R.string.timeline_paste_here),
+                                color = if (canPasteDmxCue) Color(0xFFFFB74D) else Color(0xFFB0BEC5)
+                            )
+                        }
+                    }
+                    Spacer(Modifier.weight(1f))
                     Text(
-                        text = "Coller ici",
-                        color = if (canPasteDmxCue) Color(0xFFFFB74D) else Color(0xFFB0BEC5)
+                        text = formatTimelineMarkerTime(safePositionMs),
+                        color = if (durationMs > 0) Color(0xFF80CBC4) else Color(0xFFB0BEC5),
+                        fontSize = 12.sp
                     )
                 }
-            }
-            Spacer(Modifier.weight(1f))
-            Text(
-                text = formatTimelineMarkerTime(safePositionMs),
-                color = if (durationMs > 0) Color(0xFF80CBC4) else Color(0xFFB0BEC5),
-                fontSize = 12.sp
-            )
-        }
 
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-        ) {
-            TimelineScrubColumn(
-                modifier = Modifier.fillMaxSize(),
-                markers = markers,
-                positionMs = positionMs,
-                durationMs = durationMs,
-                isPlaying = isPlaying,
-                focusRequestTimeMs = focusRequestTimeMs.takeIf { it >= 0L },
-                focusRequestToken = focusRequestToken,
-                onSeekToMs = seekToMs,
-                onEditMarker = { index ->
-                    if (index !in markers.indices) return@TimelineScrubColumn
-                    if (markers[index].kind == TimelineMarkerKind.MIDI) {
-                        if (!isLite) {
-                            onEditMidiMarker(index)
-                        } else {
-                            showTimelineConfigProDialog = true
-                        }
-                        return@TimelineScrubColumn
-                    }
-                    if (markers[index].kind == TimelineMarkerKind.DMX) {
-                        if (!dmxUiVisible) return@TimelineScrubColumn
-                        onEditDmxMarker(index)
-                        return@TimelineScrubColumn
-                    }
-                    if (markers[index].kind == TimelineMarkerKind.NOTE && isLite) {
-                        showTimelineConfigProDialog = true
-                        return@TimelineScrubColumn
-                    }
-                    renameIndex = index
-                    renameText = markers[index].label
-                    renameDurationSeconds = if (markers[index].kind == TimelineMarkerKind.NOTE) {
-                        val durationMs = markers[index].durationMs ?: DEFAULT_TIMELINE_NOTE_DURATION_MS
-                        (durationMs / 1_000L).toString()
-                    } else {
-                        ""
-                    }
-                },
-                onDeleteMarker = onDeleteMarker,
-                onCopyDmxMarker = onCopyDmxMarker
-            )
-
-            if (dmxUiVisible && showLightPreview) {
-                LightSimulatorPreview(
-                    sceneState = lightPreviewSceneState,
+                Box(
                     modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(end = 8.dp, bottom = 12.dp)
+                        .weight(1f)
+                        .fillMaxWidth()
+                ) {
+                    TimelineScrubColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        markers = markers,
+                        positionMs = positionMs,
+                        durationMs = durationMs,
+                        isPlaying = isPlaying,
+                        focusRequestTimeMs = focusRequestTimeMs.takeIf { it >= 0L },
+                        focusRequestToken = focusRequestToken,
+                        onSeekToMs = seekToMs,
+                        onEditMarker = { index ->
+                            if (index !in markers.indices) return@TimelineScrubColumn
+                            if (markers[index].kind == TimelineMarkerKind.MIDI) {
+                                if (!isLite) {
+                                    onEditMidiMarker(index)
+                                } else {
+                                    showTimelineConfigProDialog = true
+                                }
+                                return@TimelineScrubColumn
+                            }
+                            if (markers[index].kind == TimelineMarkerKind.DMX) {
+                                if (!dmxUiVisible) return@TimelineScrubColumn
+                                onEditDmxMarker(index)
+                                return@TimelineScrubColumn
+                            }
+                            if (markers[index].kind == TimelineMarkerKind.NOTE && isLite) {
+                                showTimelineConfigProDialog = true
+                                return@TimelineScrubColumn
+                            }
+                            renameIndex = index
+                            renameText = markers[index].label
+                            renameDurationSeconds = if (markers[index].kind == TimelineMarkerKind.NOTE) {
+                                val durationMs = markers[index].durationMs ?: DEFAULT_TIMELINE_NOTE_DURATION_MS
+                                (durationMs / 1_000L).toString()
+                            } else {
+                                ""
+                            }
+                        },
+                        onDeleteMarker = onDeleteMarker,
+                        onCopyDmxMarker = onCopyDmxMarker
+                    )
+
+                    if (dmxUiVisible && showLightPreview) {
+                        LightSimulatorPreview(
+                            sceneState = lightPreviewSceneState,
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(end = 8.dp, bottom = 12.dp)
+                        )
+                    }
+                }
+            }
+            TimelineEditorMode.MEASURES -> {
+                TimelineMeasuresPlaceholder(
+                    tempoDraft = measuresTempoDraft,
+                    onTempoDraftChange = { measuresTempoDraft = it.filter { ch -> ch.isDigit() } }
                 )
             }
         }
@@ -542,6 +572,87 @@ fun TimelineEditorSection(
                 }
             },
             containerColor = Color(0xFF222222)
+        )
+    }
+}
+
+@Composable
+private fun TimelineModeSelector(
+    selectedMode: TimelineEditorMode,
+    onModeSelected: (TimelineEditorMode) -> Unit
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        TimelineModeChip(
+            text = stringResource(R.string.timeline_mode_time),
+            selected = selectedMode == TimelineEditorMode.TIME,
+            onClick = { onModeSelected(TimelineEditorMode.TIME) }
+        )
+        TimelineModeChip(
+            text = stringResource(R.string.timeline_mode_measures),
+            selected = selectedMode == TimelineEditorMode.MEASURES,
+            onClick = { onModeSelected(TimelineEditorMode.MEASURES) }
+        )
+    }
+}
+
+@Composable
+private fun TimelineModeChip(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    if (selected) {
+        TextButton(onClick = onClick) {
+            Text(text = text, color = Color(0xFF80CBC4))
+        }
+    } else {
+        OutlinedButton(onClick = onClick) {
+            Text(text = text, color = Color(0xFFB0BEC5))
+        }
+    }
+}
+
+@Composable
+private fun TimelineMeasuresPlaceholder(
+    tempoDraft: String,
+    onTempoDraftChange: (String) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text(
+            text = stringResource(R.string.timeline_measures_title),
+            color = Color.White,
+            fontSize = 18.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+        OutlinedTextField(
+            value = tempoDraft,
+            onValueChange = onTempoDraftChange,
+            label = { Text(stringResource(R.string.timeline_measures_tempo_label)) },
+            placeholder = { Text(stringResource(R.string.timeline_measures_tempo_placeholder)) },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            modifier = Modifier.fillMaxWidth()
+        )
+        OutlinedTextField(
+            value = stringResource(R.string.timeline_measures_signature_default),
+            onValueChange = {},
+            label = { Text(stringResource(R.string.timeline_measures_signature_label)) },
+            singleLine = true,
+            readOnly = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Text(
+            text = stringResource(R.string.timeline_measures_placeholder_message),
+            color = Color(0xFFB0BEC5),
+            fontSize = 13.sp
         )
     }
 }
