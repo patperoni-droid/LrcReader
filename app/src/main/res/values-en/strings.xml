@@ -487,6 +487,9 @@
     <string name="timeline_measures_anchor_saved">Measure saved at %1$s</string>
     <string name="timeline_measures_anchor_ready">Current position: %1$s</string>
     <string name="timeline_measures_live_position">Bar %1$d • Beat %2$d</string>
+    <string name="timeline_measures_tap_tempo_action">DT</string>
+    <string name="timeline_measures_tap_tempo_value">%1$d BPM</string>
+    <string name="timeline_measures_tap_tempo_pending">-- BPM</string>
     <string name="timeline_measures_adjust_minus_50">-50 ms</string>
     <string name="timeline_measures_adjust_minus_10">-10 ms</string>
     <string name="timeline_measures_adjust_plus_10">+10 ms</string>

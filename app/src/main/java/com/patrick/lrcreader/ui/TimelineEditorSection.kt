@@ -7,6 +7,7 @@ import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.media.MediaMetadataRetriever
 import android.net.Uri
+import android.os.SystemClock
 import android.widget.Toast
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.combinedClickable
@@ -73,6 +74,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import kotlin.math.max
+import kotlin.math.roundToInt
 
 private enum class TimelineEditorMode {
     TIMELINE,
@@ -764,6 +766,7 @@ private fun TimelineMeasuresPlaceholder(
     onTempoDraftChange: (String) -> Unit
 ) {
     var localMeasureAnchorMs by remember(measureAnchorMs) { mutableStateOf(measureAnchorMs) }
+    var tempoTapTimesMs by remember { mutableStateOf<List<Long>>(emptyList()) }
     val savedAnchorMs = localMeasureAnchorMs
     val measuresStatus = remember(tempoBpm, localMeasureAnchorMs, currentPositionMs) {
         computeTimelineMeasuresStatus(
@@ -837,6 +840,10 @@ private fun TimelineMeasuresPlaceholder(
             }
     }
 
+    val detectedTempoBpm = remember(tempoTapTimesMs) {
+        estimateTappedTempoBpm(tempoTapTimesMs)
+    }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -875,6 +882,44 @@ private fun TimelineMeasuresPlaceholder(
             isLoading = waveformLoading,
             hasError = waveformError
         )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            OutlinedButton(
+                onClick = {
+                    val nextTapTimeMs = SystemClock.elapsedRealtime()
+                    val previousTapTimeMs = tempoTapTimesMs.lastOrNull()
+                    tempoTapTimesMs = when {
+                        previousTapTimeMs == null -> listOf(nextTapTimeMs)
+                        nextTapTimeMs <= previousTapTimeMs -> listOf(nextTapTimeMs)
+                        nextTapTimeMs - previousTapTimeMs > 3_000L -> listOf(nextTapTimeMs)
+                        else -> (tempoTapTimesMs + nextTapTimeMs).takeLast(8)
+                    }
+                }
+            ) {
+                Text(stringResource(R.string.timeline_measures_tap_tempo_action))
+            }
+            Text(
+                text = detectedTempoBpm?.let { bpm ->
+                    stringResource(R.string.timeline_measures_tap_tempo_value, bpm)
+                } ?: stringResource(R.string.timeline_measures_tap_tempo_pending),
+                color = Color.White,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium
+            )
+            Spacer(modifier = Modifier.weight(1f))
+            if (tempoTapTimesMs.isNotEmpty()) {
+                TextButton(onClick = { tempoTapTimesMs = emptyList() }) {
+                    Text(
+                        text = stringResource(R.string.common_reset),
+                        color = Color(0xFFB0BEC5),
+                        fontSize = 12.sp
+                    )
+                }
+            }
+        }
         TextButton(onClick = {
             localMeasureAnchorMs = currentPositionMs
             onMeasureAnchorHere(currentPositionMs)
@@ -1120,6 +1165,35 @@ private fun queryTimelineWaveformDurationMs(context: Context, uri: Uri): Int {
         .coerceAtLeast(0L)
         .coerceAtMost(Int.MAX_VALUE.toLong())
         .toInt()
+}
+
+private fun estimateTappedTempoBpm(tapPositionsMs: List<Long>): Int? {
+    if (tapPositionsMs.size < 3) return null
+
+    val intervalsMs = tapPositionsMs
+        .zipWithNext { previous, next -> next - previous }
+        .filter { intervalMs -> intervalMs in 150L..2_000L }
+    if (intervalsMs.size < 2) return null
+
+    val sortedIntervalsMs = intervalsMs.sorted()
+    val medianIntervalMs = if (sortedIntervalsMs.size % 2 == 0) {
+        val upperIndex = sortedIntervalsMs.size / 2
+        (sortedIntervalsMs[upperIndex - 1] + sortedIntervalsMs[upperIndex]) / 2.0
+    } else {
+        sortedIntervalsMs[sortedIntervalsMs.size / 2].toDouble()
+    }
+
+    val filteredIntervalsMs = intervalsMs.filter { intervalMs ->
+        kotlin.math.abs(intervalMs - medianIntervalMs) <= max(80.0, medianIntervalMs * 0.2)
+    }
+    if (filteredIntervalsMs.size < 2) return null
+
+    val averageIntervalMs = filteredIntervalsMs.average()
+    if (averageIntervalMs <= 0.0) return null
+
+    return (60_000.0 / averageIntervalMs)
+        .roundToInt()
+        .coerceIn(20, 400)
 }
 
 @OptIn(ExperimentalFoundationApi::class)
