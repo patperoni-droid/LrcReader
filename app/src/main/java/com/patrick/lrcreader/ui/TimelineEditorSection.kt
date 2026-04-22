@@ -33,6 +33,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -51,6 +52,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.core.EditionConfig
 import com.patrick.lrcreader.core.FillerSoundManager
+import com.patrick.lrcreader.core.TrackTimelineTempoPrefs
 import com.patrick.lrcreader.core.light.LightSceneState
 import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.smp.DEFAULT_TIMELINE_NOTE_DURATION_MS
@@ -84,6 +86,10 @@ fun TimelineEditorSection(
     canPasteDmxCue: Boolean,
     onPasteDmxCueHere: () -> Unit,
     onCopyDmxMarker: (Int) -> Unit,
+    measuresTempoBpm: Int?,
+    onMeasuresTempoChange: (Int) -> Unit,
+    measureAnchorMs: Long?,
+    onMeasureAnchorHere: (Long) -> Unit,
     onRenameMarker: (Int, String, Long?) -> Unit,
     onDeleteMarker: (Int) -> Unit
 ) {
@@ -171,6 +177,10 @@ fun TimelineEditorSection(
             nextIndexConsumer = { nextIndex -> paletteNavigationIndexByKind[kind] = nextIndex },
             matcher = { marker -> marker.kind == kind }
         )
+    }
+
+    LaunchedEffect(measuresTempoBpm) {
+        measuresTempoDraft = measuresTempoBpm?.toString().orEmpty()
     }
 
     Column(
@@ -470,9 +480,27 @@ fun TimelineEditorSection(
                 }
             }
             TimelineEditorMode.MEASURES -> {
+                val sanitizedTempoDraft = measuresTempoDraft.filter { it.isDigit() }.take(3)
+                val parsedTempoBpm = sanitizedTempoDraft.toIntOrNull()
+                val isTempoInvalid = sanitizedTempoDraft.isNotBlank() &&
+                    (parsedTempoBpm == null ||
+                        parsedTempoBpm !in TrackTimelineTempoPrefs.MIN_TEMPO_BPM..TrackTimelineTempoPrefs.MAX_TEMPO_BPM)
                 TimelineMeasuresPlaceholder(
                     tempoDraft = measuresTempoDraft,
-                    onTempoDraftChange = { measuresTempoDraft = it.filter { ch -> ch.isDigit() } }
+                    isTempoInvalid = isTempoInvalid,
+                    measureAnchorMs = measureAnchorMs,
+                    currentPositionMs = safePositionMs,
+                    onMeasureAnchorHere = { onMeasureAnchorHere(safePositionMs) },
+                    onTempoDraftChange = { input ->
+                        val nextDraft = input.filter { ch -> ch.isDigit() }.take(3)
+                        measuresTempoDraft = nextDraft
+                        val nextTempoBpm = nextDraft.toIntOrNull()
+                        if (nextTempoBpm != null &&
+                            nextTempoBpm in TrackTimelineTempoPrefs.MIN_TEMPO_BPM..TrackTimelineTempoPrefs.MAX_TEMPO_BPM
+                        ) {
+                            onMeasuresTempoChange(nextTempoBpm)
+                        }
+                    }
                 )
             }
         }
@@ -618,6 +646,10 @@ private fun TimelineModeChip(
 @Composable
 private fun TimelineMeasuresPlaceholder(
     tempoDraft: String,
+    isTempoInvalid: Boolean,
+    measureAnchorMs: Long?,
+    currentPositionMs: Long,
+    onMeasureAnchorHere: () -> Unit,
     onTempoDraftChange: (String) -> Unit
 ) {
     Column(
@@ -638,8 +670,18 @@ private fun TimelineMeasuresPlaceholder(
             label = { Text(stringResource(R.string.timeline_measures_tempo_label)) },
             placeholder = { Text(stringResource(R.string.timeline_measures_tempo_placeholder)) },
             singleLine = true,
+            isError = isTempoInvalid,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            supportingText = {
+                Text(
+                    text = stringResource(
+                        R.string.timeline_measures_tempo_range_hint,
+                        TrackTimelineTempoPrefs.MIN_TEMPO_BPM,
+                        TrackTimelineTempoPrefs.MAX_TEMPO_BPM
+                    )
+                )
+            }
         )
         OutlinedTextField(
             value = stringResource(R.string.timeline_measures_signature_default),
@@ -653,6 +695,27 @@ private fun TimelineMeasuresPlaceholder(
             text = stringResource(R.string.timeline_measures_placeholder_message),
             color = Color(0xFFB0BEC5),
             fontSize = 13.sp
+        )
+        TextButton(onClick = onMeasureAnchorHere) {
+            Text(
+                text = stringResource(R.string.timeline_measures_anchor_action),
+                color = Color(0xFF80CBC4)
+            )
+        }
+        Text(
+            text = if (measureAnchorMs != null) {
+                stringResource(
+                    R.string.timeline_measures_anchor_saved,
+                    formatTimelineMarkerTime(measureAnchorMs)
+                )
+            } else {
+                stringResource(
+                    R.string.timeline_measures_anchor_ready,
+                    formatTimelineMarkerTime(currentPositionMs)
+                )
+            },
+            color = Color(0xFFB0BEC5),
+            fontSize = 12.sp
         )
     }
 }

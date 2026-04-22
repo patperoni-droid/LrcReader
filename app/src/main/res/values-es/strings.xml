@@ -419,6 +419,11 @@
     <string name="timeline_measures_title">Compases</string>
     <string name="timeline_measures_tempo_label">Tempo</string>
     <string name="timeline_measures_tempo_placeholder">Ej.: 120 BPM</string>
+    <string name="timeline_measures_tempo_range_hint">Tempo entre %1$d y %2$d BPM</string>
+    <string name="timeline_measures_tempo_save_failed">Tempo de compases: no se pudo guardar.</string>
+    <string name="timeline_measures_anchor_action">Compás aquí</string>
+    <string name="timeline_measures_anchor_saved">Compás guardado en %1$s</string>
+    <string name="timeline_measures_anchor_ready">Posición actual: %1$s</string>
     <string name="timeline_measures_signature_label">Compás</string>
     <string name="timeline_measures_signature_default">4/4</string>
     <string name="timeline_measures_placeholder_message">Preparación de la cuadrícula musical.</string>

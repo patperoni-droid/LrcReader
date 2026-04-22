@@ -44,6 +44,17 @@ object TrackSettingsStore {
         }
     }
 
+    fun getTimelineTempoBpmByUri(context: Context, uriString: String): Int? {
+        return readEntryByUri(context, uriString)?.timelineTempoBpm
+    }
+
+    fun saveTimelineTempoBpmByUri(context: Context, uriString: String, tempoBpm: Int): Boolean {
+        val keys = resolveReadKeysForUri(context, uriString) ?: return false
+        return updateTrackLocked(context, keys) { entry ->
+            entry.copy(timelineTempoBpm = tempoBpm)
+        }
+    }
+
     fun getPitchSemiByUri(context: Context, uriString: String): Int? {
         return readEntryByUri(context, uriString)?.pitchSemi
     }

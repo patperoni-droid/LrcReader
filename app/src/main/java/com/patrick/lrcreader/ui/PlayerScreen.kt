@@ -68,6 +68,7 @@ import com.patrick.lrcreader.core.LrcStorage
 import com.patrick.lrcreader.core.LyricsViewMode
 import com.patrick.lrcreader.core.MidiCueDispatcher
 import com.patrick.lrcreader.core.TrackLyricsViewPrefs
+import com.patrick.lrcreader.core.TrackTimelineTempoPrefs
 import com.patrick.lrcreader.core.light.LightAction
 import com.patrick.lrcreader.core.light.LightCueAutoGenerator
 import com.patrick.lrcreader.core.light.LightCue
@@ -226,6 +227,8 @@ fun PlayerScreen(
     }
     var showLightTestDialog by rememberSaveable(currentTrackUri) { mutableStateOf(false) }
     var hasLightCues by remember(currentTrackUri) { mutableStateOf(false) }
+    var timelineMeasuresTempoBpm by rememberSaveable(currentTrackUri) { mutableStateOf<Int?>(null) }
+    var timelineSessionMeasureAnchorMs by remember(currentTrackUri) { mutableStateOf<Long?>(null) }
     var liteTrackMixTempo by remember(currentTrackUri) { mutableFloatStateOf(tempo) }
     var liteTrackMixPitchSemi by remember(currentTrackUri) { mutableIntStateOf(pitchSemi) }
     var liteTrackMixModified by remember(currentTrackUri) { mutableStateOf(false) }
@@ -247,6 +250,13 @@ fun PlayerScreen(
         liteTrackMixTempo = tempo
         liteTrackMixPitchSemi = pitchSemi
         liteTrackMixModified = false
+    }
+    LaunchedEffect(currentTrackUri) {
+        timelineMeasuresTempoBpm = currentTrackUri?.let { trackUri ->
+            withContext(Dispatchers.IO) {
+                TrackTimelineTempoPrefs.getTempoBpm(context, trackUri)
+            }
+        }
     }
 
     fun applyLiteTrackMixToPlayer(speed: Float, pitchSemi: Int) {
@@ -2027,6 +2037,30 @@ fun PlayerScreen(
                             Toast.makeText(context, "Copie du repère DMX impossible.", Toast.LENGTH_SHORT).show()
                         }
                     }
+                },
+                measuresTempoBpm = timelineMeasuresTempoBpm,
+                onMeasuresTempoChange = onMeasuresTempoChange@ { tempoBpm ->
+                    val trackUri = currentTrackUri ?: return@onMeasuresTempoChange
+                    timelineMeasuresTempoBpm = tempoBpm
+                    scope.launch {
+                        val saved = withContext(Dispatchers.IO) {
+                            TrackTimelineTempoPrefs.saveTempoBpm(context, trackUri, tempoBpm)
+                        }
+                        if (!saved) {
+                            timelineMeasuresTempoBpm = withContext(Dispatchers.IO) {
+                                TrackTimelineTempoPrefs.getTempoBpm(context, trackUri)
+                            }
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.timeline_measures_tempo_save_failed),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    }
+                },
+                measureAnchorMs = timelineSessionMeasureAnchorMs,
+                onMeasureAnchorHere = { anchorMs ->
+                    timelineSessionMeasureAnchorMs = anchorMs
                 },
                 onRenameMarker = onRenameMarker@ { index, label, markerDurationMs ->
                     val entry = timelineEditorEntries.getOrNull(index) ?: return@onRenameMarker

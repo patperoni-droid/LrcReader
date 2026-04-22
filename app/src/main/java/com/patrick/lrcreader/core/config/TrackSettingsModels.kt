@@ -11,6 +11,7 @@ internal data class TrackSettingsEq(
 internal data class TrackSettingsEntry(
     val volumeDb: Int? = null,
     val tempo: Float? = null,
+    val timelineTempoBpm: Int? = null,
     val pitchSemi: Int? = null,
     val eq: TrackSettingsEq? = null,
     val titleColorByPlaylist: Map<String, Int> = emptyMap()
@@ -18,6 +19,7 @@ internal data class TrackSettingsEntry(
     fun isEmpty(): Boolean {
         return volumeDb == null &&
             tempo == null &&
+            timelineTempoBpm == null &&
             pitchSemi == null &&
             eq == null &&
             titleColorByPlaylist.isEmpty()
@@ -39,6 +41,7 @@ internal data class TrackSettingsState(
 
             entry.volumeDb?.let { trackObj.put("volumeDb", it) }
             entry.tempo?.let { trackObj.put("tempo", it.toDouble()) }
+            entry.timelineTempoBpm?.let { trackObj.put("timelineTempoBpm", it) }
             entry.pitchSemi?.let { trackObj.put("pitchSemi", it) }
             entry.eq?.let {
                 val eqObj = JSONObject()
@@ -89,6 +92,9 @@ internal data class TrackSettingsState(
                 val hasTempo = obj.has("tempo") && !obj.isNull("tempo")
                 val tempo = if (hasTempo) obj.optDouble("tempo").toFloat() else null
 
+                val hasTimelineTempoBpm = obj.has("timelineTempoBpm") && !obj.isNull("timelineTempoBpm")
+                val timelineTempoBpm = if (hasTimelineTempoBpm) obj.optInt("timelineTempoBpm") else null
+
                 val hasPitch = obj.has("pitchSemi") && !obj.isNull("pitchSemi")
                 val pitchSemi = if (hasPitch) obj.optInt("pitchSemi") else null
 
@@ -121,6 +127,7 @@ internal data class TrackSettingsState(
                 val entry = TrackSettingsEntry(
                     volumeDb = volumeDb,
                     tempo = tempo,
+                    timelineTempoBpm = timelineTempoBpm,
                     pitchSemi = pitchSemi,
                     eq = eq,
                     titleColorByPlaylist = colors

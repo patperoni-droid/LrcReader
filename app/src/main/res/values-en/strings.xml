@@ -476,6 +476,11 @@
     <string name="timeline_measures_title">Measures</string>
     <string name="timeline_measures_tempo_label">Tempo</string>
     <string name="timeline_measures_tempo_placeholder">E.g.: 120 BPM</string>
+    <string name="timeline_measures_tempo_range_hint">Tempo between %1$d and %2$d BPM</string>
+    <string name="timeline_measures_tempo_save_failed">Measures tempo: save failed.</string>
+    <string name="timeline_measures_anchor_action">Measure here</string>
+    <string name="timeline_measures_anchor_saved">Measure saved at %1$s</string>
+    <string name="timeline_measures_anchor_ready">Current position: %1$s</string>
     <string name="timeline_measures_signature_label">Time signature</string>
     <string name="timeline_measures_signature_default">4/4</string>
     <string name="timeline_measures_placeholder_message">Preparing the musical grid.</string>
