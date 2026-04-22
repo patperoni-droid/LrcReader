@@ -1930,6 +1930,7 @@ fun PlayerScreen(
             }
         } else if (isEditingTimeline) {
             TimelineEditorSection(
+                currentSongId = currentSongId,
                 markers = timelineEditorMarkers,
                 palette = timelinePalette,
                 isPlaying = isPlaying,

@@ -1,9 +1,14 @@
 package com.patrick.lrcreader.ui
 
 import android.content.ActivityNotFoundException
+import android.content.Context
 import android.content.Intent
+import android.media.MediaExtractor
+import android.media.MediaFormat
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.widget.Toast
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.text.KeyboardOptions
@@ -30,6 +35,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -40,6 +46,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -53,11 +60,19 @@ import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.core.EditionConfig
 import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.core.TrackTimelineTempoPrefs
+import com.patrick.lrcreader.core.waveform.WaveformExtractor
+import com.patrick.lrcreader.core.waveform.WaveformPeaksCache
 import com.patrick.lrcreader.core.light.LightSceneState
 import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.smp.DEFAULT_TIMELINE_NOTE_DURATION_MS
+import com.patrick.lrcreader.smp.SmpLibraryScanner
 import com.patrick.lrcreader.smp.TimelineMarker
 import com.patrick.lrcreader.smp.TimelineMarkerKind
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+import kotlin.math.max
 
 private enum class TimelineEditorMode {
     TIMELINE,
@@ -72,6 +87,7 @@ private enum class TimelineDisplayMode {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun TimelineEditorSection(
+    currentSongId: String?,
     markers: List<TimelineMarker>,
     palette: List<String>,
     isPlaying: Boolean,
@@ -558,6 +574,7 @@ fun TimelineEditorSection(
                     (parsedTempoBpm == null ||
                         parsedTempoBpm !in TrackTimelineTempoPrefs.MIN_TEMPO_BPM..TrackTimelineTempoPrefs.MAX_TEMPO_BPM)
                 TimelineMeasuresPlaceholder(
+                    currentSongId = currentSongId,
                     title = stringResource(
                         if (hasMeasuresGrid) {
                             R.string.timeline_grid_edit_title
@@ -733,6 +750,7 @@ private fun TimelineModeChip(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun TimelineMeasuresPlaceholder(
+    currentSongId: String?,
     title: String,
     tempoDraft: String,
     isTempoInvalid: Boolean,
@@ -751,16 +769,69 @@ private fun TimelineMeasuresPlaceholder(
             currentPositionMs = currentPositionMs
         )
     }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val smpLibraryScanner = remember(context) { SmpLibraryScanner(context.applicationContext) }
+    var waveformPeaks by remember(currentSongId) { mutableStateOf<List<Float>>(emptyList()) }
+    var waveformDurationMs by remember(currentSongId) { mutableIntStateOf(0) }
+    var waveformLoading by remember(currentSongId) { mutableStateOf(false) }
+    var waveformError by remember(currentSongId) { mutableStateOf(false) }
 
     LaunchedEffect(measureAnchorMs) {
         localMeasureAnchorMs = measureAnchorMs
     }
 
-    fun updateLocalMeasureAnchor(deltaMs: Long) {
-        val baseAnchorMs = localMeasureAnchorMs ?: return
-        val nextAnchorMs = (baseAnchorMs + deltaMs).coerceAtLeast(0L)
-        localMeasureAnchorMs = nextAnchorMs
-        onMeasureAnchorHere(nextAnchorMs)
+    LaunchedEffect(currentSongId) {
+        val songId = currentSongId?.trim().orEmpty()
+        if (songId.isEmpty()) {
+            waveformPeaks = emptyList()
+            waveformDurationMs = 0
+            waveformLoading = false
+            waveformError = false
+            return@LaunchedEffect
+        }
+
+        waveformLoading = true
+        waveformError = false
+        waveformPeaks = emptyList()
+        waveformDurationMs = 0
+
+        val result = withContext(Dispatchers.IO) {
+            runCatching {
+                val song = smpLibraryScanner.findSongById(songId)
+                    ?: error("Song not found")
+                val audioPath = song.audioPath?.takeIf { it.isNotBlank() }
+                    ?: error("Missing audio path")
+                val audioUri = Uri.fromFile(File(audioPath))
+                val durationMs = queryTimelineWaveformDurationMs(context, audioUri)
+                val peaks = WaveformPeaksCache.getOrCompute(
+                    context = context,
+                    uri = audioUri,
+                    targetPoints = 2_400,
+                    durationMs = durationMs
+                ) {
+                    WaveformExtractor.extractNormalizedPeaks(
+                        context = context,
+                        uri = audioUri,
+                        targetPoints = 2_400
+                    )
+                }
+                peaks to durationMs
+            }
+        }
+
+        result
+            .onSuccess { (peaks, durationMs) ->
+                waveformPeaks = peaks
+                waveformDurationMs = durationMs
+                waveformLoading = false
+            }
+            .onFailure {
+                waveformPeaks = emptyList()
+                waveformDurationMs = 0
+                waveformLoading = false
+                waveformError = true
+            }
     }
 
     Column(
@@ -807,6 +878,14 @@ private fun TimelineMeasuresPlaceholder(
             color = Color(0xFFB0BEC5),
             fontSize = 13.sp
         )
+        TimelineGridWaveformSection(
+            peaks = waveformPeaks,
+            durationMs = waveformDurationMs,
+            currentPositionMs = currentPositionMs,
+            measureAnchorMs = savedAnchorMs,
+            isLoading = waveformLoading,
+            hasError = waveformError
+        )
         TextButton(onClick = {
             localMeasureAnchorMs = currentPositionMs
             onMeasureAnchorHere(currentPositionMs)
@@ -815,35 +894,6 @@ private fun TimelineMeasuresPlaceholder(
                 text = stringResource(R.string.timeline_measures_anchor_action),
                 color = Color(0xFF80CBC4)
             )
-        }
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            OutlinedButton(
-                onClick = { updateLocalMeasureAnchor(-50L) },
-                enabled = localMeasureAnchorMs != null
-            ) {
-                Text(stringResource(R.string.timeline_measures_adjust_minus_50))
-            }
-            OutlinedButton(
-                onClick = { updateLocalMeasureAnchor(-10L) },
-                enabled = localMeasureAnchorMs != null
-            ) {
-                Text(stringResource(R.string.timeline_measures_adjust_minus_10))
-            }
-            OutlinedButton(
-                onClick = { updateLocalMeasureAnchor(10L) },
-                enabled = localMeasureAnchorMs != null
-            ) {
-                Text(stringResource(R.string.timeline_measures_adjust_plus_10))
-            }
-            OutlinedButton(
-                onClick = { updateLocalMeasureAnchor(50L) },
-                enabled = localMeasureAnchorMs != null
-            ) {
-                Text(stringResource(R.string.timeline_measures_adjust_plus_50))
-            }
         }
         Text(
             text = if (savedAnchorMs != null) {
@@ -871,6 +921,97 @@ private fun TimelineMeasuresPlaceholder(
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Medium
             )
+        }
+    }
+}
+
+@Composable
+private fun TimelineGridWaveformSection(
+    peaks: List<Float>,
+    durationMs: Int,
+    currentPositionMs: Long,
+    measureAnchorMs: Long?,
+    isLoading: Boolean,
+    hasError: Boolean
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(
+            text = stringResource(R.string.waveform_title),
+            color = Color.White,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(120.dp)
+        ) {
+            when {
+                isLoading -> {
+                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                }
+                hasError -> {
+                    Text(
+                        text = stringResource(R.string.waveform_generate_error),
+                        color = Color(0xFFB0BEC5),
+                        fontSize = 12.sp,
+                        modifier = Modifier.align(Alignment.Center)
+                    )
+                }
+                peaks.isEmpty() || durationMs <= 0 -> {
+                    Text(
+                        text = stringResource(R.string.waveform_no_data),
+                        color = Color(0xFFB0BEC5),
+                        fontSize = 12.sp,
+                        modifier = Modifier.align(Alignment.Center)
+                    )
+                }
+                else -> {
+                    Canvas(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(120.dp)
+                    ) {
+                        val centerY = size.height / 2f
+                        val widthPx = size.width
+                        val heightPx = size.height
+                        val maxIndex = peaks.lastIndex.coerceAtLeast(1)
+                        peaks.forEachIndexed { index, peak ->
+                            val x = (index.toFloat() / maxIndex.toFloat()) * widthPx
+                            val amplitude = (peak.coerceIn(0f, 1f) * (heightPx / 2f))
+                            drawLine(
+                                color = Color(0xFF80CBC4),
+                                start = androidx.compose.ui.geometry.Offset(x, centerY - amplitude),
+                                end = androidx.compose.ui.geometry.Offset(x, centerY + amplitude),
+                                strokeWidth = 1.5f,
+                                cap = androidx.compose.ui.graphics.StrokeCap.Round
+                            )
+                        }
+
+                        val safeDuration = durationMs.coerceAtLeast(1)
+                        val currentX = (currentPositionMs.coerceIn(0L, safeDuration.toLong()).toFloat() / safeDuration.toFloat()) * widthPx
+                        drawLine(
+                            color = Color.White,
+                            start = androidx.compose.ui.geometry.Offset(currentX, 0f),
+                            end = androidx.compose.ui.geometry.Offset(currentX, heightPx),
+                            strokeWidth = 2f
+                        )
+
+                        measureAnchorMs?.let { anchorMs ->
+                            val anchorX = (anchorMs.coerceIn(0L, safeDuration.toLong()).toFloat() / safeDuration.toFloat()) * widthPx
+                            drawLine(
+                                color = Color(0xFFFFB74D),
+                                start = androidx.compose.ui.geometry.Offset(anchorX, 0f),
+                                end = androidx.compose.ui.geometry.Offset(anchorX, heightPx),
+                                strokeWidth = 2f
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -955,6 +1096,47 @@ private fun computeTimelineMeasuresStatus(
         currentBeat = currentBeat.coerceIn(1, 4),
         beatIndex = beatIndex.coerceAtLeast(0L)
     )
+}
+
+private fun queryTimelineWaveformDurationMs(context: Context, uri: Uri): Int {
+    val fromRetriever = runCatching {
+        val retriever = MediaMetadataRetriever()
+        try {
+            retriever.setDataSource(context, uri)
+            retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                ?.toLongOrNull()
+                ?.coerceAtLeast(0L) ?: 0L
+        } finally {
+            runCatching { retriever.release() }
+        }
+    }.getOrDefault(0L)
+
+    if (fromRetriever > 0L) {
+        return fromRetriever.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+    }
+
+    val fromExtractor = runCatching {
+        val extractor = MediaExtractor()
+        try {
+            extractor.setDataSource(context, uri, null)
+            var durationUs = 0L
+            for (i in 0 until extractor.trackCount) {
+                val format = extractor.getTrackFormat(i)
+                val mime = format.getString(MediaFormat.KEY_MIME).orEmpty()
+                if (mime.startsWith("audio/") && format.containsKey(MediaFormat.KEY_DURATION)) {
+                    durationUs = max(durationUs, format.getLong(MediaFormat.KEY_DURATION))
+                }
+            }
+            durationUs
+        } finally {
+            runCatching { extractor.release() }
+        }
+    }.getOrDefault(0L)
+
+    return (fromExtractor / 1_000L)
+        .coerceAtLeast(0L)
+        .coerceAtMost(Int.MAX_VALUE.toLong())
+        .toInt()
 }
 
 @OptIn(ExperimentalFoundationApi::class)
