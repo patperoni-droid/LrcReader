@@ -1203,8 +1203,8 @@ fun PlayerScreen(
     val activeDisplayLines = if (selectedViewMode == LyricsViewMode.CHORDS) parsedChordLines else parsedLines
     val hasLyricsMode = hasLyricsSource || parsedLines.isNotEmpty()
     val hasChordsMode = hasChordsSource || parsedChordLines.isNotEmpty()
-    val showViewToggle = hasLyricsMode || hasChordsMode
-    val canSelectChordsMode = hasChordsMode || hasLyricsMode
+    val showViewToggle = currentTrackUri != null
+    val canSelectChordsMode = currentTrackUri != null
 
     fun recomputeCurrentIndexForActiveView() {
         if (activeDisplayLines.isEmpty()) {
@@ -1215,17 +1215,6 @@ fun PlayerScreen(
         val effectivePos = (getPositionMs() - totalOffsetMs).coerceAtLeast(0L)
         val idx = findActiveLrcIndex(activeDisplayLines, effectivePos)
         currentLrcIndex = if (idx >= 0) idx else 0
-    }
-
-    LaunchedEffect(hasLyricsMode, hasChordsMode, currentTrackUri, lyricsResolutionCompleted, chordsLoading) {
-        if (currentTrackUri != null && (!lyricsResolutionCompleted || chordsLoading)) {
-            return@LaunchedEffect
-        }
-        selectedViewMode = resolveLyricsViewMode(
-            current = selectedViewMode,
-            hasLyrics = hasLyricsMode,
-            hasChords = hasChordsMode
-        )
     }
 
     LaunchedEffect(selectedViewMode, parsedLines, parsedChordLines, userOffsetMs) {
@@ -2170,11 +2159,11 @@ fun PlayerScreen(
                             if (showViewToggle) {
                                 LyricsViewSelector(
                                     selectedMode = selectedViewMode,
-                                    hasLyrics = hasLyricsMode,
+                                    hasLyrics = currentTrackUri != null,
                                     hasChords = if (EditionConfig.isLite) {
-                                        hasLyricsMode || canSelectChordsMode
+                                        currentTrackUri != null
                                     } else {
-                                        canSelectChordsMode
+                                        currentTrackUri != null
                                     },
                                     chordsBlocked = EditionConfig.isLite,
                                     onSelectMode = { mode ->
