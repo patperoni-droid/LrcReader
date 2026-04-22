@@ -398,6 +398,8 @@
     <string name="timeline_dialog_title">Timeline</string>
     <string name="timeline_mode_time">T</string>
     <string name="timeline_mode_measures">M</string>
+    <string name="timeline_measures_view_timeline">Timeline</string>
+    <string name="timeline_measures_view_list">Lista</string>
     <string name="timeline_grid_create_action">RG</string>
     <string name="timeline_grid_edit_action">RG</string>
     <string name="timeline_grid_create_title">Crear cuadrícula</string>
@@ -409,9 +411,13 @@
     <string name="timeline_palette_add_action">Añadir</string>
     <string name="timeline_palette_empty_state">Paleta vacía. Añade tus marcas de escena.</string>
     <string name="timeline_event_palette_title">Eventos rápidos</string>
+    <string name="timeline_event_text">Marca</string>
     <string name="timeline_event_midi">Cue MIDI</string>
     <string name="timeline_event_note">Nota</string>
     <string name="timeline_event_dmx">DMX</string>
+    <string name="timeline_event_list_meta">%1$s • %2$s</string>
+    <string name="timeline_event_list_row_with_label">%1$s • %2$s • %3$s</string>
+    <string name="timeline_event_jump_action">Play</string>
     <string name="timeline_markers_title">Marcas colocadas</string>
     <string name="timeline_empty_state">No hay marcas para esta pista SMP.</string>
     <string name="timeline_rename_title">Renombrar marca</string>
@@ -430,6 +436,7 @@
     <string name="timeline_measures_anchor_saved">Compás guardado en %1$s</string>
     <string name="timeline_measures_anchor_ready">Posición actual: %1$s</string>
     <string name="timeline_measures_live_position">Compás %1$d • Tiempo %2$d</string>
+    <string name="timeline_measures_event_position">M%1$d • T%2$d</string>
     <string name="timeline_measures_tap_tempo_action">DT</string>
     <string name="timeline_measures_tap_tempo_value">%1$d BPM</string>
     <string name="timeline_measures_tap_tempo_pending">-- BPM</string>

@@ -347,6 +347,8 @@
     <string name="timeline_dialog_title">Timeline</string>
     <string name="timeline_mode_time">T</string>
     <string name="timeline_mode_measures">M</string>
+    <string name="timeline_measures_view_timeline">Timeline</string>
+    <string name="timeline_measures_view_list">Liste</string>
     <string name="timeline_grid_create_action">RG</string>
     <string name="timeline_grid_edit_action">RG</string>
     <string name="timeline_grid_create_title">Créer la grille</string>
@@ -358,9 +360,13 @@
     <string name="timeline_palette_add_action">Ajouter</string>
     <string name="timeline_palette_empty_state">Palette vide. Ajoutez vos repères de scène.</string>
     <string name="timeline_event_palette_title">Événements rapides</string>
+    <string name="timeline_event_text">Repère</string>
     <string name="timeline_event_midi">Cue MIDI</string>
     <string name="timeline_event_note">Note</string>
     <string name="timeline_event_dmx">DMX</string>
+    <string name="timeline_event_list_meta">%1$s • %2$s</string>
+    <string name="timeline_event_list_row_with_label">%1$s • %2$s • %3$s</string>
+    <string name="timeline_event_jump_action">Play</string>
     <string name="timeline_pro_only">Version Pro</string>
     <string name="timeline_config_pro_dialog_title">Fonction Pro</string>
     <string name="timeline_config_pro_dialog_message">Configurez vos actions et préparez votre show avec la version Pro.</string>
@@ -382,6 +388,7 @@
     <string name="timeline_measures_anchor_saved">Mesure enregistrée à %1$s</string>
     <string name="timeline_measures_anchor_ready">Position actuelle : %1$s</string>
     <string name="timeline_measures_live_position">Mesure %1$d • Temps %2$d</string>
+    <string name="timeline_measures_event_position">M%1$d • T%2$d</string>
     <string name="timeline_measures_tap_tempo_action">DT</string>
     <string name="timeline_measures_tap_tempo_value">%1$d BPM</string>
     <string name="timeline_measures_tap_tempo_pending">-- BPM</string>

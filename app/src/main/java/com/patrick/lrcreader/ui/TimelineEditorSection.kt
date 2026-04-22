@@ -25,9 +25,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.automirrored.filled.StickyNote2
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FlashOn
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipPrevious
@@ -56,6 +60,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.core.EditionConfig
@@ -84,6 +89,11 @@ private enum class TimelineEditorMode {
 private enum class TimelineDisplayMode {
     TIME,
     MEASURES
+}
+
+private enum class TimelineMeasuresViewMode {
+    TIMELINE,
+    LIST
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -132,6 +142,7 @@ fun TimelineEditorSection(
     var showTimelineConfigProDialog by remember { mutableStateOf(false) }
     var editorMode by remember { mutableStateOf(TimelineEditorMode.TIMELINE) }
     var displayMode by remember { mutableStateOf(TimelineDisplayMode.TIME) }
+    var measuresViewMode by remember { mutableStateOf(TimelineMeasuresViewMode.TIMELINE) }
     var measuresTempoDraft by remember { mutableStateOf("") }
     val paletteNavigationIndexByLabel = remember(markers) { mutableStateMapOf<String, Int>() }
     val paletteNavigationIndexByKind = remember(markers) { mutableStateMapOf<TimelineMarkerKind, Int>() }
@@ -214,6 +225,51 @@ fun TimelineEditorSection(
     LaunchedEffect(hasMeasuresGrid, displayMode) {
         if (!hasMeasuresGrid && displayMode == TimelineDisplayMode.MEASURES) {
             displayMode = TimelineDisplayMode.TIME
+        }
+    }
+
+    LaunchedEffect(hasMeasuresGrid, displayMode, measuresViewMode) {
+        if ((!hasMeasuresGrid || displayMode != TimelineDisplayMode.MEASURES) &&
+            measuresViewMode == TimelineMeasuresViewMode.LIST
+        ) {
+            measuresViewMode = TimelineMeasuresViewMode.TIMELINE
+        }
+    }
+
+    fun openMarkerEditor(index: Int) {
+        if (index !in markers.indices) return
+        if (markers[index].kind == TimelineMarkerKind.MIDI) {
+            if (!isLite) {
+                onEditMidiMarker(index)
+            } else {
+                showTimelineConfigProDialog = true
+            }
+            return
+        }
+        if (markers[index].kind == TimelineMarkerKind.DMX) {
+            if (!dmxUiVisible) return
+            onEditDmxMarker(index)
+            return
+        }
+        if (markers[index].kind == TimelineMarkerKind.NOTE && isLite) {
+            showTimelineConfigProDialog = true
+            return
+        }
+        renameIndex = index
+        renameText = markers[index].label
+        renameDurationSeconds = if (markers[index].kind == TimelineMarkerKind.NOTE) {
+            val durationMs = markers[index].durationMs ?: DEFAULT_TIMELINE_NOTE_DURATION_MS
+            (durationMs / 1_000L).toString()
+        } else {
+            ""
+        }
+    }
+
+    fun playFromMarker(timeMs: Long) {
+        requestFocusAt(timeMs)
+        if (durationMs > 0) {
+            onIsPlayingChange(true)
+            runCatching { FillerSoundManager.fadeOutAndStop(200) }
         }
     }
 
@@ -343,7 +399,14 @@ fun TimelineEditorSection(
                     )
                     Spacer(Modifier.height(10.dp))
                 }
-                if (!showPaletteInput) {
+                if (displayMode == TimelineDisplayMode.MEASURES && hasMeasuresGrid) {
+                    TimelineMeasuresViewModeSelector(
+                        selectedMode = measuresViewMode,
+                        onModeSelected = { measuresViewMode = it }
+                    )
+                    Spacer(Modifier.height(8.dp))
+                }
+                if (!showPaletteInput && measuresViewMode != TimelineMeasuresViewMode.LIST) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.End
@@ -358,7 +421,7 @@ fun TimelineEditorSection(
                     }
                 }
 
-                if (showPaletteInput) {
+                if (showPaletteInput && measuresViewMode != TimelineMeasuresViewMode.LIST) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
@@ -485,7 +548,7 @@ fun TimelineEditorSection(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    if (dmxUiVisible) {
+                    if (dmxUiVisible && measuresViewMode != TimelineMeasuresViewMode.LIST) {
                         TextButton(
                             onClick = {
                                 if (isLite) {
@@ -521,55 +584,44 @@ fun TimelineEditorSection(
                         .weight(1f)
                         .fillMaxWidth()
                 ) {
-                    TimelineScrubColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        markers = markers,
-                        positionMs = positionMs,
-                        durationMs = durationMs,
-                        isPlaying = isPlaying,
-                        slotLabel = { slotTimeMs ->
-                            formatTimelinePositionLabel(
-                                displayMode = displayMode,
-                                hasMeasuresGrid = hasMeasuresGrid,
-                                positionMs = slotTimeMs,
-                                tempoBpm = measuresTempoBpm,
-                                measureAnchorMs = measureAnchorMs
-                            )
-                        },
-                        focusRequestTimeMs = focusRequestTimeMs.takeIf { it >= 0L },
-                        focusRequestToken = focusRequestToken,
-                        onSeekToMs = seekToMs,
-                        onEditMarker = { index ->
-                            if (index !in markers.indices) return@TimelineScrubColumn
-                            if (markers[index].kind == TimelineMarkerKind.MIDI) {
-                                if (!isLite) {
-                                    onEditMidiMarker(index)
-                                } else {
-                                    showTimelineConfigProDialog = true
-                                }
-                                return@TimelineScrubColumn
-                            }
-                            if (markers[index].kind == TimelineMarkerKind.DMX) {
-                                if (!dmxUiVisible) return@TimelineScrubColumn
-                                onEditDmxMarker(index)
-                                return@TimelineScrubColumn
-                            }
-                            if (markers[index].kind == TimelineMarkerKind.NOTE && isLite) {
-                                showTimelineConfigProDialog = true
-                                return@TimelineScrubColumn
-                            }
-                            renameIndex = index
-                            renameText = markers[index].label
-                            renameDurationSeconds = if (markers[index].kind == TimelineMarkerKind.NOTE) {
-                                val durationMs = markers[index].durationMs ?: DEFAULT_TIMELINE_NOTE_DURATION_MS
-                                (durationMs / 1_000L).toString()
-                            } else {
-                                ""
-                            }
-                        },
-                        onDeleteMarker = onDeleteMarker,
-                        onCopyDmxMarker = onCopyDmxMarker
-                    )
+                    if (measuresViewMode == TimelineMeasuresViewMode.LIST &&
+                        displayMode == TimelineDisplayMode.MEASURES &&
+                        hasMeasuresGrid
+                    ) {
+                TimelineMeasuresEventList(
+                            modifier = Modifier.fillMaxSize(),
+                            markers = markers,
+                            currentPositionMs = safePositionMs,
+                            tempoBpm = measuresTempoBpm,
+                            measureAnchorMs = measureAnchorMs,
+                            onPlayMarker = { timeMs -> playFromMarker(timeMs) },
+                            onEditMarker = { index -> openMarkerEditor(index) },
+                            onDeleteMarker = onDeleteMarker
+                        )
+                    } else {
+                        TimelineScrubColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            markers = markers,
+                            positionMs = positionMs,
+                            durationMs = durationMs,
+                            isPlaying = isPlaying,
+                            slotLabel = { slotTimeMs ->
+                                formatTimelinePositionLabel(
+                                    displayMode = displayMode,
+                                    hasMeasuresGrid = hasMeasuresGrid,
+                                    positionMs = slotTimeMs,
+                                    tempoBpm = measuresTempoBpm,
+                                    measureAnchorMs = measureAnchorMs
+                                )
+                            },
+                            focusRequestTimeMs = focusRequestTimeMs.takeIf { it >= 0L },
+                            focusRequestToken = focusRequestToken,
+                            onSeekToMs = seekToMs,
+                            onEditMarker = { index -> openMarkerEditor(index) },
+                            onDeleteMarker = onDeleteMarker,
+                            onCopyDmxMarker = onCopyDmxMarker
+                        )
+                    }
 
                     if (dmxUiVisible && showLightPreview) {
                         LightSimulatorPreview(
@@ -710,6 +762,30 @@ fun TimelineEditorSection(
 }
 
 @Composable
+private fun TimelineMeasuresViewModeSelector(
+    selectedMode: TimelineMeasuresViewMode,
+    onModeSelected: (TimelineMeasuresViewMode) -> Unit
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        TimelineModeChip(
+            text = stringResource(R.string.timeline_measures_view_timeline),
+            selected = selectedMode == TimelineMeasuresViewMode.TIMELINE,
+            enabled = true,
+            onClick = { onModeSelected(TimelineMeasuresViewMode.TIMELINE) }
+        )
+        TimelineModeChip(
+            text = stringResource(R.string.timeline_measures_view_list),
+            selected = selectedMode == TimelineMeasuresViewMode.LIST,
+            enabled = true,
+            onClick = { onModeSelected(TimelineMeasuresViewMode.LIST) }
+        )
+    }
+}
+
+@Composable
 private fun TimelineDisplayModeSelector(
     selectedMode: TimelineDisplayMode,
     hasMeasuresGrid: Boolean,
@@ -750,6 +826,163 @@ private fun TimelineModeChip(
                 else -> Color(0xFFB0BEC5)
             }
         )
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun TimelineMeasuresEventList(
+    modifier: Modifier = Modifier,
+    markers: List<TimelineMarker>,
+    currentPositionMs: Long,
+    tempoBpm: Int?,
+    measureAnchorMs: Long?,
+    onPlayMarker: (Long) -> Unit,
+    onEditMarker: (Int) -> Unit,
+    onDeleteMarker: (Int) -> Unit
+) {
+    val activeMarkerIndex = remember(markers, currentPositionMs) {
+        markers.indexOfLast { marker -> marker.timeMs <= currentPositionMs }
+    }
+    val liveMeasuresStatus = remember(tempoBpm, measureAnchorMs, currentPositionMs) {
+        computeTimelineMeasuresStatus(
+            tempoBpm = tempoBpm,
+            measureAnchorMs = measureAnchorMs,
+            currentPositionMs = currentPositionMs
+        )
+    }
+
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        liveMeasuresStatus?.let { status ->
+            Text(
+                text = stringResource(
+                    R.string.timeline_measures_live_position,
+                    status.currentBar,
+                    status.currentBeat
+                ),
+                color = Color.White,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium
+            )
+        }
+
+        if (markers.isEmpty()) {
+            Text(
+                text = stringResource(R.string.timeline_empty_state),
+                color = Color(0xFFB0BEC5),
+                fontSize = 13.sp
+            )
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                itemsIndexed(
+                    items = markers,
+                    key = { index, marker -> "${marker.kind.storageValue}-${marker.timeMs}-$index" }
+                ) { index, marker ->
+                    val isActive = index == activeMarkerIndex
+                    val markerMeasuresStatus = computeTimelineMeasuresStatus(
+                        tempoBpm = tempoBpm,
+                        measureAnchorMs = measureAnchorMs,
+                        currentPositionMs = marker.timeMs
+                    )
+                    TimelineMeasuresEventListItem(
+                        marker = marker,
+                        isActive = isActive,
+                        measuresStatus = markerMeasuresStatus,
+                        onPlay = { onPlayMarker(marker.timeMs) },
+                        onEdit = { onEditMarker(index) },
+                        onDelete = { onDeleteMarker(index) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TimelineMeasuresEventListItem(
+    marker: TimelineMarker,
+    isActive: Boolean,
+    measuresStatus: TimelineMeasuresStatus?,
+    onPlay: () -> Unit,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit
+) {
+    val kindLabel = timelineMarkerKindLabel(marker.kind)
+    val markerTitle = marker.label.ifBlank { kindLabel }
+    val positionLabel = measuresStatus?.let { status ->
+        stringResource(
+            R.string.timeline_measures_event_position,
+            status.currentBar,
+            status.currentBeat
+        )
+    } ?: formatTimelineMarkerTime(marker.timeMs)
+    val rowText = if (markerTitle == kindLabel) {
+        stringResource(
+            R.string.timeline_event_list_meta,
+            kindLabel,
+            positionLabel
+        )
+    } else {
+        stringResource(
+            R.string.timeline_event_list_row_with_label,
+            markerTitle,
+            kindLabel,
+            positionLabel
+        )
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = rowText,
+            color = if (isActive) Color.White else Color(0xFFCFD8DC),
+            fontSize = 14.sp,
+            fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
+        IconButton(onClick = onPlay) {
+            Icon(
+                imageVector = Icons.Filled.PlayArrow,
+                contentDescription = stringResource(R.string.timeline_event_jump_action),
+                tint = Color(0xFF80CBC4)
+            )
+        }
+        IconButton(onClick = onEdit) {
+            Icon(
+                imageVector = Icons.Filled.Edit,
+                contentDescription = stringResource(R.string.timeline_cd_rename),
+                tint = Color(0xFF80CBC4)
+            )
+        }
+        IconButton(onClick = onDelete) {
+            Icon(
+                imageVector = Icons.Filled.Delete,
+                contentDescription = stringResource(R.string.timeline_cd_delete),
+                tint = Color(0xFFFF8A80)
+            )
+        }
+    }
+}
+
+@Composable
+private fun timelineMarkerKindLabel(kind: TimelineMarkerKind): String {
+    return when (kind) {
+        TimelineMarkerKind.TEXT -> stringResource(R.string.timeline_event_text)
+        TimelineMarkerKind.MIDI -> stringResource(R.string.timeline_event_midi)
+        TimelineMarkerKind.NOTE -> stringResource(R.string.timeline_event_note)
+        TimelineMarkerKind.DMX -> stringResource(R.string.timeline_event_dmx)
     }
 }
 
@@ -1082,17 +1315,20 @@ private fun formatTimelinePositionLabel(
     measureAnchorMs: Long?
 ): String {
     if (displayMode == TimelineDisplayMode.MEASURES && hasMeasuresGrid) {
-        val status = computeTimelineMeasuresStatus(
+        val currentStatus = computeTimelineMeasuresStatus(
             tempoBpm = tempoBpm,
             measureAnchorMs = measureAnchorMs,
             currentPositionMs = positionMs
+        ) ?: return ""
+        val previousStatus = computeTimelineMeasuresStatus(
+            tempoBpm = tempoBpm,
+            measureAnchorMs = measureAnchorMs,
+            currentPositionMs = (positionMs - 1_000L).coerceAtLeast(0L)
         )
-        if (status != null) {
-            return if (status.currentBeat == 1) {
-                status.currentBar.toString()
-            } else {
-                ""
-            }
+        return if (previousStatus == null || previousStatus.currentBar != currentStatus.currentBar) {
+            currentStatus.currentBar.toString()
+        } else {
+            ""
         }
     }
     return formatTimelineMarkerTime(positionMs)
@@ -1125,6 +1361,7 @@ private fun computeTimelineMeasuresStatus(
         beatIndex = beatIndex.coerceAtLeast(0L)
     )
 }
+
 
 private fun queryTimelineWaveformDurationMs(context: Context, uri: Uri): Int {
     val fromRetriever = runCatching {

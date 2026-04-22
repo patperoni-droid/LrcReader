@@ -455,6 +455,8 @@
     <string name="timeline_dialog_title">Timeline</string>
     <string name="timeline_mode_time">T</string>
     <string name="timeline_mode_measures">M</string>
+    <string name="timeline_measures_view_timeline">Timeline</string>
+    <string name="timeline_measures_view_list">List</string>
     <string name="timeline_grid_create_action">RG</string>
     <string name="timeline_grid_edit_action">RG</string>
     <string name="timeline_grid_create_title">Create grid</string>
@@ -466,9 +468,13 @@
     <string name="timeline_palette_add_action">Add</string>
     <string name="timeline_palette_empty_state">Palette empty. Add your stage markers.</string>
     <string name="timeline_event_palette_title">Quick events</string>
+    <string name="timeline_event_text">Marker</string>
     <string name="timeline_event_midi">MIDI cue</string>
     <string name="timeline_event_note">Note</string>
     <string name="timeline_event_dmx">DMX</string>
+    <string name="timeline_event_list_meta">%1$s • %2$s</string>
+    <string name="timeline_event_list_row_with_label">%1$s • %2$s • %3$s</string>
+    <string name="timeline_event_jump_action">Play</string>
     <string name="timeline_markers_title">Placed markers</string>
     <string name="timeline_empty_state">No markers for this SMP track.</string>
     <string name="timeline_rename_title">Rename marker</string>
@@ -487,6 +493,7 @@
     <string name="timeline_measures_anchor_saved">Measure saved at %1$s</string>
     <string name="timeline_measures_anchor_ready">Current position: %1$s</string>
     <string name="timeline_measures_live_position">Bar %1$d • Beat %2$d</string>
+    <string name="timeline_measures_event_position">B%1$d • Bt%2$d</string>
     <string name="timeline_measures_tap_tempo_action">DT</string>
     <string name="timeline_measures_tap_tempo_value">%1$d BPM</string>
     <string name="timeline_measures_tap_tempo_pending">-- BPM</string>

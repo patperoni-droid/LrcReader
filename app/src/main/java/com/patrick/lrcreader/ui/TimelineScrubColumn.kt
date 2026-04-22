@@ -178,13 +178,6 @@ fun TimelineScrubColumn(
         initialFocusDone = true
     }
 
-    LaunchedEffect(isPlaying, currentSlotIndex, slotCount, isUserScrubbing) {
-        if (!isPlaying || isUserScrubbing || currentSlotIndex !in 0 until slotCount) {
-            return@LaunchedEffect
-        }
-        centerSlot(currentSlotIndex)
-    }
-
     LaunchedEffect(focusRequestToken, focusRequestTimeMs, slotCount) {
         if (focusRequestToken <= 0) return@LaunchedEffect
         val targetTimeMs = focusRequestTimeMs ?: return@LaunchedEffect
