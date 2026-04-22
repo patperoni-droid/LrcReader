@@ -2063,6 +2063,63 @@ fun PlayerScreen(
                 onMeasureAnchorHere = { anchorMs ->
                     timelineSessionMeasureAnchorMs = anchorMs
                 },
+                onMoveMarkerPosition = onMoveMarkerPosition@ { index, targetPositionMs ->
+                    val entry = timelineEditorEntries.getOrNull(index) ?: return@onMoveMarkerPosition
+                    when (val source = entry.source) {
+                        is TimelineEditorMarkerSource.Timeline -> {
+                            if (!isCurrentTrackSmp || source.index !in timelineMarkers.indices) return@onMoveMarkerPosition
+                            val previousMarkers = timelineMarkers
+                            val updatedMarkers = timelineMarkers
+                                .toMutableList()
+                                .apply {
+                                    this[source.index] = this[source.index].copy(
+                                        timeMs = targetPositionMs.coerceAtLeast(0L)
+                                    )
+                                }
+                                .sortedWith(
+                                    compareBy<TimelineMarker> { it.timeMs }
+                                        .thenBy { it.label }
+                                )
+                            persistTimelineMarkers(updatedMarkers, previousMarkers)
+                        }
+                        is TimelineEditorMarkerSource.Light -> {
+                            val trackUri = currentTrackUri ?: return@onMoveMarkerPosition
+                            scope.launch {
+                                val cue = withContext(Dispatchers.IO) {
+                                    SmpLightCueBridge.getCueAtTime(
+                                        context = context,
+                                        trackUriString = trackUri,
+                                        timeMs = source.timeMs
+                                    )
+                                } ?: return@launch
+                                val targetTimeMs = targetPositionMs.coerceAtLeast(0L)
+                                val saved = withContext(Dispatchers.IO) {
+                                    val deletedOld = if (source.timeMs != targetTimeMs) {
+                                        SmpLightCueBridge.deleteCueAtTime(
+                                            context = context,
+                                            trackUriString = trackUri,
+                                            timeMs = source.timeMs
+                                        ) == true
+                                    } else {
+                                        true
+                                    }
+                                    deletedOld && (
+                                        SmpLightCueBridge.upsertCueAtTime(
+                                            context = context,
+                                            trackUriString = trackUri,
+                                            cue = cue.copy(timeMs = targetTimeMs)
+                                        ) == true
+                                        )
+                                }
+                                if (saved) {
+                                    refreshTimelineLightCues(trackUri, targetTimeMs)
+                                } else {
+                                    Toast.makeText(context, sTimelineSaveFailed, Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }
+                    }
+                },
                 onRenameMarker = onRenameMarker@ { index, label, markerDurationMs ->
                     val entry = timelineEditorEntries.getOrNull(index) ?: return@onRenameMarker
                     val source = entry.source as? TimelineEditorMarkerSource.Timeline ?: return@onRenameMarker

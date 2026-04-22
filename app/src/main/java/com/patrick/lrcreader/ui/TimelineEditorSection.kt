@@ -80,6 +80,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import kotlin.math.max
 import kotlin.math.roundToInt
+import kotlin.math.roundToLong
 
 private enum class TimelineEditorMode {
     TIMELINE,
@@ -123,6 +124,7 @@ fun TimelineEditorSection(
     onMeasuresTempoChange: (Int) -> Unit,
     measureAnchorMs: Long?,
     onMeasureAnchorHere: (Long) -> Unit,
+    onMoveMarkerPosition: (Int, Long) -> Unit,
     onRenameMarker: (Int, String, Long?) -> Unit,
     onDeleteMarker: (Int) -> Unit
 ) {
@@ -144,6 +146,10 @@ fun TimelineEditorSection(
     var displayMode by remember { mutableStateOf(TimelineDisplayMode.TIME) }
     var measuresViewMode by remember { mutableStateOf(TimelineMeasuresViewMode.TIMELINE) }
     var measuresTempoDraft by remember { mutableStateOf("") }
+    var positionEditIndex by remember(markers) { mutableStateOf<Int?>(null) }
+    var positionEditMeasureDraft by remember { mutableStateOf("") }
+    var positionEditBeatDraft by remember { mutableStateOf("") }
+    var positionEditSubdivisionDraft by remember { mutableStateOf("") }
     val paletteNavigationIndexByLabel = remember(markers) { mutableStateMapOf<String, Int>() }
     val paletteNavigationIndexByKind = remember(markers) { mutableStateMapOf<TimelineMarkerKind, Int>() }
     var focusRequestTimeMs by remember { mutableLongStateOf(-1L) }
@@ -588,12 +594,18 @@ fun TimelineEditorSection(
                         displayMode == TimelineDisplayMode.MEASURES &&
                         hasMeasuresGrid
                     ) {
-                TimelineMeasuresEventList(
+                        TimelineMeasuresEventList(
                             modifier = Modifier.fillMaxSize(),
                             markers = markers,
                             currentPositionMs = safePositionMs,
                             tempoBpm = measuresTempoBpm,
                             measureAnchorMs = measureAnchorMs,
+                            onEditPosition = { clickedIndex, status ->
+                                positionEditIndex = clickedIndex
+                                positionEditMeasureDraft = status?.currentBar?.toString().orEmpty()
+                                positionEditBeatDraft = status?.currentBeat?.toString().orEmpty()
+                                positionEditSubdivisionDraft = status?.currentSubdivision?.toString().orEmpty()
+                            },
                             onPlayMarker = { timeMs -> playFromMarker(timeMs) },
                             onEditMarker = { index -> openMarkerEditor(index) },
                             onDeleteMarker = onDeleteMarker
@@ -661,6 +673,91 @@ fun TimelineEditorSection(
                 )
             }
         }
+    }
+
+    val safePositionEditIndex = positionEditIndex
+    if (
+        safePositionEditIndex != null &&
+        safePositionEditIndex in markers.indices &&
+        measuresTempoBpm != null &&
+        measureAnchorMs != null
+    ) {
+        val parsedMeasure = positionEditMeasureDraft.toIntOrNull()
+        val parsedBeat = positionEditBeatDraft.toIntOrNull()
+        val parsedSubdivision = positionEditSubdivisionDraft.toIntOrNull()
+        val isPositionInvalid = parsedMeasure == null ||
+            parsedMeasure < 1 ||
+            parsedBeat == null ||
+            parsedBeat !in 1..4 ||
+            parsedSubdivision == null ||
+            parsedSubdivision !in 1..4
+
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { positionEditIndex = null },
+            title = {
+                Text(
+                    text = stringResource(R.string.timeline_position_edit_title),
+                    color = Color.White
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(
+                        value = positionEditMeasureDraft,
+                        onValueChange = { input ->
+                            positionEditMeasureDraft = input.filter { it.isDigit() }.take(4)
+                        },
+                        label = { Text(stringResource(R.string.timeline_position_edit_measure_label)) },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+                    OutlinedTextField(
+                        value = positionEditBeatDraft,
+                        onValueChange = { input ->
+                            positionEditBeatDraft = input.filter { it.isDigit() }.take(1)
+                        },
+                        label = { Text(stringResource(R.string.timeline_position_edit_beat_label)) },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+                    OutlinedTextField(
+                        value = positionEditSubdivisionDraft,
+                        onValueChange = { input ->
+                            positionEditSubdivisionDraft = input.filter { it.isDigit() }.take(1)
+                        },
+                        label = { Text(stringResource(R.string.timeline_position_edit_subdivision_label)) },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val targetPositionMs = computeTimelinePositionMsFromMusicalPosition(
+                            tempoBpm = measuresTempoBpm,
+                            measureAnchorMs = measureAnchorMs,
+                            measure = parsedMeasure,
+                            beat = parsedBeat,
+                            subdivision = parsedSubdivision
+                        )
+                        if (targetPositionMs != null) {
+                            onMoveMarkerPosition(safePositionEditIndex, targetPositionMs)
+                            positionEditIndex = null
+                        }
+                    },
+                    enabled = !isPositionInvalid
+                ) {
+                    Text(stringResource(R.string.common_ok), color = Color(0xFF80CBC4))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { positionEditIndex = null }) {
+                    Text(stringResource(R.string.common_cancel), color = Color(0xFFB0BEC5))
+                }
+            },
+            containerColor = Color(0xFF222222)
+        )
     }
 
     val safeRenameIndex = renameIndex
@@ -837,6 +934,7 @@ private fun TimelineMeasuresEventList(
     currentPositionMs: Long,
     tempoBpm: Int?,
     measureAnchorMs: Long?,
+    onEditPosition: (Int, TimelineMeasuresStatus?) -> Unit,
     onPlayMarker: (Long) -> Unit,
     onEditMarker: (Int) -> Unit,
     onDeleteMarker: (Int) -> Unit
@@ -892,9 +990,11 @@ private fun TimelineMeasuresEventList(
                         clampBeforeAnchorToFirstMeasure = true
                     )
                     TimelineMeasuresEventListItem(
+                        index = index,
                         marker = marker,
                         isActive = isActive,
                         measuresStatus = markerMeasuresStatus,
+                        onEditPosition = onEditPosition,
                         onPlay = { onPlayMarker(marker.timeMs) },
                         onEdit = { onEditMarker(index) },
                         onDelete = { onDeleteMarker(index) }
@@ -907,9 +1007,11 @@ private fun TimelineMeasuresEventList(
 
 @Composable
 private fun TimelineMeasuresEventListItem(
+    index: Int,
     marker: TimelineMarker,
     isActive: Boolean,
     measuresStatus: TimelineMeasuresStatus?,
+    onEditPosition: (Int, TimelineMeasuresStatus?) -> Unit,
     onPlay: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit
@@ -954,6 +1056,17 @@ private fun TimelineMeasuresEventListItem(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f)
         )
+        TextButton(
+            onClick = { onEditPosition(index, measuresStatus) },
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp, vertical = 0.dp)
+        ) {
+            Text(
+                text = positionLabel,
+                color = Color(0xFFB0BEC5),
+                fontSize = 12.sp,
+                maxLines = 1
+            )
+        }
         IconButton(onClick = onPlay) {
             Icon(
                 imageVector = Icons.Filled.PlayArrow,
@@ -1370,6 +1483,33 @@ private fun computeTimelineMeasuresStatus(
         currentSubdivision = currentSubdivision,
         beatIndex = beatIndex.coerceAtLeast(0L)
     )
+}
+
+private fun computeTimelinePositionMsFromMusicalPosition(
+    tempoBpm: Int?,
+    measureAnchorMs: Long?,
+    measure: Int?,
+    beat: Int?,
+    subdivision: Int?
+): Long? {
+    val safeTempoBpm = tempoBpm?.takeIf {
+        it in TrackTimelineTempoPrefs.MIN_TEMPO_BPM..TrackTimelineTempoPrefs.MAX_TEMPO_BPM
+    } ?: return null
+    val safeAnchorMs = measureAnchorMs ?: return null
+    val safeMeasure = measure?.takeIf { it >= 1 } ?: return null
+    val safeBeat = beat?.takeIf { it in 1..4 } ?: return null
+    val safeSubdivision = subdivision?.takeIf { it in 1..4 } ?: return null
+
+    val beatDurationMs = 60_000.0 / safeTempoBpm.toDouble()
+    val subdivisionDurationMs = beatDurationMs / 4.0
+    if (beatDurationMs <= 0.0 || subdivisionDurationMs <= 0.0) return null
+
+    val relativeMs =
+        ((safeMeasure - 1) * 4.0 * beatDurationMs) +
+            ((safeBeat - 1) * beatDurationMs) +
+            ((safeSubdivision - 1) * subdivisionDurationMs)
+
+    return safeAnchorMs + relativeMs.roundToLong().coerceAtLeast(0L)
 }
 
 

@@ -494,6 +494,10 @@
     <string name="timeline_measures_anchor_ready">Current position: %1$s</string>
     <string name="timeline_measures_live_position">Bar %1$d • Beat %2$d</string>
     <string name="timeline_measures_event_position">M%1$d - T%2$d - D%3$d</string>
+    <string name="timeline_position_edit_title">Edit position</string>
+    <string name="timeline_position_edit_measure_label">Bar</string>
+    <string name="timeline_position_edit_beat_label">Beat</string>
+    <string name="timeline_position_edit_subdivision_label">Sixteenth</string>
     <string name="timeline_measures_tap_tempo_action">DT</string>
     <string name="timeline_measures_tap_tempo_value">%1$d BPM</string>
     <string name="timeline_measures_tap_tempo_pending">-- BPM</string>
