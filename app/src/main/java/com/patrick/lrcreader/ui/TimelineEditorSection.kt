@@ -59,7 +59,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -83,6 +86,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
@@ -1105,45 +1109,52 @@ private fun TimelineEditPositionJog(
             }
             .padding(vertical = 4.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            TimelineCounterSegment(
-                text = safeStatus.currentBar.toString(),
-                selected = selectedStep == TimelineEditStep.MEASURE,
-                onClick = {
-                    onStepSelected(TimelineEditStep.MEASURE)
-                    helperTextResId = R.string.timeline_position_edit_measure_label
-                }
-            )
-            Text(
-                text = stringResource(R.string.timeline_counter_separator),
-                color = Color(0xFF78909C),
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Medium
-            )
-            TimelineCounterSegment(
-                text = "%02d".format(safeStatus.currentBeat),
-                selected = selectedStep == TimelineEditStep.BEAT,
-                onClick = {
-                    onStepSelected(TimelineEditStep.BEAT)
-                    helperTextResId = R.string.timeline_position_edit_beat_label
-                }
-            )
-            Text(
-                text = stringResource(R.string.timeline_counter_separator),
-                color = Color(0xFF78909C),
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Medium
-            )
-            TimelineCounterSegment(
-                text = "%02d".format(safeStatus.currentSubdivision),
-                selected = selectedStep == TimelineEditStep.SUBDIVISION,
-                onClick = {
-                    onStepSelected(TimelineEditStep.SUBDIVISION)
-                    helperTextResId = R.string.timeline_position_edit_subdivision_label
-                }
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TimelineCounterSegment(
+                    text = safeStatus.currentBar.toString(),
+                    selected = selectedStep == TimelineEditStep.MEASURE,
+                    onClick = {
+                        onStepSelected(TimelineEditStep.MEASURE)
+                        helperTextResId = R.string.timeline_position_edit_measure_label
+                    }
+                )
+                Text(
+                    text = stringResource(R.string.timeline_counter_separator),
+                    color = Color(0xFF78909C),
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Medium
+                )
+                TimelineCounterSegment(
+                    text = "%02d".format(safeStatus.currentBeat),
+                    selected = selectedStep == TimelineEditStep.BEAT,
+                    onClick = {
+                        onStepSelected(TimelineEditStep.BEAT)
+                        helperTextResId = R.string.timeline_position_edit_beat_label
+                    }
+                )
+                Text(
+                    text = stringResource(R.string.timeline_counter_separator),
+                    color = Color(0xFF78909C),
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Medium
+                )
+                TimelineCounterSegment(
+                    text = "%02d".format(safeStatus.currentSubdivision),
+                    selected = selectedStep == TimelineEditStep.SUBDIVISION,
+                    onClick = {
+                        onStepSelected(TimelineEditStep.SUBDIVISION)
+                        helperTextResId = R.string.timeline_position_edit_subdivision_label
+                    }
+                )
+            }
+            TimelineJogRail(
+                modifier = Modifier.fillMaxWidth(),
+                visualOffsetPx = dragRemainderPx
             )
         }
         helperTextResId?.let { textResId ->
@@ -1160,6 +1171,72 @@ private fun TimelineEditPositionJog(
                 overflow = TextOverflow.Ellipsis
             )
         }
+    }
+}
+
+@Composable
+private fun TimelineJogRail(
+    modifier: Modifier = Modifier,
+    visualOffsetPx: Float
+) {
+    Canvas(
+        modifier = modifier
+            .height(32.dp)
+            .padding(horizontal = 30.dp, vertical = 5.dp)
+    ) {
+        val centerX = size.width / 2f
+        val centerY = size.height / 2f
+        val tickSpacing = size.width / 12f
+        val phase = visualOffsetPx % tickSpacing
+
+        drawLine(
+            color = Color(0xFF263238),
+            start = Offset(0f, centerY),
+            end = Offset(size.width, centerY),
+            strokeWidth = 4f,
+            cap = StrokeCap.Round
+        )
+
+        for (index in -14..14) {
+            val x = centerX + index * tickSpacing + phase
+            if (x < 0f || x > size.width) continue
+            val distanceRatio = (abs(x - centerX) / centerX).coerceIn(0f, 1f)
+            val focus = 1f - distanceRatio
+            val tickHeight = size.height * (0.28f + 0.72f * focus)
+            val tickAlpha = 0.22f + 0.78f * focus
+            drawLine(
+                color = Color(0xFFB2DFDB).copy(alpha = tickAlpha),
+                start = Offset(x, centerY - tickHeight / 2f),
+                end = Offset(x, centerY + tickHeight / 2f),
+                strokeWidth = 1.5f + 2.5f * focus,
+                cap = StrokeCap.Round
+            )
+        }
+
+        drawLine(
+            color = Color(0xFF80CBC4).copy(alpha = 0.28f),
+            start = Offset(centerX, 0f),
+            end = Offset(centerX, size.height),
+            strokeWidth = 10f,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = Color(0xFFE0F2F1),
+            start = Offset(centerX, 0f),
+            end = Offset(centerX, size.height),
+            strokeWidth = 3.5f,
+            cap = StrokeCap.Round
+        )
+        drawRect(
+            brush = Brush.horizontalGradient(
+                colors = listOf(
+                    Color(0xFF05080A).copy(alpha = 0.7f),
+                    Color.Transparent,
+                    Color.Transparent,
+                    Color(0xFF05080A).copy(alpha = 0.7f)
+                )
+            )
+        )
     }
 }
 
