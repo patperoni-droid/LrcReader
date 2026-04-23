@@ -425,6 +425,8 @@
     <string name="timeline_jog_step_beat">T</string>
     <string name="timeline_jog_step_subdivision">D</string>
     <string name="timeline_jog_hint">Arrastrar horizontalmente</string>
+    <string name="timeline_position_display_music">M</string>
+    <string name="timeline_position_display_time">T</string>
     <string name="timeline_markers_title">Marcas colocadas</string>
     <string name="timeline_empty_state">No hay marcas para esta pista SMP.</string>
     <string name="timeline_rename_title">Renombrar marca</string>

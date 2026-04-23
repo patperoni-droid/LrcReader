@@ -374,6 +374,8 @@
     <string name="timeline_jog_step_beat">T</string>
     <string name="timeline_jog_step_subdivision">D</string>
     <string name="timeline_jog_hint">Glisser horizontalement</string>
+    <string name="timeline_position_display_music">M</string>
+    <string name="timeline_position_display_time">T</string>
     <string name="timeline_pro_only">Version Pro</string>
     <string name="timeline_config_pro_dialog_title">Fonction Pro</string>
     <string name="timeline_config_pro_dialog_message">Configurez vos actions et préparez votre show avec la version Pro.</string>

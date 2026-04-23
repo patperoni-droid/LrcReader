@@ -112,6 +112,11 @@ private enum class TimelineEditStep {
     SUBDIVISION
 }
 
+private enum class TimelineListPositionDisplayMode {
+    MUSIC,
+    TIME
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun TimelineEditorSection(
@@ -169,6 +174,7 @@ fun TimelineEditorSection(
     var positionEditSubdivisionDraft by remember { mutableStateOf("") }
     var editingPositionMs by remember { mutableLongStateOf(0L) }
     var editingStep by remember { mutableStateOf(TimelineEditStep.BEAT) }
+    var listPositionDisplayMode by remember { mutableStateOf(TimelineListPositionDisplayMode.MUSIC) }
     val paletteNavigationIndexByLabel = remember(markers) { mutableStateMapOf<String, Int>() }
     val paletteNavigationIndexByKind = remember(markers) { mutableStateMapOf<TimelineMarkerKind, Int>() }
     var focusRequestTimeMs by remember { mutableLongStateOf(-1L) }
@@ -650,9 +656,11 @@ fun TimelineEditorSection(
                             currentPositionMs = safePositionMs,
                             editingPositionMs = listEditPositionMs,
                             editingStep = editingStep,
+                            positionDisplayMode = listPositionDisplayMode,
                             tempoBpm = measuresTempoBpm,
                             measureAnchorMs = measureAnchorMs,
                             onEditingStepSelected = { editingStep = it },
+                            onPositionDisplayModeChange = { listPositionDisplayMode = it },
                             onJogSteps = { steps ->
                                 editingPositionMs = computeTimelinePositionAfterSteps(
                                     tempoBpm = measuresTempoBpm,
@@ -996,9 +1004,11 @@ private fun TimelineMeasuresEventList(
     currentPositionMs: Long,
     editingPositionMs: Long,
     editingStep: TimelineEditStep,
+    positionDisplayMode: TimelineListPositionDisplayMode,
     tempoBpm: Int?,
     measureAnchorMs: Long?,
     onEditingStepSelected: (TimelineEditStep) -> Unit,
+    onPositionDisplayModeChange: (TimelineListPositionDisplayMode) -> Unit,
     onJogSteps: (Int) -> Unit,
     onEditPosition: (Int, TimelineMeasuresStatus?) -> Unit,
     onPlayMarker: (Long) -> Unit,
@@ -1023,8 +1033,11 @@ private fun TimelineMeasuresEventList(
     ) {
         TimelineEditPositionJog(
             editingMeasuresStatus = editingMeasuresStatus,
+            editingPositionMs = editingPositionMs,
             selectedStep = editingStep,
+            positionDisplayMode = positionDisplayMode,
             onStepSelected = onEditingStepSelected,
+            onPositionDisplayModeChange = onPositionDisplayModeChange,
             onJogSteps = onJogSteps
         )
 
@@ -1055,6 +1068,7 @@ private fun TimelineMeasuresEventList(
                         marker = marker,
                         isActive = isActive,
                         measuresStatus = markerMeasuresStatus,
+                        positionDisplayMode = positionDisplayMode,
                         onEditPosition = onEditPosition,
                         onPlay = { onPlayMarker(marker.timeMs) },
                         onEdit = { onEditMarker(index) },
@@ -1069,8 +1083,11 @@ private fun TimelineMeasuresEventList(
 @Composable
 private fun TimelineEditPositionJog(
     editingMeasuresStatus: TimelineMeasuresStatus?,
+    editingPositionMs: Long,
     selectedStep: TimelineEditStep,
+    positionDisplayMode: TimelineListPositionDisplayMode,
     onStepSelected: (TimelineEditStep) -> Unit,
+    onPositionDisplayModeChange: (TimelineListPositionDisplayMode) -> Unit,
     onJogSteps: (Int) -> Unit
 ) {
     var dragRemainderPx by remember { mutableStateOf(0f) }
@@ -1110,46 +1127,63 @@ private fun TimelineEditPositionJog(
             .padding(vertical = 4.dp)
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                TimelineCounterSegment(
-                    text = safeStatus.currentBar.toString(),
-                    selected = selectedStep == TimelineEditStep.MEASURE,
-                    onClick = {
-                        onStepSelected(TimelineEditStep.MEASURE)
-                        helperTextResId = R.string.timeline_position_edit_measure_label
+            Box(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier.align(Alignment.Center),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (positionDisplayMode == TimelineListPositionDisplayMode.MUSIC) {
+                        TimelineCounterSegment(
+                            text = safeStatus.currentBar.toString(),
+                            selected = selectedStep == TimelineEditStep.MEASURE,
+                            onClick = {
+                                onStepSelected(TimelineEditStep.MEASURE)
+                                helperTextResId = R.string.timeline_position_edit_measure_label
+                            }
+                        )
+                        Text(
+                            text = stringResource(R.string.timeline_counter_separator),
+                            color = Color(0xFF78909C),
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        TimelineCounterSegment(
+                            text = "%02d".format(safeStatus.currentBeat),
+                            selected = selectedStep == TimelineEditStep.BEAT,
+                            onClick = {
+                                onStepSelected(TimelineEditStep.BEAT)
+                                helperTextResId = R.string.timeline_position_edit_beat_label
+                            }
+                        )
+                        Text(
+                            text = stringResource(R.string.timeline_counter_separator),
+                            color = Color(0xFF78909C),
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        TimelineCounterSegment(
+                            text = "%02d".format(safeStatus.currentSubdivision),
+                            selected = selectedStep == TimelineEditStep.SUBDIVISION,
+                            onClick = {
+                                onStepSelected(TimelineEditStep.SUBDIVISION)
+                                helperTextResId = R.string.timeline_position_edit_subdivision_label
+                            }
+                        )
+                    } else {
+                        Text(
+                            text = formatTimelineMarkerTime(editingPositionMs),
+                            color = Color.White,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1
+                        )
                     }
-                )
-                Text(
-                    text = stringResource(R.string.timeline_counter_separator),
-                    color = Color(0xFF78909C),
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Medium
-                )
-                TimelineCounterSegment(
-                    text = "%02d".format(safeStatus.currentBeat),
-                    selected = selectedStep == TimelineEditStep.BEAT,
-                    onClick = {
-                        onStepSelected(TimelineEditStep.BEAT)
-                        helperTextResId = R.string.timeline_position_edit_beat_label
-                    }
-                )
-                Text(
-                    text = stringResource(R.string.timeline_counter_separator),
-                    color = Color(0xFF78909C),
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Medium
-                )
-                TimelineCounterSegment(
-                    text = "%02d".format(safeStatus.currentSubdivision),
-                    selected = selectedStep == TimelineEditStep.SUBDIVISION,
-                    onClick = {
-                        onStepSelected(TimelineEditStep.SUBDIVISION)
-                        helperTextResId = R.string.timeline_position_edit_subdivision_label
-                    }
+                }
+                TimelinePositionDisplayModeSwitch(
+                    selectedMode = positionDisplayMode,
+                    onModeSelected = onPositionDisplayModeChange,
+                    modifier = Modifier.align(Alignment.CenterEnd)
                 )
             }
             TimelineJogRail(
@@ -1171,6 +1205,45 @@ private fun TimelineEditPositionJog(
                 overflow = TextOverflow.Ellipsis
             )
         }
+    }
+}
+
+@Composable
+private fun TimelinePositionDisplayModeSwitch(
+    selectedMode: TimelineListPositionDisplayMode,
+    onModeSelected: (TimelineListPositionDisplayMode) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val nextMode = if (selectedMode == TimelineListPositionDisplayMode.MUSIC) {
+        TimelineListPositionDisplayMode.TIME
+    } else {
+        TimelineListPositionDisplayMode.MUSIC
+    }
+    TimelinePositionDisplayModeButton(
+        text = if (selectedMode == TimelineListPositionDisplayMode.MUSIC) "🎵" else "⏱",
+        onClick = { onModeSelected(nextMode) },
+        modifier = modifier
+    )
+}
+
+@Composable
+private fun TimelinePositionDisplayModeButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    TextButton(
+        onClick = onClick,
+        modifier = modifier,
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp, vertical = 0.dp)
+    ) {
+        Text(
+            text = text,
+            color = Color(0xFF80CBC4),
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1
+        )
     }
 }
 
@@ -1266,6 +1339,7 @@ private fun TimelineMeasuresEventListItem(
     marker: TimelineMarker,
     isActive: Boolean,
     measuresStatus: TimelineMeasuresStatus?,
+    positionDisplayMode: TimelineListPositionDisplayMode,
     onEditPosition: (Int, TimelineMeasuresStatus?) -> Unit,
     onPlay: () -> Unit,
     onEdit: () -> Unit,
@@ -1276,14 +1350,18 @@ private fun TimelineMeasuresEventListItem(
         TimelineMarkerKind.DMX -> kindLabel
         else -> marker.label.ifBlank { kindLabel }
     }
-    val positionLabel = measuresStatus?.let { status ->
-        stringResource(
-            R.string.timeline_measures_event_position,
-            status.currentBar,
-            status.currentBeat,
-            status.currentSubdivision
-        )
-    } ?: formatTimelineMarkerTime(marker.timeMs)
+    val positionLabel = if (positionDisplayMode == TimelineListPositionDisplayMode.MUSIC) {
+        measuresStatus?.let { status ->
+            stringResource(
+                R.string.timeline_measures_event_position,
+                status.currentBar,
+                status.currentBeat,
+                status.currentSubdivision
+            )
+        } ?: formatTimelineMarkerTime(marker.timeMs)
+    } else {
+        formatTimelineMarkerTime(marker.timeMs)
+    }
     val rowText = if (markerTitle == kindLabel) {
         stringResource(
             R.string.timeline_event_list_meta,
