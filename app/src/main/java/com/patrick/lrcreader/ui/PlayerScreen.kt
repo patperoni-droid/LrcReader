@@ -598,8 +598,9 @@ fun PlayerScreen(
         }
     }
 
-    fun addTimelineMarker(
+    fun addTimelineMarkerAtPosition(
         label: String,
+        targetPositionMs: Long,
         kind: TimelineMarkerKind = TimelineMarkerKind.TEXT,
         durationMs: Long? = null
     ) {
@@ -614,7 +615,7 @@ fun PlayerScreen(
 
         val previousMarkers = timelineMarkers
         val updatedMarkers = (timelineMarkers + TimelineMarker(
-            timeMs = getPositionMs().coerceAtLeast(0L),
+            timeMs = targetPositionMs.coerceAtLeast(0L),
             label = trimmed,
             kind = kind,
             durationMs = normalizedDurationMs
@@ -625,10 +626,34 @@ fun PlayerScreen(
         persistTimelineMarkers(updatedMarkers, previousMarkers)
     }
 
+    fun addTimelineMarker(
+        label: String,
+        kind: TimelineMarkerKind = TimelineMarkerKind.TEXT,
+        durationMs: Long? = null
+    ) {
+        addTimelineMarkerAtPosition(
+            label = label,
+            targetPositionMs = getPositionMs().coerceAtLeast(0L),
+            kind = kind,
+            durationMs = durationMs
+        )
+    }
+
     fun addTypedTimelineMarker(kind: TimelineMarkerKind) {
         if (kind == TimelineMarkerKind.TEXT) return
-        addTimelineMarker(
+        addTimelineMarkerAtPosition(
             label = kind.defaultLabel,
+            targetPositionMs = getPositionMs().coerceAtLeast(0L),
+            kind = kind,
+            durationMs = if (kind == TimelineMarkerKind.NOTE) DEFAULT_TIMELINE_NOTE_DURATION_MS else null
+        )
+    }
+
+    fun addTypedTimelineMarkerAtPosition(kind: TimelineMarkerKind, targetPositionMs: Long) {
+        if (kind == TimelineMarkerKind.TEXT) return
+        addTimelineMarkerAtPosition(
+            label = kind.defaultLabel,
+            targetPositionMs = targetPositionMs,
             kind = kind,
             durationMs = if (kind == TimelineMarkerKind.NOTE) DEFAULT_TIMELINE_NOTE_DURATION_MS else null
         )
@@ -672,6 +697,30 @@ fun PlayerScreen(
                 isEditingTimeline && !isPlaying && syncPositionMs != null
             }
             LightCueDispatcher.syncToPosition(trackUriString, targetSyncPositionMs)
+        }
+    }
+
+    fun addTimelineDmxCueAtPosition(targetPositionMs: Long) {
+        val trackUri = currentTrackUri ?: return
+        val cue = LightCue(
+            timeMs = targetPositionMs.coerceAtLeast(0L),
+            action = LightAction.Color(argb = DEFAULT_TIMELINE_LIGHT_CUE_ARGB),
+            intensity = 1f,
+            fadeMs = 0L
+        )
+        scope.launch {
+            val saved = withContext(Dispatchers.IO) {
+                SmpLightCueBridge.upsertCueAtTime(
+                    context = context,
+                    trackUriString = trackUri,
+                    cue = cue
+                ) == true
+            }
+            if (saved) {
+                refreshTimelineLightCues(trackUri)
+            } else {
+                Toast.makeText(context, sTimelineSaveFailed, Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
@@ -1947,31 +1996,21 @@ fun PlayerScreen(
                 seekToMs = seekToMs,
                 onAddPaletteTag = { label -> addTimelinePaletteTag(label) },
                 onAddMarker = { label -> addTimelineMarker(label) },
+                onAddMarkerAtPosition = { label, targetPositionMs ->
+                    addTimelineMarkerAtPosition(label, targetPositionMs)
+                },
                 onAddTypedMarker = onAddTypedMarker@ { kind ->
                     if (kind == TimelineMarkerKind.DMX) {
-                        val trackUri = currentTrackUri ?: return@onAddTypedMarker
-                        val cue = LightCue(
-                            timeMs = getPositionMs().coerceAtLeast(0L),
-                            action = LightAction.Color(argb = DEFAULT_TIMELINE_LIGHT_CUE_ARGB),
-                            intensity = 1f,
-                            fadeMs = 0L
-                        )
-                        scope.launch {
-                            val saved = withContext(Dispatchers.IO) {
-                                SmpLightCueBridge.upsertCueAtTime(
-                                    context = context,
-                                    trackUriString = trackUri,
-                                    cue = cue
-                                ) == true
-                            }
-                            if (saved) {
-                                refreshTimelineLightCues(trackUri)
-                            } else {
-                                Toast.makeText(context, sTimelineSaveFailed, Toast.LENGTH_SHORT).show()
-                            }
-                        }
+                        addTimelineDmxCueAtPosition(getPositionMs().coerceAtLeast(0L))
                     } else {
                         addTypedTimelineMarker(kind)
+                    }
+                },
+                onAddTypedMarkerAtPosition = onAddTypedMarkerAtPosition@ { kind, targetPositionMs ->
+                    if (kind == TimelineMarkerKind.DMX) {
+                        addTimelineDmxCueAtPosition(targetPositionMs)
+                    } else {
+                        addTypedTimelineMarkerAtPosition(kind, targetPositionMs)
                     }
                 },
                 onGenerateLights = {
