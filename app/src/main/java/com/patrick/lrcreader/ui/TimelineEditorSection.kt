@@ -586,24 +586,6 @@ fun TimelineEditorSection(
                     }
                 }
 
-                if (dmxUiVisible) {
-                    TextButton(
-                        onClick = {
-                            if (isLite) {
-                                showTimelineConfigProDialog = true
-                            } else {
-                                onGenerateLights()
-                            }
-                        },
-                        enabled = durationMs > 0
-                    ) {
-                        Text(
-                            text = stringResource(R.string.light_generate_action),
-                            color = if (durationMs > 0) Color(0xFF80CBC4) else Color(0xFFB0BEC5)
-                        )
-                    }
-                }
-
                 Spacer(Modifier.height(10.dp))
 
                 Row(
@@ -1099,6 +1081,7 @@ private fun TimelineEditPositionJog(
         currentSubdivision = 1,
         beatIndex = 0L
     )
+    val counterSeparator = stringResource(R.string.timeline_counter_separator)
 
     LaunchedEffect(helperTextResId) {
         if (helperTextResId != null) {
@@ -1135,32 +1118,20 @@ private fun TimelineEditPositionJog(
                 ) {
                     if (positionDisplayMode == TimelineListPositionDisplayMode.MUSIC) {
                         TimelineCounterSegment(
-                            text = safeStatus.currentBar.toString(),
+                            text = "${safeStatus.currentBar} $counterSeparator",
                             selected = selectedStep == TimelineEditStep.MEASURE,
                             onClick = {
                                 onStepSelected(TimelineEditStep.MEASURE)
                                 helperTextResId = R.string.timeline_position_edit_measure_label
                             }
                         )
-                        Text(
-                            text = stringResource(R.string.timeline_counter_separator),
-                            color = Color(0xFF78909C),
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Medium
-                        )
                         TimelineCounterSegment(
-                            text = "%02d".format(safeStatus.currentBeat),
+                            text = "%02d %s".format(safeStatus.currentBeat, counterSeparator),
                             selected = selectedStep == TimelineEditStep.BEAT,
                             onClick = {
                                 onStepSelected(TimelineEditStep.BEAT)
                                 helperTextResId = R.string.timeline_position_edit_beat_label
                             }
-                        )
-                        Text(
-                            text = stringResource(R.string.timeline_counter_separator),
-                            color = Color(0xFF78909C),
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Medium
                         )
                         TimelineCounterSegment(
                             text = "%02d".format(safeStatus.currentSubdivision),
@@ -1333,6 +1304,7 @@ private fun TimelineCounterSegment(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun TimelineMeasuresEventListItem(
     index: Int,
@@ -1352,30 +1324,22 @@ private fun TimelineMeasuresEventListItem(
     }
     val positionLabel = if (positionDisplayMode == TimelineListPositionDisplayMode.MUSIC) {
         measuresStatus?.let { status ->
-            stringResource(
-                R.string.timeline_measures_event_position,
+            "%02d %s %02d %s %02d".format(
                 status.currentBar,
+                stringResource(R.string.timeline_counter_separator),
                 status.currentBeat,
+                stringResource(R.string.timeline_counter_separator),
                 status.currentSubdivision
             )
         } ?: formatTimelineMarkerTime(marker.timeMs)
     } else {
         formatTimelineMarkerTime(marker.timeMs)
     }
-    val rowText = if (markerTitle == kindLabel) {
-        stringResource(
-            R.string.timeline_event_list_meta,
-            kindLabel,
-            positionLabel
-        )
-    } else {
-        stringResource(
-            R.string.timeline_event_list_row_with_label,
-            markerTitle,
-            kindLabel,
-            positionLabel
-        )
-    }
+    val rowText = stringResource(
+        R.string.timeline_event_list_meta,
+        markerTitle,
+        positionLabel
+    )
 
     Row(
         modifier = Modifier
@@ -1390,19 +1354,13 @@ private fun TimelineMeasuresEventListItem(
             fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f)
+            modifier = Modifier
+                .weight(1f)
+                .combinedClickable(
+                    onClick = { onEditPosition(index, measuresStatus) },
+                    onLongClick = null
+                )
         )
-        TextButton(
-            onClick = { onEditPosition(index, measuresStatus) },
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp, vertical = 0.dp)
-        ) {
-            Text(
-                text = positionLabel,
-                color = Color(0xFFB0BEC5),
-                fontSize = 12.sp,
-                maxLines = 1
-            )
-        }
         IconButton(onClick = onPlay) {
             Icon(
                 imageVector = Icons.Filled.PlayArrow,
