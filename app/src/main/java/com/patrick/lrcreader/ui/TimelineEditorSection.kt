@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -165,8 +166,8 @@ fun TimelineEditorSection(
     var showPaletteInput by remember { mutableStateOf(false) }
     var showTimelineConfigProDialog by remember { mutableStateOf(false) }
     var editorMode by remember { mutableStateOf(TimelineEditorMode.TIMELINE) }
-    var displayMode by remember { mutableStateOf(TimelineDisplayMode.TIME) }
-    var measuresViewMode by remember { mutableStateOf(TimelineMeasuresViewMode.TIMELINE) }
+    var displayMode by remember { mutableStateOf(TimelineDisplayMode.MEASURES) }
+    var measuresViewMode by remember { mutableStateOf(TimelineMeasuresViewMode.LIST) }
     var measuresTempoDraft by remember { mutableStateOf("") }
     var positionEditIndex by remember(markers) { mutableStateOf<Int?>(null) }
     var positionEditMeasureDraft by remember { mutableStateOf("") }
@@ -253,20 +254,6 @@ fun TimelineEditorSection(
         measuresTempoBpm != null && measureAnchorMs != null
     }
     val listEditPositionMs = if (isPlaying) safePositionMs else editingPositionMs
-
-    LaunchedEffect(hasMeasuresGrid, displayMode) {
-        if (!hasMeasuresGrid && displayMode == TimelineDisplayMode.MEASURES) {
-            displayMode = TimelineDisplayMode.TIME
-        }
-    }
-
-    LaunchedEffect(hasMeasuresGrid, displayMode, measuresViewMode) {
-        if ((!hasMeasuresGrid || displayMode != TimelineDisplayMode.MEASURES) &&
-            measuresViewMode == TimelineMeasuresViewMode.LIST
-        ) {
-            measuresViewMode = TimelineMeasuresViewMode.TIMELINE
-        }
-    }
 
     LaunchedEffect(measuresViewMode, hasMeasuresGrid, measureAnchorMs) {
         if (measuresViewMode == TimelineMeasuresViewMode.LIST && hasMeasuresGrid) {
@@ -399,16 +386,6 @@ fun TimelineEditorSection(
 
             when (editorMode) {
                 TimelineEditorMode.TIMELINE -> {
-                    TimelineDisplayModeSelector(
-                        selectedMode = displayMode,
-                        hasMeasuresGrid = hasMeasuresGrid,
-                        onModeSelected = { nextMode ->
-                            if (nextMode == TimelineDisplayMode.TIME || hasMeasuresGrid) {
-                                displayMode = nextMode
-                            }
-                        }
-                    )
-                    Spacer(Modifier.width(8.dp))
                     TextButton(onClick = { editorMode = TimelineEditorMode.GRID_SETUP }) {
                         Text(
                             text = stringResource(
@@ -431,12 +408,6 @@ fun TimelineEditorSection(
 
         when (editorMode) {
             TimelineEditorMode.TIMELINE -> {
-                if (displayMode == TimelineDisplayMode.MEASURES && !hasMeasuresGrid) {
-                    TimelineGridEmptyState(
-                        onOpenGridSetup = { editorMode = TimelineEditorMode.GRID_SETUP }
-                    )
-                    Spacer(Modifier.height(10.dp))
-                }
                 if (displayMode == TimelineDisplayMode.MEASURES && hasMeasuresGrid) {
                     TimelineMeasuresViewModeSelector(
                         selectedMode = measuresViewMode,
@@ -534,7 +505,8 @@ fun TimelineEditorSection(
                             Icon(
                                 imageVector = Icons.Filled.GraphicEq,
                                 contentDescription = null,
-                                tint = Color(0xFF80CBC4)
+                                tint = Color(0xFF80CBC4).copy(alpha = 0.72f),
+                                modifier = Modifier.size(16.dp)
                             )
                         },
                         onClick = {
@@ -552,7 +524,8 @@ fun TimelineEditorSection(
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.StickyNote2,
                                 contentDescription = null,
-                                tint = Color(0xFFFFF176)
+                                tint = Color(0xFFFFF176).copy(alpha = 0.72f),
+                                modifier = Modifier.size(16.dp)
                             )
                         },
                         onClick = {
@@ -571,7 +544,8 @@ fun TimelineEditorSection(
                                 Icon(
                                     imageVector = Icons.Filled.FlashOn,
                                     contentDescription = null,
-                                    tint = Color(0xFFFFB74D)
+                                    tint = Color(0xFFFFB74D).copy(alpha = 0.72f),
+                                    modifier = Modifier.size(16.dp)
                                 )
                             },
                             onClick = {
@@ -586,41 +560,43 @@ fun TimelineEditorSection(
                     }
                 }
 
-                Spacer(Modifier.height(10.dp))
+                if (measuresViewMode != TimelineMeasuresViewMode.LIST) {
+                    Spacer(Modifier.height(10.dp))
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    if (dmxUiVisible && measuresViewMode != TimelineMeasuresViewMode.LIST) {
-                        TextButton(
-                            onClick = {
-                                if (isLite) {
-                                    showTimelineConfigProDialog = true
-                                } else {
-                                    onPasteDmxCueHere()
-                                }
-                            },
-                            enabled = canPasteDmxCue
-                        ) {
-                            Text(
-                                text = stringResource(R.string.timeline_paste_here),
-                                color = if (canPasteDmxCue) Color(0xFFFFB74D) else Color(0xFFB0BEC5)
-                            )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (dmxUiVisible) {
+                            TextButton(
+                                onClick = {
+                                    if (isLite) {
+                                        showTimelineConfigProDialog = true
+                                    } else {
+                                        onPasteDmxCueHere()
+                                    }
+                                },
+                                enabled = canPasteDmxCue
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.timeline_paste_here),
+                                    color = if (canPasteDmxCue) Color(0xFFFFB74D) else Color(0xFFB0BEC5)
+                                )
+                            }
                         }
+                        Spacer(Modifier.weight(1f))
+                        Text(
+                            text = formatTimelinePositionLabel(
+                                displayMode = displayMode,
+                                hasMeasuresGrid = hasMeasuresGrid,
+                                positionMs = safePositionMs,
+                                tempoBpm = measuresTempoBpm,
+                                measureAnchorMs = measureAnchorMs
+                            ),
+                            color = if (durationMs > 0) Color(0xFF80CBC4) else Color(0xFFB0BEC5),
+                            fontSize = 12.sp
+                        )
                     }
-                    Spacer(Modifier.weight(1f))
-                    Text(
-                        text = formatTimelinePositionLabel(
-                            displayMode = displayMode,
-                            hasMeasuresGrid = hasMeasuresGrid,
-                            positionMs = safePositionMs,
-                            tempoBpm = measuresTempoBpm,
-                            measureAnchorMs = measureAnchorMs
-                        ),
-                        color = if (durationMs > 0) Color(0xFF80CBC4) else Color(0xFFB0BEC5),
-                        fontSize = 12.sp
-                    )
                 }
 
                 Box(
@@ -628,10 +604,7 @@ fun TimelineEditorSection(
                         .weight(1f)
                         .fillMaxWidth()
                 ) {
-                    if (measuresViewMode == TimelineMeasuresViewMode.LIST &&
-                        displayMode == TimelineDisplayMode.MEASURES &&
-                        hasMeasuresGrid
-                    ) {
+                    if (measuresViewMode == TimelineMeasuresViewMode.LIST) {
                         TimelineMeasuresEventList(
                             modifier = Modifier.fillMaxSize(),
                             markers = markers,
@@ -663,28 +636,36 @@ fun TimelineEditorSection(
                             onDeleteMarker = onDeleteMarker
                         )
                     } else {
-                        TimelineScrubColumn(
-                            modifier = Modifier.fillMaxSize(),
-                            markers = markers,
-                            positionMs = positionMs,
-                            durationMs = durationMs,
-                            isPlaying = isPlaying,
-                            slotLabel = { slotTimeMs ->
-                                formatTimelinePositionLabel(
-                                    displayMode = displayMode,
-                                    hasMeasuresGrid = hasMeasuresGrid,
-                                    positionMs = slotTimeMs,
-                                    tempoBpm = measuresTempoBpm,
-                                    measureAnchorMs = measureAnchorMs
-                                )
-                            },
-                            focusRequestTimeMs = focusRequestTimeMs.takeIf { it >= 0L },
-                            focusRequestToken = focusRequestToken,
-                            onSeekToMs = seekToMs,
-                            onEditMarker = { index -> openMarkerEditor(index) },
-                            onDeleteMarker = onDeleteMarker,
-                            onCopyDmxMarker = onCopyDmxMarker
-                        )
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            Text(
+                                text = "ANCIENNE TIMELINE",
+                                color = Color(0xFFFF5252),
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            TimelineScrubColumn(
+                                modifier = Modifier.fillMaxSize(),
+                                markers = markers,
+                                positionMs = positionMs,
+                                durationMs = durationMs,
+                                isPlaying = isPlaying,
+                                slotLabel = { slotTimeMs ->
+                                    formatTimelinePositionLabel(
+                                        displayMode = displayMode,
+                                        hasMeasuresGrid = hasMeasuresGrid,
+                                        positionMs = slotTimeMs,
+                                        tempoBpm = measuresTempoBpm,
+                                        measureAnchorMs = measureAnchorMs
+                                    )
+                                },
+                                focusRequestTimeMs = focusRequestTimeMs.takeIf { it >= 0L },
+                                focusRequestToken = focusRequestToken,
+                                onSeekToMs = seekToMs,
+                                onEditMarker = { index -> openMarkerEditor(index) },
+                                onDeleteMarker = onDeleteMarker,
+                                onCopyDmxMarker = onCopyDmxMarker
+                            )
+                        }
                     }
 
                     if (dmxUiVisible && showLightPreview) {
@@ -953,7 +934,7 @@ private fun TimelineDisplayModeSelector(
         TimelineModeChip(
             text = stringResource(R.string.timeline_mode_measures),
             selected = selectedMode == TimelineDisplayMode.MEASURES,
-            enabled = hasMeasuresGrid,
+            enabled = true,
             onClick = { onModeSelected(TimelineDisplayMode.MEASURES) }
         )
     }
@@ -1011,11 +992,12 @@ private fun TimelineMeasuresEventList(
 
     Column(
         modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         TimelineEditPositionJog(
             editingMeasuresStatus = editingMeasuresStatus,
             editingPositionMs = editingPositionMs,
+            currentTimeLabel = formatTimelineMarkerTime(currentPositionMs),
             selectedStep = editingStep,
             positionDisplayMode = positionDisplayMode,
             onStepSelected = onEditingStepSelected,
@@ -1032,7 +1014,7 @@ private fun TimelineMeasuresEventList(
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
                 itemsIndexed(
                     items = markers,
@@ -1066,6 +1048,7 @@ private fun TimelineMeasuresEventList(
 private fun TimelineEditPositionJog(
     editingMeasuresStatus: TimelineMeasuresStatus?,
     editingPositionMs: Long,
+    currentTimeLabel: String,
     selectedStep: TimelineEditStep,
     positionDisplayMode: TimelineListPositionDisplayMode,
     onStepSelected: (TimelineEditStep) -> Unit,
@@ -1111,6 +1094,13 @@ private fun TimelineEditPositionJog(
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             Box(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = currentTimeLabel,
+                    color = Color(0xFFB0BEC5),
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    modifier = Modifier.align(Alignment.CenterStart)
+                )
                 Row(
                     modifier = Modifier.align(Alignment.Center),
                     horizontalArrangement = Arrangement.Center,
@@ -1344,7 +1334,7 @@ private fun TimelineMeasuresEventListItem(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 2.dp),
+            .padding(vertical = 0.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
@@ -1930,12 +1920,18 @@ private fun TimelineEventPaletteButton(
                 onClick = onClick,
                 onLongClick = onLongClick
             )
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .background(Color.White.copy(alpha = 0.045f), RoundedCornerShape(12.dp))
+            .padding(horizontal = 8.dp, vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         icon()
-        Spacer(Modifier.width(6.dp))
-        Text(text = label, color = if (enabled) Color.White else Color.White.copy(alpha = 0.45f))
+        Spacer(Modifier.width(4.dp))
+        Text(
+            text = label,
+            color = if (enabled) Color.White.copy(alpha = 0.78f) else Color.White.copy(alpha = 0.38f),
+            fontSize = 12.sp,
+            maxLines = 1
+        )
     }
 }
 

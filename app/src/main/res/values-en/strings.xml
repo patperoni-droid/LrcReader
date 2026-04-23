@@ -457,8 +457,8 @@
     <string name="timeline_mode_measures">M</string>
     <string name="timeline_measures_view_timeline">Timeline</string>
     <string name="timeline_measures_view_list">List</string>
-    <string name="timeline_grid_create_action">RG</string>
-    <string name="timeline_grid_edit_action">RG</string>
+    <string name="timeline_grid_create_action">Adjust grid</string>
+    <string name="timeline_grid_edit_action">Adjust grid</string>
     <string name="timeline_grid_create_title">Create grid</string>
     <string name="timeline_grid_edit_title">Adjust grid</string>
     <string name="timeline_grid_missing_message">No active grid yet. Create the grid to view the timeline in measures.</string>

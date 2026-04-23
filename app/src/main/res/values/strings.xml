@@ -349,8 +349,8 @@
     <string name="timeline_mode_measures">M</string>
     <string name="timeline_measures_view_timeline">Timeline</string>
     <string name="timeline_measures_view_list">Liste</string>
-    <string name="timeline_grid_create_action">RG</string>
-    <string name="timeline_grid_edit_action">RG</string>
+    <string name="timeline_grid_create_action">Régler la grille</string>
+    <string name="timeline_grid_edit_action">Régler la grille</string>
     <string name="timeline_grid_create_title">Créer la grille</string>
     <string name="timeline_grid_edit_title">Régler la grille</string>
     <string name="timeline_grid_missing_message">Aucune grille active. Créez la grille pour afficher la timeline en mesures.</string>

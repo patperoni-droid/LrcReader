@@ -400,8 +400,8 @@
     <string name="timeline_mode_measures">M</string>
     <string name="timeline_measures_view_timeline">Timeline</string>
     <string name="timeline_measures_view_list">Lista</string>
-    <string name="timeline_grid_create_action">RG</string>
-    <string name="timeline_grid_edit_action">RG</string>
+    <string name="timeline_grid_create_action">Ajustar cuadrícula</string>
+    <string name="timeline_grid_edit_action">Ajustar cuadrícula</string>
     <string name="timeline_grid_create_title">Crear cuadrícula</string>
     <string name="timeline_grid_edit_title">Ajustar cuadrícula</string>
     <string name="timeline_grid_missing_message">Aún no hay cuadrícula activa. Crea la cuadrícula para ver la timeline en compases.</string>
