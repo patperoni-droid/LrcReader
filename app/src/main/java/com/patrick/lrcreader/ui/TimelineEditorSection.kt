@@ -14,7 +14,11 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -41,6 +45,7 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
@@ -63,12 +68,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -350,6 +359,9 @@ fun TimelineEditorSection(
                     if (isPlaying) {
                         onIsPlayingChange(false)
                     } else if (durationMs > 0) {
+                        if (editorMode == TimelineEditorMode.GRID_SETUP && measureAnchorMs != null) {
+                            runCatching { seekToMs(measureAnchorMs) }
+                        }
                         onIsPlayingChange(true)
                         runCatching { FillerSoundManager.fadeOutAndStop(200) }
                     }
@@ -1399,6 +1411,9 @@ private fun TimelineMeasuresPlaceholder(
 ) {
     var localMeasureAnchorMs by remember(measureAnchorMs) { mutableStateOf(measureAnchorMs) }
     var tempoTapTimesMs by remember { mutableStateOf<List<Long>>(emptyList()) }
+    var showTapTempoHint by remember { mutableStateOf(false) }
+    var showTempoAdjustHint by remember { mutableStateOf(false) }
+    var hasShownTempoAdjustHint by remember { mutableStateOf(false) }
     val savedAnchorMs = localMeasureAnchorMs
     val measuresStatus = remember(tempoBpm, localMeasureAnchorMs, currentPositionMs) {
         computeTimelineMeasuresStatus(
@@ -1408,6 +1423,7 @@ private fun TimelineMeasuresPlaceholder(
         )
     }
     val context = LocalContext.current
+    val focusManager = LocalFocusManager.current
     val scope = rememberCoroutineScope()
     val smpLibraryScanner = remember(context) { SmpLibraryScanner(context.applicationContext) }
     var waveformPeaks by remember(currentSongId) { mutableStateOf<List<Float>>(emptyList()) }
@@ -1417,6 +1433,20 @@ private fun TimelineMeasuresPlaceholder(
 
     LaunchedEffect(measureAnchorMs) {
         localMeasureAnchorMs = measureAnchorMs
+    }
+
+    LaunchedEffect(showTapTempoHint) {
+        if (showTapTempoHint) {
+            kotlinx.coroutines.delay(1_800L)
+            showTapTempoHint = false
+        }
+    }
+
+    LaunchedEffect(showTempoAdjustHint) {
+        if (showTempoAdjustHint) {
+            kotlinx.coroutines.delay(2_200L)
+            showTempoAdjustHint = false
+        }
     }
 
     LaunchedEffect(currentSongId) {
@@ -1476,35 +1506,122 @@ private fun TimelineMeasuresPlaceholder(
         estimateTappedTempoBpm(tempoTapTimesMs)
     }
 
+    LaunchedEffect(detectedTempoBpm) {
+        val detected = detectedTempoBpm ?: return@LaunchedEffect
+        val detectedText = detected.toString()
+        if (tempoDraft != detectedText) {
+            onTempoDraftChange(detectedText)
+        }
+        if (!hasShownTempoAdjustHint) {
+            hasShownTempoAdjustHint = true
+            showTempoAdjustHint = true
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(top = 8.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.Top
-        ) {
-            OutlinedTextField(
-                value = tempoDraft,
-                onValueChange = onTempoDraftChange,
-                label = { Text(stringResource(R.string.timeline_measures_tempo_label)) },
-                placeholder = { Text(stringResource(R.string.timeline_measures_tempo_placeholder)) },
-                singleLine = true,
-                isError = isTempoInvalid,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.weight(1f)
-            )
-            OutlinedTextField(
-                value = stringResource(R.string.timeline_measures_signature_default),
-                onValueChange = {},
-                label = { Text(stringResource(R.string.timeline_measures_signature_label)) },
-                singleLine = true,
-                readOnly = true,
-                modifier = Modifier.weight(1f)
-            )
+        Box(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedButton(
+                    onClick = {
+                        if (tempoTapTimesMs.isEmpty()) {
+                            showTapTempoHint = true
+                        }
+                        val nextTapTimeMs = SystemClock.elapsedRealtime()
+                        val previousTapTimeMs = tempoTapTimesMs.lastOrNull()
+                        tempoTapTimesMs = when {
+                            previousTapTimeMs == null -> listOf(nextTapTimeMs)
+                            nextTapTimeMs <= previousTapTimeMs -> listOf(nextTapTimeMs)
+                            nextTapTimeMs - previousTapTimeMs > 3_000L -> listOf(nextTapTimeMs)
+                            else -> (tempoTapTimesMs + nextTapTimeMs).takeLast(8)
+                        }
+                    }
+                ) {
+                    Text(stringResource(R.string.timeline_measures_tap_tempo_action))
+                }
+                BasicTextField(
+                    value = tempoDraft,
+                    onValueChange = onTempoDraftChange,
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Number,
+                        imeAction = ImeAction.Done
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onDone = { focusManager.clearFocus() }
+                    ),
+                    textStyle = TextStyle(
+                        color = if (isTempoInvalid) Color(0xFFFF8A80) else Color.White,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium
+                    ),
+                    cursorBrush = SolidColor(Color(0xFF80CBC4)),
+                    modifier = Modifier
+                        .width(72.dp)
+                        .background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 8.dp, vertical = 5.dp),
+                    decorationBox = { innerTextField ->
+                        Box {
+                            if (tempoDraft.isBlank()) {
+                                Text(
+                                    text = stringResource(R.string.timeline_measures_tap_tempo_pending),
+                                    color = Color.White.copy(alpha = 0.45f),
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                            innerTextField()
+                        }
+                    }
+                )
+                Text(
+                    text = stringResource(R.string.timeline_measures_bpm_suffix),
+                    color = Color(0xFFB0BEC5),
+                    fontSize = 12.sp
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                if (tempoTapTimesMs.isNotEmpty()) {
+                    TextButton(onClick = { tempoTapTimesMs = emptyList() }) {
+                        Text(
+                            text = stringResource(R.string.common_reset),
+                            color = Color(0xFFB0BEC5),
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+            }
+            if (showTapTempoHint) {
+                Text(
+                    text = stringResource(R.string.timeline_measures_tap_tempo_hint),
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .offset(y = 42.dp)
+                        .background(Color(0xFF263238), RoundedCornerShape(12.dp))
+                        .padding(horizontal = 10.dp, vertical = 5.dp),
+                    color = Color(0xFFE0F2F1),
+                    fontSize = 12.sp
+                )
+            }
+            if (showTempoAdjustHint) {
+                Text(
+                    text = stringResource(R.string.timeline_measures_tempo_adjust_hint),
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .offset(y = 42.dp)
+                        .background(Color(0xFF263238), RoundedCornerShape(12.dp))
+                        .padding(horizontal = 10.dp, vertical = 5.dp),
+                    color = Color(0xFFE0F2F1),
+                    fontSize = 12.sp
+                )
+            }
         }
         TimelineGridWaveformSection(
             peaks = waveformPeaks,
@@ -1512,55 +1629,48 @@ private fun TimelineMeasuresPlaceholder(
             currentPositionMs = currentPositionMs,
             measureAnchorMs = savedAnchorMs,
             isLoading = waveformLoading,
-            hasError = waveformError
+            hasError = waveformError,
+            onMeasureAnchorSelected = { selectedPositionMs ->
+                localMeasureAnchorMs = selectedPositionMs
+                onMeasureAnchorHere(selectedPositionMs)
+            }
         )
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            OutlinedButton(
-                onClick = {
-                    val nextTapTimeMs = SystemClock.elapsedRealtime()
-                    val previousTapTimeMs = tempoTapTimesMs.lastOrNull()
-                    tempoTapTimesMs = when {
-                        previousTapTimeMs == null -> listOf(nextTapTimeMs)
-                        nextTapTimeMs <= previousTapTimeMs -> listOf(nextTapTimeMs)
-                        nextTapTimeMs - previousTapTimeMs > 3_000L -> listOf(nextTapTimeMs)
-                        else -> (tempoTapTimesMs + nextTapTimeMs).takeLast(8)
-                    }
-                }
-            ) {
-                Text(stringResource(R.string.timeline_measures_tap_tempo_action))
-            }
             Text(
-                text = detectedTempoBpm?.let { bpm ->
-                    stringResource(R.string.timeline_measures_tap_tempo_value, bpm)
-                } ?: stringResource(R.string.timeline_measures_tap_tempo_pending),
+                text = stringResource(
+                    R.string.timeline_measures_inline_label,
+                    stringResource(R.string.timeline_measures_signature_label)
+                ),
+                color = Color(0xFFB0BEC5),
+                fontSize = 13.sp
+            )
+            Text(
+                text = stringResource(R.string.timeline_measures_signature_default),
                 color = Color.White,
-                fontSize = 13.sp,
+                fontSize = 14.sp,
                 fontWeight = FontWeight.Medium
             )
-            Spacer(modifier = Modifier.weight(1f))
-            if (tempoTapTimesMs.isNotEmpty()) {
-                TextButton(onClick = { tempoTapTimesMs = emptyList() }) {
-                    Text(
-                        text = stringResource(R.string.common_reset),
-                        color = Color(0xFFB0BEC5),
-                        fontSize = 12.sp
-                    )
-                }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.Center
+        ) {
+            Button(onClick = {
+                localMeasureAnchorMs = currentPositionMs
+                onMeasureAnchorHere(currentPositionMs)
+            }) {
+                Text(text = stringResource(R.string.timeline_measures_anchor_action))
             }
         }
-        TextButton(onClick = {
-            localMeasureAnchorMs = currentPositionMs
-            onMeasureAnchorHere(currentPositionMs)
-        }) {
-            Text(
-                text = stringResource(R.string.timeline_measures_anchor_action),
-                color = Color(0xFF80CBC4)
-            )
-        }
+        Text(
+            text = stringResource(R.string.timeline_measures_anchor_hint),
+            color = Color(0xFFB0BEC5),
+            fontSize = 12.sp
+        )
         Text(
             text = if (savedAnchorMs != null) {
                 stringResource(
@@ -1598,8 +1708,13 @@ private fun TimelineGridWaveformSection(
     currentPositionMs: Long,
     measureAnchorMs: Long?,
     isLoading: Boolean,
-    hasError: Boolean
+    hasError: Boolean,
+    onMeasureAnchorSelected: (Long) -> Unit
 ) {
+    var waveformZoom by remember(peaks, durationMs) { mutableStateOf(1f) }
+    var waveformCenterFraction by remember(peaks, durationMs) { mutableStateOf(0.5f) }
+    val waveformHeight = 270.dp
+
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -1607,7 +1722,7 @@ private fun TimelineGridWaveformSection(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(120.dp)
+                .height(waveformHeight)
         ) {
             when {
                 isLoading -> {
@@ -1633,14 +1748,71 @@ private fun TimelineGridWaveformSection(
                     Canvas(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(120.dp)
+                            .height(waveformHeight)
+                            .pointerInput(peaks, durationMs, waveformZoom, waveformCenterFraction) {
+                                detectTapGestures { offset ->
+                                    val safeDuration = durationMs.coerceAtLeast(1)
+                                    val visibleFraction = 1f / waveformZoom.coerceAtLeast(1f)
+                                    val startFraction = (waveformCenterFraction - visibleFraction / 2f)
+                                        .coerceIn(0f, 1f)
+                                    val endFraction = (startFraction + visibleFraction).coerceIn(0f, 1f)
+                                    val effectiveEndFraction = if (endFraction <= startFraction) {
+                                        1f
+                                    } else {
+                                        endFraction
+                                    }
+                                    val localFraction = if (size.width > 0) {
+                                        (offset.x / size.width).coerceIn(0f, 1f)
+                                    } else {
+                                        0f
+                                    }
+                                    val selectedFraction = startFraction +
+                                        localFraction * (effectiveEndFraction - startFraction)
+                                    onMeasureAnchorSelected(
+                                        (selectedFraction * safeDuration)
+                                            .toLong()
+                                            .coerceIn(0L, safeDuration.toLong())
+                                    )
+                                }
+                            }
+                            .pointerInput(peaks, durationMs) {
+                                detectTransformGestures { _, pan, zoomChange, _ ->
+                                    val previousZoom = waveformZoom
+                                    val nextZoom = (previousZoom * zoomChange).coerceIn(1f, 80f)
+                                    waveformZoom = nextZoom
+
+                                    val visibleFraction = 1f / nextZoom
+                                    val panFraction = if (size.width > 0) {
+                                        -pan.x / size.width * visibleFraction
+                                    } else {
+                                        0f
+                                    }
+                                    val minCenter = visibleFraction / 2f
+                                    val maxCenter = 1f - minCenter
+                                    waveformCenterFraction = if (nextZoom <= 1f) {
+                                        0.5f
+                                    } else {
+                                        (waveformCenterFraction + panFraction)
+                                            .coerceIn(minCenter, maxCenter)
+                                    }
+                                }
+                            }
                     ) {
                         val centerY = size.height / 2f
                         val widthPx = size.width
                         val heightPx = size.height
                         val maxIndex = peaks.lastIndex.coerceAtLeast(1)
+                        val visibleFraction = 1f / waveformZoom.coerceAtLeast(1f)
+                        val startFraction = (waveformCenterFraction - visibleFraction / 2f).coerceIn(0f, 1f)
+                        val endFraction = (startFraction + visibleFraction).coerceIn(0f, 1f)
+                        val effectiveEndFraction = if (endFraction <= startFraction) 1f else endFraction
                         peaks.forEachIndexed { index, peak ->
-                            val x = (index.toFloat() / maxIndex.toFloat()) * widthPx
+                            val positionFraction = index.toFloat() / maxIndex.toFloat()
+                            if (positionFraction < startFraction || positionFraction > effectiveEndFraction) {
+                                return@forEachIndexed
+                            }
+                            val x = ((positionFraction - startFraction) /
+                                (effectiveEndFraction - startFraction)) * widthPx
                             val amplitude = (peak.coerceIn(0f, 1f) * (heightPx / 2f))
                             drawLine(
                                 color = Color(0xFF80CBC4),
@@ -1652,22 +1824,34 @@ private fun TimelineGridWaveformSection(
                         }
 
                         val safeDuration = durationMs.coerceAtLeast(1)
-                        val currentX = (currentPositionMs.coerceIn(0L, safeDuration.toLong()).toFloat() / safeDuration.toFloat()) * widthPx
-                        drawLine(
-                            color = Color.White,
-                            start = androidx.compose.ui.geometry.Offset(currentX, 0f),
-                            end = androidx.compose.ui.geometry.Offset(currentX, heightPx),
-                            strokeWidth = 2f
-                        )
-
-                        measureAnchorMs?.let { anchorMs ->
-                            val anchorX = (anchorMs.coerceIn(0L, safeDuration.toLong()).toFloat() / safeDuration.toFloat()) * widthPx
+                        val currentFraction = currentPositionMs
+                            .coerceIn(0L, safeDuration.toLong())
+                            .toFloat() / safeDuration.toFloat()
+                        if (currentFraction in startFraction..effectiveEndFraction) {
+                            val currentX = ((currentFraction - startFraction) /
+                                (effectiveEndFraction - startFraction)) * widthPx
                             drawLine(
-                                color = Color(0xFFFFB74D),
-                                start = androidx.compose.ui.geometry.Offset(anchorX, 0f),
-                                end = androidx.compose.ui.geometry.Offset(anchorX, heightPx),
+                                color = Color.White,
+                                start = androidx.compose.ui.geometry.Offset(currentX, 0f),
+                                end = androidx.compose.ui.geometry.Offset(currentX, heightPx),
                                 strokeWidth = 2f
                             )
+                        }
+
+                        measureAnchorMs?.let { anchorMs ->
+                            val anchorFraction = anchorMs
+                                .coerceIn(0L, safeDuration.toLong())
+                                .toFloat() / safeDuration.toFloat()
+                            if (anchorFraction in startFraction..effectiveEndFraction) {
+                                val anchorX = ((anchorFraction - startFraction) /
+                                    (effectiveEndFraction - startFraction)) * widthPx
+                                drawLine(
+                                    color = Color(0xFFFFB74D),
+                                    start = androidx.compose.ui.geometry.Offset(anchorX, 0f),
+                                    end = androidx.compose.ui.geometry.Offset(anchorX, heightPx),
+                                    strokeWidth = 2f
+                                )
+                            }
                         }
                     }
                 }
