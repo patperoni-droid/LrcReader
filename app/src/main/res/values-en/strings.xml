@@ -514,6 +514,8 @@
     <string name="timeline_measures_tap_tempo_value">%1$d BPM</string>
     <string name="timeline_measures_tap_tempo_pending">-- BPM</string>
     <string name="timeline_measures_bpm_suffix">BPM</string>
+    <string name="timeline_measures_metronome_on">Beep ON</string>
+    <string name="timeline_measures_metronome_off">Beep OFF</string>
     <string name="timeline_measures_adjust_minus_50">-50 ms</string>
     <string name="timeline_measures_adjust_minus_10">-10 ms</string>
     <string name="timeline_measures_adjust_plus_10">+10 ms</string>

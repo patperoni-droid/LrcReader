@@ -3,9 +3,11 @@ package com.patrick.lrcreader.ui
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
+import android.media.AudioManager
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.media.MediaMetadataRetriever
+import android.media.ToneGenerator
 import android.net.Uri
 import android.os.SystemClock
 import android.widget.Toast
@@ -54,6 +56,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -62,6 +65,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -93,10 +97,12 @@ import com.patrick.lrcreader.smp.SmpLibraryScanner
 import com.patrick.lrcreader.smp.TimelineMarker
 import com.patrick.lrcreader.smp.TimelineMarkerKind
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import kotlin.math.abs
+import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
@@ -703,6 +709,7 @@ fun TimelineEditorSection(
                     isTempoInvalid = isTempoInvalid,
                     tempoBpm = effectiveTempoBpm,
                     measureAnchorMs = measureAnchorMs,
+                    isPlaying = isPlaying,
                     currentPositionMs = safePositionMs,
                     onMeasureAnchorHere = { anchorMs -> onMeasureAnchorHere(anchorMs) },
                     onTempoDraftChange = { input ->
@@ -1405,6 +1412,7 @@ private fun TimelineMeasuresPlaceholder(
     isTempoInvalid: Boolean,
     tempoBpm: Int?,
     measureAnchorMs: Long?,
+    isPlaying: Boolean,
     currentPositionMs: Long,
     onMeasureAnchorHere: (Long) -> Unit,
     onTempoDraftChange: (String) -> Unit
@@ -1414,6 +1422,7 @@ private fun TimelineMeasuresPlaceholder(
     var showTapTempoHint by remember { mutableStateOf(false) }
     var showTempoAdjustHint by remember { mutableStateOf(false) }
     var hasShownTempoAdjustHint by remember { mutableStateOf(false) }
+    var metronomeEnabled by remember { mutableStateOf(false) }
     val savedAnchorMs = localMeasureAnchorMs
     val measuresStatus = remember(tempoBpm, localMeasureAnchorMs, currentPositionMs) {
         computeTimelineMeasuresStatus(
@@ -1426,6 +1435,9 @@ private fun TimelineMeasuresPlaceholder(
     val focusManager = LocalFocusManager.current
     val scope = rememberCoroutineScope()
     val smpLibraryScanner = remember(context) { SmpLibraryScanner(context.applicationContext) }
+    val toneGenerator = remember {
+        runCatching { ToneGenerator(AudioManager.STREAM_MUSIC, 70) }.getOrNull()
+    }
     var waveformPeaks by remember(currentSongId) { mutableStateOf<List<Float>>(emptyList()) }
     var waveformDurationMs by remember(currentSongId) { mutableIntStateOf(0) }
     var waveformLoading by remember(currentSongId) { mutableStateOf(false) }
@@ -1505,6 +1517,13 @@ private fun TimelineMeasuresPlaceholder(
     val detectedTempoBpm = remember(tempoTapTimesMs) {
         estimateTappedTempoBpm(tempoTapTimesMs)
     }
+    val metronomeReady = tempoBpm != null && savedAnchorMs != null
+
+    DisposableEffect(toneGenerator) {
+        onDispose {
+            runCatching { toneGenerator?.release() }
+        }
+    }
 
     LaunchedEffect(detectedTempoBpm) {
         val detected = detectedTempoBpm ?: return@LaunchedEffect
@@ -1515,6 +1534,79 @@ private fun TimelineMeasuresPlaceholder(
         if (!hasShownTempoAdjustHint) {
             hasShownTempoAdjustHint = true
             showTempoAdjustHint = true
+        }
+    }
+
+    LaunchedEffect(metronomeReady) {
+        if (!metronomeReady) {
+            metronomeEnabled = false
+        }
+    }
+
+    LaunchedEffect(metronomeEnabled, isPlaying, tempoBpm, savedAnchorMs) {
+        val safeTempoBpm = tempoBpm ?: return@LaunchedEffect
+        val safeAnchorMs = savedAnchorMs ?: return@LaunchedEffect
+        val generator = toneGenerator ?: return@LaunchedEffect
+        if (!metronomeEnabled || !isPlaying) return@LaunchedEffect
+
+        val beatDurationMs = 60_000.0 / safeTempoBpm.toDouble()
+        val firstStartedPositionMs = kotlinx.coroutines.withTimeoutOrNull(800L) {
+            snapshotFlow { currentPositionMs }
+                .first { latestPositionMs -> latestPositionMs >= safeAnchorMs + 20L }
+        }
+        val stabilizedStartPositionMs = if (firstStartedPositionMs != null) {
+            kotlinx.coroutines.withTimeoutOrNull(160L) {
+                snapshotFlow { currentPositionMs }
+                    .first { latestPositionMs -> latestPositionMs >= firstStartedPositionMs + 10L }
+            }?.toDouble() ?: firstStartedPositionMs.toDouble()
+        } else {
+            currentPositionMs.toDouble().coerceAtLeast(safeAnchorMs.toDouble())
+        }
+        var syncPositionMs = stabilizedStartPositionMs
+        var syncRealtimeMs = SystemClock.elapsedRealtime().toDouble()
+        var lastBeepBeatIndex = Long.MIN_VALUE
+
+        launch {
+            snapshotFlow { currentPositionMs }
+                .collect { latestPositionMs ->
+                    val nowRealtimeMs = SystemClock.elapsedRealtime().toDouble()
+                    val predictedPositionMs = syncPositionMs + (nowRealtimeMs - syncRealtimeMs)
+                    if (abs(latestPositionMs - predictedPositionMs) > 120.0) {
+                        syncPositionMs = latestPositionMs.toDouble()
+                        syncRealtimeMs = nowRealtimeMs
+                    }
+                }
+        }
+
+        val confirmedPositionMs = kotlinx.coroutines.withTimeoutOrNull(160L) {
+            snapshotFlow { currentPositionMs }
+                .first { latestPositionMs -> latestPositionMs >= syncPositionMs + 5.0 }
+        }?.toDouble()
+        if (confirmedPositionMs != null) {
+            syncPositionMs = confirmedPositionMs
+            syncRealtimeMs = SystemClock.elapsedRealtime().toDouble()
+        }
+        val initialRelativeMs = syncPositionMs - safeAnchorMs.toDouble()
+        if (initialRelativeMs in 0.0..minOf(120.0, beatDurationMs / 2.0)) {
+            generator.startTone(ToneGenerator.TONE_PROP_BEEP, 50)
+            lastBeepBeatIndex = 0L
+        }
+
+        while (true) {
+            val nowRealtimeMs = SystemClock.elapsedRealtime().toDouble()
+            val estimatedPositionMs = syncPositionMs + (nowRealtimeMs - syncRealtimeMs)
+            val relativeMs = estimatedPositionMs - safeAnchorMs.toDouble()
+            val nextBeatIndex = when {
+                relativeMs <= 0.0 -> 0L
+                else -> floor(relativeMs / beatDurationMs).toLong() + 1L
+            }
+            val nextBeatPositionMs = safeAnchorMs + nextBeatIndex * beatDurationMs
+            val delayMs = (nextBeatPositionMs - estimatedPositionMs).coerceAtLeast(15.0)
+            kotlinx.coroutines.delay(delayMs.roundToLong())
+            if (nextBeatIndex != lastBeepBeatIndex) {
+                generator.startTone(ToneGenerator.TONE_PROP_BEEP, 50)
+                lastBeepBeatIndex = nextBeatIndex
+            }
         }
     }
 
@@ -1587,6 +1679,20 @@ private fun TimelineMeasuresPlaceholder(
                     color = Color(0xFFB0BEC5),
                     fontSize = 12.sp
                 )
+                OutlinedButton(
+                    onClick = { metronomeEnabled = !metronomeEnabled },
+                    enabled = metronomeReady
+                ) {
+                    Text(
+                        text = stringResource(
+                            if (metronomeEnabled) {
+                                R.string.timeline_measures_metronome_on
+                            } else {
+                                R.string.timeline_measures_metronome_off
+                            }
+                        )
+                    )
+                }
                 Spacer(modifier = Modifier.weight(1f))
                 if (tempoTapTimesMs.isNotEmpty()) {
                     TextButton(onClick = { tempoTapTimesMs = emptyList() }) {
@@ -1778,7 +1884,7 @@ private fun TimelineGridWaveformSection(
                             .pointerInput(peaks, durationMs) {
                                 detectTransformGestures { _, pan, zoomChange, _ ->
                                     val previousZoom = waveformZoom
-                                    val nextZoom = (previousZoom * zoomChange).coerceIn(1f, 80f)
+                                    val nextZoom = (previousZoom * zoomChange).coerceIn(1f, 120f)
                                     waveformZoom = nextZoom
 
                                     val visibleFraction = 1f / nextZoom
