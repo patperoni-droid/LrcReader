@@ -1852,6 +1852,7 @@ private fun TimelineMeasuresPlaceholder(
             peaks = waveformPeaks,
             durationMs = waveformDurationMs,
             currentPositionMs = currentPositionMs,
+            isPlaying = isPlaying,
             tempoBpm = tempoBpm,
             measureAnchorMs = savedAnchorMs,
             isLoading = waveformLoading,
@@ -1893,11 +1894,6 @@ private fun TimelineMeasuresPlaceholder(
             }
         }
         Text(
-            text = stringResource(R.string.timeline_measures_anchor_hint),
-            color = Color(0xFFB0BEC5),
-            fontSize = 12.sp
-        )
-        Text(
             text = if (savedAnchorMs != null) {
                 stringResource(
                     R.string.timeline_measures_anchor_saved,
@@ -1932,6 +1928,7 @@ private fun TimelineGridWaveformSection(
     peaks: List<Float>,
     durationMs: Int,
     currentPositionMs: Long,
+    isPlaying: Boolean,
     tempoBpm: Int?,
     measureAnchorMs: Long?,
     isLoading: Boolean,
@@ -1940,7 +1937,27 @@ private fun TimelineGridWaveformSection(
 ) {
     var waveformZoom by remember(peaks, durationMs) { mutableStateOf(1f) }
     var waveformCenterFraction by remember(peaks, durationMs) { mutableStateOf(0.5f) }
+    var lastManualWaveformInteractionMs by remember(peaks, durationMs) { mutableLongStateOf(0L) }
     val waveformHeight = 270.dp
+
+    LaunchedEffect(isPlaying, currentPositionMs, durationMs, waveformZoom, lastManualWaveformInteractionMs) {
+        if (!isPlaying || durationMs <= 0) return@LaunchedEffect
+        val nowMs = SystemClock.elapsedRealtime()
+        if (nowMs - lastManualWaveformInteractionMs < 1_200L) return@LaunchedEffect
+
+        val visibleFraction = 1f / waveformZoom.coerceAtLeast(1f)
+        val minCenter = visibleFraction / 2f
+        val maxCenter = 1f - minCenter
+        val currentFraction = (
+            currentPositionMs.coerceIn(0L, durationMs.toLong()).toFloat() /
+                durationMs.toFloat()
+            ).coerceIn(0f, 1f)
+        waveformCenterFraction = if (waveformZoom <= 1f) {
+            0.5f
+        } else {
+            currentFraction.coerceIn(minCenter, maxCenter)
+        }
+    }
 
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -1978,6 +1995,7 @@ private fun TimelineGridWaveformSection(
                             .height(waveformHeight)
                             .pointerInput(peaks, durationMs, waveformZoom, waveformCenterFraction) {
                                 detectTapGestures { offset ->
+                                    lastManualWaveformInteractionMs = SystemClock.elapsedRealtime()
                                     val safeDuration = durationMs.coerceAtLeast(1)
                                     val visibleFraction = 1f / waveformZoom.coerceAtLeast(1f)
                                     val startFraction = (waveformCenterFraction - visibleFraction / 2f)
@@ -2004,6 +2022,7 @@ private fun TimelineGridWaveformSection(
                             }
                             .pointerInput(peaks, durationMs) {
                                 detectTransformGestures { _, pan, zoomChange, _ ->
+                                    lastManualWaveformInteractionMs = SystemClock.elapsedRealtime()
                                     val previousZoom = waveformZoom
                                     val nextZoom = (previousZoom * zoomChange).coerceIn(1f, 120f)
                                     waveformZoom = nextZoom
