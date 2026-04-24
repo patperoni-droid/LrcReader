@@ -50,6 +50,8 @@ import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.CircularProgressIndicator
@@ -162,6 +164,9 @@ fun TimelineEditorSection(
     onMeasuresTempoChange: (Int) -> Unit,
     measureAnchorMs: Long?,
     onMeasureAnchorHere: (Long) -> Unit,
+    isPreparedClipLoopTestActive: Boolean,
+    onStartPreparedClipLoopTest: (Long, Long) -> Unit,
+    onStopPreparedClipLoopTest: () -> Unit,
     onMoveMarkerPosition: (Int, Long) -> Unit,
     onRenameMarker: (Int, String, Long?) -> Unit,
     onDeleteMarker: (Int) -> Unit
@@ -331,6 +336,9 @@ fun TimelineEditorSection(
             Spacer(modifier = Modifier.weight(1f))
             TextButton(
                 onClick = {
+                    if (isPreparedClipLoopTestActive) {
+                        onStopPreparedClipLoopTest()
+                    }
                     if (editorMode == TimelineEditorMode.GRID_SETUP) {
                         editorMode = TimelineEditorMode.TIMELINE
                     } else {
@@ -362,12 +370,12 @@ fun TimelineEditorSection(
         ) {
             IconButton(
                 onClick = {
+                    if (editorMode == TimelineEditorMode.GRID_SETUP && isPreparedClipLoopTestActive) {
+                        onStopPreparedClipLoopTest()
+                    }
                     if (isPlaying) {
                         onIsPlayingChange(false)
                     } else if (durationMs > 0) {
-                        if (editorMode == TimelineEditorMode.GRID_SETUP && measureAnchorMs != null) {
-                            runCatching { seekToMs(measureAnchorMs) }
-                        }
                         onIsPlayingChange(true)
                         runCatching { FillerSoundManager.fadeOutAndStop(200) }
                     }
@@ -711,7 +719,12 @@ fun TimelineEditorSection(
                     measureAnchorMs = measureAnchorMs,
                     isPlaying = isPlaying,
                     currentPositionMs = safePositionMs,
+                    seekToMs = seekToMs,
+                    onIsPlayingChange = onIsPlayingChange,
                     onMeasureAnchorHere = { anchorMs -> onMeasureAnchorHere(anchorMs) },
+                    isPreparedClipLoopTestActive = isPreparedClipLoopTestActive,
+                    onStartPreparedClipLoopTest = onStartPreparedClipLoopTest,
+                    onStopPreparedClipLoopTest = onStopPreparedClipLoopTest,
                     onTempoDraftChange = { input ->
                         val nextDraft = input.filter { ch -> ch.isDigit() }.take(3)
                         measuresTempoDraft = nextDraft
@@ -1414,7 +1427,12 @@ private fun TimelineMeasuresPlaceholder(
     measureAnchorMs: Long?,
     isPlaying: Boolean,
     currentPositionMs: Long,
+    seekToMs: (Long) -> Unit,
+    onIsPlayingChange: (Boolean) -> Unit,
     onMeasureAnchorHere: (Long) -> Unit,
+    isPreparedClipLoopTestActive: Boolean,
+    onStartPreparedClipLoopTest: (Long, Long) -> Unit,
+    onStopPreparedClipLoopTest: () -> Unit,
     onTempoDraftChange: (String) -> Unit
 ) {
     var localMeasureAnchorMs by remember(measureAnchorMs) { mutableStateOf(measureAnchorMs) }
@@ -1423,6 +1441,9 @@ private fun TimelineMeasuresPlaceholder(
     var showTempoAdjustHint by remember { mutableStateOf(false) }
     var hasShownTempoAdjustHint by remember { mutableStateOf(false) }
     var metronomeEnabled by remember { mutableStateOf(false) }
+    var loopEnabled by remember { mutableStateOf(false) }
+    var loopLengthBars by remember { mutableIntStateOf(1) }
+    var loopLengthMenuExpanded by remember { mutableStateOf(false) }
     val savedAnchorMs = localMeasureAnchorMs
     val measuresStatus = remember(tempoBpm, localMeasureAnchorMs, currentPositionMs) {
         computeTimelineMeasuresStatus(
@@ -1518,10 +1539,27 @@ private fun TimelineMeasuresPlaceholder(
         estimateTappedTempoBpm(tempoTapTimesMs)
     }
     val metronomeReady = tempoBpm != null && savedAnchorMs != null
+    val loopReady = tempoBpm != null && savedAnchorMs != null
+    val loopLengthLabel = stringResource(
+        when (loopLengthBars) {
+            4 -> R.string.timeline_measures_loop_length_4
+            8 -> R.string.timeline_measures_loop_length_8
+            16 -> R.string.timeline_measures_loop_length_16
+            32 -> R.string.timeline_measures_loop_length_32
+            else -> R.string.timeline_measures_loop_length_1
+        }
+    )
 
     DisposableEffect(toneGenerator) {
         onDispose {
             runCatching { toneGenerator?.release() }
+        }
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            if (isPreparedClipLoopTestActive) {
+                onStopPreparedClipLoopTest()
+            }
         }
     }
 
@@ -1541,6 +1579,34 @@ private fun TimelineMeasuresPlaceholder(
         if (!metronomeReady) {
             metronomeEnabled = false
         }
+    }
+
+    LaunchedEffect(loopReady) {
+        if (!loopReady) {
+            loopEnabled = false
+            if (isPreparedClipLoopTestActive) {
+                onStopPreparedClipLoopTest()
+            }
+        }
+    }
+
+    LaunchedEffect(loopEnabled, tempoBpm, savedAnchorMs, loopLengthBars) {
+        val safeTempoBpm = tempoBpm ?: return@LaunchedEffect
+        val safeAnchorMs = savedAnchorMs ?: return@LaunchedEffect
+        if (!loopEnabled) {
+            if (isPreparedClipLoopTestActive) {
+                onStopPreparedClipLoopTest()
+            }
+            return@LaunchedEffect
+        }
+
+        val barDurationMs = ((60_000.0 / safeTempoBpm.toDouble()) * 4.0)
+            .roundToLong()
+            .coerceAtLeast(1L)
+        onStartPreparedClipLoopTest(
+            safeAnchorMs,
+            safeAnchorMs + (barDurationMs * loopLengthBars.toLong())
+        )
     }
 
     LaunchedEffect(metronomeEnabled, isPlaying, tempoBpm, savedAnchorMs) {
@@ -1617,28 +1683,38 @@ private fun TimelineMeasuresPlaceholder(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Box(modifier = Modifier.fillMaxWidth()) {
-            Row(
+            Column(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                OutlinedButton(
-                    onClick = {
-                        if (tempoTapTimesMs.isEmpty()) {
-                            showTapTempoHint = true
-                        }
-                        val nextTapTimeMs = SystemClock.elapsedRealtime()
-                        val previousTapTimeMs = tempoTapTimesMs.lastOrNull()
-                        tempoTapTimesMs = when {
-                            previousTapTimeMs == null -> listOf(nextTapTimeMs)
-                            nextTapTimeMs <= previousTapTimeMs -> listOf(nextTapTimeMs)
-                            nextTapTimeMs - previousTapTimeMs > 3_000L -> listOf(nextTapTimeMs)
-                            else -> (tempoTapTimesMs + nextTapTimeMs).takeLast(8)
-                        }
-                    }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Start,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(stringResource(R.string.timeline_measures_tap_tempo_action))
+                    OutlinedButton(
+                        onClick = {
+                            if (tempoTapTimesMs.isEmpty()) {
+                                showTapTempoHint = true
+                            }
+                            val nextTapTimeMs = SystemClock.elapsedRealtime()
+                            val previousTapTimeMs = tempoTapTimesMs.lastOrNull()
+                            tempoTapTimesMs = when {
+                                previousTapTimeMs == null -> listOf(nextTapTimeMs)
+                                nextTapTimeMs <= previousTapTimeMs -> listOf(nextTapTimeMs)
+                                nextTapTimeMs - previousTapTimeMs > 3_000L -> listOf(nextTapTimeMs)
+                                else -> (tempoTapTimesMs + nextTapTimeMs).takeLast(8)
+                            }
+                        }
+                    ) {
+                        Text(stringResource(R.string.timeline_measures_tap_tempo_action))
+                    }
                 }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                 BasicTextField(
                     value = tempoDraft,
                     onValueChange = onTempoDraftChange,
@@ -1679,19 +1755,108 @@ private fun TimelineMeasuresPlaceholder(
                     color = Color(0xFFB0BEC5),
                     fontSize = 12.sp
                 )
-                OutlinedButton(
-                    onClick = { metronomeEnabled = !metronomeEnabled },
-                    enabled = metronomeReady
+                IconButton(
+                    onClick = { loopEnabled = !loopEnabled },
+                    enabled = loopReady,
+                    modifier = Modifier
+                        .background(
+                            color = if (loopEnabled && loopReady) {
+                                Color(0xFF80CBC4).copy(alpha = 0.22f)
+                            } else {
+                                Color.Transparent
+                            },
+                            shape = RoundedCornerShape(12.dp)
+                        )
                 ) {
                     Text(
-                        text = stringResource(
-                            if (metronomeEnabled) {
-                                R.string.timeline_measures_metronome_on
-                            } else {
-                                R.string.timeline_measures_metronome_off
+                        text = "\uD83D\uDD01",
+                        color = if (loopReady) {
+                            if (loopEnabled) Color(0xFF80CBC4) else Color(0xFFB0BEC5)
+                        } else {
+                            Color(0xFF607D8B)
+                        },
+                        fontSize = 18.sp
+                    )
+                }
+                Box {
+                    TextButton(
+                        onClick = { loopLengthMenuExpanded = true },
+                        enabled = loopReady
+                    ) {
+                        Text(
+                            text = loopLengthLabel,
+                            color = if (loopReady) Color(0xFFB0BEC5) else Color(0xFF607D8B),
+                            fontSize = 12.sp
+                        )
+                    }
+                    DropdownMenu(
+                        expanded = loopLengthMenuExpanded,
+                        onDismissRequest = { loopLengthMenuExpanded = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.timeline_measures_loop_length_1)) },
+                            onClick = {
+                                loopLengthBars = 1
+                                loopLengthMenuExpanded = false
                             }
                         )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.timeline_measures_loop_length_4)) },
+                            onClick = {
+                                loopLengthBars = 4
+                                loopLengthMenuExpanded = false
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.timeline_measures_loop_length_8)) },
+                            onClick = {
+                                loopLengthBars = 8
+                                loopLengthMenuExpanded = false
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.timeline_measures_loop_length_16)) },
+                            onClick = {
+                                loopLengthBars = 16
+                                loopLengthMenuExpanded = false
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.timeline_measures_loop_length_32)) },
+                            onClick = {
+                                loopLengthBars = 32
+                                loopLengthMenuExpanded = false
+                            }
+                        )
+                    }
+                }
+                OutlinedButton(
+                    onClick = {
+                        val safeAnchorMs = savedAnchorMs ?: return@OutlinedButton
+                        if (loopEnabled && loopReady) {
+                            val safeTempoBpm = tempoBpm ?: return@OutlinedButton
+                            val barDurationMs = ((60_000.0 / safeTempoBpm.toDouble()) * 4.0)
+                                .roundToLong()
+                                .coerceAtLeast(1L)
+                            onStartPreparedClipLoopTest(
+                                safeAnchorMs,
+                                safeAnchorMs + (barDurationMs * loopLengthBars.toLong())
+                            )
+                        } else {
+                            runCatching { seekToMs(safeAnchorMs) }
+                            onIsPlayingChange(true)
+                            runCatching { FillerSoundManager.fadeOutAndStop(200) }
+                        }
+                    },
+                    enabled = savedAnchorMs != null
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.PlayArrow,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
                     )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(text = stringResource(R.string.timeline_measures_sync_play_action))
                 }
                 Spacer(modifier = Modifier.weight(1f))
                 if (tempoTapTimesMs.isNotEmpty()) {
@@ -1702,6 +1867,7 @@ private fun TimelineMeasuresPlaceholder(
                             fontSize = 12.sp
                         )
                     }
+                }
                 }
             }
             if (showTapTempoHint) {

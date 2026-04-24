@@ -459,6 +459,14 @@
     <string name="timeline_measures_bpm_suffix">BPM</string>
     <string name="timeline_measures_metronome_on">Bip ON</string>
     <string name="timeline_measures_metronome_off">Bip OFF</string>
+    <string name="timeline_measures_sync_play_action">Sincronía</string>
+    <string name="timeline_measures_loop_on">Bucle ON</string>
+    <string name="timeline_measures_loop_off">Bucle OFF</string>
+    <string name="timeline_measures_loop_length_1">1 compás</string>
+    <string name="timeline_measures_loop_length_4">4 compases</string>
+    <string name="timeline_measures_loop_length_8">8 compases</string>
+    <string name="timeline_measures_loop_length_16">16 compases</string>
+    <string name="timeline_measures_loop_length_32">32 compases</string>
     <string name="timeline_measures_adjust_minus_50">-50 ms</string>
     <string name="timeline_measures_adjust_minus_10">-10 ms</string>
     <string name="timeline_measures_adjust_plus_10">+10 ms</string>

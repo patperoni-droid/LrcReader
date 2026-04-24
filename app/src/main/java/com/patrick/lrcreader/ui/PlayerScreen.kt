@@ -53,6 +53,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.core.AutoReturnPrefs
@@ -184,6 +186,11 @@ fun PlayerScreen(
     var editingTimelineLightCueTimeMs by rememberSaveable(currentTrackUri) { mutableStateOf<Long?>(null) }
     var showLightGenerationDialog by rememberSaveable(currentTrackUri) { mutableStateOf(false) }
     var timelineLightPreviewPositionMs by remember(currentTrackUri) { mutableStateOf<Long?>(null) }
+    var timelinePreparedLoopRestoreItem by remember(currentTrackUri) { mutableStateOf<MediaItem?>(null) }
+    var timelinePreparedLoopRestorePositionMs by remember(currentTrackUri) { mutableLongStateOf(0L) }
+    var timelinePreparedLoopRestoreRepeatMode by remember(currentTrackUri) { mutableIntStateOf(Player.REPEAT_MODE_OFF) }
+    var timelinePreparedLoopRestorePlayWhenReady by remember(currentTrackUri) { mutableStateOf(false) }
+    var isTimelinePreparedLoopActive by remember(currentTrackUri) { mutableStateOf(false) }
     var timelineMarkers by remember(currentTrackUri) { mutableStateOf<List<TimelineMarker>>(emptyList()) }
     var timelineLightCues by remember(currentTrackUri) { mutableStateOf<List<LightCue>>(emptyList()) }
     var timelineDmxClipboard by remember { mutableStateOf<TimelineDmxClipboard?>(null) }
@@ -220,6 +227,69 @@ fun PlayerScreen(
     val timelineEditorMarkers = remember(timelineEditorEntries) {
         timelineEditorEntries.map { entry -> entry.marker }
     }
+    val stopTimelinePreparedLoopTest = remember(exoPlayer, currentTrackUri) {
+        {
+            val restoreItem = timelinePreparedLoopRestoreItem
+            if (restoreItem == null) {
+                isTimelinePreparedLoopActive = false
+                Unit
+            } else {
+                runCatching { exoPlayer.stop() }
+                runCatching {
+                    exoPlayer.repeatMode = timelinePreparedLoopRestoreRepeatMode
+                    exoPlayer.setMediaItem(restoreItem)
+                    exoPlayer.prepare()
+                    if (timelinePreparedLoopRestorePositionMs > 0L) {
+                        exoPlayer.seekTo(timelinePreparedLoopRestorePositionMs)
+                    }
+                    if (timelinePreparedLoopRestorePlayWhenReady) {
+                        exoPlayer.playWhenReady = true
+                        exoPlayer.play()
+                    } else {
+                        exoPlayer.playWhenReady = false
+                        exoPlayer.pause()
+                    }
+                }
+                isTimelinePreparedLoopActive = false
+                timelinePreparedLoopRestoreItem = null
+            }
+        }
+    }
+    val startTimelinePreparedLoopTest = remember(exoPlayer, currentTrackUri) {
+        { inMs: Long, outMs: Long ->
+            val safeOutMs = outMs.coerceAtLeast(inMs + 1L)
+            val activeItem = exoPlayer.currentMediaItem
+            val activeUri = activeItem?.localConfiguration?.uri
+            if (activeItem != null && activeUri != null) {
+                if (!isTimelinePreparedLoopActive) {
+                    timelinePreparedLoopRestoreItem = activeItem
+                    timelinePreparedLoopRestorePositionMs = exoPlayer.currentPosition
+                    timelinePreparedLoopRestoreRepeatMode = exoPlayer.repeatMode
+                    timelinePreparedLoopRestorePlayWhenReady = exoPlayer.playWhenReady || exoPlayer.isPlaying
+                }
+
+                val clippedItem = MediaItem.Builder()
+                    .setUri(activeUri)
+                    .setClippingConfiguration(
+                        MediaItem.ClippingConfiguration.Builder()
+                            .setStartPositionMs(inMs)
+                            .setEndPositionMs(safeOutMs)
+                            .build()
+                    )
+                    .build()
+
+                runCatching { exoPlayer.stop() }
+                runCatching {
+                    exoPlayer.setMediaItem(clippedItem)
+                    exoPlayer.repeatMode = Player.REPEAT_MODE_ONE
+                    exoPlayer.prepare()
+                    exoPlayer.playWhenReady = true
+                    exoPlayer.play()
+                }
+                isTimelinePreparedLoopActive = true
+            }
+        }
+    }
     val canPasteTimelineDmxCue = remember(currentTrackUri, timelineDmxClipboard) {
         val current = currentTrackUri?.trim().orEmpty()
         val clipboard = timelineDmxClipboard
@@ -244,6 +314,11 @@ fun PlayerScreen(
             showLightTestDialog = false
             LightPreviewTestController.stop()
             timelineLightPreviewPositionMs = null
+        }
+    }
+    LaunchedEffect(currentTrackUri, isEditingTimeline) {
+        if ((!isEditingTimeline || currentTrackUri.isNullOrBlank()) && isTimelinePreparedLoopActive) {
+            stopTimelinePreparedLoopTest()
         }
     }
     LaunchedEffect(currentTrackUri) {
@@ -2102,6 +2177,9 @@ fun PlayerScreen(
                 onMeasureAnchorHere = { anchorMs ->
                     timelineSessionMeasureAnchorMs = anchorMs
                 },
+                isPreparedClipLoopTestActive = isTimelinePreparedLoopActive,
+                onStartPreparedClipLoopTest = startTimelinePreparedLoopTest,
+                onStopPreparedClipLoopTest = stopTimelinePreparedLoopTest,
                 onMoveMarkerPosition = onMoveMarkerPosition@ { index, targetPositionMs ->
                     val entry = timelineEditorEntries.getOrNull(index) ?: return@onMoveMarkerPosition
                     when (val source = entry.source) {
