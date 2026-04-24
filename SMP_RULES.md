@@ -1,5 +1,22 @@
 # SMP_RULES.md
+CRITICAL — SMP SPECIFICATION
 
+This document is the authoritative specification of the SMP system.
+
+All features involving:
+- song structure
+- import/export
+- storage
+- playback
+- editing
+
+MUST comply with this document.
+
+If there is any conflict between:
+- implementation
+- other documentation
+
+👉 SMP_RULES.md prevails.
 ## Purpose
 - This file defines the target rules for the future `.smp` system.
 - `AGENTS.md` remains the source for the current codebase architecture.

@@ -1,0 +1,191 @@
+# LIVE STABILITY RULES — Stage Music Player
+
+CRITICAL — LIVE PERFORMANCE SAFETY
+
+This document defines all rules required to guarantee stable behavior during live performance.
+
+Any implementation that violates these rules must be rejected.
+
+⸻
+
+CORE PRINCIPLE
+
+During live playback, NOTHING must introduce instability.
+
+If there is any doubt between:
+- feature richness
+- performance
+- stability
+
+👉 ALWAYS choose stability.
+
+⸻
+
+PLAYBACK SAFETY
+
+- Playback must rely ONLY on local, ready-to-use files.
+- No remote access, no streaming, no zip reading.
+- Audio must be fully accessible before playback starts.
+
+- ExoPlayer is the ONLY source of truth for:
+    - playback position
+    - timing
+    - synchronization
+
+👉 No alternative timing system allowed.
+
+⸻
+
+THREADING RULES (CRITICAL)
+
+- No heavy computation on the main thread.
+- No blocking operations during playback.
+- No disk I/O on the main thread during live.
+
+- Background work must:
+    - be lightweight
+    - be predictable
+    - never interfere with playback timing
+
+⸻
+
+DATA PREPARATION
+
+ALL required data must be prepared BEFORE playback:
+
+- audio files resolved
+- trims (IN / OUT) computed
+- timeline data loaded (MIDI / DMX / notes)
+- playback parameters ready (gain, pitch, speed)
+
+👉 ZERO preparation during playback.
+
+⸻
+
+TIMELINE SAFETY
+
+- Timeline must rely strictly on ExoPlayer time.
+- No recalculation or reconstruction during playback.
+- No dynamic structure changes while playing.
+
+- Event dispatch (MIDI / DMX) must:
+    - be deterministic
+    - avoid duplicate triggers
+    - handle seek safely
+
+⸻
+
+AUDIO PROCESSING RULES
+
+- No runtime audio transformation that risks glitches.
+- Speed / pitch processing must use stable pipelines only.
+
+- If a processing mode introduces:
+    - crackles
+    - latency
+    - instability
+
+👉 It must be disabled or replaced.
+
+⸻
+
+UI BEHAVIOR DURING LIVE
+
+- UI must NEVER block playback.
+- UI updates must be lightweight.
+
+- No:
+    - heavy recomposition
+    - large list rebuilds
+    - expensive animations during playback
+
+👉 Smooth UI = safe live experience.
+
+⸻
+
+STATE MANAGEMENT
+
+- Playback state must be:
+    - consistent
+    - predictable
+    - recoverable
+
+- No hidden state transitions.
+- No implicit behavior.
+
+👉 Every state change must be explicit and controlled.
+
+⸻
+
+ERROR HANDLING
+
+- No crash must reach the user during live.
+
+- In case of error:
+    - fail gracefully
+    - preserve playback if possible
+    - avoid stopping the audio engine
+
+👉 The show must go on.
+
+⸻
+
+SEEK & TRANSITIONS
+
+- Seek operations must be:
+    - safe
+    - controlled
+    - limited
+
+- NEVER use seek as a structural mechanism (looping, arrangement).
+
+👉 Seek is for navigation, NOT for structure.
+
+⸻
+
+RESOURCE MANAGEMENT
+
+- Memory usage must be stable.
+- No uncontrolled allocations during playback.
+
+- Avoid:
+    - loading large assets dynamically
+    - creating objects in tight loops
+
+👉 Predictability over flexibility.
+
+⸻
+
+MULTI-SOURCE AUDIO (BUS PRINCIPAL)
+
+- Only one main audio source must dominate at a time:
+    - Backing track
+    - DJ
+    - Ambience
+
+- Automatic behaviors must prevent:
+    - unintended overlap
+    - audio conflicts
+
+👉 The mix must remain controlled at all times.
+
+⸻
+
+DEVICE VARIABILITY
+
+- Behavior must NOT depend on device performance.
+- No timing logic relying on device speed.
+
+👉 Same result on all devices.
+
+⸻
+
+FINAL RULE
+
+If a feature introduces even a small risk of:
+- glitch
+- delay
+- instability
+- unpredictability
+
+👉 It must NOT be implemented in its current form.

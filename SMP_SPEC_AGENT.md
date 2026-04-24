@@ -1,3 +1,12 @@
+CRITICAL — SMP IMPLEMENTATION SPEC
+
+This document defines how SMP_RULES.md must be applied in code.
+
+It is intended for coding agents (Codex).
+
+If there is any conflict:
+👉 SMP_RULES.md takes precedence.
+
 This file complements SMP_RULES.md.
 If there is any conflict, SMP_RULES.md takes precedence.
 
@@ -186,5 +195,13 @@ PRINCIPE GLOBAL
 
 Le .smp transporte la vérité  
 Le runtime exécute la vérité
+
+FINAL IMPLEMENTATION RULE
+
+At runtime:
+- NEVER depend on .smp archive structure
+- ALWAYS depend on normalized SongUnit
+
+Any code directly reading from .smp during playback must be rejected.
 
 FIN

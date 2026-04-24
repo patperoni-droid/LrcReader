@@ -1,0 +1,301 @@
+# FEATURE — PLAYER (Audio + Lyrics + Chords)
+
+CRITICAL — CORE RUNTIME COMPONENT
+
+This document describes the Player system.
+It is the central component used during live performance.
+
+All changes must preserve stability, timing accuracy, and user control.
+
+⸻
+
+USER GOAL
+
+The user must be able to:
+- play a song instantly
+- see synchronized lyrics or chords
+- control playback easily during live
+- prepare the next track without stress
+- maintain a smooth and professional flow
+
+⸻
+
+CORE RESPONSIBILITIES
+
+The Player is responsible for:
+
+- Audio playback (ExoPlayer)
+- Timing reference (single source of truth)
+- Lyrics / Chords synchronization
+- Timeline event dispatch (MIDI / DMX)
+- Playback transitions (next, auto-play, crossfade)
+- Track-specific settings (gain, pitch, speed)
+
+👉 The Player drives everything during live.
+
+⸻
+
+ARCHITECTURE OVERVIEW
+
+Main components:
+
+- ExoPlayer (Media3)
+- PlayerScreen (UI)
+- MainActivity (state + player bridge)
+- Timeline dispatcher (MIDI / DMX)
+- Track settings stores (volume, pitch, tempo)
+
+⸻
+
+PLAYBACK MODEL
+
+- Playback MUST use ExoPlayer only
+- currentPosition is the global time reference
+
+👉 All systems depend on this:
+- lyrics
+- chords
+- MIDI
+- DMX
+
+No alternative timing system allowed.
+
+⸻
+
+PLAYBACK FLOW
+
+1. User selects a track
+2. Player loads the corresponding songId data
+3. Audio source is resolved (local file)
+4. Player prepares ExoPlayer
+5. Playback starts
+
+During playback:
+- currentPosition is continuously read
+- UI is updated
+- timeline events are dispatched
+
+⸻
+
+LYRICS & CHORDS
+
+- Lyrics and chords are independent layers
+- Both are time-based (.lrc)
+
+- UI can switch instantly between:
+  - Lyrics mode
+  - Chords mode
+
+👉 No reload required
+
+⸻
+
+TIMELINE INTEGRATION
+
+The Player drives timeline execution:
+
+- MIDI cues
+- DMX cues
+- Notes / markers
+
+Rules:
+- based on time (ms)
+- no dependency on UI
+- deterministic triggering
+
+👉 The Player is the clock.
+
+⸻
+
+TRACK SETTINGS (CRITICAL)
+
+Each track can have:
+
+- gain (volume adjustment)
+- pitch
+- speed
+- trim IN / OUT
+
+Rules:
+- stored per songId
+- applied at playback
+- never modify original audio
+
+👉 Settings must be stable and persistent.
+
+⸻
+
+TRANSITIONS
+
+Supported behaviors:
+
+- Play → immediate start
+- Define Next → next track queued
+- Auto Play → automatic chaining
+- Crossfade → smooth transition
+
+Rules:
+- transitions must be predictable
+- no glitch allowed
+- no timing drift
+
+⸻
+
+PRE-END BEHAVIOR (RETURN -10s)
+
+- When enabled:
+  - The Player automatically returns to the playlist view
+  - approximately 10 seconds before the end of the current track
+
+Purpose:
+- Allow the user to anticipate the next track
+- Prepare transitions without stress
+- Maintain full control during live
+
+Rules:
+- Must NOT interrupt playback
+- Must NOT affect audio timing
+- Must NOT trigger any playback change
+
+👉 This is a UI/navigation behavior ONLY
+👉 Playback continues normally in background
+
+Constraints:
+- Timing must be based on ExoPlayer position
+- Must be consistent across devices
+- Must not trigger multiple times
+
+Optional:
+- Feature must be user-configurable (on/off)
+
+⸻
+
+DEFINE NEXT (LIVE CRITICAL)
+
+- User can select the next track during playback
+- The selected track must be clearly visible (UI feedback)
+- It must start automatically at the end of the current track
+
+👉 No ambiguity allowed
+
+⸻
+
+AUTO PLAY
+
+- When enabled:
+  - tracks follow playlist order automatically
+
+- Must work with:
+  - groups
+  - reordered tracks
+
+👉 Always deterministic behavior
+
+⸻
+
+SEEK BEHAVIOR
+
+- Seek is allowed ONLY for navigation
+
+FORBIDDEN:
+- using seek for loops
+- using seek for arrangement logic
+
+👉 Seek must remain safe and predictable
+
+⸻
+
+UI REQUIREMENTS
+
+- Must be readable in live conditions
+- Large text (lyrics / chords)
+- Clear visual hierarchy
+
+Must provide:
+- Play / Pause
+- Next / Previous
+- Define Next feedback
+- Mode switch (Lyrics / Chords)
+
+👉 No visual overload
+
+⸻
+
+PERFORMANCE RULES
+
+- UI updates must be lightweight
+- No heavy recomposition during playback
+- No blocking operations
+
+👉 Player must remain fluid at all times
+
+⸻
+
+STATE MANAGEMENT
+
+- Player state must be explicit:
+  - playing
+  - paused
+  - stopped
+  - loading
+
+- No hidden transitions
+- No ambiguous states
+
+👉 Predictable behavior only
+
+⸻
+
+ERROR HANDLING
+
+- Playback must not crash
+- In case of issue:
+  - fail gracefully
+  - keep UI responsive
+
+👉 Never break the live experience
+
+⸻
+
+KNOWN PITFALLS
+
+- Desync if timing not based on ExoPlayer
+- Glitches if audio pipeline is unstable
+- UI lag affecting perception of sync
+- Misaligned trims causing bad transitions
+
+👉 Must be tested carefully
+
+⸻
+
+TEST SCENARIOS (MANDATORY)
+
+Test at least:
+
+- play a single track
+- switch Lyrics ↔ Chords during playback
+- define next track during playback
+- auto play sequence
+- crossfade transitions
+- seek forward / backward
+- track with trim IN / OUT
+- track with pitch / speed
+- return -10s behavior (enabled / disabled)
+
+👉 Must be tested on real device
+
+⸻
+
+FINAL RULE
+
+The Player must ALWAYS feel:
+- instant
+- stable
+- predictable
+
+If a change introduces:
+- delay
+- confusion
+- instability
+
+👉 It must be rejected.

@@ -1,277 +1,231 @@
 # AGENTS.md
 
 ## Scope
-- Gradle project with a single application module: `:app`.
-- Base namespace and application id: `com.patrick.lrcreader.exo`.
-- Toolchain:
-  - AGP `8.5.0`
-  - Kotlin `2.0.0`
-  - Java/Kotlin target `17`
-  - `compileSdk 35`, `minSdk 23`, `targetSdk 35`
-- UI stack: Jetpack Compose only.
-- Main entrypoint: `MainActivity.kt`.
+
+- Android project (single module :app)
+- Namespace: com.patrick.lrcreader.exo
+- UI: Jetpack Compose only
+- Main entry point: MainActivity.kt
 
 ---
 
-## Build Matrix
-- Flavors:
-  - labo
-  - concert
-- Build types: debug / release
+## CRITICAL — Mandatory Reading
+
+Before any structural or important decision, read and strictly follow:
+
+- /docs/00_PROJECT_RULES.md
+- /docs/01_SMP_ARCHITECTURE.md
+- /docs/02_LIVE_STABILITY_RULES.md
+- SMP_RULES.md
+- SMP_SPEC_AGENT.md
+
+If there is any conflict:
+👉 SMP_RULES.md prevails
 
 ---
 
-## Main Runtime Architecture
+## DOCUMENT LOADING POLICY (CRITICAL)
 
-- `MainActivity` = orchestrateur central
-- Pas de DI
-- Navigation manuelle
-- État majoritairement via:
-  - singletons (`object`)
-  - Compose state
-  - StateFlow
+Always read:
+- /docs/00_PROJECT_RULES.md
 
----
+Then load ONLY relevant documents depending on the task:
 
-## Storage Model — SMP FIRST (UPDATED)
+For Player / audio:
+- /docs/features/FEATURE_PLAYER.md
 
-The application is now **SMP-first**.
+For Playlist:
+- /docs/features/FEATURE_PLAYLISTS.md
 
-### BackingTracks
+For Timeline / MIDI / DMX:
+- /docs/features/FEATURE_TIMELINE.md
 
-- `BackingTracks` must contain **only `.smp` files**
-- Legacy folders must NOT be created:
-  - audio
-  - lyrics
-  - accords
-  - videos
-  - DJ
+For Library / import / files:
+- /docs/features/FEATURE_LIBRARY.md
 
-### Config
+For SMP / architecture / storage:
+- /docs/01_SMP_ARCHITECTURE.md
+- /docs/02_LIVE_STABILITY_RULES.md
+- SMP_RULES.md
+- SMP_SPEC_AGENT.md
 
-- `Config` must be created **lazily**
-- never created on read
-- created only on first real write
-
-### Backups
-
-- `Backups` remains valid
-
-### Rule
-
-Filesystem must reflect **real physical files only**
-
-👉 No artificial folders  
-👉 No automatic legacy recreation
+Rule:
+👉 Never load unrelated documents unless strictly necessary
 
 ---
 
-## Files Explorer Philosophy (CRITICAL)
+## IMPORTANT — PROMPTING RULES
 
-`Fichiers` must behave like **Google Files**
+Always generate structured Codex prompts:
+
+1. Diagnose the issue using real code (when not trivial)
+2. Apply a minimal and safe patch
+3. Validate with compilation or tests
 
 Rules:
-- Show real filesystem only
-- No filtering
-- No hidden logic
-- No fake folders
-
-Capabilities:
-- navigate freely (up/down)
-- reach SAF root
-- copy / move / delete
-- support files + folders
-- support multi-selection
-
-Principle:
-Reality > abstraction
+- Never refactor unless explicitly required
+- Never modify unrelated features
+- Focus only on relevant parts of the system
+- Minimize token usage by loading only necessary docs
 
 ---
 
-## SAF Permissions Strategy
+## BUILD
 
-All SAF permissions must be persisted.
+- Flavors: labo, concert
+- Build types: debug, release
 
-Rules:
-- always call `takePersistableUriPermission`
-- reuse previously authorized folders
-- never reopen picker unnecessarily
-
-System:
-- transfer destinations are stored
-- validated against persisted permissions
-- reused automatically
-
-Fallback:
-- picker only if no valid folder available
+Validation command:
+./gradlew :app:compileLaboDebugKotlin
 
 ---
 
-## Onboarding Model (NEW)
+## RUNTIME OVERVIEW
 
-Onboarding is split in two:
+- MainActivity = central orchestrator
+- Player → ExoPlayer (source of truth: time)
+- DJ → separate engine
+- Timeline → based only on timeMs
 
-### 1. Music Access
-- permission: `READ_MEDIA_AUDIO`
-- used for:
-  - DJ
-  - audio browsing
-
-### 2. Workspace (SMP)
-- SAF folder chosen by user
-- recommended: `Music`
-
-Rules:
-- never expose SAF jargon
-- never ask multiple folders
-- UX must be simple:
-  - "I can access my music"
-  - "I have a workspace"
+State:
+- singletons (object)
+- Compose state
+- StateFlow
 
 ---
 
-## DJ Architecture (IMPORTANT)
+## CORE PRINCIPLES
 
-Current:
-- folder-based
+- Never break the stable beta
+- Always prefer minimal patch
+- No unnecessary refactor
+- Backward compatibility required
 
-Target:
-- global audio access
-
-Rules:
-- must NOT depend on a folder
-- must use media access
-- folder mode = fallback only
+Priority:
+👉 Stability > Performance > Features
 
 ---
 
-## Persistence Model
+## LIVE PERFORMANCE RULES
 
-### SharedPreferences
-- operational prefs
-
-### JSON (Config)
-- portable state
-- created lazily
-
-### Room
-- history only
-
-### In-memory
-- PlaylistRepository
-- AudioEngine
-- DjEngine
+- No heavy processing during playback
+- No I/O on main thread
+- No reading from .smp zip in runtime
+- All data must be local and ready before playback
 
 ---
 
-## Audio Model
+## SMP MODEL (CRITICAL)
 
-- Player → ExoPlayer
-- DJ → MediaPlayer x2
-- Filler → separate
-- Coordinator enforces exclusivity
+- 1 song = 1 SongUnit
+- .smp = transport format only
+- Runtime works on normalized internal storage
+
+Lifecycle:
+👉 IMPORT → NORMALIZE → USE → EXPORT
 
 ---
 
-## Timeline Is Source Of Truth
+## IDENTITY RULES
 
-All time-based logic must rely on:
-- `positionMs`
+- Song identity = songId
+- Never depend on:
+  - file name
+  - URI
+  - external path
 
-Never:
-- UI state
+---
+
+## TIMELINE RULE
+
+- All time-based logic uses timeMs
+- Source of truth = ExoPlayer
+
+Forbidden:
 - lineIndex
+- UI state dependency
 
 ---
 
-## Intent vs Output Architecture
+## INTENT / RUNTIME / OUTPUT SEPARATION
 
-- Intent = data (portable)
-- Runtime = timeline
-- Output = MIDI / DMX
+Always separate:
+
+- Intent → data (MIDI, DMX, annotations)
+- Runtime → timeline execution
+- Output → MIDI / DMX
 
 No coupling allowed.
 
 ---
 
-## LightCue System
+## STORAGE RULES
 
-- timeline-based
-- no hardware dependency
-- DMX later (Art-Net)
-
----
-
-## Known Gotchas
-
-- MainActivity = énorme
-- duplication volontaire de state
-- SAF complexe → toujours utiliser DocumentFile
-- version catalog pas fiable
+- Work on internal normalized data
+- Never use .smp archive at runtime
+- No fake folders
+- Filesystem must reflect reality only
 
 ---
 
-## Where To Start
+## I18N RULES
+
+Forbidden:
+- hardcoded strings
+
+Required:
+- values/strings.xml (FR)
+- values-en/strings.xml
+- values-es/strings.xml
+
+---
+
+## WORKFLOW WITH CODEX
+
+Strict order:
+
+1. Diagnose
+2. Minimal patch
+3. Validation
+4. Commit
+
+Rules:
+- No manual code editing
+- No premature commit
+- Keep logs unless clearly obsolete
+
+---
+
+## FORBIDDEN
+
+- fragile logic
+- hidden deletion
+- duplicate storage logic
+- unnecessary SAF complexity
+- runtime zip access
+
+---
+
+## WHERE TO START
 
 - Startup → MainActivity
-- Player → AudioEngine
-- DJ → DjEngine
+- Player → AudioEngine / PlayerScreen
+- Timeline → event system
 - Library → LibraryScreen
 - Config → core/config
 - Lyrics → LrcStorage
 
 ---
 
-## Validation
+## FINAL RULE
 
-- compile:
-  `./gradlew :app:compileLaboDebugKotlin`
+If a change introduces:
+- instability
+- regression
+- unnecessary complexity
 
----
-
-## Editing Rules
-
-- patch minimal
-- ne pas casser existant
-- IO → Dispatchers.IO
-- logs existants à conserver
+👉 It must be rejected
 
 ---
 
-## SMP Rules
-
-- lire SMP_RULES.md avant toute décision
-
----
-
-## Mandatory Agent Consultation
-
-Toujours:
-- diagnostic avant patch
-- ne pas supposer
-- vérifier le code
-
----
-
-## UX RULES
-
-### Recherche
-- une seule loupe globale
-- dépend de la page active
-
-### Cohérence
-- jamais doubler une feature UI
-
----
-
-## Commit Workflow
-
-- commits faits par Codex uniquement
-- après validation utilisateur
-
-Format:
-- patch validé
-- commit ciblé
-- message propre
-
----
+END

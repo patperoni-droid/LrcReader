@@ -1,0 +1,293 @@
+# FEATURE — LIBRARY
+
+CRITICAL — SONG IMPORT AND FILE MANAGEMENT SYSTEM
+
+This document defines the Library system.
+The Library is responsible for browsing, importing, normalizing, and managing song-related files.
+
+All changes must preserve data safety, performance, and user trust.
+
+⸻
+
+USER GOAL
+
+The user must be able to:
+- browse audio files
+- import songs into the app
+- manage live songs
+- select multiple files
+- assign songs to playlists
+- rename display titles
+- keep original files safe
+
+👉 Library = entry point for song preparation
+
+⸻
+
+CORE PRINCIPLE
+
+The Library must never confuse:
+
+- source files
+- internal live songs
+- playlists
+
+Source files are the user’s original files.
+
+Internal live songs are normalized song units used by the app.
+
+Playlists only reference songs.
+
+👉 Never mix these concepts.
+
+⸻
+
+SOURCE FILES
+
+Source files may come from:
+- device storage
+- SAF folders
+- Music folder
+- user-selected workspace
+- audio files
+- sidecar files (.lrc, etc.)
+- embedded lyrics
+- Musicolet-like structures
+
+Rules:
+- original files must not be modified
+- user folder structure must be respected
+- no hidden destructive operation
+
+⸻
+
+INTERNAL SONG MODEL
+
+After import, a song must be normalized into the internal model.
+
+Internal song data may include:
+- audio
+- lyrics
+- chords
+- timeline data
+- metadata
+- track settings
+
+Each internal song must be linked by songId.
+
+👉 songId is the stable identity.
+
+⸻
+
+IMPORT FLOW
+
+Import must follow this flow:
+
+1. User selects source file(s)
+2. App resolves readable access
+3. App creates or updates internal song unit
+4. App normalizes related data
+5. App registers songId
+6. Song becomes available for playback and playlist assignment
+
+👉 No playback should depend on original external file state.
+
+⸻
+
+SMP FILES
+
+.smp files are transport packages.
+
+Rules:
+- .smp can be imported
+- .smp must be extracted before use
+- .smp must never be read directly during live playback
+
+👉 Runtime uses extracted internal data only.
+
+⸻
+
+FILE BROWSING
+
+The Library may provide file browsing.
+
+Rules:
+- browsing must be clear
+- virtual folders must be handled safely
+- SAF URIs must not be treated like normal file paths
+- invalid URI assumptions must be avoided
+
+👉 Never call file APIs blindly on virtual or custom URIs.
+
+⸻
+
+SAF SAFETY
+
+When using Android SAF:
+
+Rules:
+- SAF operations may be slow
+- avoid heavy SAF work on main thread
+- persist permissions when required
+- handle missing permissions gracefully
+
+👉 SAF must never freeze the live app.
+
+⸻
+
+SCAN / RESCAN
+
+Library scanning must be safe and predictable.
+
+Rules:
+- scan must not block UI
+- scan must not modify user files
+- rescan should refresh visible data only
+- avoid repeated expensive full scans
+
+⸻
+
+MULTI-SELECTION
+
+User must be able to:
+- select multiple files or songs
+- import as batch
+- assign to playlist
+- move/copy/delete when allowed
+
+Rules:
+- order must be preserved when useful
+- destructive operations must be confirmed
+
+⸻
+
+RENAME BEHAVIOR
+
+Renaming in the app must not rename original audio files by default.
+
+Rules:
+- display title can be changed
+- original file remains untouched
+- songId remains stable
+
+👉 Rename = metadata/display operation unless explicitly stated otherwise.
+
+⸻
+
+DELETE BEHAVIOR
+
+Delete actions must be explicit.
+
+Possible delete targets:
+- remove from playlist
+- delete internal song data
+- delete source file
+
+Rules:
+- these actions must never be confused
+- destructive delete requires confirmation
+- app must clearly explain what will be deleted
+
+⸻
+
+PLAYLIST ASSIGNMENT
+
+The Library can assign songs to playlists.
+
+Rules:
+- playlist stores songId references only
+- no audio duplication inside playlists
+- assignment must preserve selected order
+
+⸻
+
+PERFORMANCE RULES
+
+Forbidden on main thread:
+- large folder scans
+- SAF recursive traversal
+- audio metadata extraction
+- SMP extraction
+- waveform generation
+
+Required:
+- background processing
+- progress feedback when needed
+- cancellation or safe failure where possible
+
+⸻
+
+DATA SAFETY
+
+The Library must protect user data.
+
+Rules:
+- never overwrite without explicit intent
+- never silently delete
+- never corrupt internal song units
+- never break existing playlists during import/rescan
+
+⸻
+
+UI REQUIREMENTS
+
+The Library UI must be:
+- simple
+- readable
+- predictable
+- close to a file manager when browsing files
+- close to a song manager when browsing live songs
+
+Must clearly distinguish:
+- source files
+- live songs
+- playlists
+
+⸻
+
+KNOWN PITFALLS
+
+- treating SAF URI as File path
+- hiding valid files because of strict filters
+- showing empty folders because virtual folders are misunderstood
+- breaking playlists by changing songId
+- modifying original files accidentally
+- doing heavy I/O on main thread
+
+⸻
+
+TEST SCENARIOS (MANDATORY)
+
+Test at least:
+
+- browse device audio files
+- import one MP3
+- import MP3 with .lrc sidecar
+- import .smp
+- rename display title
+- assign to playlist
+- multi-select import
+- rescan library
+- missing permission case
+- source file moved/deleted after import
+- app restart after import
+
+👉 Must be tested on real device when possible.
+
+⸻
+
+FINAL RULE
+
+The Library must ALWAYS protect:
+- user files
+- internal song identity
+- playlist consistency
+- live performance stability
+
+If a change introduces:
+- data loss
+- unsafe file handling
+- UI freeze
+- broken song references
+
+👉 It must be rejected.

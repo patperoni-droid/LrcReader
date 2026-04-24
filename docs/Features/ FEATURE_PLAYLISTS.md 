@@ -1,0 +1,261 @@
+# FEATURE — PLAYLISTS
+
+CRITICAL — LIVE ORGANIZATION SYSTEM
+
+This document defines the Playlist system.
+Playlists are the core structure used to organize and control live performance.
+
+All changes must preserve clarity, flexibility, and real-time control.
+
+⸻
+
+USER GOAL
+
+The user must be able to:
+- organize songs in a custom order
+- adapt the set in real time
+- group songs logically (intro, dance, etc.)
+- see what has been played
+- prepare what comes next quickly
+
+👉 Playlist = live control center
+
+⸻
+
+CORE PRINCIPLE
+
+A playlist is NOT a collection of files.
+
+A playlist is:
+- a structure
+- an ordered list of songId references
+- optional grouping metadata
+
+👉 No duplication of song data
+
+⸻
+
+PLAYLIST STRUCTURE
+
+A playlist contains:
+
+- ordered list of items
+- items can be:
+  - song references (songId)
+  - group headers
+
+Example:
+
+[GROUP: INTRO]
+songId_1
+songId_2
+
+[GROUP: DANCE]
+songId_3
+songId_4
+
+⸻
+
+GROUPS (CRITICAL)
+
+Groups are used to structure the set.
+
+Rules:
+- groups are visual and logical separators
+- groups do NOT affect playback engine directly
+- groups can be collapsed / expanded
+- groups can contain multiple songs
+
+👉 Groups improve readability during live
+
+⸻
+
+ORDERING
+
+- User can reorder songs freely
+- User can move songs into groups
+- Order must be preserved automatically
+
+Rules:
+- reordering must be instant
+- no lag allowed
+- order must persist across sessions
+
+⸻
+
+PLAYBACK INTEGRATION
+
+The playlist interacts with the Player:
+
+- selecting a song starts playback
+- next song depends on playlist order OR "Define Next"
+
+Rules:
+- playlist must not override Player logic
+- playlist provides structure only
+
+⸻
+
+DEFINE NEXT (CRITICAL)
+
+- User can mark a song as "next"
+- This overrides playlist order temporarily
+
+Rules:
+- must be clearly visible
+- must be unique (only one next)
+- must reset after playback
+
+👉 No ambiguity allowed
+
+⸻
+
+AUTO PLAY
+
+- When enabled:
+  - songs follow playlist order automatically
+
+Rules:
+- must respect groups and order
+- must be predictable
+- must not skip items
+
+⸻
+
+LIVE LIST BEHAVIOR
+
+When creating a live list:
+
+- system may create a temporary group
+- current song + selected songs are grouped
+
+Rules:
+- must be intuitive
+- must not confuse user
+- must remain editable
+
+⸻
+
+PLAYED TRACK HANDLING
+
+After a song is played:
+
+Options may include:
+- marking as played (visual)
+- moving to end of playlist (optional)
+
+Rules:
+- must be consistent
+- must be reversible (reset)
+
+👉 User must always know what was played
+
+⸻
+
+RESET FUNCTION
+
+- User can reset playlist to initial state
+
+Must restore:
+- original order
+- original positions
+- remove "played" state
+
+👉 Essential for next performance
+
+⸻
+
+MULTI-SELECTION
+
+User must be able to:
+- select multiple songs
+- assign to group
+- move as batch
+
+Rules:
+- must preserve order
+- must be fast and reliable
+
+⸻
+
+DATA MODEL
+
+Playlist stores:
+- songId references
+- order
+- group metadata
+
+Must NOT store:
+- audio files
+- duplicated song data
+
+⸻
+
+PERSISTENCE
+
+Playlist must:
+- be saved automatically
+- survive app restart
+- remain consistent with library
+
+⸻
+
+UI REQUIREMENTS
+
+Must provide:
+- clear list
+- groups visibility
+- drag & drop reorder
+- quick actions (play, next, remove)
+
+Must be:
+- readable on stage
+- fast
+- predictable
+
+⸻
+
+KNOWN PITFALLS
+
+- losing order after modification
+- duplicated items
+- broken group assignment
+- unclear "next" state
+- confusion between playlist and player logic
+
+⸻
+
+TEST SCENARIOS (MANDATORY)
+
+Test at least:
+
+- create playlist
+- add songs
+- reorder songs
+- create group
+- move songs into group
+- define next during playback
+- auto play sequence
+- mark songs as played
+- reset playlist
+- multi-select operations
+
+👉 Must be tested on real device
+
+⸻
+
+FINAL RULE
+
+The Playlist must ALWAYS be:
+
+- clear
+- fast
+- predictable
+- controllable during live
+
+If a change introduces:
+- confusion
+- delay
+- loss of control
+
+👉 It must be rejected.

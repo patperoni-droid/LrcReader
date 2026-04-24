@@ -1,0 +1,335 @@
+# FEATURE — TIMELINE
+
+CRITICAL — UNIVERSAL SYNCHRONIZATION LAYER
+
+This document describes the Timeline system.
+The Timeline is the universal layer used to synchronize actions with song playback.
+
+All changes must preserve timing accuracy, live stability, and deterministic behavior.
+
+⸻
+
+USER GOAL
+
+The user must be able to:
+- add actions at precise moments in a song
+- trigger MIDI cues automatically
+- trigger DMX / lighting cues automatically
+- add notes or markers
+- adjust timing after capture
+- trust that everything follows the music during live playback
+
+⸻
+
+CORE PRINCIPLE
+
+The Timeline is based on song time.
+
+It must NOT depend on:
+- lyrics lines
+- chord lines
+- UI state
+- screen refresh rate
+
+👉 One reference only: ExoPlayer currentPosition
+
+⸻
+
+CORE RESPONSIBILITIES
+
+The Timeline is responsible for:
+
+- storing time-based events
+- loading events for the current song
+- dispatching events during playback
+- avoiding duplicate triggers
+- handling seek safely
+- keeping MIDI / DMX / notes synchronized
+
+👉 Timeline = automation brain
+
+⸻
+
+ARCHITECTURE OVERVIEW
+
+Main concepts:
+
+- songId
+- timestampMs
+- event type
+- event payload
+
+Possible event types:
+- MIDI
+- DMX
+- Note
+- Marker
+
+Each event belongs to a songId.
+
+⸻
+
+TIMING MODEL
+
+All timeline events must use milliseconds.
+
+Example:
+
+timestampMs = 42500
+
+Means:
+
+42.5 seconds after the start of the song.
+
+Rules:
+- no frame-based timing
+- no lyric-line timing
+- no chord-line timing
+- no device-speed timing
+
+👉 Time must always come from playback position.
+
+⸻
+
+PLAYBACK INTEGRATION
+
+During playback:
+
+1. Player reads ExoPlayer currentPosition
+2. Timeline evaluates events between previousPosition and currentPosition
+3. Matching events are dispatched
+4. Dispatchers update external systems or internal state
+
+Important:
+- never rely only on exact equality
+- always evaluate a time window
+
+Example:
+
+previousPosition < eventTime <= currentPosition
+
+⸻
+
+EVENT DISPATCH SAFETY
+
+Dispatch must be deterministic.
+
+Rules:
+- trigger each event once
+- avoid duplicate firing
+- handle fast position updates
+- handle skipped frames
+- handle seek forward / backward safely
+
+👉 No random behavior allowed.
+
+⸻
+
+SEEK HANDLING
+
+When user seeks:
+
+- Timeline must resync safely
+- Past events must not all retrigger blindly
+- Current state may need recomputation depending on event type
+
+Rules:
+- MIDI one-shot cues should not spam after seek
+- DMX state may need sync to the correct current scene
+- Notes / markers should reflect current position
+
+👉 Seek handling must be explicit.
+
+⸻
+
+MIDI CUES
+
+MIDI cues are timeline events.
+
+They may include:
+- channel
+- message type
+- program change value
+- control change value
+- optional label
+
+Rules:
+- MIDI dispatch must be lightweight
+- no blocking connection work during playback
+- failed MIDI dispatch must not crash playback
+
+👉 Audio must remain priority.
+
+⸻
+
+DMX / LIGHTING CUES
+
+DMX cues are timeline events.
+
+They may include:
+- color
+- intensity
+- strobe
+- blackout
+- fade duration
+- effect duration
+
+Rules:
+- DMX computation must be lightweight
+- lighting state must be predictable
+- no heavy rendering or network blocking on main thread
+
+👉 Lights follow music, never disturb music.
+
+⸻
+
+NOTES / MARKERS
+
+Notes and markers are timeline events used for live reminders.
+
+Examples:
+- “Solo”
+- “Talk to audience”
+- “Change guitar”
+- “Prepare next song”
+
+Rules:
+- must be readable
+- must not block playback
+- must not depend on lyrics/chords display
+
+⸻
+
+DATA STORAGE
+
+Timeline data must be stored per songId.
+
+Rules:
+- no global anonymous timeline data
+- no filename-based linking
+- no duplicated storage logic
+
+Timeline data must survive:
+- app restart
+- song reload
+- playlist usage
+
+⸻
+
+EDITING MODEL
+
+User must be able to:
+- add an event during playback
+- move an event
+- edit an event
+- delete an event
+- test an event when relevant
+
+Editing must:
+- update stored data safely
+- avoid corrupting the timeline
+- preserve unrelated event types
+
+👉 Editing MIDI must not break DMX or notes.
+
+⸻
+
+LIVE CAPTURE
+
+During live capture:
+
+- User taps an action while song plays
+- Current ExoPlayer position is captured
+- Event is created at that timestamp
+
+Rules:
+- capture must be instant
+- no heavy dialog blocking live capture
+- timestamp must come from ExoPlayer only
+
+⸻
+
+PERFORMANCE RULES
+
+During playback:
+
+FORBIDDEN:
+- parsing timeline files repeatedly
+- rebuilding the full event list
+- sorting large lists every tick
+- blocking disk access
+- heavy UI recomposition
+
+REQUIRED:
+- preload events before playback
+- keep runtime structures simple
+- dispatch only what is needed
+
+⸻
+
+UI REQUIREMENTS
+
+Timeline UI must allow:
+- clear event list
+- precise editing
+- readable timestamps
+- filtering by event type if needed
+- safe delete confirmation
+
+During live:
+- UI must stay lightweight
+- no visual overload
+- no animation that risks performance
+
+⸻
+
+KNOWN PITFALLS
+
+- Using lyrics as timeline source
+- Triggering cues twice
+- Missing cues when polling interval skips over timestamp
+- Retiggering all old cues after seek
+- Doing disk I/O during playback
+- Coupling DMX/MIDI to screen state
+
+👉 These are regression risks.
+
+⸻
+
+TEST SCENARIOS (MANDATORY)
+
+Test at least:
+
+- MIDI cue triggers at correct time
+- DMX cue triggers at correct time
+- multiple cues close together
+- seek forward across cues
+- seek backward before cues
+- pause / resume
+- stop / restart song
+- switch song
+- edit cue then replay
+- delete cue then replay
+- playback with lyrics screen visible
+- playback with chords screen visible
+
+👉 Must be tested on real device when possible.
+
+⸻
+
+FINAL RULE
+
+The Timeline must ALWAYS be:
+
+- time-based
+- deterministic
+- independent from UI
+- safe during live playback
+
+If a change introduces:
+- timing drift
+- duplicate triggers
+- missed cues
+- runtime instability
+
+👉 It must be rejected.
