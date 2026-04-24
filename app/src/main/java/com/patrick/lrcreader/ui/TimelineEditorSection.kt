@@ -87,6 +87,8 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import com.patrick.lrcreader.core.EditionConfig
 import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.core.TrackTimelineTempoPrefs
@@ -1438,8 +1440,6 @@ private fun TimelineMeasuresPlaceholder(
     var localMeasureAnchorMs by remember(measureAnchorMs) { mutableStateOf(measureAnchorMs) }
     var tempoTapTimesMs by remember { mutableStateOf<List<Long>>(emptyList()) }
     var showTapTempoHint by remember { mutableStateOf(false) }
-    var showTempoAdjustHint by remember { mutableStateOf(false) }
-    var hasShownTempoAdjustHint by remember { mutableStateOf(false) }
     var metronomeEnabled by remember { mutableStateOf(false) }
     var loopEnabled by remember { mutableStateOf(false) }
     var loopLengthBars by remember { mutableIntStateOf(1) }
@@ -1472,13 +1472,6 @@ private fun TimelineMeasuresPlaceholder(
         if (showTapTempoHint) {
             kotlinx.coroutines.delay(1_800L)
             showTapTempoHint = false
-        }
-    }
-
-    LaunchedEffect(showTempoAdjustHint) {
-        if (showTempoAdjustHint) {
-            kotlinx.coroutines.delay(2_200L)
-            showTempoAdjustHint = false
         }
     }
 
@@ -1568,10 +1561,6 @@ private fun TimelineMeasuresPlaceholder(
         val detectedText = detected.toString()
         if (tempoDraft != detectedText) {
             onTempoDraftChange(detectedText)
-        }
-        if (!hasShownTempoAdjustHint) {
-            hasShownTempoAdjustHint = true
-            showTempoAdjustHint = true
         }
     }
 
@@ -1694,9 +1683,6 @@ private fun TimelineMeasuresPlaceholder(
                 ) {
                     OutlinedButton(
                         onClick = {
-                            if (tempoTapTimesMs.isEmpty()) {
-                                showTapTempoHint = true
-                            }
                             val nextTapTimeMs = SystemClock.elapsedRealtime()
                             val previousTapTimeMs = tempoTapTimesMs.lastOrNull()
                             tempoTapTimesMs = when {
@@ -1859,40 +1845,7 @@ private fun TimelineMeasuresPlaceholder(
                     Text(text = stringResource(R.string.timeline_measures_sync_play_action))
                 }
                 Spacer(modifier = Modifier.weight(1f))
-                if (tempoTapTimesMs.isNotEmpty()) {
-                    TextButton(onClick = { tempoTapTimesMs = emptyList() }) {
-                        Text(
-                            text = stringResource(R.string.common_reset),
-                            color = Color(0xFFB0BEC5),
-                            fontSize = 12.sp
-                        )
-                    }
                 }
-                }
-            }
-            if (showTapTempoHint) {
-                Text(
-                    text = stringResource(R.string.timeline_measures_tap_tempo_hint),
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .offset(y = 42.dp)
-                        .background(Color(0xFF263238), RoundedCornerShape(12.dp))
-                        .padding(horizontal = 10.dp, vertical = 5.dp),
-                    color = Color(0xFFE0F2F1),
-                    fontSize = 12.sp
-                )
-            }
-            if (showTempoAdjustHint) {
-                Text(
-                    text = stringResource(R.string.timeline_measures_tempo_adjust_hint),
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .offset(y = 42.dp)
-                        .background(Color(0xFF263238), RoundedCornerShape(12.dp))
-                        .padding(horizontal = 10.dp, vertical = 5.dp),
-                    color = Color(0xFFE0F2F1),
-                    fontSize = 12.sp
-                )
             }
         }
         TimelineGridWaveformSection(
