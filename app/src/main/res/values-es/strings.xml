@@ -441,9 +441,9 @@
     <string name="timeline_measures_tempo_placeholder">Ej.: 120 BPM</string>
     <string name="timeline_measures_tempo_range_hint">Tempo entre %1$d y %2$d BPM</string>
     <string name="timeline_measures_tempo_save_failed">Tempo de compases: no se pudo guardar.</string>
-    <string name="timeline_measures_anchor_action">Fijar punto de inicio</string>
-    <string name="timeline_measures_anchor_hint">Toca un tiempo para alinear la cuadrícula al tempo</string>
-    <string name="timeline_measures_anchor_saved">Compás guardado en %1$s</string>
+    <string name="timeline_measures_anchor_action">Fijar punto de sincronía</string>
+    <string name="timeline_measures_anchor_hint">Coloca un punto en un tiempo para sincronizar la cuadrícula al tempo</string>
+    <string name="timeline_measures_anchor_saved">Punto de sincronía guardado en %1$s</string>
     <string name="timeline_measures_anchor_ready">Posición actual: %1$s</string>
     <string name="timeline_measures_live_position">Compás %1$d • Tiempo %2$d</string>
     <string name="timeline_measures_event_position">M%1$d - T%2$d - D%3$d</string>

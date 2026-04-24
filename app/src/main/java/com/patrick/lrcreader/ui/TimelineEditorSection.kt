@@ -1733,6 +1733,7 @@ private fun TimelineMeasuresPlaceholder(
             peaks = waveformPeaks,
             durationMs = waveformDurationMs,
             currentPositionMs = currentPositionMs,
+            tempoBpm = tempoBpm,
             measureAnchorMs = savedAnchorMs,
             isLoading = waveformLoading,
             hasError = waveformError,
@@ -1812,6 +1813,7 @@ private fun TimelineGridWaveformSection(
     peaks: List<Float>,
     durationMs: Int,
     currentPositionMs: Long,
+    tempoBpm: Int?,
     measureAnchorMs: Long?,
     isLoading: Boolean,
     hasError: Boolean,
@@ -1907,6 +1909,7 @@ private fun TimelineGridWaveformSection(
                         val centerY = size.height / 2f
                         val widthPx = size.width
                         val heightPx = size.height
+                        val safeDuration = durationMs.coerceAtLeast(1)
                         val maxIndex = peaks.lastIndex.coerceAtLeast(1)
                         val visibleFraction = 1f / waveformZoom.coerceAtLeast(1f)
                         val startFraction = (waveformCenterFraction - visibleFraction / 2f).coerceIn(0f, 1f)
@@ -1929,7 +1932,40 @@ private fun TimelineGridWaveformSection(
                             )
                         }
 
-                        val safeDuration = durationMs.coerceAtLeast(1)
+                        if (tempoBpm != null && tempoBpm > 0 && measureAnchorMs != null) {
+                            val visibleStartMs = startFraction * safeDuration.toFloat()
+                            val visibleEndMs = effectiveEndFraction * safeDuration.toFloat()
+                            val beatDurationMs = 60_000.0 / tempoBpm.toDouble()
+                            val anchorMs = measureAnchorMs.toDouble()
+                            var beatIndex = floor((visibleStartMs - anchorMs) / beatDurationMs).toLong()
+                            if (anchorMs + beatIndex * beatDurationMs < visibleStartMs) {
+                                beatIndex += 1L
+                            }
+                            var guard = 0
+                            while (guard < 2048) {
+                                val beatPositionMs = anchorMs + beatIndex * beatDurationMs
+                                if (beatPositionMs > visibleEndMs) break
+                                if (beatPositionMs >= 0.0) {
+                                    val beatFraction = (beatPositionMs / safeDuration.toDouble()).toFloat()
+                                    val beatX = ((beatFraction - startFraction) /
+                                        (effectiveEndFraction - startFraction)) * widthPx
+                                    val isBarStart = beatIndex.rem(4L) == 0L
+                                    drawLine(
+                                        color = if (isBarStart) {
+                                            Color(0xCCFFF176)
+                                        } else {
+                                            Color(0x66FFF59D)
+                                        },
+                                        start = androidx.compose.ui.geometry.Offset(beatX, 0f),
+                                        end = androidx.compose.ui.geometry.Offset(beatX, heightPx),
+                                        strokeWidth = if (isBarStart) 2.4f else 1.2f
+                                    )
+                                }
+                                beatIndex += 1L
+                                guard += 1
+                            }
+                        }
+
                         val currentFraction = currentPositionMs
                             .coerceIn(0L, safeDuration.toLong())
                             .toFloat() / safeDuration.toFloat()

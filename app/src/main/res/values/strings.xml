@@ -393,9 +393,9 @@
     <string name="timeline_measures_tempo_placeholder">Ex: 120 BPM</string>
     <string name="timeline_measures_tempo_range_hint">Tempo entre %1$d et %2$d BPM</string>
     <string name="timeline_measures_tempo_save_failed">Tempo mesures : sauvegarde impossible.</string>
-    <string name="timeline_measures_anchor_action">Poser le point de départ</string>
-    <string name="timeline_measures_anchor_hint">Appuie sur un temps pour aligner la grille au tempo</string>
-    <string name="timeline_measures_anchor_saved">Mesure enregistrée à %1$s</string>
+    <string name="timeline_measures_anchor_action">Poser le point de synchro</string>
+    <string name="timeline_measures_anchor_hint">Place un point sur un temps pour synchroniser la grille au tempo</string>
+    <string name="timeline_measures_anchor_saved">Point de synchro enregistré à %1$s</string>
     <string name="timeline_measures_anchor_ready">Position actuelle : %1$s</string>
     <string name="timeline_measures_live_position">Mesure %1$d • Temps %2$d</string>
     <string name="timeline_measures_event_position">M%1$d - T%2$d - D%3$d</string>
