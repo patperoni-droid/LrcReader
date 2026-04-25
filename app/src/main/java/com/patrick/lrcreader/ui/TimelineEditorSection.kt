@@ -1523,6 +1523,8 @@ private fun TimelineMeasuresPlaceholder(
     var loopEnabled by remember { mutableStateOf(false) }
     var loopLengthBars by remember { mutableIntStateOf(1) }
     var loopLengthMenuExpanded by remember { mutableStateOf(false) }
+    var syncModeEnabled by remember { mutableStateOf(false) }
+    var revealSyncPointRequest by remember { mutableIntStateOf(0) }
     val savedAnchorMs = localMeasureAnchorMs
     val displayedCurrentPositionMs = if (isPreparedClipLoopTestActive && savedAnchorMs != null) {
         savedAnchorMs + currentPositionMs.coerceAtLeast(0L)
@@ -1550,6 +1552,9 @@ private fun TimelineMeasuresPlaceholder(
 
     LaunchedEffect(measureAnchorMs) {
         localMeasureAnchorMs = measureAnchorMs
+        if (measureAnchorMs == null) {
+            syncModeEnabled = false
+        }
     }
 
     LaunchedEffect(showTapTempoHint) {
@@ -1827,7 +1832,13 @@ private fun TimelineMeasuresPlaceholder(
                     fontSize = 12.sp
                 )
                 IconButton(
-                    onClick = { loopEnabled = !loopEnabled },
+                    onClick = {
+                        val nextLoopEnabled = !loopEnabled
+                        loopEnabled = nextLoopEnabled
+                        if (nextLoopEnabled && savedAnchorMs != null) {
+                            revealSyncPointRequest += 1
+                        }
+                    },
                     enabled = loopReady,
                     modifier = Modifier
                         .border(
@@ -1910,10 +1921,43 @@ private fun TimelineMeasuresPlaceholder(
                         )
                     }
                 }
+                IconButton(
+                    onClick = { syncModeEnabled = !syncModeEnabled },
+                    enabled = savedAnchorMs != null,
+                    modifier = Modifier
+                        .border(
+                            width = 1.dp,
+                            color = if (syncModeEnabled && savedAnchorMs != null) {
+                                Color(0xFF80CBC4)
+                            } else {
+                                Color.White.copy(alpha = 0.14f)
+                            },
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                        .background(
+                            color = if (syncModeEnabled && savedAnchorMs != null) {
+                                Color(0xFF80CBC4).copy(alpha = 0.22f)
+                            } else {
+                                Color.White.copy(alpha = 0.04f)
+                            },
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                ) {
+                    Text(
+                        text = stringResource(R.string.timeline_measures_sync_play_action),
+                        color = if (savedAnchorMs != null) {
+                            if (syncModeEnabled) Color(0xFF80CBC4) else Color(0xFFB0BEC5)
+                        } else {
+                            Color(0xFF607D8B)
+                        },
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
                 OutlinedButton(
                     onClick = {
-                        val safeAnchorMs = savedAnchorMs ?: return@OutlinedButton
                         if (loopEnabled && loopReady) {
+                            val safeAnchorMs = savedAnchorMs ?: return@OutlinedButton
                             val safeTempoBpm = tempoBpm ?: return@OutlinedButton
                             val barDurationMs = ((60_000.0 / safeTempoBpm.toDouble()) * 4.0)
                                 .roundToLong()
@@ -1923,12 +1967,16 @@ private fun TimelineMeasuresPlaceholder(
                                 safeAnchorMs + (barDurationMs * loopLengthBars.toLong())
                             )
                         } else {
-                            runCatching { seekToMs(safeAnchorMs) }
+                            if (syncModeEnabled) {
+                                savedAnchorMs?.let { safeAnchorMs ->
+                                    runCatching { seekToMs(safeAnchorMs) }
+                                }
+                            }
                             onIsPlayingChange(true)
                             runCatching { FillerSoundManager.fadeOutAndStop(200) }
                         }
                     },
-                    enabled = savedAnchorMs != null
+                    enabled = true
                 ) {
                     Icon(
                         imageVector = Icons.Filled.PlayArrow,
@@ -1936,7 +1984,7 @@ private fun TimelineMeasuresPlaceholder(
                         modifier = Modifier.size(16.dp)
                     )
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text(text = stringResource(R.string.timeline_measures_sync_play_action))
+                    Text(text = stringResource(R.string.arrangement_play_action))
                 }
                 Spacer(modifier = Modifier.weight(1f))
                 }
@@ -1952,6 +2000,7 @@ private fun TimelineMeasuresPlaceholder(
             measureAnchorMs = savedAnchorMs,
             isLoading = waveformLoading,
             hasError = waveformError,
+            revealAnchorRequest = revealSyncPointRequest,
             onSeekRequested = { seekToMs(it) },
             onMeasureAnchorSelected = { selectedPositionMs ->
                 localMeasureAnchorMs = selectedPositionMs
@@ -2030,6 +2079,7 @@ private fun TimelineGridWaveformSection(
     measureAnchorMs: Long?,
     isLoading: Boolean,
     hasError: Boolean,
+    revealAnchorRequest: Int,
     onSeekRequested: (Long) -> Unit,
     onMeasureAnchorSelected: (Long) -> Unit
 ) {
@@ -2063,6 +2113,21 @@ private fun TimelineGridWaveformSection(
         } else {
             currentFraction.coerceIn(minCenter, maxCenter)
         }
+    }
+
+    LaunchedEffect(revealAnchorRequest, measureAnchorMs, durationMs, waveformZoom) {
+        val safeAnchorMs = measureAnchorMs ?: return@LaunchedEffect
+        if (revealAnchorRequest <= 0 || durationMs <= 0) return@LaunchedEffect
+        val safeDuration = durationMs.coerceAtLeast(1).toFloat()
+        val visibleFraction = 1f / waveformZoom.coerceAtLeast(1f)
+        val minCenter = visibleFraction / 2f
+        val maxCenter = 1f - minCenter
+        val anchorFraction = (safeAnchorMs.coerceIn(0L, durationMs.toLong()).toFloat() / safeDuration)
+            .coerceIn(0f, 1f)
+        val desiredAnchorScreenFraction = 0.35f
+        val desiredCenter = anchorFraction + ((0.5f - desiredAnchorScreenFraction) * visibleFraction)
+        waveformCenterFraction = desiredCenter.coerceIn(minCenter, maxCenter)
+        lastManualWaveformInteractionMs = SystemClock.elapsedRealtime()
     }
 
     Column(
