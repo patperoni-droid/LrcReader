@@ -1951,6 +1951,7 @@ private fun TimelineMeasuresPlaceholder(
             measureAnchorMs = savedAnchorMs,
             isLoading = waveformLoading,
             hasError = waveformError,
+            onSeekRequested = { seekToMs(it) },
             onMeasureAnchorSelected = { selectedPositionMs ->
                 localMeasureAnchorMs = selectedPositionMs
                 onMeasureAnchorHere(selectedPositionMs)
@@ -2028,6 +2029,7 @@ private fun TimelineGridWaveformSection(
     measureAnchorMs: Long?,
     isLoading: Boolean,
     hasError: Boolean,
+    onSeekRequested: (Long) -> Unit,
     onMeasureAnchorSelected: (Long) -> Unit
 ) {
     var waveformZoom by remember(peaks, durationMs) { mutableStateOf(1f) }
@@ -2097,7 +2099,39 @@ private fun TimelineGridWaveformSection(
                             .fillMaxWidth()
                             .height(waveformHeight)
                             .pointerInput(peaks, durationMs, waveformZoom, waveformCenterFraction) {
-                                detectTapGestures { offset ->
+                                detectTapGestures(
+                                    onTap = { offset ->
+                                        lastManualWaveformInteractionMs = SystemClock.elapsedRealtime()
+                                        val safeDuration = durationMs.coerceAtLeast(1)
+                                        val edgeDeadZonePx = 24.dp.toPx()
+                                        if (offset.x <= edgeDeadZonePx ||
+                                            offset.x >= size.width - edgeDeadZonePx
+                                        ) {
+                                            return@detectTapGestures
+                                        }
+                                        val visibleFraction = 1f / waveformZoom.coerceAtLeast(1f)
+                                        val startFraction = (waveformCenterFraction - visibleFraction / 2f)
+                                            .coerceIn(0f, 1f)
+                                        val endFraction = (startFraction + visibleFraction).coerceIn(0f, 1f)
+                                        val effectiveEndFraction = if (endFraction <= startFraction) {
+                                            1f
+                                        } else {
+                                            endFraction
+                                        }
+                                        val localFraction = if (size.width > 0) {
+                                            (offset.x / size.width).coerceIn(0f, 1f)
+                                        } else {
+                                            0f
+                                        }
+                                        val selectedFraction = startFraction +
+                                            localFraction * (effectiveEndFraction - startFraction)
+                                        onSeekRequested(
+                                            (selectedFraction * safeDuration)
+                                                .toLong()
+                                                .coerceIn(0L, safeDuration.toLong())
+                                        )
+                                    },
+                                    onLongPress = { offset ->
                                     lastManualWaveformInteractionMs = SystemClock.elapsedRealtime()
                                     val safeDuration = durationMs.coerceAtLeast(1)
                                     val edgeDeadZonePx = 24.dp.toPx()
@@ -2127,7 +2161,8 @@ private fun TimelineGridWaveformSection(
                                             .toLong()
                                             .coerceIn(0L, safeDuration.toLong())
                                     )
-                                }
+                                    }
+                                )
                             }
                             .pointerInput(peaks, durationMs) {
                                 detectTransformGestures { _, pan, zoomChange, _ ->
