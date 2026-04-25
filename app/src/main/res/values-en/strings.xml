@@ -69,6 +69,10 @@
     <string name="arrangement_play_action">Play</string>
     <string name="arrangement_pause_action">Pause</string>
     <string name="arrangement_return_action">Return</string>
+    <string name="arrangement_preview_action">Preview</string>
+    <string name="arrangement_preview_generating">Generating…</string>
+    <string name="arrangement_preview_structure_empty">Add at least one segment to the structure</string>
+    <string name="arrangement_preview_failed">Unable to generate preview</string>
     <string name="arrangement_duration_label">Duration: %1$s</string>
     <string name="arrangement_songs_loading">Loading songs…</string>
     <string name="arrangement_no_smp_song_available">No SMP song available</string>

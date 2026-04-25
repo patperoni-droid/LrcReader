@@ -67,6 +67,10 @@
     <string name="arrangement_play_action">Play</string>
     <string name="arrangement_pause_action">Pausa</string>
     <string name="arrangement_return_action">Inicio</string>
+    <string name="arrangement_preview_action">Preview</string>
+    <string name="arrangement_preview_generating">Generación…</string>
+    <string name="arrangement_preview_structure_empty">Añade al menos un segmento a la estructura</string>
+    <string name="arrangement_preview_failed">No se pudo generar la preescucha</string>
     <string name="arrangement_duration_label">Duración: %1$s</string>
     <string name="arrangement_songs_loading">Cargando canciones…</string>
     <string name="arrangement_no_smp_song_available">No hay canción SMP disponible</string>

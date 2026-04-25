@@ -1523,7 +1523,6 @@ private fun TimelineMeasuresPlaceholder(
     var loopEnabled by remember { mutableStateOf(false) }
     var loopLengthBars by remember { mutableIntStateOf(1) }
     var loopLengthMenuExpanded by remember { mutableStateOf(false) }
-    var syncModeEnabled by remember { mutableStateOf(false) }
     var revealSyncPointRequest by remember { mutableIntStateOf(0) }
     val savedAnchorMs = localMeasureAnchorMs
     val displayedCurrentPositionMs = if (isPreparedClipLoopTestActive && savedAnchorMs != null) {
@@ -1552,9 +1551,6 @@ private fun TimelineMeasuresPlaceholder(
 
     LaunchedEffect(measureAnchorMs) {
         localMeasureAnchorMs = measureAnchorMs
-        if (measureAnchorMs == null) {
-            syncModeEnabled = false
-        }
     }
 
     LaunchedEffect(showTapTempoHint) {
@@ -1921,39 +1917,6 @@ private fun TimelineMeasuresPlaceholder(
                         )
                     }
                 }
-                IconButton(
-                    onClick = { syncModeEnabled = !syncModeEnabled },
-                    enabled = savedAnchorMs != null,
-                    modifier = Modifier
-                        .border(
-                            width = 1.dp,
-                            color = if (syncModeEnabled && savedAnchorMs != null) {
-                                Color(0xFF80CBC4)
-                            } else {
-                                Color.White.copy(alpha = 0.14f)
-                            },
-                            shape = RoundedCornerShape(12.dp)
-                        )
-                        .background(
-                            color = if (syncModeEnabled && savedAnchorMs != null) {
-                                Color(0xFF80CBC4).copy(alpha = 0.22f)
-                            } else {
-                                Color.White.copy(alpha = 0.04f)
-                            },
-                            shape = RoundedCornerShape(12.dp)
-                        )
-                ) {
-                    Text(
-                        text = stringResource(R.string.timeline_measures_sync_play_action),
-                        color = if (savedAnchorMs != null) {
-                            if (syncModeEnabled) Color(0xFF80CBC4) else Color(0xFFB0BEC5)
-                        } else {
-                            Color(0xFF607D8B)
-                        },
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
                 OutlinedButton(
                     onClick = {
                         if (loopEnabled && loopReady) {
@@ -1967,11 +1930,6 @@ private fun TimelineMeasuresPlaceholder(
                                 safeAnchorMs + (barDurationMs * loopLengthBars.toLong())
                             )
                         } else {
-                            if (syncModeEnabled) {
-                                savedAnchorMs?.let { safeAnchorMs ->
-                                    runCatching { seekToMs(safeAnchorMs) }
-                                }
-                            }
                             onIsPlayingChange(true)
                             runCatching { FillerSoundManager.fadeOutAndStop(200) }
                         }
