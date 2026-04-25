@@ -111,6 +111,7 @@ import java.io.File
 import kotlin.math.abs
 import kotlin.math.floor
 import kotlin.math.max
+import kotlin.math.pow
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 
@@ -2197,6 +2198,8 @@ private fun TimelineGridWaveformSection(
                         val startFraction = (waveformCenterFraction - visibleFraction / 2f).coerceIn(0f, 1f)
                         val endFraction = (startFraction + visibleFraction).coerceIn(0f, 1f)
                         val effectiveEndFraction = if (endFraction <= startFraction) 1f else endFraction
+                        val waveformNormalColor = Color(0xFF80CBC4)
+                        val waveformAccentColor = Color(0xFFB2FF59)
                         peaks.forEachIndexed { index, peak ->
                             val positionFraction = index.toFloat() / maxIndex.toFloat()
                             if (positionFraction < startFraction || positionFraction > effectiveEndFraction) {
@@ -2204,14 +2207,54 @@ private fun TimelineGridWaveformSection(
                             }
                             val x = ((positionFraction - startFraction) /
                                 (effectiveEndFraction - startFraction)) * widthPx
-                            val amplitude = (peak.coerceIn(0f, 1f) * (heightPx / 2f))
+                            val normalizedPeak = peak
+                                .coerceIn(0f, 1f)
+                                .pow(0.7f)
+                                .times(1.08f)
+                                .coerceIn(0f, 1f)
+                            val amplitude = normalizedPeak * (heightPx / 2f)
                             drawLine(
-                                color = Color(0xFF80CBC4),
+                                color = if (normalizedPeak > 0.6f) {
+                                    waveformAccentColor
+                                } else {
+                                    waveformNormalColor
+                                },
                                 start = androidx.compose.ui.geometry.Offset(x, centerY - amplitude),
                                 end = androidx.compose.ui.geometry.Offset(x, centerY + amplitude),
-                                strokeWidth = 1.5f,
+                                strokeWidth = 1f,
                                 cap = androidx.compose.ui.graphics.StrokeCap.Round
                             )
+                            if (index < peaks.lastIndex) {
+                                val nextPositionFraction = (index + 1).toFloat() / maxIndex.toFloat()
+                                val midpointFraction = (positionFraction + nextPositionFraction) / 2f
+                                if (midpointFraction in startFraction..effectiveEndFraction) {
+                                    val midpointX = ((midpointFraction - startFraction) /
+                                        (effectiveEndFraction - startFraction)) * widthPx
+                                    val midpointPeak = ((peak + peaks[index + 1]) / 2f)
+                                        .coerceIn(0f, 1f)
+                                        .pow(0.7f)
+                                        .times(1.08f)
+                                        .coerceIn(0f, 1f)
+                                    val midpointAmplitude = midpointPeak * (heightPx / 2f)
+                                    drawLine(
+                                        color = if (midpointPeak > 0.6f) {
+                                            waveformAccentColor.copy(alpha = 0.9f)
+                                        } else {
+                                            waveformNormalColor.copy(alpha = 0.82f)
+                                        },
+                                        start = androidx.compose.ui.geometry.Offset(
+                                            midpointX,
+                                            centerY - midpointAmplitude
+                                        ),
+                                        end = androidx.compose.ui.geometry.Offset(
+                                            midpointX,
+                                            centerY + midpointAmplitude
+                                        ),
+                                        strokeWidth = 0.8f,
+                                        cap = androidx.compose.ui.graphics.StrokeCap.Round
+                                    )
+                                }
+                            }
                         }
 
                         if (tempoBpm != null && tempoBpm > 0 && measureAnchorMs != null) {
