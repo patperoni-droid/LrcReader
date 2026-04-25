@@ -73,6 +73,9 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToLong
 
+private const val ARRANGEMENT_FADE_DURATION_MS = 40L
+private const val ARRANGEMENT_FADE_STEPS = 5
+
 private data class ArrangementSegment(
     val id: String,
     val name: String,
@@ -107,6 +110,8 @@ fun ArrangementEditorSection(
     var loopActive by remember { mutableStateOf(false) }
     var loopStartMs by remember { mutableLongStateOf(0L) }
     var loopEndMs by remember { mutableLongStateOf(0L) }
+    var structurePlaybackActive by remember { mutableStateOf(false) }
+    var structureFadeOutIndex by remember { mutableIntStateOf(-1) }
     var gridTempoBpm by remember { mutableStateOf<Double?>(null) }
     var gridSyncPointMs by remember { mutableStateOf<Long?>(null) }
     var gridTimeSignatureNumerator by remember { mutableIntStateOf(4) }
@@ -175,6 +180,27 @@ fun ArrangementEditorSection(
                     currentArrangementPositionMs = arrangementDurationMs
                     sliderPositionMs = arrangementDurationMs
                     isArrangementPlaying = false
+                    structurePlaybackActive = false
+                    structureFadeOutIndex = -1
+                    arrangementPlayer.volume = 1f
+                }
+            }
+
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                if (!structurePlaybackActive) {
+                    arrangementPlayer.volume = 1f
+                    return
+                }
+                structureFadeOutIndex = -1
+                if (arrangementPlayer.currentMediaItemIndex > 0 &&
+                    arrangementPlayer.currentMediaItemIndex < arrangementPlayer.mediaItemCount
+                ) {
+                    scope.launch {
+                        arrangementPlayer.volume = 0f
+                        fadeArrangementPlayerVolume(arrangementPlayer, from = 0f, to = 1f)
+                    }
+                } else {
+                    arrangementPlayer.volume = 1f
                 }
             }
         }
@@ -198,6 +224,8 @@ fun ArrangementEditorSection(
         loopActive = false
         loopStartMs = 0L
         loopEndMs = 0L
+        structurePlaybackActive = false
+        structureFadeOutIndex = -1
         arrangementPlayer.pause()
         arrangementPlayer.clearMediaItems()
         if (!audioPath.isNullOrBlank()) {
@@ -218,6 +246,18 @@ fun ArrangementEditorSection(
                 sliderPositionMs = currentArrangementPositionMs
                 val duration = runCatching { arrangementPlayer.duration }.getOrDefault(0L)
                 arrangementDurationMs = duration.coerceAtLeast(0L)
+            }
+            if (structurePlaybackActive && isArrangementPlaying) {
+                val currentIndex = runCatching { arrangementPlayer.currentMediaItemIndex }.getOrDefault(0)
+                val itemCount = runCatching { arrangementPlayer.mediaItemCount }.getOrDefault(0)
+                val remainingMs = arrangementDurationMs - currentArrangementPositionMs
+                if (currentIndex in 0 until (itemCount - 1) &&
+                    currentIndex != structureFadeOutIndex &&
+                    remainingMs in 1L..ARRANGEMENT_FADE_DURATION_MS
+                ) {
+                    structureFadeOutIndex = currentIndex
+                    fadeArrangementPlayerVolume(arrangementPlayer, from = arrangementPlayer.volume, to = 0f)
+                }
             }
             delay(if (isArrangementPlaying) 100L else 250L)
         }
@@ -319,21 +359,22 @@ fun ArrangementEditorSection(
                     OutlinedButton(
                         onClick = {
                             val audioPath = selectedSong?.audioPath
-                            if (isArrangementPlaying) {
+                            if (loopActive && hasPlayableSong && audioPath != null) {
+                                onStopCurrentPlayback()
+                                prepareArrangementFullTrack(
+                                    player = arrangementPlayer,
+                                    audioPath = audioPath,
+                                    positionMs = currentArrangementPositionMs,
+                                    shouldPlay = true
+                                )
+                                loopActive = false
+                                structurePlaybackActive = false
+                                structureFadeOutIndex = -1
+                            } else if (isArrangementPlaying) {
                                 arrangementPlayer.pause()
                             } else if (hasPlayableSong && audioPath != null) {
                                 onStopCurrentPlayback()
-                                if (loopActive) {
-                                    prepareArrangementFullTrack(
-                                        player = arrangementPlayer,
-                                        audioPath = audioPath,
-                                        positionMs = currentArrangementPositionMs,
-                                        shouldPlay = true
-                                    )
-                                    loopActive = false
-                                } else {
-                                    arrangementPlayer.play()
-                                }
+                                arrangementPlayer.play()
                             }
                         },
                         enabled = hasPlayableSong,
@@ -365,6 +406,8 @@ fun ArrangementEditorSection(
                                     shouldPlay = false
                                 )
                                 loopActive = false
+                                structurePlaybackActive = false
+                                structureFadeOutIndex = -1
                             } else {
                                 arrangementPlayer.seekTo(0L)
                             }
@@ -504,6 +547,8 @@ fun ArrangementEditorSection(
                     val audioPath = selectedSong?.audioPath ?: return@ArrangementListCard
                     onStopCurrentPlayback()
                     loopActive = true
+                    structurePlaybackActive = false
+                    structureFadeOutIndex = -1
                     loopStartMs = segment.startMs
                     loopEndMs = segment.endMs
                     playArrangementSegmentLoop(
@@ -533,6 +578,8 @@ fun ArrangementEditorSection(
                                 )
                             }
                             loopActive = false
+                            structurePlaybackActive = false
+                            structureFadeOutIndex = -1
                         }
                     }
                 },
@@ -568,6 +615,8 @@ fun ArrangementEditorSection(
                     if (startIndex !in playlistSegments.indices) return@ArrangementListCard
                     onStopCurrentPlayback()
                     loopActive = false
+                    structurePlaybackActive = true
+                    structureFadeOutIndex = -1
                     playArrangementStructure(
                         player = arrangementPlayer,
                         audioPath = audioPath,
@@ -865,6 +914,7 @@ private fun playArrangementSegmentLoop(
     player.pause()
     player.clearMediaItems()
     player.repeatMode = Player.REPEAT_MODE_ONE
+    player.volume = 1f
     player.setMediaItem(
         MediaItem.Builder()
             .setUri(Uri.fromFile(File(audioPath)))
@@ -889,6 +939,7 @@ private fun prepareArrangementFullTrack(
     player.pause()
     player.clearMediaItems()
     player.repeatMode = Player.REPEAT_MODE_OFF
+    player.volume = 1f
     player.setMediaItem(MediaItem.fromUri(Uri.fromFile(File(audioPath))))
     player.prepare()
     player.seekTo(positionMs.coerceAtLeast(0L))
@@ -917,6 +968,7 @@ private fun playArrangementStructure(
     player.pause()
     player.clearMediaItems()
     player.repeatMode = Player.REPEAT_MODE_OFF
+    player.volume = 1f
     player.setMediaItems(mediaItems, startIndex, 0L)
     player.prepare()
     player.play()
@@ -934,4 +986,24 @@ private fun quantizeArrangementPositionToBeat(
     val relativeMs = positionMs - safeSyncPointMs
     val nearestBeatIndex = (relativeMs / beatDurationMs).roundToLong()
     return (safeSyncPointMs + nearestBeatIndex * beatDurationMs).roundToLong().coerceAtLeast(0L)
+}
+
+private suspend fun fadeArrangementPlayerVolume(
+    player: ExoPlayer,
+    from: Float,
+    to: Float
+) {
+    val safeFrom = from.coerceIn(0f, 1f)
+    val safeTo = to.coerceIn(0f, 1f)
+    if (safeFrom == safeTo) {
+        player.volume = safeTo
+        return
+    }
+    val stepDelayMs = (ARRANGEMENT_FADE_DURATION_MS / ARRANGEMENT_FADE_STEPS).coerceAtLeast(1L)
+    repeat(ARRANGEMENT_FADE_STEPS) { step ->
+        val progress = (step + 1).toFloat() / ARRANGEMENT_FADE_STEPS.toFloat()
+        player.volume = safeFrom + (safeTo - safeFrom) * progress
+        delay(stepDelayMs)
+    }
+    player.volume = safeTo
 }

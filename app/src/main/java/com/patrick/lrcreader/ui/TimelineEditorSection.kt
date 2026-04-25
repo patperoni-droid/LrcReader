@@ -12,6 +12,7 @@ import android.net.Uri
 import android.os.SystemClock
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -1610,6 +1611,7 @@ private fun TimelineMeasuresPlaceholder(
     }
     val metronomeReady = tempoBpm != null && savedAnchorMs != null
     val loopReady = tempoBpm != null && savedAnchorMs != null
+    val isLoopHighlighted = loopReady && (loopEnabled || isPreparedClipLoopTestActive)
     val loopLengthLabel = stringResource(
         when (loopLengthBars) {
             4 -> R.string.timeline_measures_loop_length_4
@@ -1822,11 +1824,20 @@ private fun TimelineMeasuresPlaceholder(
                     onClick = { loopEnabled = !loopEnabled },
                     enabled = loopReady,
                     modifier = Modifier
-                        .background(
-                            color = if (loopEnabled && loopReady) {
-                                Color(0xFF80CBC4).copy(alpha = 0.22f)
+                        .border(
+                            width = 1.dp,
+                            color = if (isLoopHighlighted) {
+                                Color(0xFF2ECC71)
                             } else {
-                                Color.Transparent
+                                Color.White.copy(alpha = 0.14f)
+                            },
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                        .background(
+                            color = if (isLoopHighlighted) {
+                                Color(0xFF2ECC71).copy(alpha = 0.24f)
+                            } else {
+                                Color.White.copy(alpha = 0.04f)
                             },
                             shape = RoundedCornerShape(12.dp)
                         )
@@ -1834,7 +1845,7 @@ private fun TimelineMeasuresPlaceholder(
                     Text(
                         text = "\uD83D\uDD01",
                         color = if (loopReady) {
-                            if (loopEnabled) Color(0xFF80CBC4) else Color(0xFFB0BEC5)
+                            if (isLoopHighlighted) Color(0xFF2ECC71) else Color(0xFFB0BEC5)
                         } else {
                             Color(0xFF607D8B)
                         },
@@ -2203,10 +2214,16 @@ private fun TimelineGridWaveformSection(
                                 val anchorX = ((anchorFraction - startFraction) /
                                     (effectiveEndFraction - startFraction)) * widthPx
                                 drawLine(
-                                    color = Color(0xFFFFB74D),
+                                    color = Color(0xFFFF1744).copy(alpha = 0.3f),
                                     start = androidx.compose.ui.geometry.Offset(anchorX, 0f),
                                     end = androidx.compose.ui.geometry.Offset(anchorX, heightPx),
-                                    strokeWidth = 2f
+                                    strokeWidth = 10f
+                                )
+                                drawLine(
+                                    color = Color(0xFFFF1744),
+                                    start = androidx.compose.ui.geometry.Offset(anchorX, 0f),
+                                    end = androidx.compose.ui.geometry.Offset(anchorX, heightPx),
+                                    strokeWidth = 8f
                                 )
                             }
                         }
