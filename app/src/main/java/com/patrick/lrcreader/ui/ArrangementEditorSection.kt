@@ -33,6 +33,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -51,6 +54,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.media3.common.MediaItem
@@ -335,8 +339,13 @@ fun ArrangementEditorSection(
                         enabled = hasPlayableSong,
                         modifier = Modifier.weight(1f)
                     ) {
-                        Text(
-                            text = stringResource(
+                        Icon(
+                            imageVector = if (isArrangementPlaying) {
+                                Icons.Filled.Pause
+                            } else {
+                                Icons.Filled.PlayArrow
+                            },
+                            contentDescription = stringResource(
                                 if (isArrangementPlaying) {
                                     R.string.arrangement_pause_action
                                 } else {
@@ -365,7 +374,10 @@ fun ArrangementEditorSection(
                         enabled = hasPlayableSong,
                         modifier = Modifier.weight(1f)
                     ) {
-                        Text(text = stringResource(R.string.arrangement_return_action))
+                        Icon(
+                            imageVector = Icons.Filled.SkipPrevious,
+                            contentDescription = stringResource(R.string.arrangement_return_action)
+                        )
                     }
                     OutlinedButton(
                         onClick = {
@@ -378,7 +390,17 @@ fun ArrangementEditorSection(
                         enabled = canEditPositions,
                         modifier = Modifier.weight(1f)
                     ) {
-                        Text(text = stringResource(R.string.arrangement_in_action))
+                        Text(
+                            text = buildString {
+                                append(stringResource(R.string.arrangement_in_action))
+                                append("  ")
+                                append(
+                                    segmentInMs?.let(::formatArrangementTimePrecise)
+                                        ?: stringResource(R.string.arrangement_position_pending)
+                                )
+                            },
+                            fontSize = 12.sp
+                        )
                     }
                     OutlinedButton(
                         onClick = {
@@ -391,7 +413,17 @@ fun ArrangementEditorSection(
                         enabled = canEditPositions,
                         modifier = Modifier.weight(1f)
                     ) {
-                        Text(text = stringResource(R.string.arrangement_out_action))
+                        Text(
+                            text = buildString {
+                                append(stringResource(R.string.arrangement_out_action))
+                                append("  ")
+                                append(
+                                    segmentOutMs?.let(::formatArrangementTimePrecise)
+                                        ?: stringResource(R.string.arrangement_position_pending)
+                                )
+                            },
+                            fontSize = 12.sp
+                        )
                     }
                 }
 
@@ -442,25 +474,6 @@ fun ArrangementEditorSection(
                         Text(text = stringResource(R.string.arrangement_validate_segment_short))
                     }
                 }
-
-                Text(
-                    text = stringResource(
-                        R.string.arrangement_in_label,
-                        segmentInMs?.takeIf { hasPlayableSong }?.let(::formatArrangementTime)
-                            ?: stringResource(R.string.arrangement_position_pending)
-                    ),
-                    color = Color(0xFFB0BEC5),
-                    fontSize = 12.sp
-                )
-                Text(
-                    text = stringResource(
-                        R.string.arrangement_out_label,
-                        segmentOutMs?.takeIf { hasPlayableSong }?.let(::formatArrangementTime)
-                            ?: stringResource(R.string.arrangement_position_pending)
-                    ),
-                    color = Color(0xFFB0BEC5),
-                    fontSize = 12.sp
-                )
             }
         }
 
@@ -482,7 +495,8 @@ fun ArrangementEditorSection(
                             R.string.arrangement_segment_range,
                             formatArrangementTime(segment.startMs),
                             formatArrangementTime(segment.endMs)
-                        )
+                        ),
+                        isCompact = true
                     )
                 },
                 onItemClick = { segmentId ->
@@ -542,7 +556,8 @@ fun ArrangementEditorSection(
                             R.string.arrangement_segment_range,
                             formatArrangementTime(segment.startMs),
                             formatArrangementTime(segment.endMs)
-                        )
+                        ),
+                        isCompact = true
                     )
                 },
                 onItemClick = { structureIndexId ->
@@ -561,7 +576,12 @@ fun ArrangementEditorSection(
                     )
                 },
                 onItemAdd = null,
-                onItemDelete = null,
+                onItemDelete = { structureIndexId ->
+                    val removeIndex = structureIndexId.toIntOrNull() ?: return@ArrangementListCard
+                    if (removeIndex in structureSegmentIds.indices) {
+                        structureSegmentIds.removeAt(removeIndex)
+                    }
+                },
                 onItemLongClick = null
             )
         }
@@ -697,7 +717,8 @@ fun ArrangementEditorSection(
 private data class ArrangementListItem(
     val id: String,
     val title: String,
-    val subtitle: String
+    val subtitle: String,
+    val isCompact: Boolean = false
 )
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -773,25 +794,35 @@ private fun ArrangementListCard(
                                 Text(
                                     text = item.title,
                                     color = Color.White,
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Medium
+                                    fontSize = if (item.isCompact) 13.sp else 14.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                                 Text(
                                     text = item.subtitle,
                                     color = Color(0xFFB0BEC5),
-                                    fontSize = 12.sp
+                                    fontSize = if (item.isCompact) 11.sp else 12.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                             if (onItemAdd != null) {
-                                OutlinedButton(
-                                    onClick = { onItemAdd(item.id) },
-                                    modifier = Modifier.width(52.dp)
-                                ) {
-                                    Text(text = "+")
-                                }
+                                Text(
+                                    text = "+",
+                                    color = Color.White,
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier
+                                        .clickable { onItemAdd(item.id) }
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
                             }
                             if (onItemDelete != null) {
-                                IconButton(onClick = { onItemDelete(item.id) }) {
+                                IconButton(
+                                    onClick = { onItemDelete(item.id) },
+                                    modifier = Modifier.width(32.dp)
+                                ) {
                                     Icon(
                                         imageVector = Icons.Filled.Delete,
                                         contentDescription = stringResource(R.string.library_delete_action),
@@ -812,6 +843,15 @@ private fun formatArrangementTime(positionMs: Long): String {
     val minutes = totalSeconds / 60
     val seconds = totalSeconds % 60
     return "%02d:%02d".format(minutes, seconds)
+}
+
+private fun formatArrangementTimePrecise(positionMs: Long): String {
+    val safeMs = positionMs.coerceAtLeast(0L)
+    val totalSeconds = (safeMs / 1_000L).toInt()
+    val minutes = totalSeconds / 60
+    val seconds = totalSeconds % 60
+    val millis = (safeMs % 1_000L).toInt()
+    return "%02d:%02d.%03d".format(minutes, seconds, millis)
 }
 
 private fun playArrangementSegmentLoop(
