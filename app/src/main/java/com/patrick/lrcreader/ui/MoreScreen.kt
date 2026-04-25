@@ -2,6 +2,7 @@ package com.patrick.lrcreader.ui
 
 import com.patrick.lrcreader.core.MidiOutput
 import android.content.Context
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -82,9 +83,11 @@ fun MoreScreen(
     when (current) {
         MoreSection.Root -> MoreRootScreen(
             modifier = modifier,
+            currentPlayingSongId = currentPlayingSongId,
             onOpenBackup = { navigate("backup") },
             onOpenFiller = { navigate("filler") },
             onOpenHistory = { navigate("history") },
+            onOpenArrangement = { navigate("arrangement") },
             onOpenWaveformPreview = { navigate("waveform_preview") },
             showDjTab = showDjTab,
             showMainBusTab = showMainBusTab,
@@ -117,6 +120,12 @@ fun MoreScreen(
             currentPlayingSongId = currentPlayingSongId,
             onStopCurrentPlayback = onStopCurrentPlayback
         )
+
+        MoreSection.Arrangement -> ArrangementEditorSection(
+            currentSongId = currentPlayingSongId,
+            currentPositionMs = 0L,
+            onClose = { navigate("root") }
+        )
     }
 }
 
@@ -125,7 +134,8 @@ private enum class MoreSection(val route: String) {
     Backup("backup"),
     Filler("filler"),
     History("history"),
-    WaveformPreview("waveform_preview")
+    WaveformPreview("waveform_preview"),
+    Arrangement("arrangement")
 }
 
 /* ─────────────────────────────
@@ -135,9 +145,11 @@ private enum class MoreSection(val route: String) {
 @Composable
 private fun MoreRootScreen(
     modifier: Modifier = Modifier,
+    currentPlayingSongId: String?,
     onOpenBackup: () -> Unit,
     onOpenFiller: () -> Unit,
     onOpenHistory: () -> Unit,
+    onOpenArrangement: () -> Unit,
     onOpenWaveformPreview: () -> Unit,
     showDjTab: Boolean,
     showMainBusTab: Boolean,
@@ -273,6 +285,25 @@ private fun MoreRootScreen(
                     SettingsHeader(stringResource(R.string.more_section_functions))
                     SettingsItem(stringResource(R.string.more_item_filler), onClick = onOpenFiller)
                     SettingsItem(stringResource(R.string.more_item_history), onClick = onOpenHistory)
+                    SettingsItem(
+                        label = stringResource(R.string.more_item_arrangement),
+                        subtitle = if (currentPlayingSongId.isNullOrBlank()) {
+                            stringResource(R.string.more_item_arrangement_disabled_hint)
+                        } else {
+                            null
+                        },
+                        onClick = {
+                            if (currentPlayingSongId.isNullOrBlank()) {
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.more_item_arrangement_requires_song),
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            } else {
+                                onOpenArrangement()
+                            }
+                        }
+                    )
 
                     HorizontalDivider(color = Color(0xFF262626))
 

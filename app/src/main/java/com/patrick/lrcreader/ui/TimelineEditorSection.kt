@@ -97,6 +97,8 @@ import com.patrick.lrcreader.core.waveform.WaveformPeaksCache
 import com.patrick.lrcreader.core.light.LightSceneState
 import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.smp.DEFAULT_TIMELINE_NOTE_DURATION_MS
+import com.patrick.lrcreader.smp.GridSetupData
+import com.patrick.lrcreader.smp.GridSetupStore
 import com.patrick.lrcreader.smp.SmpLibraryScanner
 import com.patrick.lrcreader.smp.TimelineMarker
 import com.patrick.lrcreader.smp.TimelineMarkerKind
@@ -707,36 +709,17 @@ fun TimelineEditorSection(
                 }
             }
             TimelineEditorMode.GRID_SETUP -> {
-                val sanitizedTempoDraft = measuresTempoDraft.filter { it.isDigit() }.take(3)
-                val parsedTempoBpm = sanitizedTempoDraft.toIntOrNull()
-                val effectiveTempoBpm = parsedTempoBpm ?: measuresTempoBpm
-                val isTempoInvalid = sanitizedTempoDraft.isNotBlank() &&
-                    (parsedTempoBpm == null ||
-                        parsedTempoBpm !in TrackTimelineTempoPrefs.MIN_TEMPO_BPM..TrackTimelineTempoPrefs.MAX_TEMPO_BPM)
-                TimelineMeasuresPlaceholder(
+                GridSetupHost(
                     currentSongId = currentSongId,
-                    tempoDraft = measuresTempoDraft,
-                    isTempoInvalid = isTempoInvalid,
-                    tempoBpm = effectiveTempoBpm,
+                    fallbackTempoBpm = measuresTempoBpm,
                     measureAnchorMs = measureAnchorMs,
                     isPlaying = isPlaying,
                     currentPositionMs = safePositionMs,
                     seekToMs = seekToMs,
                     onIsPlayingChange = onIsPlayingChange,
-                    onMeasureAnchorHere = { anchorMs -> onMeasureAnchorHere(anchorMs) },
                     isPreparedClipLoopTestActive = isPreparedClipLoopTestActive,
                     onStartPreparedClipLoopTest = onStartPreparedClipLoopTest,
-                    onStopPreparedClipLoopTest = onStopPreparedClipLoopTest,
-                    onTempoDraftChange = { input ->
-                        val nextDraft = input.filter { ch -> ch.isDigit() }.take(3)
-                        measuresTempoDraft = nextDraft
-                        val nextTempoBpm = nextDraft.toIntOrNull()
-                        if (nextTempoBpm != null &&
-                            nextTempoBpm in TrackTimelineTempoPrefs.MIN_TEMPO_BPM..TrackTimelineTempoPrefs.MAX_TEMPO_BPM
-                        ) {
-                            onMeasuresTempoChange(nextTempoBpm)
-                        }
-                    }
+                    onStopPreparedClipLoopTest = onStopPreparedClipLoopTest
                 )
             }
         }
@@ -1417,6 +1400,100 @@ private fun timelineMarkerKindLabel(kind: TimelineMarkerKind): String {
         TimelineMarkerKind.NOTE -> stringResource(R.string.timeline_event_note)
         TimelineMarkerKind.DMX -> stringResource(R.string.timeline_event_dmx)
     }
+}
+
+@Composable
+private fun GridSetupHost(
+    currentSongId: String?,
+    fallbackTempoBpm: Int?,
+    measureAnchorMs: Long?,
+    isPlaying: Boolean,
+    currentPositionMs: Long,
+    seekToMs: (Long) -> Unit,
+    onIsPlayingChange: (Boolean) -> Unit,
+    isPreparedClipLoopTestActive: Boolean,
+    onStartPreparedClipLoopTest: (Long, Long) -> Unit,
+    onStopPreparedClipLoopTest: () -> Unit
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var gridTempoBpm by remember(currentSongId) { mutableStateOf(fallbackTempoBpm?.toDouble()) }
+    var gridTempoDraft by remember(currentSongId) { mutableStateOf(fallbackTempoBpm?.toString().orEmpty()) }
+    var gridSyncPointMs by remember(currentSongId) { mutableStateOf(measureAnchorMs) }
+
+    LaunchedEffect(currentSongId, fallbackTempoBpm, measureAnchorMs) {
+        val songId = currentSongId?.trim().orEmpty()
+        val fallbackData = GridSetupData(
+            tempoBpm = fallbackTempoBpm?.toDouble(),
+            syncPointMs = measureAnchorMs
+        )
+        val gridData = if (songId.isNotEmpty()) {
+            GridSetupStore.load(context, songId)
+        } else {
+            null
+        } ?: fallbackData
+
+        gridTempoBpm = gridData.tempoBpm
+        gridTempoDraft = gridData.tempoBpm
+            ?.roundToInt()
+            ?.toString()
+            .orEmpty()
+        gridSyncPointMs = gridData.syncPointMs
+    }
+
+    fun saveGridSetup(nextTempoBpm: Double?, nextSyncPointMs: Long?) {
+        val songId = currentSongId?.trim().orEmpty()
+        if (songId.isEmpty()) return
+        scope.launch {
+            GridSetupStore.save(
+                context = context,
+                songId = songId,
+                data = GridSetupData(
+                    tempoBpm = nextTempoBpm,
+                    syncPointMs = nextSyncPointMs
+                )
+            )
+        }
+    }
+
+    val isTempoInvalid = remember(gridTempoDraft) {
+        val sanitizedTempoDraft = gridTempoDraft.filter { it.isDigit() }.take(3)
+        val parsedTempoBpm = sanitizedTempoDraft.toIntOrNull()
+        sanitizedTempoDraft.isNotBlank() &&
+            (parsedTempoBpm == null ||
+                parsedTempoBpm !in TrackTimelineTempoPrefs.MIN_TEMPO_BPM..TrackTimelineTempoPrefs.MAX_TEMPO_BPM)
+    }
+
+    TimelineMeasuresPlaceholder(
+        currentSongId = currentSongId,
+        tempoDraft = gridTempoDraft,
+        isTempoInvalid = isTempoInvalid,
+        tempoBpm = gridTempoBpm?.roundToInt(),
+        measureAnchorMs = gridSyncPointMs,
+        isPlaying = isPlaying,
+        currentPositionMs = currentPositionMs,
+        seekToMs = seekToMs,
+        onIsPlayingChange = onIsPlayingChange,
+        onMeasureAnchorHere = { anchorMs ->
+            gridSyncPointMs = anchorMs
+            saveGridSetup(gridTempoBpm, anchorMs)
+        },
+        isPreparedClipLoopTestActive = isPreparedClipLoopTestActive,
+        onStartPreparedClipLoopTest = onStartPreparedClipLoopTest,
+        onStopPreparedClipLoopTest = onStopPreparedClipLoopTest,
+        onTempoDraftChange = { input ->
+            val nextDraft = input.filter { ch -> ch.isDigit() }.take(3)
+            gridTempoDraft = nextDraft
+            val nextTempoBpm = nextDraft.toIntOrNull()
+            if (nextTempoBpm != null &&
+                nextTempoBpm in TrackTimelineTempoPrefs.MIN_TEMPO_BPM..TrackTimelineTempoPrefs.MAX_TEMPO_BPM
+            ) {
+                val nextTempoBpmValue = nextTempoBpm.toDouble()
+                gridTempoBpm = nextTempoBpmValue
+                saveGridSetup(nextTempoBpmValue, gridSyncPointMs)
+            }
+        }
+    )
 }
 
 @OptIn(ExperimentalLayoutApi::class)

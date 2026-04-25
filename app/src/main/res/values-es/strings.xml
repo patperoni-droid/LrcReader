@@ -49,6 +49,22 @@
 
     <!-- Common -->
     <string name="common_loading">Cargando…</string>
+    <string name="player_arrangement_short">ARR</string>
+    <string name="arrangement_title">Arrangement</string>
+    <string name="arrangement_song_id">Canción: %1$s</string>
+    <string name="arrangement_current_position">Posición: %1$s</string>
+    <string name="arrangement_in_action">IN</string>
+    <string name="arrangement_out_action">OUT</string>
+    <string name="arrangement_validate_segment">Validar segmento</string>
+    <string name="arrangement_in_label">IN: %1$s</string>
+    <string name="arrangement_out_label">OUT: %1$s</string>
+    <string name="arrangement_position_pending">--:--</string>
+    <string name="arrangement_segments_title">Segmentos</string>
+    <string name="arrangement_segments_empty">No hay segmentos</string>
+    <string name="arrangement_structure_title">Estructura</string>
+    <string name="arrangement_structure_empty">No hay estructura</string>
+    <string name="arrangement_segment_range">%1$s → %2$s</string>
+    <string name="arrangement_segment_default_name">Segmento</string>
     <string name="common_ellipsis">…</string>
     <string name="common_percent_value">%1$d %%</string>
 
@@ -658,4 +674,7 @@ No olvides guardar.</string>
     <string name="main_menu_more">Ajustes / Más</string>
     <string name="main_menu_tuner">Afinador</string>
     <string name="more_show_light_indicator">Mostrar indicador DMX</string>
+    <string name="more_item_arrangement">🎼  Arrangement</string>
+    <string name="more_item_arrangement_disabled_hint">Abre primero una canción SMP</string>
+    <string name="more_item_arrangement_requires_song">Abre primero una canción SMP</string>
 </resources>

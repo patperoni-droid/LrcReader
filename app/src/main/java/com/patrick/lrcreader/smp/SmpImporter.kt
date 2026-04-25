@@ -28,6 +28,7 @@ class SmpImporter(private val context: Context) {
         private const val TRACKS_DIR_NAME = "tracks"
         private const val CONFIG_FILE_NAME = "config.json"
         private const val WAVEFORM_FILE_NAME = "waveform.json"
+        private const val GRID_FILE_NAME = "grid.json"
         private const val MIDI_TRACE_TAG = "SMP_MIDI_TRACE"
     }
 
@@ -250,6 +251,12 @@ class SmpImporter(private val context: Context) {
 
                                     else -> {
                                         val destination = File(stagingDir, canonicalName)
+                                        if (canonicalName == GRID_FILE_NAME || canonicalName == WAVEFORM_FILE_NAME) {
+                                            Log.i(
+                                                TAG,
+                                                "Import extracted asset: file=$canonicalName path=${destination.absolutePath}"
+                                            )
+                                        }
                                         if (canonicalName == CONFIG_FILE_NAME) {
                                             val bytes = readEntryBytes(zipInputStream)
                                             rawConfig = String(bytes, Charsets.UTF_8)
@@ -330,6 +337,7 @@ class SmpImporter(private val context: Context) {
             fileName == "annotations.json" -> fileName
             fileName == "midi_cues.json" -> fileName
             fileName == "dmx_cues.json" -> fileName
+            fileName == GRID_FILE_NAME -> fileName
             fileName == "settings.json" -> fileName
             isPrompterFile(fileName) -> fileName
             else -> null

@@ -51,6 +51,22 @@
 
     <!-- Common -->
     <string name="common_loading">Loading…</string>
+    <string name="player_arrangement_short">ARR</string>
+    <string name="arrangement_title">Arrangement</string>
+    <string name="arrangement_song_id">Song: %1$s</string>
+    <string name="arrangement_current_position">Position: %1$s</string>
+    <string name="arrangement_in_action">IN</string>
+    <string name="arrangement_out_action">OUT</string>
+    <string name="arrangement_validate_segment">Save segment</string>
+    <string name="arrangement_in_label">IN: %1$s</string>
+    <string name="arrangement_out_label">OUT: %1$s</string>
+    <string name="arrangement_position_pending">--:--</string>
+    <string name="arrangement_segments_title">Segments</string>
+    <string name="arrangement_segments_empty">No segments yet</string>
+    <string name="arrangement_structure_title">Structure</string>
+    <string name="arrangement_structure_empty">No structure yet</string>
+    <string name="arrangement_segment_range">%1$s → %2$s</string>
+    <string name="arrangement_segment_default_name">Segment</string>
     <string name="common_ellipsis">…</string>
     <string name="common_percent_value">%1$d %%</string>
 
@@ -659,6 +675,9 @@
     <string name="more_item_filler">🎧  Background sound</string>
     <string name="more_item_backup_restore">💾  Backup / Restore</string>
     <string name="more_item_history">🕘  History</string>
+    <string name="more_item_arrangement">🎼  Arrangement</string>
+    <string name="more_item_arrangement_disabled_hint">Open an SMP song first</string>
+    <string name="more_item_arrangement_requires_song">Open an SMP song first</string>
     <string name="more_item_editing">🛠  Editing</string>
     <string name="more_item_audio">🔊  Audio</string>
     <string name="more_item_language">🌐  Language</string>

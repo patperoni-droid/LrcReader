@@ -13,6 +13,8 @@ object SmpExporter {
     private const val TAG = "SMP_EXPORT"
     private const val EXPORT_DIR_NAME = "smp_exports"
     private const val CONFIG_ENTRY_NAME = "config.json"
+    private const val GRID_ENTRY_NAME = "grid.json"
+    private const val WAVEFORM_ENTRY_NAME = "waveform.json"
 
     fun exportSongUnitToSmp(context: Context, songUnit: SongUnit): File? {
         val exportsRoot = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
@@ -93,6 +95,13 @@ object SmpExporter {
                 )
                 exportedFiles += writeAssetEntry(
                     zipOutput = zipOutput,
+                    label = "waveform",
+                    sourcePath = resolveWaveformPathForExport(exportSong),
+                    entryName = WAVEFORM_ENTRY_NAME,
+                    ignoredFiles = ignoredFiles
+                )
+                exportedFiles += writeAssetEntry(
+                    zipOutput = zipOutput,
                     label = "annotations",
                     sourcePath = exportSong.annotationsPath,
                     entryName = config.files?.annotations,
@@ -117,6 +126,13 @@ object SmpExporter {
                     label = "prompter",
                     sourcePath = exportSong.prompterPath,
                     entryName = config.files?.prompter,
+                    ignoredFiles = ignoredFiles
+                )
+                exportedFiles += writeAssetEntry(
+                    zipOutput = zipOutput,
+                    label = "grid",
+                    sourcePath = resolveGridPathForExport(exportSong),
+                    entryName = GRID_ENTRY_NAME,
                     ignoredFiles = ignoredFiles
                 )
             }
@@ -268,5 +284,33 @@ object SmpExporter {
             TAG,
             "Export annotations state: songId=${songUnit.id} path=${annotationsPath ?: "null"} exists=$exists entry=${config.files?.annotations ?: "null"}"
         )
+    }
+
+    private fun resolveGridPathForExport(songUnit: SongUnit): String? {
+        val songDir = songUnit.storageFolder
+            ?.takeIf { it.isNotBlank() }
+            ?.let(::File)
+            ?.takeIf { it.isDirectory }
+            ?: return null
+        val gridFile = File(songDir, GRID_ENTRY_NAME)
+        Log.i(
+            TAG,
+            "Export grid state: songId=${songUnit.id} path=${gridFile.absolutePath} exists=${gridFile.isFile}"
+        )
+        return gridFile.takeIf { it.isFile }?.absolutePath
+    }
+
+    private fun resolveWaveformPathForExport(songUnit: SongUnit): String? {
+        val songDir = songUnit.storageFolder
+            ?.takeIf { it.isNotBlank() }
+            ?.let(::File)
+            ?.takeIf { it.isDirectory }
+            ?: return null
+        val waveformFile = File(songDir, WAVEFORM_ENTRY_NAME)
+        Log.i(
+            TAG,
+            "Export waveform state: songId=${songUnit.id} path=${waveformFile.absolutePath} exists=${waveformFile.isFile}"
+        )
+        return waveformFile.takeIf { it.isFile }?.absolutePath
     }
 }
