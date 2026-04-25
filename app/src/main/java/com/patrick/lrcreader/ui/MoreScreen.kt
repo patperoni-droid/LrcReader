@@ -124,7 +124,8 @@ fun MoreScreen(
         MoreSection.Arrangement -> ArrangementEditorSection(
             currentSongId = currentPlayingSongId,
             currentPositionMs = 0L,
-            onClose = { navigate("root") }
+            onClose = { navigate("root") },
+            onStopCurrentPlayback = onStopCurrentPlayback
         )
     }
 }
@@ -287,22 +288,8 @@ private fun MoreRootScreen(
                     SettingsItem(stringResource(R.string.more_item_history), onClick = onOpenHistory)
                     SettingsItem(
                         label = stringResource(R.string.more_item_arrangement),
-                        subtitle = if (currentPlayingSongId.isNullOrBlank()) {
-                            stringResource(R.string.more_item_arrangement_disabled_hint)
-                        } else {
-                            null
-                        },
-                        onClick = {
-                            if (currentPlayingSongId.isNullOrBlank()) {
-                                Toast.makeText(
-                                    context,
-                                    context.getString(R.string.more_item_arrangement_requires_song),
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                            } else {
-                                onOpenArrangement()
-                            }
-                        }
+                        subtitle = null,
+                        onClick = onOpenArrangement
                     )
 
                     HorizontalDivider(color = Color(0xFF262626))
