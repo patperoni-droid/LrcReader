@@ -2073,7 +2073,7 @@ private fun TimelineGridWaveformSection(
         }
     }
 
-    LaunchedEffect(revealAnchorRequest, measureAnchorMs, durationMs, waveformZoom) {
+    LaunchedEffect(revealAnchorRequest) {
         val safeAnchorMs = measureAnchorMs ?: return@LaunchedEffect
         if (revealAnchorRequest <= 0 || durationMs <= 0) return@LaunchedEffect
         val safeDuration = durationMs.coerceAtLeast(1).toFloat()
