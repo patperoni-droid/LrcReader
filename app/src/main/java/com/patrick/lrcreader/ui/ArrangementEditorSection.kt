@@ -79,6 +79,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.text.Normalizer
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
@@ -1007,6 +1008,41 @@ private fun resolveNextArrangementSegmentIndex(segments: List<ArrangementSegment
         segment.id.removePrefix("segment_").toLongOrNull() ?: 0L
     } ?: 0L
     return (maxExistingIndex + 1L).coerceAtLeast(1L)
+}
+
+private fun buildNextArrangementSongName(
+    tracksRoot: File,
+    sourceTitle: String?
+): String {
+    val normalizedBaseName = normalizeArrangementSongBaseName(sourceTitle)
+    val namePattern = Regex("^${Regex.escape(normalizedBaseName)}_arrang_(\\d{2})$")
+    val nextIndex = tracksRoot
+        .takeIf { it.isDirectory }
+        ?.listFiles()
+        .orEmpty()
+        .asSequence()
+        .filter { it.isDirectory }
+        .mapNotNull { songDir ->
+            namePattern.matchEntire(songDir.name)?.groupValues?.getOrNull(1)?.toIntOrNull()
+        }
+        .maxOrNull()
+        ?.plus(1)
+        ?: 1
+
+    return "${normalizedBaseName}_arrang_${nextIndex.coerceAtLeast(1).toString().padStart(2, '0')}"
+}
+
+private fun normalizeArrangementSongBaseName(sourceTitle: String?): String {
+    val lowercased = sourceTitle
+        .orEmpty()
+        .trim()
+        .lowercase()
+    val noAccents = Normalizer.normalize(lowercased, Normalizer.Form.NFD)
+        .replace(Regex("\\p{InCombiningDiacriticalMarks}+"), "")
+    return noAccents
+        .replace(Regex("[^a-z0-9]+"), "_")
+        .trim('_')
+        .ifBlank { "song" }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
