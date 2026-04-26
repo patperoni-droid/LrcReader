@@ -58,7 +58,7 @@
     <string name="arrangement_in_action">IN</string>
     <string name="arrangement_out_action">OUT</string>
     <string name="arrangement_validate_segment">Save segment</string>
-    <string name="arrangement_validate_segment_short">VS</string>
+    <string name="arrangement_validate_segment_short">Add</string>
     <string name="arrangement_in_label">IN: %1$s</string>
     <string name="arrangement_out_label">OUT: %1$s</string>
     <string name="arrangement_position_pending">--:--</string>

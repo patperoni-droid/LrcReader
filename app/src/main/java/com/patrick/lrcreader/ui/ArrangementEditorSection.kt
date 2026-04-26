@@ -7,6 +7,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,6 +20,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -29,9 +31,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Pause
@@ -52,6 +54,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
@@ -62,6 +65,8 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import com.patrick.lrcreader.core.audio.ArrangementWavRenderer
+import com.patrick.lrcreader.core.waveform.WaveformExtractor
+import com.patrick.lrcreader.core.waveform.WaveformPeaksCache
 import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.smp.GridSetupStore
 import com.patrick.lrcreader.smp.SmpLibraryScanner
@@ -73,6 +78,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.pow
 import kotlin.math.roundToLong
 
 private const val ARRANGEMENT_FADE_DURATION_MS = 40L
@@ -116,6 +122,7 @@ fun ArrangementEditorSection(
     var previewPlaybackActive by remember { mutableStateOf(false) }
     var previewRenderedFile by remember { mutableStateOf<File?>(null) }
     var structurePlaybackActive by remember { mutableStateOf(false) }
+    var structurePlaybackIndex by remember { mutableIntStateOf(-1) }
     var structureFadeOutIndex by remember { mutableIntStateOf(-1) }
     var gridTempoBpm by remember { mutableStateOf<Double?>(null) }
     var gridSyncPointMs by remember { mutableStateOf<Long?>(null) }
@@ -129,6 +136,10 @@ fun ArrangementEditorSection(
     val structureSegmentIds = remember { mutableStateListOf<String>() }
     var renameSegmentId by remember { mutableStateOf<String?>(null) }
     var renameDraft by remember { mutableStateOf(TextFieldValue("")) }
+    var segmentOptionsTargetId by remember { mutableStateOf<String?>(null) }
+    var arrangementWaveformPeaks by remember { mutableStateOf<List<Float>>(emptyList()) }
+    var isArrangementWaveformLoading by remember { mutableStateOf(false) }
+    var arrangementWaveformError by remember { mutableStateOf(false) }
     val selectedSong = availableSongs.firstOrNull { it.id == selectedSongId }
     val selectedSongLabel = selectedSong?.title ?: selectedSong?.id ?: currentSongId
     val hasSelectedSong = selectedSong != null
@@ -189,6 +200,7 @@ fun ArrangementEditorSection(
                     sliderPositionMs = arrangementDurationMs
                     isArrangementPlaying = false
                     structurePlaybackActive = false
+                    structurePlaybackIndex = -1
                     structureFadeOutIndex = -1
                     arrangementPlayer.volume = 1f
                 }
@@ -197,7 +209,10 @@ fun ArrangementEditorSection(
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 arrangementPlayer.volume = 1f
                 if (structurePlaybackActive) {
+                    structurePlaybackIndex = arrangementPlayer.currentMediaItemIndex
                     structureFadeOutIndex = -1
+                } else {
+                    structurePlaybackIndex = -1
                 }
             }
         }
@@ -224,7 +239,10 @@ fun ArrangementEditorSection(
         isPreviewGenerating = false
         previewPlaybackActive = false
         structurePlaybackActive = false
+        structurePlaybackIndex = -1
         structureFadeOutIndex = -1
+        arrangementWaveformPeaks = emptyList()
+        arrangementWaveformError = false
         arrangementPlayer.pause()
         arrangementPlayer.clearMediaItems()
         previewRenderedFile?.let { renderedFile ->
@@ -239,6 +257,37 @@ fun ArrangementEditorSection(
                 shouldPlay = false
             )
         }
+    }
+
+    LaunchedEffect(selectedSong?.audioPath) {
+        val audioPath = selectedSong?.audioPath
+        if (audioPath.isNullOrBlank()) {
+            isArrangementWaveformLoading = false
+            arrangementWaveformPeaks = emptyList()
+            arrangementWaveformError = false
+            return@LaunchedEffect
+        }
+
+        isArrangementWaveformLoading = true
+        arrangementWaveformError = false
+        arrangementWaveformPeaks = emptyList()
+        val audioUri = Uri.fromFile(File(audioPath))
+        val peaksResult = runCatching {
+            WaveformPeaksCache.getOrCompute(
+                context = appContext,
+                uri = audioUri,
+                targetPoints = 720
+            ) {
+                WaveformExtractor.extractNormalizedPeaks(
+                    context = appContext,
+                    uri = audioUri,
+                    targetPoints = 720
+                )
+            }
+        }
+        arrangementWaveformPeaks = peaksResult.getOrDefault(emptyList())
+        arrangementWaveformError = peaksResult.isFailure
+        isArrangementWaveformLoading = false
     }
 
     LaunchedEffect(arrangementPlayer, selectedSong?.id, isArrangementPlaying) {
@@ -327,189 +376,188 @@ fun ArrangementEditorSection(
                         fontWeight = FontWeight.Medium
                     )
                 } else {
-                    Text(
-                        text = stringResource(
-                            R.string.arrangement_current_position,
-                            formatArrangementTime(currentArrangementPositionMs)
-                        ),
-                        color = Color.White,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                    Text(
-                        text = stringResource(
-                            R.string.arrangement_duration_label,
-                            formatArrangementTime(arrangementDurationMs)
-                        ),
-                        color = Color(0xFF90A4AE),
-                        fontSize = 12.sp
-                    )
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    OutlinedButton(
-                        onClick = {
-                            val audioPath = selectedSong?.audioPath
-                            if (loopActive && hasPlayableSong && audioPath != null) {
-                                onStopCurrentPlayback()
-                                prepareArrangementFullTrack(
-                                    player = arrangementPlayer,
-                                    audioPath = audioPath,
-                                    positionMs = currentArrangementPositionMs,
-                                    shouldPlay = true
-                                )
-                                loopActive = false
-                                previewPlaybackActive = false
-                                structurePlaybackActive = false
-                                structureFadeOutIndex = -1
-                            } else if (isArrangementPlaying) {
-                                arrangementPlayer.pause()
-                            } else if (hasPlayableSong && audioPath != null) {
-                                onStopCurrentPlayback()
-                                if (previewPlaybackActive) {
-                                    prepareArrangementFullTrack(
-                                        player = arrangementPlayer,
-                                        audioPath = audioPath,
-                                        positionMs = 0L,
-                                        shouldPlay = true
-                                    )
-                                    previewPlaybackActive = false
-                                    structurePlaybackActive = false
-                                    structureFadeOutIndex = -1
-                                } else {
-                                    arrangementPlayer.play()
-                                }
-                            }
-                        },
-                        enabled = hasPlayableSong,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(
-                            imageVector = if (isArrangementPlaying) {
-                                Icons.Filled.Pause
-                            } else {
-                                Icons.Filled.PlayArrow
-                            },
-                            contentDescription = stringResource(
-                                if (isArrangementPlaying) {
-                                    R.string.arrangement_pause_action
-                                } else {
-                                    R.string.arrangement_play_action
-                                }
-                            )
-                        )
-                    }
-                    OutlinedButton(
-                        onClick = {
-                            val audioPath = selectedSong?.audioPath
-                            if (loopActive && audioPath != null) {
-                                prepareArrangementFullTrack(
-                                    player = arrangementPlayer,
-                                    audioPath = audioPath,
-                                    positionMs = 0L,
-                                    shouldPlay = false
-                                )
-                                loopActive = false
-                                previewPlaybackActive = false
-                                structurePlaybackActive = false
-                                structureFadeOutIndex = -1
-                            } else if (previewPlaybackActive && audioPath != null) {
-                                prepareArrangementFullTrack(
-                                    player = arrangementPlayer,
-                                    audioPath = audioPath,
-                                    positionMs = 0L,
-                                    shouldPlay = false
-                                )
-                                previewPlaybackActive = false
-                                structurePlaybackActive = false
-                                structureFadeOutIndex = -1
-                            } else {
-                                arrangementPlayer.seekTo(0L)
-                            }
-                            currentArrangementPositionMs = 0L
-                            sliderPositionMs = 0L
-                        },
-                        enabled = hasPlayableSong,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.SkipPrevious,
-                            contentDescription = stringResource(R.string.arrangement_return_action)
-                        )
-                    }
-                    OutlinedButton(
-                        onClick = {
-                            segmentInMs = quantizeArrangementPositionToBeat(
-                                positionMs = currentArrangementPositionMs,
-                                tempoBpm = gridTempoBpm,
-                                syncPointMs = gridSyncPointMs
-                            )
-                        },
-                        enabled = canEditPositions,
-                        modifier = Modifier.weight(1f)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = buildString {
-                                append(stringResource(R.string.arrangement_in_action))
-                                append("  ")
-                                append(
-                                    segmentInMs?.let(::formatArrangementTimePrecise)
-                                        ?: stringResource(R.string.arrangement_position_pending)
-                                )
-                            },
-                            fontSize = 12.sp
+                            text = stringResource(
+                                R.string.arrangement_current_position,
+                                formatArrangementTime(currentArrangementPositionMs)
+                            ),
+                            color = Color.White,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium
                         )
-                    }
-                    OutlinedButton(
-                        onClick = {
-                            segmentOutMs = quantizeArrangementPositionToBeat(
-                                positionMs = currentArrangementPositionMs,
-                                tempoBpm = gridTempoBpm,
-                                syncPointMs = gridSyncPointMs
-                            )
-                        },
-                        enabled = canEditPositions,
-                        modifier = Modifier.weight(1f)
-                    ) {
                         Text(
-                            text = buildString {
-                                append(stringResource(R.string.arrangement_out_action))
-                                append("  ")
-                                append(
-                                    segmentOutMs?.let(::formatArrangementTimePrecise)
-                                        ?: stringResource(R.string.arrangement_position_pending)
-                                )
-                            },
+                            text = stringResource(
+                                R.string.arrangement_duration_label,
+                                formatArrangementTime(arrangementDurationMs)
+                            ),
+                            color = Color(0xFF90A4AE),
                             fontSize = 12.sp
                         )
                     }
                 }
 
-                Slider(
-                    value = sliderPositionMs.toFloat(),
-                    onValueChange = { nextValue ->
-                        isDraggingSlider = true
-                        sliderPositionMs = nextValue.toLong()
-                        currentArrangementPositionMs = sliderPositionMs
-                    },
-                    onValueChangeFinished = {
-                        if (hasPlayableSong) {
-                            arrangementPlayer.seekTo(sliderPositionMs)
-                        }
-                        currentArrangementPositionMs = sliderPositionMs
-                        isDraggingSlider = false
-                    },
-                    enabled = hasPlayableSong && arrangementDurationMs > 0L,
-                    valueRange = 0f..max(arrangementDurationMs, 1L).toFloat(),
-                    modifier = Modifier.fillMaxWidth()
+                ArrangementThinWaveform(
+                    peaks = arrangementWaveformPeaks,
+                    durationMs = arrangementDurationMs,
+                    currentPositionMs = currentArrangementPositionMs,
+                    isLoading = isArrangementWaveformLoading,
+                    hasError = arrangementWaveformError,
+                    onSeekRequested = { targetPositionMs ->
+                        if (!hasPlayableSong) return@ArrangementThinWaveform
+                        arrangementPlayer.seekTo(targetPositionMs.coerceAtLeast(0L))
+                        currentArrangementPositionMs = targetPositionMs.coerceAtLeast(0L)
+                        sliderPositionMs = currentArrangementPositionMs
+                    }
                 )
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(20.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(
+                            onClick = {
+                                val audioPath = selectedSong?.audioPath
+                                if (loopActive && hasPlayableSong && audioPath != null) {
+                                    onStopCurrentPlayback()
+                                    prepareArrangementFullTrack(
+                                        player = arrangementPlayer,
+                                        audioPath = audioPath,
+                                        positionMs = currentArrangementPositionMs,
+                                        shouldPlay = true
+                                    )
+                                    loopActive = false
+                                    previewPlaybackActive = false
+                                    structurePlaybackActive = false
+                                    structurePlaybackIndex = -1
+                                    structureFadeOutIndex = -1
+                                } else if (isArrangementPlaying) {
+                                    arrangementPlayer.pause()
+                                } else if (hasPlayableSong && audioPath != null) {
+                                    onStopCurrentPlayback()
+                                    if (previewPlaybackActive) {
+                                        prepareArrangementFullTrack(
+                                            player = arrangementPlayer,
+                                            audioPath = audioPath,
+                                            positionMs = 0L,
+                                            shouldPlay = true
+                                        )
+                                        previewPlaybackActive = false
+                                        structurePlaybackActive = false
+                                        structurePlaybackIndex = -1
+                                        structureFadeOutIndex = -1
+                                    } else {
+                                        arrangementPlayer.play()
+                                    }
+                                }
+                            },
+                            enabled = hasPlayableSong
+                        ) {
+                            Icon(
+                                imageVector = if (isArrangementPlaying) {
+                                    Icons.Filled.Pause
+                                } else {
+                                    Icons.Filled.PlayArrow
+                                },
+                                contentDescription = stringResource(
+                                    if (isArrangementPlaying) {
+                                        R.string.arrangement_pause_action
+                                    } else {
+                                        R.string.arrangement_play_action
+                                    }
+                                ),
+                                tint = if (hasPlayableSong) Color.White else Color(0xFF546E7A)
+                            )
+                        }
+
+                        IconButton(
+                            onClick = {
+                                val audioPath = selectedSong?.audioPath
+                                if (loopActive && audioPath != null) {
+                                    prepareArrangementFullTrack(
+                                        player = arrangementPlayer,
+                                        audioPath = audioPath,
+                                        positionMs = 0L,
+                                        shouldPlay = false
+                                    )
+                                    loopActive = false
+                                    previewPlaybackActive = false
+                                    structurePlaybackActive = false
+                                    structurePlaybackIndex = -1
+                                    structureFadeOutIndex = -1
+                                } else if (previewPlaybackActive && audioPath != null) {
+                                    prepareArrangementFullTrack(
+                                        player = arrangementPlayer,
+                                        audioPath = audioPath,
+                                        positionMs = 0L,
+                                        shouldPlay = false
+                                    )
+                                    previewPlaybackActive = false
+                                    structurePlaybackActive = false
+                                    structurePlaybackIndex = -1
+                                    structureFadeOutIndex = -1
+                                } else {
+                                    arrangementPlayer.seekTo(0L)
+                                }
+                                currentArrangementPositionMs = 0L
+                                sliderPositionMs = 0L
+                            },
+                            enabled = hasPlayableSong
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.SkipPrevious,
+                                contentDescription = stringResource(R.string.arrangement_return_action),
+                                tint = if (hasPlayableSong) Color.White else Color(0xFF546E7A)
+                            )
+                        }
+                    }
+
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(18.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        ArrangementControlLabel(
+                            label = stringResource(R.string.arrangement_in_action),
+                            value = segmentInMs?.let(::formatArrangementTimePrecise)
+                                ?: stringResource(R.string.arrangement_position_pending),
+                            enabled = canEditPositions,
+                            onClick = {
+                                segmentInMs = quantizeArrangementPositionToBeat(
+                                    positionMs = currentArrangementPositionMs,
+                                    tempoBpm = gridTempoBpm,
+                                    syncPointMs = gridSyncPointMs
+                                )
+                            }
+                        )
+                        ArrangementControlLabel(
+                            label = stringResource(R.string.arrangement_out_action),
+                            value = segmentOutMs?.let(::formatArrangementTimePrecise)
+                                ?: stringResource(R.string.arrangement_position_pending),
+                            enabled = canEditPositions,
+                            onClick = {
+                                segmentOutMs = quantizeArrangementPositionToBeat(
+                                    positionMs = currentArrangementPositionMs,
+                                    tempoBpm = gridTempoBpm,
+                                    syncPointMs = gridSyncPointMs
+                                )
+                            }
+                        )
+                    }
+                }
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     OutlinedButton(
                         onClick = {
@@ -548,6 +596,7 @@ fun ArrangementEditorSection(
                                         loopActive = false
                                         previewPlaybackActive = true
                                         structurePlaybackActive = false
+                                        structurePlaybackIndex = -1
                                         structureFadeOutIndex = -1
                                         prepareArrangementFullTrack(
                                             player = arrangementPlayer,
@@ -569,7 +618,7 @@ fun ArrangementEditorSection(
                             }
                         },
                         enabled = hasPlayableSong && !isPreviewGenerating,
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.weight(1f)
                     ) {
                         Text(
                             text = stringResource(
@@ -581,13 +630,7 @@ fun ArrangementEditorSection(
                             )
                         )
                     }
-                }
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Spacer(modifier = Modifier.weight(2f))
                     Button(
                         onClick = {
                             val rawStartMs = segmentInMs ?: return@Button
@@ -628,12 +671,15 @@ fun ArrangementEditorSection(
                     ArrangementListItem(
                         id = segment.id,
                         title = segment.name,
-                        subtitle = stringResource(
-                            R.string.arrangement_segment_range,
-                            formatArrangementTime(segment.startMs),
-                            formatArrangementTime(segment.endMs)
-                        ),
-                        isCompact = true
+                        isActive = when {
+                            structurePlaybackActive -> {
+                                structureSegmentIds
+                                    .getOrNull(structurePlaybackIndex)
+                                    ?.let { it == segment.id } == true
+                            }
+                            loopActive -> loopStartMs == segment.startMs && loopEndMs == segment.endMs
+                            else -> false
+                        }
                     )
                 },
                 onItemClick = { segmentId ->
@@ -658,30 +704,9 @@ fun ArrangementEditorSection(
                         structureSegmentIds += segmentId
                     }
                 },
-                onItemDelete = { segmentId ->
-                    val targetIndex = segments.indexOfFirst { it.id == segmentId }
-                    if (targetIndex >= 0) {
-                        val removedSegment = segments.removeAt(targetIndex)
-                        structureSegmentIds.removeAll { it == removedSegment.id }
-                        if (loopActive && loopStartMs == removedSegment.startMs && loopEndMs == removedSegment.endMs) {
-                            selectedSong?.audioPath?.let { audioPath ->
-                                prepareArrangementFullTrack(
-                                    player = arrangementPlayer,
-                                    audioPath = audioPath,
-                                    positionMs = removedSegment.startMs.coerceAtLeast(0L),
-                                    shouldPlay = false
-                                )
-                            }
-                            loopActive = false
-                            structurePlaybackActive = false
-                            structureFadeOutIndex = -1
-                        }
-                    }
-                },
+                onItemDelete = null,
                 onItemLongClick = { segmentId ->
-                    val segment = segments.firstOrNull { it.id == segmentId } ?: return@ArrangementListCard
-                    renameSegmentId = segmentId
-                    renameDraft = TextFieldValue(segment.name)
+                    segmentOptionsTargetId = segmentId
                 }
             )
 
@@ -694,12 +719,7 @@ fun ArrangementEditorSection(
                     ArrangementListItem(
                         id = index.toString(),
                         title = "${index + 1}. ${segment.name}",
-                        subtitle = stringResource(
-                            R.string.arrangement_segment_range,
-                            formatArrangementTime(segment.startMs),
-                            formatArrangementTime(segment.endMs)
-                        ),
-                        isCompact = true
+                        isActive = structurePlaybackActive && index == structurePlaybackIndex
                     )
                 },
                 onItemClick = { structureIndexId ->
@@ -712,6 +732,7 @@ fun ArrangementEditorSection(
                     loopActive = false
                     previewPlaybackActive = false
                     structurePlaybackActive = true
+                    structurePlaybackIndex = startIndex
                     structureFadeOutIndex = -1
                     playArrangementStructure(
                         player = arrangementPlayer,
@@ -857,13 +878,72 @@ fun ArrangementEditorSection(
             containerColor = Color(0xFF121212)
         )
     }
+
+    if (segmentOptionsTargetId != null) {
+        AlertDialog(
+            onDismissRequest = { segmentOptionsTargetId = null },
+            title = {
+                Text(
+                    text = segments.firstOrNull { it.id == segmentOptionsTargetId }?.name.orEmpty(),
+                    color = Color.White
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Text(
+                        text = stringResource(R.string.common_rename),
+                        color = Color.White,
+                        modifier = Modifier.clickable {
+                            val segment = segments.firstOrNull { it.id == segmentOptionsTargetId }
+                                ?: return@clickable
+                            renameSegmentId = segment.id
+                            renameDraft = TextFieldValue(segment.name)
+                            segmentOptionsTargetId = null
+                        }
+                    )
+                    Text(
+                        text = stringResource(R.string.library_delete_action),
+                        color = Color(0xFFFF8A80),
+                        modifier = Modifier.clickable {
+                            val targetId = segmentOptionsTargetId ?: return@clickable
+                            val targetIndex = segments.indexOfFirst { it.id == targetId }
+                            if (targetIndex >= 0) {
+                                val removedSegment = segments.removeAt(targetIndex)
+                                structureSegmentIds.removeAll { it == removedSegment.id }
+                                if (loopActive && loopStartMs == removedSegment.startMs && loopEndMs == removedSegment.endMs) {
+                                    selectedSong?.audioPath?.let { audioPath ->
+                                        prepareArrangementFullTrack(
+                                            player = arrangementPlayer,
+                                            audioPath = audioPath,
+                                            positionMs = removedSegment.startMs.coerceAtLeast(0L),
+                                            shouldPlay = false
+                                        )
+                                    }
+                                    loopActive = false
+                                    structurePlaybackActive = false
+                                    structurePlaybackIndex = -1
+                                    structureFadeOutIndex = -1
+                                }
+                            }
+                            segmentOptionsTargetId = null
+                        }
+                    )
+                }
+            },
+            confirmButton = {
+                OutlinedButton(onClick = { segmentOptionsTargetId = null }) {
+                    Text(text = stringResource(R.string.common_close))
+                }
+            },
+            containerColor = Color(0xFF121212)
+        )
+    }
 }
 
 private data class ArrangementListItem(
     val id: String,
     val title: String,
-    val subtitle: String,
-    val isCompact: Boolean = false
+    val isActive: Boolean = false
 )
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -910,8 +990,15 @@ private fun ArrangementListCard(
                     )
                 }
             } else {
-                items.forEach { item ->
-                    Card(
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 320.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    items.forEach { item ->
+                        Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .combinedClickable(
@@ -921,65 +1008,146 @@ private fun ArrangementListCard(
                                 } else {
                                     null
                                 }
-                            ),
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E)),
-                        shape = RoundedCornerShape(10.dp)
+                            )
+                            .padding(vertical = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(10.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(
-                                modifier = Modifier.weight(1f),
-                                verticalArrangement = Arrangement.spacedBy(3.dp)
+                        Text(
+                            text = item.title,
+                            color = if (item.isActive) Color(0xFF66BB6A) else Color.White,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
+                        if (onItemAdd != null) {
+                            IconButton(
+                                onClick = { onItemAdd(item.id) },
+                                modifier = Modifier.width(32.dp)
                             ) {
-                                Text(
-                                    text = item.title,
-                                    color = Color.White,
-                                    fontSize = if (item.isCompact) 13.sp else 14.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+                                Icon(
+                                    imageVector = Icons.Filled.Add,
+                                    contentDescription = stringResource(R.string.timeline_palette_add_action),
+                                    tint = Color(0xFFCFD8DC)
                                 )
-                                Text(
-                                    text = item.subtitle,
-                                    color = Color(0xFFB0BEC5),
-                                    fontSize = if (item.isCompact) 11.sp else 12.sp,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                            if (onItemAdd != null) {
-                                Text(
-                                    text = "+",
-                                    color = Color.White,
-                                    fontSize = 18.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    modifier = Modifier
-                                        .clickable { onItemAdd(item.id) }
-                                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                                )
-                            }
-                            if (onItemDelete != null) {
-                                IconButton(
-                                    onClick = { onItemDelete(item.id) },
-                                    modifier = Modifier.width(32.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Delete,
-                                        contentDescription = stringResource(R.string.library_delete_action),
-                                        tint = Color(0xFFCFD8DC)
-                                    )
-                                }
                             }
                         }
+                        if (onItemDelete != null) {
+                            IconButton(
+                                onClick = { onItemDelete(item.id) },
+                                modifier = Modifier.width(32.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Delete,
+                                    contentDescription = stringResource(R.string.library_delete_action),
+                                    tint = Color(0xFFCFD8DC)
+                                )
+                            }
+                        }
+                    }
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ArrangementControlLabel(
+    label: String,
+    value: String,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    Column(
+        modifier = Modifier.clickable(enabled = enabled, onClick = onClick),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
+        Text(
+            text = label,
+            color = if (enabled) Color.White else Color(0xFF546E7A),
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+        Text(
+            text = value,
+            color = if (enabled) Color(0xFF90A4AE) else Color(0xFF455A64),
+            fontSize = 11.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
+private fun ArrangementThinWaveform(
+    peaks: List<Float>,
+    durationMs: Long,
+    currentPositionMs: Long,
+    isLoading: Boolean,
+    hasError: Boolean,
+    onSeekRequested: (Long) -> Unit
+) {
+    val waveformColor = Color(0xFF607D8B)
+    val playheadColor = Color(0xFF66BB6A)
+    val centerLineColor = Color(0xFF263238)
+    val visiblePeaks = peaks.ifEmpty { List(180) { 0.15f } }
+
+    Canvas(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(56.dp)
+            .pointerInput(durationMs, peaks) {
+                detectTapGestures { offset ->
+                    if (durationMs <= 0L || size.width <= 0f) return@detectTapGestures
+                    val fraction = (offset.x / size.width).coerceIn(0f, 1f)
+                    onSeekRequested((fraction * durationMs.toFloat()).roundToLong())
+                }
+            }
+    ) {
+        val centerY = size.height / 2f
+        val widthPx = size.width
+        val heightPx = size.height
+
+        drawLine(
+            color = centerLineColor,
+            start = androidx.compose.ui.geometry.Offset(0f, centerY),
+            end = androidx.compose.ui.geometry.Offset(widthPx, centerY),
+            strokeWidth = 1f
+        )
+
+        val peakStep = if (visiblePeaks.size > 1) {
+            widthPx / (visiblePeaks.size - 1).toFloat()
+        } else {
+            widthPx
+        }
+
+        visiblePeaks.forEachIndexed { index, rawPeak ->
+            val x = index * peakStep
+            val peak = rawPeak.coerceIn(0f, 1f).pow(0.75f)
+            val amplitude = (peak * (heightPx * 0.42f)).coerceAtLeast(2f)
+            drawLine(
+                color = if (isLoading || hasError) Color(0xFF455A64) else waveformColor,
+                start = androidx.compose.ui.geometry.Offset(x, centerY - amplitude),
+                end = androidx.compose.ui.geometry.Offset(x, centerY + amplitude),
+                strokeWidth = 1f
+            )
+        }
+
+        val playheadX = if (durationMs > 0L) {
+            (currentPositionMs.coerceIn(0L, durationMs).toFloat() / durationMs.toFloat()) * widthPx
+        } else {
+            0f
+        }
+        drawLine(
+            color = playheadColor,
+            start = androidx.compose.ui.geometry.Offset(playheadX, 0f),
+            end = androidx.compose.ui.geometry.Offset(playheadX, heightPx),
+            strokeWidth = 2f
+        )
     }
 }
 
