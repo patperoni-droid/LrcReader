@@ -68,6 +68,9 @@ import com.patrick.lrcreader.core.audio.ArrangementWavRenderer
 import com.patrick.lrcreader.core.waveform.WaveformExtractor
 import com.patrick.lrcreader.core.waveform.WaveformPeaksCache
 import com.patrick.lrcreader.exo.R
+import com.patrick.lrcreader.smp.ArrangementData
+import com.patrick.lrcreader.smp.ArrangementSegmentData
+import com.patrick.lrcreader.smp.ArrangementStore
 import com.patrick.lrcreader.smp.GridSetupStore
 import com.patrick.lrcreader.smp.SmpLibraryScanner
 import com.patrick.lrcreader.smp.SongUnit
@@ -132,6 +135,7 @@ fun ArrangementEditorSection(
     var segmentInMs by remember { mutableStateOf<Long?>(null) }
     var segmentOutMs by remember { mutableStateOf<Long?>(null) }
     var nextSegmentIndex by remember { mutableLongStateOf(1L) }
+    var arrangementName by remember { mutableStateOf("Arrangement 1") }
     val segments = remember { mutableStateListOf<ArrangementSegment>() }
     val structureSegmentIds = remember { mutableStateListOf<String>() }
     var renameSegmentId by remember { mutableStateOf<String?>(null) }
@@ -147,6 +151,35 @@ fun ArrangementEditorSection(
     val canEditPositions = hasPlayableSong
     val canValidateSegment = canEditPositions && segmentInMs != null && segmentOutMs != null && segmentInMs != segmentOutMs
     val defaultSegmentNameBase = stringResource(R.string.arrangement_segment_default_name)
+    fun persistArrangementState() {
+        val songId = selectedSongId?.trim().orEmpty()
+        if (songId.isEmpty()) return
+
+        val snapshotSegments = segments.map { segment ->
+            ArrangementSegmentData(
+                id = segment.id,
+                name = segment.name,
+                startMs = segment.startMs,
+                endMs = segment.endMs
+            )
+        }
+        val snapshotStructure = structureSegmentIds.toList()
+        val snapshotName = arrangementName.ifBlank { "Arrangement 1" }
+        val sourceSongId = selectedSong?.id?.takeIf { it.isNotBlank() } ?: songId
+
+        scope.launch {
+            ArrangementStore.save(
+                context = appContext,
+                songId = songId,
+                data = ArrangementData(
+                    name = snapshotName,
+                    sourceSongId = sourceSongId,
+                    segments = snapshotSegments,
+                    structureSegmentIds = snapshotStructure
+                )
+            )
+        }
+    }
 
     LaunchedEffect(Unit) {
         isLoadingSongs = true
@@ -223,7 +256,9 @@ fun ArrangementEditorSection(
     }
 
     LaunchedEffect(selectedSong?.id, selectedSong?.audioPath) {
+        val songId = selectedSong?.id?.takeIf { it.isNotBlank() }
         val audioPath = selectedSong?.audioPath
+        arrangementName = "Arrangement 1"
         segmentInMs = null
         segmentOutMs = null
         structureSegmentIds.clear()
@@ -249,6 +284,22 @@ fun ArrangementEditorSection(
             runCatching { renderedFile.delete() }
         }
         previewRenderedFile = null
+        if (songId != null) {
+            ArrangementStore.load(appContext, songId)?.let { arrangementData ->
+                arrangementName = arrangementData.name.ifBlank { "Arrangement 1" }
+                segments += arrangementData.segments.map { segment ->
+                    ArrangementSegment(
+                        id = segment.id,
+                        name = segment.name,
+                        startMs = segment.startMs,
+                        endMs = segment.endMs
+                    )
+                }
+                val validSegmentIds = segments.map { it.id }.toSet()
+                structureSegmentIds += arrangementData.structureSegmentIds.filter { it in validSegmentIds }
+                nextSegmentIndex = resolveNextArrangementSegmentIndex(segments)
+            }
+        }
         if (!audioPath.isNullOrBlank()) {
             prepareArrangementFullTrack(
                 player = arrangementPlayer,
@@ -647,6 +698,7 @@ fun ArrangementEditorSection(
                             nextSegmentIndex += 1L
                             segmentInMs = null
                             segmentOutMs = null
+                            persistArrangementState()
                         },
                         enabled = canValidateSegment,
                         modifier = Modifier.weight(1f)
@@ -702,6 +754,7 @@ fun ArrangementEditorSection(
                 onItemAdd = { segmentId ->
                     if (segments.any { it.id == segmentId }) {
                         structureSegmentIds += segmentId
+                        persistArrangementState()
                     }
                 },
                 onItemDelete = null,
@@ -746,6 +799,7 @@ fun ArrangementEditorSection(
                     val removeIndex = structureIndexId.toIntOrNull() ?: return@ArrangementListCard
                     if (removeIndex in structureSegmentIds.indices) {
                         structureSegmentIds.removeAt(removeIndex)
+                        persistArrangementState()
                     }
                 },
                 onItemLongClick = null
@@ -863,6 +917,7 @@ fun ArrangementEditorSection(
                         val targetIndex = segments.indexOfFirst { it.id == targetId }
                         if (targetIndex >= 0) {
                             segments[targetIndex] = segments[targetIndex].copy(name = nextName)
+                            persistArrangementState()
                         }
                         renameSegmentId = null
                     }
@@ -924,6 +979,7 @@ fun ArrangementEditorSection(
                                     structurePlaybackIndex = -1
                                     structureFadeOutIndex = -1
                                 }
+                                persistArrangementState()
                             }
                             segmentOptionsTargetId = null
                         }
@@ -945,6 +1001,13 @@ private data class ArrangementListItem(
     val title: String,
     val isActive: Boolean = false
 )
+
+private fun resolveNextArrangementSegmentIndex(segments: List<ArrangementSegment>): Long {
+    val maxExistingIndex = segments.maxOfOrNull { segment ->
+        segment.id.removePrefix("segment_").toLongOrNull() ?: 0L
+    } ?: 0L
+    return (maxExistingIndex + 1L).coerceAtLeast(1L)
+}
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
