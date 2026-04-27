@@ -145,6 +145,7 @@ private enum class TimelineListPositionDisplayMode {
 @Composable
 fun TimelineEditorSection(
     currentSongId: String?,
+    startInGridSetup: Boolean = false,
     markers: List<TimelineMarker>,
     palette: List<String>,
     isPlaying: Boolean,
@@ -191,7 +192,15 @@ fun TimelineEditorSection(
     var paletteDraft by remember { mutableStateOf("") }
     var showPaletteInput by remember { mutableStateOf(false) }
     var showTimelineConfigProDialog by remember { mutableStateOf(false) }
-    var editorMode by remember { mutableStateOf(TimelineEditorMode.TIMELINE) }
+    var editorMode by remember(startInGridSetup) {
+        mutableStateOf(
+            if (startInGridSetup) {
+                TimelineEditorMode.GRID_SETUP
+            } else {
+                TimelineEditorMode.TIMELINE
+            }
+        )
+    }
     var displayMode by remember { mutableStateOf(TimelineDisplayMode.MEASURES) }
     var measuresViewMode by remember { mutableStateOf(TimelineMeasuresViewMode.LIST) }
     var measuresTempoDraft by remember { mutableStateOf("") }

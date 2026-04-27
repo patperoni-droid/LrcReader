@@ -182,6 +182,7 @@ fun PlayerScreen(
     var activeLiveNoteFromTimeline by remember { mutableStateOf(false) }
     var lastLiveNoteTraceKey by remember(currentTrackUri) { mutableStateOf<String?>(null) }
     var isEditingTimeline by rememberSaveable(currentTrackUri) { mutableStateOf(false) }
+    var startTimelineInGridSetup by rememberSaveable(currentTrackUri) { mutableStateOf(false) }
     var editingTimelineMidiMarkerIndex by rememberSaveable(currentTrackUri) { mutableStateOf<Int?>(null) }
     var editingTimelineLightCueTimeMs by rememberSaveable(currentTrackUri) { mutableStateOf<Long?>(null) }
     var showLightGenerationDialog by rememberSaveable(currentTrackUri) { mutableStateOf(false) }
@@ -590,6 +591,7 @@ fun PlayerScreen(
         isEditingLyrics = false
         editingTrackUri = null
         isEditingTimeline = false
+        startTimelineInGridSetup = false
         editingTimelineMidiMarkerIndex = null
         editingTimelineLightCueTimeMs = null
         showLightGenerationDialog = false
@@ -619,6 +621,7 @@ fun PlayerScreen(
         editingTrackUri = null
         showUnsavedLyricsDialog = false
         isEditingTimeline = false
+        startTimelineInGridSetup = false
         editingTimelineMidiMarkerIndex = null
         editingTimelineLightCueTimeMs = null
         showLightGenerationDialog = false
@@ -2065,6 +2068,7 @@ fun PlayerScreen(
         } else if (isEditingTimeline) {
             TimelineEditorSection(
                 currentSongId = currentSongId,
+                startInGridSetup = startTimelineInGridSetup,
                 markers = timelineEditorMarkers,
                 palette = timelinePalette,
                 isPlaying = isPlaying,
@@ -2075,6 +2079,7 @@ fun PlayerScreen(
                     editingTimelineLightCueTimeMs = null
                     showLightGenerationDialog = false
                     timelineLightPreviewPositionMs = null
+                    startTimelineInGridSetup = false
                     isEditingTimeline = false
                 },
                 onIsPlayingChange = onIsPlayingChange,
@@ -2336,6 +2341,14 @@ fun PlayerScreen(
                             showTimeline = isCurrentTrackSmp,
                             onOpenTimeline = {
                                 if (isCurrentTrackSmp) {
+                                    startTimelineInGridSetup = false
+                                    isEditingTimeline = true
+                                }
+                            },
+                            showArrangementAction = isCurrentTrackSmp,
+                            onOpenArrangement = {
+                                if (isCurrentTrackSmp) {
+                                    startTimelineInGridSetup = true
                                     isEditingTimeline = true
                                 }
                             },
@@ -2906,6 +2919,8 @@ private fun ReaderHeader(
     onOpenEditor: () -> Unit,
     showTimeline: Boolean,
     onOpenTimeline: () -> Unit,
+    showArrangementAction: Boolean,
+    onOpenArrangement: () -> Unit,
     showWaveformAction: Boolean,
     onOpenWaveform: () -> Unit,
 ) {
@@ -2970,6 +2985,16 @@ private fun ReaderHeader(
                     Text(
                         text = stringResource(R.string.player_timeline_short),
                         color = Color(0xFF80CBC4),
+                        fontSize = 13.sp
+                    )
+                }
+            }
+
+            if (showArrangementAction) {
+                IconButton(onClick = onOpenArrangement) {
+                    Text(
+                        text = stringResource(R.string.player_arrangement_short),
+                        color = Color(0xFFA5D6A7),
                         fontSize = 13.sp
                     )
                 }
