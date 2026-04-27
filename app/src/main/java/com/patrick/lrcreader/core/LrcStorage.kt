@@ -1332,15 +1332,6 @@ object LrcStorage {
             return null
         }
 
-        val config = runCatching {
-            SmpConfig.fromJsonOrNull(configFile.readText(Charsets.UTF_8))
-        }.getOrNull() ?: return null
-
-        val expectedAudioName = config.files?.audio?.trim()
-        if (!expectedAudioName.isNullOrBlank() && !audioFile.name.equals(expectedAudioName, ignoreCase = true)) {
-            return null
-        }
-
         return songDir
     }
 

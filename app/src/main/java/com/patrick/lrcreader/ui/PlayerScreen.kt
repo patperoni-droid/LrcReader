@@ -614,6 +614,16 @@ fun PlayerScreen(
     var saveAndCloseRequestToken by remember { mutableIntStateOf(0) }
     val inlineLrcTimeTagRegex = remember { Regex("""\[(\d{1,2}):(\d{1,2})(?:\.(\d{1,3}))?]""") }
 
+    LaunchedEffect(currentTrackUri) {
+        isEditingLyrics = false
+        editingTrackUri = null
+        showUnsavedLyricsDialog = false
+        isEditingTimeline = false
+        editingTimelineMidiMarkerIndex = null
+        editingTimelineLightCueTimeMs = null
+        showLightGenerationDialog = false
+    }
+
     fun updateResolvedLyricsFileName(newValue: String?, reason: String) {
         Log.d(
             "LrcDebug",
