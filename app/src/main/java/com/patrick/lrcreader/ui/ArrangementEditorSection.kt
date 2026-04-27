@@ -413,6 +413,42 @@ fun ArrangementEditorSection(
                     Text(text = stringResource(R.string.arrangement_choose_song))
                 }
 
+                Text(
+                    text = stringResource(R.string.arrangement_grid_step_title),
+                    color = Color.White,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    text = stringResource(
+                        if (hasSelectedSong) {
+                            R.string.arrangement_grid_step_message_song_selected
+                        } else {
+                            R.string.arrangement_grid_step_message_no_song
+                        }
+                    ),
+                    color = Color(0xFF90A4AE),
+                    fontSize = 12.sp
+                )
+                OutlinedButton(
+                    onClick = {
+                        Toast.makeText(
+                            context,
+                            context.getString(
+                                if (hasSelectedSong) {
+                                    R.string.arrangement_grid_step_toast_song_selected
+                                } else {
+                                    R.string.arrangement_grid_step_toast_no_song
+                                }
+                            ),
+                            Toast.LENGTH_LONG
+                        ).show()
+                    },
+                    border = BorderStroke(1.dp, Color(0xFF455A64))
+                ) {
+                    Text(text = stringResource(R.string.timeline_grid_create_action))
+                }
+
                 if (!hasSelectedSong) {
                     Text(
                         text = stringResource(R.string.arrangement_no_song_selected),

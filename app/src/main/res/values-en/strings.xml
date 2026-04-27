@@ -65,6 +65,11 @@
     <string name="arrangement_no_song_selected">No song selected</string>
     <string name="arrangement_position_unavailable">Position unavailable from this entry point</string>
     <string name="arrangement_choose_song">Choose song</string>
+    <string name="arrangement_grid_step_title">Step 1: adjust the grid</string>
+    <string name="arrangement_grid_step_message_no_song">Choose a song first, then open it in the player to use the current Adjust Grid flow. Come back here afterwards to create segments and structure.</string>
+    <string name="arrangement_grid_step_message_song_selected">Before creating segments, open this song in the player and use the current Adjust Grid flow. Then come back here to build the arrangement.</string>
+    <string name="arrangement_grid_step_toast_no_song">Choose a song here, open it in the player, then use Adjust Grid.</string>
+    <string name="arrangement_grid_step_toast_song_selected">Open this song in the player, then use Adjust Grid before coming back to Arrangement.</string>
     <string name="arrangement_song_audio_unavailable">Audio unavailable for this song</string>
     <string name="arrangement_play_action">Play</string>
     <string name="arrangement_pause_action">Pause</string>

@@ -63,6 +63,11 @@
     <string name="arrangement_no_song_selected">Ninguna canción seleccionada</string>
     <string name="arrangement_position_unavailable">Posición no disponible desde este punto de entrada</string>
     <string name="arrangement_choose_song">Elegir canción</string>
+    <string name="arrangement_grid_step_title">Paso 1: ajustar la cuadrícula</string>
+    <string name="arrangement_grid_step_message_no_song">Primero elige una canción y ábrela en el reproductor para usar el flujo actual Ajustar cuadrícula. Después vuelve aquí para crear segmentos y estructura.</string>
+    <string name="arrangement_grid_step_message_song_selected">Antes de crear segmentos, abre esta canción en el reproductor y usa el flujo actual Ajustar cuadrícula. Luego vuelve aquí para construir el arrangement.</string>
+    <string name="arrangement_grid_step_toast_no_song">Elige una canción aquí, ábrela en el reproductor y luego usa Ajustar cuadrícula.</string>
+    <string name="arrangement_grid_step_toast_song_selected">Abre esta canción en el reproductor y usa Ajustar cuadrícula antes de volver a Arrangement.</string>
     <string name="arrangement_song_audio_unavailable">Audio no disponible para esta canción</string>
     <string name="arrangement_play_action">Play</string>
     <string name="arrangement_pause_action">Pausa</string>

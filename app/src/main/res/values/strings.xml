@@ -65,6 +65,11 @@
     <string name="arrangement_no_song_selected">Aucun morceau sélectionné</string>
     <string name="arrangement_position_unavailable">Position non disponible depuis ce point d’entrée</string>
     <string name="arrangement_choose_song">Choisir morceau</string>
+    <string name="arrangement_grid_step_title">Étape 1 : régler la grille</string>
+    <string name="arrangement_grid_step_message_no_song">Choisissez d’abord un morceau, puis ouvrez-le dans le lecteur pour utiliser le flux actuel “Régler la grille”. Revenez ensuite ici pour créer les segments et la structure.</string>
+    <string name="arrangement_grid_step_message_song_selected">Avant de créer les segments, ouvrez ce morceau dans le lecteur puis utilisez le flux actuel “Régler la grille”. Revenez ensuite ici pour construire l’arrangement.</string>
+    <string name="arrangement_grid_step_toast_no_song">Choisissez un morceau ici, ouvrez-le dans le lecteur, puis utilisez “Régler la grille”.</string>
+    <string name="arrangement_grid_step_toast_song_selected">Ouvrez ce morceau dans le lecteur, puis utilisez “Régler la grille” avant de revenir dans Arrangement.</string>
     <string name="arrangement_song_audio_unavailable">Audio indisponible pour ce morceau</string>
     <string name="arrangement_play_action">Play</string>
     <string name="arrangement_pause_action">Pause</string>
