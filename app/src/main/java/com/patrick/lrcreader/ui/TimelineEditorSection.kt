@@ -342,19 +342,23 @@ fun TimelineEditorSection(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = stringResource(R.string.timeline_dialog_title),
-                color = Color.White,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.SemiBold
-            )
+            if (!startInGridSetup) {
+                Text(
+                    text = stringResource(R.string.timeline_dialog_title),
+                    color = Color.White,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
             Spacer(modifier = Modifier.weight(1f))
             TextButton(
                 onClick = {
                     if (isPreparedClipLoopTestActive) {
                         onStopPreparedClipLoopTest()
                     }
-                    if (editorMode == TimelineEditorMode.GRID_SETUP) {
+                    if (startInGridSetup) {
+                        onCloseEditor()
+                    } else if (editorMode == TimelineEditorMode.GRID_SETUP) {
                         editorMode = TimelineEditorMode.TIMELINE
                     } else {
                         onCloseEditor()
@@ -363,7 +367,7 @@ fun TimelineEditorSection(
             ) {
                 Text(
                     text = stringResource(
-                        if (editorMode == TimelineEditorMode.GRID_SETUP) {
+                        if (startInGridSetup || editorMode == TimelineEditorMode.GRID_SETUP) {
                             R.string.common_cd_back
                         } else {
                             R.string.common_close
