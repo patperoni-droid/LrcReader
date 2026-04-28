@@ -3028,6 +3028,11 @@ class MainActivity : AppCompatActivity() {
                                         },
                                         onRequestShowPlaylist = { selectedTab = BottomTab.QuickPlaylists },
                                         currentSongId = currentPlayingSongId,
+                                        onOpenArrangementHub = {
+                                            moreNavigationTarget = "arrangement_hub"
+                                            moreNavigationToken += 1
+                                            setTabAndPersist(BottomTab.More, reason = "playerOpenArrangementHub")
+                                        },
                                         onOpenWaveform = {
                                             moreNavigationTarget = "waveform_preview"
                                             moreNavigationToken += 1

@@ -144,6 +144,7 @@ fun PlayerScreen(
     onTrackPromotedToSmp: (SmpAutoMigrationResult) -> Unit = {},
     onRequestShowPlaylist: () -> Unit,
     currentSongId: String? = null,
+    onOpenArrangementHub: () -> Unit = {},
     onOpenWaveform: (String) -> Unit = {},
     getPositionMs: () -> Long,
     getEffectiveDurationMs: () -> Long,
@@ -2191,6 +2192,11 @@ fun PlayerScreen(
                 measureAnchorMs = timelineSessionMeasureAnchorMs,
                 onMeasureAnchorHere = { anchorMs ->
                     timelineSessionMeasureAnchorMs = anchorMs
+                },
+                onOpenArrangement = {
+                    startTimelineInGridSetup = false
+                    isEditingTimeline = false
+                    onOpenArrangementHub()
                 },
                 isPreparedClipLoopTestActive = isTimelinePreparedLoopActive,
                 onStartPreparedClipLoopTest = startTimelinePreparedLoopTest,

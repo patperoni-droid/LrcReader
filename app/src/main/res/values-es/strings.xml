@@ -51,6 +51,9 @@
     <string name="common_loading">Cargando…</string>
     <string name="player_arrangement_short">ARR</string>
     <string name="arrangement_title">Arrangement</string>
+    <string name="arrangement_hub_tempo_action">Tempo</string>
+    <string name="arrangement_hub_cutting_action">Corte</string>
+    <string name="arrangement_hub_tempo_message">Abre ARR desde el reproductor para ajustar el tempo.</string>
     <string name="arrangement_song_id">Canción: %1$s</string>
     <string name="arrangement_current_position">Posición: %1$s</string>
     <string name="arrangement_in_action">IN</string>

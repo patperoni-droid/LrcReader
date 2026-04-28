@@ -8,6 +8,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -96,6 +97,19 @@ fun MoreScreen(
             onOpenTuner = onOpenTuner
         )
 
+        MoreSection.ArrangementHub -> ArrangementHubScreen(
+            modifier = modifier,
+            onOpenTempo = {
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.arrangement_hub_tempo_message),
+                    Toast.LENGTH_SHORT
+                ).show()
+            },
+            onOpenCutting = { navigate("arrangement") },
+            onBack = { navigate("root") }
+        )
+
         MoreSection.Backup -> BackupScreen(
             context = context,
             onAfterImport = onAfterImport,
@@ -132,11 +146,69 @@ fun MoreScreen(
 
 private enum class MoreSection(val route: String) {
     Root("root"),
+    ArrangementHub("arrangement_hub"),
     Backup("backup"),
     Filler("filler"),
     History("history"),
     WaveformPreview("waveform_preview"),
     Arrangement("arrangement")
+}
+
+@Composable
+private fun ArrangementHubScreen(
+    modifier: Modifier = Modifier,
+    onOpenTempo: () -> Unit,
+    onOpenCutting: () -> Unit,
+    onBack: () -> Unit
+) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        TextButton(onClick = onBack) {
+            Text(
+                text = stringResource(R.string.common_back_arrow),
+                color = Color(0xFFB0BEC5)
+            )
+        }
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF141414)),
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.arrangement_title),
+                    color = Color.White,
+                    fontSize = 22.sp
+                )
+
+                TextButton(onClick = onOpenTempo) {
+                    Text(
+                        text = stringResource(R.string.arrangement_hub_tempo_action),
+                        color = Color(0xFF80CBC4),
+                        fontSize = 18.sp
+                    )
+                }
+
+                TextButton(onClick = onOpenCutting) {
+                    Text(
+                        text = stringResource(R.string.arrangement_hub_cutting_action),
+                        color = Color(0xFFFFF3E0),
+                        fontSize = 18.sp
+                    )
+                }
+            }
+        }
+    }
 }
 
 /* ─────────────────────────────
