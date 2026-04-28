@@ -171,6 +171,7 @@ fun TimelineEditorSection(
     onMeasuresTempoChange: (Int) -> Unit,
     measureAnchorMs: Long?,
     onMeasureAnchorHere: (Long) -> Unit,
+    onOpenArrangement: () -> Unit = {},
     isPreparedClipLoopTestActive: Boolean,
     onStartPreparedClipLoopTest: (Long, Long) -> Unit,
     onStopPreparedClipLoopTest: () -> Unit,
@@ -445,7 +446,17 @@ fun TimelineEditorSection(
                         )
                     }
                 }
-                TimelineEditorMode.GRID_SETUP -> Unit
+                TimelineEditorMode.GRID_SETUP -> {
+                    if (startInGridSetup) {
+                        TextButton(onClick = onOpenArrangement) {
+                            Text(
+                                text = stringResource(R.string.arrangement_hub_cutting_action),
+                                color = Color(0xFF80CBC4),
+                                fontSize = 12.sp
+                            )
+                        }
+                    }
+                }
             }
         }
 
