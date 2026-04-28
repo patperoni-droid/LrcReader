@@ -1029,6 +1029,8 @@ class MainActivity : AppCompatActivity() {
                 }
                 var moreNavigationTarget by remember { mutableStateOf<String?>(null) }
                 var moreNavigationToken by remember { mutableStateOf(0) }
+                var playerNavigationTarget by remember { mutableStateOf<String?>(null) }
+                var playerNavigationToken by remember { mutableStateOf(0) }
                 var isPlaying by remember { mutableStateOf(false) }
                 var parsedLines by remember { mutableStateOf<List<LrcLine>>(emptyList()) }
                 var lyricsLoading by remember { mutableStateOf(false) }
@@ -3029,10 +3031,12 @@ class MainActivity : AppCompatActivity() {
                                         onRequestShowPlaylist = { selectedTab = BottomTab.QuickPlaylists },
                                         currentSongId = currentPlayingSongId,
                                         onOpenArrangementHub = {
-                                            moreNavigationTarget = "arrangement_hub"
+                                            moreNavigationTarget = "arrangement_from_tempo"
                                             moreNavigationToken += 1
                                             setTabAndPersist(BottomTab.More, reason = "playerOpenArrangementHub")
                                         },
+                                        requestedNavigationTarget = playerNavigationTarget,
+                                        requestedNavigationToken = playerNavigationToken,
                                         onOpenWaveform = {
                                             moreNavigationTarget = "waveform_preview"
                                             moreNavigationToken += 1
@@ -3344,6 +3348,11 @@ class MainActivity : AppCompatActivity() {
                                             showMainBusTab = enabled
                                         },
                                         onAfterImport = { refreshKey++ },
+                                        onOpenTempoFromArrangement = {
+                                            playerNavigationTarget = "grid_setup"
+                                            playerNavigationToken += 1
+                                            setTabAndPersist(BottomTab.Player, reason = "arrangementBackToTempo")
+                                        },
                                         onStopCurrentPlayback = {
                                             isPlaying = false
                                             exoPlayer.pause()

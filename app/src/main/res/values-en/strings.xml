@@ -56,6 +56,7 @@
     <string name="arrangement_hub_tempo_action">Tempo</string>
     <string name="arrangement_hub_cutting_action">Cutting</string>
     <string name="arrangement_hub_tempo_message">Open ARR from the player to adjust the tempo.</string>
+    <string name="arrangement_back_to_tempo">Back to Tempo</string>
     <string name="arrangement_song_id">Song: %1$s</string>
     <string name="arrangement_current_position">Position: %1$s</string>
     <string name="arrangement_in_action">IN</string>

@@ -32,6 +32,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
@@ -100,7 +101,9 @@ fun ArrangementEditorSection(
     currentSongId: String?,
     currentPositionMs: Long,
     onClose: () -> Unit,
-    onStopCurrentPlayback: () -> Unit = {}
+    onStopCurrentPlayback: () -> Unit = {},
+    showSongPicker: Boolean = true,
+    onBackToTempo: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     val appContext = context.applicationContext
@@ -370,19 +373,35 @@ fun ArrangementEditorSection(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    text = stringResource(R.string.arrangement_title),
-                    color = Color.White,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                if (!selectedSongLabel.isNullOrBlank()) {
+            Row(
+                modifier = Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                onBackToTempo?.let { backToTempo ->
+                    TextButton(onClick = backToTempo) {
+                        Text(
+                            text = stringResource(R.string.arrangement_back_to_tempo),
+                            color = Color(0xFF80CBC4),
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(
-                        text = stringResource(R.string.arrangement_song_id, selectedSongLabel),
-                        color = Color(0xFF90A4AE),
-                        fontSize = 12.sp
+                        text = stringResource(R.string.arrangement_title),
+                        color = Color.White,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold
                     )
+                    if (!selectedSongLabel.isNullOrBlank()) {
+                        Text(
+                            text = stringResource(R.string.arrangement_song_id, selectedSongLabel),
+                            color = Color(0xFF90A4AE),
+                            fontSize = 12.sp
+                        )
+                    }
                 }
             }
 
@@ -405,12 +424,14 @@ fun ArrangementEditorSection(
                     .padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                OutlinedButton(
-                    onClick = { showSongPicker = true },
-                    modifier = Modifier.fillMaxWidth(),
-                    border = BorderStroke(1.dp, Color(0xFF455A64))
-                ) {
-                    Text(text = stringResource(R.string.arrangement_choose_song))
+                if (showSongPicker) {
+                    OutlinedButton(
+                        onClick = { showSongPicker = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        border = BorderStroke(1.dp, Color(0xFF455A64))
+                    ) {
+                        Text(text = stringResource(R.string.arrangement_choose_song))
+                    }
                 }
 
                 if (!hasSelectedSong) {

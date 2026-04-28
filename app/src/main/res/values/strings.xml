@@ -56,6 +56,7 @@
     <string name="arrangement_hub_tempo_action">Tempo</string>
     <string name="arrangement_hub_cutting_action">Découpage</string>
     <string name="arrangement_hub_tempo_message">Ouvrez ARR depuis le lecteur pour régler le tempo.</string>
+    <string name="arrangement_back_to_tempo">Retour Tempo</string>
     <string name="arrangement_song_id">Morceau : %1$s</string>
     <string name="arrangement_current_position">Position : %1$s</string>
     <string name="arrangement_in_action">IN</string>

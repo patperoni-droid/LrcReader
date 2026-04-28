@@ -54,6 +54,7 @@
     <string name="arrangement_hub_tempo_action">Tempo</string>
     <string name="arrangement_hub_cutting_action">Corte</string>
     <string name="arrangement_hub_tempo_message">Abre ARR desde el reproductor para ajustar el tempo.</string>
+    <string name="arrangement_back_to_tempo">Volver a Tempo</string>
     <string name="arrangement_song_id">Canción: %1$s</string>
     <string name="arrangement_current_position">Posición: %1$s</string>
     <string name="arrangement_in_action">IN</string>

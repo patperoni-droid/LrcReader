@@ -68,6 +68,7 @@ fun MoreScreen(
     onShowMainBusTabChange: (Boolean) -> Unit = {},
     onAfterImport: (BackupManager.LastPlayed?) -> Unit = {},
     onOpenTuner: () -> Unit = {},     // callback pour l'accordeur
+    onOpenTempoFromArrangement: () -> Unit = {},
     onStopCurrentPlayback: () -> Unit = {}
 ) {
     var current by remember { mutableStateOf(MoreSection.Root) }
@@ -141,6 +142,15 @@ fun MoreScreen(
             onClose = { navigate("root") },
             onStopCurrentPlayback = onStopCurrentPlayback
         )
+
+        MoreSection.ArrangementFromTempo -> ArrangementEditorSection(
+            currentSongId = currentPlayingSongId,
+            currentPositionMs = 0L,
+            onClose = { onOpenTempoFromArrangement() },
+            onStopCurrentPlayback = onStopCurrentPlayback,
+            showSongPicker = false,
+            onBackToTempo = onOpenTempoFromArrangement
+        )
     }
 }
 
@@ -151,7 +161,8 @@ private enum class MoreSection(val route: String) {
     Filler("filler"),
     History("history"),
     WaveformPreview("waveform_preview"),
-    Arrangement("arrangement")
+    Arrangement("arrangement"),
+    ArrangementFromTempo("arrangement_from_tempo")
 }
 
 @Composable

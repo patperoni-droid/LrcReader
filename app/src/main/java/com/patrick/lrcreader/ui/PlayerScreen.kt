@@ -145,6 +145,8 @@ fun PlayerScreen(
     onRequestShowPlaylist: () -> Unit,
     currentSongId: String? = null,
     onOpenArrangementHub: () -> Unit = {},
+    requestedNavigationTarget: String? = null,
+    requestedNavigationToken: Int = 0,
     onOpenWaveform: (String) -> Unit = {},
     getPositionMs: () -> Long,
     getEffectiveDurationMs: () -> Long,
@@ -626,6 +628,13 @@ fun PlayerScreen(
         editingTimelineMidiMarkerIndex = null
         editingTimelineLightCueTimeMs = null
         showLightGenerationDialog = false
+    }
+
+    LaunchedEffect(requestedNavigationToken) {
+        if (requestedNavigationTarget == "grid_setup" && !currentTrackUri.isNullOrBlank()) {
+            startTimelineInGridSetup = true
+            isEditingTimeline = true
+        }
     }
 
     fun updateResolvedLyricsFileName(newValue: String?, reason: String) {
