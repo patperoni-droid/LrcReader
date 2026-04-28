@@ -103,7 +103,8 @@ fun ArrangementEditorSection(
     onClose: () -> Unit,
     onStopCurrentPlayback: () -> Unit = {},
     showSongPicker: Boolean = true,
-    onBackToTempo: (() -> Unit)? = null
+    onBackToTempo: (() -> Unit)? = null,
+    showCloseButton: Boolean = true
 ) {
     val context = LocalContext.current
     val appContext = context.applicationContext
@@ -405,12 +406,14 @@ fun ArrangementEditorSection(
                 }
             }
 
-            IconButton(onClick = onClose) {
-                Icon(
-                    imageVector = Icons.Filled.Close,
-                    contentDescription = stringResource(R.string.common_close),
-                    tint = Color(0xFFCFD8DC)
-                )
+            if (showCloseButton) {
+                IconButton(onClick = onClose) {
+                    Icon(
+                        imageVector = Icons.Filled.Close,
+                        contentDescription = stringResource(R.string.common_close),
+                        tint = Color(0xFFCFD8DC)
+                    )
+                }
             }
         }
 

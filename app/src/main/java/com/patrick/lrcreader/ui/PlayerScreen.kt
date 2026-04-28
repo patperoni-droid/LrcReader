@@ -184,8 +184,13 @@ fun PlayerScreen(
     var activeLiveNote by remember { mutableStateOf<LiveNote?>(null) }
     var activeLiveNoteFromTimeline by remember { mutableStateOf(false) }
     var lastLiveNoteTraceKey by remember(currentTrackUri) { mutableStateOf<String?>(null) }
-    var isEditingTimeline by rememberSaveable(currentTrackUri) { mutableStateOf(false) }
-    var startTimelineInGridSetup by rememberSaveable(currentTrackUri) { mutableStateOf(false) }
+    val openGridSetupOnEntry = requestedNavigationTarget == "grid_setup" && !currentTrackUri.isNullOrBlank()
+    var isEditingTimeline by rememberSaveable(currentTrackUri, requestedNavigationToken) {
+        mutableStateOf(openGridSetupOnEntry)
+    }
+    var startTimelineInGridSetup by rememberSaveable(currentTrackUri, requestedNavigationToken) {
+        mutableStateOf(openGridSetupOnEntry)
+    }
     var editingTimelineMidiMarkerIndex by rememberSaveable(currentTrackUri) { mutableStateOf<Int?>(null) }
     var editingTimelineLightCueTimeMs by rememberSaveable(currentTrackUri) { mutableStateOf<Long?>(null) }
     var showLightGenerationDialog by rememberSaveable(currentTrackUri) { mutableStateOf(false) }

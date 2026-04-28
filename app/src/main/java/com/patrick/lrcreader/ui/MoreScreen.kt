@@ -149,7 +149,8 @@ fun MoreScreen(
             onClose = { onOpenTempoFromArrangement() },
             onStopCurrentPlayback = onStopCurrentPlayback,
             showSongPicker = false,
-            onBackToTempo = onOpenTempoFromArrangement
+            onBackToTempo = onOpenTempoFromArrangement,
+            showCloseButton = false
         )
     }
 }
