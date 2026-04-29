@@ -71,15 +71,19 @@ fun MoreScreen(
     onOpenTempoFromArrangement: () -> Unit = {},
     onStopCurrentPlayback: () -> Unit = {}
 ) {
-    var current by remember { mutableStateOf(MoreSection.Root) }
+    fun resolveSection(route: String?): MoreSection {
+        return MoreSection.entries.firstOrNull { it.route == route } ?: MoreSection.Root
+    }
+
+    var current by remember(requestedRoute) { mutableStateOf(resolveSection(requestedRoute)) }
 
     LaunchedEffect(requestedRouteToken) {
         val route = requestedRoute ?: return@LaunchedEffect
-        current = MoreSection.entries.firstOrNull { it.route == route } ?: MoreSection.Root
+        current = resolveSection(route)
     }
 
     fun navigate(route: String) {
-        current = MoreSection.entries.firstOrNull { it.route == route } ?: MoreSection.Root
+        current = resolveSection(route)
     }
 
     when (current) {
