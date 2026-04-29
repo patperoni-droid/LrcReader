@@ -89,6 +89,11 @@ import kotlin.math.roundToLong
 private const val ARRANGEMENT_FADE_DURATION_MS = 40L
 private const val ARRANGEMENT_FADE_STEPS = 5
 
+private enum class ArrangementAddMode {
+    KEEP,
+    REMOVE
+}
+
 private data class ArrangementSegment(
     val id: String,
     val name: String,
@@ -139,6 +144,7 @@ fun ArrangementEditorSection(
 
     var segmentInMs by remember { mutableStateOf<Long?>(null) }
     var segmentOutMs by remember { mutableStateOf<Long?>(null) }
+    var arrangementAddMode by remember { mutableStateOf(ArrangementAddMode.KEEP) }
     var nextSegmentIndex by remember { mutableLongStateOf(1L) }
     var arrangementName by remember { mutableStateOf("Arrangement 1") }
     val segments = remember { mutableStateListOf<ArrangementSegment>() }
@@ -614,6 +620,31 @@ fun ArrangementEditorSection(
                                 )
                             }
                         )
+                        Text(
+                            text = stringResource(
+                                if (arrangementAddMode == ArrangementAddMode.KEEP) {
+                                    R.string.arrangement_add_mode_keep
+                                } else {
+                                    R.string.arrangement_add_mode_remove
+                                }
+                            ),
+                            color = if (arrangementAddMode == ArrangementAddMode.REMOVE) {
+                                Color(0xFF66BB6A)
+                            } else {
+                                Color(0xFF90A4AE)
+                            },
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier
+                                .clickable {
+                                    arrangementAddMode = if (arrangementAddMode == ArrangementAddMode.KEEP) {
+                                        ArrangementAddMode.REMOVE
+                                    } else {
+                                        ArrangementAddMode.KEEP
+                                    }
+                                }
+                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                        )
                         ArrangementControlLabel(
                             label = stringResource(R.string.arrangement_out_action),
                             value = segmentOutMs?.let(::formatArrangementTimePrecise)
@@ -707,28 +738,75 @@ fun ArrangementEditorSection(
                         )
                     }
 
-                    Button(
-                        onClick = {
-                            val rawStartMs = segmentInMs ?: return@Button
-                            val rawEndMs = segmentOutMs ?: return@Button
-                            val startMs = min(rawStartMs, rawEndMs)
-                            val endMs = max(rawStartMs, rawEndMs)
-                            val segment = ArrangementSegment(
-                                id = "segment_$nextSegmentIndex",
-                                name = "$defaultSegmentNameBase $nextSegmentIndex",
-                                startMs = startMs,
-                                endMs = endMs
-                            )
-                            segments += segment
-                            nextSegmentIndex += 1L
-                            segmentInMs = null
-                            segmentOutMs = null
-                            persistArrangementState()
-                        },
-                        enabled = canValidateSegment,
-                        modifier = Modifier.weight(1f)
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(text = stringResource(R.string.arrangement_validate_segment_short))
+                        Button(
+                            onClick = {
+                                val rawStartMs = segmentInMs ?: return@Button
+                                val rawEndMs = segmentOutMs ?: return@Button
+                                val startMs = min(rawStartMs, rawEndMs)
+                                val endMs = max(rawStartMs, rawEndMs)
+
+                                if (arrangementAddMode == ArrangementAddMode.KEEP) {
+                                    val segment = ArrangementSegment(
+                                        id = "segment_$nextSegmentIndex",
+                                        name = "$defaultSegmentNameBase $nextSegmentIndex",
+                                        startMs = startMs,
+                                        endMs = endMs
+                                    )
+                                    segments += segment
+                                    nextSegmentIndex += 1L
+                                } else {
+                                    val totalDurationMs = arrangementDurationMs.coerceAtLeast(0L)
+                                    val createdSegments = mutableListOf<ArrangementSegment>()
+                                    var candidateIndex = nextSegmentIndex
+
+                                    if (startMs > 0L) {
+                                        createdSegments += ArrangementSegment(
+                                            id = "segment_$candidateIndex",
+                                            name = "$defaultSegmentNameBase $candidateIndex",
+                                            startMs = 0L,
+                                            endMs = startMs
+                                        )
+                                        candidateIndex += 1L
+                                    }
+
+                                    if (endMs < totalDurationMs) {
+                                        createdSegments += ArrangementSegment(
+                                            id = "segment_$candidateIndex",
+                                            name = "$defaultSegmentNameBase $candidateIndex",
+                                            startMs = endMs,
+                                            endMs = totalDurationMs
+                                        )
+                                        candidateIndex += 1L
+                                    }
+
+                                    if (createdSegments.isEmpty()) {
+                                        Toast.makeText(
+                                            context,
+                                            context.getString(R.string.arrangement_remove_segment_invalid),
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                        return@Button
+                                    }
+
+                                    segments += createdSegments
+                                    structureSegmentIds += createdSegments.map { it.id }
+                                    nextSegmentIndex = candidateIndex
+                                }
+
+                                segmentInMs = null
+                                segmentOutMs = null
+                                persistArrangementState()
+                            },
+                            enabled = canValidateSegment,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(text = stringResource(R.string.arrangement_validate_segment_short))
+                        }
                     }
                 }
             }

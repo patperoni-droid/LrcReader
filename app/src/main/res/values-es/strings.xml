@@ -61,6 +61,9 @@
     <string name="arrangement_out_action">OUT</string>
     <string name="arrangement_validate_segment">Validar segmento</string>
     <string name="arrangement_validate_segment_short">Añadir</string>
+    <string name="arrangement_add_mode_keep">+</string>
+    <string name="arrangement_add_mode_remove">−</string>
+    <string name="arrangement_remove_segment_invalid">No hay segmentos válidos para crear</string>
     <string name="arrangement_in_label">IN: %1$s</string>
     <string name="arrangement_out_label">OUT: %1$s</string>
     <string name="arrangement_position_pending">--:--</string>
