@@ -5,6 +5,7 @@ import android.widget.Toast
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -134,6 +135,7 @@ fun ArrangementEditorSection(
     var loopActive by remember { mutableStateOf(false) }
     var loopStartMs by remember { mutableLongStateOf(0L) }
     var loopEndMs by remember { mutableLongStateOf(0L) }
+    var gridEnabled by remember { mutableStateOf(true) }
     var isPreviewGenerating by remember { mutableStateOf(false) }
     var previewPlaybackActive by remember { mutableStateOf(false) }
     var previewRenderedFile by remember { mutableStateOf<File?>(null) }
@@ -607,17 +609,56 @@ fun ArrangementEditorSection(
                         horizontalArrangement = Arrangement.spacedBy(18.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        Box(
+                            modifier = Modifier
+                                .background(
+                                    color = if (gridEnabled) {
+                                        Color(0xFF43A047)
+                                    } else {
+                                        Color.Transparent
+                                    },
+                                    shape = RoundedCornerShape(4.dp)
+                                )
+                                .then(
+                                    if (gridEnabled) {
+                                        Modifier
+                                    } else {
+                                        Modifier.border(
+                                            width = 1.dp,
+                                            color = Color(0xFF455A64),
+                                            shape = RoundedCornerShape(4.dp)
+                                        )
+                                    }
+                                )
+                                .clickable { gridEnabled = !gridEnabled }
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = stringResource(R.string.arrangement_grid_toggle),
+                                color = if (gridEnabled) {
+                                    Color.White
+                                } else {
+                                    Color(0xFFB0BEC5)
+                                },
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
                         ArrangementControlLabel(
                             label = stringResource(R.string.arrangement_in_action),
                             value = segmentInMs?.let(::formatArrangementTimePrecise)
                                 ?: stringResource(R.string.arrangement_position_pending),
                             enabled = canEditPositions,
                             onClick = {
-                                segmentInMs = quantizeArrangementPositionToBeat(
-                                    positionMs = currentArrangementPositionMs,
-                                    tempoBpm = gridTempoBpm,
-                                    syncPointMs = gridSyncPointMs
-                                )
+                                segmentInMs = if (gridEnabled) {
+                                    quantizeArrangementPositionToBeat(
+                                        positionMs = currentArrangementPositionMs,
+                                        tempoBpm = gridTempoBpm,
+                                        syncPointMs = gridSyncPointMs
+                                    )
+                                } else {
+                                    currentArrangementPositionMs.coerceAtLeast(0L)
+                                }
                             }
                         )
                         Text(
@@ -651,11 +692,15 @@ fun ArrangementEditorSection(
                                 ?: stringResource(R.string.arrangement_position_pending),
                             enabled = canEditPositions,
                             onClick = {
-                                segmentOutMs = quantizeArrangementPositionToBeat(
-                                    positionMs = currentArrangementPositionMs,
-                                    tempoBpm = gridTempoBpm,
-                                    syncPointMs = gridSyncPointMs
-                                )
+                                segmentOutMs = if (gridEnabled) {
+                                    quantizeArrangementPositionToBeat(
+                                        positionMs = currentArrangementPositionMs,
+                                        tempoBpm = gridTempoBpm,
+                                        syncPointMs = gridSyncPointMs
+                                    )
+                                } else {
+                                    currentArrangementPositionMs.coerceAtLeast(0L)
+                                }
                             }
                         )
                     }
