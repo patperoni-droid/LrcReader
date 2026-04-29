@@ -2145,21 +2145,6 @@ private fun TimelineMeasuresPlaceholder(
                 onMeasureAnchorHere(selectedPositionMs)
             }
         )
-        Text(
-            text = if (savedAnchorMs != null) {
-                stringResource(
-                    R.string.timeline_measures_anchor_saved,
-                    formatTimelineMarkerTime(savedAnchorMs)
-                )
-            } else {
-                stringResource(
-                    R.string.timeline_measures_anchor_ready,
-                    formatTimelineMarkerTime(displayedCurrentPositionMs)
-                )
-            },
-            color = Color(0xFFB0BEC5),
-            fontSize = 12.sp
-        )
         if (measuresStatus != null) {
             Text(
                 text = stringResource(
@@ -2236,6 +2221,28 @@ private fun TimelineGridWaveformSection(
         val desiredAnchorScreenFraction = 0.35f
         val desiredCenter = anchorFraction + ((0.5f - desiredAnchorScreenFraction) * visibleFraction)
         waveformCenterFraction = desiredCenter.coerceIn(minCenter, maxCenter)
+        lastManualWaveformInteractionMs = SystemClock.elapsedRealtime()
+    }
+
+    LaunchedEffect(isLoopViewLocked, segmentInMs, segmentOutMs, durationMs, waveformZoom) {
+        if (!isLoopViewLocked || durationMs <= 0) return@LaunchedEffect
+        val loopInMs = segmentInMs ?: return@LaunchedEffect
+        val loopOutMs = segmentOutMs ?: return@LaunchedEffect
+        if (loopInMs == loopOutMs) return@LaunchedEffect
+
+        val safeDuration = durationMs.coerceAtLeast(1).toFloat()
+        val loopCenterMs = ((minOf(loopInMs, loopOutMs) + maxOf(loopInMs, loopOutMs)) / 2.0)
+            .roundToLong()
+            .coerceIn(0L, durationMs.toLong())
+        val loopCenterFraction = (loopCenterMs.toFloat() / safeDuration).coerceIn(0f, 1f)
+        val visibleFraction = 1f / waveformZoom.coerceAtLeast(1f)
+        val minCenter = visibleFraction / 2f
+        val maxCenter = 1f - minCenter
+        waveformCenterFraction = if (waveformZoom <= 1f) {
+            0.5f
+        } else {
+            loopCenterFraction.coerceIn(minCenter, maxCenter)
+        }
         lastManualWaveformInteractionMs = SystemClock.elapsedRealtime()
     }
 
