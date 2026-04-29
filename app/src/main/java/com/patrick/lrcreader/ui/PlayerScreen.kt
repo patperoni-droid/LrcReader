@@ -628,8 +628,8 @@ fun PlayerScreen(
         isEditingLyrics = false
         editingTrackUri = null
         showUnsavedLyricsDialog = false
-        isEditingTimeline = false
-        startTimelineInGridSetup = false
+        isEditingTimeline = openGridSetupOnEntry
+        startTimelineInGridSetup = openGridSetupOnEntry
         editingTimelineMidiMarkerIndex = null
         editingTimelineLightCueTimeMs = null
         showLightGenerationDialog = false
@@ -2208,8 +2208,6 @@ fun PlayerScreen(
                     timelineSessionMeasureAnchorMs = anchorMs
                 },
                 onOpenArrangement = {
-                    startTimelineInGridSetup = false
-                    isEditingTimeline = false
                     onOpenArrangementHub()
                 },
                 isPreparedClipLoopTestActive = isTimelinePreparedLoopActive,
