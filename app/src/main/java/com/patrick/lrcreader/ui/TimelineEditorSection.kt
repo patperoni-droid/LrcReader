@@ -358,30 +358,26 @@ fun TimelineEditorSection(
                 )
             }
             Spacer(modifier = Modifier.weight(1f))
-            TextButton(
-                onClick = {
-                    if (isPreparedClipLoopTestActive) {
-                        onStopPreparedClipLoopTest()
-                    }
-                    if (startInGridSetup) {
-                        onCloseEditor()
-                    } else if (editorMode == TimelineEditorMode.GRID_SETUP) {
-                        editorMode = TimelineEditorMode.TIMELINE
-                    } else {
-                        onCloseEditor()
-                    }
-                }
-            ) {
-                Text(
-                    text = stringResource(
-                        if (startInGridSetup || editorMode == TimelineEditorMode.GRID_SETUP) {
-                            R.string.common_cd_back
-                        } else {
-                            R.string.common_close
+            if (!(startInGridSetup || editorMode == TimelineEditorMode.GRID_SETUP)) {
+                TextButton(
+                    onClick = {
+                        if (isPreparedClipLoopTestActive) {
+                            onStopPreparedClipLoopTest()
                         }
-                    ),
-                    color = Color(0xFFB0BEC5)
-                )
+                        if (startInGridSetup) {
+                            onCloseEditor()
+                        } else if (editorMode == TimelineEditorMode.GRID_SETUP) {
+                            editorMode = TimelineEditorMode.TIMELINE
+                        } else {
+                            onCloseEditor()
+                        }
+                    }
+                ) {
+                    Text(
+                        text = stringResource(R.string.common_close),
+                        color = Color(0xFFB0BEC5)
+                    )
+                }
             }
         }
 
@@ -1857,7 +1853,7 @@ private fun TimelineMeasuresPlaceholder(
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Start,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     OutlinedButton(
@@ -1874,191 +1870,151 @@ private fun TimelineMeasuresPlaceholder(
                     ) {
                         Text(stringResource(R.string.timeline_measures_tap_tempo_action))
                     }
-                }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                BasicTextField(
-                    value = tempoDraft,
-                    onValueChange = onTempoDraftChange,
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Number,
-                        imeAction = ImeAction.Done
-                    ),
-                    keyboardActions = KeyboardActions(
-                        onDone = { focusManager.clearFocus() }
-                    ),
-                    textStyle = TextStyle(
-                        color = if (isTempoInvalid) Color(0xFFFF8A80) else Color.White,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium
-                    ),
-                    cursorBrush = SolidColor(Color(0xFF80CBC4)),
-                    modifier = Modifier
-                        .width(72.dp)
-                        .background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(8.dp))
-                        .padding(horizontal = 8.dp, vertical = 5.dp),
-                    decorationBox = { innerTextField ->
-                        Box {
-                            if (tempoDraft.isBlank()) {
-                                Text(
-                                    text = stringResource(R.string.timeline_measures_tap_tempo_pending),
-                                    color = Color.White.copy(alpha = 0.45f),
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Medium
-                                )
+                    BasicTextField(
+                        value = tempoDraft,
+                        onValueChange = onTempoDraftChange,
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Number,
+                            imeAction = ImeAction.Done
+                        ),
+                        keyboardActions = KeyboardActions(
+                            onDone = { focusManager.clearFocus() }
+                        ),
+                        textStyle = TextStyle(
+                            color = if (isTempoInvalid) Color(0xFFFF8A80) else Color.White,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium
+                        ),
+                        cursorBrush = SolidColor(Color(0xFF80CBC4)),
+                        modifier = Modifier
+                            .width(72.dp)
+                            .background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(8.dp))
+                            .padding(horizontal = 8.dp, vertical = 5.dp),
+                        decorationBox = { innerTextField ->
+                            Box {
+                                if (tempoDraft.isBlank()) {
+                                    Text(
+                                        text = stringResource(R.string.timeline_measures_tap_tempo_pending),
+                                        color = Color.White.copy(alpha = 0.45f),
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                                innerTextField()
                             }
-                            innerTextField()
                         }
-                    }
-                )
-                Text(
-                    text = stringResource(R.string.timeline_measures_bpm_suffix),
-                    color = Color(0xFFB0BEC5),
-                    fontSize = 12.sp
-                )
-                IconButton(
-                    onClick = {
-                        val nextLoopEnabled = !loopEnabled
-                        loopEnabled = nextLoopEnabled
-                        if (nextLoopEnabled && (savedAnchorMs != null || hasSegmentLoop)) {
-                            revealSyncPointRequest += 1
-                        }
-                    },
-                    enabled = loopReady || hasSegmentLoop,
-                    modifier = Modifier
-                        .border(
-                            width = 1.dp,
-                            color = if (isLoopHighlighted) {
-                                Color(0xFF2ECC71)
-                            } else {
-                                Color.White.copy(alpha = 0.14f)
-                            },
-                            shape = RoundedCornerShape(12.dp)
-                        )
-                        .background(
-                            color = if (isLoopHighlighted) {
-                                Color(0xFF2ECC71).copy(alpha = 0.24f)
-                            } else {
-                                Color.White.copy(alpha = 0.04f)
-                            },
-                            shape = RoundedCornerShape(12.dp)
-                        )
-                ) {
-                    Text(
-                        text = "\uD83D\uDD01",
-                        color = if (loopReady || hasSegmentLoop) {
-                            if (isLoopHighlighted) Color(0xFF2ECC71) else Color(0xFFB0BEC5)
-                        } else {
-                            Color(0xFF607D8B)
-                        },
-                        fontSize = 18.sp
                     )
+                    Text(
+                        text = stringResource(R.string.timeline_measures_bpm_suffix),
+                        color = Color(0xFFB0BEC5),
+                        fontSize = 12.sp
+                    )
+                    IconButton(
+                        onClick = {
+                            val nextLoopEnabled = !loopEnabled
+                            loopEnabled = nextLoopEnabled
+                            if (nextLoopEnabled && (savedAnchorMs != null || hasSegmentLoop)) {
+                                revealSyncPointRequest += 1
+                            }
+                        },
+                        enabled = loopReady || hasSegmentLoop,
+                        modifier = Modifier
+                            .border(
+                                width = 1.dp,
+                                color = if (isLoopHighlighted) {
+                                    Color(0xFF2ECC71)
+                                } else {
+                                    Color.White.copy(alpha = 0.14f)
+                                },
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                            .background(
+                                color = if (isLoopHighlighted) {
+                                    Color(0xFF2ECC71).copy(alpha = 0.24f)
+                                } else {
+                                    Color.White.copy(alpha = 0.04f)
+                                },
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                    ) {
+                        Text(
+                            text = "\uD83D\uDD01",
+                            color = if (loopReady || hasSegmentLoop) {
+                                if (isLoopHighlighted) Color(0xFF2ECC71) else Color(0xFFB0BEC5)
+                            } else {
+                                Color(0xFF607D8B)
+                            },
+                            fontSize = 18.sp
+                        )
+                    }
+                    Spacer(modifier = Modifier.weight(1f))
                 }
                 if (!hasSegmentLoop) {
-                    Box {
-                        TextButton(
-                            onClick = { loopLengthMenuExpanded = true },
-                            enabled = loopReady
-                        ) {
-                            Text(
-                                text = loopLengthLabel,
-                                color = if (loopReady) Color(0xFFB0BEC5) else Color(0xFF607D8B),
-                                fontSize = 12.sp
-                            )
-                        }
-                        DropdownMenu(
-                            expanded = loopLengthMenuExpanded,
-                            onDismissRequest = { loopLengthMenuExpanded = false }
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.timeline_measures_loop_length_1)) },
-                                onClick = {
-                                    loopLengthBars = 1
-                                    loopLengthMenuExpanded = false
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.timeline_measures_loop_length_4)) },
-                                onClick = {
-                                    loopLengthBars = 4
-                                    loopLengthMenuExpanded = false
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.timeline_measures_loop_length_8)) },
-                                onClick = {
-                                    loopLengthBars = 8
-                                    loopLengthMenuExpanded = false
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.timeline_measures_loop_length_16)) },
-                                onClick = {
-                                    loopLengthBars = 16
-                                    loopLengthMenuExpanded = false
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.timeline_measures_loop_length_32)) },
-                                onClick = {
-                                    loopLengthBars = 32
-                                    loopLengthMenuExpanded = false
-                                }
-                            )
-                        }
-                    }
-                }
-                OutlinedButton(
-                    onClick = {
-                        if (loopEnabled && (loopReady || hasSegmentLoop)) {
-                            val customLoopStartMs = segmentInMs
-                            val customLoopEndMs = segmentOutMs
-                            if (customLoopStartMs != null &&
-                                customLoopEndMs != null &&
-                                customLoopStartMs != customLoopEndMs
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box {
+                            TextButton(
+                                onClick = { loopLengthMenuExpanded = true },
+                                enabled = loopReady
                             ) {
-                                val loopStartMs = minOf(customLoopStartMs, customLoopEndMs).coerceAtLeast(0L)
-                                val loopEndMs = maxOf(customLoopStartMs, customLoopEndMs).coerceAtLeast(loopStartMs + 1L)
-                                preparedLoopStartMs = loopStartMs
-                                onStartPreparedClipLoopTest(loopStartMs, loopEndMs)
-                            } else {
-                                val safeAnchorMs = savedAnchorMs ?: return@OutlinedButton
-                                val safeTempoBpm = tempoBpm ?: return@OutlinedButton
-                                val barDurationMs = ((60_000.0 / safeTempoBpm.toDouble()) * 4.0)
-                                    .roundToLong()
-                                    .coerceAtLeast(1L)
-                                preparedLoopStartMs = safeAnchorMs
-                                onStartPreparedClipLoopTest(
-                                    safeAnchorMs,
-                                    safeAnchorMs + (barDurationMs * loopLengthBars.toLong())
+                                Text(
+                                    text = loopLengthLabel,
+                                    color = if (loopReady) Color(0xFFB0BEC5) else Color(0xFF607D8B),
+                                    fontSize = 12.sp
                                 )
                             }
-                        } else {
-                            onIsPlayingChange(true)
-                            runCatching { FillerSoundManager.fadeOutAndStop(200) }
+                            DropdownMenu(
+                                expanded = loopLengthMenuExpanded,
+                                onDismissRequest = { loopLengthMenuExpanded = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.timeline_measures_loop_length_1)) },
+                                    onClick = {
+                                        loopLengthBars = 1
+                                        loopLengthMenuExpanded = false
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.timeline_measures_loop_length_4)) },
+                                    onClick = {
+                                        loopLengthBars = 4
+                                        loopLengthMenuExpanded = false
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.timeline_measures_loop_length_8)) },
+                                    onClick = {
+                                        loopLengthBars = 8
+                                        loopLengthMenuExpanded = false
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.timeline_measures_loop_length_16)) },
+                                    onClick = {
+                                        loopLengthBars = 16
+                                        loopLengthMenuExpanded = false
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.timeline_measures_loop_length_32)) },
+                                    onClick = {
+                                        loopLengthBars = 32
+                                        loopLengthMenuExpanded = false
+                                    }
+                                )
+                            }
                         }
-                    },
-                    enabled = true
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.PlayArrow,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(text = stringResource(R.string.arrangement_play_action))
-                }
-                Spacer(modifier = Modifier.weight(1f))
+                    }
                 }
             }
         }
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
@@ -2163,6 +2119,12 @@ private fun TimelineMeasuresPlaceholder(
                     onSegmentOutChange(nextOutMs)
                 }
             )
+            Text(
+                text = stringResource(R.string.timeline_measures_signature_default),
+                color = Color.White,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium
+            )
         }
         TimelineGridWaveformSection(
             peaks = waveformPeaks,
@@ -2172,6 +2134,8 @@ private fun TimelineMeasuresPlaceholder(
             isLoopViewLocked = loopEnabled || isPreparedClipLoopTestActive,
             tempoBpm = tempoBpm,
             measureAnchorMs = savedAnchorMs,
+            segmentInMs = segmentInMs,
+            segmentOutMs = segmentOutMs,
             isLoading = waveformLoading,
             hasError = waveformError,
             revealAnchorRequest = revealSyncPointRequest,
@@ -2181,37 +2145,6 @@ private fun TimelineMeasuresPlaceholder(
                 onMeasureAnchorHere(selectedPositionMs)
             }
         )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = stringResource(
-                    R.string.timeline_measures_inline_label,
-                    stringResource(R.string.timeline_measures_signature_label)
-                ),
-                color = Color(0xFFB0BEC5),
-                fontSize = 13.sp
-            )
-            Text(
-                text = stringResource(R.string.timeline_measures_signature_default),
-                color = Color.White,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium
-            )
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.Center
-        ) {
-            Button(onClick = {
-                localMeasureAnchorMs = displayedCurrentPositionMs
-                onMeasureAnchorHere(displayedCurrentPositionMs)
-            }) {
-                Text(text = stringResource(R.string.timeline_measures_anchor_action))
-            }
-        }
         Text(
             text = if (savedAnchorMs != null) {
                 stringResource(
@@ -2251,6 +2184,8 @@ private fun TimelineGridWaveformSection(
     isLoopViewLocked: Boolean,
     tempoBpm: Int?,
     measureAnchorMs: Long?,
+    segmentInMs: Long?,
+    segmentOutMs: Long?,
     isLoading: Boolean,
     hasError: Boolean,
     revealAnchorRequest: Int,
@@ -2544,25 +2479,69 @@ private fun TimelineGridWaveformSection(
                             )
                         }
 
-                        measureAnchorMs?.let { anchorMs ->
-                            val anchorFraction = anchorMs
+                        segmentInMs?.let { inMs ->
+                            val inFraction = inMs
                                 .coerceIn(0L, safeDuration.toLong())
                                 .toFloat() / safeDuration.toFloat()
-                            if (anchorFraction in startFraction..effectiveEndFraction) {
-                                val anchorX = ((anchorFraction - startFraction) /
+                            if (inFraction in startFraction..effectiveEndFraction) {
+                                val inX = ((inFraction - startFraction) /
                                     (effectiveEndFraction - startFraction)) * widthPx
                                 drawLine(
                                     color = Color(0xFFFF1744).copy(alpha = 0.3f),
-                                    start = androidx.compose.ui.geometry.Offset(anchorX, 0f),
-                                    end = androidx.compose.ui.geometry.Offset(anchorX, heightPx),
+                                    start = androidx.compose.ui.geometry.Offset(inX, 0f),
+                                    end = androidx.compose.ui.geometry.Offset(inX, heightPx),
                                     strokeWidth = 10f
                                 )
                                 drawLine(
                                     color = Color(0xFFFF1744),
-                                    start = androidx.compose.ui.geometry.Offset(anchorX, 0f),
-                                    end = androidx.compose.ui.geometry.Offset(anchorX, heightPx),
+                                    start = androidx.compose.ui.geometry.Offset(inX, 0f),
+                                    end = androidx.compose.ui.geometry.Offset(inX, heightPx),
                                     strokeWidth = 8f
                                 )
+                            }
+                        }
+                        segmentOutMs?.let { outMs ->
+                            val outFraction = outMs
+                                .coerceIn(0L, safeDuration.toLong())
+                                .toFloat() / safeDuration.toFloat()
+                            if (outFraction in startFraction..effectiveEndFraction) {
+                                val outX = ((outFraction - startFraction) /
+                                    (effectiveEndFraction - startFraction)) * widthPx
+                                drawLine(
+                                    color = Color(0xFFFFC107).copy(alpha = 0.28f),
+                                    start = androidx.compose.ui.geometry.Offset(outX, 0f),
+                                    end = androidx.compose.ui.geometry.Offset(outX, heightPx),
+                                    strokeWidth = 10f
+                                )
+                                drawLine(
+                                    color = Color(0xFFFFC107),
+                                    start = androidx.compose.ui.geometry.Offset(outX, 0f),
+                                    end = androidx.compose.ui.geometry.Offset(outX, heightPx),
+                                    strokeWidth = 6f
+                                )
+                            }
+                        }
+                        if (segmentInMs == null) {
+                            measureAnchorMs?.let { anchorMs ->
+                                val anchorFraction = anchorMs
+                                    .coerceIn(0L, safeDuration.toLong())
+                                    .toFloat() / safeDuration.toFloat()
+                                if (anchorFraction in startFraction..effectiveEndFraction) {
+                                    val anchorX = ((anchorFraction - startFraction) /
+                                        (effectiveEndFraction - startFraction)) * widthPx
+                                    drawLine(
+                                        color = Color(0xFFFF1744).copy(alpha = 0.3f),
+                                        start = androidx.compose.ui.geometry.Offset(anchorX, 0f),
+                                        end = androidx.compose.ui.geometry.Offset(anchorX, heightPx),
+                                        strokeWidth = 10f
+                                    )
+                                    drawLine(
+                                        color = Color(0xFFFF1744),
+                                        start = androidx.compose.ui.geometry.Offset(anchorX, 0f),
+                                        end = androidx.compose.ui.geometry.Offset(anchorX, heightPx),
+                                        strokeWidth = 8f
+                                    )
+                                }
                             }
                         }
                     }
