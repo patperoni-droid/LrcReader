@@ -59,6 +59,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -1608,6 +1609,7 @@ private fun TimelineMeasuresPlaceholder(
     var waveformLoading by remember(currentSongId) { mutableStateOf(false) }
     var waveformError by remember(currentSongId) { mutableStateOf(false) }
     var gridEnabled by remember(currentSongId) { mutableStateOf(true) }
+    var isWaveformExpanded by remember { mutableStateOf(false) }
     var segmentInMs by remember(currentSongId) { mutableStateOf(initialInMs) }
     var segmentOutMs by remember(currentSongId) { mutableStateOf(initialOutMs) }
     var segmentSelectionMode by remember(currentSongId) {
@@ -2136,9 +2138,11 @@ private fun TimelineMeasuresPlaceholder(
             measureAnchorMs = savedAnchorMs,
             segmentInMs = segmentInMs,
             segmentOutMs = segmentOutMs,
+            isWaveformExpanded = isWaveformExpanded,
             isLoading = waveformLoading,
             hasError = waveformError,
             revealAnchorRequest = revealSyncPointRequest,
+            onToggleExpanded = { isWaveformExpanded = !isWaveformExpanded },
             onSeekRequested = { seekToMs(it) },
             onMeasureAnchorSelected = { selectedPositionMs ->
                 localMeasureAnchorMs = selectedPositionMs
@@ -2171,16 +2175,21 @@ private fun TimelineGridWaveformSection(
     measureAnchorMs: Long?,
     segmentInMs: Long?,
     segmentOutMs: Long?,
+    isWaveformExpanded: Boolean,
     isLoading: Boolean,
     hasError: Boolean,
     revealAnchorRequest: Int,
+    onToggleExpanded: () -> Unit,
     onSeekRequested: (Long) -> Unit,
     onMeasureAnchorSelected: (Long) -> Unit
 ) {
     var waveformZoom by remember(peaks, durationMs) { mutableStateOf(1f) }
     var waveformCenterFraction by remember(peaks, durationMs) { mutableStateOf(0.5f) }
     var lastManualWaveformInteractionMs by remember(peaks, durationMs) { mutableLongStateOf(0L) }
-    val waveformHeight = 270.dp
+    val waveformHeight by animateDpAsState(
+        targetValue = if (isWaveformExpanded) 270.dp else 140.dp,
+        label = "timelineWaveformHeight"
+    )
 
     LaunchedEffect(
         isPlaying,
@@ -2553,6 +2562,26 @@ private fun TimelineGridWaveformSection(
                         }
                     }
                 }
+            }
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 8.dp, end = 8.dp)
+                    .background(Color(0xAA111111), RoundedCornerShape(8.dp))
+                    .border(
+                        width = 1.dp,
+                        color = Color.White.copy(alpha = 0.18f),
+                        shape = RoundedCornerShape(8.dp)
+                    )
+                    .clickable { onToggleExpanded() }
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+            ) {
+                Text(
+                    text = if (isWaveformExpanded) "⤡" else "⤢",
+                    color = Color.White,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
             }
         }
     }
