@@ -10,6 +10,8 @@ import java.io.File
 data class GridSetupData(
     val tempoBpm: Double?,
     val syncPointMs: Long?,
+    val inMs: Long? = null,
+    val outMs: Long? = null,
     val timeSignatureNumerator: Int = 4,
     val timeSignatureDenominator: Int = 4
 )
@@ -96,10 +98,18 @@ object GridSetupStore {
         val syncPointMs = json.takeIf { it.has("syncPointMs") && !it.isNull("syncPointMs") }
             ?.optLong("syncPointMs")
             ?.takeIf { it >= 0L }
+        val inMs = json.takeIf { it.has("inMs") && !it.isNull("inMs") }
+            ?.optLong("inMs")
+            ?.takeIf { it >= 0L }
+        val outMs = json.takeIf { it.has("outMs") && !it.isNull("outMs") }
+            ?.optLong("outMs")
+            ?.takeIf { it >= 0L }
 
         return GridSetupData(
             tempoBpm = tempoBpm,
             syncPointMs = syncPointMs,
+            inMs = inMs,
+            outMs = outMs,
             timeSignatureNumerator = numerator,
             timeSignatureDenominator = denominator
         )
@@ -116,6 +126,16 @@ object GridSetupStore {
                 put("syncPointMs", data.syncPointMs)
             } else {
                 put("syncPointMs", JSONObject.NULL)
+            }
+            if (data.inMs != null) {
+                put("inMs", data.inMs)
+            } else {
+                put("inMs", JSONObject.NULL)
+            }
+            if (data.outMs != null) {
+                put("outMs", data.outMs)
+            } else {
+                put("outMs", JSONObject.NULL)
             }
             put("timeSignatureNumerator", data.timeSignatureNumerator.coerceAtLeast(1))
             put("timeSignatureDenominator", data.timeSignatureDenominator.coerceAtLeast(1))

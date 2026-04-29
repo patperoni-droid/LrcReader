@@ -76,6 +76,7 @@ import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.smp.ArrangementData
 import com.patrick.lrcreader.smp.ArrangementSegmentData
 import com.patrick.lrcreader.smp.ArrangementStore
+import com.patrick.lrcreader.smp.GridSetupData
 import com.patrick.lrcreader.smp.GridSetupStore
 import com.patrick.lrcreader.smp.SmpLibraryScanner
 import com.patrick.lrcreader.smp.SongUnit
@@ -167,6 +168,7 @@ fun ArrangementEditorSection(
     val canEditPositions = hasPlayableSong
     val canValidateSegment = canEditPositions && segmentInMs != null && segmentOutMs != null && segmentInMs != segmentOutMs
     val defaultSegmentNameBase = stringResource(R.string.arrangement_segment_default_name)
+
     fun persistArrangementState() {
         val songId = selectedSongId?.trim().orEmpty()
         if (songId.isEmpty()) return
@@ -192,6 +194,25 @@ fun ArrangementEditorSection(
                     sourceSongId = sourceSongId,
                     segments = snapshotSegments,
                     structureSegmentIds = snapshotStructure
+                )
+            )
+        }
+    }
+
+    fun persistGridSyncPointIfMissing(syncPointMs: Long) {
+        val songId = selectedSongId?.trim().orEmpty()
+        if (!gridEnabled || songId.isEmpty() || gridSyncPointMs != null) return
+
+        gridSyncPointMs = syncPointMs.coerceAtLeast(0L)
+        scope.launch {
+            GridSetupStore.save(
+                context = appContext,
+                songId = songId,
+                data = GridSetupData(
+                    tempoBpm = gridTempoBpm,
+                    syncPointMs = gridSyncPointMs,
+                    timeSignatureNumerator = gridTimeSignatureNumerator,
+                    timeSignatureDenominator = gridTimeSignatureDenominator
                 )
             )
         }
@@ -650,7 +671,7 @@ fun ArrangementEditorSection(
                                 ?: stringResource(R.string.arrangement_position_pending),
                             enabled = canEditPositions,
                             onClick = {
-                                segmentInMs = if (gridEnabled) {
+                                val nextInMs = if (gridEnabled) {
                                     quantizeArrangementPositionToBeat(
                                         positionMs = currentArrangementPositionMs,
                                         tempoBpm = gridTempoBpm,
@@ -659,6 +680,8 @@ fun ArrangementEditorSection(
                                 } else {
                                     currentArrangementPositionMs.coerceAtLeast(0L)
                                 }
+                                segmentInMs = nextInMs
+                                persistGridSyncPointIfMissing(nextInMs)
                             }
                         )
                         Text(

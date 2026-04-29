@@ -13,6 +13,7 @@ import android.os.SystemClock
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -139,6 +140,11 @@ private enum class TimelineEditStep {
 private enum class TimelineListPositionDisplayMode {
     MUSIC,
     TIME
+}
+
+private enum class TimelineSegmentSelectionMode {
+    KEEP,
+    REMOVE
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -1446,6 +1452,8 @@ private fun GridSetupHost(
     var gridTempoBpm by remember(currentSongId) { mutableStateOf(fallbackTempoBpm?.toDouble()) }
     var gridTempoDraft by remember(currentSongId) { mutableStateOf(fallbackTempoBpm?.toString().orEmpty()) }
     var gridSyncPointMs by remember(currentSongId) { mutableStateOf(measureAnchorMs) }
+    var gridInMs by remember(currentSongId) { mutableStateOf<Long?>(null) }
+    var gridOutMs by remember(currentSongId) { mutableStateOf<Long?>(null) }
 
     LaunchedEffect(currentSongId, fallbackTempoBpm, measureAnchorMs) {
         val songId = currentSongId?.trim().orEmpty()
@@ -1465,9 +1473,16 @@ private fun GridSetupHost(
             ?.toString()
             .orEmpty()
         gridSyncPointMs = gridData.syncPointMs
+        gridInMs = gridData.inMs
+        gridOutMs = gridData.outMs
     }
 
-    fun saveGridSetup(nextTempoBpm: Double?, nextSyncPointMs: Long?) {
+    fun saveGridSetup(
+        nextTempoBpm: Double?,
+        nextSyncPointMs: Long?,
+        nextInMs: Long? = gridInMs,
+        nextOutMs: Long? = gridOutMs
+    ) {
         val songId = currentSongId?.trim().orEmpty()
         if (songId.isEmpty()) return
         scope.launch {
@@ -1476,7 +1491,9 @@ private fun GridSetupHost(
                 songId = songId,
                 data = GridSetupData(
                     tempoBpm = nextTempoBpm,
-                    syncPointMs = nextSyncPointMs
+                    syncPointMs = nextSyncPointMs,
+                    inMs = nextInMs,
+                    outMs = nextOutMs
                 )
             )
         }
@@ -1496,6 +1513,8 @@ private fun GridSetupHost(
         isTempoInvalid = isTempoInvalid,
         tempoBpm = gridTempoBpm?.roundToInt(),
         measureAnchorMs = gridSyncPointMs,
+        initialInMs = gridInMs,
+        initialOutMs = gridOutMs,
         isPlaying = isPlaying,
         currentPositionMs = currentPositionMs,
         seekToMs = seekToMs,
@@ -1503,6 +1522,20 @@ private fun GridSetupHost(
         onMeasureAnchorHere = { anchorMs ->
             gridSyncPointMs = anchorMs
             saveGridSetup(gridTempoBpm, anchorMs)
+        },
+        onInitialSyncPointIfMissing = { anchorMs ->
+            if (gridSyncPointMs == null) {
+                gridSyncPointMs = anchorMs
+                saveGridSetup(gridTempoBpm, anchorMs)
+            }
+        },
+        onSegmentInChange = { nextInMs ->
+            gridInMs = nextInMs
+            saveGridSetup(gridTempoBpm, gridSyncPointMs, nextInMs, gridOutMs)
+        },
+        onSegmentOutChange = { nextOutMs ->
+            gridOutMs = nextOutMs
+            saveGridSetup(gridTempoBpm, gridSyncPointMs, gridInMs, nextOutMs)
         },
         isPreparedClipLoopTestActive = isPreparedClipLoopTestActive,
         onStartPreparedClipLoopTest = onStartPreparedClipLoopTest,
@@ -1530,11 +1563,16 @@ private fun TimelineMeasuresPlaceholder(
     isTempoInvalid: Boolean,
     tempoBpm: Int?,
     measureAnchorMs: Long?,
+    initialInMs: Long?,
+    initialOutMs: Long?,
     isPlaying: Boolean,
     currentPositionMs: Long,
     seekToMs: (Long) -> Unit,
     onIsPlayingChange: (Boolean) -> Unit,
     onMeasureAnchorHere: (Long) -> Unit,
+    onInitialSyncPointIfMissing: (Long) -> Unit,
+    onSegmentInChange: (Long?) -> Unit,
+    onSegmentOutChange: (Long?) -> Unit,
     isPreparedClipLoopTestActive: Boolean,
     onStartPreparedClipLoopTest: (Long, Long) -> Unit,
     onStopPreparedClipLoopTest: () -> Unit,
@@ -1548,9 +1586,10 @@ private fun TimelineMeasuresPlaceholder(
     var loopLengthBars by remember { mutableIntStateOf(1) }
     var loopLengthMenuExpanded by remember { mutableStateOf(false) }
     var revealSyncPointRequest by remember { mutableIntStateOf(0) }
+    var preparedLoopStartMs by remember(currentSongId) { mutableStateOf<Long?>(null) }
     val savedAnchorMs = localMeasureAnchorMs
-    val displayedCurrentPositionMs = if (isPreparedClipLoopTestActive && savedAnchorMs != null) {
-        savedAnchorMs + currentPositionMs.coerceAtLeast(0L)
+    val displayedCurrentPositionMs = if (isPreparedClipLoopTestActive && preparedLoopStartMs != null) {
+        preparedLoopStartMs!! + currentPositionMs.coerceAtLeast(0L)
     } else {
         currentPositionMs
     }
@@ -1572,9 +1611,26 @@ private fun TimelineMeasuresPlaceholder(
     var waveformDurationMs by remember(currentSongId) { mutableIntStateOf(0) }
     var waveformLoading by remember(currentSongId) { mutableStateOf(false) }
     var waveformError by remember(currentSongId) { mutableStateOf(false) }
+    var gridEnabled by remember(currentSongId) { mutableStateOf(true) }
+    var segmentInMs by remember(currentSongId) { mutableStateOf(initialInMs) }
+    var segmentOutMs by remember(currentSongId) { mutableStateOf(initialOutMs) }
+    var segmentSelectionMode by remember(currentSongId) {
+        mutableStateOf(TimelineSegmentSelectionMode.KEEP)
+    }
 
     LaunchedEffect(measureAnchorMs) {
         localMeasureAnchorMs = measureAnchorMs
+    }
+
+    LaunchedEffect(initialInMs, initialOutMs) {
+        segmentInMs = initialInMs
+        segmentOutMs = initialOutMs
+    }
+
+    LaunchedEffect(isPreparedClipLoopTestActive) {
+        if (!isPreparedClipLoopTestActive) {
+            preparedLoopStartMs = null
+        }
     }
 
     LaunchedEffect(showTapTempoHint) {
@@ -1642,7 +1698,8 @@ private fun TimelineMeasuresPlaceholder(
     }
     val metronomeReady = tempoBpm != null && savedAnchorMs != null
     val loopReady = tempoBpm != null && savedAnchorMs != null
-    val isLoopHighlighted = loopReady && (loopEnabled || isPreparedClipLoopTestActive)
+    val hasSegmentLoop = segmentInMs != null && segmentOutMs != null && segmentInMs != segmentOutMs
+    val isLoopHighlighted = (loopReady || hasSegmentLoop) && (loopEnabled || isPreparedClipLoopTestActive)
     val loopLengthLabel = stringResource(
         when (loopLengthBars) {
             4 -> R.string.timeline_measures_loop_length_4
@@ -1680,8 +1737,8 @@ private fun TimelineMeasuresPlaceholder(
         }
     }
 
-    LaunchedEffect(loopReady) {
-        if (!loopReady) {
+    LaunchedEffect(loopReady, hasSegmentLoop) {
+        if (!loopReady && !hasSegmentLoop) {
             loopEnabled = false
             if (isPreparedClipLoopTestActive) {
                 onStopPreparedClipLoopTest()
@@ -1689,19 +1746,31 @@ private fun TimelineMeasuresPlaceholder(
         }
     }
 
-    LaunchedEffect(loopEnabled, tempoBpm, savedAnchorMs, loopLengthBars) {
-        val safeTempoBpm = tempoBpm ?: return@LaunchedEffect
-        val safeAnchorMs = savedAnchorMs ?: return@LaunchedEffect
+    LaunchedEffect(loopEnabled, tempoBpm, savedAnchorMs, loopLengthBars, segmentInMs, segmentOutMs) {
         if (!loopEnabled) {
             if (isPreparedClipLoopTestActive) {
                 onStopPreparedClipLoopTest()
             }
+            preparedLoopStartMs = null
             return@LaunchedEffect
         }
 
+        val customLoopStartMs = segmentInMs
+        val customLoopEndMs = segmentOutMs
+        if (customLoopStartMs != null && customLoopEndMs != null && customLoopStartMs != customLoopEndMs) {
+            val loopStartMs = minOf(customLoopStartMs, customLoopEndMs).coerceAtLeast(0L)
+            val loopEndMs = maxOf(customLoopStartMs, customLoopEndMs).coerceAtLeast(loopStartMs + 1L)
+            preparedLoopStartMs = loopStartMs
+            onStartPreparedClipLoopTest(loopStartMs, loopEndMs)
+            return@LaunchedEffect
+        }
+
+        val safeTempoBpm = tempoBpm ?: return@LaunchedEffect
+        val safeAnchorMs = savedAnchorMs ?: return@LaunchedEffect
         val barDurationMs = ((60_000.0 / safeTempoBpm.toDouble()) * 4.0)
             .roundToLong()
             .coerceAtLeast(1L)
+        preparedLoopStartMs = safeAnchorMs
         onStartPreparedClipLoopTest(
             safeAnchorMs,
             safeAnchorMs + (barDurationMs * loopLengthBars.toLong())
@@ -1855,11 +1924,11 @@ private fun TimelineMeasuresPlaceholder(
                     onClick = {
                         val nextLoopEnabled = !loopEnabled
                         loopEnabled = nextLoopEnabled
-                        if (nextLoopEnabled && savedAnchorMs != null) {
+                        if (nextLoopEnabled && (savedAnchorMs != null || hasSegmentLoop)) {
                             revealSyncPointRequest += 1
                         }
                     },
-                    enabled = loopReady,
+                    enabled = loopReady || hasSegmentLoop,
                     modifier = Modifier
                         .border(
                             width = 1.dp,
@@ -1881,7 +1950,7 @@ private fun TimelineMeasuresPlaceholder(
                 ) {
                     Text(
                         text = "\uD83D\uDD01",
-                        color = if (loopReady) {
+                        color = if (loopReady || hasSegmentLoop) {
                             if (isLoopHighlighted) Color(0xFF2ECC71) else Color(0xFFB0BEC5)
                         } else {
                             Color(0xFF607D8B)
@@ -1889,70 +1958,85 @@ private fun TimelineMeasuresPlaceholder(
                         fontSize = 18.sp
                     )
                 }
-                Box {
-                    TextButton(
-                        onClick = { loopLengthMenuExpanded = true },
-                        enabled = loopReady
-                    ) {
-                        Text(
-                            text = loopLengthLabel,
-                            color = if (loopReady) Color(0xFFB0BEC5) else Color(0xFF607D8B),
-                            fontSize = 12.sp
-                        )
-                    }
-                    DropdownMenu(
-                        expanded = loopLengthMenuExpanded,
-                        onDismissRequest = { loopLengthMenuExpanded = false }
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.timeline_measures_loop_length_1)) },
-                            onClick = {
-                                loopLengthBars = 1
-                                loopLengthMenuExpanded = false
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.timeline_measures_loop_length_4)) },
-                            onClick = {
-                                loopLengthBars = 4
-                                loopLengthMenuExpanded = false
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.timeline_measures_loop_length_8)) },
-                            onClick = {
-                                loopLengthBars = 8
-                                loopLengthMenuExpanded = false
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.timeline_measures_loop_length_16)) },
-                            onClick = {
-                                loopLengthBars = 16
-                                loopLengthMenuExpanded = false
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.timeline_measures_loop_length_32)) },
-                            onClick = {
-                                loopLengthBars = 32
-                                loopLengthMenuExpanded = false
-                            }
-                        )
+                if (!hasSegmentLoop) {
+                    Box {
+                        TextButton(
+                            onClick = { loopLengthMenuExpanded = true },
+                            enabled = loopReady
+                        ) {
+                            Text(
+                                text = loopLengthLabel,
+                                color = if (loopReady) Color(0xFFB0BEC5) else Color(0xFF607D8B),
+                                fontSize = 12.sp
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = loopLengthMenuExpanded,
+                            onDismissRequest = { loopLengthMenuExpanded = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.timeline_measures_loop_length_1)) },
+                                onClick = {
+                                    loopLengthBars = 1
+                                    loopLengthMenuExpanded = false
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.timeline_measures_loop_length_4)) },
+                                onClick = {
+                                    loopLengthBars = 4
+                                    loopLengthMenuExpanded = false
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.timeline_measures_loop_length_8)) },
+                                onClick = {
+                                    loopLengthBars = 8
+                                    loopLengthMenuExpanded = false
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.timeline_measures_loop_length_16)) },
+                                onClick = {
+                                    loopLengthBars = 16
+                                    loopLengthMenuExpanded = false
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.timeline_measures_loop_length_32)) },
+                                onClick = {
+                                    loopLengthBars = 32
+                                    loopLengthMenuExpanded = false
+                                }
+                            )
+                        }
                     }
                 }
                 OutlinedButton(
                     onClick = {
-                        if (loopEnabled && loopReady) {
-                            val safeAnchorMs = savedAnchorMs ?: return@OutlinedButton
-                            val safeTempoBpm = tempoBpm ?: return@OutlinedButton
-                            val barDurationMs = ((60_000.0 / safeTempoBpm.toDouble()) * 4.0)
-                                .roundToLong()
-                                .coerceAtLeast(1L)
-                            onStartPreparedClipLoopTest(
-                                safeAnchorMs,
-                                safeAnchorMs + (barDurationMs * loopLengthBars.toLong())
-                            )
+                        if (loopEnabled && (loopReady || hasSegmentLoop)) {
+                            val customLoopStartMs = segmentInMs
+                            val customLoopEndMs = segmentOutMs
+                            if (customLoopStartMs != null &&
+                                customLoopEndMs != null &&
+                                customLoopStartMs != customLoopEndMs
+                            ) {
+                                val loopStartMs = minOf(customLoopStartMs, customLoopEndMs).coerceAtLeast(0L)
+                                val loopEndMs = maxOf(customLoopStartMs, customLoopEndMs).coerceAtLeast(loopStartMs + 1L)
+                                preparedLoopStartMs = loopStartMs
+                                onStartPreparedClipLoopTest(loopStartMs, loopEndMs)
+                            } else {
+                                val safeAnchorMs = savedAnchorMs ?: return@OutlinedButton
+                                val safeTempoBpm = tempoBpm ?: return@OutlinedButton
+                                val barDurationMs = ((60_000.0 / safeTempoBpm.toDouble()) * 4.0)
+                                    .roundToLong()
+                                    .coerceAtLeast(1L)
+                                preparedLoopStartMs = safeAnchorMs
+                                onStartPreparedClipLoopTest(
+                                    safeAnchorMs,
+                                    safeAnchorMs + (barDurationMs * loopLengthBars.toLong())
+                                )
+                            }
                         } else {
                             onIsPlayingChange(true)
                             runCatching { FillerSoundManager.fadeOutAndStop(200) }
@@ -1971,6 +2055,114 @@ private fun TimelineMeasuresPlaceholder(
                 Spacer(modifier = Modifier.weight(1f))
                 }
             }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .background(
+                        color = if (gridEnabled) Color(0xFF43A047) else Color.Transparent,
+                        shape = RoundedCornerShape(4.dp)
+                    )
+                    .then(
+                        if (gridEnabled) {
+                            Modifier
+                        } else {
+                            Modifier.border(
+                                width = 1.dp,
+                                color = Color(0xFF455A64),
+                                shape = RoundedCornerShape(4.dp)
+                            )
+                        }
+                    )
+                    .clickable { gridEnabled = !gridEnabled }
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.arrangement_grid_toggle),
+                    color = if (gridEnabled) Color.White else Color(0xFFB0BEC5),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+            TimelineSegmentControlLabel(
+                label = stringResource(R.string.timeline_measures_segment_in_action),
+                value = segmentInMs?.let(::formatTimelineMarkerTime)
+                    ?: stringResource(R.string.timeline_measures_segment_pending),
+                enabled = true,
+                onClick = {
+                    val nextInMs = if (gridEnabled) {
+                        if (localMeasureAnchorMs == null) {
+                            displayedCurrentPositionMs.coerceAtLeast(0L)
+                        } else {
+                            quantizeTimelinePositionToBeat(
+                                positionMs = displayedCurrentPositionMs,
+                                tempoBpm = tempoBpm?.toDouble(),
+                                syncPointMs = localMeasureAnchorMs
+                            )
+                        }
+                    } else {
+                        displayedCurrentPositionMs.coerceAtLeast(0L)
+                    }
+                    segmentInMs = nextInMs
+                    onSegmentInChange(nextInMs)
+                    if (gridEnabled && localMeasureAnchorMs == null) {
+                        localMeasureAnchorMs = nextInMs
+                        onInitialSyncPointIfMissing(nextInMs)
+                    }
+                }
+            )
+            Text(
+                text = stringResource(
+                    if (segmentSelectionMode == TimelineSegmentSelectionMode.KEEP) {
+                        R.string.arrangement_add_mode_keep
+                    } else {
+                        R.string.arrangement_add_mode_remove
+                    }
+                ),
+                color = if (segmentSelectionMode == TimelineSegmentSelectionMode.REMOVE) {
+                    Color(0xFF66BB6A)
+                } else {
+                    Color(0xFF90A4AE)
+                },
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .clickable {
+                        segmentSelectionMode = if (segmentSelectionMode == TimelineSegmentSelectionMode.KEEP) {
+                            TimelineSegmentSelectionMode.REMOVE
+                        } else {
+                            TimelineSegmentSelectionMode.KEEP
+                        }
+                    }
+                    .padding(horizontal = 10.dp, vertical = 6.dp)
+            )
+            TimelineSegmentControlLabel(
+                label = stringResource(R.string.timeline_measures_segment_out_action),
+                value = segmentOutMs?.let(::formatTimelineMarkerTime)
+                    ?: stringResource(R.string.timeline_measures_segment_pending),
+                enabled = true,
+                onClick = {
+                    val nextOutMs = if (gridEnabled) {
+                        if (localMeasureAnchorMs == null) {
+                            displayedCurrentPositionMs.coerceAtLeast(0L)
+                        } else {
+                            quantizeTimelinePositionToBeat(
+                                positionMs = displayedCurrentPositionMs,
+                                tempoBpm = tempoBpm?.toDouble(),
+                                syncPointMs = localMeasureAnchorMs
+                            )
+                        }
+                    } else {
+                        displayedCurrentPositionMs.coerceAtLeast(0L)
+                    }
+                    segmentOutMs = nextOutMs
+                    onSegmentOutChange(nextOutMs)
+                }
+            )
         }
         TimelineGridWaveformSection(
             peaks = waveformPeaks,
@@ -2381,6 +2573,34 @@ private fun TimelineGridWaveformSection(
 }
 
 @Composable
+private fun TimelineSegmentControlLabel(
+    label: String,
+    value: String,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    Column(
+        modifier = Modifier.clickable(enabled = enabled, onClick = onClick),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
+        Text(
+            text = label,
+            color = if (enabled) Color.White else Color(0xFF546E7A),
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+        Text(
+            text = value,
+            color = if (enabled) Color(0xFF90A4AE) else Color(0xFF455A64),
+            fontSize = 11.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
 private fun TimelineGridEmptyState(
     onOpenGridSetup: () -> Unit
 ) {
@@ -2471,6 +2691,20 @@ private fun computeTimelineMeasuresStatus(
         currentSubdivision = currentSubdivision,
         beatIndex = beatIndex.coerceAtLeast(0L)
     )
+}
+
+private fun quantizeTimelinePositionToBeat(
+    positionMs: Long,
+    tempoBpm: Double?,
+    syncPointMs: Long?
+): Long {
+    val safeTempoBpm = tempoBpm?.takeIf { it.isFinite() && it > 0.0 } ?: return positionMs
+    val safeSyncPointMs = syncPointMs ?: return positionMs
+    val beatDurationMs = 60_000.0 / safeTempoBpm
+    if (!beatDurationMs.isFinite() || beatDurationMs <= 0.0) return positionMs
+    val relativeMs = positionMs - safeSyncPointMs
+    val nearestBeatIndex = (relativeMs / beatDurationMs).roundToLong()
+    return (safeSyncPointMs + nearestBeatIndex * beatDurationMs).roundToLong().coerceAtLeast(0L)
 }
 
 private fun computeTimelinePositionMsFromMusicalPosition(
