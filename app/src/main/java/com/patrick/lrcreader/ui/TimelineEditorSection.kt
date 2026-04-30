@@ -1606,6 +1606,7 @@ private fun TimelineMeasuresPlaceholder(
     onStructurePreviewActiveChange: (Boolean) -> Unit,
     onTempoDraftChange: (String) -> Unit
 ) {
+    val structurePreviewFadeDurationMs = 12L
     var localMeasureAnchorMs by remember(measureAnchorMs) { mutableStateOf(measureAnchorMs) }
     var tempoTapTimesMs by remember { mutableStateOf<List<Long>>(emptyList()) }
     var showTapTempoHint by remember { mutableStateOf(false) }
@@ -1671,6 +1672,7 @@ private fun TimelineMeasuresPlaceholder(
         runCatching { structurePreviewPlayer.pause() }
         runCatching { structurePreviewPlayer.stop() }
         runCatching { structurePreviewPlayer.clearMediaItems() }
+        runCatching { structurePreviewPlayer.volume = 1f }
         structurePlaybackActive = false
         structurePlaybackIndex = -1
         onStructurePreviewActiveChange(false)
@@ -1905,6 +1907,31 @@ private fun TimelineMeasuresPlaceholder(
     LaunchedEffect(structurePreviewStopRequest) {
         if (structurePreviewStopRequest > 0) {
             stopStructurePreviewPlayback()
+        }
+    }
+    LaunchedEffect(structurePlaybackActive, structurePreviewPlayer) {
+        if (!structurePlaybackActive) {
+            runCatching { structurePreviewPlayer.volume = 1f }
+            return@LaunchedEffect
+        }
+        while (structurePlaybackActive) {
+            val isSecondaryPlaying = runCatching { structurePreviewPlayer.isPlaying }.getOrDefault(false)
+            val itemDurationMs = runCatching { structurePreviewPlayer.duration }.getOrDefault(0L)
+            val itemPositionMs = runCatching { structurePreviewPlayer.currentPosition }.getOrDefault(0L)
+            val nextVolume = if (!isSecondaryPlaying || itemDurationMs <= 0L) {
+                1f
+            } else {
+                val safePositionMs = itemPositionMs.coerceAtLeast(0L)
+                val safeDurationMs = itemDurationMs.coerceAtLeast(1L)
+                val remainingMs = (safeDurationMs - safePositionMs).coerceAtLeast(0L)
+                val fadeInGain = (safePositionMs.toFloat() / structurePreviewFadeDurationMs.toFloat())
+                    .coerceIn(0f, 1f)
+                val fadeOutGain = (remainingMs.toFloat() / structurePreviewFadeDurationMs.toFloat())
+                    .coerceIn(0f, 1f)
+                minOf(fadeInGain, fadeOutGain)
+            }
+            runCatching { structurePreviewPlayer.volume = nextVolume }
+            kotlinx.coroutines.delay(8L)
         }
     }
 
@@ -2359,6 +2386,9 @@ private fun TimelineMeasuresPlaceholder(
             revealAnchorRequest = revealSyncPointRequest,
             onToggleExpanded = { isWaveformExpanded = !isWaveformExpanded },
             onSeekRequested = { seekToMs(it) },
+            onWaveformPanStarted = {
+                lastWaveformFocusMarker = TimelineWaveformFocusMarker.NONE
+            },
             onWaveformLongPress = { selectedPositionMs ->
                 val quantizedPositionMs = if (gridEnabled) {
                     quantizeTimelinePositionToBeat(
@@ -2725,6 +2755,7 @@ private fun TimelineGridWaveformSection(
     revealAnchorRequest: Int,
     onToggleExpanded: () -> Unit,
     onSeekRequested: (Long) -> Unit,
+    onWaveformPanStarted: () -> Unit,
     onWaveformLongPress: (Long) -> Unit
 ) {
     var waveformZoom by remember(peaks, durationMs) { mutableStateOf(1f) }
@@ -2908,6 +2939,9 @@ private fun TimelineGridWaveformSection(
                             ) {
                                 detectTransformGestures { _, pan, zoomChange, _ ->
                                     lastManualWaveformInteractionMs = SystemClock.elapsedRealtime()
+                                    if (abs(pan.x) > 0.5f) {
+                                        onWaveformPanStarted()
+                                    }
                                     val previousZoom = waveformZoom
                                     val nextZoom = (previousZoom * zoomChange).coerceIn(1f, 120f)
                                     waveformZoom = nextZoom
