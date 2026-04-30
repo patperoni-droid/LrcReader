@@ -2334,9 +2334,48 @@ private fun TimelineMeasuresPlaceholder(
             revealAnchorRequest = revealSyncPointRequest,
             onToggleExpanded = { isWaveformExpanded = !isWaveformExpanded },
             onSeekRequested = { seekToMs(it) },
-            onMeasureAnchorSelected = { selectedPositionMs ->
-                localMeasureAnchorMs = selectedPositionMs
-                onMeasureAnchorHere(selectedPositionMs)
+            onWaveformLongPress = { selectedPositionMs ->
+                val quantizedPositionMs = if (gridEnabled) {
+                    quantizeTimelinePositionToBeat(
+                        positionMs = selectedPositionMs,
+                        tempoBpm = tempoBpm?.toDouble(),
+                        syncPointMs = localMeasureAnchorMs
+                    )
+                } else {
+                    selectedPositionMs.coerceAtLeast(0L)
+                }
+                val currentInMs = segmentInMs
+                val currentOutMs = segmentOutMs
+                when {
+                    currentInMs != null && currentOutMs != null -> {
+                        val distanceToIn = abs(quantizedPositionMs - currentInMs)
+                        val distanceToOut = abs(quantizedPositionMs - currentOutMs)
+                        if (distanceToIn <= distanceToOut) {
+                            segmentInMs = quantizedPositionMs
+                            lastWaveformFocusMarker = TimelineWaveformFocusMarker.IN
+                            onSegmentInChange(quantizedPositionMs)
+                        } else {
+                            segmentOutMs = quantizedPositionMs
+                            lastWaveformFocusMarker = TimelineWaveformFocusMarker.OUT
+                            onSegmentOutChange(quantizedPositionMs)
+                        }
+                    }
+                    currentInMs != null -> {
+                        segmentInMs = quantizedPositionMs
+                        lastWaveformFocusMarker = TimelineWaveformFocusMarker.IN
+                        onSegmentInChange(quantizedPositionMs)
+                    }
+                    currentOutMs != null -> {
+                        segmentOutMs = quantizedPositionMs
+                        lastWaveformFocusMarker = TimelineWaveformFocusMarker.OUT
+                        onSegmentOutChange(quantizedPositionMs)
+                    }
+                    else -> {
+                        segmentInMs = quantizedPositionMs
+                        lastWaveformFocusMarker = TimelineWaveformFocusMarker.IN
+                        onSegmentInChange(quantizedPositionMs)
+                    }
+                }
             }
         )
         Row(
@@ -2626,7 +2665,7 @@ private fun TimelineGridWaveformSection(
     revealAnchorRequest: Int,
     onToggleExpanded: () -> Unit,
     onSeekRequested: (Long) -> Unit,
-    onMeasureAnchorSelected: (Long) -> Unit
+    onWaveformLongPress: (Long) -> Unit
 ) {
     var waveformZoom by remember(peaks, durationMs) { mutableStateOf(1f) }
     var waveformCenterFraction by remember(peaks, durationMs) { mutableStateOf(0.5f) }
@@ -2792,7 +2831,7 @@ private fun TimelineGridWaveformSection(
                                     }
                                     val selectedFraction = startFraction +
                                         localFraction * (effectiveEndFraction - startFraction)
-                                    onMeasureAnchorSelected(
+                                    onWaveformLongPress(
                                         (selectedFraction * safeDuration)
                                             .toLong()
                                             .coerceIn(0L, safeDuration.toLong())
