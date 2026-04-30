@@ -1620,6 +1620,8 @@ private fun TimelineMeasuresPlaceholder(
     var isWaveformExpanded by remember { mutableStateOf(false) }
     var segmentInMs by remember(currentSongId) { mutableStateOf(initialInMs) }
     var segmentOutMs by remember(currentSongId) { mutableStateOf(initialOutMs) }
+    var selectedSegmentLoopStartMs by remember(currentSongId) { mutableStateOf<Long?>(null) }
+    var selectedSegmentLoopEndMs by remember(currentSongId) { mutableStateOf<Long?>(null) }
     var arrangementName by remember(currentSongId) { mutableStateOf("Arrangement 1") }
     var arrangementSegments by remember(currentSongId) { mutableStateOf<List<ArrangementSegmentData>>(emptyList()) }
     var structureSegmentIds by remember(currentSongId) { mutableStateOf<List<String>>(emptyList()) }
@@ -1687,6 +1689,8 @@ private fun TimelineMeasuresPlaceholder(
             renameSegmentId = null
             renameDraft = TextFieldValue("")
             segmentOptionsTargetId = null
+            selectedSegmentLoopStartMs = null
+            selectedSegmentLoopEndMs = null
             return@LaunchedEffect
         }
 
@@ -1740,6 +1744,8 @@ private fun TimelineMeasuresPlaceholder(
         renameSegmentId = null
         renameDraft = TextFieldValue("")
         segmentOptionsTargetId = null
+        selectedSegmentLoopStartMs = null
+        selectedSegmentLoopEndMs = null
     }
 
     val detectedTempoBpm = remember(tempoTapTimesMs) {
@@ -1749,7 +1755,13 @@ private fun TimelineMeasuresPlaceholder(
     val metronomeReady = tempoBpm != null && savedAnchorMs != null
     val loopReady = tempoBpm != null && savedAnchorMs != null
     val hasSegmentLoop = segmentInMs != null && segmentOutMs != null && segmentInMs != segmentOutMs
-    val isLoopHighlighted = (loopReady || hasSegmentLoop) && (loopEnabled || isPreparedClipLoopTestActive)
+    val hasSelectedSegmentLoop =
+        selectedSegmentLoopStartMs != null &&
+            selectedSegmentLoopEndMs != null &&
+            selectedSegmentLoopStartMs != selectedSegmentLoopEndMs
+    val isLoopHighlighted =
+        (loopReady || hasSegmentLoop || hasSelectedSegmentLoop) &&
+            (loopEnabled || isPreparedClipLoopTestActive)
     val loopLengthLabel = stringResource(
         when (loopLengthBars) {
             4 -> R.string.timeline_measures_loop_length_4
@@ -1761,9 +1773,9 @@ private fun TimelineMeasuresPlaceholder(
     )
 
     val listenAction: () -> Unit = {
-        if (loopEnabled && (loopReady || hasSegmentLoop)) {
-            val customLoopStartMs = segmentInMs
-            val customLoopEndMs = segmentOutMs
+        if (loopEnabled && (loopReady || hasSegmentLoop || hasSelectedSegmentLoop)) {
+            val customLoopStartMs = selectedSegmentLoopStartMs ?: segmentInMs
+            val customLoopEndMs = selectedSegmentLoopEndMs ?: segmentOutMs
             if (customLoopStartMs != null &&
                 customLoopEndMs != null &&
                 customLoopStartMs != customLoopEndMs
@@ -1819,8 +1831,8 @@ private fun TimelineMeasuresPlaceholder(
         }
     }
 
-    LaunchedEffect(loopReady, hasSegmentLoop) {
-        if (!loopReady && !hasSegmentLoop) {
+    LaunchedEffect(loopReady, hasSegmentLoop, hasSelectedSegmentLoop) {
+        if (!loopReady && !hasSegmentLoop && !hasSelectedSegmentLoop) {
             loopEnabled = false
             if (isPreparedClipLoopTestActive) {
                 onStopPreparedClipLoopTest()
@@ -1828,17 +1840,28 @@ private fun TimelineMeasuresPlaceholder(
         }
     }
 
-    LaunchedEffect(loopEnabled, tempoBpm, savedAnchorMs, loopLengthBars, segmentInMs, segmentOutMs) {
+    LaunchedEffect(
+        loopEnabled,
+        tempoBpm,
+        savedAnchorMs,
+        loopLengthBars,
+        segmentInMs,
+        segmentOutMs,
+        selectedSegmentLoopStartMs,
+        selectedSegmentLoopEndMs
+    ) {
         if (!loopEnabled) {
             if (isPreparedClipLoopTestActive) {
                 onStopPreparedClipLoopTest()
             }
             preparedLoopStartMs = null
+            selectedSegmentLoopStartMs = null
+            selectedSegmentLoopEndMs = null
             return@LaunchedEffect
         }
 
-        val customLoopStartMs = segmentInMs
-        val customLoopEndMs = segmentOutMs
+        val customLoopStartMs = selectedSegmentLoopStartMs ?: segmentInMs
+        val customLoopEndMs = selectedSegmentLoopEndMs ?: segmentOutMs
         if (customLoopStartMs != null && customLoopEndMs != null && customLoopStartMs != customLoopEndMs) {
             val loopStartMs = minOf(customLoopStartMs, customLoopEndMs).coerceAtLeast(0L)
             val loopEndMs = maxOf(customLoopStartMs, customLoopEndMs).coerceAtLeast(loopStartMs + 1L)
@@ -2000,11 +2023,11 @@ private fun TimelineMeasuresPlaceholder(
                         onClick = {
                             val nextLoopEnabled = !loopEnabled
                             loopEnabled = nextLoopEnabled
-                            if (nextLoopEnabled && (savedAnchorMs != null || hasSegmentLoop)) {
+                            if (nextLoopEnabled && (savedAnchorMs != null || hasSegmentLoop || hasSelectedSegmentLoop)) {
                                 revealSyncPointRequest += 1
                             }
                         },
-                        enabled = loopReady || hasSegmentLoop,
+                        enabled = loopReady || hasSegmentLoop || hasSelectedSegmentLoop,
                         modifier = Modifier
                             .border(
                                 width = 1.dp,
@@ -2294,7 +2317,18 @@ private fun TimelineMeasuresPlaceholder(
                         title = segment.name
                     )
                 },
-                onItemClick = {},
+                onItemClick = { segmentId ->
+                    val segment = arrangementSegments.firstOrNull { it.id == segmentId }
+                        ?: return@ArrangementListCard
+                    val loopStartMs = minOf(segment.startMs, segment.endMs).coerceAtLeast(0L)
+                    val loopEndMs = maxOf(segment.startMs, segment.endMs).coerceAtLeast(loopStartMs + 1L)
+                    selectedSegmentLoopStartMs = loopStartMs
+                    selectedSegmentLoopEndMs = loopEndMs
+                    preparedLoopStartMs = loopStartMs
+                    loopEnabled = true
+                    revealSyncPointRequest += 1
+                    onStartPreparedClipLoopTest(loopStartMs, loopEndMs)
+                },
                 onItemAdd = { segmentId ->
                     if (arrangementSegments.any { it.id == segmentId }) {
                         val nextStructureSegmentIds = structureSegmentIds + segmentId
