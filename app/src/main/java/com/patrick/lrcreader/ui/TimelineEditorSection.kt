@@ -2760,75 +2760,10 @@ private fun TimelineGridWaveformSection(
 ) {
     var waveformZoom by remember(peaks, durationMs) { mutableStateOf(1f) }
     var waveformCenterFraction by remember(peaks, durationMs) { mutableStateOf(0.5f) }
-    var lastManualWaveformInteractionMs by remember(peaks, durationMs) { mutableLongStateOf(0L) }
     val waveformHeight by animateDpAsState(
         targetValue = if (isWaveformExpanded) 270.dp else 140.dp,
         label = "timelineWaveformHeight"
     )
-
-    LaunchedEffect(
-        isPlaying,
-        isLoopViewLocked,
-        currentPositionMs,
-        durationMs,
-        waveformZoom,
-        lastManualWaveformInteractionMs
-    ) {
-        if (!isPlaying || durationMs <= 0) return@LaunchedEffect
-        if (isLoopViewLocked) return@LaunchedEffect
-        val nowMs = SystemClock.elapsedRealtime()
-        if (nowMs - lastManualWaveformInteractionMs < 1_200L) return@LaunchedEffect
-
-        val visibleFraction = 1f / waveformZoom.coerceAtLeast(1f)
-        val minCenter = visibleFraction / 2f
-        val maxCenter = 1f - minCenter
-        val currentFraction = (
-            currentPositionMs.coerceIn(0L, durationMs.toLong()).toFloat() /
-                durationMs.toFloat()
-            ).coerceIn(0f, 1f)
-        waveformCenterFraction = if (waveformZoom <= 1f) {
-            0.5f
-        } else {
-            currentFraction.coerceIn(minCenter, maxCenter)
-        }
-    }
-
-    LaunchedEffect(revealAnchorRequest) {
-        val safeAnchorMs = measureAnchorMs ?: return@LaunchedEffect
-        if (revealAnchorRequest <= 0 || durationMs <= 0) return@LaunchedEffect
-        val safeDuration = durationMs.coerceAtLeast(1).toFloat()
-        val visibleFraction = 1f / waveformZoom.coerceAtLeast(1f)
-        val minCenter = visibleFraction / 2f
-        val maxCenter = 1f - minCenter
-        val anchorFraction = (safeAnchorMs.coerceIn(0L, durationMs.toLong()).toFloat() / safeDuration)
-            .coerceIn(0f, 1f)
-        val desiredAnchorScreenFraction = 0.35f
-        val desiredCenter = anchorFraction + ((0.5f - desiredAnchorScreenFraction) * visibleFraction)
-        waveformCenterFraction = desiredCenter.coerceIn(minCenter, maxCenter)
-        lastManualWaveformInteractionMs = SystemClock.elapsedRealtime()
-    }
-
-    LaunchedEffect(isLoopViewLocked, segmentInMs, segmentOutMs, durationMs, waveformZoom) {
-        if (!isLoopViewLocked || durationMs <= 0) return@LaunchedEffect
-        val loopInMs = segmentInMs ?: return@LaunchedEffect
-        val loopOutMs = segmentOutMs ?: return@LaunchedEffect
-        if (loopInMs == loopOutMs) return@LaunchedEffect
-
-        val safeDuration = durationMs.coerceAtLeast(1).toFloat()
-        val loopCenterMs = ((minOf(loopInMs, loopOutMs) + maxOf(loopInMs, loopOutMs)) / 2.0)
-            .roundToLong()
-            .coerceIn(0L, durationMs.toLong())
-        val loopCenterFraction = (loopCenterMs.toFloat() / safeDuration).coerceIn(0f, 1f)
-        val visibleFraction = 1f / waveformZoom.coerceAtLeast(1f)
-        val minCenter = visibleFraction / 2f
-        val maxCenter = 1f - minCenter
-        waveformCenterFraction = if (waveformZoom <= 1f) {
-            0.5f
-        } else {
-            loopCenterFraction.coerceIn(minCenter, maxCenter)
-        }
-        lastManualWaveformInteractionMs = SystemClock.elapsedRealtime()
-    }
 
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -2867,7 +2802,6 @@ private fun TimelineGridWaveformSection(
                             .pointerInput(peaks, durationMs, waveformZoom, waveformCenterFraction) {
                                 detectTapGestures(
                                     onTap = { offset ->
-                                        lastManualWaveformInteractionMs = SystemClock.elapsedRealtime()
                                         val safeDuration = durationMs.coerceAtLeast(1)
                                         val edgeDeadZonePx = 24.dp.toPx()
                                         if (offset.x <= edgeDeadZonePx ||
@@ -2898,7 +2832,6 @@ private fun TimelineGridWaveformSection(
                                         )
                                     },
                                     onLongPress = { offset ->
-                                    lastManualWaveformInteractionMs = SystemClock.elapsedRealtime()
                                     val safeDuration = durationMs.coerceAtLeast(1)
                                     val edgeDeadZonePx = 24.dp.toPx()
                                     if (offset.x <= edgeDeadZonePx ||
@@ -2938,10 +2871,6 @@ private fun TimelineGridWaveformSection(
                                 focusMarker
                             ) {
                                 detectTransformGestures { _, pan, zoomChange, _ ->
-                                    lastManualWaveformInteractionMs = SystemClock.elapsedRealtime()
-                                    if (abs(pan.x) > 0.5f) {
-                                        onWaveformPanStarted()
-                                    }
                                     val previousZoom = waveformZoom
                                     val nextZoom = (previousZoom * zoomChange).coerceIn(1f, 120f)
                                     waveformZoom = nextZoom
@@ -2954,25 +2883,8 @@ private fun TimelineGridWaveformSection(
                                     }
                                     val minCenter = visibleFraction / 2f
                                     val maxCenter = 1f - minCenter
-                                    val focusedCenterFraction = when (focusMarker) {
-                                        TimelineWaveformFocusMarker.IN -> {
-                                            segmentInMs
-                                                ?.coerceIn(0L, durationMs.toLong())
-                                                ?.toFloat()
-                                                ?.div(durationMs.coerceAtLeast(1).toFloat())
-                                        }
-                                        TimelineWaveformFocusMarker.OUT -> {
-                                            segmentOutMs
-                                                ?.coerceIn(0L, durationMs.toLong())
-                                                ?.toFloat()
-                                                ?.div(durationMs.coerceAtLeast(1).toFloat())
-                                        }
-                                        TimelineWaveformFocusMarker.NONE -> null
-                                    }
                                     waveformCenterFraction = if (nextZoom <= 1f) {
                                         0.5f
-                                    } else if (focusedCenterFraction != null) {
-                                        focusedCenterFraction.coerceIn(minCenter, maxCenter)
                                     } else {
                                         (waveformCenterFraction + panFraction)
                                             .coerceIn(minCenter, maxCenter)
