@@ -152,6 +152,12 @@ private enum class TimelineSegmentSelectionMode {
     REMOVE
 }
 
+private enum class TimelineWaveformFocusMarker {
+    NONE,
+    IN,
+    OUT
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun TimelineEditorSection(
@@ -1620,6 +1626,9 @@ private fun TimelineMeasuresPlaceholder(
     var isWaveformExpanded by remember { mutableStateOf(false) }
     var segmentInMs by remember(currentSongId) { mutableStateOf(initialInMs) }
     var segmentOutMs by remember(currentSongId) { mutableStateOf(initialOutMs) }
+    var lastWaveformFocusMarker by remember(currentSongId) {
+        mutableStateOf(TimelineWaveformFocusMarker.NONE)
+    }
     var selectedSegmentLoopId by remember(currentSongId) { mutableStateOf<String?>(null) }
     var selectedSegmentLoopStartMs by remember(currentSongId) { mutableStateOf<Long?>(null) }
     var selectedSegmentLoopEndMs by remember(currentSongId) { mutableStateOf<Long?>(null) }
@@ -1635,6 +1644,7 @@ private fun TimelineMeasuresPlaceholder(
     var segmentSelectionMode by remember(currentSongId) {
         mutableStateOf(TimelineSegmentSelectionMode.KEEP)
     }
+    var suppressNextLoopAutoplay by remember(currentSongId) { mutableStateOf(false) }
 
     fun persistArrangementState(
         nextSegments: List<ArrangementSegmentData> = arrangementSegments,
@@ -1755,6 +1765,7 @@ private fun TimelineMeasuresPlaceholder(
         selectedSegmentLoopEndMs = null
         structurePlaybackActive = false
         structurePlaybackIndex = -1
+        suppressNextLoopAutoplay = false
     }
 
     val detectedTempoBpm = remember(tempoTapTimesMs) {
@@ -1882,15 +1893,22 @@ private fun TimelineMeasuresPlaceholder(
             selectedSegmentLoopId = null
             selectedSegmentLoopStartMs = null
             selectedSegmentLoopEndMs = null
+            suppressNextLoopAutoplay = false
             return@LaunchedEffect
         }
 
         val customLoopStartMs = selectedSegmentLoopStartMs ?: segmentInMs
         val customLoopEndMs = selectedSegmentLoopEndMs ?: segmentOutMs
+        if (suppressNextLoopAutoplay && !isPlaying) {
+            suppressNextLoopAutoplay = false
+            return@LaunchedEffect
+        }
+        suppressNextLoopAutoplay = false
         if (customLoopStartMs != null && customLoopEndMs != null && customLoopStartMs != customLoopEndMs) {
             val loopStartMs = minOf(customLoopStartMs, customLoopEndMs).coerceAtLeast(0L)
             val loopEndMs = maxOf(customLoopStartMs, customLoopEndMs).coerceAtLeast(loopStartMs + 1L)
             preparedLoopStartMs = loopStartMs
+            onIsPlayingChange(true)
             onStartPreparedClipLoopTest(loopStartMs, loopEndMs)
             return@LaunchedEffect
         }
@@ -1901,6 +1919,7 @@ private fun TimelineMeasuresPlaceholder(
             .roundToLong()
             .coerceAtLeast(1L)
         preparedLoopStartMs = safeAnchorMs
+        onIsPlayingChange(true)
         onStartPreparedClipLoopTest(
             safeAnchorMs,
             safeAnchorMs + (barDurationMs * loopLengthBars.toLong())
@@ -2230,7 +2249,9 @@ private fun TimelineMeasuresPlaceholder(
                     } else {
                         displayedCurrentPositionMs.coerceAtLeast(0L)
                     }
+                    suppressNextLoopAutoplay = !isPlaying
                     segmentInMs = nextInMs
+                    lastWaveformFocusMarker = TimelineWaveformFocusMarker.IN
                     onSegmentInChange(nextInMs)
                     if (gridEnabled && localMeasureAnchorMs == null) {
                         localMeasureAnchorMs = nextInMs
@@ -2282,7 +2303,9 @@ private fun TimelineMeasuresPlaceholder(
                     } else {
                         displayedCurrentPositionMs.coerceAtLeast(0L)
                     }
+                    suppressNextLoopAutoplay = !isPlaying
                     segmentOutMs = nextOutMs
+                    lastWaveformFocusMarker = TimelineWaveformFocusMarker.OUT
                     onSegmentOutChange(nextOutMs)
                 }
             )
@@ -2303,6 +2326,7 @@ private fun TimelineMeasuresPlaceholder(
             measureAnchorMs = savedAnchorMs,
             segmentInMs = segmentInMs,
             segmentOutMs = segmentOutMs,
+            focusMarker = lastWaveformFocusMarker,
             isRemoveMode = segmentSelectionMode == TimelineSegmentSelectionMode.REMOVE,
             isWaveformExpanded = isWaveformExpanded,
             isLoading = waveformLoading,
@@ -2594,6 +2618,7 @@ private fun TimelineGridWaveformSection(
     measureAnchorMs: Long?,
     segmentInMs: Long?,
     segmentOutMs: Long?,
+    focusMarker: TimelineWaveformFocusMarker,
     isRemoveMode: Boolean,
     isWaveformExpanded: Boolean,
     isLoading: Boolean,
@@ -2790,8 +2815,25 @@ private fun TimelineGridWaveformSection(
                                     }
                                     val minCenter = visibleFraction / 2f
                                     val maxCenter = 1f - minCenter
+                                    val focusedCenterFraction = when (focusMarker) {
+                                        TimelineWaveformFocusMarker.IN -> {
+                                            segmentInMs
+                                                ?.coerceIn(0L, durationMs.toLong())
+                                                ?.toFloat()
+                                                ?.div(durationMs.coerceAtLeast(1).toFloat())
+                                        }
+                                        TimelineWaveformFocusMarker.OUT -> {
+                                            segmentOutMs
+                                                ?.coerceIn(0L, durationMs.toLong())
+                                                ?.toFloat()
+                                                ?.div(durationMs.coerceAtLeast(1).toFloat())
+                                        }
+                                        TimelineWaveformFocusMarker.NONE -> null
+                                    }
                                     waveformCenterFraction = if (nextZoom <= 1f) {
                                         0.5f
+                                    } else if (focusedCenterFraction != null) {
+                                        focusedCenterFraction.coerceIn(minCenter, maxCenter)
                                     } else {
                                         (waveformCenterFraction + panFraction)
                                             .coerceIn(minCenter, maxCenter)
