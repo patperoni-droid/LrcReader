@@ -1622,6 +1622,8 @@ private fun TimelineMeasuresPlaceholder(
     var segmentOutMs by remember(currentSongId) { mutableStateOf(initialOutMs) }
     var selectedSegmentLoopStartMs by remember(currentSongId) { mutableStateOf<Long?>(null) }
     var selectedSegmentLoopEndMs by remember(currentSongId) { mutableStateOf<Long?>(null) }
+    var structurePlaybackActive by remember(currentSongId) { mutableStateOf(false) }
+    var structurePlaybackIndex by remember(currentSongId) { mutableIntStateOf(-1) }
     var arrangementName by remember(currentSongId) { mutableStateOf("Arrangement 1") }
     var arrangementSegments by remember(currentSongId) { mutableStateOf<List<ArrangementSegmentData>>(emptyList()) }
     var structureSegmentIds by remember(currentSongId) { mutableStateOf<List<String>>(emptyList()) }
@@ -1691,6 +1693,8 @@ private fun TimelineMeasuresPlaceholder(
             segmentOptionsTargetId = null
             selectedSegmentLoopStartMs = null
             selectedSegmentLoopEndMs = null
+            structurePlaybackActive = false
+            structurePlaybackIndex = -1
             return@LaunchedEffect
         }
 
@@ -1746,6 +1750,8 @@ private fun TimelineMeasuresPlaceholder(
         segmentOptionsTargetId = null
         selectedSegmentLoopStartMs = null
         selectedSegmentLoopEndMs = null
+        structurePlaybackActive = false
+        structurePlaybackIndex = -1
     }
 
     val detectedTempoBpm = remember(tempoTapTimesMs) {
@@ -1759,6 +1765,11 @@ private fun TimelineMeasuresPlaceholder(
         selectedSegmentLoopStartMs != null &&
             selectedSegmentLoopEndMs != null &&
             selectedSegmentLoopStartMs != selectedSegmentLoopEndMs
+    val structurePlaybackSegments = remember(arrangementSegments, structureSegmentIds) {
+        structureSegmentIds.mapNotNull { segmentId ->
+            arrangementSegments.firstOrNull { it.id == segmentId }
+        }
+    }
     val isLoopHighlighted =
         (loopReady || hasSegmentLoop || hasSelectedSegmentLoop) &&
             (loopEnabled || isPreparedClipLoopTestActive)
@@ -1773,7 +1784,12 @@ private fun TimelineMeasuresPlaceholder(
     )
 
     val listenAction: () -> Unit = {
-        if (loopEnabled && (loopReady || hasSegmentLoop || hasSelectedSegmentLoop)) {
+        if (structurePlaybackActive && structurePlaybackIndex in structurePlaybackSegments.indices) {
+            val activeSegment = structurePlaybackSegments[structurePlaybackIndex]
+            val activeStartMs = minOf(activeSegment.startMs, activeSegment.endMs).coerceAtLeast(0L)
+            seekToMs(activeStartMs)
+            onIsPlayingChange(true)
+        } else if (loopEnabled && (loopReady || hasSegmentLoop || hasSelectedSegmentLoop)) {
             val customLoopStartMs = selectedSegmentLoopStartMs ?: segmentInMs
             val customLoopEndMs = selectedSegmentLoopEndMs ?: segmentOutMs
             if (customLoopStartMs != null &&
@@ -1832,6 +1848,7 @@ private fun TimelineMeasuresPlaceholder(
     }
 
     LaunchedEffect(loopReady, hasSegmentLoop, hasSelectedSegmentLoop) {
+        if (structurePlaybackActive) return@LaunchedEffect
         if (!loopReady && !hasSegmentLoop && !hasSelectedSegmentLoop) {
             loopEnabled = false
             if (isPreparedClipLoopTestActive) {
@@ -1850,6 +1867,7 @@ private fun TimelineMeasuresPlaceholder(
         selectedSegmentLoopStartMs,
         selectedSegmentLoopEndMs
     ) {
+        if (structurePlaybackActive) return@LaunchedEffect
         if (!loopEnabled) {
             if (isPreparedClipLoopTestActive) {
                 onStopPreparedClipLoopTest()
@@ -1880,6 +1898,39 @@ private fun TimelineMeasuresPlaceholder(
             safeAnchorMs,
             safeAnchorMs + (barDurationMs * loopLengthBars.toLong())
         )
+    }
+
+    LaunchedEffect(
+        structurePlaybackActive,
+        structurePlaybackIndex,
+        structurePlaybackSegments,
+        currentPositionMs,
+        isPlaying
+    ) {
+        if (!structurePlaybackActive) return@LaunchedEffect
+        if (!isPlaying) return@LaunchedEffect
+        if (structurePlaybackIndex !in structurePlaybackSegments.indices) {
+            structurePlaybackActive = false
+            structurePlaybackIndex = -1
+            return@LaunchedEffect
+        }
+
+        val activeSegment = structurePlaybackSegments[structurePlaybackIndex]
+        val activeEndMs = maxOf(activeSegment.startMs, activeSegment.endMs).coerceAtLeast(0L)
+        if (currentPositionMs < activeEndMs) return@LaunchedEffect
+
+        val nextIndex = structurePlaybackIndex + 1
+        if (nextIndex !in structurePlaybackSegments.indices) {
+            structurePlaybackActive = false
+            structurePlaybackIndex = -1
+            return@LaunchedEffect
+        }
+
+        val nextSegment = structurePlaybackSegments[nextIndex]
+        val nextStartMs = minOf(nextSegment.startMs, nextSegment.endMs).coerceAtLeast(0L)
+        structurePlaybackIndex = nextIndex
+        seekToMs(nextStartMs)
+        onIsPlayingChange(true)
     }
 
     LaunchedEffect(metronomeEnabled, isPlaying, tempoBpm, savedAnchorMs) {
@@ -2322,6 +2373,8 @@ private fun TimelineMeasuresPlaceholder(
                         ?: return@ArrangementListCard
                     val loopStartMs = minOf(segment.startMs, segment.endMs).coerceAtLeast(0L)
                     val loopEndMs = maxOf(segment.startMs, segment.endMs).coerceAtLeast(loopStartMs + 1L)
+                    structurePlaybackActive = false
+                    structurePlaybackIndex = -1
                     selectedSegmentLoopStartMs = loopStartMs
                     selectedSegmentLoopEndMs = loopEndMs
                     preparedLoopStartMs = loopStartMs
@@ -2350,16 +2403,44 @@ private fun TimelineMeasuresPlaceholder(
                     val segment = arrangementSegments.firstOrNull { it.id == segmentId } ?: return@mapIndexedNotNull null
                     ArrangementListItem(
                         id = index.toString(),
-                        title = "${index + 1}. ${segment.name}"
+                        title = "${index + 1}. ${segment.name}",
+                        isActive = structurePlaybackActive && index == structurePlaybackIndex
                     )
                 },
-                onItemClick = {},
+                onItemClick = { structureIndexId ->
+                    val startIndex = structureIndexId.toIntOrNull() ?: return@ArrangementListCard
+                    if (startIndex !in structurePlaybackSegments.indices) return@ArrangementListCard
+                    selectedSegmentLoopStartMs = null
+                    selectedSegmentLoopEndMs = null
+                    if (isPreparedClipLoopTestActive) {
+                        onStopPreparedClipLoopTest()
+                    }
+                    loopEnabled = false
+                    preparedLoopStartMs = null
+                    structurePlaybackActive = true
+                    structurePlaybackIndex = startIndex
+                    val startSegment = structurePlaybackSegments[startIndex]
+                    val startMs = minOf(startSegment.startMs, startSegment.endMs).coerceAtLeast(0L)
+                    seekToMs(startMs)
+                    onIsPlayingChange(true)
+                },
                 onItemAdd = null,
                 onItemDelete = { structureIndexId ->
                     val removeIndex = structureIndexId.toIntOrNull() ?: return@ArrangementListCard
                     if (removeIndex in structureSegmentIds.indices) {
                         val nextStructureSegmentIds = structureSegmentIds.toMutableList().apply {
                             removeAt(removeIndex)
+                        }
+                        if (structurePlaybackActive) {
+                            when {
+                                removeIndex < structurePlaybackIndex -> {
+                                    structurePlaybackIndex -= 1
+                                }
+                                removeIndex == structurePlaybackIndex -> {
+                                    structurePlaybackActive = false
+                                    structurePlaybackIndex = -1
+                                }
+                            }
                         }
                         structureSegmentIds = nextStructureSegmentIds
                         persistArrangementState(nextStructureSegmentIds = nextStructureSegmentIds)
