@@ -60,7 +60,7 @@ fun ArrangementListCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             Text(
                 text = title,
@@ -88,7 +88,7 @@ fun ArrangementListCard(
                         .fillMaxWidth()
                         .heightIn(max = 320.dp)
                         .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
                     items.forEach { item ->
                         Row(
@@ -102,7 +102,7 @@ fun ArrangementListCard(
                                         null
                                     }
                                 )
-                                .padding(vertical = 6.dp),
+                                .padding(vertical = 3.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -110,7 +110,7 @@ fun ArrangementListCard(
                                 text = item.title,
                                 color = if (item.isActive) Color(0xFF66BB6A) else Color.White,
                                 fontSize = 14.sp,
-                                fontWeight = FontWeight.Medium,
+                                fontWeight = FontWeight.Normal,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.weight(1f)

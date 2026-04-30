@@ -1620,6 +1620,7 @@ private fun TimelineMeasuresPlaceholder(
     var isWaveformExpanded by remember { mutableStateOf(false) }
     var segmentInMs by remember(currentSongId) { mutableStateOf(initialInMs) }
     var segmentOutMs by remember(currentSongId) { mutableStateOf(initialOutMs) }
+    var selectedSegmentLoopId by remember(currentSongId) { mutableStateOf<String?>(null) }
     var selectedSegmentLoopStartMs by remember(currentSongId) { mutableStateOf<Long?>(null) }
     var selectedSegmentLoopEndMs by remember(currentSongId) { mutableStateOf<Long?>(null) }
     var structurePlaybackActive by remember(currentSongId) { mutableStateOf(false) }
@@ -1691,6 +1692,7 @@ private fun TimelineMeasuresPlaceholder(
             renameSegmentId = null
             renameDraft = TextFieldValue("")
             segmentOptionsTargetId = null
+            selectedSegmentLoopId = null
             selectedSegmentLoopStartMs = null
             selectedSegmentLoopEndMs = null
             structurePlaybackActive = false
@@ -1748,6 +1750,7 @@ private fun TimelineMeasuresPlaceholder(
         renameSegmentId = null
         renameDraft = TextFieldValue("")
         segmentOptionsTargetId = null
+        selectedSegmentLoopId = null
         selectedSegmentLoopStartMs = null
         selectedSegmentLoopEndMs = null
         structurePlaybackActive = false
@@ -1770,6 +1773,9 @@ private fun TimelineMeasuresPlaceholder(
             arrangementSegments.firstOrNull { it.id == segmentId }
         }
     }
+    val activeStructureSegmentId = structurePlaybackSegments
+        .getOrNull(structurePlaybackIndex)
+        ?.id
     val isLoopHighlighted =
         (loopReady || hasSegmentLoop || hasSelectedSegmentLoop) &&
             (loopEnabled || isPreparedClipLoopTestActive)
@@ -1873,6 +1879,7 @@ private fun TimelineMeasuresPlaceholder(
                 onStopPreparedClipLoopTest()
             }
             preparedLoopStartMs = null
+            selectedSegmentLoopId = null
             selectedSegmentLoopStartMs = null
             selectedSegmentLoopEndMs = null
             return@LaunchedEffect
@@ -2365,7 +2372,11 @@ private fun TimelineMeasuresPlaceholder(
                 items = arrangementSegments.map { segment ->
                     ArrangementListItem(
                         id = segment.id,
-                        title = segment.name
+                        title = segment.name,
+                        isActive = when {
+                            structurePlaybackActive -> activeStructureSegmentId == segment.id
+                            else -> selectedSegmentLoopId == segment.id
+                        }
                     )
                 },
                 onItemClick = { segmentId ->
@@ -2375,6 +2386,7 @@ private fun TimelineMeasuresPlaceholder(
                     val loopEndMs = maxOf(segment.startMs, segment.endMs).coerceAtLeast(loopStartMs + 1L)
                     structurePlaybackActive = false
                     structurePlaybackIndex = -1
+                    selectedSegmentLoopId = segment.id
                     selectedSegmentLoopStartMs = loopStartMs
                     selectedSegmentLoopEndMs = loopEndMs
                     preparedLoopStartMs = loopStartMs
@@ -2410,6 +2422,7 @@ private fun TimelineMeasuresPlaceholder(
                 onItemClick = { structureIndexId ->
                     val startIndex = structureIndexId.toIntOrNull() ?: return@ArrangementListCard
                     if (startIndex !in structurePlaybackSegments.indices) return@ArrangementListCard
+                    selectedSegmentLoopId = null
                     selectedSegmentLoopStartMs = null
                     selectedSegmentLoopEndMs = null
                     if (isPreparedClipLoopTestActive) {
@@ -2544,6 +2557,11 @@ private fun TimelineMeasuresPlaceholder(
                             val nextStructureSegmentIds = structureSegmentIds.filterNot { it == targetId }
                             arrangementSegments = nextSegments
                             structureSegmentIds = nextStructureSegmentIds
+                            if (selectedSegmentLoopId == targetId) {
+                                selectedSegmentLoopId = null
+                                selectedSegmentLoopStartMs = null
+                                selectedSegmentLoopEndMs = null
+                            }
                             nextSegmentIndex = resolveNextTimelineArrangementSegmentIndex(nextSegments)
                             persistArrangementState(
                                 nextSegments = nextSegments,
