@@ -99,6 +99,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import com.patrick.lrcreader.core.EditionConfig
 import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.core.TrackTimelineTempoPrefs
+import com.patrick.lrcreader.core.audio.ArrangementWavRenderer
 import com.patrick.lrcreader.core.waveform.WaveformExtractor
 import com.patrick.lrcreader.core.waveform.WaveformPeaksCache
 import com.patrick.lrcreader.core.light.LightSceneState
@@ -1640,6 +1641,9 @@ private fun TimelineMeasuresPlaceholder(
         runCatching { ToneGenerator(AudioManager.STREAM_MUSIC, 70) }.getOrNull()
     }
     var currentSongAudioPath by remember(currentSongId) { mutableStateOf<String?>(null) }
+    var previewRenderedFile by remember(currentSongId) { mutableStateOf<File?>(null) }
+    var wavPreviewActive by remember(currentSongId) { mutableStateOf(false) }
+    var isPreviewGenerating by remember(currentSongId) { mutableStateOf(false) }
     var waveformPeaks by remember(currentSongId) { mutableStateOf<List<Float>>(emptyList()) }
     var waveformDurationMs by remember(currentSongId) { mutableIntStateOf(0) }
     var waveformLoading by remember(currentSongId) { mutableStateOf(false) }
@@ -1675,7 +1679,17 @@ private fun TimelineMeasuresPlaceholder(
         runCatching { structurePreviewPlayer.volume = 1f }
         structurePlaybackActive = false
         structurePlaybackIndex = -1
+        wavPreviewActive = false
+        isPreviewGenerating = false
         onStructurePreviewActiveChange(false)
+    }
+
+    fun replacePreviewRenderedFile(nextFile: File?) {
+        val previousFile = previewRenderedFile
+        previewRenderedFile = nextFile
+        previousFile
+            ?.takeIf { staleFile -> nextFile == null || staleFile.absolutePath != nextFile.absolutePath }
+            ?.let { staleFile -> runCatching { staleFile.delete() } }
     }
 
     fun persistArrangementState(
@@ -1724,6 +1738,7 @@ private fun TimelineMeasuresPlaceholder(
         val songId = currentSongId?.trim().orEmpty()
         stopStructurePreviewPlayback()
         currentSongAudioPath = null
+        replacePreviewRenderedFile(null)
         if (songId.isEmpty()) {
             waveformPeaks = emptyList()
             waveformDurationMs = 0
@@ -1837,36 +1852,69 @@ private fun TimelineMeasuresPlaceholder(
     )
 
     val listenAction: () -> Unit = {
-        if (structurePlaybackActive) {
+        if (structurePlaybackActive || wavPreviewActive) {
             stopStructurePreviewPlayback()
-        } else if (loopEnabled && (loopReady || hasSegmentLoop || hasSelectedSegmentLoop)) {
-            val customLoopStartMs = selectedSegmentLoopStartMs ?: segmentInMs
-            val customLoopEndMs = selectedSegmentLoopEndMs ?: segmentOutMs
-            if (customLoopStartMs != null &&
-                customLoopEndMs != null &&
-                customLoopStartMs != customLoopEndMs
-            ) {
-                val loopStartMs = minOf(customLoopStartMs, customLoopEndMs).coerceAtLeast(0L)
-                val loopEndMs = maxOf(customLoopStartMs, customLoopEndMs).coerceAtLeast(loopStartMs + 1L)
-                preparedLoopStartMs = loopStartMs
-                onStartPreparedClipLoopTest(loopStartMs, loopEndMs)
+        } else {
+            val audioPath = currentSongAudioPath
+            val playlistSegments = structurePlaybackSegments
+            if (audioPath.isNullOrBlank()) {
+                Unit
+            } else if (playlistSegments.isEmpty()) {
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.arrangement_preview_structure_empty),
+                    Toast.LENGTH_SHORT
+                ).show()
             } else {
-                val safeAnchorMs = savedAnchorMs
-                val safeTempoBpm = tempoBpm
-                if (safeAnchorMs != null && safeTempoBpm != null) {
-                    val barDurationMs = ((60_000.0 / safeTempoBpm.toDouble()) * 4.0)
-                        .roundToLong()
-                        .coerceAtLeast(1L)
-                    preparedLoopStartMs = safeAnchorMs
-                    onStartPreparedClipLoopTest(
-                        safeAnchorMs,
-                        safeAnchorMs + (barDurationMs * loopLengthBars.toLong())
-                    )
+                isPreviewGenerating = true
+                scope.launch {
+                    val result = runCatching {
+                        ArrangementWavRenderer.render(
+                            context = context.applicationContext,
+                            audioPath = audioPath,
+                            segments = playlistSegments.map { segment ->
+                                minOf(segment.startMs, segment.endMs) to
+                                    maxOf(segment.startMs, segment.endMs).coerceAtLeast(
+                                        minOf(segment.startMs, segment.endMs) + 1L
+                                    )
+                            }
+                        )
+                    }
+
+                    result
+                        .onSuccess { previewFile ->
+                            replacePreviewRenderedFile(previewFile)
+                            stopStructurePreviewPlayback()
+                            if (isPreparedClipLoopTestActive) {
+                                onStopPreparedClipLoopTest()
+                            }
+                            loopEnabled = false
+                            preparedLoopStartMs = null
+                            if (isPlaying) {
+                                onIsPlayingChange(false)
+                            }
+                            wavPreviewActive = true
+                            onStructurePreviewActiveChange(true)
+                            structurePreviewPlayer.pause()
+                            structurePreviewPlayer.clearMediaItems()
+                            structurePreviewPlayer.repeatMode = Player.REPEAT_MODE_OFF
+                            structurePreviewPlayer.volume = 1f
+                            structurePreviewPlayer.setMediaItem(
+                                MediaItem.fromUri(Uri.fromFile(previewFile))
+                            )
+                            structurePreviewPlayer.prepare()
+                            structurePreviewPlayer.play()
+                        }
+                        .onFailure {
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.arrangement_preview_failed),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    isPreviewGenerating = false
                 }
             }
-        } else {
-            onIsPlayingChange(true)
-            runCatching { FillerSoundManager.fadeOutAndStop(200) }
         }
     }
 
@@ -1894,6 +1942,7 @@ private fun TimelineMeasuresPlaceholder(
         onDispose {
             structurePreviewPlayer.removeListener(listener)
             stopStructurePreviewPlayback()
+            replacePreviewRenderedFile(null)
             runCatching { structurePreviewPlayer.release() }
         }
     }
@@ -2487,10 +2536,10 @@ private fun TimelineMeasuresPlaceholder(
             )
             Text(
                 text = stringResource(R.string.timeline_tempo_action_listen),
-                color = Color.White,
+                color = if (isPreviewGenerating) Color(0xFF607D8B) else Color.White,
                 fontSize = 14.sp,
                 modifier = Modifier
-                    .clickable(onClick = listenAction)
+                    .clickable(enabled = !isPreviewGenerating, onClick = listenAction)
                     .padding(horizontal = 10.dp, vertical = 8.dp)
             )
             Text(
@@ -2501,6 +2550,13 @@ private fun TimelineMeasuresPlaceholder(
                 modifier = Modifier
                     .clickable(onClick = onOpenArrangement)
                     .padding(horizontal = 10.dp, vertical = 8.dp)
+            )
+        }
+        if (isPreviewGenerating) {
+            Text(
+                text = stringResource(R.string.timeline_tempo_preview_generating),
+                color = Color(0xFFB0BEC5),
+                fontSize = 12.sp
             )
         }
         Row(

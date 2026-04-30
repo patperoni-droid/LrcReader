@@ -577,6 +577,7 @@
     <string name="timeline_tempo_action_add">Add</string>
     <string name="timeline_tempo_action_listen">Listen</string>
     <string name="timeline_tempo_action_export">Export</string>
+    <string name="timeline_tempo_preview_generating">Preparing preview…</string>
     <string name="timeline_measures_inline_label">%1$s: </string>
     <string name="timeline_measures_placeholder_message">Preparing the musical grid.</string>
     <string name="timeline_measures_segment_in_action">IN</string>
