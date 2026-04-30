@@ -746,6 +746,7 @@ fun TimelineEditorSection(
                     currentPositionMs = safePositionMs,
                     seekToMs = seekToMs,
                     onIsPlayingChange = onIsPlayingChange,
+                    onOpenArrangement = onOpenArrangement,
                     isPreparedClipLoopTestActive = isPreparedClipLoopTestActive,
                     onStartPreparedClipLoopTest = onStartPreparedClipLoopTest,
                     onStopPreparedClipLoopTest = onStopPreparedClipLoopTest
@@ -1440,6 +1441,7 @@ private fun GridSetupHost(
     currentPositionMs: Long,
     seekToMs: (Long) -> Unit,
     onIsPlayingChange: (Boolean) -> Unit,
+    onOpenArrangement: () -> Unit,
     isPreparedClipLoopTestActive: Boolean,
     onStartPreparedClipLoopTest: (Long, Long) -> Unit,
     onStopPreparedClipLoopTest: () -> Unit
@@ -1516,6 +1518,7 @@ private fun GridSetupHost(
         currentPositionMs = currentPositionMs,
         seekToMs = seekToMs,
         onIsPlayingChange = onIsPlayingChange,
+        onOpenArrangement = onOpenArrangement,
         onMeasureAnchorHere = { anchorMs ->
             gridSyncPointMs = anchorMs
             saveGridSetup(gridTempoBpm, anchorMs)
@@ -1566,6 +1569,7 @@ private fun TimelineMeasuresPlaceholder(
     currentPositionMs: Long,
     seekToMs: (Long) -> Unit,
     onIsPlayingChange: (Boolean) -> Unit,
+    onOpenArrangement: () -> Unit,
     onMeasureAnchorHere: (Long) -> Unit,
     onInitialSyncPointIfMissing: (Long) -> Unit,
     onSegmentInChange: (Long?) -> Unit,
@@ -1707,6 +1711,38 @@ private fun TimelineMeasuresPlaceholder(
             else -> R.string.timeline_measures_loop_length_1
         }
     )
+
+    val listenAction: () -> Unit = {
+        if (loopEnabled && (loopReady || hasSegmentLoop)) {
+            val customLoopStartMs = segmentInMs
+            val customLoopEndMs = segmentOutMs
+            if (customLoopStartMs != null &&
+                customLoopEndMs != null &&
+                customLoopStartMs != customLoopEndMs
+            ) {
+                val loopStartMs = minOf(customLoopStartMs, customLoopEndMs).coerceAtLeast(0L)
+                val loopEndMs = maxOf(customLoopStartMs, customLoopEndMs).coerceAtLeast(loopStartMs + 1L)
+                preparedLoopStartMs = loopStartMs
+                onStartPreparedClipLoopTest(loopStartMs, loopEndMs)
+            } else {
+                val safeAnchorMs = savedAnchorMs
+                val safeTempoBpm = tempoBpm
+                if (safeAnchorMs != null && safeTempoBpm != null) {
+                    val barDurationMs = ((60_000.0 / safeTempoBpm.toDouble()) * 4.0)
+                        .roundToLong()
+                        .coerceAtLeast(1L)
+                    preparedLoopStartMs = safeAnchorMs
+                    onStartPreparedClipLoopTest(
+                        safeAnchorMs,
+                        safeAnchorMs + (barDurationMs * loopLengthBars.toLong())
+                    )
+                }
+            }
+        } else {
+            onIsPlayingChange(true)
+            runCatching { FillerSoundManager.fadeOutAndStop(200) }
+        }
+    }
 
     DisposableEffect(toneGenerator) {
         onDispose {
@@ -2149,6 +2185,37 @@ private fun TimelineMeasuresPlaceholder(
                 onMeasureAnchorHere(selectedPositionMs)
             }
         )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = stringResource(R.string.timeline_tempo_action_add),
+                color = Color.White,
+                fontSize = 14.sp,
+                modifier = Modifier
+                    .clickable(onClick = onOpenArrangement)
+                    .padding(horizontal = 10.dp, vertical = 8.dp)
+            )
+            Text(
+                text = stringResource(R.string.timeline_tempo_action_listen),
+                color = Color.White,
+                fontSize = 14.sp,
+                modifier = Modifier
+                    .clickable(onClick = listenAction)
+                    .padding(horizontal = 10.dp, vertical = 8.dp)
+            )
+            Text(
+                text = stringResource(R.string.timeline_tempo_action_export),
+                color = Color(0xFF80CBC4),
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .clickable(onClick = onOpenArrangement)
+                    .padding(horizontal = 10.dp, vertical = 8.dp)
+            )
+        }
         if (measuresStatus != null) {
             Text(
                 text = stringResource(

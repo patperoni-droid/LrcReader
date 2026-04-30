@@ -574,6 +574,9 @@
     <string name="timeline_measures_adjust_plus_50">+50 ms</string>
     <string name="timeline_measures_signature_label">Time signature</string>
     <string name="timeline_measures_signature_default">4/4</string>
+    <string name="timeline_tempo_action_add">Add</string>
+    <string name="timeline_tempo_action_listen">Listen</string>
+    <string name="timeline_tempo_action_export">Export</string>
     <string name="timeline_measures_inline_label">%1$s: </string>
     <string name="timeline_measures_placeholder_message">Preparing the musical grid.</string>
     <string name="timeline_measures_segment_in_action">IN</string>
