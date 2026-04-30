@@ -84,6 +84,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.TextStyle
@@ -99,6 +100,9 @@ import com.patrick.lrcreader.core.waveform.WaveformExtractor
 import com.patrick.lrcreader.core.waveform.WaveformPeaksCache
 import com.patrick.lrcreader.core.light.LightSceneState
 import com.patrick.lrcreader.exo.R
+import com.patrick.lrcreader.smp.ArrangementData
+import com.patrick.lrcreader.smp.ArrangementSegmentData
+import com.patrick.lrcreader.smp.ArrangementStore
 import com.patrick.lrcreader.smp.DEFAULT_TIMELINE_NOTE_DURATION_MS
 import com.patrick.lrcreader.smp.GridSetupData
 import com.patrick.lrcreader.smp.GridSetupStore
@@ -1616,8 +1620,35 @@ private fun TimelineMeasuresPlaceholder(
     var isWaveformExpanded by remember { mutableStateOf(false) }
     var segmentInMs by remember(currentSongId) { mutableStateOf(initialInMs) }
     var segmentOutMs by remember(currentSongId) { mutableStateOf(initialOutMs) }
+    var arrangementName by remember(currentSongId) { mutableStateOf("Arrangement 1") }
+    var arrangementSegments by remember(currentSongId) { mutableStateOf<List<ArrangementSegmentData>>(emptyList()) }
+    var structureSegmentIds by remember(currentSongId) { mutableStateOf<List<String>>(emptyList()) }
+    var nextSegmentIndex by remember(currentSongId) { mutableLongStateOf(1L) }
+    var renameSegmentId by remember(currentSongId) { mutableStateOf<String?>(null) }
+    var renameDraft by remember(currentSongId) { mutableStateOf(TextFieldValue("")) }
+    var segmentOptionsTargetId by remember(currentSongId) { mutableStateOf<String?>(null) }
     var segmentSelectionMode by remember(currentSongId) {
         mutableStateOf(TimelineSegmentSelectionMode.KEEP)
+    }
+
+    fun persistArrangementState(
+        nextSegments: List<ArrangementSegmentData> = arrangementSegments,
+        nextStructureSegmentIds: List<String> = structureSegmentIds
+    ) {
+        val songId = currentSongId?.trim().orEmpty()
+        if (songId.isEmpty()) return
+        scope.launch {
+            ArrangementStore.save(
+                context = context.applicationContext,
+                songId = songId,
+                data = ArrangementData(
+                    name = arrangementName.ifBlank { "Arrangement 1" },
+                    sourceSongId = songId,
+                    segments = nextSegments,
+                    structureSegmentIds = nextStructureSegmentIds
+                )
+            )
+        }
     }
 
     LaunchedEffect(measureAnchorMs) {
@@ -1649,6 +1680,13 @@ private fun TimelineMeasuresPlaceholder(
             waveformDurationMs = 0
             waveformLoading = false
             waveformError = false
+            arrangementName = "Arrangement 1"
+            arrangementSegments = emptyList()
+            structureSegmentIds = emptyList()
+            nextSegmentIndex = 1L
+            renameSegmentId = null
+            renameDraft = TextFieldValue("")
+            segmentOptionsTargetId = null
             return@LaunchedEffect
         }
 
@@ -1693,11 +1731,21 @@ private fun TimelineMeasuresPlaceholder(
                 waveformLoading = false
                 waveformError = true
             }
+
+        val arrangementData = ArrangementStore.load(context.applicationContext, songId)
+        arrangementName = arrangementData?.name?.ifBlank { "Arrangement 1" } ?: "Arrangement 1"
+        arrangementSegments = arrangementData?.segments.orEmpty()
+        structureSegmentIds = arrangementData?.structureSegmentIds.orEmpty()
+        nextSegmentIndex = resolveNextTimelineArrangementSegmentIndex(arrangementSegments)
+        renameSegmentId = null
+        renameDraft = TextFieldValue("")
+        segmentOptionsTargetId = null
     }
 
     val detectedTempoBpm = remember(tempoTapTimesMs) {
         estimateTappedTempoBpm(tempoTapTimesMs)
     }
+    val defaultSegmentNameBase = stringResource(R.string.arrangement_segment_default_name)
     val metronomeReady = tempoBpm != null && savedAnchorMs != null
     val loopReady = tempoBpm != null && savedAnchorMs != null
     val hasSegmentLoop = segmentInMs != null && segmentOutMs != null && segmentInMs != segmentOutMs
@@ -2195,7 +2243,23 @@ private fun TimelineMeasuresPlaceholder(
                 color = Color.White,
                 fontSize = 14.sp,
                 modifier = Modifier
-                    .clickable(onClick = onOpenArrangement)
+                    .clickable {
+                        val rawStartMs = segmentInMs ?: return@clickable
+                        val rawEndMs = segmentOutMs ?: return@clickable
+                        if (rawStartMs == rawEndMs) return@clickable
+                        val startMs = minOf(rawStartMs, rawEndMs)
+                        val endMs = maxOf(rawStartMs, rawEndMs)
+                        val nextSegment = ArrangementSegmentData(
+                            id = "segment_$nextSegmentIndex",
+                            name = "$defaultSegmentNameBase $nextSegmentIndex",
+                            startMs = startMs,
+                            endMs = endMs
+                        )
+                        val nextSegments = arrangementSegments + nextSegment
+                        arrangementSegments = nextSegments
+                        nextSegmentIndex += 1L
+                        persistArrangementState(nextSegments = nextSegments)
+                    }
                     .padding(horizontal = 10.dp, vertical = 8.dp)
             )
             Text(
@@ -2216,6 +2280,60 @@ private fun TimelineMeasuresPlaceholder(
                     .padding(horizontal = 10.dp, vertical = 8.dp)
             )
         }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            ArrangementListCard(
+                modifier = Modifier.weight(1f),
+                title = stringResource(R.string.arrangement_segments_title),
+                emptyLabel = stringResource(R.string.arrangement_segments_empty),
+                items = arrangementSegments.map { segment ->
+                    ArrangementListItem(
+                        id = segment.id,
+                        title = segment.name
+                    )
+                },
+                onItemClick = {},
+                onItemAdd = { segmentId ->
+                    if (arrangementSegments.any { it.id == segmentId }) {
+                        val nextStructureSegmentIds = structureSegmentIds + segmentId
+                        structureSegmentIds = nextStructureSegmentIds
+                        persistArrangementState(nextStructureSegmentIds = nextStructureSegmentIds)
+                    }
+                },
+                onItemDelete = null,
+                onItemLongClick = { segmentId ->
+                    segmentOptionsTargetId = segmentId
+                }
+            )
+
+            ArrangementListCard(
+                modifier = Modifier.weight(1f),
+                title = stringResource(R.string.arrangement_structure_title),
+                emptyLabel = stringResource(R.string.arrangement_structure_empty),
+                items = structureSegmentIds.mapIndexedNotNull { index, segmentId ->
+                    val segment = arrangementSegments.firstOrNull { it.id == segmentId } ?: return@mapIndexedNotNull null
+                    ArrangementListItem(
+                        id = index.toString(),
+                        title = "${index + 1}. ${segment.name}"
+                    )
+                },
+                onItemClick = {},
+                onItemAdd = null,
+                onItemDelete = { structureIndexId ->
+                    val removeIndex = structureIndexId.toIntOrNull() ?: return@ArrangementListCard
+                    if (removeIndex in structureSegmentIds.indices) {
+                        val nextStructureSegmentIds = structureSegmentIds.toMutableList().apply {
+                            removeAt(removeIndex)
+                        }
+                        structureSegmentIds = nextStructureSegmentIds
+                        persistArrangementState(nextStructureSegmentIds = nextStructureSegmentIds)
+                    }
+                },
+                onItemLongClick = null
+            )
+        }
         if (measuresStatus != null) {
             Text(
                 text = stringResource(
@@ -2228,6 +2346,106 @@ private fun TimelineMeasuresPlaceholder(
                 fontWeight = FontWeight.Medium
             )
         }
+    }
+
+    if (renameSegmentId != null) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { renameSegmentId = null },
+            title = {
+                Text(
+                    text = stringResource(R.string.common_rename),
+                    color = Color.White
+                )
+            },
+            text = {
+                OutlinedTextField(
+                    value = renameDraft,
+                    onValueChange = { renameDraft = it },
+                    singleLine = true,
+                    label = {
+                        Text(text = stringResource(R.string.timeline_rename_label))
+                    }
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val targetId = renameSegmentId ?: return@Button
+                        val nextName = renameDraft.text.trim().ifBlank {
+                            arrangementSegments.firstOrNull { it.id == targetId }?.name ?: return@Button
+                        }
+                        val nextSegments = arrangementSegments.map { segment ->
+                            if (segment.id == targetId) {
+                                segment.copy(name = nextName)
+                            } else {
+                                segment
+                            }
+                        }
+                        arrangementSegments = nextSegments
+                        persistArrangementState(nextSegments = nextSegments)
+                        renameSegmentId = null
+                    }
+                ) {
+                    Text(text = stringResource(R.string.common_save))
+                }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { renameSegmentId = null }) {
+                    Text(text = stringResource(R.string.common_cancel))
+                }
+            },
+            containerColor = Color(0xFF121212)
+        )
+    }
+
+    if (segmentOptionsTargetId != null) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { segmentOptionsTargetId = null },
+            title = {
+                Text(
+                    text = arrangementSegments.firstOrNull { it.id == segmentOptionsTargetId }?.name.orEmpty(),
+                    color = Color.White
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Text(
+                        text = stringResource(R.string.common_rename),
+                        color = Color.White,
+                        modifier = Modifier.clickable {
+                            val segment = arrangementSegments.firstOrNull { it.id == segmentOptionsTargetId }
+                                ?: return@clickable
+                            renameSegmentId = segment.id
+                            renameDraft = TextFieldValue(segment.name)
+                            segmentOptionsTargetId = null
+                        }
+                    )
+                    Text(
+                        text = stringResource(R.string.library_delete_action),
+                        color = Color(0xFFFF8A80),
+                        modifier = Modifier.clickable {
+                            val targetId = segmentOptionsTargetId ?: return@clickable
+                            val nextSegments = arrangementSegments.filterNot { it.id == targetId }
+                            val nextStructureSegmentIds = structureSegmentIds.filterNot { it == targetId }
+                            arrangementSegments = nextSegments
+                            structureSegmentIds = nextStructureSegmentIds
+                            nextSegmentIndex = resolveNextTimelineArrangementSegmentIndex(nextSegments)
+                            persistArrangementState(
+                                nextSegments = nextSegments,
+                                nextStructureSegmentIds = nextStructureSegmentIds
+                            )
+                            segmentOptionsTargetId = null
+                        }
+                    )
+                }
+            },
+            confirmButton = {
+                OutlinedButton(onClick = { segmentOptionsTargetId = null }) {
+                    Text(text = stringResource(R.string.common_close))
+                }
+            },
+            containerColor = Color(0xFF121212)
+        )
     }
 }
 
@@ -2680,6 +2898,15 @@ private fun TimelineSegmentControlLabel(
             overflow = TextOverflow.Ellipsis
         )
     }
+}
+
+private fun resolveNextTimelineArrangementSegmentIndex(
+    segments: List<ArrangementSegmentData>
+): Long {
+    val maxExistingIndex = segments.maxOfOrNull { segment ->
+        segment.id.removePrefix("segment_").toLongOrNull() ?: 0L
+    } ?: 0L
+    return (maxExistingIndex + 1L).coerceAtLeast(1L)
 }
 
 @Composable
