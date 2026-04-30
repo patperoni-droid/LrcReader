@@ -2,12 +2,10 @@ package com.patrick.lrcreader.ui
 
 import android.net.Uri
 import android.widget.Toast
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,7 +17,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -38,9 +35,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipPrevious
@@ -1167,12 +1162,6 @@ fun ArrangementEditorSection(
     }
 }
 
-private data class ArrangementListItem(
-    val id: String,
-    val title: String,
-    val isActive: Boolean = false
-)
-
 private fun resolveNextArrangementSegmentIndex(segments: List<ArrangementSegment>): Long {
     val maxExistingIndex = segments.maxOfOrNull { segment ->
         segment.id.removePrefix("segment_").toLongOrNull() ?: 0L
@@ -1213,114 +1202,6 @@ private fun normalizeArrangementSongBaseName(sourceTitle: String?): String {
         .replace(Regex("[^a-z0-9]+"), "_")
         .trim('_')
         .ifBlank { "song" }
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun ArrangementListCard(
-    modifier: Modifier,
-    title: String,
-    emptyLabel: String,
-    items: List<ArrangementListItem>,
-    onItemClick: (String) -> Unit,
-    onItemAdd: ((String) -> Unit)?,
-    onItemDelete: ((String) -> Unit)?,
-    onItemLongClick: ((String) -> Unit)?
-) {
-    Card(
-        modifier = modifier,
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF151515)),
-        shape = RoundedCornerShape(14.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Text(
-                text = title,
-                color = Color.White,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.SemiBold
-            )
-
-            if (items.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(120.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = emptyLabel,
-                        color = Color(0xFF78909C),
-                        fontSize = 13.sp
-                    )
-                }
-            } else {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 320.dp)
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    items.forEach { item ->
-                        Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .combinedClickable(
-                                onClick = { onItemClick(item.id) },
-                                onLongClick = if (onItemLongClick != null) {
-                                    { onItemLongClick(item.id) }
-                                } else {
-                                    null
-                                }
-                            )
-                            .padding(vertical = 6.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = item.title,
-                            color = if (item.isActive) Color(0xFF66BB6A) else Color.White,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Medium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f)
-                        )
-                        if (onItemAdd != null) {
-                            IconButton(
-                                onClick = { onItemAdd(item.id) },
-                                modifier = Modifier.width(32.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.Add,
-                                    contentDescription = stringResource(R.string.timeline_palette_add_action),
-                                    tint = Color(0xFFCFD8DC)
-                                )
-                            }
-                        }
-                        if (onItemDelete != null) {
-                            IconButton(
-                                onClick = { onItemDelete(item.id) },
-                                modifier = Modifier.width(32.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.Delete,
-                                    contentDescription = stringResource(R.string.library_delete_action),
-                                    tint = Color(0xFFCFD8DC)
-                                )
-                            }
-                        }
-                    }
-                    }
-                }
-            }
-        }
-    }
 }
 
 @Composable
