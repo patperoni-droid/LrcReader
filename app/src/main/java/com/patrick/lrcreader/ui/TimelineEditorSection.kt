@@ -2303,6 +2303,7 @@ private fun TimelineMeasuresPlaceholder(
             measureAnchorMs = savedAnchorMs,
             segmentInMs = segmentInMs,
             segmentOutMs = segmentOutMs,
+            isRemoveMode = segmentSelectionMode == TimelineSegmentSelectionMode.REMOVE,
             isWaveformExpanded = isWaveformExpanded,
             isLoading = waveformLoading,
             hasError = waveformError,
@@ -2593,6 +2594,7 @@ private fun TimelineGridWaveformSection(
     measureAnchorMs: Long?,
     segmentInMs: Long?,
     segmentOutMs: Long?,
+    isRemoveMode: Boolean,
     isWaveformExpanded: Boolean,
     isLoading: Boolean,
     hasError: Boolean,
@@ -2896,6 +2898,64 @@ private fun TimelineGridWaveformSection(
                                 }
                                 beatIndex += 1L
                                 guard += 1
+                            }
+                        }
+
+                        if (segmentInMs != null && segmentOutMs != null && segmentInMs != segmentOutMs) {
+                            val loopStartMs = minOf(segmentInMs, segmentOutMs).coerceAtLeast(0L)
+                            val loopEndMs = maxOf(segmentInMs, segmentOutMs).coerceAtLeast(loopStartMs + 1L)
+                            val loopStartFraction = (
+                                loopStartMs.coerceIn(0L, safeDuration.toLong()).toFloat() /
+                                    safeDuration.toFloat()
+                                ).coerceIn(0f, 1f)
+                            val loopEndFraction = (
+                                loopEndMs.coerceIn(0L, safeDuration.toLong()).toFloat() /
+                                    safeDuration.toFloat()
+                                ).coerceIn(0f, 1f)
+
+                            if (isRemoveMode) {
+                                val overlayStartX = ((loopStartFraction - startFraction) /
+                                    (effectiveEndFraction - startFraction)) * widthPx
+                                val overlayEndX = ((loopEndFraction - startFraction) /
+                                    (effectiveEndFraction - startFraction)) * widthPx
+                                val clampedStartX = overlayStartX.coerceIn(0f, widthPx)
+                                val clampedEndX = overlayEndX.coerceIn(0f, widthPx)
+                                if (clampedEndX > clampedStartX) {
+                                    drawRect(
+                                        color = Color.Black.copy(alpha = 0.3f),
+                                        topLeft = Offset(clampedStartX, 0f),
+                                        size = androidx.compose.ui.geometry.Size(
+                                            width = clampedEndX - clampedStartX,
+                                            height = heightPx
+                                        )
+                                    )
+                                }
+                            } else {
+                                if (loopStartFraction > startFraction) {
+                                    val leftOverlayEndX = ((loopStartFraction - startFraction) /
+                                        (effectiveEndFraction - startFraction)) * widthPx
+                                    drawRect(
+                                        color = Color.Black.copy(alpha = 0.3f),
+                                        topLeft = Offset(0f, 0f),
+                                        size = androidx.compose.ui.geometry.Size(
+                                            width = leftOverlayEndX.coerceIn(0f, widthPx),
+                                            height = heightPx
+                                        )
+                                    )
+                                }
+
+                                if (loopEndFraction < effectiveEndFraction) {
+                                    val rightOverlayStartX = ((loopEndFraction - startFraction) /
+                                        (effectiveEndFraction - startFraction)) * widthPx
+                                    drawRect(
+                                        color = Color.Black.copy(alpha = 0.3f),
+                                        topLeft = Offset(rightOverlayStartX.coerceIn(0f, widthPx), 0f),
+                                        size = androidx.compose.ui.geometry.Size(
+                                            width = (widthPx - rightOverlayStartX).coerceAtLeast(0f),
+                                            height = heightPx
+                                        )
+                                    )
+                                }
                             }
                         }
 
