@@ -2394,15 +2394,38 @@ private fun TimelineMeasuresPlaceholder(
                         if (rawStartMs == rawEndMs) return@clickable
                         val startMs = minOf(rawStartMs, rawEndMs)
                         val endMs = maxOf(rawStartMs, rawEndMs)
-                        val nextSegment = ArrangementSegmentData(
-                            id = "segment_$nextSegmentIndex",
-                            name = "$defaultSegmentNameBase $nextSegmentIndex",
-                            startMs = startMs,
-                            endMs = endMs
-                        )
-                        val nextSegments = arrangementSegments + nextSegment
+                        val totalDurationMs = waveformDurationMs.coerceAtLeast(0).toLong()
+                        val segmentRanges = if (segmentSelectionMode == TimelineSegmentSelectionMode.REMOVE) {
+                            buildList {
+                                if (startMs > 0L) {
+                                    add(0L to startMs)
+                                }
+                                if (totalDurationMs > 0L && endMs < totalDurationMs) {
+                                    add(endMs to totalDurationMs)
+                                }
+                            }
+                        } else {
+                            listOf(startMs to endMs)
+                        }
+                        val validSegmentRanges = segmentRanges.filter { (segmentStartMs, segmentEndMs) ->
+                            segmentEndMs > segmentStartMs
+                        }
+                        if (validSegmentRanges.isEmpty()) return@clickable
+
+                        var nextIndex = nextSegmentIndex
+                        val createdSegments = validSegmentRanges.map { (segmentStartMs, segmentEndMs) ->
+                            ArrangementSegmentData(
+                                id = "segment_$nextIndex",
+                                name = "$defaultSegmentNameBase $nextIndex",
+                                startMs = segmentStartMs,
+                                endMs = segmentEndMs
+                            ).also {
+                                nextIndex += 1L
+                            }
+                        }
+                        val nextSegments = arrangementSegments + createdSegments
                         arrangementSegments = nextSegments
-                        nextSegmentIndex += 1L
+                        nextSegmentIndex = nextIndex
                         persistArrangementState(nextSegments = nextSegments)
                     }
                     .padding(horizontal = 10.dp, vertical = 8.dp)
@@ -2839,7 +2862,13 @@ private fun TimelineGridWaveformSection(
                                     }
                                 )
                             }
-                            .pointerInput(peaks, durationMs) {
+                            .pointerInput(
+                                peaks,
+                                durationMs,
+                                segmentInMs,
+                                segmentOutMs,
+                                focusMarker
+                            ) {
                                 detectTransformGestures { _, pan, zoomChange, _ ->
                                     lastManualWaveformInteractionMs = SystemClock.elapsedRealtime()
                                     val previousZoom = waveformZoom
