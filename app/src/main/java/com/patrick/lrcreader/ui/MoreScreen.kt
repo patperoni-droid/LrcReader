@@ -2,7 +2,10 @@ package com.patrick.lrcreader.ui
 
 import com.patrick.lrcreader.core.MidiOutput
 import android.content.Context
+import android.content.Intent
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -42,6 +45,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.core.os.LocaleListCompat
+import androidx.documentfile.provider.DocumentFile
 import com.patrick.lrcreader.core.AppLanguagePrefs
 import com.patrick.lrcreader.core.AutoReturnPrefs
 import com.patrick.lrcreader.core.BackupManager
@@ -50,6 +54,15 @@ import com.patrick.lrcreader.core.LightIndicatorPrefs
 import com.patrick.lrcreader.core.UiEntryPrefs
 import com.patrick.lrcreader.core.WorkspaceResolver
 import com.patrick.lrcreader.exo.R
+import com.patrick.lrcreader.smp.SmpExporter
+import com.patrick.lrcreader.smp.SmpLibraryScanner
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /* ─────────────────────────────
    Écran "Plus" (Paramètres)
@@ -170,6 +183,26 @@ private enum class MoreSection(val route: String) {
     ArrangementFromTempo("arrangement_from_tempo")
 }
 
+private object MoreLiveSongsExportPrefs {
+    private const val PREFS_NAME = "more_live_songs_export_prefs"
+    private const val KEY_TREE_URI = "tree_uri"
+
+    fun getTreeUri(context: Context): android.net.Uri? {
+        val raw = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString(KEY_TREE_URI, null)
+            .orEmpty()
+            .trim()
+        return raw.takeIf { it.isNotEmpty() }?.let(android.net.Uri::parse)
+    }
+
+    fun setTreeUri(context: Context, uri: android.net.Uri?) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KEY_TREE_URI, uri?.toString())
+            .apply()
+    }
+}
+
 @Composable
 private fun ArrangementHubScreen(
     modifier: Modifier = Modifier,
@@ -247,8 +280,17 @@ private fun MoreRootScreen(
     onOpenTuner: () -> Unit
 ) {
     val context = LocalContext.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var exportLiveSongsTreeUri by remember {
+        mutableStateOf(MoreLiveSongsExportPrefs.getTreeUri(context))
+    }
     var showLanguageDialog by remember { mutableStateOf(false) }
     var selectedLanguageTag by remember { mutableStateOf(AppLanguagePrefs.getSavedLanguageTag(context)) }
+    var isExportingLiveSongs by remember { mutableStateOf(false) }
+    var exportLiveSongsDone by remember { mutableStateOf(0) }
+    var exportLiveSongsTotal by remember { mutableStateOf(0) }
+    var exportLiveSongsCurrentTitle by remember { mutableStateOf<String?>(null) }
+    var exportLiveSongsResultMessage by remember { mutableStateOf<String?>(null) }
     // ✅ Séquence de Program Change pour le test MIDI
     val testProgramChanges = listOf(8, 39, 58, 127)
     var testPcIndex by remember { mutableStateOf(0) }
@@ -280,6 +322,8 @@ private fun MoreRootScreen(
         "es" -> stringResource(R.string.settings_language_es)
         else -> stringResource(R.string.settings_language_auto)
     }
+    val sLiveSongsExportNoSongs = stringResource(R.string.more_live_songs_export_no_songs)
+    val sLiveSongsExportFailed = stringResource(R.string.more_live_songs_export_failed)
     val workspaceSnapshot = remember(context) { WorkspaceResolver.resolve(context) }
     val workingFolderPath = remember(workspaceSnapshot) {
         workspaceSnapshot.workspaceRootUri?.let { uri ->
@@ -300,6 +344,74 @@ private fun MoreRootScreen(
         AppCompatDelegate.setApplicationLocales(locales)
         selectedLanguageTag = languageTag
         showLanguageDialog = false
+    }
+
+    val exportLiveSongsFolderLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree()
+    ) { pickedUri ->
+        if (pickedUri == null) return@rememberLauncherForActivityResult
+        runCatching {
+            context.contentResolver.takePersistableUriPermission(
+                pickedUri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            )
+        }
+        exportLiveSongsTreeUri = pickedUri
+        MoreLiveSongsExportPrefs.setTreeUri(context, pickedUri)
+        scope.launch {
+            isExportingLiveSongs = true
+            exportLiveSongsDone = 0
+            exportLiveSongsTotal = 0
+            exportLiveSongsCurrentTitle = null
+
+            val exportTarget = withContext(Dispatchers.IO) {
+                buildLiveSongsExportTarget(context.applicationContext, pickedUri)
+            }
+            if (exportTarget == null) {
+                exportLiveSongsResultMessage = sLiveSongsExportFailed
+                isExportingLiveSongs = false
+                return@launch
+            }
+
+            val songs = withContext(Dispatchers.IO) {
+                SmpLibraryScanner(context.applicationContext).listSongs()
+            }
+            exportLiveSongsTotal = songs.size
+
+            if (songs.isEmpty()) {
+                exportLiveSongsResultMessage = sLiveSongsExportNoSongs
+                isExportingLiveSongs = false
+                return@launch
+            }
+
+            var successCount = 0
+            var failureCount = 0
+            songs.forEachIndexed { index, song ->
+                exportLiveSongsCurrentTitle = song.title
+                val exported = withContext(Dispatchers.IO) {
+                    exportLiveSongToTree(
+                        context = context.applicationContext,
+                        exportDir = exportTarget,
+                        songId = song.id
+                    )
+                }
+                if (exported) {
+                    successCount += 1
+                } else {
+                    failureCount += 1
+                }
+                exportLiveSongsDone = index + 1
+            }
+
+            exportLiveSongsCurrentTitle = null
+            exportLiveSongsResultMessage = context.getString(
+                R.string.more_live_songs_export_result,
+                successCount,
+                failureCount,
+                exportTarget.name ?: pickedUri.toString()
+            )
+            isExportingLiveSongs = false
+        }
     }
 
     // Même type de fond que la console / accordeur
@@ -378,6 +490,14 @@ private fun MoreRootScreen(
                         label = stringResource(R.string.more_item_arrangement),
                         subtitle = null,
                         onClick = onOpenArrangement
+                    )
+                    SettingsItem(
+                        label = stringResource(R.string.more_item_export_live_songs),
+                        subtitle = stringResource(R.string.more_item_export_live_songs_subtitle),
+                        onClick = {
+                            if (isExportingLiveSongs) return@SettingsItem
+                            exportLiveSongsFolderLauncher.launch(exportLiveSongsTreeUri)
+                        }
                     )
 
                     HorizontalDivider(color = Color(0xFF262626))
@@ -506,6 +626,52 @@ private fun MoreRootScreen(
             }
         )
     }
+
+    if (isExportingLiveSongs) {
+        AlertDialog(
+            onDismissRequest = {},
+            title = {
+                Text(text = stringResource(R.string.more_live_songs_export_title))
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = context.getString(
+                            R.string.more_live_songs_export_progress,
+                            exportLiveSongsDone,
+                            exportLiveSongsTotal
+                        ),
+                        color = Color(0xFFF5F5F5)
+                    )
+                    exportLiveSongsCurrentTitle?.takeIf { it.isNotBlank() }?.let { title ->
+                        Text(
+                            text = title,
+                            color = Color(0xFF9E9E9E),
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+            },
+            confirmButton = {}
+        )
+    }
+
+    exportLiveSongsResultMessage?.let { message ->
+        AlertDialog(
+            onDismissRequest = { exportLiveSongsResultMessage = null },
+            title = {
+                Text(text = stringResource(R.string.more_live_songs_export_title))
+            },
+            text = {
+                Text(text = message)
+            },
+            confirmButton = {
+                TextButton(onClick = { exportLiveSongsResultMessage = null }) {
+                    Text(text = stringResource(R.string.common_close))
+                }
+            }
+        )
+    }
 }
 
 @Composable
@@ -603,4 +769,63 @@ private fun SettingsInfoItem(
         )
     }
     HorizontalDivider(color = Color(0xFF1E1E1E))
+}
+
+private fun buildLiveSongsExportTarget(
+    context: Context,
+    treeUri: android.net.Uri
+): DocumentFile? {
+    val root = DocumentFile.fromTreeUri(context, treeUri) ?: return null
+    if (!root.isDirectory) return null
+    val formatter = SimpleDateFormat("yyyy-MM-dd_HH-mm", Locale.US)
+    val folderName = "Export_${formatter.format(Date())}"
+    return root.findFile(folderName)?.takeIf { it.isDirectory }
+        ?: root.createDirectory(folderName)
+}
+
+private fun exportLiveSongToTree(
+    context: Context,
+    exportDir: DocumentFile,
+    songId: String
+): Boolean {
+    val song = SmpLibraryScanner(context).findSongById(songId) ?: return false
+    val cacheFile = SmpExporter.exportSongUnitToCacheSmp(context, song) ?: return false
+    return try {
+        val targetName = resolveAvailableBackupExportName(
+            exportDir = exportDir,
+            desiredName = cacheFile.name.ifBlank { "${song.title}.smp" }
+        )
+        val targetFile = exportDir.createFile("application/octet-stream", targetName)
+            ?: return false
+        context.contentResolver.openOutputStream(targetFile.uri, "w")?.use { output ->
+            cacheFile.inputStream().use { input ->
+                input.copyTo(output)
+            }
+            output.flush()
+        } ?: return false
+        true
+    } catch (_: Throwable) {
+        false
+    } finally {
+        runCatching { cacheFile.delete() }
+    }
+}
+
+private fun resolveAvailableBackupExportName(
+    exportDir: DocumentFile,
+    desiredName: String
+): String {
+    val cleanName = desiredName.trim().ifBlank { "song_export.smp" }
+    val dotIndex = cleanName.lastIndexOf('.')
+    val baseName = if (dotIndex > 0) cleanName.substring(0, dotIndex) else cleanName
+    val extension = if (dotIndex > 0) cleanName.substring(dotIndex) else ""
+    var attempt = 0
+    while (true) {
+        val suffix = if (attempt == 0) "" else "_${attempt + 1}"
+        val candidateName = "$baseName$suffix$extension"
+        if (exportDir.findFile(candidateName) == null) {
+            return candidateName
+        }
+        attempt += 1
+    }
 }
