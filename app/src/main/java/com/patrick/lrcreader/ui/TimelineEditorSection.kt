@@ -112,7 +112,9 @@ import com.patrick.lrcreader.smp.ArrangementStore
 import com.patrick.lrcreader.smp.DEFAULT_TIMELINE_NOTE_DURATION_MS
 import com.patrick.lrcreader.smp.GridSetupData
 import com.patrick.lrcreader.smp.GridSetupStore
+import com.patrick.lrcreader.smp.SmpConverter
 import com.patrick.lrcreader.smp.SmpLibraryScanner
+import com.patrick.lrcreader.smp.SongUnit
 import com.patrick.lrcreader.smp.TimelineMarker
 import com.patrick.lrcreader.smp.TimelineMarkerKind
 import kotlinx.coroutines.Dispatchers
@@ -195,6 +197,7 @@ fun TimelineEditorSection(
     measureAnchorMs: Long?,
     onMeasureAnchorHere: (Long) -> Unit,
     onOpenArrangement: () -> Unit = {},
+    onImportGeneratedSmp: suspend (Uri) -> SongUnit? = { null },
     isPreparedClipLoopTestActive: Boolean,
     onStartPreparedClipLoopTest: (Long, Long) -> Unit,
     onStopPreparedClipLoopTest: () -> Unit,
@@ -769,6 +772,7 @@ fun TimelineEditorSection(
                     seekToMs = seekToMs,
                     onIsPlayingChange = onIsPlayingChange,
                     onOpenArrangement = onOpenArrangement,
+                    onImportGeneratedSmp = onImportGeneratedSmp,
                     isPreparedClipLoopTestActive = isPreparedClipLoopTestActive,
                     onStartPreparedClipLoopTest = onStartPreparedClipLoopTest,
                     onStopPreparedClipLoopTest = onStopPreparedClipLoopTest,
@@ -1466,6 +1470,7 @@ private fun GridSetupHost(
     seekToMs: (Long) -> Unit,
     onIsPlayingChange: (Boolean) -> Unit,
     onOpenArrangement: () -> Unit,
+    onImportGeneratedSmp: suspend (Uri) -> SongUnit?,
     isPreparedClipLoopTestActive: Boolean,
     onStartPreparedClipLoopTest: (Long, Long) -> Unit,
     onStopPreparedClipLoopTest: () -> Unit,
@@ -1545,6 +1550,7 @@ private fun GridSetupHost(
         seekToMs = seekToMs,
         onIsPlayingChange = onIsPlayingChange,
         onOpenArrangement = onOpenArrangement,
+        onImportGeneratedSmp = onImportGeneratedSmp,
         onMeasureAnchorHere = { anchorMs ->
             gridSyncPointMs = anchorMs
             saveGridSetup(gridTempoBpm, anchorMs)
@@ -1598,6 +1604,7 @@ private fun TimelineMeasuresPlaceholder(
     seekToMs: (Long) -> Unit,
     onIsPlayingChange: (Boolean) -> Unit,
     onOpenArrangement: () -> Unit,
+    onImportGeneratedSmp: suspend (Uri) -> SongUnit?,
     onMeasureAnchorHere: (Long) -> Unit,
     onInitialSyncPointIfMissing: (Long) -> Unit,
     onSegmentInChange: (Long?) -> Unit,
@@ -1636,6 +1643,7 @@ private fun TimelineMeasuresPlaceholder(
     val focusManager = LocalFocusManager.current
     val scope = rememberCoroutineScope()
     val smpLibraryScanner = remember(context) { SmpLibraryScanner(context.applicationContext) }
+    val smpConverter = remember(context) { SmpConverter(context.applicationContext) }
     val structurePreviewPlayer = remember(context.applicationContext) {
         ExoPlayer.Builder(context.applicationContext).build().apply { playWhenReady = false }
     }
@@ -2873,10 +2881,22 @@ private fun TimelineMeasuresPlaceholder(
                                         arrayOf("audio/wav"),
                                         null
                                     )
+                                    val generatedSmpUri = withContext(Dispatchers.IO) {
+                                        smpConverter.convertSingleToLibrarySmp(
+                                            Uri.fromFile(targetFile)
+                                        ).getOrNull()
+                                    }
+                                    val importedSong = generatedSmpUri?.let { smpUri ->
+                                        onImportGeneratedSmp(smpUri)
+                                    }
                                     Toast.makeText(
                                         context,
                                         context.getString(
-                                            R.string.timeline_tempo_export_success,
+                                            if (importedSong != null) {
+                                                R.string.timeline_tempo_export_import_success
+                                            } else {
+                                                R.string.timeline_tempo_export_import_partial
+                                            },
                                             targetFile.name
                                         ),
                                         Toast.LENGTH_SHORT

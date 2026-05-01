@@ -643,6 +643,23 @@ class MainActivity : AppCompatActivity() {
                     return importedSong
                 }
 
+                val autoImportGeneratedSmp: suspend (Uri) -> com.patrick.lrcreader.smp.SongUnit? = { uri ->
+                    Log.i("SMP_CONVERT_FLOW", "step=main_auto_import_start outputUri=$uri")
+                    val importedSong = importSmpIntoApp(uri, libraryRuntimeReadyFirst = true)
+                    if (importedSong != null) {
+                        Log.i(
+                            "SMP_CONVERT_FLOW",
+                            "step=main_auto_import_ok outputUri=$uri songId=${importedSong.id} title=${importedSong.title}"
+                        )
+                    } else {
+                        Log.e(
+                            "SMP_CONVERT_FLOW",
+                            "step=main_auto_import_failed outputUri=$uri reason=${lastSmpImportFailureReason.get() ?: smpImporter.lastFailureReason ?: "inconnue"}"
+                        )
+                    }
+                    importedSong
+                }
+
                 fun runPlaylistBatchImport(
                     playlistName: String,
                     plan: SmpBatchImportProcessor.BatchPlan
@@ -3035,6 +3052,7 @@ class MainActivity : AppCompatActivity() {
                                             moreNavigationToken += 1
                                             setTabAndPersist(BottomTab.More, reason = "playerOpenArrangementHub")
                                         },
+                                        onImportGeneratedSmp = autoImportGeneratedSmp,
                                         requestedNavigationTarget = playerNavigationTarget,
                                         requestedNavigationToken = playerNavigationToken,
                                         onOpenWaveform = {
@@ -3230,22 +3248,7 @@ class MainActivity : AppCompatActivity() {
                                                 useAttemptGate = false
                                             )
                                         },
-                                        onImportGeneratedSmp = { uri ->
-                                            Log.i("SMP_CONVERT_FLOW", "step=main_auto_import_start outputUri=$uri")
-                                            val importedSong = importSmpIntoApp(uri, libraryRuntimeReadyFirst = true)
-                                            if (importedSong != null) {
-                                                Log.i(
-                                                    "SMP_CONVERT_FLOW",
-                                                    "step=main_auto_import_ok outputUri=$uri songId=${importedSong.id} title=${importedSong.title}"
-                                                )
-                                            } else {
-                                                Log.e(
-                                                    "SMP_CONVERT_FLOW",
-                                                    "step=main_auto_import_failed outputUri=$uri reason=${lastSmpImportFailureReason.get() ?: smpImporter.lastFailureReason ?: "inconnue"}"
-                                                )
-                                            }
-                                            importedSong
-                                        },
+                                        onImportGeneratedSmp = autoImportGeneratedSmp,
                                         onImportGeneratedSmpFailureReason = {
                                             lastSmpImportFailureReason.get() ?: smpImporter.lastFailureReason
                                         },

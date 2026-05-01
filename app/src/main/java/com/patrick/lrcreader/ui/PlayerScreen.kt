@@ -103,6 +103,7 @@ import com.patrick.lrcreader.smp.SmpAnnotationsStore
 import com.patrick.lrcreader.smp.SmpAutoMigrationResult
 import com.patrick.lrcreader.smp.SmpLightCueBridge
 import com.patrick.lrcreader.smp.SmpTimelineStore
+import com.patrick.lrcreader.smp.SongUnit
 import com.patrick.lrcreader.smp.TimelineMarker
 import com.patrick.lrcreader.smp.TimelineMarkerKind
 import kotlinx.coroutines.Dispatchers
@@ -145,6 +146,7 @@ fun PlayerScreen(
     onRequestShowPlaylist: () -> Unit,
     currentSongId: String? = null,
     onOpenArrangementHub: () -> Unit = {},
+    onImportGeneratedSmp: suspend (Uri) -> SongUnit? = { null },
     requestedNavigationTarget: String? = null,
     requestedNavigationToken: Int = 0,
     onOpenWaveform: (String) -> Unit = {},
@@ -2210,6 +2212,7 @@ fun PlayerScreen(
                 onOpenArrangement = {
                     onOpenArrangementHub()
                 },
+                onImportGeneratedSmp = onImportGeneratedSmp,
                 isPreparedClipLoopTestActive = isTimelinePreparedLoopActive,
                 onStartPreparedClipLoopTest = startTimelinePreparedLoopTest,
                 onStopPreparedClipLoopTest = stopTimelinePreparedLoopTest,

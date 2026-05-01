@@ -477,6 +477,8 @@
     <string name="timeline_tempo_export_name_title">Nom de l’export</string>
     <string name="timeline_tempo_export_name_label">Nom proposé</string>
     <string name="timeline_tempo_export_success">Export terminé : %1$s</string>
+    <string name="timeline_tempo_export_import_success">Export terminé et morceau ajouté : %1$s</string>
+    <string name="timeline_tempo_export_import_partial">Export terminé, import automatique impossible : %1$s</string>
     <string name="timeline_tempo_export_failed">Impossible de générer l’export</string>
     <string name="timeline_measures_inline_label">%1$s : </string>
     <string name="timeline_measures_placeholder_message">Préparation de la grille musicale.</string>

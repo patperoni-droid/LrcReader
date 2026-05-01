@@ -525,6 +525,8 @@
     <string name="timeline_tempo_export_name_title">Nombre de la exportación</string>
     <string name="timeline_tempo_export_name_label">Nombre propuesto</string>
     <string name="timeline_tempo_export_success">Exportación terminada: %1$s</string>
+    <string name="timeline_tempo_export_import_success">Exportación terminada y pista agregada: %1$s</string>
+    <string name="timeline_tempo_export_import_partial">Exportación terminada, importación automática imposible: %1$s</string>
     <string name="timeline_tempo_export_failed">No se pudo generar la exportación</string>
     <string name="timeline_measures_inline_label">%1$s: </string>
     <string name="timeline_measures_placeholder_message">Preparación de la cuadrícula musical.</string>

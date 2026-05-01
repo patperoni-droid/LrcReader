@@ -582,6 +582,8 @@
     <string name="timeline_tempo_export_name_title">Export name</string>
     <string name="timeline_tempo_export_name_label">Suggested name</string>
     <string name="timeline_tempo_export_success">Export complete: %1$s</string>
+    <string name="timeline_tempo_export_import_success">Export complete and track added: %1$s</string>
+    <string name="timeline_tempo_export_import_partial">Export complete, automatic import failed: %1$s</string>
     <string name="timeline_tempo_export_failed">Unable to generate export</string>
     <string name="timeline_measures_inline_label">%1$s: </string>
     <string name="timeline_measures_placeholder_message">Preparing the musical grid.</string>
