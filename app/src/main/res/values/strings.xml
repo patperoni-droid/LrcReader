@@ -473,6 +473,11 @@
     <string name="timeline_tempo_action_listen">Écouter</string>
     <string name="timeline_tempo_action_export">Exporter</string>
     <string name="timeline_tempo_preview_generating">Je prépare l’écoute…</string>
+    <string name="timeline_tempo_export_generating">Génération de l’export…</string>
+    <string name="timeline_tempo_export_name_title">Nom de l’export</string>
+    <string name="timeline_tempo_export_name_label">Nom proposé</string>
+    <string name="timeline_tempo_export_success">Export terminé : %1$s</string>
+    <string name="timeline_tempo_export_failed">Impossible de générer l’export</string>
     <string name="timeline_measures_inline_label">%1$s : </string>
     <string name="timeline_measures_placeholder_message">Préparation de la grille musicale.</string>
     <string name="timeline_measures_segment_in_action">IN</string>

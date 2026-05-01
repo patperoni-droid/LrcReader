@@ -578,6 +578,11 @@
     <string name="timeline_tempo_action_listen">Listen</string>
     <string name="timeline_tempo_action_export">Export</string>
     <string name="timeline_tempo_preview_generating">Preparing preview…</string>
+    <string name="timeline_tempo_export_generating">Generating export…</string>
+    <string name="timeline_tempo_export_name_title">Export name</string>
+    <string name="timeline_tempo_export_name_label">Suggested name</string>
+    <string name="timeline_tempo_export_success">Export complete: %1$s</string>
+    <string name="timeline_tempo_export_failed">Unable to generate export</string>
     <string name="timeline_measures_inline_label">%1$s: </string>
     <string name="timeline_measures_placeholder_message">Preparing the musical grid.</string>
     <string name="timeline_measures_segment_in_action">IN</string>

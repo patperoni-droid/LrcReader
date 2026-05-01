@@ -7,8 +7,10 @@ import android.media.AudioManager
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.media.MediaMetadataRetriever
+import android.media.MediaScannerConnection
 import android.media.ToneGenerator
 import android.net.Uri
+import android.os.Environment
 import android.os.SystemClock
 import android.widget.Toast
 import androidx.compose.foundation.background
@@ -1641,6 +1643,7 @@ private fun TimelineMeasuresPlaceholder(
         runCatching { ToneGenerator(AudioManager.STREAM_MUSIC, 70) }.getOrNull()
     }
     var currentSongAudioPath by remember(currentSongId) { mutableStateOf<String?>(null) }
+    var currentSongTitle by remember(currentSongId) { mutableStateOf<String?>(null) }
     var previewRenderedFile by remember(currentSongId) { mutableStateOf<File?>(null) }
     var wavPreviewActive by remember(currentSongId) { mutableStateOf(false) }
     var isPreviewGenerating by remember(currentSongId) { mutableStateOf(false) }
@@ -1667,6 +1670,10 @@ private fun TimelineMeasuresPlaceholder(
     var renameSegmentId by remember(currentSongId) { mutableStateOf<String?>(null) }
     var renameDraft by remember(currentSongId) { mutableStateOf(TextFieldValue("")) }
     var segmentOptionsTargetId by remember(currentSongId) { mutableStateOf<String?>(null) }
+    var showExportNameDialog by remember(currentSongId) { mutableStateOf(false) }
+    var exportNameDraft by remember(currentSongId) { mutableStateOf(TextFieldValue("")) }
+    var isExportNameLoading by remember(currentSongId) { mutableStateOf(false) }
+    var isFinalExporting by remember(currentSongId) { mutableStateOf(false) }
     var segmentSelectionMode by remember(currentSongId) {
         mutableStateOf(TimelineSegmentSelectionMode.KEEP)
     }
@@ -1738,6 +1745,7 @@ private fun TimelineMeasuresPlaceholder(
         val songId = currentSongId?.trim().orEmpty()
         stopStructurePreviewPlayback()
         currentSongAudioPath = null
+        currentSongTitle = null
         replacePreviewRenderedFile(null)
         if (songId.isEmpty()) {
             waveformPeaks = emptyList()
@@ -1784,21 +1792,23 @@ private fun TimelineMeasuresPlaceholder(
                         targetPoints = 2_400
                     )
                 }
-                Triple(peaks, durationMs, audioPath)
+                Triple(peaks, durationMs, song)
             }
         }
 
         result
-            .onSuccess { (peaks, durationMs, audioPath) ->
+            .onSuccess { (peaks, durationMs, song) ->
                 waveformPeaks = peaks
                 waveformDurationMs = durationMs
-                currentSongAudioPath = audioPath
+                currentSongAudioPath = song.audioPath
+                currentSongTitle = song.title
                 waveformLoading = false
             }
             .onFailure {
                 waveformPeaks = emptyList()
                 waveformDurationMs = 0
                 currentSongAudioPath = null
+                currentSongTitle = null
                 waveformLoading = false
                 waveformError = true
             }
@@ -2544,17 +2554,39 @@ private fun TimelineMeasuresPlaceholder(
             )
             Text(
                 text = stringResource(R.string.timeline_tempo_action_export),
-                color = Color(0xFF80CBC4),
+                color = if (isFinalExporting) Color(0xFF607D8B) else Color(0xFF80CBC4),
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier
-                    .clickable(onClick = onOpenArrangement)
+                    .clickable(enabled = !isFinalExporting) {
+                        showExportNameDialog = true
+                        isExportNameLoading = true
+                        exportNameDraft = TextFieldValue("")
+                        scope.launch {
+                            val suggestedName = withContext(Dispatchers.IO) {
+                                val tracksRoot = resolveTempoPublicBackingTracksDir().apply { mkdirs() }
+                                buildNextTempoExportName(
+                                    tracksRoot = tracksRoot,
+                                    sourceTitle = currentSongTitle
+                                )
+                            }
+                            exportNameDraft = TextFieldValue(suggestedName)
+                            isExportNameLoading = false
+                        }
+                    }
                     .padding(horizontal = 10.dp, vertical = 8.dp)
             )
         }
         if (isPreviewGenerating) {
             Text(
                 text = stringResource(R.string.timeline_tempo_preview_generating),
+                color = Color(0xFFB0BEC5),
+                fontSize = 12.sp
+            )
+        }
+        if (isFinalExporting) {
+            Text(
+                text = stringResource(R.string.timeline_tempo_export_generating),
                 color = Color(0xFFB0BEC5),
                 fontSize = 12.sp
             )
@@ -2729,6 +2761,146 @@ private fun TimelineMeasuresPlaceholder(
             },
             dismissButton = {
                 OutlinedButton(onClick = { renameSegmentId = null }) {
+                    Text(text = stringResource(R.string.common_cancel))
+                }
+            },
+            containerColor = Color(0xFF121212)
+        )
+    }
+
+    if (showExportNameDialog) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = {
+                if (!isExportNameLoading && !isFinalExporting) {
+                    showExportNameDialog = false
+                }
+            },
+            title = {
+                Text(
+                    text = stringResource(R.string.timeline_tempo_export_name_title),
+                    color = Color.White
+                )
+            },
+            text = {
+                OutlinedTextField(
+                    value = exportNameDraft,
+                    onValueChange = { exportNameDraft = it },
+                    singleLine = true,
+                    enabled = !isExportNameLoading && !isFinalExporting,
+                    label = {
+                        Text(text = stringResource(R.string.timeline_tempo_export_name_label))
+                    }
+                )
+            },
+            confirmButton = {
+                Button(
+                    enabled = !isExportNameLoading && !isFinalExporting && exportNameDraft.text.trim().isNotEmpty(),
+                    onClick = {
+                        val chosenName = exportNameDraft.text.trim()
+                        val audioPath = currentSongAudioPath
+                        val exportSegments = structurePlaybackSegments.map { segment ->
+                            minOf(segment.startMs, segment.endMs) to
+                                maxOf(segment.startMs, segment.endMs).coerceAtLeast(
+                                    minOf(segment.startMs, segment.endMs) + 1L
+                                )
+                        }
+                        if (audioPath.isNullOrBlank()) {
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.timeline_tempo_export_failed),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                            return@Button
+                        }
+                        if (exportSegments.isEmpty()) {
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.arrangement_preview_structure_empty),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                            return@Button
+                        }
+                        arrangementName = chosenName
+                        val songId = currentSongId?.trim().orEmpty()
+                        showExportNameDialog = false
+                        isFinalExporting = true
+                        scope.launch {
+                            val result = withContext(Dispatchers.IO) {
+                                runCatching {
+                                    val backingTracksDir = resolveTempoPublicBackingTracksDir()
+                                        .apply { mkdirs() }
+                                    require(backingTracksDir.isDirectory) {
+                                        "Tempo export backing tracks dir unavailable"
+                                    }
+                                    val targetFile = File(
+                                        backingTracksDir,
+                                        buildTempoExportWavFileName(chosenName)
+                                    )
+                                    require(!targetFile.exists()) {
+                                        "Tempo export target already exists"
+                                    }
+                                    val renderedFile = ArrangementWavRenderer.render(
+                                        context = context.applicationContext,
+                                        audioPath = audioPath,
+                                        segments = exportSegments
+                                    )
+                                    try {
+                                        renderedFile.copyTo(targetFile, overwrite = false)
+                                    } finally {
+                                        runCatching { renderedFile.delete() }
+                                    }
+                                    targetFile
+                                }
+                            }
+
+                            result
+                                .onSuccess { targetFile ->
+                                    if (songId.isNotEmpty()) {
+                                        ArrangementStore.save(
+                                            context = context.applicationContext,
+                                            songId = songId,
+                                            data = ArrangementData(
+                                                name = chosenName,
+                                                sourceSongId = songId,
+                                                segments = arrangementSegments,
+                                                structureSegmentIds = structureSegmentIds
+                                            )
+                                        )
+                                    }
+                                    MediaScannerConnection.scanFile(
+                                        context.applicationContext,
+                                        arrayOf(targetFile.absolutePath),
+                                        arrayOf("audio/wav"),
+                                        null
+                                    )
+                                    Toast.makeText(
+                                        context,
+                                        context.getString(
+                                            R.string.timeline_tempo_export_success,
+                                            targetFile.name
+                                        ),
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                                .onFailure {
+                                    Toast.makeText(
+                                        context,
+                                        context.getString(R.string.timeline_tempo_export_failed),
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                            isFinalExporting = false
+                        }
+                    }
+                ) {
+                    Text(text = stringResource(R.string.common_save))
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    enabled = !isExportNameLoading && !isFinalExporting,
+                    onClick = { showExportNameDialog = false }
+                ) {
                     Text(text = stringResource(R.string.common_cancel))
                 }
             },
@@ -3487,6 +3659,63 @@ private fun buildTimelineStructureMediaItems(
                 .build()
         }
     }
+}
+
+private fun buildNextTempoExportName(
+    tracksRoot: File,
+    sourceTitle: String?
+): String {
+    val baseName = normalizeTempoExportBaseName(sourceTitle)
+    val namePattern = Regex("^${Regex.escape(baseName)}_AR(\\d{2})$", RegexOption.IGNORE_CASE)
+    val nextIndex = tracksRoot
+        .takeIf { it.isDirectory }
+        ?.listFiles()
+        .orEmpty()
+        .asSequence()
+        .map { file ->
+            if (file.isDirectory) {
+                file.name
+            } else {
+                file.nameWithoutExtension
+            }
+        }
+        .mapNotNull { existingName ->
+            namePattern.matchEntire(existingName)?.groupValues?.getOrNull(1)?.toIntOrNull()
+        }
+        .maxOrNull()
+        ?.plus(1)
+        ?: 1
+
+    return "${baseName}_AR${nextIndex.coerceAtLeast(1).toString().padStart(2, '0')}"
+}
+
+private fun normalizeTempoExportBaseName(sourceTitle: String?): String {
+    return sourceTitle
+        .orEmpty()
+        .trim()
+        .replace(Regex("[\\\\/:*?\"<>|]+"), " ")
+        .replace(Regex("\\s+"), " ")
+        .trim()
+        .ifBlank { "Song" }
+}
+
+private fun buildTempoExportWavFileName(sourceName: String): String {
+    val sanitizedName = sourceName
+        .trim()
+        .removeSuffix(".wav")
+        .removeSuffix(".WAV")
+        .replace(Regex("[\\\\/:*?\"<>|]+"), " ")
+        .replace(Regex("\\s+"), " ")
+        .trim()
+        .ifBlank { "Arrangement" }
+    return "$sanitizedName.wav"
+}
+
+private fun resolveTempoPublicBackingTracksDir(): File {
+    val musicRoot = Environment.getExternalStoragePublicDirectory(
+        Environment.DIRECTORY_MUSIC
+    )
+    return File(File(musicRoot, "SPL_Music"), "BackingTracks")
 }
 
 private fun estimateTappedTempoBpm(tapPositionsMs: List<Long>): Int? {
