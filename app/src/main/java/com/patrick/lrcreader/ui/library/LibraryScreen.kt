@@ -1778,6 +1778,12 @@ fun LibraryScreen(
         }
     }
 
+    fun closeLibrarySearch() {
+        searchQuery = ""
+        isSearchVisible = false
+        focusManager.clearFocus(force = true)
+    }
+
     LaunchedEffect(reselectRootSignal) {
         if (reselectRootSignal == 0) return@LaunchedEffect
         val root = resolveLibraryNavigationRoot(
@@ -3564,6 +3570,7 @@ fun LibraryScreen(
                                         toggleSelection(uri)
                                     },
                                     onOpenPlayer = { song ->
+                                        closeLibrarySearch()
                                         stopQuickPlay()
                                         onPlayFromLibrary(song.playbackItem, isLibraryFullModeEnabled)
                                     },
@@ -3775,6 +3782,7 @@ fun LibraryScreen(
                                 },
 
                                 onOpenPlayer = { uri ->
+                                    closeLibrarySearch()
                                     stopQuickPlay()
                                     onPlayFromLibrary(uri.toString(), isLibraryFullModeEnabled)
                                 },

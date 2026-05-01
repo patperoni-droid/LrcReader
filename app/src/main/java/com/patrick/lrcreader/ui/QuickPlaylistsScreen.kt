@@ -952,6 +952,13 @@ fun QuickPlaylistsScreen(
             isSearchVisible = true
         }
     }
+
+    fun closePlaylistSearch() {
+        playlistSearchQuery = ""
+        isSearchVisible = false
+        focusManager.clearFocus(force = true)
+    }
+
     val miniTunerState: TunerState = if (isMiniTunerVisible) {
         TunerEngine.state.collectAsState().value
     } else {
@@ -1783,6 +1790,7 @@ fun QuickPlaylistsScreen(
                                                     // ✅ Lance le player
                                                     onPlaySong(uriString, currentPlaylist, Color.White) // ✅ ne teinte plus le lecteur / paroles
                                                 }
+                                                closePlaylistSearch()
                                                 // ⚠️ IMPORTANT : on NE rappelle PAS onSelectedPlaylistChange(currentPlaylist) ici,
                                                 // sinon le parent peut recharger la playlist immédiatement (LaunchedEffect),
                                                 // ce qui donne l'impression que le titre "descend direct".
@@ -1914,6 +1922,7 @@ fun QuickPlaylistsScreen(
                                                     if (startIndex >= 0) {
                                                         activePlayingGroupHeaderKey = null
                                                         onPlayFromHere(visibleQueue, startIndex, pl)
+                                                        closePlaylistSearch()
                                                     }
                                                 }
                                                 menuOpen = false
