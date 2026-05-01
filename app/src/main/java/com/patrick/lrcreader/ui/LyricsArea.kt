@@ -31,6 +31,7 @@ fun LyricsAreaLazy(
     currentTrackUri: String?,
     lyricsLoading: Boolean,
     isConcertMode: Boolean,
+    readabilityModeEnabled: Boolean,
     currentLrcIndex: Int,
     onLyricsBoxHeightChange: (Int) -> Unit,
     highlightColor: Color,
@@ -60,13 +61,18 @@ fun LyricsAreaLazy(
             contentPadding = PaddingValues(top = 220.dp, bottom = 220.dp)
         ) {
             itemsIndexed(parsedLines, key = { idx, _ -> idx }) { index, line ->
-
-                // ✅ 2 couleurs fixes (lisible sur fond noir)
-                // ✅ 2 couleurs fixes (lisibles sur fond noir)
-                val activeColor = Color.White
-                val inactiveColor = Color(0xFF7A7A7A) // gris plus foncé, contraste propre sur fond noir // gris un peu plus foncé, toujours très lisible
-
-                val color = if (index == currentLrcIndex) activeColor else inactiveColor
+                val isActiveLine = index == currentLrcIndex
+                val color = when {
+                    isActiveLine -> highlightColor
+                    readabilityModeEnabled -> Color.White
+                    else -> Color.White.copy(alpha = 0.42f)
+                }
+                val fontWeight = when {
+                    isActiveLine -> FontWeight.Bold
+                    readabilityModeEnabled -> FontWeight.Medium
+                    else -> FontWeight.Normal
+                }
+                val fontSize = if (isActiveLine) 27.sp else 25.sp
 
                 Box(
                     modifier = Modifier
@@ -78,8 +84,8 @@ fun LyricsAreaLazy(
                     Text(
                         text = line.text,
                         color = color,
-                        fontWeight = FontWeight.Medium,
-                        fontSize = 25.sp,
+                        fontWeight = fontWeight,
+                        fontSize = fontSize,
                         lineHeight = 30.sp,
                         textAlign = TextAlign.Center,
                         maxLines = 3,

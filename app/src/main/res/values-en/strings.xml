@@ -370,6 +370,7 @@
     <string name="player_cd_play_pause">Play/Pause</string>
     <string name="player_cd_next">Next</string>
     <string name="player_cd_change_style">Change style</string>
+    <string name="player_cd_toggle_readability">Toggle lyrics readability mode</string>
     <string name="player_cd_track_mix">Track mix</string>
     <string name="player_cd_edit_lyrics">Edit lyrics</string>
     <string name="player_cd_open_waveform">Open waveform</string>

@@ -524,6 +524,9 @@ fun PlayerScreen(
     val lyricsDelayMs = 0L
     var userOffsetMs by rememberSaveable(currentTrackUri) { mutableStateOf(-100L) }
     var isConcertMode by remember { mutableStateOf(DisplayPrefs.isConcertMode(context)) }
+    var readabilityModeEnabled by remember {
+        mutableStateOf(DisplayPrefs.isLyricsReadabilityMode(context))
+    }
     var selectedViewMode by rememberSaveable(currentTrackUri) {
         mutableStateOf(
             currentTrackUri
@@ -2319,10 +2322,10 @@ fun PlayerScreen(
                         }
 
                         ReaderHeader(
-                            isConcertMode = isConcertMode,
-                            onToggleConcertMode = {
-                                isConcertMode = !isConcertMode
-                                DisplayPrefs.setConcertMode(context, isConcertMode)
+                            readabilityModeEnabled = readabilityModeEnabled,
+                            onToggleReadabilityMode = {
+                                readabilityModeEnabled = !readabilityModeEnabled
+                                DisplayPrefs.setLyricsReadabilityMode(context, readabilityModeEnabled)
                             },
                             autoReturnEnabled = isAutoReturnEnabled,
                             onToggleAutoReturn = {
@@ -2478,6 +2481,7 @@ fun PlayerScreen(
                                     currentTrackUri = currentTrackUri,
                                     lyricsLoading = lyricsLoading || lyricsResolving || !lyricsResolutionCompleted,
                                     isConcertMode = isConcertMode,
+                                    readabilityModeEnabled = readabilityModeEnabled,
                                     currentLrcIndex = safeLrcIndex,
                                     onLyricsBoxHeightChange = { lyricsBoxHeightPx = it },
                                     highlightColor = highlightColor,
@@ -2929,8 +2933,8 @@ private fun LyricsViewSelector(
 
 @Composable
 private fun ReaderHeader(
-    isConcertMode: Boolean,
-    onToggleConcertMode: () -> Unit,
+    readabilityModeEnabled: Boolean,
+    onToggleReadabilityMode: () -> Unit,
     autoReturnEnabled: Boolean,
     onToggleAutoReturn: () -> Unit,
     highlightColor: Color,
@@ -2963,11 +2967,11 @@ private fun ReaderHeader(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            IconButton(onClick = onToggleConcertMode) {
+            IconButton(onClick = onToggleReadabilityMode) {
                 Icon(
                     imageVector = Icons.Filled.Tune,
-                    contentDescription = stringResource(R.string.player_cd_change_style),
-                    tint = if (isConcertMode) highlightColor else Color(0xFFCFD8DC)
+                    contentDescription = stringResource(R.string.player_cd_toggle_readability),
+                    tint = if (readabilityModeEnabled) highlightColor else Color(0xFFCFD8DC)
                 )
             }
 
