@@ -18,11 +18,13 @@ object ArrangementWavRenderer {
     private const val PCM_16_BIT_BYTES_PER_SAMPLE = 2
     private const val COPY_BUFFER_SIZE_BYTES = 64 * 1024
     private const val WAV_HEADER_SIZE_BYTES = 44L
+    private const val PREVIEW_FILE_PREFIX = "arrangement_preview_"
 
     suspend fun render(
         context: Context,
         audioPath: String,
-        segments: List<Pair<Long, Long>>
+        segments: List<Pair<Long, Long>>,
+        outputFile: File? = null
     ): File = withContext(Dispatchers.IO) {
         val audioFile = File(audioPath)
         require(audioFile.isFile) { "Audio file not found: $audioPath" }
@@ -40,9 +42,9 @@ object ArrangementWavRenderer {
             context.cacheDir,
             "arrangement_source_${System.currentTimeMillis()}.wav"
         )
-        val previewWavFile = File(
+        val previewWavFile = outputFile ?: File(
             context.cacheDir,
-            "arrangement_preview_${System.currentTimeMillis()}.wav"
+            "${PREVIEW_FILE_PREFIX}${System.currentTimeMillis()}.wav"
         )
 
         runCatching { sourceWavFile.delete() }

@@ -134,6 +134,8 @@ private enum class TimelineEditorMode {
     GRID_SETUP
 }
 
+private const val ARRANGEMENT_PREVIEW_FILE_NAME = "preview_arrangement.wav"
+
 private enum class TimelineDisplayMode {
     TIME,
     MEASURES
@@ -1675,9 +1677,13 @@ private fun TimelineMeasuresPlaceholder(
     val toneGenerator = remember {
         runCatching { ToneGenerator(AudioManager.STREAM_MUSIC, 70) }.getOrNull()
     }
+    val arrangementPreviewCacheFile = remember(context.applicationContext) {
+        File(context.applicationContext.cacheDir, ARRANGEMENT_PREVIEW_FILE_NAME)
+    }
     var currentSongAudioPath by remember(currentSongId) { mutableStateOf<String?>(null) }
     var currentSongTitle by remember(currentSongId) { mutableStateOf<String?>(null) }
     var previewRenderedFile by remember(currentSongId) { mutableStateOf<File?>(null) }
+    var previewRenderedSignature by remember(currentSongId) { mutableStateOf<String?>(null) }
     var wavPreviewActive by remember(currentSongId) { mutableStateOf(false) }
     var isPreviewGenerating by remember(currentSongId) { mutableStateOf(false) }
     var waveformPeaks by remember(currentSongId) { mutableStateOf<List<Float>>(emptyList()) }
@@ -1730,6 +1736,35 @@ private fun TimelineMeasuresPlaceholder(
         previousFile
             ?.takeIf { staleFile -> nextFile == null || staleFile.absolutePath != nextFile.absolutePath }
             ?.let { staleFile -> runCatching { staleFile.delete() } }
+    }
+
+    fun clearArrangementPreviewCache() {
+        previewRenderedSignature = null
+        replacePreviewRenderedFile(null)
+        runCatching { arrangementPreviewCacheFile.delete() }
+    }
+
+    fun playArrangementPreviewFile(previewFile: File) {
+        stopStructurePreviewPlayback()
+        if (isPreparedClipLoopTestActive) {
+            onStopPreparedClipLoopTest()
+        }
+        loopEnabled = false
+        preparedLoopStartMs = null
+        if (isPlaying) {
+            onIsPlayingChange(false)
+        }
+        wavPreviewActive = true
+        onStructurePreviewActiveChange(true)
+        structurePreviewPlayer.pause()
+        structurePreviewPlayer.clearMediaItems()
+        structurePreviewPlayer.repeatMode = Player.REPEAT_MODE_OFF
+        structurePreviewPlayer.volume = 1f
+        structurePreviewPlayer.setMediaItem(
+            MediaItem.fromUri(Uri.fromFile(previewFile))
+        )
+        structurePreviewPlayer.prepare()
+        structurePreviewPlayer.play()
     }
 
     fun persistArrangementState(
@@ -1878,6 +1913,20 @@ private fun TimelineMeasuresPlaceholder(
             arrangementSegments.firstOrNull { it.id == segmentId }
         }
     }
+    val previewRenderSignature = remember(currentSongAudioPath, structurePlaybackSegments) {
+        buildString {
+            append(currentSongAudioPath.orEmpty())
+            append('|')
+            structurePlaybackSegments.forEach { segment ->
+                append(segment.id)
+                append(':')
+                append(segment.startMs)
+                append('-')
+                append(segment.endMs)
+                append(';')
+            }
+        }
+    }
     val activeStructureSegmentId = structurePlaybackSegments
         .getOrNull(structurePlaybackIndex)
         ?.id
@@ -1909,53 +1958,45 @@ private fun TimelineMeasuresPlaceholder(
                     Toast.LENGTH_SHORT
                 ).show()
             } else {
-                isPreviewGenerating = true
-                scope.launch {
-                    val result = runCatching {
-                        ArrangementWavRenderer.render(
-                            context = context.applicationContext,
-                            audioPath = audioPath,
-                            segments = playlistSegments.map { segment ->
-                                minOf(segment.startMs, segment.endMs) to
-                                    maxOf(segment.startMs, segment.endMs).coerceAtLeast(
-                                        minOf(segment.startMs, segment.endMs) + 1L
-                                    )
-                            }
-                        )
-                    }
-
-                    result
-                        .onSuccess { previewFile ->
-                            replacePreviewRenderedFile(previewFile)
-                            stopStructurePreviewPlayback()
-                            if (isPreparedClipLoopTestActive) {
-                                onStopPreparedClipLoopTest()
-                            }
-                            loopEnabled = false
-                            preparedLoopStartMs = null
-                            if (isPlaying) {
-                                onIsPlayingChange(false)
-                            }
-                            wavPreviewActive = true
-                            onStructurePreviewActiveChange(true)
-                            structurePreviewPlayer.pause()
-                            structurePreviewPlayer.clearMediaItems()
-                            structurePreviewPlayer.repeatMode = Player.REPEAT_MODE_OFF
-                            structurePreviewPlayer.volume = 1f
-                            structurePreviewPlayer.setMediaItem(
-                                MediaItem.fromUri(Uri.fromFile(previewFile))
+                val reusablePreviewFile = previewRenderedFile?.takeIf { file ->
+                    file.absolutePath == arrangementPreviewCacheFile.absolutePath &&
+                        file.isFile &&
+                        previewRenderedSignature == previewRenderSignature
+                }
+                if (reusablePreviewFile != null) {
+                    playArrangementPreviewFile(reusablePreviewFile)
+                } else {
+                    isPreviewGenerating = true
+                    scope.launch {
+                        val result = runCatching {
+                            ArrangementWavRenderer.render(
+                                context = context.applicationContext,
+                                audioPath = audioPath,
+                                segments = playlistSegments.map { segment ->
+                                    minOf(segment.startMs, segment.endMs) to
+                                        maxOf(segment.startMs, segment.endMs).coerceAtLeast(
+                                            minOf(segment.startMs, segment.endMs) + 1L
+                                        )
+                                },
+                                outputFile = arrangementPreviewCacheFile
                             )
-                            structurePreviewPlayer.prepare()
-                            structurePreviewPlayer.play()
                         }
-                        .onFailure {
-                            Toast.makeText(
-                                context,
-                                context.getString(R.string.arrangement_preview_failed),
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        }
-                    isPreviewGenerating = false
+
+                        result
+                            .onSuccess { previewFile ->
+                                replacePreviewRenderedFile(previewFile)
+                                previewRenderedSignature = previewRenderSignature
+                                playArrangementPreviewFile(previewFile)
+                            }
+                            .onFailure {
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.arrangement_preview_failed),
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        isPreviewGenerating = false
+                    }
                 }
             }
         }
@@ -1985,7 +2026,7 @@ private fun TimelineMeasuresPlaceholder(
         onDispose {
             structurePreviewPlayer.removeListener(listener)
             stopStructurePreviewPlayback()
-            replacePreviewRenderedFile(null)
+            clearArrangementPreviewCache()
             runCatching { structurePreviewPlayer.release() }
         }
     }
