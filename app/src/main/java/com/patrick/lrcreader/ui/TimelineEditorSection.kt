@@ -203,6 +203,7 @@ fun TimelineEditorSection(
     isPreparedClipLoopTestActive: Boolean,
     onStartPreparedClipLoopTest: (Long, Long) -> Unit,
     onStopPreparedClipLoopTest: () -> Unit,
+    onSeekPreparedClipLoopToPosition: ((Long) -> Unit)? = null,
     onMoveMarkerPosition: (Int, Long) -> Unit,
     onRenameMarker: (Int, String, Long?) -> Unit,
     onDeleteMarker: (Int) -> Unit
@@ -1501,6 +1502,7 @@ private fun GridSetupHost(
     isPreparedClipLoopTestActive: Boolean,
     onStartPreparedClipLoopTest: (Long, Long) -> Unit,
     onStopPreparedClipLoopTest: () -> Unit,
+    onSeekPreparedClipLoopToPosition: ((Long) -> Unit)? = null,
     structurePreviewStopRequest: Int,
     onStructurePreviewActiveChange: (Boolean) -> Unit
 ) {
@@ -1599,6 +1601,7 @@ private fun GridSetupHost(
         isPreparedClipLoopTestActive = isPreparedClipLoopTestActive,
         onStartPreparedClipLoopTest = onStartPreparedClipLoopTest,
         onStopPreparedClipLoopTest = onStopPreparedClipLoopTest,
+        onSeekPreparedClipLoopToPosition = onSeekPreparedClipLoopToPosition,
         structurePreviewStopRequest = structurePreviewStopRequest,
         onStructurePreviewActiveChange = onStructurePreviewActiveChange,
         onTempoDraftChange = { input ->
@@ -1639,6 +1642,7 @@ private fun TimelineMeasuresPlaceholder(
     isPreparedClipLoopTestActive: Boolean,
     onStartPreparedClipLoopTest: (Long, Long) -> Unit,
     onStopPreparedClipLoopTest: () -> Unit,
+    onSeekPreparedClipLoopToPosition: ((Long) -> Unit)?,
     structurePreviewStopRequest: Int,
     onStructurePreviewActiveChange: (Boolean) -> Unit,
     onTempoDraftChange: (String) -> Unit
@@ -1958,6 +1962,22 @@ private fun TimelineMeasuresPlaceholder(
     val isLoopHighlighted =
         (loopReady || hasSegmentLoop || hasSelectedSegmentLoop) &&
             (loopEnabled || isPreparedClipLoopTestActive)
+    val activeLoopRange = remember(
+        selectedSegmentLoopStartMs,
+        selectedSegmentLoopEndMs,
+        segmentInMs,
+        segmentOutMs
+    ) {
+        val rawLoopStartMs = selectedSegmentLoopStartMs ?: segmentInMs
+        val rawLoopEndMs = selectedSegmentLoopEndMs ?: segmentOutMs
+        if (rawLoopStartMs == null || rawLoopEndMs == null || rawLoopStartMs == rawLoopEndMs) {
+            null
+        } else {
+            val loopStartMs = minOf(rawLoopStartMs, rawLoopEndMs).coerceAtLeast(0L)
+            val loopEndMs = maxOf(rawLoopStartMs, rawLoopEndMs).coerceAtLeast(loopStartMs + 1L)
+            loopStartMs to loopEndMs
+        }
+    }
 
     val listenAction: () -> Unit = {
         if (structurePlaybackActive || wavPreviewActive) {
@@ -2488,7 +2508,19 @@ private fun TimelineMeasuresPlaceholder(
             hasError = waveformError,
             revealAnchorRequest = revealSyncPointRequest,
             onToggleExpanded = { isWaveformExpanded = !isWaveformExpanded },
-            onSeekRequested = { seekToMs(it) },
+            onSeekRequested = { requestedPositionMs ->
+                val activeLoop = activeLoopRange
+                if (isPreparedClipLoopTestActive && activeLoop != null && onSeekPreparedClipLoopToPosition != null) {
+                    onSeekPreparedClipLoopToPosition(requestedPositionMs)
+                } else if (isPreparedClipLoopTestActive && activeLoop != null) {
+                    val (loopStartMs, loopEndMs) = activeLoop
+                    val relativeSeekMs = (requestedPositionMs - loopStartMs)
+                        .coerceIn(0L, (loopEndMs - loopStartMs - 1L).coerceAtLeast(0L))
+                    seekToMs(relativeSeekMs)
+                } else {
+                    seekToMs(requestedPositionMs)
+                }
+            },
             onWaveformPanStarted = {
                 lastWaveformFocusMarker = TimelineWaveformFocusMarker.NONE
             },

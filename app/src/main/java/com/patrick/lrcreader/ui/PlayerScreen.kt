@@ -202,6 +202,9 @@ fun PlayerScreen(
     var timelinePreparedLoopRestoreRepeatMode by remember(currentTrackUri) { mutableIntStateOf(Player.REPEAT_MODE_OFF) }
     var timelinePreparedLoopRestorePlayWhenReady by remember(currentTrackUri) { mutableStateOf(false) }
     var isTimelinePreparedLoopActive by remember(currentTrackUri) { mutableStateOf(false) }
+    var timelinePreparedLoopStartMs by remember(currentTrackUri) { mutableLongStateOf(0L) }
+    var timelinePreparedLoopEndMs by remember(currentTrackUri) { mutableLongStateOf(0L) }
+    var timelinePreparedLoopResumeRelativeMs by remember(currentTrackUri) { mutableLongStateOf(0L) }
     var timelineMarkers by remember(currentTrackUri) { mutableStateOf<List<TimelineMarker>>(emptyList()) }
     var timelineLightCues by remember(currentTrackUri) { mutableStateOf<List<LightCue>>(emptyList()) }
     var timelineDmxClipboard by remember { mutableStateOf<TimelineDmxClipboard?>(null) }
@@ -238,11 +241,55 @@ fun PlayerScreen(
     val timelineEditorMarkers = remember(timelineEditorEntries) {
         timelineEditorEntries.map { entry -> entry.marker }
     }
+    fun resolveTimelinePreparedLoopUri(): Uri? {
+        return exoPlayer.currentMediaItem?.localConfiguration?.uri
+            ?: timelinePreparedLoopRestoreItem?.localConfiguration?.uri
+    }
+    fun playTimelinePreparedLoopFrom(relativePositionMs: Long, shouldPlay: Boolean) {
+        val loopStartMs = timelinePreparedLoopStartMs
+        val loopEndMs = timelinePreparedLoopEndMs
+        val loopUri = resolveTimelinePreparedLoopUri() ?: return
+        if (loopEndMs <= loopStartMs) return
+        val safeOutMs = loopEndMs.coerceAtLeast(loopStartMs + 1L)
+        val safeRelativePositionMs = relativePositionMs
+            .coerceIn(0L, (safeOutMs - loopStartMs - 1L).coerceAtLeast(0L))
+        val clippedItem = MediaItem.Builder()
+            .setUri(loopUri)
+            .setClippingConfiguration(
+                MediaItem.ClippingConfiguration.Builder()
+                    .setStartPositionMs(loopStartMs)
+                    .setEndPositionMs(safeOutMs)
+                    .build()
+            )
+            .build()
+
+        timelinePreparedLoopResumeRelativeMs = safeRelativePositionMs
+        runCatching { exoPlayer.stop() }
+        runCatching {
+            exoPlayer.setMediaItem(clippedItem)
+            exoPlayer.repeatMode = Player.REPEAT_MODE_ONE
+            exoPlayer.prepare()
+            if (safeRelativePositionMs > 0L) {
+                exoPlayer.seekTo(safeRelativePositionMs)
+            }
+            if (shouldPlay) {
+                exoPlayer.playWhenReady = true
+                exoPlayer.play()
+            } else {
+                exoPlayer.playWhenReady = false
+                exoPlayer.pause()
+            }
+        }
+        isTimelinePreparedLoopActive = true
+    }
     val stopTimelinePreparedLoopTest = remember(exoPlayer, currentTrackUri) {
         {
             val restoreItem = timelinePreparedLoopRestoreItem
             if (restoreItem == null) {
                 isTimelinePreparedLoopActive = false
+                timelinePreparedLoopStartMs = 0L
+                timelinePreparedLoopEndMs = 0L
+                timelinePreparedLoopResumeRelativeMs = 0L
                 Unit
             } else {
                 runCatching { exoPlayer.stop() }
@@ -263,6 +310,9 @@ fun PlayerScreen(
                 }
                 isTimelinePreparedLoopActive = false
                 timelinePreparedLoopRestoreItem = null
+                timelinePreparedLoopStartMs = 0L
+                timelinePreparedLoopEndMs = 0L
+                timelinePreparedLoopResumeRelativeMs = 0L
             }
         }
     }
@@ -278,26 +328,30 @@ fun PlayerScreen(
                     timelinePreparedLoopRestoreRepeatMode = exoPlayer.repeatMode
                     timelinePreparedLoopRestorePlayWhenReady = exoPlayer.playWhenReady || exoPlayer.isPlaying
                 }
-
-                val clippedItem = MediaItem.Builder()
-                    .setUri(activeUri)
-                    .setClippingConfiguration(
-                        MediaItem.ClippingConfiguration.Builder()
-                            .setStartPositionMs(inMs)
-                            .setEndPositionMs(safeOutMs)
-                            .build()
-                    )
-                    .build()
-
-                runCatching { exoPlayer.stop() }
-                runCatching {
-                    exoPlayer.setMediaItem(clippedItem)
-                    exoPlayer.repeatMode = Player.REPEAT_MODE_ONE
-                    exoPlayer.prepare()
-                    exoPlayer.playWhenReady = true
-                    exoPlayer.play()
-                }
+                timelinePreparedLoopStartMs = inMs
+                timelinePreparedLoopEndMs = safeOutMs
+                timelinePreparedLoopResumeRelativeMs = 0L
+                playTimelinePreparedLoopFrom(
+                    relativePositionMs = 0L,
+                    shouldPlay = true
+                )
                 isTimelinePreparedLoopActive = true
+            }
+        }
+    }
+    val seekTimelinePreparedLoopToPosition = remember(exoPlayer, currentTrackUri) {
+        { absolutePositionMs: Long ->
+            val loopStartMs = timelinePreparedLoopStartMs
+            val loopEndMs = timelinePreparedLoopEndMs
+            if (!isTimelinePreparedLoopActive || loopEndMs <= loopStartMs) {
+                runCatching { seekToMs(absolutePositionMs) }
+                Unit
+            } else {
+                val relativePositionMs = (absolutePositionMs - loopStartMs)
+                    .coerceIn(0L, (loopEndMs - loopStartMs - 1L).coerceAtLeast(0L))
+                timelinePreparedLoopResumeRelativeMs = relativePositionMs
+                runCatching { exoPlayer.seekTo(relativePositionMs) }
+                Unit
             }
         }
     }
@@ -2219,6 +2273,7 @@ fun PlayerScreen(
                 isPreparedClipLoopTestActive = isTimelinePreparedLoopActive,
                 onStartPreparedClipLoopTest = startTimelinePreparedLoopTest,
                 onStopPreparedClipLoopTest = stopTimelinePreparedLoopTest,
+                onSeekPreparedClipLoopToPosition = seekTimelinePreparedLoopToPosition,
                 onMoveMarkerPosition = onMoveMarkerPosition@ { index, targetPositionMs ->
                     val entry = timelineEditorEntries.getOrNull(index) ?: return@onMoveMarkerPosition
                     when (val source = entry.source) {
@@ -2635,6 +2690,9 @@ fun PlayerScreen(
                             isPlaying = isPlaying,
                             onPlayPause = {
                                 if (isPlaying) {
+                                    if (isTimelinePreparedLoopActive) {
+                                        timelinePreparedLoopResumeRelativeMs = exoPlayer.currentPosition
+                                    }
                                     AudioEngine.pause(durationMs = 1000L)
                                     scope.launch {
                                         delay(420)
@@ -2645,7 +2703,17 @@ fun PlayerScreen(
                                 } else {
                                     if (durationMs > 0) {
                                         PlaybackCoordinator.onPlayerStart()
-                                        onIsPlayingChange(true)
+                                        if (isTimelinePreparedLoopActive &&
+                                            timelinePreparedLoopEndMs > timelinePreparedLoopStartMs
+                                        ) {
+                                            playTimelinePreparedLoopFrom(
+                                                relativePositionMs = timelinePreparedLoopResumeRelativeMs,
+                                                shouldPlay = true
+                                            )
+                                            onIsPlayingChange(true)
+                                        } else {
+                                            onIsPlayingChange(true)
+                                        }
                                         centerCurrentLineLazy(listState)
                                     }
                                 }
