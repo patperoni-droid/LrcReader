@@ -88,6 +88,35 @@ LYRICS & CHORDS
 
 👉 No reload required
 
+---
+
+## LYRICS READABILITY MODE
+
+The Player includes a readability display mode for lyrics.
+
+Purpose:
+- improve readability in bright daylight / outdoor live conditions
+- allow the user to anticipate upcoming lyrics
+- avoid depending only on the active highlighted line
+
+Behavior:
+- OFF:
+  - active lyric line is fully visible
+  - inactive lines use reduced opacity
+- ON:
+  - all lyric lines are displayed at full opacity
+  - active line remains identifiable with highlight color, bold weight, and slightly larger size
+
+Rules:
+- must not affect lyrics timing
+- must not affect scroll synchronization
+- must not affect audio playback
+- must be persistent across app sessions
+
+UI:
+- controlled from the top-left Player header icon
+- toggle must be immediate and reliable
+
 ⸻
 
 TIMELINE INTEGRATION
@@ -205,11 +234,36 @@ FORBIDDEN:
 
 ⸻
 
+## SEARCH EXIT AFTER TRACK LAUNCH
+
+When a track is launched from search results, the search UI must close immediately.
+
+Purpose:
+- avoid returning to stale search results during live
+- ensure the playlist/library is visible when the user comes back
+- keep the -10s return workflow usable
+
+Behavior:
+- user searches for a track
+- user launches a track from search results
+- playback starts normally
+- search closes immediately
+- normal playlist/library view is restored
+
+Rules:
+- must not affect playback
+- must not affect Define Next behavior
+- must not clear unrelated playlist state
+- search must remain reusable afterward
+
+⸻
+
 UI REQUIREMENTS
 
 - Must be readable in live conditions
 - Large text (lyrics / chords)
 - Clear visual hierarchy
+- readability mode for outdoor/daylight situations
 
 Must provide:
 - Play / Pause
@@ -274,6 +328,7 @@ Test at least:
 
 - play a single track
 - switch Lyrics ↔ Chords during playback
+- toggle lyrics readability mode during playback
 - define next track during playback
 - auto play sequence
 - crossfade transitions
@@ -281,6 +336,7 @@ Test at least:
 - track with trim IN / OUT
 - track with pitch / speed
 - return -10s behavior (enabled / disabled)
+- launch a track from search and verify search closes
 
 👉 Must be tested on real device
 
