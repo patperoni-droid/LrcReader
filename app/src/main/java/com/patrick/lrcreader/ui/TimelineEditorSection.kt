@@ -1649,8 +1649,6 @@ private fun TimelineMeasuresPlaceholder(
     var showTapTempoHint by remember { mutableStateOf(false) }
     var metronomeEnabled by remember { mutableStateOf(false) }
     var loopEnabled by remember { mutableStateOf(false) }
-    var loopLengthBars by remember { mutableIntStateOf(1) }
-    var loopLengthMenuExpanded by remember { mutableStateOf(false) }
     var revealSyncPointRequest by remember { mutableIntStateOf(0) }
     var preparedLoopStartMs by remember(currentSongId) { mutableStateOf<Long?>(null) }
     val savedAnchorMs = localMeasureAnchorMs
@@ -1960,15 +1958,6 @@ private fun TimelineMeasuresPlaceholder(
     val isLoopHighlighted =
         (loopReady || hasSegmentLoop || hasSelectedSegmentLoop) &&
             (loopEnabled || isPreparedClipLoopTestActive)
-    val loopLengthLabel = stringResource(
-        when (loopLengthBars) {
-            4 -> R.string.timeline_measures_loop_length_4
-            8 -> R.string.timeline_measures_loop_length_8
-            16 -> R.string.timeline_measures_loop_length_16
-            32 -> R.string.timeline_measures_loop_length_32
-            else -> R.string.timeline_measures_loop_length_1
-        }
-    )
 
     val listenAction: () -> Unit = {
         if (structurePlaybackActive || wavPreviewActive) {
@@ -2121,9 +2110,6 @@ private fun TimelineMeasuresPlaceholder(
 
     LaunchedEffect(
         loopEnabled,
-        tempoBpm,
-        savedAnchorMs,
-        loopLengthBars,
         segmentInMs,
         segmentOutMs,
         selectedSegmentLoopStartMs,
@@ -2157,18 +2143,8 @@ private fun TimelineMeasuresPlaceholder(
             onStartPreparedClipLoopTest(loopStartMs, loopEndMs)
             return@LaunchedEffect
         }
-
-        val safeTempoBpm = tempoBpm ?: return@LaunchedEffect
-        val safeAnchorMs = savedAnchorMs ?: return@LaunchedEffect
-        val barDurationMs = ((60_000.0 / safeTempoBpm.toDouble()) * 4.0)
-            .roundToLong()
-            .coerceAtLeast(1L)
-        preparedLoopStartMs = safeAnchorMs
-        onIsPlayingChange(true)
-        onStartPreparedClipLoopTest(
-            safeAnchorMs,
-            safeAnchorMs + (barDurationMs * loopLengthBars.toLong())
-        )
+        loopEnabled = false
+        preparedLoopStartMs = null
     }
 
     LaunchedEffect(metronomeEnabled, isPlaying, tempoBpm, savedAnchorMs) {
@@ -2312,11 +2288,11 @@ private fun TimelineMeasuresPlaceholder(
                         onClick = {
                             val nextLoopEnabled = !loopEnabled
                             loopEnabled = nextLoopEnabled
-                            if (nextLoopEnabled && (savedAnchorMs != null || hasSegmentLoop || hasSelectedSegmentLoop)) {
+                            if (nextLoopEnabled && (hasSegmentLoop || hasSelectedSegmentLoop)) {
                                 revealSyncPointRequest += 1
                             }
                         },
-                        enabled = loopReady || hasSegmentLoop || hasSelectedSegmentLoop,
+                        enabled = hasSegmentLoop || hasSelectedSegmentLoop,
                         modifier = Modifier
                             .border(
                                 width = 1.dp,
@@ -2338,7 +2314,7 @@ private fun TimelineMeasuresPlaceholder(
                     ) {
                         Text(
                             text = "\uD83D\uDD01",
-                            color = if (loopReady || hasSegmentLoop) {
+                            color = if (hasSegmentLoop || hasSelectedSegmentLoop) {
                                 if (isLoopHighlighted) Color(0xFF2ECC71) else Color(0xFFB0BEC5)
                             } else {
                                 Color(0xFF607D8B)
@@ -2347,66 +2323,6 @@ private fun TimelineMeasuresPlaceholder(
                         )
                     }
                     Spacer(modifier = Modifier.weight(1f))
-                }
-                if (!hasSegmentLoop) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box {
-                            TextButton(
-                                onClick = { loopLengthMenuExpanded = true },
-                                enabled = loopReady
-                            ) {
-                                Text(
-                                    text = loopLengthLabel,
-                                    color = if (loopReady) Color(0xFFB0BEC5) else Color(0xFF607D8B),
-                                    fontSize = 12.sp
-                                )
-                            }
-                            DropdownMenu(
-                                expanded = loopLengthMenuExpanded,
-                                onDismissRequest = { loopLengthMenuExpanded = false }
-                            ) {
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.timeline_measures_loop_length_1)) },
-                                    onClick = {
-                                        loopLengthBars = 1
-                                        loopLengthMenuExpanded = false
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.timeline_measures_loop_length_4)) },
-                                    onClick = {
-                                        loopLengthBars = 4
-                                        loopLengthMenuExpanded = false
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.timeline_measures_loop_length_8)) },
-                                    onClick = {
-                                        loopLengthBars = 8
-                                        loopLengthMenuExpanded = false
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.timeline_measures_loop_length_16)) },
-                                    onClick = {
-                                        loopLengthBars = 16
-                                        loopLengthMenuExpanded = false
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.timeline_measures_loop_length_32)) },
-                                    onClick = {
-                                        loopLengthBars = 32
-                                        loopLengthMenuExpanded = false
-                                    }
-                                )
-                            }
-                        }
-                    }
                 }
             }
         }
