@@ -2358,6 +2358,33 @@ private fun TimelineMeasuresPlaceholder(
                     fontWeight = FontWeight.Medium
                 )
             }
+            if (gridEnabled) {
+                Box(
+                    modifier = Modifier
+                        .border(
+                            width = 1.dp,
+                            color = Color.White.copy(alpha = 0.14f),
+                            shape = RoundedCornerShape(4.dp)
+                        )
+                        .background(
+                            color = Color.White.copy(alpha = 0.04f),
+                            shape = RoundedCornerShape(4.dp)
+                        )
+                        .clickable {
+                            val anchorMs = displayedCurrentPositionMs.coerceAtLeast(0L)
+                            localMeasureAnchorMs = anchorMs
+                            onMeasureAnchorHere(anchorMs)
+                        }
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.arrangement_grid_sync_action),
+                        color = Color(0xFFB0BEC5),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
             TimelineSegmentControlLabel(
                 label = stringResource(R.string.timeline_measures_segment_in_action),
                 value = segmentInMs?.let(::formatTimelineMarkerTime)
