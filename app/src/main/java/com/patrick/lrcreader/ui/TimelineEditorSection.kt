@@ -219,6 +219,7 @@ fun TimelineEditorSection(
     var paletteDraft by remember { mutableStateOf("") }
     var showPaletteInput by remember { mutableStateOf(false) }
     var showTimelineConfigProDialog by remember { mutableStateOf(false) }
+    var showArrangementHelpDialog by remember { mutableStateOf(false) }
     var editorMode by remember(startInGridSetup) {
         mutableStateOf(
             if (startInGridSetup) {
@@ -476,9 +477,9 @@ fun TimelineEditorSection(
                 }
                 TimelineEditorMode.GRID_SETUP -> {
                     if (startInGridSetup) {
-                        TextButton(onClick = onOpenArrangement) {
+                        TextButton(onClick = { showArrangementHelpDialog = true }) {
                             Text(
-                                text = stringResource(R.string.arrangement_hub_cutting_action),
+                                text = stringResource(R.string.arrangement_hub_help_action),
                                 color = Color(0xFF80CBC4),
                                 fontSize = 12.sp
                             )
@@ -489,6 +490,30 @@ fun TimelineEditorSection(
         }
 
         Spacer(Modifier.height(8.dp))
+
+        if (showArrangementHelpDialog) {
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { showArrangementHelpDialog = false },
+                title = {
+                    Text(
+                        text = stringResource(R.string.arrangement_help_title),
+                        color = Color.White
+                    )
+                },
+                text = {
+                    Text(
+                        text = stringResource(R.string.arrangement_help_message),
+                        color = Color(0xFFE0E0E0)
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = { showArrangementHelpDialog = false }) {
+                        Text(text = stringResource(R.string.common_close))
+                    }
+                },
+                containerColor = Color(0xFF121212)
+            )
+        }
 
         when (editorMode) {
             TimelineEditorMode.TIMELINE -> {

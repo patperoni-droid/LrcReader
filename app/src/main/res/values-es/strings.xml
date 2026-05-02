@@ -53,6 +53,9 @@
     <string name="arrangement_title">Arrangement</string>
     <string name="arrangement_hub_tempo_action">Tempo</string>
     <string name="arrangement_hub_cutting_action">Corte</string>
+    <string name="arrangement_hub_help_action">Ayuda</string>
+    <string name="arrangement_help_title">Ayuda de arrangement</string>
+    <string name="arrangement_help_message">• IN: define el inicio de la zona.\n• OUT: define el final de la zona.\n• Cuadrícula: activa/desactiva la cuantización.\n• +: añade la parte entre IN y OUT.\n• −: añade las partes exteriores para eliminar virtualmente la zona IN/OUT.\n• Añadir: crea los segmentos según el modo +/−.\n• Escuchar: genera una preescucha WAV del montaje.\n• Exportar: crea la pista final y la importa en la biblioteca.\n• Segmentos: lista de las partes creadas.\n• Estructura: orden final de la pista.\n• Tap Tempo: puedes definir el tempo tocando regularmente el botón previsto para ello.\n• Pulsación larga en la forma de onda: reajusta IN u OUT.\n• Toque en un segmento: escucha ese segmento.\n• Toque en la estructura: escucha desde ese punto.</string>
     <string name="arrangement_hub_tempo_message">Abre ARR desde el reproductor para ajustar el tempo.</string>
     <string name="arrangement_back_to_tempo">Volver a Tempo</string>
     <string name="arrangement_song_id">Canción: %1$s</string>

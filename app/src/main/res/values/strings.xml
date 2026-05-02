@@ -55,6 +55,9 @@
     <string name="arrangement_title">Arrangement</string>
     <string name="arrangement_hub_tempo_action">Tempo</string>
     <string name="arrangement_hub_cutting_action">Découpage</string>
+    <string name="arrangement_hub_help_action">Aide</string>
+    <string name="arrangement_help_title">Aide arrangement</string>
+    <string name="arrangement_help_message">• IN : définit le début de la zone.\n• OUT : définit la fin de la zone.\n• Grille : active/désactive la quantification.\n• + : ajoute la partie entre IN et OUT.\n• − : ajoute les parties extérieures pour supprimer virtuellement la zone IN/OUT.\n• Ajouter : crée les segments selon le mode +/−.\n• Écouter : génère une écoute WAV du montage.\n• Exporter : crée le morceau final et l’importe dans la bibliothèque.\n• Segments : liste des parties créées.\n• Structure : ordre final du morceau.\n• Tap Tempo : vous pouvez définir le tempo en tapant régulièrement sur le bouton prévu à cet effet.\n• Appui long sur waveform : recale IN ou OUT.\n• Clic segment : écoute le segment.\n• Clic structure : écoute à partir de ce point.</string>
     <string name="arrangement_hub_tempo_message">Ouvrez ARR depuis le lecteur pour régler le tempo.</string>
     <string name="arrangement_back_to_tempo">Retour Tempo</string>
     <string name="arrangement_song_id">Morceau : %1$s</string>

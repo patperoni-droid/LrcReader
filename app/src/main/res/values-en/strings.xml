@@ -55,6 +55,9 @@
     <string name="arrangement_title">Arrangement</string>
     <string name="arrangement_hub_tempo_action">Tempo</string>
     <string name="arrangement_hub_cutting_action">Cutting</string>
+    <string name="arrangement_hub_help_action">Help</string>
+    <string name="arrangement_help_title">Arrangement help</string>
+    <string name="arrangement_help_message">• IN: sets the start of the zone.\n• OUT: sets the end of the zone.\n• Grid: enables/disables quantization.\n• +: adds the section between IN and OUT.\n• −: adds the outer sections to virtually remove the IN/OUT zone.\n• Add: creates segments according to +/− mode.\n• Listen: generates a WAV preview of the arrangement.\n• Export: creates the final track and imports it into the library.\n• Segments: list of created parts.\n• Structure: final order of the track.\n• Tap Tempo: you can define the tempo by tapping regularly on the dedicated button.\n• Long-press on waveform: snaps IN or OUT.\n• Tap segment: previews that segment.\n• Tap structure: previews from that point.</string>
     <string name="arrangement_hub_tempo_message">Open ARR from the player to adjust the tempo.</string>
     <string name="arrangement_back_to_tempo">Back to Tempo</string>
     <string name="arrangement_song_id">Song: %1$s</string>
