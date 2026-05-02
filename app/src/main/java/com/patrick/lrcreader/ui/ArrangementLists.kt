@@ -10,7 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -118,24 +118,26 @@ fun ArrangementListCard(
                             if (onItemAdd != null) {
                                 IconButton(
                                     onClick = { onItemAdd(item.id) },
-                                    modifier = Modifier.width(32.dp)
+                                    modifier = Modifier.size(28.dp)
                                 ) {
                                     Icon(
                                         imageVector = Icons.Filled.Add,
                                         contentDescription = stringResource(R.string.timeline_palette_add_action),
-                                        tint = Color(0xFFCFD8DC)
+                                        tint = Color(0xFFCFD8DC),
+                                        modifier = Modifier.size(16.dp)
                                     )
                                 }
                             }
                             if (onItemDelete != null) {
                                 IconButton(
                                     onClick = { onItemDelete(item.id) },
-                                    modifier = Modifier.width(32.dp)
+                                    modifier = Modifier.size(28.dp)
                                 ) {
                                     Icon(
                                         imageVector = Icons.Filled.Delete,
                                         contentDescription = stringResource(R.string.library_delete_action),
-                                        tint = Color(0xFFCFD8DC)
+                                        tint = Color(0xFFFF8A80),
+                                        modifier = Modifier.size(16.dp)
                                     )
                                 }
                             }

@@ -1787,6 +1787,33 @@ private fun TimelineMeasuresPlaceholder(
         }
     }
 
+    fun removeArrangementSegment(targetId: String) {
+        val nextSegments = arrangementSegments.filterNot { it.id == targetId }
+        if (nextSegments.size == arrangementSegments.size) return
+        val nextStructureSegmentIds = structureSegmentIds.filterNot { it == targetId }
+        val structureChanged = nextStructureSegmentIds.size != structureSegmentIds.size
+        arrangementSegments = nextSegments
+        structureSegmentIds = nextStructureSegmentIds
+        if (selectedSegmentLoopId == targetId) {
+            selectedSegmentLoopId = null
+            selectedSegmentLoopStartMs = null
+            selectedSegmentLoopEndMs = null
+            preparedLoopStartMs = null
+            loopEnabled = false
+            if (isPreparedClipLoopTestActive) {
+                onStopPreparedClipLoopTest()
+            }
+        }
+        if (structureChanged && structurePlaybackActive) {
+            stopStructurePreviewPlayback()
+        }
+        nextSegmentIndex = resolveNextTimelineArrangementSegmentIndex(nextSegments)
+        persistArrangementState(
+            nextSegments = nextSegments,
+            nextStructureSegmentIds = nextStructureSegmentIds
+        )
+    }
+
     LaunchedEffect(measureAnchorMs) {
         localMeasureAnchorMs = measureAnchorMs
     }
@@ -2652,11 +2679,21 @@ private fun TimelineMeasuresPlaceholder(
             )
         }
         if (isPreviewGenerating) {
-            Text(
-                text = stringResource(R.string.timeline_tempo_preview_generating),
-                color = Color(0xFFB0BEC5),
-                fontSize = 12.sp
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(16.dp),
+                    strokeWidth = 2.dp,
+                    color = Color(0xFFB0BEC5)
+                )
+                Text(
+                    text = stringResource(R.string.timeline_tempo_preview_generating),
+                    color = Color(0xFFB0BEC5),
+                    fontSize = 12.sp
+                )
+            }
         }
         if (isFinalExporting) {
             Text(
@@ -2704,7 +2741,9 @@ private fun TimelineMeasuresPlaceholder(
                         persistArrangementState(nextStructureSegmentIds = nextStructureSegmentIds)
                     }
                 },
-                onItemDelete = null,
+                onItemDelete = { segmentId ->
+                    removeArrangementSegment(segmentId)
+                },
                 onItemLongClick = { segmentId ->
                     segmentOptionsTargetId = segmentId
                 }
@@ -3021,20 +3060,7 @@ private fun TimelineMeasuresPlaceholder(
                         color = Color(0xFFFF8A80),
                         modifier = Modifier.clickable {
                             val targetId = segmentOptionsTargetId ?: return@clickable
-                            val nextSegments = arrangementSegments.filterNot { it.id == targetId }
-                            val nextStructureSegmentIds = structureSegmentIds.filterNot { it == targetId }
-                            arrangementSegments = nextSegments
-                            structureSegmentIds = nextStructureSegmentIds
-                            if (selectedSegmentLoopId == targetId) {
-                                selectedSegmentLoopId = null
-                                selectedSegmentLoopStartMs = null
-                                selectedSegmentLoopEndMs = null
-                            }
-                            nextSegmentIndex = resolveNextTimelineArrangementSegmentIndex(nextSegments)
-                            persistArrangementState(
-                                nextSegments = nextSegments,
-                                nextStructureSegmentIds = nextStructureSegmentIds
-                            )
+                            removeArrangementSegment(targetId)
                             segmentOptionsTargetId = null
                         }
                     )

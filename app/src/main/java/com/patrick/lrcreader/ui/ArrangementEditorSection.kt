@@ -194,6 +194,34 @@ fun ArrangementEditorSection(
         }
     }
 
+    fun removeArrangementSegment(targetId: String) {
+        val targetIndex = segments.indexOfFirst { it.id == targetId }
+        if (targetIndex < 0) return
+        val removedSegment = segments.removeAt(targetIndex)
+        val structureChanged = structureSegmentIds.removeAll { it == removedSegment.id }
+        if (loopActive && loopStartMs == removedSegment.startMs && loopEndMs == removedSegment.endMs) {
+            selectedSong?.audioPath?.let { audioPath ->
+                prepareArrangementFullTrack(
+                    player = arrangementPlayer,
+                    audioPath = audioPath,
+                    positionMs = removedSegment.startMs.coerceAtLeast(0L),
+                    shouldPlay = false
+                )
+            }
+            loopActive = false
+            structurePlaybackActive = false
+            structurePlaybackIndex = -1
+            structureFadeOutIndex = -1
+        } else if (structureChanged && structurePlaybackActive) {
+            arrangementPlayer.pause()
+            arrangementPlayer.clearMediaItems()
+            structurePlaybackActive = false
+            structurePlaybackIndex = -1
+            structureFadeOutIndex = -1
+        }
+        persistArrangementState()
+    }
+
     fun persistGridSyncPointIfMissing(syncPointMs: Long) {
         val songId = selectedSongId?.trim().orEmpty()
         if (!gridEnabled || songId.isEmpty() || gridSyncPointMs != null) return
@@ -923,7 +951,9 @@ fun ArrangementEditorSection(
                         persistArrangementState()
                     }
                 },
-                onItemDelete = null,
+                onItemDelete = { segmentId ->
+                    removeArrangementSegment(segmentId)
+                },
                 onItemLongClick = { segmentId ->
                     segmentOptionsTargetId = segmentId
                 }
@@ -1127,26 +1157,7 @@ fun ArrangementEditorSection(
                         color = Color(0xFFFF8A80),
                         modifier = Modifier.clickable {
                             val targetId = segmentOptionsTargetId ?: return@clickable
-                            val targetIndex = segments.indexOfFirst { it.id == targetId }
-                            if (targetIndex >= 0) {
-                                val removedSegment = segments.removeAt(targetIndex)
-                                structureSegmentIds.removeAll { it == removedSegment.id }
-                                if (loopActive && loopStartMs == removedSegment.startMs && loopEndMs == removedSegment.endMs) {
-                                    selectedSong?.audioPath?.let { audioPath ->
-                                        prepareArrangementFullTrack(
-                                            player = arrangementPlayer,
-                                            audioPath = audioPath,
-                                            positionMs = removedSegment.startMs.coerceAtLeast(0L),
-                                            shouldPlay = false
-                                        )
-                                    }
-                                    loopActive = false
-                                    structurePlaybackActive = false
-                                    structurePlaybackIndex = -1
-                                    structureFadeOutIndex = -1
-                                }
-                                persistArrangementState()
-                            }
+                            removeArrangementSegment(targetId)
                             segmentOptionsTargetId = null
                         }
                     )

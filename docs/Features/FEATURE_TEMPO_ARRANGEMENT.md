@@ -114,6 +114,33 @@ Bouton `Ajouter` :
 - utilisation de **MediaItems clipés**
 - suppression du `seek` manuel
 
+### Preview WAV (Écouter)
+
+Le bouton “Écouter” génère une preview audio du montage.
+
+Comportement :
+
+- un seul fichier temporaire est utilisé :
+  `preview_arrangement.wav`
+- situé dans le cache de l’application
+
+Optimisations :
+
+- si la structure n’a pas changé :
+  → le fichier existant est réutilisé (pas de recalcul)
+- sinon :
+  → le fichier est régénéré
+
+Lifecycle :
+
+- le fichier reste disponible pour réécoute
+- il est supprimé automatiquement à la sortie de la page Arrangements
+
+Objectif :
+
+- éviter toute accumulation de fichiers WAV
+- permettre une réécoute fluide
+- garantir un comportement propre et prévisible
 ---
 
 ### Correction audio
