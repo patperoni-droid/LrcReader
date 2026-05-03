@@ -1,8 +1,10 @@
 package com.patrick.lrcreader.ui
 
+import android.content.ActivityNotFoundException
 import com.patrick.lrcreader.core.MidiOutput
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -49,6 +51,7 @@ import androidx.documentfile.provider.DocumentFile
 import com.patrick.lrcreader.core.AppLanguagePrefs
 import com.patrick.lrcreader.core.AutoReturnPrefs
 import com.patrick.lrcreader.core.BackupManager
+import com.patrick.lrcreader.core.EditionConfig
 import com.patrick.lrcreader.core.LegacyLibraryVisibilityPrefs
 import com.patrick.lrcreader.core.LightIndicatorPrefs
 import com.patrick.lrcreader.core.UiEntryPrefs
@@ -285,6 +288,7 @@ private fun MoreRootScreen(
         mutableStateOf(MoreLiveSongsExportPrefs.getTreeUri(context))
     }
     var showLanguageDialog by remember { mutableStateOf(false) }
+    var showExportProDialog by remember { mutableStateOf(false) }
     var selectedLanguageTag by remember { mutableStateOf(AppLanguagePrefs.getSavedLanguageTag(context)) }
     var isExportingLiveSongs by remember { mutableStateOf(false) }
     var exportLiveSongsDone by remember { mutableStateOf(0) }
@@ -324,6 +328,10 @@ private fun MoreRootScreen(
     }
     val sLiveSongsExportNoSongs = stringResource(R.string.more_live_songs_export_no_songs)
     val sLiveSongsExportFailed = stringResource(R.string.more_live_songs_export_failed)
+    val sExportProDialogTitle = stringResource(R.string.export_pro_dialog_title)
+    val sExportProDialogMessage = stringResource(R.string.export_pro_dialog_message)
+    val sUpgradeToPro = stringResource(R.string.library_upgrade_to_pro)
+    val isLite = EditionConfig.isLite
     val workspaceSnapshot = remember(context) { WorkspaceResolver.resolve(context) }
     val workingFolderPath = remember(workspaceSnapshot) {
         workspaceSnapshot.workspaceRootUri?.let { uri ->
@@ -344,6 +352,24 @@ private fun MoreRootScreen(
         AppCompatDelegate.setApplicationLocales(locales)
         selectedLanguageTag = languageTag
         showLanguageDialog = false
+    }
+
+    val openUpgradeToPro: () -> Unit = remember(context) {
+        {
+            val marketIntent = Intent(
+                Intent.ACTION_VIEW,
+                Uri.parse("market://search?q=Stage Music Player Pro")
+            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val webIntent = Intent(
+                Intent.ACTION_VIEW,
+                Uri.parse("https://play.google.com/store/search?q=Stage%20Music%20Player%20Pro&c=apps")
+            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            try {
+                context.startActivity(marketIntent)
+            } catch (_: ActivityNotFoundException) {
+                context.startActivity(webIntent)
+            }
+        }
     }
 
     val exportLiveSongsFolderLauncher = rememberLauncherForActivityResult(
@@ -496,6 +522,10 @@ private fun MoreRootScreen(
                         subtitle = stringResource(R.string.more_item_export_live_songs_subtitle),
                         onClick = {
                             if (isExportingLiveSongs) return@SettingsItem
+                            if (isLite) {
+                                showExportProDialog = true
+                                return@SettingsItem
+                            }
                             exportLiveSongsFolderLauncher.launch(exportLiveSongsTreeUri)
                         }
                     )
@@ -667,6 +697,29 @@ private fun MoreRootScreen(
             },
             confirmButton = {
                 TextButton(onClick = { exportLiveSongsResultMessage = null }) {
+                    Text(text = stringResource(R.string.common_close))
+                }
+            }
+        )
+    }
+
+    if (showExportProDialog) {
+        AlertDialog(
+            onDismissRequest = { showExportProDialog = false },
+            title = { Text(text = sExportProDialogTitle) },
+            text = { Text(text = sExportProDialogMessage) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showExportProDialog = false
+                        openUpgradeToPro()
+                    }
+                ) {
+                    Text(text = sUpgradeToPro)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showExportProDialog = false }) {
                     Text(text = stringResource(R.string.common_close))
                 }
             }

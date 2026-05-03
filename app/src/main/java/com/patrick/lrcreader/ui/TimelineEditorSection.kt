@@ -218,6 +218,8 @@ fun TimelineEditorSection(
     val proMessage = stringResource(R.string.timeline_pro_only)
     val sTimelineProDialogTitle = stringResource(R.string.timeline_config_pro_dialog_title)
     val sTimelineProDialogMessage = stringResource(R.string.timeline_config_pro_dialog_message)
+    val sExportProDialogTitle = stringResource(R.string.arrangement_assemble_pro_dialog_title)
+    val sExportProDialogMessage = stringResource(R.string.arrangement_assemble_pro_dialog_message)
     val sUpgradeToPro = stringResource(R.string.library_upgrade_to_pro)
     var renameIndex by remember(markers) { mutableStateOf<Int?>(null) }
     var renameText by remember(markers) { mutableStateOf("") }
@@ -225,6 +227,7 @@ fun TimelineEditorSection(
     var paletteDraft by remember { mutableStateOf("") }
     var showPaletteInput by remember { mutableStateOf(false) }
     var showTimelineConfigProDialog by remember { mutableStateOf(false) }
+    var showArrangementExportProDialog by remember { mutableStateOf(false) }
     var showArrangementHelpDialog by remember { mutableStateOf(false) }
     var editorMode by remember(startInGridSetup) {
         mutableStateOf(
@@ -1000,6 +1003,40 @@ fun TimelineEditorSection(
             containerColor = Color(0xFF222222)
         )
     }
+
+    if (showArrangementExportProDialog) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showArrangementExportProDialog = false },
+            title = {
+                Text(
+                    text = sExportProDialogTitle,
+                    color = Color.White
+                )
+            },
+            text = {
+                Text(
+                    text = sExportProDialogMessage,
+                    color = Color.White
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showArrangementExportProDialog = false
+                        openUpgradeToPro()
+                    }
+                ) {
+                    Text(sUpgradeToPro, color = Color(0xFF80CBC4))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showArrangementExportProDialog = false }) {
+                    Text(stringResource(R.string.common_close), color = Color(0xFFB0BEC5))
+                }
+            },
+            containerColor = Color(0xFF222222)
+        )
+    }
 }
 
 @Composable
@@ -1684,6 +1721,10 @@ private fun TimelineMeasuresPlaceholder(
         )
     }
     val context = LocalContext.current
+    val isLite = EditionConfig.isLite
+    val sExportProDialogTitle = stringResource(R.string.arrangement_assemble_pro_dialog_title)
+    val sExportProDialogMessage = stringResource(R.string.arrangement_assemble_pro_dialog_message)
+    val sUpgradeToPro = stringResource(R.string.library_upgrade_to_pro)
     val focusManager = LocalFocusManager.current
     val scope = rememberCoroutineScope()
     val smpLibraryScanner = remember(context) { SmpLibraryScanner(context.applicationContext) }
@@ -1726,6 +1767,7 @@ private fun TimelineMeasuresPlaceholder(
     var renameSegmentId by remember(currentSongId) { mutableStateOf<String?>(null) }
     var renameDraft by remember(currentSongId) { mutableStateOf(TextFieldValue("")) }
     var segmentOptionsTargetId by remember(currentSongId) { mutableStateOf<String?>(null) }
+    var showArrangementExportProDialog by remember(currentSongId) { mutableStateOf(false) }
     var showExportNameDialog by remember(currentSongId) { mutableStateOf(false) }
     var exportNameDraft by remember(currentSongId) { mutableStateOf(TextFieldValue("")) }
     var isExportNameLoading by remember(currentSongId) { mutableStateOf(false) }
@@ -2713,6 +2755,10 @@ private fun TimelineMeasuresPlaceholder(
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier
                     .clickable(enabled = !isFinalExporting) {
+                        if (isLite) {
+                            showArrangementExportProDialog = true
+                            return@clickable
+                        }
                         showExportNameDialog = true
                         isExportNameLoading = true
                         exportNameDraft = TextFieldValue("")
@@ -3130,6 +3176,52 @@ private fun TimelineMeasuresPlaceholder(
                     onClick = { showExportNameDialog = false }
                 ) {
                     Text(text = stringResource(R.string.common_cancel))
+                }
+            },
+            containerColor = Color(0xFF121212)
+        )
+    }
+
+    if (showArrangementExportProDialog) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showArrangementExportProDialog = false },
+            title = {
+                Text(
+                    text = sExportProDialogTitle,
+                    color = Color.White
+                )
+            },
+            text = {
+                Text(
+                    text = sExportProDialogMessage,
+                    color = Color.White
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showArrangementExportProDialog = false
+                        val marketIntent = Intent(
+                            Intent.ACTION_VIEW,
+                            Uri.parse("market://search?q=Stage Music Player Pro")
+                        ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        val webIntent = Intent(
+                            Intent.ACTION_VIEW,
+                            Uri.parse("https://play.google.com/store/search?q=Stage%20Music%20Player%20Pro&c=apps")
+                        ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        try {
+                            context.startActivity(marketIntent)
+                        } catch (_: ActivityNotFoundException) {
+                            context.startActivity(webIntent)
+                        }
+                    }
+                ) {
+                    Text(sUpgradeToPro, color = Color(0xFF80CBC4))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showArrangementExportProDialog = false }) {
+                    Text(stringResource(R.string.common_close), color = Color(0xFFB0BEC5))
                 }
             },
             containerColor = Color(0xFF121212)

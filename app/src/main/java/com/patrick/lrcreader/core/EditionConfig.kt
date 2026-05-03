@@ -6,7 +6,7 @@ enum class AppEdition {
 }
 
 object EditionConfig {
-    val current: AppEdition = AppEdition.PRO
+    val current: AppEdition = AppEdition.LITE
     const val isDmxUiEnabled: Boolean = false
 
     val isLite: Boolean
