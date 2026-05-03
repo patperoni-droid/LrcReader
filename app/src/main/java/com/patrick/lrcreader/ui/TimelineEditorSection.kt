@@ -22,8 +22,10 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Arrangement
@@ -505,10 +507,15 @@ fun TimelineEditorSection(
                     )
                 },
                 text = {
-                    Text(
-                        text = stringResource(R.string.arrangement_help_message),
-                        color = Color(0xFFE0E0E0)
+                    Column(
+                        modifier = Modifier.verticalScroll(rememberScrollState())
                     )
+                    {
+                        Text(
+                            text = stringResource(R.string.arrangement_help_message),
+                            color = Color(0xFFE0E0E0)
+                        )
+                    }
                 },
                 confirmButton = {
                     TextButton(onClick = { showArrangementHelpDialog = false }) {

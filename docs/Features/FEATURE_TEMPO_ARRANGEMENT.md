@@ -10,6 +10,7 @@ Permettre à l’utilisateur de :
 - supprimer rapidement une partie (pont, intro, etc.)
 - réorganiser le morceau pour le live
 - prévisualiser le résultat sans coupure
+- vérifier précisément les transitions
 - exporter une version finale propre
 - sauvegarder l’ensemble de sa bibliothèque live
 
@@ -33,19 +34,17 @@ Permettre à l’utilisateur de :
 
 #### Mode +
 
-IN → OUT
-
+IN → OUT  
 → sélection classique  
-→ crée **1 segment**
+→ crée 1 segment
 
 ---
 
 #### Mode -
 
-extérieur de IN → OUT
-
+extérieur de IN → OUT  
 → permet de supprimer une partie  
-→ crée **2 segments** :
+→ crée 2 segments :
 
 0 → IN  
 OUT → fin
@@ -74,14 +73,26 @@ Segment A → Segment B → Segment C
 
 ### Recalage précis
 
-- **long press sur waveform**
+- long press sur waveform
   → recale IN ou OUT (le plus proche)
+
+---
+
+### Grille rythmique
 
 - Grille ON :
   → quantification rythmique
 
 - Grille OFF :
   → position libre
+
+#### Sync grille
+
+- bouton Sync
+- recale la grille sur la position actuelle de lecture
+- conserve le tempo
+
+👉 permet d’ajuster la grille à volonté
 
 ---
 
@@ -101,52 +112,20 @@ Segment A → Segment B → Segment C
 
 ### Ajout de segments
 
-Bouton `Ajouter` :
+Bouton Ajouter :
 
-- mode `+` → 1 segment (IN → OUT)
-- mode `-` → 2 segments (extérieur)
+- mode + → 1 segment (IN → OUT)
+- mode - → 2 segments (extérieur)
 
 ---
 
-### Lecture
+### Suppression rapide
 
-- preview structure via **player secondaire**
-- utilisation de **MediaItems clipés**
-- suppression du `seek` manuel
+- bouton suppression directement dans la liste Segments
+- suppression instantanée
+- nettoyage automatique dans Structure
 
-### Preview WAV (Écouter)
-
-Le bouton “Écouter” génère une preview audio du montage.
-
-Comportement :
-
-- un seul fichier temporaire est utilisé :
-  `preview_arrangement.wav`
-- situé dans le cache de l’application
-
-Optimisations :
-
-- si la structure n’a pas changé :
-  → le fichier existant est réutilisé (pas de recalcul)
-- sinon :
-  → le fichier est régénéré
-
-Lifecycle :
-
-- le fichier reste disponible pour réécoute
-- il est supprimé automatiquement à la sortie de la page Arrangements
-
-Objectif :
-
-- éviter toute accumulation de fichiers WAV
-- permettre une réécoute fluide
-- garantir un comportement propre et prévisible
----
-
-### Correction audio
-
-- micro fade (~12 ms)
-  → atténue les clics aux transitions
+👉 remplace l’ancien appui long
 
 ---
 
@@ -155,8 +134,38 @@ Objectif :
 ### Principe
 
 - player secondaire local
-- playlist de segments clipés
-- lecture fluide
+- playlist de segments clipés (MediaItems)
+- lecture fluide basée sur ExoPlayer
+
+---
+
+### Tête de lecture structure
+
+- une tête de lecture est affichée
+- suit la lecture réelle
+- identifie le segment courant
+
+---
+
+### Seek structure
+
+- déplacement libre dans la structure
+- accès direct aux transitions
+- pas de blocage par la lecture
+
+👉 permet de travailler rapidement les enchaînements
+
+---
+
+### Loop IN / OUT
+
+- boucle basée sur clip ExoPlayer
+- comportement corrigé :
+
+✔ seek libre dans la boucle  
+✔ reprise correcte après pause  
+✔ loop toujours active  
+✔ retour IN uniquement en progression naturelle
 
 ---
 
@@ -164,7 +173,70 @@ Objectif :
 
 ✔ ne pas toucher player principal  
 ✔ ne pas casser timeMs  
-✔ isoler la preview
+✔ isoler la preview  
+✔ aucun seek forcé non maîtrisé
+
+---
+
+## 🎧 PREVIEW WAV (ÉCOUTER)
+
+### Principe
+
+Le bouton “Écouter” génère une preview audio du montage final.
+
+---
+
+### Fichier
+
+- un seul fichier temporaire :
+  preview_arrangement.wav
+- stocké dans le cache
+
+---
+
+### Optimisations
+
+- si la structure n’a pas changé :
+  → réutilisation du fichier existant
+- sinon :
+  → régénération
+
+---
+
+### Lifecycle
+
+- fichier conservé pendant la session
+- supprimé automatiquement à la sortie de la page
+
+👉 évite toute accumulation
+
+---
+
+### Seek dans le WAV
+
+- barre dédiée “Écoute du montage”
+- affichage temps courant / durée
+- seek libre dans le WAV
+
+👉 permet :
+
+- accès direct aux transitions (ex : 3:30)
+- validation rapide sans écouter depuis le début
+
+---
+
+### Objectif
+
+text Validation rapide + fidèle du rendu final
+
+---
+
+## 🔊 CORRECTION AUDIO
+
+- micro fade (~12 ms)
+  → atténue les clics aux transitions
+
+⚠️ peut introduire une légère variation de volume
 
 ---
 
@@ -176,27 +248,29 @@ Flux :
 
 Arrangement → WAV → SMP → runtime
 
-- rendu WAV final via `ArrangementWavRenderer`
+- rendu WAV final via ArrangementWavRenderer
 - conversion en SMP
 - import automatique dans la bibliothèque
 
-👉 permet d’obtenir un morceau directement exploitable
+👉 morceau immédiatement exploitable
 
 ---
 
 ### Export global (sauvegarde)
 
-Accessible depuis **Paramètres**
+Accessible depuis Paramètres
 
 Fonction :
 
 - export de tous les morceaux live (runtime)
-- création d’un `.smp` à jour pour chaque morceau
-- choix du dossier utilisateur via SAF
-- création automatique d’un sous-dossier :
+- création d’un .smp à jour pour chaque morceau
+- choix du dossier via SAF
+- dossier automatique :
   Export_YYYY-MM-DD_HH-mm
 
-Contenu :
+---
+
+### Contenu
 
 - audio
 - paroles
@@ -209,6 +283,39 @@ Contenu :
 
 ### Objectif export global
 
-```text
-Sauvegarder tout le travail utilisateur
-et permettre le transfert vers un autre appareil
+text Sauvegarder tout le travail utilisateur et permettre le transfert vers un autre appareil
+
+---
+
+## 🧠 PRINCIPES CLÉS
+
+- ExoPlayer = source de vérité (timeMs)
+- aucun traitement lourd en live
+- aucun seek utilisé pour simuler une structure
+- structure basée sur segments préparés
+- séparation claire :
+  - preview structure (rapide)
+  - preview WAV (fidèle)
+  - export (final)
+
+---
+
+## 🛑 INTERDIT
+
+- seekTo pour simuler une structure
+- logique cachée ou automatique imprévisible
+- accumulation de fichiers temporaires
+- dépendance UI pour logique audio
+
+---
+
+## 🏁 OBJECTIF FINAL
+
+Créer un système :
+
+- rapide à éditer
+- précis
+- fiable en live
+- sans friction utilisateur
+
+👉 un véritable outil de travail musica
