@@ -476,7 +476,7 @@ fun LyricsEditorSection(
             }
         }
         applyEditingLinesWithUndo(nextLines)
-        selectedSyncLineIndices = setOf(firstIndex)
+        selectedSyncLineIndices = emptySet()
     }
 
     @Composable
@@ -1032,12 +1032,8 @@ fun LyricsEditorSection(
                                             modifier = Modifier.pointerInput(index, line.text) {
                                                 detectTapGestures(
                                                     onTap = {
-                                                        if (selectedSyncLineIndices.isNotEmpty()) {
-                                                            toggleSyncLineSelection(index)
-                                                        } else {
-                                                            lineMenuIndex = index
-                                                            lineMenuText = line.text
-                                                        }
+                                                        lineMenuIndex = index
+                                                        lineMenuText = line.text
                                                     },
                                                     onLongPress = {
                                                         if (selectedSyncLineIndices.isEmpty()) {
