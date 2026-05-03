@@ -783,8 +783,18 @@ fun LyricsEditorSection(
                         OutlinedTextField(
                             value = rawTextFieldValue,
                             onValueChange = { value ->
-                                rawTextFieldValue = value
-                                onRawLyricsTextChange(value.text)
+                                if (rawContainsLrcTimestamps(value.text)) {
+                                    val parsed = parseLrc(value.text).filter { it.text.isNotBlank() }
+                                    if (parsed.isNotEmpty()) {
+                                        applyEditingLinesWithUndo(parsed)
+                                    } else {
+                                        rawTextFieldValue = value
+                                        onRawLyricsTextChange(value.text)
+                                    }
+                                } else {
+                                    rawTextFieldValue = value
+                                    onRawLyricsTextChange(value.text)
+                                }
                             },
                             modifier = Modifier
                                 .fillMaxWidth()
