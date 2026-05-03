@@ -524,6 +524,8 @@
     <string name="timeline_measures_signature_default">4/4</string>
     <string name="timeline_tempo_action_add">Agregar</string>
     <string name="timeline_tempo_action_listen">Escuchar</string>
+    <string name="timeline_tempo_preview_wave_title">Escucha del montaje</string>
+    <string name="timeline_tempo_preview_wave_position">%1$s / %2$s</string>
     <string name="timeline_tempo_action_export">Exportar</string>
     <string name="timeline_tempo_preview_generating">Preparando la escucha…</string>
     <string name="timeline_tempo_export_generating">Generando la exportación…</string>

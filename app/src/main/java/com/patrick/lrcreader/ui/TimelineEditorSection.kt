@@ -59,6 +59,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.animation.core.animateDpAsState
@@ -1655,8 +1656,15 @@ private fun TimelineMeasuresPlaceholder(
     var loopEnabled by remember { mutableStateOf(false) }
     var revealSyncPointRequest by remember { mutableIntStateOf(0) }
     var preparedLoopStartMs by remember(currentSongId) { mutableStateOf<Long?>(null) }
+    var structurePlaybackActive by remember(currentSongId) { mutableStateOf(false) }
+    var structurePlaybackIndex by remember(currentSongId) { mutableIntStateOf(-1) }
+    var structurePlaybackAbsolutePositionMs by remember(currentSongId) {
+        mutableLongStateOf(currentPositionMs.coerceAtLeast(0L))
+    }
     val savedAnchorMs = localMeasureAnchorMs
-    val displayedCurrentPositionMs = if (isPreparedClipLoopTestActive && preparedLoopStartMs != null) {
+    val displayedCurrentPositionMs = if (structurePlaybackActive) {
+        structurePlaybackAbsolutePositionMs.coerceAtLeast(0L)
+    } else if (isPreparedClipLoopTestActive && preparedLoopStartMs != null) {
         preparedLoopStartMs!! + currentPositionMs.coerceAtLeast(0L)
     } else {
         currentPositionMs
@@ -1687,6 +1695,8 @@ private fun TimelineMeasuresPlaceholder(
     var previewRenderedFile by remember(currentSongId) { mutableStateOf<File?>(null) }
     var previewRenderedSignature by remember(currentSongId) { mutableStateOf<String?>(null) }
     var wavPreviewActive by remember(currentSongId) { mutableStateOf(false) }
+    var wavPreviewPositionMs by remember(currentSongId) { mutableLongStateOf(0L) }
+    var wavPreviewDurationMs by remember(currentSongId) { mutableLongStateOf(0L) }
     var isPreviewGenerating by remember(currentSongId) { mutableStateOf(false) }
     var waveformPeaks by remember(currentSongId) { mutableStateOf<List<Float>>(emptyList()) }
     var waveformDurationMs by remember(currentSongId) { mutableIntStateOf(0) }
@@ -1702,8 +1712,6 @@ private fun TimelineMeasuresPlaceholder(
     var selectedSegmentLoopId by remember(currentSongId) { mutableStateOf<String?>(null) }
     var selectedSegmentLoopStartMs by remember(currentSongId) { mutableStateOf<Long?>(null) }
     var selectedSegmentLoopEndMs by remember(currentSongId) { mutableStateOf<Long?>(null) }
-    var structurePlaybackActive by remember(currentSongId) { mutableStateOf(false) }
-    var structurePlaybackIndex by remember(currentSongId) { mutableIntStateOf(-1) }
     var arrangementName by remember(currentSongId) { mutableStateOf("Arrangement 1") }
     var arrangementSegments by remember(currentSongId) { mutableStateOf<List<ArrangementSegmentData>>(emptyList()) }
     var structureSegmentIds by remember(currentSongId) { mutableStateOf<List<String>>(emptyList()) }
@@ -1727,7 +1735,10 @@ private fun TimelineMeasuresPlaceholder(
         runCatching { structurePreviewPlayer.volume = 1f }
         structurePlaybackActive = false
         structurePlaybackIndex = -1
+        structurePlaybackAbsolutePositionMs = currentPositionMs.coerceAtLeast(0L)
         wavPreviewActive = false
+        wavPreviewPositionMs = 0L
+        wavPreviewDurationMs = 0L
         isPreviewGenerating = false
         onStructurePreviewActiveChange(false)
     }
@@ -1757,6 +1768,8 @@ private fun TimelineMeasuresPlaceholder(
             onIsPlayingChange(false)
         }
         wavPreviewActive = true
+        wavPreviewPositionMs = 0L
+        wavPreviewDurationMs = 0L
         onStructurePreviewActiveChange(true)
         structurePreviewPlayer.pause()
         structurePreviewPlayer.clearMediaItems()
@@ -1861,6 +1874,9 @@ private fun TimelineMeasuresPlaceholder(
             selectedSegmentLoopEndMs = null
             structurePlaybackActive = false
             structurePlaybackIndex = -1
+            structurePlaybackAbsolutePositionMs = 0L
+            wavPreviewPositionMs = 0L
+            wavPreviewDurationMs = 0L
             return@LaunchedEffect
         }
 
@@ -1923,6 +1939,9 @@ private fun TimelineMeasuresPlaceholder(
         selectedSegmentLoopEndMs = null
         structurePlaybackActive = false
         structurePlaybackIndex = -1
+        structurePlaybackAbsolutePositionMs = 0L
+        wavPreviewPositionMs = 0L
+        wavPreviewDurationMs = 0L
         suppressNextLoopAutoplay = false
     }
 
@@ -1976,6 +1995,33 @@ private fun TimelineMeasuresPlaceholder(
             val loopStartMs = minOf(rawLoopStartMs, rawLoopEndMs).coerceAtLeast(0L)
             val loopEndMs = maxOf(rawLoopStartMs, rawLoopEndMs).coerceAtLeast(loopStartMs + 1L)
             loopStartMs to loopEndMs
+        }
+    }
+    fun seekStructurePreviewToAbsolutePosition(targetPositionMs: Long) {
+        if (!structurePlaybackActive) {
+            seekToMs(targetPositionMs)
+            return
+        }
+        val targetSegmentIndex = structurePlaybackSegments.indexOfFirst { segment ->
+            val startMs = minOf(segment.startMs, segment.endMs)
+            val endMs = maxOf(segment.startMs, segment.endMs)
+            targetPositionMs in startMs..endMs
+        }
+        if (targetSegmentIndex < 0) {
+            return
+        }
+        val targetSegment = structurePlaybackSegments[targetSegmentIndex]
+        val segmentStartMs = minOf(targetSegment.startMs, targetSegment.endMs).coerceAtLeast(0L)
+        val segmentEndMs = maxOf(targetSegment.startMs, targetSegment.endMs).coerceAtLeast(segmentStartMs + 1L)
+        val relativePositionMs = (targetPositionMs - segmentStartMs)
+            .coerceIn(0L, (segmentEndMs - segmentStartMs - 1L).coerceAtLeast(0L))
+        structurePlaybackIndex = targetSegmentIndex
+        structurePlaybackAbsolutePositionMs = segmentStartMs + relativePositionMs
+        runCatching { structurePreviewPlayer.seekTo(targetSegmentIndex, relativePositionMs) }
+        runCatching {
+            if (!structurePreviewPlayer.isPlaying && structurePlaybackActive) {
+                structurePreviewPlayer.play()
+            }
         }
     }
 
@@ -2078,15 +2124,36 @@ private fun TimelineMeasuresPlaceholder(
             stopStructurePreviewPlayback()
         }
     }
-    LaunchedEffect(structurePlaybackActive, structurePreviewPlayer) {
-        if (!structurePlaybackActive) {
+    LaunchedEffect(structurePlaybackActive, wavPreviewActive, structurePreviewPlayer) {
+        if (!structurePlaybackActive && !wavPreviewActive) {
             runCatching { structurePreviewPlayer.volume = 1f }
             return@LaunchedEffect
         }
-        while (structurePlaybackActive) {
+        while (structurePlaybackActive || wavPreviewActive) {
+            val currentMediaItemIndex = runCatching {
+                structurePreviewPlayer.currentMediaItemIndex
+            }.getOrDefault(structurePlaybackIndex).coerceAtLeast(0)
+            if (structurePlaybackActive) {
+                structurePlaybackIndex = currentMediaItemIndex
+            }
             val isSecondaryPlaying = runCatching { structurePreviewPlayer.isPlaying }.getOrDefault(false)
             val itemDurationMs = runCatching { structurePreviewPlayer.duration }.getOrDefault(0L)
             val itemPositionMs = runCatching { structurePreviewPlayer.currentPosition }.getOrDefault(0L)
+            if (structurePlaybackActive) {
+                structurePlaybackSegments.getOrNull(currentMediaItemIndex)?.let { segment ->
+                    val segmentStartMs = minOf(segment.startMs, segment.endMs).coerceAtLeast(0L)
+                    val segmentEndMs = maxOf(segment.startMs, segment.endMs).coerceAtLeast(segmentStartMs + 1L)
+                    val safeItemPositionMs = itemPositionMs.coerceIn(
+                        0L,
+                        (segmentEndMs - segmentStartMs - 1L).coerceAtLeast(0L)
+                    )
+                    structurePlaybackAbsolutePositionMs = segmentStartMs + safeItemPositionMs
+                }
+            }
+            if (wavPreviewActive) {
+                wavPreviewPositionMs = itemPositionMs.coerceAtLeast(0L)
+                wavPreviewDurationMs = itemDurationMs.coerceAtLeast(0L)
+            }
             val nextVolume = if (!isSecondaryPlaying || itemDurationMs <= 0L) {
                 1f
             } else {
@@ -2509,16 +2576,20 @@ private fun TimelineMeasuresPlaceholder(
             revealAnchorRequest = revealSyncPointRequest,
             onToggleExpanded = { isWaveformExpanded = !isWaveformExpanded },
             onSeekRequested = { requestedPositionMs ->
-                val activeLoop = activeLoopRange
-                if (isPreparedClipLoopTestActive && activeLoop != null && onSeekPreparedClipLoopToPosition != null) {
-                    onSeekPreparedClipLoopToPosition(requestedPositionMs)
-                } else if (isPreparedClipLoopTestActive && activeLoop != null) {
-                    val (loopStartMs, loopEndMs) = activeLoop
-                    val relativeSeekMs = (requestedPositionMs - loopStartMs)
-                        .coerceIn(0L, (loopEndMs - loopStartMs - 1L).coerceAtLeast(0L))
-                    seekToMs(relativeSeekMs)
+                if (structurePlaybackActive) {
+                    seekStructurePreviewToAbsolutePosition(requestedPositionMs)
                 } else {
-                    seekToMs(requestedPositionMs)
+                    val activeLoop = activeLoopRange
+                    if (isPreparedClipLoopTestActive && activeLoop != null && onSeekPreparedClipLoopToPosition != null) {
+                        onSeekPreparedClipLoopToPosition(requestedPositionMs)
+                    } else if (isPreparedClipLoopTestActive && activeLoop != null) {
+                        val (loopStartMs, loopEndMs) = activeLoop
+                        val relativeSeekMs = (requestedPositionMs - loopStartMs)
+                            .coerceIn(0L, (loopEndMs - loopStartMs - 1L).coerceAtLeast(0L))
+                        seekToMs(relativeSeekMs)
+                    } else {
+                        seekToMs(requestedPositionMs)
+                    }
                 }
             },
             onWaveformPanStarted = {
@@ -2670,6 +2741,52 @@ private fun TimelineMeasuresPlaceholder(
                 )
             }
         }
+        if (wavPreviewActive) {
+            var wavPreviewSliderPositionMs by remember(wavPreviewPositionMs, wavPreviewDurationMs) {
+                mutableLongStateOf(wavPreviewPositionMs.coerceIn(0L, wavPreviewDurationMs.coerceAtLeast(0L)))
+            }
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color.White.copy(alpha = 0.04f), RoundedCornerShape(10.dp))
+                    .border(
+                        width = 1.dp,
+                        color = Color.White.copy(alpha = 0.08f),
+                        shape = RoundedCornerShape(10.dp)
+                    )
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.timeline_tempo_preview_wave_title),
+                    color = Color.White,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    text = stringResource(
+                        R.string.timeline_tempo_preview_wave_position,
+                        formatTimelineMarkerTime(wavPreviewPositionMs),
+                        formatTimelineMarkerTime(wavPreviewDurationMs)
+                    ),
+                    color = Color(0xFFB0BEC5),
+                    fontSize = 11.sp
+                )
+                Slider(
+                    value = wavPreviewSliderPositionMs.toFloat(),
+                    onValueChange = { nextValue ->
+                        wavPreviewSliderPositionMs = nextValue.toLong()
+                    },
+                    onValueChangeFinished = {
+                        val targetPositionMs = wavPreviewSliderPositionMs
+                            .coerceIn(0L, wavPreviewDurationMs.coerceAtLeast(0L))
+                        wavPreviewPositionMs = targetPositionMs
+                        runCatching { structurePreviewPlayer.seekTo(targetPositionMs) }
+                    },
+                    valueRange = 0f..wavPreviewDurationMs.coerceAtLeast(1L).toFloat()
+                )
+            }
+        }
         if (isFinalExporting) {
             Text(
                 text = stringResource(R.string.timeline_tempo_export_generating),
@@ -2759,6 +2876,10 @@ private fun TimelineMeasuresPlaceholder(
                     }
                     structurePlaybackActive = true
                     structurePlaybackIndex = startIndex
+                    structurePlaybackAbsolutePositionMs = minOf(
+                        structurePlaybackSegments[startIndex].startMs,
+                        structurePlaybackSegments[startIndex].endMs
+                    ).coerceAtLeast(0L)
                     onStructurePreviewActiveChange(true)
                     structurePreviewPlayer.pause()
                     structurePreviewPlayer.clearMediaItems()
