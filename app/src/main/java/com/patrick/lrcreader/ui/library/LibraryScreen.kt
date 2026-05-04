@@ -3459,69 +3459,69 @@ fun LibraryScreen(
                             )
                         } else {
                             LazyColumn(
-                                modifier = Modifier.fillMaxSize(),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                                modifier = Modifier.fillMaxSize()
                             ) {
                                 items(filteredPlaylists, key = { it }) { playlistName ->
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .background(cardBg, RoundedCornerShape(12.dp))
-                                            .border(1.dp, rowBorder, RoundedCornerShape(12.dp))
-                                            .padding(start = 14.dp, top = 8.dp, end = 8.dp, bottom = 8.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Box(
+                                    Column(modifier = Modifier.fillMaxWidth()) {
+                                        Row(
                                             modifier = Modifier
-                                                .weight(1f)
-                                                .clickable { onOpenPlaylistFromLibrary(playlistName) }
-                                                .padding(vertical = 4.dp)
+                                                .fillMaxWidth()
+                                                .padding(start = 14.dp, top = 8.dp, end = 8.dp, bottom = 8.dp),
+                                            verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Text(
-                                                text = playlistName,
-                                                color = titleColor,
-                                                fontSize = 15.sp
-                                            )
-                                        }
-                                        Box {
-                                            IconButton(
-                                                modifier = Modifier.zIndex(1f),
-                                                onClick = { playlistMenuTarget = playlistName }
+                                            Box(
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .clickable { onOpenPlaylistFromLibrary(playlistName) }
+                                                    .padding(vertical = 4.dp)
                                             ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.MoreVert,
-                                                    contentDescription = stringResource(R.string.library_playlist_actions_cd),
-                                                    tint = titleColor
+                                                Text(
+                                                    text = playlistName,
+                                                    color = titleColor,
+                                                    fontSize = 15.sp
                                                 )
                                             }
-                                            androidx.compose.material3.DropdownMenu(
-                                                expanded = playlistMenuTarget == playlistName,
-                                                onDismissRequest = { playlistMenuTarget = null }
-                                            ) {
-                                                androidx.compose.material3.DropdownMenuItem(
-                                                    text = { Text(stringResource(R.string.common_rename)) },
-                                                    onClick = {
-                                                        playlistMenuTarget = null
-                                                        playlistRenameTarget = playlistName
-                                                        playlistRenameText = playlistName
-                                                    }
-                                                )
-                                                androidx.compose.material3.DropdownMenuItem(
-                                                    text = { Text(stringResource(R.string.library_delete_action)) },
-                                                    onClick = {
-                                                        playlistMenuTarget = null
-                                                        playlistDeleteTarget = playlistName
-                                                    }
-                                                )
-                                                androidx.compose.material3.DropdownMenuItem(
-                                                    text = { Text(stringResource(R.string.backup_share)) },
-                                                    onClick = {
-                                                        playlistMenuTarget = null
-                                                        sharePlaylist(playlistName)
-                                                    }
-                                                )
+                                            Box {
+                                                IconButton(
+                                                    modifier = Modifier.zIndex(1f),
+                                                    onClick = { playlistMenuTarget = playlistName }
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.MoreVert,
+                                                        contentDescription = stringResource(R.string.library_playlist_actions_cd),
+                                                        tint = titleColor
+                                                    )
+                                                }
+                                                androidx.compose.material3.DropdownMenu(
+                                                    expanded = playlistMenuTarget == playlistName,
+                                                    onDismissRequest = { playlistMenuTarget = null }
+                                                ) {
+                                                    androidx.compose.material3.DropdownMenuItem(
+                                                        text = { Text(stringResource(R.string.common_rename)) },
+                                                        onClick = {
+                                                            playlistMenuTarget = null
+                                                            playlistRenameTarget = playlistName
+                                                            playlistRenameText = playlistName
+                                                        }
+                                                    )
+                                                    androidx.compose.material3.DropdownMenuItem(
+                                                        text = { Text(stringResource(R.string.library_delete_action)) },
+                                                        onClick = {
+                                                            playlistMenuTarget = null
+                                                            playlistDeleteTarget = playlistName
+                                                        }
+                                                    )
+                                                    androidx.compose.material3.DropdownMenuItem(
+                                                        text = { Text(stringResource(R.string.backup_share)) },
+                                                        onClick = {
+                                                            playlistMenuTarget = null
+                                                            sharePlaylist(playlistName)
+                                                        }
+                                                    )
+                                                }
                                             }
                                         }
+                                        androidx.compose.material3.HorizontalDivider(color = rowBorder.copy(alpha = 0.5f))
                                     }
                                 }
                             }
@@ -3700,54 +3700,54 @@ fun LibraryScreen(
                                     }
 
                                     LazyColumn(
-                                        modifier = Modifier.fillMaxSize(),
-                                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                                        modifier = Modifier.fillMaxSize()
                                     ) {
                                         items(filteredSongItems, key = { it.songId }) { song ->
                                             val isSelected = selectedSongIds.contains(song.songId)
-                                            Row(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .background(cardBg, RoundedCornerShape(10.dp))
-                                                    .border(1.dp, rowBorder, RoundedCornerShape(10.dp))
-                                                    .clickable(enabled = !isApplyingLufs) {
-                                                        selectedSongIds = if (isSelected) {
-                                                            selectedSongIds - song.songId
-                                                        } else {
-                                                            selectedSongIds + song.songId
+                                            Column(modifier = Modifier.fillMaxWidth()) {
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .clickable(enabled = !isApplyingLufs) {
+                                                            selectedSongIds = if (isSelected) {
+                                                                selectedSongIds - song.songId
+                                                            } else {
+                                                                selectedSongIds + song.songId
+                                                            }
                                                         }
-                                                    }
-                                                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                androidx.compose.material3.Checkbox(
-                                                    checked = isSelected,
-                                                    enabled = !isApplyingLufs,
-                                                    onCheckedChange = { checked ->
-                                                        selectedSongIds = if (checked) {
-                                                            selectedSongIds + song.songId
-                                                        } else {
-                                                            selectedSongIds - song.songId
+                                                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    androidx.compose.material3.Checkbox(
+                                                        checked = isSelected,
+                                                        enabled = !isApplyingLufs,
+                                                        onCheckedChange = { checked ->
+                                                            selectedSongIds = if (checked) {
+                                                                selectedSongIds + song.songId
+                                                            } else {
+                                                                selectedSongIds - song.songId
+                                                            }
                                                         }
-                                                    }
-                                                )
-
-                                                Spacer(Modifier.width(10.dp))
-
-                                                Column(modifier = Modifier.weight(1f)) {
-                                                    Text(
-                                                        text = song.displayTitle,
-                                                        color = titleColor,
-                                                        fontSize = 15.sp
                                                     )
-                                                    if (song.isLufsActive) {
+
+                                                    Spacer(Modifier.width(10.dp))
+
+                                                    Column(modifier = Modifier.weight(1f)) {
                                                         Text(
-                                                            text = sLufsActive,
-                                                            color = accent,
-                                                            fontSize = 11.sp
+                                                            text = song.displayTitle,
+                                                            color = titleColor,
+                                                            fontSize = 15.sp
                                                         )
+                                                        if (song.isLufsActive) {
+                                                            Text(
+                                                                text = sLufsActive,
+                                                                color = accent,
+                                                                fontSize = 11.sp
+                                                            )
+                                                        }
                                                     }
                                                 }
+                                                androidx.compose.material3.HorizontalDivider(color = rowBorder.copy(alpha = 0.5f))
                                             }
                                         }
                                     }
