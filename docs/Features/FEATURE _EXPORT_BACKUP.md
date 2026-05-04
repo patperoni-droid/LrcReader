@@ -6,7 +6,7 @@
 
 Permettre à l’utilisateur de :
 
-- sauvegarder ses morceaux live
+- sauvegarder l’intégralité de sa bibliothèque live
 - transférer facilement ses données vers un autre appareil
 - sécuriser son travail (paroles, accords, timeline, etc.)
 
@@ -66,12 +66,12 @@ Arrangement → WAV → SMP → runtime
 
 ---
 
-## 📦 EXPORT GLOBAL (SAUVEGARDE)
+## 💾 SAUVEGARDE COMPLÈTE
 
 ### Accès
 
-- via **Paramètres**
-- action : `Exporter tous les morceaux live`
+- via écran **Plus**
+- action : `Sauvegarder ma bibliothèque`
 
 ---
 
@@ -79,38 +79,83 @@ Arrangement → WAV → SMP → runtime
 
 - scan des morceaux runtime (`SmpLibraryScanner`)
 - export de chaque morceau en `.smp` à jour
-- un fichier `.smp` par morceau
+- scan du stockage pour récupérer les `.smp` non importés
+- déduplication basée sur `songId`
+- ajout d’un fichier `state.json`
+
+---
+
+### Contenu sauvegardé
+
+- tous les morceaux importés (version runtime)
+- tous les `.smp` présents dans le stockage
+- playlists
+- état utilisateur (played, lastPlayed, etc.)
 
 ---
 
 ### Destination
 
 - dossier choisi par l’utilisateur via SAF
-- sous-dossier auto :
+- sous-dossier automatique :
 
 Export_YYYY-MM-DD_HH-mm
 
 ---
 
-### Contenu exporté
+### Objectif
 
-Chaque `.smp` contient :
-
-- audio
-- paroles
-- accords
-- timeline
-- MIDI
-- DMX
-- annotations
-- config
+- sauvegarder tout le travail utilisateur
+- permettre un transfert complet téléphone → tablette
 
 ---
 
-### Objectif
+### Principe
 
-sauvegarder tout le travail utilisateur  
-et permettre un transfert complet
+- sauvegarde = création de fichiers `.smp`
+- restauration = réimport des `.smp`
+- aucune dépendance au runtime Android
+
+---
+
+## 🔄 RESTAURATION
+
+### Restaurer ma bibliothèque
+
+---
+
+### Fonctionnement
+
+- sélection d’un dossier via SAF
+- scan des `.smp`
+- lecture du `state.json`
+- import des morceaux
+- gestion des conflits
+
+---
+
+### Modes
+
+#### Conserver les morceaux existants
+
+- garde les morceaux déjà présents
+- ajoute uniquement les nouveaux
+
+---
+
+#### Remplacer les morceaux existants
+
+- remplace uniquement les morceaux présents dans la sauvegarde
+- ne supprime jamais les autres
+
+---
+
+### Règles
+
+✔ aucun doublon (`songId`)  
+✔ aucune suppression automatique  
+✔ playlists restaurées après import  
+✔ fonctionnement non destructif
 
 ---
 
@@ -141,7 +186,7 @@ et permettre un transfert complet
 
 ---
 
-## 🔄 IMPORT
+## 🔄 IMPORT SIMPLE
 
 ### Cas d’usage
 
@@ -166,22 +211,17 @@ et permettre un transfert complet
 
 ## ⚠️ LIMITATIONS ACTUELLES
 
-### Export global V1
+### V1
 
-- les `.smp` contiennent :
-    - audio + metadata
-- MAIS :
-
-❌ pas les arrangements Tempo  
-❌ pas les playlists
+- restauration non interactive (pas de “me demander” fichier par fichier)
+- dépendance à la présence correcte des `songId` dans les `.smp`
 
 ---
 
-### Architecture
+### Cas limites
 
-- arrangements stockés dans `ArrangementStore`
-- playlists dans `PlaylistRepository`
-- non inclus dans `.smp` actuellement
+- `.smp` sans `songId` lisible → duplication possible
+- sauvegardes multiples → gestion utilisateur nécessaire
 
 ---
 
@@ -189,23 +229,22 @@ et permettre un transfert complet
 
 ### V2
 
-- intégrer Arrangement dans `SongUnit`
-- rendre export `.smp` complet
+- mode avancé “me demander”
+- sélection fine des conflits
 
 ---
 
 ### V3
 
-- export complet :
-
-morceaux + arrangements + playlists
+- nettoyage automatique des `.smp`
+- meilleure gestion du stockage
 
 ---
 
 ### V4
 
-- sauvegarde complète en un fichier unique (backup global)
-- restauration complète en un clic
+- sauvegarde complète en un fichier unique
+- restauration en un clic
 
 ---
 
@@ -229,8 +268,8 @@ sans perdre son travail.
 
 Cette feature permet :
 
-- de sauvegarder tous les morceaux live
+- de sauvegarder toute la bibliothèque
 - de transférer facilement vers un autre appareil
-- de sécuriser le travail utilisateur
+- de sécuriser totalement le travail utilisateur
 
-👉 C’est une feature critique du produit.
+👉 C’est une feature critique du produit 💥

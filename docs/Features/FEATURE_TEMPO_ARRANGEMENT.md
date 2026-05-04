@@ -46,8 +46,8 @@ extérieur de IN → OUT
 → permet de supprimer une partie  
 → crée 2 segments :
 
-0 → IN  
-OUT → fin
+- 0 → IN
+- OUT → fin
 
 ---
 
@@ -73,17 +73,17 @@ Segment A → Segment B → Segment C
 
 ### Recalage précis
 
-- long press sur waveform
+- long press sur waveform  
   → recale IN ou OUT (le plus proche)
 
 ---
 
 ### Grille rythmique
 
-- Grille ON :
+- Grille ON :  
   → quantification rythmique
 
-- Grille OFF :
+- Grille OFF :  
   → position libre
 
 #### Sync grille
@@ -98,13 +98,13 @@ Segment A → Segment B → Segment C
 
 ### Zoom / Pan
 
-- zoom :
+- zoom :  
   → agrandit la zone de travail
 
-- pan :
+- pan :  
   → libère le focus (IN/OUT)
 
-- comportement :
+- comportement :  
   → priorité au contrôle utilisateur  
   → pas de verrouillage forcé du centre
 
@@ -160,7 +160,6 @@ Bouton Ajouter :
 ### Loop IN / OUT
 
 - boucle basée sur clip ExoPlayer
-- comportement corrigé :
 
 ✔ seek libre dans la boucle  
 ✔ reprise correcte après pause  
@@ -188,7 +187,7 @@ Le bouton “Écouter” génère une preview audio du montage final.
 
 ### Fichier
 
-- un seul fichier temporaire :
+- un seul fichier temporaire :  
   preview_arrangement.wav
 - stocké dans le cache
 
@@ -196,9 +195,9 @@ Le bouton “Écouter” génère une preview audio du montage final.
 
 ### Optimisations
 
-- si la structure n’a pas changé :
+- si la structure n’a pas changé :  
   → réutilisation du fichier existant
-- sinon :
+- sinon :  
   → régénération
 
 ---
@@ -227,13 +226,13 @@ Le bouton “Écouter” génère une preview audio du montage final.
 
 ### Objectif
 
-text Validation rapide + fidèle du rendu final
+Validation rapide + fidèle du rendu final
 
 ---
 
 ## 🔊 CORRECTION AUDIO
 
-- micro fade (~12 ms)
+- micro fade (~12 ms)  
   → atténue les clics aux transitions
 
 ⚠️ peut introduire une légère variation de volume
@@ -242,7 +241,7 @@ text Validation rapide + fidèle du rendu final
 
 ## 📦 EXPORT
 
-### Export individuel
+### Export individuel (Assemblage)
 
 Flux :
 
@@ -256,34 +255,88 @@ Arrangement → WAV → SMP → runtime
 
 ---
 
-### Export global (sauvegarde)
+### UX Assemblage
 
-Accessible depuis Paramètres
+Pendant l’assemblage :
+
+- affichage d’un indicateur de progression (roue de chargement)
+- message visible
+- bouton Assembler désactivé
+
+👉 évite toute impression de blocage
+
+---
+
+## 💾 SAUVEGARDE
+
+### Sauvegarder ma bibliothèque
+
+Accessible depuis l’écran Plus
 
 Fonction :
 
-- export de tous les morceaux live (runtime)
-- création d’un .smp à jour pour chaque morceau
+- sauvegarde complète de la bibliothèque utilisateur
+- export des morceaux importés depuis leur état actuel
+- création d’un `.smp` à jour pour chaque morceau
+- copie des `.smp` non importés présents dans le stockage
+- ajout d’un `state.json` (playlists + état)
 - choix du dossier via SAF
-- dossier automatique :
-  Export_YYYY-MM-DD_HH-mm
+- dossier automatique horodaté
 
 ---
 
-### Contenu
+### Objectif sauvegarde
 
-- audio
-- paroles
-- accords
-- timeline
-- MIDI / DMX
-- config
+Sauvegarder tout le travail utilisateur et permettre le transfert vers un autre appareil
+
+👉 ex : téléphone → tablette
 
 ---
 
-### Objectif export global
+### Principe
 
-text Sauvegarder tout le travail utilisateur et permettre le transfert vers un autre appareil
+- sauvegarde = création de fichiers `.smp`
+- restauration = réimport des `.smp`
+- indépendance totale du runtime Android
+
+---
+
+## 🔄 RESTAURATION
+
+### Restaurer ma bibliothèque
+
+Fonction :
+
+- sélection d’un dossier de sauvegarde
+- détection des fichiers `.smp`
+- détection du `state.json`
+- import des morceaux
+- gestion des conflits
+
+---
+
+### Modes
+
+#### Conserver les morceaux existants
+
+- garde les morceaux déjà présents
+- ajoute uniquement les nouveaux
+
+---
+
+#### Remplacer les morceaux existants
+
+- remplace uniquement les morceaux présents dans la sauvegarde
+- ne supprime jamais les autres
+
+---
+
+### Règles
+
+✔ aucun doublon (`songId`)  
+✔ aucune suppression automatique  
+✔ playlists restaurées après import  
+✔ fonctionnement non destructif
 
 ---
 
@@ -293,10 +346,12 @@ text Sauvegarder tout le travail utilisateur et permettre le transfert vers un a
 - aucun traitement lourd en live
 - aucun seek utilisé pour simuler une structure
 - structure basée sur segments préparés
-- séparation claire :
-  - preview structure (rapide)
-  - preview WAV (fidèle)
-  - export (final)
+
+### Séparation fondamentale
+
+- preview structure (rapide)
+- preview WAV (fidèle)
+- export (final)
 
 ---
 
@@ -318,4 +373,4 @@ Créer un système :
 - fiable en live
 - sans friction utilisateur
 
-👉 un véritable outil de travail musica
+👉 un véritable outil de travail musical 💥

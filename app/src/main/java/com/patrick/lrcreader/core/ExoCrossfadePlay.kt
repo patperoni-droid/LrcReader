@@ -84,7 +84,19 @@ fun exoCrossfadePlay(
                     SMP_PLAY_TRACE_TAG,
                     "EXO_STATE uri=$uriString token=$playToken state=${stateName(state)} playWhenReady=${exoPlayer.playWhenReady} isPlaying=${exoPlayer.isPlaying} currentMedia=${exoPlayer.currentMediaItem?.localConfiguration?.uri}"
                 )
+                if (state == Player.STATE_READY) {
+                    exoPlayer.currentMediaItem?.localConfiguration?.uri?.toString()?.let { activeUri ->
+                        SmpLaunchTiming.markExoReady(activeUri)
+                    }
+                }
                 if (state == Player.STATE_ENDED) onNaturalEnd()
+            }
+
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                if (!isPlaying || getCurrentToken() != playToken) return
+                exoPlayer.currentMediaItem?.localConfiguration?.uri?.toString()?.let { activeUri ->
+                    SmpLaunchTiming.markPlaybackStart(activeUri)
+                }
             }
 
             override fun onPlayerError(error: PlaybackException) {
@@ -93,6 +105,10 @@ fun exoCrossfadePlay(
                     SMP_PLAY_TRACE_TAG,
                     "EXO_ERROR uri=$uriString token=$playToken code=${error.errorCodeName} message=${error.message} currentMedia=${exoPlayer.currentMediaItem?.localConfiguration?.uri}",
                     error
+                )
+                SmpLaunchTiming.markFailure(
+                    step = "exoError",
+                    detail = "uri=$uriString code=${error.errorCodeName} message=${error.message}"
                 )
                 onError()
             }
@@ -135,6 +151,7 @@ fun exoCrossfadePlay(
             SMP_PLAY_TRACE_TAG,
             "EXO_SET_MEDIA uri=$uriString token=$playToken media=$playableUriString"
         )
+        SmpLaunchTiming.markExoPrepareStart(playableUriString)
         exoPlayer.setMediaItem(MediaItem.fromUri(playableUriString))
         exoPlayer.prepare()
         Log.d(

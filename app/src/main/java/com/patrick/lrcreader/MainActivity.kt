@@ -1752,8 +1752,6 @@ class MainActivity : AppCompatActivity() {
                         "playlistName=$playlistName"
                     )
                     PlaybackCoordinator.onPlayerStart()
-                    currentPlayingUri = uriString
-                    currentPlayingPlaylist = playlistName
                     embeddedLyricsListener.reset()
                     armPlaylistPlaybackState(
                         playlistName = playlistName,
@@ -1790,6 +1788,7 @@ class MainActivity : AppCompatActivity() {
                         val tempo: Float,
                         val pitchSemi: Int
                     )
+                    SmpLaunchTiming.markConfigLoadStart(uriString)
                     val loadedTrackMixSettings = withContext(Dispatchers.IO) {
                         LoadedTrackMixSettings(
                             gainDb = clampTrackDb(TrackVolumePrefs.getDb(ctx, uriString) ?: DEFAULT_TRACK_GAIN_DB),
@@ -1802,6 +1801,13 @@ class MainActivity : AppCompatActivity() {
                     currentTrackVolumeSource = loadedTrackMixSettings.volumeSource
                     currentTrackTempo = loadedTrackMixSettings.tempo
                     currentTrackPitchSemi = loadedTrackMixSettings.pitchSemi
+                    SmpLaunchTiming.markConfigLoadDone(
+                        uri = uriString,
+                        volumeSource = loadedTrackMixSettings.volumeSource,
+                        tempo = loadedTrackMixSettings.tempo,
+                        pitchSemi = loadedTrackMixSettings.pitchSemi,
+                        gainDb = loadedTrackMixSettings.gainDb
+                    )
 
                     var lyricsResolveSeq = 0
                     val result = runCatching {
@@ -1911,6 +1917,8 @@ class MainActivity : AppCompatActivity() {
                                     ?.uri
                                     ?.toString()
                                     ?: uriString
+                                currentPlayingUri = activeUri
+                                currentPlayingPlaylist = playlistName
                                 Log.d(
                                     SMP_PLAY_TRACE_TAG,
                                     "PLAYER_ON_START requestedUri=$uriString activeUri=$activeUri playlist=$playlistName token=$myToken playWhenReady=${exoPlayer.playWhenReady} isPlaying=${exoPlayer.isPlaying} state=${exoPlayer.playbackState}"
@@ -2056,6 +2064,7 @@ class MainActivity : AppCompatActivity() {
                     playlistName: String?,
                     showToastOnFailure: Boolean = false
                 ): PlaybackRouter.Target.Audio? {
+                    SmpLaunchTiming.markResolveSongStart(songId, playlistName)
                     val cachedSong = smpSongsById[songId]
                     Log.d(
                         SMP_PLAY_TRACE_TAG,
@@ -2101,6 +2110,7 @@ class MainActivity : AppCompatActivity() {
                         }
                         return null
                     }
+                    SmpLaunchTiming.markResolveSongDone(song.id, audioPath)
 
                     val audioFile = File(audioPath)
                     Log.d(
@@ -2355,7 +2365,6 @@ class MainActivity : AppCompatActivity() {
                                     chainQueue[playableIndex],
                                     true
                                 )
-                                currentPlayingUri = resolvedTarget.uri
                                 setQuickPlaylistAndPersist(resolvedTarget.playlist, reason = "chainPlay")
                                 currentLyricsColor = Color.White
                                 return true
@@ -2394,7 +2403,6 @@ class MainActivity : AppCompatActivity() {
                                     forcedNext.uri,
                                     true
                                 )
-                                    currentPlayingUri = resolvedTarget.uri
                                     setQuickPlaylistAndPersist(resolvedTarget.playlist, reason = "nextTrackTrigger")
                                     currentLyricsColor = Color.White
                                     true
@@ -3088,6 +3096,11 @@ class MainActivity : AppCompatActivity() {
                                                 SMP_PLAY_TRACE_TAG,
                                                 "PLAYLIST_TAP item=$uri playlist=$playlistName"
                                             )
+                                            SmpLaunchTiming.start(
+                                                source = "playlist_tap",
+                                                requestedItem = uri,
+                                                playlistName = playlistName
+                                            )
 
                                         when (val target = PlaybackRouter.resolve(uri, playlistName)) {
 
@@ -3122,6 +3135,11 @@ class MainActivity : AppCompatActivity() {
                                                     SMP_PLAY_TRACE_TAG,
                                                     "PLAYLIST_RESOLVED uri=${resolvedTarget.uri} playlist=${resolvedTarget.playlist}"
                                                 )
+                                                SmpLaunchTiming.markResolvedAudioTarget(
+                                                    uri = resolvedTarget.uri,
+                                                    playlistName = resolvedTarget.playlist,
+                                                    songId = getSmpSongId(uri)
+                                                )
                                                 LyricsPerf.startOpen(
                                                     trackUriString = resolvedTarget.uri,
                                                     source = "quick_play_tap",
@@ -3139,7 +3157,6 @@ class MainActivity : AppCompatActivity() {
                                                         playlistItemKey = uri
                                                     )
                                                 }
-                                                currentPlayingUri = resolvedTarget.uri
 
                                                 selectedQuickPlaylist = resolvedTarget.playlist
                                                 currentLyricsColor = color
@@ -3265,6 +3282,12 @@ class MainActivity : AppCompatActivity() {
                                                 SMP_PLAY_TRACE_TAG,
                                                 "LIBRARY_TAP item=$uriString"
                                             )
+                                            SmpLaunchTiming.start(
+                                                source = "library_tap",
+                                                requestedItem = uriString,
+                                                playlistName = null,
+                                                songId = getSmpSongId(uriString)
+                                            )
                                             when (val target = PlaybackRouter.resolve(uriString, null)) {
                                                 is PlaybackRouter.Target.Audio,
                                                 is PlaybackRouter.Target.Smp -> {
@@ -3286,6 +3309,11 @@ class MainActivity : AppCompatActivity() {
                                                         SMP_PLAY_TRACE_TAG,
                                                         "LIBRARY_RESOLVED uri=${resolvedTarget.uri} playlist=${resolvedTarget.playlist}"
                                                     )
+                                                    SmpLaunchTiming.markResolvedAudioTarget(
+                                                        uri = resolvedTarget.uri,
+                                                        playlistName = resolvedTarget.playlist,
+                                                        songId = getSmpSongId(uriString)
+                                                    )
                                                     stopChainPlayback()
                                                     LyricsPerf.startOpen(
                                                         trackUriString = resolvedTarget.uri,
@@ -3298,7 +3326,6 @@ class MainActivity : AppCompatActivity() {
                                                         null,
                                                         openRichPlayer
                                                     )
-                                                    currentPlayingUri = resolvedTarget.uri
                                                     currentLyricsColor = Color.White
                                                     if (openRichPlayer) {
                                                         setTabAndPersist(BottomTab.Player, reason = "libraryPlay")
@@ -3418,7 +3445,6 @@ class MainActivity : AppCompatActivity() {
                                             )
                                             playWithCrossfade(uriString, null, null, true)
 
-                                            currentPlayingUri = uriString
                                             setTabAndPersist(BottomTab.Player, reason = "searchPlayPlayer")
                                         }
 
@@ -3440,7 +3466,6 @@ class MainActivity : AppCompatActivity() {
                                                 uriString,
                                                 true
                                             )
-                                            currentPlayingUri = uriString
                                             currentLyricsColor = Color(0xFFE040FB)
                                             setTabAndPersist(BottomTab.Player, reason = "searchPlayPlaylist")
                                         }

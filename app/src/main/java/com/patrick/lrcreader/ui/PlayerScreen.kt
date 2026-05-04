@@ -15,6 +15,7 @@ import androidx.compose.material3.FilterChip
 import com.patrick.lrcreader.core.notes.LiveNote
 import com.patrick.lrcreader.core.notes.LiveNoteManager
 import com.patrick.lrcreader.core.PlayerBusController
+import com.patrick.lrcreader.core.SmpLaunchTiming
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.scrollBy
@@ -512,13 +513,21 @@ fun PlayerScreen(
         }
 
         val trackUriString = currentTrackUri
+        SmpLaunchTiming.markTimelineStart(trackUriString)
 
         timelineMarkers = withContext(Dispatchers.IO) {
             loadSmpTimelineMarkersForTrack(context, trackUriString)
         }
-        val loadedLightCues = loadSmpLightCuesForTrack(context, trackUriString)
+        val loadedLightCues = withContext(Dispatchers.IO) {
+            loadSmpLightCuesForTrack(context, trackUriString)
+        }
         timelineLightCues = loadedLightCues
         hasLightCues = loadedLightCues.isNotEmpty()
+        SmpLaunchTiming.markTimelineDone(
+            uri = trackUriString,
+            markerCount = timelineMarkers.size,
+            lightCueCount = loadedLightCues.size
+        )
     }
     LaunchedEffect(timelineMarkers, editingTimelineMidiMarkerIndex) {
         val markerIndex = editingTimelineMidiMarkerIndex ?: return@LaunchedEffect
@@ -1087,6 +1096,7 @@ fun PlayerScreen(
             "player_resolution_start",
             "preferExternalFirst=$preferExternalLyricsFirst"
         )
+        SmpLaunchTiming.markLyricsStart(currentTrackUri)
         Log.d(
             "LrcDebug",
             "LYRICS_RESOLUTION_ORDER mode=${if (preferExternalLyricsFirst) "SAF_EXTERNAL_FIRST" else "DEFAULT"} order=${if (preferExternalLyricsFirst) "LRC_STORAGE->SIDECAR->SYLT->USLT" else "SYLT->LRC_STORAGE->SIDECAR->USLT"}"
@@ -1155,7 +1165,7 @@ fun PlayerScreen(
             )
             Log.d("LrcDebug", "LYRICS_SOURCE_TYPE ${storedOrigin?.sourceType ?: "canonical"}")
             val parseStartMs = android.os.SystemClock.elapsedRealtime()
-            val parsed = parseLrc(stored)
+            val parsed = withContext(Dispatchers.Default) { parseLrc(stored) }
             LyricsPerf.mark(
                 currentTrackUri,
                 "parse_done",
@@ -1212,7 +1222,11 @@ fun PlayerScreen(
             )
             Log.d("LrcDebug", "LYRICS_SOURCE_TYPE legacy")
             val parseStartMs = android.os.SystemClock.elapsedRealtime()
-            val parsed = if (sidecarLrcResult.text.isNotBlank()) parseLrc(sidecarLrcResult.text) else emptyList()
+            val parsed = if (sidecarLrcResult.text.isNotBlank()) {
+                withContext(Dispatchers.Default) { parseLrc(sidecarLrcResult.text) }
+            } else {
+                emptyList()
+            }
             LyricsPerf.mark(
                 currentTrackUri,
                 "parse_done",
@@ -1261,7 +1275,7 @@ fun PlayerScreen(
             if (syltLrcText.isNullOrBlank()) return false
 
             val parseStartMs = android.os.SystemClock.elapsedRealtime()
-            val parsed = parseLrc(syltLrcText)
+            val parsed = withContext(Dispatchers.Default) { parseLrc(syltLrcText) }
             LyricsPerf.mark(
                 currentTrackUri,
                 "parse_done",
@@ -1304,7 +1318,7 @@ fun PlayerScreen(
             if (usltText.isNullOrBlank()) return false
 
             val parseStartMs = android.os.SystemClock.elapsedRealtime()
-            val parsed = parseLrc(usltText)
+            val parsed = withContext(Dispatchers.Default) { parseLrc(usltText) }
             LyricsPerf.mark(
                 currentTrackUri,
                 "parse_done",
@@ -1357,6 +1371,9 @@ fun PlayerScreen(
                 "player_resolution_done",
                 "ms=${android.os.SystemClock.elapsedRealtime() - resolveStartMs} source=$resolvedSource"
             )
+            currentTrackUri?.let { trackUriString ->
+                SmpLaunchTiming.markLyricsDone(trackUriString, resolvedSource)
+            }
             lyricsResolving = false
             lyricsResolutionCompleted = true
         }
@@ -1389,6 +1406,7 @@ fun PlayerScreen(
             "LrcDebug",
             "ACCORDS_EFFECT_START uri=$currentTrackUri resolvedLyricsLrcFileName=$resolvedLyricsLrcFileName"
         )
+        SmpLaunchTiming.markChordsStart(currentTrackUri)
         chordsLoading = true
         var raw = withContext(Dispatchers.IO) {
             readAccordsFromSplByTrackUri(
@@ -1409,7 +1427,11 @@ fun PlayerScreen(
                 raw = ""
             }
         }
-        val parsed = if (!raw.isNullOrBlank()) parseLrc(raw) else emptyList()
+        val parsed = if (!raw.isNullOrBlank()) {
+            withContext(Dispatchers.Default) { parseLrc(raw) }
+        } else {
+            emptyList()
+        }
         parsedChordLines = parsed
         hasChordsSource = raw != null
         persistedChordLines = parsed
@@ -1417,6 +1439,11 @@ fun PlayerScreen(
         Log.d(
             "LrcDebug",
             "ACCORDS_EFFECT_DONE uri=$currentTrackUri parsedCount=${parsed.size} hasChordsSource=$hasChordsSource"
+        )
+        SmpLaunchTiming.markChordsDone(
+            uri = currentTrackUri,
+            lineCount = parsed.size,
+            hasSource = hasChordsSource
         )
         chordsLoading = false
     }
