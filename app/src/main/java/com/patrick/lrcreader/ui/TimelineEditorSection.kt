@@ -2841,11 +2841,21 @@ private fun TimelineMeasuresPlaceholder(
             }
         }
         if (isFinalExporting) {
-            Text(
-                text = stringResource(R.string.timeline_tempo_export_generating),
-                color = Color(0xFFB0BEC5),
-                fontSize = 12.sp
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(16.dp),
+                    strokeWidth = 2.dp,
+                    color = Color(0xFFB0BEC5)
+                )
+                Text(
+                    text = stringResource(R.string.timeline_tempo_export_generating),
+                    color = Color(0xFFB0BEC5),
+                    fontSize = 12.sp
+                )
+            }
         }
         Row(
             modifier = Modifier.fillMaxWidth(),
