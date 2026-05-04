@@ -733,6 +733,8 @@
     <string name="more_item_arrangement_requires_song">Open an SMP song first</string>
     <string name="more_item_export_live_songs">Back up my library</string>
     <string name="more_item_export_live_songs_subtitle">Creates a full backup of your songs and playlists. You can restore your library exactly as it is.</string>
+    <string name="more_item_restore_library">Restore my library</string>
+    <string name="more_item_restore_library_subtitle">Imports songs and playlists from a backup folder without deleting your other songs.</string>
     <string name="more_item_editing">🛠  Editing</string>
     <string name="more_item_audio">🔊  Audio</string>
     <string name="more_item_language">🌐  Language</string>
@@ -748,6 +750,18 @@
     <string name="more_live_songs_export_result">Backup complete: %1$d succeeded, %2$d failed\nFolder: %3$s</string>
     <string name="more_live_songs_export_no_songs">No songs to back up</string>
     <string name="more_live_songs_export_failed">Unable to start the backup</string>
+    <string name="more_library_restore_title">Restore my library</string>
+    <string name="more_library_restore_progress">Restore in progress: %1$d / %2$d</string>
+    <string name="more_library_restore_summary">This backup contains:\n- %1$d songs\n- %2$d playlists\n- %3$d conflicts detected</string>
+    <string name="more_library_restore_keep_existing">Keep existing songs</string>
+    <string name="more_library_restore_replace_existing">Replace existing songs</string>
+    <string name="more_library_restore_scan_failed">Unable to read this backup folder</string>
+    <string name="more_library_restore_empty">No usable backup files found in this folder</string>
+    <string name="more_library_restore_result">Restore complete: %1$d imported, %2$d skipped, %3$d failed\nState: %4$s</string>
+    <string name="more_library_restore_result_state_restored">playlists restored</string>
+    <string name="more_library_restore_result_state_with_warnings">playlists restored with %1$d warning(s)</string>
+    <string name="more_library_restore_result_state_failed">state.json not applied (%1$d conflict(s))</string>
+    <string name="more_library_restore_result_state_missing">no state.json</string>
     <string name="light_test_title">Light test</string>
     <string name="light_test_red">Red</string>
     <string name="light_test_blue">Blue</string>

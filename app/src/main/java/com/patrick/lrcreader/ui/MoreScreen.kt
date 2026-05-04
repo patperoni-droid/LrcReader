@@ -17,9 +17,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -29,9 +31,11 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.ui.window.Dialog
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
@@ -57,10 +61,14 @@ import com.patrick.lrcreader.core.LegacyLibraryVisibilityPrefs
 import com.patrick.lrcreader.core.LightIndicatorPrefs
 import com.patrick.lrcreader.core.UiEntryPrefs
 import com.patrick.lrcreader.core.WorkspaceResolver
+import com.patrick.lrcreader.core.backup.BackupBundleImportedSong
+import com.patrick.lrcreader.core.backup.BackupStateRemapResult
+import com.patrick.lrcreader.core.backup.BackupStateRemapper
 import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.smp.SmpArchiveSongIdResolver
 import com.patrick.lrcreader.smp.SmpExporter
 import com.patrick.lrcreader.smp.SmpLibraryScanner
+import com.patrick.lrcreader.smp.SmpSecureImportPipeline
 import com.patrick.lrcreader.smp.SmpUserArchiveRebuilder
 import com.patrick.lrcreader.smp.SmpUserArchiveCandidate
 import com.patrick.lrcreader.smp.SmpWorkspaceArchiveStore
@@ -71,6 +79,7 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import org.json.JSONObject
 
 /* ─────────────────────────────
    Écran "Plus" (Paramètres)
@@ -120,7 +129,8 @@ fun MoreScreen(
             showMainBusTab = showMainBusTab,
             onShowDjTabChange = onShowDjTabChange,
             onShowMainBusTabChange = onShowMainBusTabChange,
-            onOpenTuner = onOpenTuner
+            onOpenTuner = onOpenTuner,
+            onAfterImport = onAfterImport
         )
 
         MoreSection.ArrangementHub -> ArrangementHubScreen(
@@ -285,7 +295,8 @@ private fun MoreRootScreen(
     showMainBusTab: Boolean,
     onShowDjTabChange: (Boolean) -> Unit,
     onShowMainBusTabChange: (Boolean) -> Unit,
-    onOpenTuner: () -> Unit
+    onOpenTuner: () -> Unit,
+    onAfterImport: (BackupManager.LastPlayed?) -> Unit
 ) {
     val context = LocalContext.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
@@ -300,6 +311,12 @@ private fun MoreRootScreen(
     var exportLiveSongsTotal by remember { mutableStateOf(0) }
     var exportLiveSongsCurrentTitle by remember { mutableStateOf<String?>(null) }
     var exportLiveSongsResultMessage by remember { mutableStateOf<String?>(null) }
+    var isRestoringLibrary by remember { mutableStateOf(false) }
+    var restoreLibraryDone by remember { mutableStateOf(0) }
+    var restoreLibraryTotal by remember { mutableStateOf(0) }
+    var restoreLibraryCurrentTitle by remember { mutableStateOf<String?>(null) }
+    var restoreLibraryResultMessage by remember { mutableStateOf<String?>(null) }
+    var pendingRestoreScan by remember { mutableStateOf<LibraryRestoreScanResult?>(null) }
     // ✅ Séquence de Program Change pour le test MIDI
     val testProgramChanges = listOf(8, 39, 58, 127)
     var testPcIndex by remember { mutableStateOf(0) }
@@ -332,6 +349,8 @@ private fun MoreRootScreen(
         else -> stringResource(R.string.settings_language_auto)
     }
     val sLiveSongsExportFailed = stringResource(R.string.more_live_songs_export_failed)
+    val sLibraryRestoreScanFailed = stringResource(R.string.more_library_restore_scan_failed)
+    val sLibraryRestoreEmpty = stringResource(R.string.more_library_restore_empty)
     val sExportProDialogTitle = stringResource(R.string.export_pro_dialog_title)
     val sExportProDialogMessage = stringResource(R.string.export_pro_dialog_message)
     val sUpgradeToPro = stringResource(R.string.library_upgrade_to_pro)
@@ -484,6 +503,41 @@ private fun MoreRootScreen(
         }
     }
 
+    val restoreLibraryFolderLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree()
+    ) { pickedUri ->
+        if (pickedUri == null) return@rememberLauncherForActivityResult
+        runCatching {
+            context.contentResolver.takePersistableUriPermission(
+                pickedUri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            )
+        }
+        exportLiveSongsTreeUri = pickedUri
+        MoreLiveSongsExportPrefs.setTreeUri(context, pickedUri)
+        scope.launch {
+            val scanResult = withContext(Dispatchers.IO) {
+                scanLibraryRestoreFolder(
+                    context = context.applicationContext,
+                    treeUri = pickedUri
+                )
+            }
+            pendingRestoreScan = when {
+                scanResult == null -> {
+                    restoreLibraryResultMessage = sLibraryRestoreScanFailed
+                    null
+                }
+
+                scanResult.songCount == 0 && scanResult.stateJson == null -> {
+                    restoreLibraryResultMessage = sLibraryRestoreEmpty
+                    null
+                }
+
+                else -> scanResult
+            }
+        }
+    }
+
     // Même type de fond que la console / accordeur
     val backgroundBrush = Brush.verticalGradient(
         listOf(
@@ -571,6 +625,14 @@ private fun MoreRootScreen(
                                 return@SettingsItem
                             }
                             exportLiveSongsFolderLauncher.launch(exportLiveSongsTreeUri)
+                        }
+                    )
+                    SettingsItem(
+                        label = stringResource(R.string.more_item_restore_library),
+                        subtitle = stringResource(R.string.more_item_restore_library_subtitle),
+                        onClick = {
+                            if (isRestoringLibrary || isExportingLiveSongs) return@SettingsItem
+                            restoreLibraryFolderLauncher.launch(exportLiveSongsTreeUri)
                         }
                     )
 
@@ -730,6 +792,35 @@ private fun MoreRootScreen(
         )
     }
 
+    if (isRestoringLibrary) {
+        AlertDialog(
+            onDismissRequest = {},
+            title = {
+                Text(text = stringResource(R.string.more_library_restore_title))
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = context.getString(
+                            R.string.more_library_restore_progress,
+                            restoreLibraryDone,
+                            restoreLibraryTotal
+                        ),
+                        color = Color(0xFFF5F5F5)
+                    )
+                    restoreLibraryCurrentTitle?.takeIf { it.isNotBlank() }?.let { title ->
+                        Text(
+                            text = title,
+                            color = Color(0xFF9E9E9E),
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+            },
+            confirmButton = {}
+        )
+    }
+
     exportLiveSongsResultMessage?.let { message ->
         AlertDialog(
             onDismissRequest = { exportLiveSongsResultMessage = null },
@@ -745,6 +836,143 @@ private fun MoreRootScreen(
                 }
             }
         )
+    }
+
+    restoreLibraryResultMessage?.let { message ->
+        AlertDialog(
+            onDismissRequest = { restoreLibraryResultMessage = null },
+            title = {
+                Text(text = stringResource(R.string.more_library_restore_title))
+            },
+            text = {
+                Text(text = message)
+            },
+            confirmButton = {
+                TextButton(onClick = { restoreLibraryResultMessage = null }) {
+                    Text(text = stringResource(R.string.common_close))
+                }
+            }
+        )
+    }
+
+    pendingRestoreScan?.let { scan ->
+        Dialog(
+            onDismissRequest = { pendingRestoreScan = null }
+        ) {
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = Color(0xFF1B1B1B)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 560.dp)
+                        .padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.more_library_restore_title),
+                        color = Color(0xFFF5F5F5),
+                        fontSize = 20.sp
+                    )
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 320.dp)
+                            .verticalScroll(rememberScrollState())
+                    ) {
+                        Text(
+                            text = context.getString(
+                                R.string.more_library_restore_summary,
+                                scan.songCount,
+                                scan.playlistCount,
+                                scan.conflictCount
+                            ),
+                            color = Color(0xFFF5F5F5)
+                        )
+                    }
+
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        TextButton(
+                            onClick = {
+                                pendingRestoreScan = null
+                                scope.launch {
+                                    isRestoringLibrary = true
+                                    restoreLibraryDone = 0
+                                    restoreLibraryCurrentTitle = null
+                                    restoreLibraryTotal = scan.songCount + if (scan.stateJson != null) 1 else 0
+                                    val result = withContext(Dispatchers.IO) {
+                                        restoreLibraryFromBackupFolder(
+                                            context = context.applicationContext,
+                                            scanResult = scan,
+                                            conflictMode = LibraryRestoreConflictMode.Preserve
+                                        ) { done, total, currentTitle ->
+                                            restoreLibraryDone = done
+                                            restoreLibraryTotal = total
+                                            restoreLibraryCurrentTitle = currentTitle
+                                        }
+                                    }
+                                    onAfterImport(result.lastPlayed)
+                                    restoreLibraryCurrentTitle = null
+                                    restoreLibraryResultMessage = formatLibraryRestoreResultMessage(
+                                        context = context,
+                                        result = result
+                                    )
+                                    isRestoringLibrary = false
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(text = stringResource(R.string.more_library_restore_keep_existing))
+                        }
+
+                        TextButton(
+                            onClick = {
+                                pendingRestoreScan = null
+                                scope.launch {
+                                    isRestoringLibrary = true
+                                    restoreLibraryDone = 0
+                                    restoreLibraryCurrentTitle = null
+                                    restoreLibraryTotal = scan.songCount + if (scan.stateJson != null) 1 else 0
+                                    val result = withContext(Dispatchers.IO) {
+                                        restoreLibraryFromBackupFolder(
+                                            context = context.applicationContext,
+                                            scanResult = scan,
+                                            conflictMode = LibraryRestoreConflictMode.Replace
+                                        ) { done, total, currentTitle ->
+                                            restoreLibraryDone = done
+                                            restoreLibraryTotal = total
+                                            restoreLibraryCurrentTitle = currentTitle
+                                        }
+                                    }
+                                    onAfterImport(result.lastPlayed)
+                                    restoreLibraryCurrentTitle = null
+                                    restoreLibraryResultMessage = formatLibraryRestoreResultMessage(
+                                        context = context,
+                                        result = result
+                                    )
+                                    isRestoringLibrary = false
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(text = stringResource(R.string.more_library_restore_replace_existing))
+                        }
+
+                        TextButton(
+                            onClick = { pendingRestoreScan = null },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(text = stringResource(R.string.common_cancel))
+                        }
+                    }
+                }
+            }
+        }
     }
 
     if (showExportProDialog) {
@@ -913,6 +1141,39 @@ private data class LibraryBackupArchiveItem(
     val displayName: String
 )
 
+private enum class LibraryRestoreConflictMode {
+    Preserve,
+    Replace
+}
+
+private data class LibraryRestoreSmpFile(
+    val uri: Uri,
+    val displayName: String,
+    val stableSongId: String?,
+    val conflictWithRuntime: Boolean
+)
+
+private data class LibraryRestoreScanResult(
+    val folderUri: Uri,
+    val smpFiles: List<LibraryRestoreSmpFile>,
+    val stateJson: String?,
+    val playlistCount: Int,
+    val conflictCount: Int
+) {
+    val songCount: Int
+        get() = smpFiles.size
+}
+
+private data class LibraryRestoreExecutionResult(
+    val importedCount: Int,
+    val skippedCount: Int,
+    val failedCount: Int,
+    val stateRestored: Boolean,
+    val stateWarningCount: Int,
+    val stateFailureCount: Int,
+    val lastPlayed: BackupManager.LastPlayed? = null
+)
+
 private fun selectWorkspaceArchivesForBackup(
     runtimeSongIds: Set<String>,
     candidates: List<SmpUserArchiveCandidate>
@@ -935,6 +1196,191 @@ private fun selectWorkspaceArchivesForBackup(
                 displayName = candidate.archiveUri.lastPathSegment ?: "archive.smp"
             )
         }
+}
+
+private fun scanLibraryRestoreFolder(
+    context: Context,
+    treeUri: Uri
+): LibraryRestoreScanResult? {
+    val root = DocumentFile.fromTreeUri(context, treeUri) ?: return null
+    if (!root.isDirectory) return null
+
+    val runtimeSongIds = SmpLibraryScanner(context)
+        .listSongs()
+        .map { it.id.trim() }
+        .filter { it.isNotEmpty() }
+        .toSet()
+
+    val selectedSongIds = linkedSetOf<String>()
+    var stateJson: String? = null
+    val smpFiles = root.listFiles()
+        .orEmpty()
+        .filter { it.isFile }
+        .sortedBy { it.name.orEmpty().lowercase() }
+        .mapNotNull { file ->
+            val name = file.name.orEmpty()
+            when {
+                name.equals("state.json", ignoreCase = true) -> {
+                    stateJson = runCatching {
+                        context.contentResolver.openInputStream(file.uri)
+                            ?.bufferedReader(Charsets.UTF_8)
+                            ?.use { it.readText() }
+                    }.getOrNull()?.takeIf { it.isNotBlank() }
+                    null
+                }
+
+                !SmpWorkspaceArchiveStore.isSupportedArchiveFileName(name) -> null
+
+                else -> {
+                    val stableSongId = SmpArchiveSongIdResolver.readStableSongId(context, file.uri)
+                        ?.trim()
+                        ?.takeIf { it.isNotEmpty() }
+                    if (stableSongId != null && !selectedSongIds.add(stableSongId)) {
+                        null
+                    } else {
+                        LibraryRestoreSmpFile(
+                            uri = file.uri,
+                            displayName = name,
+                            stableSongId = stableSongId,
+                            conflictWithRuntime = stableSongId != null && stableSongId in runtimeSongIds
+                        )
+                    }
+                }
+            }
+        }
+
+    val playlistCount = parseBackupPlaylistCount(stateJson)
+    return LibraryRestoreScanResult(
+        folderUri = treeUri,
+        smpFiles = smpFiles,
+        stateJson = stateJson,
+        playlistCount = playlistCount,
+        conflictCount = smpFiles.count { it.conflictWithRuntime }
+    )
+}
+
+private fun parseBackupPlaylistCount(stateJson: String?): Int {
+    if (stateJson.isNullOrBlank()) return 0
+    return runCatching {
+        JSONObject(stateJson).optJSONObject("playlists")?.length() ?: 0
+    }.getOrDefault(0)
+}
+
+private fun restoreLibraryFromBackupFolder(
+    context: Context,
+    scanResult: LibraryRestoreScanResult,
+    conflictMode: LibraryRestoreConflictMode,
+    onProgress: (done: Int, total: Int, currentTitle: String?) -> Unit
+): LibraryRestoreExecutionResult {
+    val scanner = SmpLibraryScanner(context)
+    val secureImportPipeline = SmpSecureImportPipeline(context)
+    val runtimeSongsById = scanner.listSongs().associateBy { it.id.trim() }
+    val importedSongs = mutableListOf<BackupBundleImportedSong>()
+    var importedCount = 0
+    var skippedCount = 0
+    var failedCount = 0
+    var completed = 0
+    val total = scanResult.songCount + if (scanResult.stateJson != null) 1 else 0
+
+    scanResult.smpFiles.forEach { smpFile ->
+        onProgress(completed, total, smpFile.displayName)
+        val stableSongId = smpFile.stableSongId
+        val existingSong = stableSongId?.let { runtimeSongsById[it] }
+        val shouldImport = when {
+            stableSongId == null -> true
+            existingSong == null -> true
+            conflictMode == LibraryRestoreConflictMode.Replace -> true
+            else -> false
+        }
+        if (!shouldImport && existingSong != null && stableSongId != null) {
+            skippedCount += 1
+            importedSongs += BackupBundleImportedSong(
+                bundleSongId = stableSongId,
+                importedSongId = existingSong.id,
+                storageFolder = existingSong.storageFolder
+            )
+        } else {
+            val importResult = secureImportPipeline.import(smpFile.uri)
+            val importedSong = importResult.importedSong
+            if (importResult.isSuccess && importedSong != null) {
+                importedCount += 1
+                stableSongId?.let { bundleSongId ->
+                    importedSongs += BackupBundleImportedSong(
+                        bundleSongId = bundleSongId,
+                        importedSongId = importedSong.id,
+                        storageFolder = importedSong.storageFolder,
+                        durableArchiveUri = importResult.durableArchiveUri?.toString()
+                    )
+                }
+            } else {
+                failedCount += 1
+            }
+        }
+        completed += 1
+        onProgress(completed, total, smpFile.displayName)
+    }
+
+    var stateRestored = false
+    var stateWarningCount = 0
+    var stateFailureCount = 0
+    var lastPlayed: BackupManager.LastPlayed? = null
+
+    scanResult.stateJson?.let { stateJson ->
+        onProgress(completed, total, "state.json")
+        when (val remapResult = BackupStateRemapper.remapBundleStateJson(stateJson, importedSongs)) {
+            is BackupStateRemapResult.Success -> {
+                stateWarningCount = remapResult.warnings.size
+                BackupManager.importState(context, remapResult.stateJson) {
+                    lastPlayed = it
+                }
+                stateRestored = true
+            }
+
+            is BackupStateRemapResult.Failure -> {
+                stateFailureCount = remapResult.failures.size
+            }
+        }
+        completed += 1
+        onProgress(completed, total, "state.json")
+    }
+
+    return LibraryRestoreExecutionResult(
+        importedCount = importedCount,
+        skippedCount = skippedCount,
+        failedCount = failedCount,
+        stateRestored = stateRestored,
+        stateWarningCount = stateWarningCount,
+        stateFailureCount = stateFailureCount,
+        lastPlayed = lastPlayed
+    )
+}
+
+private fun formatLibraryRestoreResultMessage(
+    context: Context,
+    result: LibraryRestoreExecutionResult
+): String {
+    val stateLine = when {
+        result.stateRestored && result.stateWarningCount > 0 -> context.getString(
+            R.string.more_library_restore_result_state_with_warnings,
+            result.stateWarningCount
+        )
+
+        result.stateRestored -> context.getString(R.string.more_library_restore_result_state_restored)
+
+        result.stateFailureCount > 0 -> context.getString(
+            R.string.more_library_restore_result_state_failed,
+            result.stateFailureCount
+        )
+
+        else -> context.getString(R.string.more_library_restore_result_state_missing)
+    }
+    return context.getString(
+        R.string.more_library_restore_result,
+        result.importedCount,
+        result.skippedCount,
+        result.failedCount,
+        stateLine
+    )
 }
 
 private fun copyWorkspaceArchiveToTree(

@@ -744,6 +744,8 @@
     <string name="more_item_arrangement_requires_song">Ouvre d’abord un morceau SMP</string>
     <string name="more_item_export_live_songs">Sauvegarder ma bibliothèque</string>
     <string name="more_item_export_live_songs_subtitle">Crée une sauvegarde complète de vos morceaux et playlists. Vous pourrez restaurer votre bibliothèque à l’identique.</string>
+    <string name="more_item_restore_library">Restaurer ma bibliothèque</string>
+    <string name="more_item_restore_library_subtitle">Importe les morceaux et playlists depuis un dossier de sauvegarde sans supprimer les autres morceaux.</string>
     <string name="more_item_editing">🛠  Édition</string>
     <string name="more_item_audio">🔊  Audio</string>
     <string name="more_item_language">🌐  Langue</string>
@@ -759,6 +761,18 @@
     <string name="more_live_songs_export_result">Sauvegarde terminée : %1$d réussi(s), %2$d échoué(s)\nDossier : %3$s</string>
     <string name="more_live_songs_export_no_songs">Aucun morceau à sauvegarder</string>
     <string name="more_live_songs_export_failed">Impossible de lancer la sauvegarde</string>
+    <string name="more_library_restore_title">Restaurer ma bibliothèque</string>
+    <string name="more_library_restore_progress">Restauration en cours : %1$d / %2$d</string>
+    <string name="more_library_restore_summary">Cette sauvegarde contient :\n- %1$d morceaux\n- %2$d playlists\n- %3$d conflits détectés</string>
+    <string name="more_library_restore_keep_existing">Conserver les morceaux existants</string>
+    <string name="more_library_restore_replace_existing">Remplacer les morceaux existants</string>
+    <string name="more_library_restore_scan_failed">Impossible de lire ce dossier de sauvegarde</string>
+    <string name="more_library_restore_empty">Aucun fichier de sauvegarde utilisable dans ce dossier</string>
+    <string name="more_library_restore_result">Restauration terminée : %1$d importé(s), %2$d ignoré(s), %3$d échec(s)\nÉtat : %4$s</string>
+    <string name="more_library_restore_result_state_restored">playlists restaurées</string>
+    <string name="more_library_restore_result_state_with_warnings">playlists restaurées avec %1$d avertissement(s)</string>
+    <string name="more_library_restore_result_state_failed">state.json non appliqué (%1$d conflit(s))</string>
+    <string name="more_library_restore_result_state_missing">aucun state.json</string>
     <string name="light_test_title">Test lumière</string>
     <string name="light_test_red">Rouge</string>
     <string name="light_test_blue">Bleu</string>
