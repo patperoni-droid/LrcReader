@@ -5,6 +5,7 @@ import com.patrick.lrcreader.core.MidiOutput
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.provider.OpenableColumns
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -57,8 +58,12 @@ import com.patrick.lrcreader.core.LightIndicatorPrefs
 import com.patrick.lrcreader.core.UiEntryPrefs
 import com.patrick.lrcreader.core.WorkspaceResolver
 import com.patrick.lrcreader.exo.R
+import com.patrick.lrcreader.smp.SmpArchiveSongIdResolver
 import com.patrick.lrcreader.smp.SmpExporter
 import com.patrick.lrcreader.smp.SmpLibraryScanner
+import com.patrick.lrcreader.smp.SmpUserArchiveRebuilder
+import com.patrick.lrcreader.smp.SmpUserArchiveCandidate
+import com.patrick.lrcreader.smp.SmpWorkspaceArchiveStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -326,7 +331,6 @@ private fun MoreRootScreen(
         "es" -> stringResource(R.string.settings_language_es)
         else -> stringResource(R.string.settings_language_auto)
     }
-    val sLiveSongsExportNoSongs = stringResource(R.string.more_live_songs_export_no_songs)
     val sLiveSongsExportFailed = stringResource(R.string.more_live_songs_export_failed)
     val sExportProDialogTitle = stringResource(R.string.export_pro_dialog_title)
     val sExportProDialogMessage = stringResource(R.string.export_pro_dialog_message)
@@ -399,20 +403,26 @@ private fun MoreRootScreen(
                 return@launch
             }
 
-            val songs = withContext(Dispatchers.IO) {
+            val runtimeSongs = withContext(Dispatchers.IO) {
                 SmpLibraryScanner(context.applicationContext).listSongs()
             }
-            exportLiveSongsTotal = songs.size
-
-            if (songs.isEmpty()) {
-                exportLiveSongsResultMessage = sLiveSongsExportNoSongs
-                isExportingLiveSongs = false
-                return@launch
+            val archiveCandidates = withContext(Dispatchers.IO) {
+                SmpUserArchiveRebuilder(context.applicationContext).listUserArchiveCandidates()
             }
+            val runtimeSongIds = runtimeSongs.map { it.id.trim() }
+                .filter { it.isNotEmpty() }
+                .toSet()
+            val workspaceArchivesToCopy = selectWorkspaceArchivesForBackup(
+                runtimeSongIds = runtimeSongIds,
+                candidates = archiveCandidates
+            )
+            exportLiveSongsTotal = runtimeSongs.size + workspaceArchivesToCopy.size + 1
 
             var successCount = 0
             var failureCount = 0
-            songs.forEachIndexed { index, song ->
+            var completedCount = 0
+
+            runtimeSongs.forEach { song ->
                 exportLiveSongsCurrentTitle = song.title
                 val exported = withContext(Dispatchers.IO) {
                     exportLiveSongToTree(
@@ -426,8 +436,42 @@ private fun MoreRootScreen(
                 } else {
                     failureCount += 1
                 }
-                exportLiveSongsDone = index + 1
+                completedCount += 1
+                exportLiveSongsDone = completedCount
             }
+
+            workspaceArchivesToCopy.forEach { archive ->
+                exportLiveSongsCurrentTitle = archive.displayName
+                val copied = withContext(Dispatchers.IO) {
+                    copyWorkspaceArchiveToTree(
+                        context = context.applicationContext,
+                        exportDir = exportTarget,
+                        archive = archive
+                    )
+                }
+                if (copied) {
+                    successCount += 1
+                } else {
+                    failureCount += 1
+                }
+                completedCount += 1
+                exportLiveSongsDone = completedCount
+            }
+
+            exportLiveSongsCurrentTitle = "state.json"
+            val stateWritten = withContext(Dispatchers.IO) {
+                writeLibraryBackupStateToTree(
+                    context = context.applicationContext,
+                    exportDir = exportTarget
+                )
+            }
+            if (stateWritten) {
+                successCount += 1
+            } else {
+                failureCount += 1
+            }
+            completedCount += 1
+            exportLiveSongsDone = completedCount
 
             exportLiveSongsCurrentTitle = null
             exportLiveSongsResultMessage = context.getString(
@@ -861,6 +905,108 @@ private fun exportLiveSongToTree(
         false
     } finally {
         runCatching { cacheFile.delete() }
+    }
+}
+
+private data class LibraryBackupArchiveItem(
+    val archiveUri: Uri,
+    val displayName: String
+)
+
+private fun selectWorkspaceArchivesForBackup(
+    runtimeSongIds: Set<String>,
+    candidates: List<SmpUserArchiveCandidate>
+): List<LibraryBackupArchiveItem> {
+    val selectedSongIds = linkedSetOf<String>()
+    return candidates
+        .distinctBy { it.archiveUri.toString() }
+        .mapNotNull { candidate ->
+            val stableSongId = candidate.stableSongId?.trim()?.takeIf { it.isNotEmpty() }
+            if (stableSongId != null) {
+                if (stableSongId in runtimeSongIds) {
+                    return@mapNotNull null
+                }
+                if (!selectedSongIds.add(stableSongId)) {
+                    return@mapNotNull null
+                }
+            }
+            LibraryBackupArchiveItem(
+                archiveUri = candidate.archiveUri,
+                displayName = candidate.archiveUri.lastPathSegment ?: "archive.smp"
+            )
+        }
+}
+
+private fun copyWorkspaceArchiveToTree(
+    context: Context,
+    exportDir: DocumentFile,
+    archive: LibraryBackupArchiveItem
+): Boolean {
+    val desiredName = queryBackupSourceDisplayName(context, archive.archiveUri)
+        ?.takeIf { SmpWorkspaceArchiveStore.isSupportedArchiveFileName(it) }
+        ?: buildFallbackWorkspaceArchiveName(context, archive.archiveUri)
+    val targetName = resolveAvailableBackupExportName(exportDir, desiredName)
+    val targetFile = exportDir.createFile("application/octet-stream", targetName) ?: return false
+    return try {
+        context.contentResolver.openInputStream(archive.archiveUri)?.use { input ->
+            context.contentResolver.openOutputStream(targetFile.uri, "w")?.use { output ->
+                input.copyTo(output)
+                output.flush()
+            }
+        } != null
+    } catch (_: Throwable) {
+        false
+    }
+}
+
+private fun writeLibraryBackupStateToTree(
+    context: Context,
+    exportDir: DocumentFile
+): Boolean {
+    val stateJson = BackupManager.exportState(
+        context = context,
+        lastPlayer = null,
+        libraryFolders = listOfNotNull(
+            WorkspaceResolver.resolve(context).workspaceRootUri?.toString()?.takeIf { it.isNotBlank() }
+        )
+    )
+    val stateFile = exportDir.findFile("state.json")
+        ?.takeIf { it.isFile }
+        ?: exportDir.createFile("application/json", "state.json")
+        ?: return false
+    return try {
+        context.contentResolver.openOutputStream(stateFile.uri, "w")?.use { output ->
+            output.write(stateJson.toByteArray(Charsets.UTF_8))
+            output.flush()
+        } != null
+    } catch (_: Throwable) {
+        false
+    }
+}
+
+private fun queryBackupSourceDisplayName(context: Context, uri: Uri): String? {
+    return runCatching {
+        context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+            ?.use { cursor ->
+                val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (nameIndex >= 0 && cursor.moveToFirst()) {
+                    cursor.getString(nameIndex)
+                } else {
+                    null
+                }
+            }
+    }.getOrNull()?.trim()?.takeIf { it.isNotEmpty() }
+}
+
+private fun buildFallbackWorkspaceArchiveName(
+    context: Context,
+    uri: Uri
+): String {
+    val stableSongId = SmpArchiveSongIdResolver.readStableSongId(context, uri)
+        ?.takeIf { it.isNotBlank() }
+    return when {
+        stableSongId != null -> "$stableSongId.smp"
+        else -> "archive_${System.currentTimeMillis()}.smp"
     }
 }
 

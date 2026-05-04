@@ -649,8 +649,8 @@
     <string name="more_item_filler">🎧  Sonido de fondo</string>
     <string name="more_item_backup_restore">💾  Respaldo / Restauración</string>
     <string name="more_item_history">🕘  Historial</string>
-    <string name="more_item_export_live_songs">Exportar todas las pistas live</string>
-    <string name="more_item_export_live_songs_subtitle">Crea una copia .smp actualizada de cada pista.</string>
+    <string name="more_item_export_live_songs">Guardar mi biblioteca</string>
+    <string name="more_item_export_live_songs_subtitle">Crea una copia de seguridad completa de tus canciones y listas. Podrás restaurar tu biblioteca exactamente como está.</string>
     <string name="more_item_editing">🛠  Edición</string>
     <string name="more_item_audio">🔊  Audio</string>
     <string name="more_item_language">🌐  Idioma</string>
@@ -660,11 +660,11 @@
     <string name="more_auto_return_playlist">Regreso automático a la playlist (10 s antes del final)</string>
     <string name="more_show_old_world_library">Mostrar el mundo antiguo en la biblioteca</string>
     <string name="more_footer_signature">Live in Pocket · LrcReader_EXO</string>
-    <string name="more_live_songs_export_title">Exportar todas las pistas live</string>
-    <string name="more_live_songs_export_progress">Exportación en curso: %1$d / %2$d</string>
-    <string name="more_live_songs_export_result">Exportación terminada: %1$d correctas, %2$d fallidas\nCarpeta: %3$s</string>
-    <string name="more_live_songs_export_no_songs">No hay pistas live para exportar</string>
-    <string name="more_live_songs_export_failed">No se pudo iniciar la exportación</string>
+    <string name="more_live_songs_export_title">Guardar mi biblioteca</string>
+    <string name="more_live_songs_export_progress">Copia de seguridad en curso: %1$d / %2$d</string>
+    <string name="more_live_songs_export_result">Copia de seguridad terminada: %1$d correctas, %2$d fallidas\nCarpeta: %3$s</string>
+    <string name="more_live_songs_export_no_songs">No hay canciones para guardar</string>
+    <string name="more_live_songs_export_failed">No se pudo iniciar la copia de seguridad</string>
 
     <!-- Global mix -->
     <string name="global_mix_title">Mezcla global</string>

@@ -731,8 +731,8 @@
     <string name="more_item_arrangement">🎼  Arrangement</string>
     <string name="more_item_arrangement_disabled_hint">Open an SMP song first</string>
     <string name="more_item_arrangement_requires_song">Open an SMP song first</string>
-    <string name="more_item_export_live_songs">Export all live tracks</string>
-    <string name="more_item_export_live_songs_subtitle">Creates an up-to-date .smp copy of each track.</string>
+    <string name="more_item_export_live_songs">Back up my library</string>
+    <string name="more_item_export_live_songs_subtitle">Creates a full backup of your songs and playlists. You can restore your library exactly as it is.</string>
     <string name="more_item_editing">🛠  Editing</string>
     <string name="more_item_audio">🔊  Audio</string>
     <string name="more_item_language">🌐  Language</string>
@@ -743,11 +743,11 @@
     <string name="more_show_old_world_library">Show the old world in the library</string>
     <string name="more_show_light_indicator">Show DMX indicator</string>
     <string name="more_footer_signature">Live in Pocket · LrcReader_EXO</string>
-    <string name="more_live_songs_export_title">Export all live tracks</string>
-    <string name="more_live_songs_export_progress">Export in progress: %1$d / %2$d</string>
-    <string name="more_live_songs_export_result">Export complete: %1$d succeeded, %2$d failed\nFolder: %3$s</string>
-    <string name="more_live_songs_export_no_songs">No live tracks to export</string>
-    <string name="more_live_songs_export_failed">Unable to start export</string>
+    <string name="more_live_songs_export_title">Back up my library</string>
+    <string name="more_live_songs_export_progress">Backup in progress: %1$d / %2$d</string>
+    <string name="more_live_songs_export_result">Backup complete: %1$d succeeded, %2$d failed\nFolder: %3$s</string>
+    <string name="more_live_songs_export_no_songs">No songs to back up</string>
+    <string name="more_live_songs_export_failed">Unable to start the backup</string>
     <string name="light_test_title">Light test</string>
     <string name="light_test_red">Red</string>
     <string name="light_test_blue">Blue</string>
