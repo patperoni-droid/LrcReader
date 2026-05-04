@@ -6,6 +6,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -36,6 +37,7 @@ fun LibraryHeader(
     showActions: Boolean = true,
     canGoBack: Boolean,
     onBack: () -> Unit,
+    onOpenStorage: () -> Unit,
     onPickRoot: () -> Unit,
     onRescan: () -> Unit,
     onForget: () -> Unit,
@@ -128,6 +130,14 @@ fun LibraryHeader(
         ) {
             Text(stringResource(R.string.library_title), color = titleColor, fontSize = 20.sp)
             Text(folderName, color = subtitleColor, fontSize = 11.sp)
+        }
+
+        IconButton(onClick = onOpenStorage) {
+            Icon(
+                Icons.Default.Folder,
+                contentDescription = stringResource(R.string.library_header_cd_storage),
+                tint = Color.White
+            )
         }
 
         if (showActions) {

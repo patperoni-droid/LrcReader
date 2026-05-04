@@ -255,10 +255,13 @@
     <string name="library_list_move_to_folder">Mover a una carpeta</string>
     <string name="library_list_rename">Renombrar</string>
     <string name="library_list_delete_permanently">Eliminar permanentemente</string>
-    <string name="library_view_mode_songs">Live</string>
+    <string name="library_view_mode_songs">Mis canciones</string>
     <string name="library_view_mode_files">Archivos</string>
     <string name="library_view_mode_playlists">Playlists</string>
     <string name="library_view_mode_lufs">LUFS</string>
+    <string name="library_header_cd_storage">Acceso al almacenamiento</string>
+    <string name="library_storage_header_title">Almacenamiento del dispositivo</string>
+    <string name="library_storage_header_subtitle">Explora tus archivos de audio</string>
     <string name="library_full_mode_enabled">Modo completo activado</string>
     <string name="library_lufs_active">LUFS activo</string>
     <string name="library_lufs_apply">Aplicar LUFS</string>

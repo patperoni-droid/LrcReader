@@ -585,6 +585,8 @@ fun LibraryScreen(
     val sLufsLiteDialogTitle = stringResource(R.string.library_lufs_lite_dialog_title)
     val sLufsLiteDialogMessage = stringResource(R.string.library_lufs_lite_dialog_message)
     val sUpgradeToPro = stringResource(R.string.library_upgrade_to_pro)
+    val sStorageHeaderTitle = stringResource(R.string.library_storage_header_title)
+    val sStorageHeaderSubtitle = stringResource(R.string.library_storage_header_subtitle)
     val sConvertSmpSingleSuccess = stringResource(R.string.library_convert_smp_success_single)
     val sConvertSmpSingleFailed = stringResource(R.string.library_convert_smp_failed_single)
     val sConvertSmpNoMp3 = stringResource(R.string.library_convert_smp_no_mp3)
@@ -3121,6 +3123,40 @@ fun LibraryScreen(
     val showSelectionBottomBar = selectedSongs.isNotEmpty() && isSongViewMode
     val selectionBottomPadding = if (showSelectionBottomBar) bottomBarHeight else 0.dp
     val isFilesSelectionContext = isFilesViewMode && selectedSongs.isNotEmpty()
+    val openStorageView: () -> Unit = openStorageView@ {
+        val previousFolder = currentFolderUri
+        libraryViewMode = LIBRARY_VIEW_MODE_FILES
+        selectedSongs = emptySet()
+        stopQuickPlay()
+        LibraryFolderCache.clear()
+        val root = filesNavigationRoot ?: workspaceRootUri ?: return@openStorageView
+        val folderToShow = if (isSharedAudioFolderUri(root)) {
+            previousFolder
+                ?.takeIf(::isSharedAudioFolderUri)
+                ?: resolveFilesInitialFolderForLibrary(root)
+                ?: root
+        } else {
+            previousFolder
+                ?.takeUnless { isPrompterFolderUri(it) || isSmpFolderUri(it) }
+                ?: resolveFilesInitialFolderForLibrary(root)
+                ?: root
+        }
+        currentFolderUri = folderToShow
+        val shouldResetStack = shouldResetFilesNavigationStack(
+            previousFolder = previousFolder,
+            folderStack = folderStack
+        )
+        if (shouldResetStack) {
+            folderStack = buildFilesInitialFolderStack(root, folderToShow)
+        }
+        scope.launch {
+            loadFolderEntriesAsync(
+                folderUri = folderToShow,
+                forceRefresh = true,
+                clearVisibleOnMiss = true
+            )
+        }
+    }
     val isSetupDone = workspaceSnapshot.isUsable
     if (!isSetupDone) {
         DarkBlueGradientBackground {
@@ -3177,6 +3213,7 @@ fun LibraryScreen(
                     folderStack = newStack
                     selectedSongs = emptySet()
                 },
+                onOpenStorage = openStorageView,
 
                 onPickRoot = { pickRootFolderLauncher.launch(null) },
 
@@ -3345,46 +3382,6 @@ fun LibraryScreen(
                         selectedSongs = emptySet()
                         stopQuickPlay()
                         LibraryFolderCache.clear()
-                    }
-                )
-                LibraryViewModeButton(
-                    label = sFilesView,
-                    selected = isFilesViewMode,
-                    accent = accent,
-                    onClick = {
-                        val previousFolder = currentFolderUri
-                        libraryViewMode = LIBRARY_VIEW_MODE_FILES
-                        selectedSongs = emptySet()
-                        stopQuickPlay()
-                        LibraryFolderCache.clear()
-                        val root = filesNavigationRoot ?: workspaceRootUri
-                            ?: return@LibraryViewModeButton
-                        val folderToShow = if (isSharedAudioFolderUri(root)) {
-                            previousFolder
-                                ?.takeIf(::isSharedAudioFolderUri)
-                                ?: resolveFilesInitialFolderForLibrary(root)
-                                ?: root
-                        } else {
-                            previousFolder
-                                ?.takeUnless { isPrompterFolderUri(it) || isSmpFolderUri(it) }
-                                ?: resolveFilesInitialFolderForLibrary(root)
-                                ?: root
-                        }
-                        currentFolderUri = folderToShow
-                        val shouldResetStack = shouldResetFilesNavigationStack(
-                            previousFolder = previousFolder,
-                            folderStack = folderStack
-                        )
-                        if (shouldResetStack) {
-                            folderStack = buildFilesInitialFolderStack(root, folderToShow)
-                        }
-                        scope.launch {
-                            loadFolderEntriesAsync(
-                                folderUri = folderToShow,
-                                forceRefresh = true,
-                                clearVisibleOnMiss = true
-                            )
-                        }
                     }
                 )
                 LibraryViewModeButton(
@@ -3774,12 +3771,32 @@ fun LibraryScreen(
                                     )
                                 }
                             } else {
+                                if (isFilesViewMode) {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(bottom = 8.dp),
+                                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                                    ) {
+                                        Text(
+                                            text = sStorageHeaderTitle,
+                                            color = titleColor,
+                                            fontSize = 16.sp
+                                        )
+                                        Text(
+                                            text = sStorageHeaderSubtitle,
+                                            color = subtitleColor,
+                                            fontSize = 12.sp
+                                        )
+                                    }
+                                }
                                 LibraryList(
                                 entries = filteredEntries,
                                 cardBg = cardBg,
                                 rowBorder = rowBorder,
                                 accent = accent,
                                 bottomPadding = selectionBottomPadding,
+                                isExplorerMode = isFilesViewMode,
                                 canImportBackupJson = canImportBackupJsonFromCurrentFolder,
                                 selectedSongs = selectedSongs,
 
