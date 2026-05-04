@@ -3351,6 +3351,18 @@ class MainActivity : AppCompatActivity() {
                                             showMainBusTab = enabled
                                         },
                                         onAfterImport = { refreshKey++ },
+                                        onAfterSmpRestore = { importedCount, lastImportedSongId ->
+                                            if (importedCount > 0) {
+                                                smpCacheRefreshTick++
+                                                lastImportedSongId?.takeIf { it.isNotBlank() }?.let { songId ->
+                                                    lastImportedSmpUiSignal = SmpImportedUiSignal(
+                                                        songId = songId,
+                                                        title = songId,
+                                                        requestVersion = smpCacheRefreshTick
+                                                    )
+                                                }
+                                            }
+                                        },
                                         onOpenTempoFromArrangement = {
                                             playerNavigationTarget = "grid_setup"
                                             playerNavigationToken += 1

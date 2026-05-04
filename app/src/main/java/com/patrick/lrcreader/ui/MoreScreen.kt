@@ -97,6 +97,7 @@ fun MoreScreen(
     onShowDjTabChange: (Boolean) -> Unit = {},
     onShowMainBusTabChange: (Boolean) -> Unit = {},
     onAfterImport: (BackupManager.LastPlayed?) -> Unit = {},
+    onAfterSmpRestore: (importedCount: Int, lastImportedSongId: String?) -> Unit = { _, _ -> },
     onOpenTuner: () -> Unit = {},     // callback pour l'accordeur
     onOpenTempoFromArrangement: () -> Unit = {},
     onStopCurrentPlayback: () -> Unit = {}
@@ -130,7 +131,8 @@ fun MoreScreen(
             onShowDjTabChange = onShowDjTabChange,
             onShowMainBusTabChange = onShowMainBusTabChange,
             onOpenTuner = onOpenTuner,
-            onAfterImport = onAfterImport
+            onAfterImport = onAfterImport,
+            onAfterSmpRestore = onAfterSmpRestore
         )
 
         MoreSection.ArrangementHub -> ArrangementHubScreen(
@@ -296,7 +298,8 @@ private fun MoreRootScreen(
     onShowDjTabChange: (Boolean) -> Unit,
     onShowMainBusTabChange: (Boolean) -> Unit,
     onOpenTuner: () -> Unit,
-    onAfterImport: (BackupManager.LastPlayed?) -> Unit
+    onAfterImport: (BackupManager.LastPlayed?) -> Unit,
+    onAfterSmpRestore: (importedCount: Int, lastImportedSongId: String?) -> Unit
 ) {
     val context = LocalContext.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
@@ -914,13 +917,16 @@ private fun MoreRootScreen(
                                             restoreLibraryDone = done
                                             restoreLibraryTotal = total
                                             restoreLibraryCurrentTitle = currentTitle
-                                        }
                                     }
-                                    onAfterImport(result.lastPlayed)
-                                    restoreLibraryCurrentTitle = null
-                                    restoreLibraryResultMessage = formatLibraryRestoreResultMessage(
-                                        context = context,
-                                        result = result
+                                }
+                                onAfterImport(result.lastPlayed)
+                                if (result.importedCount > 0) {
+                                    onAfterSmpRestore(result.importedCount, result.lastImportedSongId)
+                                }
+                                restoreLibraryCurrentTitle = null
+                                restoreLibraryResultMessage = formatLibraryRestoreResultMessage(
+                                    context = context,
+                                    result = result
                                     )
                                     isRestoringLibrary = false
                                 }
@@ -947,13 +953,16 @@ private fun MoreRootScreen(
                                             restoreLibraryDone = done
                                             restoreLibraryTotal = total
                                             restoreLibraryCurrentTitle = currentTitle
-                                        }
                                     }
-                                    onAfterImport(result.lastPlayed)
-                                    restoreLibraryCurrentTitle = null
-                                    restoreLibraryResultMessage = formatLibraryRestoreResultMessage(
-                                        context = context,
-                                        result = result
+                                }
+                                onAfterImport(result.lastPlayed)
+                                if (result.importedCount > 0) {
+                                    onAfterSmpRestore(result.importedCount, result.lastImportedSongId)
+                                }
+                                restoreLibraryCurrentTitle = null
+                                restoreLibraryResultMessage = formatLibraryRestoreResultMessage(
+                                    context = context,
+                                    result = result
                                     )
                                     isRestoringLibrary = false
                                 }
@@ -1171,6 +1180,7 @@ private data class LibraryRestoreExecutionResult(
     val stateRestored: Boolean,
     val stateWarningCount: Int,
     val stateFailureCount: Int,
+    val lastImportedSongId: String? = null,
     val lastPlayed: BackupManager.LastPlayed? = null
 )
 
@@ -1280,6 +1290,7 @@ private fun restoreLibraryFromBackupFolder(
     var skippedCount = 0
     var failedCount = 0
     var completed = 0
+    var lastImportedSongId: String? = null
     val total = scanResult.songCount + if (scanResult.stateJson != null) 1 else 0
 
     scanResult.smpFiles.forEach { smpFile ->
@@ -1304,6 +1315,7 @@ private fun restoreLibraryFromBackupFolder(
             val importedSong = importResult.importedSong
             if (importResult.isSuccess && importedSong != null) {
                 importedCount += 1
+                lastImportedSongId = importedSong.id
                 stableSongId?.let { bundleSongId ->
                     importedSongs += BackupBundleImportedSong(
                         bundleSongId = bundleSongId,
@@ -1351,6 +1363,7 @@ private fun restoreLibraryFromBackupFolder(
         stateRestored = stateRestored,
         stateWarningCount = stateWarningCount,
         stateFailureCount = stateFailureCount,
+        lastImportedSongId = lastImportedSongId,
         lastPlayed = lastPlayed
     )
 }

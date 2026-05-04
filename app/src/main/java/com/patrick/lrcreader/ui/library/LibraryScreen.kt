@@ -120,6 +120,22 @@ private object LibraryLufsHintPrefs {
             .apply()
     }
 }
+
+private object LibraryHelpPrefs {
+    private const val PREFS_NAME = "library_help_prefs"
+    private const val KEY_DISMISSED = "library_help_dismissed"
+
+    fun isDismissed(context: Context): Boolean =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(KEY_DISMISSED, false)
+
+    fun setDismissed(context: Context, dismissed: Boolean) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_DISMISSED, dismissed)
+            .apply()
+    }
+}
 private const val LIBRARY_LUFS_TARGET = -14f
 private const val LIBRARY_LUFS_MIN_DB = -12
 private const val LIBRARY_LUFS_MAX_DB = 0
@@ -562,6 +578,10 @@ fun LibraryScreen(
     val sLufsHintTitle = stringResource(R.string.library_lufs_hint_title)
     val sLufsHintMessage = stringResource(R.string.library_lufs_hint_message)
     val sLufsHintDoNotShowAgain = stringResource(R.string.library_lufs_hint_do_not_show_again)
+    val sLibraryHelpTitle = stringResource(R.string.library_help_title)
+    val sLibraryHelpMessage = stringResource(R.string.library_help_message)
+    val sLibraryHelpUnderstood = stringResource(R.string.library_help_understood)
+    val sLibraryHelpDoNotShowAgain = stringResource(R.string.library_help_do_not_show_again)
     val sLufsLiteDialogTitle = stringResource(R.string.library_lufs_lite_dialog_title)
     val sLufsLiteDialogMessage = stringResource(R.string.library_lufs_lite_dialog_message)
     val sUpgradeToPro = stringResource(R.string.library_upgrade_to_pro)
@@ -1548,6 +1568,7 @@ fun LibraryScreen(
     val isFilesViewMode = libraryViewMode == LIBRARY_VIEW_MODE_FILES
     val isPlaylistsViewMode = libraryViewMode == LIBRARY_VIEW_MODE_PLAYLISTS
     val isSongBasedViewMode = isSongViewMode || isLufsViewMode
+    var showLibraryHelpDialog by remember { mutableStateOf(false) }
     var hasShownLufsHintThisSession by rememberSaveable { mutableStateOf(false) }
     var showLufsHintDialog by remember { mutableStateOf(false) }
     var showLufsLiteDialog by remember { mutableStateOf(false) }
@@ -1579,6 +1600,12 @@ fun LibraryScreen(
         if (!LibraryLufsHintPrefs.isDismissed(context)) {
             lufsHintDoNotShowAgainChecked = false
             showLufsHintDialog = true
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        if (!LibraryHelpPrefs.isDismissed(context)) {
+            showLibraryHelpDialog = true
         }
     }
 
@@ -4120,6 +4147,44 @@ fun LibraryScreen(
                             }
                         ) {
                             Text(stringResource(R.string.common_ok))
+                        }
+                    }
+                )
+            }
+            if (showLibraryHelpDialog) {
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = {
+                        showLibraryHelpDialog = false
+                    },
+                    title = {
+                        Text(
+                            text = sLibraryHelpTitle,
+                            color = titleColor
+                        )
+                    },
+                    text = {
+                        Text(
+                            text = sLibraryHelpMessage,
+                            color = subtitleColor
+                        )
+                    },
+                    confirmButton = {
+                        androidx.compose.material3.TextButton(
+                            onClick = {
+                                showLibraryHelpDialog = false
+                            }
+                        ) {
+                            Text(sLibraryHelpUnderstood)
+                        }
+                    },
+                    dismissButton = {
+                        androidx.compose.material3.TextButton(
+                            onClick = {
+                                LibraryHelpPrefs.setDismissed(context, true)
+                                showLibraryHelpDialog = false
+                            }
+                        ) {
+                            Text(sLibraryHelpDoNotShowAgain)
                         }
                     }
                 )

@@ -279,6 +279,10 @@
     <string name="library_lufs_hint_title">Volume normalization</string>
     <string name="library_lufs_hint_message">Here you can balance the volume of your tracks.\n\nThis helps avoid large level differences between songs, for a more comfortable and professional live experience.\n\nWe use a reference close to -14 LUFS, a widely used standard.\n\nYou can apply or remove this setting at any time.</string>
     <string name="library_lufs_hint_do_not_show_again">Do not show again</string>
+    <string name="library_help_title">Important</string>
+    <string name="library_help_message">Important: for optimal operation, perform all actions on your songs (import, export, copy, move, delete) directly in the app.</string>
+    <string name="library_help_understood">Understood</string>
+    <string name="library_help_do_not_show_again">Do not show again</string>
     <string name="library_lufs_lite_dialog_title">LUFS - Uniform level</string>
     <string name="library_lufs_lite_dialog_message">All your tracks at the same volume, automatically.\n\nAvailable in the Pro version.</string>
     <string name="library_upgrade_to_pro">Go Pro</string>
