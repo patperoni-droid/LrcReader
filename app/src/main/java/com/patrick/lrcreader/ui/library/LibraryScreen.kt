@@ -3733,17 +3733,27 @@ fun LibraryScreen(
                                                     Spacer(Modifier.width(10.dp))
 
                                                     Column(modifier = Modifier.weight(1f)) {
-                                                        Text(
-                                                            text = song.displayTitle,
-                                                            color = titleColor,
-                                                            fontSize = 15.sp
-                                                        )
-                                                        if (song.isLufsActive) {
+                                                        Row(
+                                                            modifier = Modifier.fillMaxWidth(),
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                        ) {
                                                             Text(
-                                                                text = sLufsActive,
-                                                                color = accent,
-                                                                fontSize = 11.sp
+                                                                text = song.displayTitle,
+                                                                color = titleColor,
+                                                                fontSize = 15.sp,
+                                                                maxLines = 1,
+                                                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                                                modifier = Modifier.weight(1f)
                                                             )
+                                                            if (song.isLufsActive) {
+                                                                Text(
+                                                                    text = "LUFS",
+                                                                    color = accent,
+                                                                    fontSize = 11.sp,
+                                                                    maxLines = 1
+                                                                )
+                                                            }
                                                         }
                                                     }
                                                 }
