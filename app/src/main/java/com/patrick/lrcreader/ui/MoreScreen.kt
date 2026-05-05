@@ -59,6 +59,8 @@ import com.patrick.lrcreader.core.BackupManager
 import com.patrick.lrcreader.core.EditionConfig
 import com.patrick.lrcreader.core.LegacyLibraryVisibilityPrefs
 import com.patrick.lrcreader.core.LightIndicatorPrefs
+import com.patrick.lrcreader.core.PlayerLaunchMode
+import com.patrick.lrcreader.core.PlayerLaunchPrefs
 import com.patrick.lrcreader.core.UiEntryPrefs
 import com.patrick.lrcreader.core.WorkspaceResolver
 import com.patrick.lrcreader.core.backup.BackupBundleImportedSong
@@ -307,6 +309,7 @@ private fun MoreRootScreen(
         mutableStateOf(MoreLiveSongsExportPrefs.getTreeUri(context))
     }
     var showLanguageDialog by remember { mutableStateOf(false) }
+    var showPlayerLaunchDialog by remember { mutableStateOf(false) }
     var showExportProDialog by remember { mutableStateOf(false) }
     var selectedLanguageTag by remember { mutableStateOf(AppLanguagePrefs.getSavedLanguageTag(context)) }
     var isExportingLiveSongs by remember { mutableStateOf(false) }
@@ -329,6 +332,9 @@ private fun MoreRootScreen(
     var autoReturnEnabled by remember {
         mutableStateOf(AutoReturnPrefs.isEnabled(context))
     }
+    var playerLaunchMode by remember {
+        mutableStateOf(PlayerLaunchPrefs.getMode(context))
+    }
     var showLightIndicator by remember {
         mutableStateOf(LightIndicatorPrefs.isEnabled(context))
     }
@@ -350,6 +356,11 @@ private fun MoreRootScreen(
         "en" -> stringResource(R.string.settings_language_en)
         "es" -> stringResource(R.string.settings_language_es)
         else -> stringResource(R.string.settings_language_auto)
+    }
+    val currentPlayerLaunchModeLabel = when (playerLaunchMode) {
+        PlayerLaunchMode.ALWAYS -> stringResource(R.string.player_open_mode_always)
+        PlayerLaunchMode.NEVER -> stringResource(R.string.player_open_mode_never)
+        PlayerLaunchMode.AUTOMATIC -> stringResource(R.string.player_open_mode_automatic)
     }
     val sLiveSongsExportFailed = stringResource(R.string.more_live_songs_export_failed)
     val sLibraryRestoreScanFailed = stringResource(R.string.more_library_restore_scan_failed)
@@ -684,6 +695,12 @@ private fun MoreRootScreen(
                         }
                     )
 
+                    SettingsItem(
+                        label = stringResource(R.string.more_player_open_mode),
+                        subtitle = currentPlayerLaunchModeLabel,
+                        onClick = { showPlayerLaunchDialog = true }
+                    )
+
                     SwitchSettingItem(
                         label = stringResource(R.string.more_show_light_indicator),
                         checked = showLightIndicator,
@@ -760,6 +777,56 @@ private fun MoreRootScreen(
             confirmButton = {},
             dismissButton = {
                 TextButton(onClick = { showLanguageDialog = false }) {
+                    Text(text = stringResource(R.string.common_cancel))
+                }
+            }
+        )
+    }
+
+    if (showPlayerLaunchDialog) {
+        val playerLaunchOptions = listOf(
+            PlayerLaunchMode.ALWAYS to R.string.player_open_mode_always,
+            PlayerLaunchMode.NEVER to R.string.player_open_mode_never,
+            PlayerLaunchMode.AUTOMATIC to R.string.player_open_mode_automatic
+        )
+
+        AlertDialog(
+            onDismissRequest = { showPlayerLaunchDialog = false },
+            title = { Text(text = stringResource(R.string.more_player_open_mode)) },
+            text = {
+                Column {
+                    playerLaunchOptions.forEach { (mode, labelRes) ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    playerLaunchMode = mode
+                                    PlayerLaunchPrefs.setMode(context, mode)
+                                    showPlayerLaunchDialog = false
+                                }
+                                .padding(vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = playerLaunchMode == mode,
+                                onClick = {
+                                    playerLaunchMode = mode
+                                    PlayerLaunchPrefs.setMode(context, mode)
+                                    showPlayerLaunchDialog = false
+                                }
+                            )
+                            Text(
+                                text = stringResource(labelRes),
+                                color = Color(0xFFF5F5F5),
+                                fontSize = 14.sp
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showPlayerLaunchDialog = false }) {
                     Text(text = stringResource(R.string.common_cancel))
                 }
             }

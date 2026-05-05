@@ -749,6 +749,10 @@
     <string name="more_item_advanced">⚙️  Advanced</string>
     <string name="more_item_test_bluetooth_midi">📶  Test Bluetooth MIDI</string>
     <string name="more_auto_return_playlist">Auto return to playlist (10 s before end)</string>
+    <string name="more_player_open_mode">Player opening</string>
+    <string name="player_open_mode_always">Always</string>
+    <string name="player_open_mode_never">Never</string>
+    <string name="player_open_mode_automatic">Automatic (open only if lyrics are available)</string>
     <string name="more_show_old_world_library">Show the old world in the library</string>
     <string name="more_show_light_indicator">Show DMX indicator</string>
     <string name="more_footer_signature">Live in Pocket · LrcReader_EXO</string>

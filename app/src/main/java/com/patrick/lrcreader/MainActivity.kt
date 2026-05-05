@@ -1741,6 +1741,40 @@ class MainActivity : AppCompatActivity() {
                     playlistItemKey: String? = null,
                     openPlayerScreen: Boolean = true
                 ) {
+                    suspend fun shouldOpenPlayerScreenForLaunch(
+                        trackUriString: String,
+                        allowPlayerOpen: Boolean
+                    ): Boolean {
+                        if (!allowPlayerOpen) return false
+                        return when (PlayerLaunchPrefs.getMode(ctx)) {
+                            PlayerLaunchMode.ALWAYS -> true
+                            PlayerLaunchMode.NEVER -> false
+                            PlayerLaunchMode.AUTOMATIC -> withContext(Dispatchers.IO) {
+                                val smpSongId = getSmpSongId(trackUriString)
+                                if (smpSongId != null) {
+                                    return@withContext smpLibraryScanner.findSongById(smpSongId)?.lyricsPath != null
+                                }
+
+                                smpSongsById.values.firstOrNull { it.audioPath == trackUriString }
+                                    ?.let { return@withContext it.lyricsPath != null }
+
+                                smpLibraryScanner.listSongs()
+                                    .firstOrNull { it.audioPath == trackUriString }
+                                    ?.let { return@withContext it.lyricsPath != null }
+
+                                return@withContext LrcStorage.resolveOriginForTrack(
+                                    ctx,
+                                    trackUriString
+                                ) != null
+                            }
+                        }
+                    }
+
+                    val shouldOpenPlayerScreen = shouldOpenPlayerScreenForLaunch(
+                        trackUriString = uriString,
+                        allowPlayerOpen = openPlayerScreen
+                    )
+
                     val backingTitle = TitleAliasesStore.getTitleForTrack(ctx, uriString)
                         ?: indexAll.firstOrNull { it.uriString == uriString }?.name
                         ?: Uri.parse(uriString).lastPathSegment
@@ -2035,7 +2069,7 @@ class MainActivity : AppCompatActivity() {
                         PlaybackCoordinator.onPlayerStop()
                     }
 
-                    if (openPlayerScreen) {
+                    if (shouldOpenPlayerScreen) {
                         selectedTab = BottomTab.Player
                         latestSessionSnapshot = SessionSnapshot(
                             tabKey = TAB_PLAYER,
@@ -3160,15 +3194,6 @@ class MainActivity : AppCompatActivity() {
 
                                                 selectedQuickPlaylist = resolvedTarget.playlist
                                                 currentLyricsColor = color
-                                                selectedTab = BottomTab.Player
-                                                latestSessionSnapshot = SessionSnapshot(
-                                                    tabKey = TAB_PLAYER,
-                                                    quickPlaylist = resolvedTarget.playlist ?: selectedQuickPlaylist,
-                                                    openedPlaylist = openedPlaylist,
-                                                    currentPlayingUri = resolvedTarget.uri,
-                                                    currentPlayingPlaylist = resolvedTarget.playlist
-                                                )
-                                                persistSession(reason = "quickPlayTap")
                                             }
 
                                             is PlaybackRouter.Target.Unknown -> {
@@ -3320,16 +3345,15 @@ class MainActivity : AppCompatActivity() {
                                                         source = "library_tap",
                                                         playlistName = resolvedTarget.playlist
                                                     )
-                                                    playWithCrossfade(
-                                                        resolvedTarget.uri,
-                                                        resolvedTarget.playlist,
-                                                        null,
-                                                        openRichPlayer
-                                                    )
-                                                    currentLyricsColor = Color.White
-                                                    if (openRichPlayer) {
-                                                        setTabAndPersist(BottomTab.Player, reason = "libraryPlay")
+                                                    scope.launch {
+                                                        playWithCrossfadeInternal(
+                                                            uriString = resolvedTarget.uri,
+                                                            playlistName = resolvedTarget.playlist,
+                                                            playlistItemKey = null,
+                                                            openPlayerScreen = openRichPlayer
+                                                        )
                                                     }
+                                                    currentLyricsColor = Color.White
                                                 }
 
                                                 is PlaybackRouter.Target.Prompter -> {
@@ -3443,9 +3467,14 @@ class MainActivity : AppCompatActivity() {
                                                 source = "search_player_tap",
                                                 playlistName = null
                                             )
-                                            playWithCrossfade(uriString, null, null, true)
-
-                                            setTabAndPersist(BottomTab.Player, reason = "searchPlayPlayer")
+                                            scope.launch {
+                                                playWithCrossfadeInternal(
+                                                    uriString = uriString,
+                                                    playlistName = null,
+                                                    playlistItemKey = null,
+                                                    openPlayerScreen = true
+                                                )
+                                            }
                                         }
 
                                         SearchMode.DJ -> {
@@ -3460,14 +3489,15 @@ class MainActivity : AppCompatActivity() {
                                                 source = "search_playlist_tap",
                                                 playlistName = selectedQuickPlaylist
                                             )
-                                            playWithCrossfade(
-                                                uriString,
-                                                selectedQuickPlaylist,
-                                                uriString,
-                                                true
-                                            )
+                                            scope.launch {
+                                                playWithCrossfadeInternal(
+                                                    uriString = uriString,
+                                                    playlistName = selectedQuickPlaylist,
+                                                    playlistItemKey = uriString,
+                                                    openPlayerScreen = true
+                                                )
+                                            }
                                             currentLyricsColor = Color(0xFFE040FB)
-                                            setTabAndPersist(BottomTab.Player, reason = "searchPlayPlaylist")
                                         }
                                     }
                                     isSearchOpen = false

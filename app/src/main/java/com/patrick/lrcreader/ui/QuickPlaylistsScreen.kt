@@ -313,6 +313,7 @@ fun QuickPlaylistsScreen(
     var hoverHeaderKey by remember { mutableStateOf<String?>(null) }
     var collapsedGroupIds by rememberSaveable { mutableStateOf(setOf<String>()) }
     var activePlayingGroupHeaderKey by rememberSaveable(internalSelected) { mutableStateOf<String?>(null) }
+    var pendingLiveGroupScrollHeaderKey by remember { mutableStateOf<String?>(null) }
 
     var renameTarget by remember { mutableStateOf<String?>(null) }
     var renameText by remember { mutableStateOf("") }
@@ -951,6 +952,16 @@ fun QuickPlaylistsScreen(
         } else {
             isSearchVisible = true
         }
+    }
+
+    LaunchedEffect(pendingLiveGroupScrollHeaderKey, visibleRows) {
+        val headerKey = pendingLiveGroupScrollHeaderKey ?: return@LaunchedEffect
+        val headerRowIndex = visibleRows.indexOfFirst { row -> row.item == headerKey }
+        if (headerRowIndex < 0) return@LaunchedEffect
+        val approxRowsAbove = (listState.layoutInfo.visibleItemsInfo.size / 2).coerceAtLeast(3)
+        val targetIndex = (headerRowIndex - approxRowsAbove).coerceAtLeast(0)
+        listState.animateScrollToItem(targetIndex)
+        pendingLiveGroupScrollHeaderKey = null
     }
 
     fun closePlaylistSearch() {
@@ -1794,7 +1805,6 @@ fun QuickPlaylistsScreen(
                                                 // ⚠️ IMPORTANT : on NE rappelle PAS onSelectedPlaylistChange(currentPlaylist) ici,
                                                 // sinon le parent peut recharger la playlist immédiatement (LaunchedEffect),
                                                 // ce qui donne l'impression que le titre "descend direct".
-                                                onRequestShowPlayer()
                                             },
                                             onLongClick = {
                                                 if (!isPlayableAudioItem(uriString)) return@combinedClickable
@@ -1987,6 +1997,7 @@ fun QuickPlaylistsScreen(
                                                         )
                                                     }
                                                     activePlayingGroupHeaderKey = headerKey
+                                                    pendingLiveGroupScrollHeaderKey = headerKey
                                                 }
                                                 menuOpen = false
                                             }
