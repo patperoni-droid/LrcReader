@@ -1,6 +1,5 @@
 package com.patrick.lrcreader.ui
 
-import android.util.Log
 import android.view.KeyEvent as AndroidKeyEvent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -45,7 +44,6 @@ import androidx.compose.ui.zIndex
 import com.patrick.lrcreader.core.NotesRepository
 import com.patrick.lrcreader.core.TextPrompterPrefs
 import com.patrick.lrcreader.core.TextSongRepository
-import com.patrick.lrcreader.exo.BuildConfig
 import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.ui.theme.DarkBlueGradientBackground
 import com.patrick.lrcreader.ui.theme.SplColors
@@ -61,9 +59,7 @@ private data class SongInfo(
     val content: String?
 )
 
-private const val PROMPTER_KEY_LOG_TAG = "PROMPTER_KEY"
-
-internal enum class PrompterAction {
+enum class PrompterAction {
     NEXT,
     PREV,
     TOGGLE,
@@ -72,17 +68,9 @@ internal enum class PrompterAction {
 }
 
 internal fun mapPrompterKey(nativeKeyCode: Int): PrompterAction? = when (nativeKeyCode) {
-    AndroidKeyEvent.KEYCODE_PAGE_DOWN,
-    AndroidKeyEvent.KEYCODE_DPAD_DOWN,
     AndroidKeyEvent.KEYCODE_DPAD_RIGHT -> PrompterAction.NEXT
 
-    AndroidKeyEvent.KEYCODE_PAGE_UP,
-    AndroidKeyEvent.KEYCODE_DPAD_UP,
     AndroidKeyEvent.KEYCODE_DPAD_LEFT -> PrompterAction.PREV
-
-    AndroidKeyEvent.KEYCODE_SPACE,
-    AndroidKeyEvent.KEYCODE_ENTER,
-    AndroidKeyEvent.KEYCODE_NUMPAD_ENTER -> PrompterAction.TOGGLE
 
     AndroidKeyEvent.KEYCODE_MOVE_HOME -> PrompterAction.HOME
     AndroidKeyEvent.KEYCODE_MOVE_END -> PrompterAction.END
@@ -124,7 +112,9 @@ internal fun resolvePrompterKeyHandling(
 fun TextPrompterScreen(
     modifier: Modifier = Modifier,
     songId: String,
-    onClose: () -> Unit
+    onClose: () -> Unit,
+    hardwareActionToken: Int = 0,
+    hardwareAction: PrompterAction = PrompterAction.TOGGLE
 ) {
     val context = LocalContext.current
 
@@ -207,6 +197,16 @@ fun TextPrompterScreen(
         scope.launch { scrollState.animateScrollTo(scrollState.maxValue) }
     }
 
+    fun dispatchPrompterAction(action: PrompterAction) {
+        when (action) {
+            PrompterAction.NEXT -> onNextStep()
+            PrompterAction.PREV -> onPrevStep()
+            PrompterAction.TOGGLE -> onTogglePlayPause()
+            PrompterAction.HOME -> onJumpToStart()
+            PrompterAction.END -> onJumpToEnd()
+        }
+    }
+
     var speedFactor by remember(songId) {
         mutableStateOf(
             (TextPrompterPrefs.getSpeed(context, songId) ?: 1f)
@@ -260,6 +260,16 @@ fun TextPrompterScreen(
         focusRequester.requestFocus()
     }
 
+    LaunchedEffect(hardwareActionToken) {
+        if (hardwareActionToken == 0) return@LaunchedEffect
+        if (!prompterRootHasFocus) {
+            hostView.isFocusableInTouchMode = true
+            hostView.requestFocus()
+            focusRequester.requestFocus()
+        }
+        dispatchPrompterAction(hardwareAction)
+    }
+
     DarkBlueGradientBackground {
 
 
@@ -301,12 +311,6 @@ fun TextPrompterScreen(
                 .focusable()
                 .onFocusChanged { prompterRootHasFocus = it.hasFocus }
                 .onPreviewKeyEvent { event ->
-                    if (BuildConfig.DEBUG) {
-                        Log.d(
-                            PROMPTER_KEY_LOG_TAG,
-                            "key=${event.key} type=${event.type} keyCode=${event.nativeKeyEvent.keyCode}"
-                        )
-                    }
                     val decision = resolvePrompterKeyHandling(
                         eventType = event.type,
                         action = mapPrompterKey(event)
@@ -316,29 +320,8 @@ fun TextPrompterScreen(
                         focusRequester.requestFocus()
                     }
 
-                    when (decision.actionToDispatch) {
-                        PrompterAction.NEXT -> {
-                            onNextStep()
-                            true
-                        }
-                        PrompterAction.PREV -> {
-                            onPrevStep()
-                            true
-                        }
-                        PrompterAction.TOGGLE -> {
-                            onTogglePlayPause()
-                            true
-                        }
-                        PrompterAction.HOME -> {
-                            onJumpToStart()
-                            true
-                        }
-                        PrompterAction.END -> {
-                            onJumpToEnd()
-                            true
-                        }
-                        null -> true
-                    }
+                    decision.actionToDispatch?.let(::dispatchPrompterAction)
+                    true
                 }
         ) {
 

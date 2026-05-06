@@ -99,6 +99,7 @@ class MainActivity : AppCompatActivity() {
         NONE,
         QUICK_PLAYLISTS,
         LIBRARY_SONGS,
+        PROMPTER,
         PLAYER
     }
 
@@ -149,6 +150,8 @@ class MainActivity : AppCompatActivity() {
     private var libraryHardwareCommandToken by mutableIntStateOf(0)
     private var libraryHardwareReturnCommand: HardwareListCommand = HardwareListCommand.MOVE_NEXT
     private var libraryHardwareReturnToken by mutableIntStateOf(0)
+    private var prompterHardwareAction: PrompterAction = PrompterAction.NEXT
+    private var prompterHardwareActionToken by mutableIntStateOf(0)
     private var playerMediaToggleToken by mutableIntStateOf(0)
     private var playerReturnNavigateDirection by mutableIntStateOf(0)
     private var playerReturnNavigateToken by mutableIntStateOf(0)
@@ -187,6 +190,21 @@ class MainActivity : AppCompatActivity() {
                     if (command != null) {
                         libraryHardwareCommand = command
                         libraryHardwareCommandToken += 1
+                        return true
+                    }
+                }
+
+                HardwareInputRoute.PROMPTER -> {
+                    val action = when (event.keyCode) {
+                        KeyEvent.KEYCODE_DPAD_RIGHT -> PrompterAction.NEXT
+
+                        KeyEvent.KEYCODE_DPAD_LEFT -> PrompterAction.PREV
+
+                        else -> null
+                    }
+                    if (action != null) {
+                        prompterHardwareAction = action
+                        prompterHardwareActionToken += 1
                         return true
                     }
                 }
@@ -2752,6 +2770,7 @@ class MainActivity : AppCompatActivity() {
                     )
                     activeHardwareInputRoute = when {
                         isSearchOpen -> HardwareInputRoute.NONE
+                        textPrompterId != null -> HardwareInputRoute.PROMPTER
                         selectedTab is BottomTab.Player -> HardwareInputRoute.PLAYER
                         selectedTab is BottomTab.QuickPlaylists -> HardwareInputRoute.QUICK_PLAYLISTS
                         selectedTab is BottomTab.Library && libraryKeyboardNavigationEnabled ->
@@ -2936,7 +2955,9 @@ class MainActivity : AppCompatActivity() {
                             TextPrompterScreen(
                                 modifier = contentModifier,
                                 songId = tid,
-                                onClose = { textPrompterId = null }
+                                onClose = { textPrompterId = null },
+                                hardwareActionToken = prompterHardwareActionToken,
+                                hardwareAction = prompterHardwareAction
                             )
                         } ?: run {
                             tabStateHolder.SaveableStateProvider(
