@@ -756,6 +756,15 @@
     <string name="player_open_mode_always">Always</string>
     <string name="player_open_mode_never">Never</string>
     <string name="player_open_mode_automatic">Automatic (open only if lyrics are available)</string>
+    <string name="more_beta_mode_section">Beta mode</string>
+    <string name="more_beta_mode_current">Current edition</string>
+    <string name="more_beta_mode_freemium">Freemium</string>
+    <string name="more_beta_mode_pro">Pro</string>
+    <string name="more_beta_mode_code_label">Beta code</string>
+    <string name="more_beta_mode_activate">Enable Pro</string>
+    <string name="more_beta_mode_back_to_freemium">Back to Freemium</string>
+    <string name="more_beta_mode_invalid_code">Invalid beta code</string>
+    <string name="more_beta_mode_pro_enabled">Pro mode enabled</string>
     <string name="more_show_old_world_library">Show the old world in the library</string>
     <string name="more_show_light_indicator">Show DMX indicator</string>
     <string name="more_footer_signature">Live in Pocket · LrcReader_EXO</string>

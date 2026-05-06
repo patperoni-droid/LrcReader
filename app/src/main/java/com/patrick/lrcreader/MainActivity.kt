@@ -351,6 +351,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         AppLanguagePrefs.applySavedLanguage(this)
+        EditionConfig.initialize(this)
         super.onCreate(savedInstanceState)
         ensureSessionPersistGateStarted()
         if (BuildConfig.DEBUG) {

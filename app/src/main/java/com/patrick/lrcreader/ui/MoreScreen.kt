@@ -30,6 +30,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -54,6 +55,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.core.os.LocaleListCompat
 import androidx.documentfile.provider.DocumentFile
 import com.patrick.lrcreader.core.AppLanguagePrefs
+import com.patrick.lrcreader.core.AppEdition
 import com.patrick.lrcreader.core.AutoReturnPrefs
 import com.patrick.lrcreader.core.BackupManager
 import com.patrick.lrcreader.core.EditionConfig
@@ -345,6 +347,7 @@ private fun MoreRootScreen(
     }
     var showDjMode by remember { mutableStateOf(showDjTab) }
     var showMainBusMode by remember { mutableStateOf(showMainBusTab) }
+    var betaCode by remember { mutableStateOf("") }
 
     androidx.compose.runtime.LaunchedEffect(showDjTab) {
         showDjMode = showDjTab
@@ -371,6 +374,11 @@ private fun MoreRootScreen(
     val sExportProDialogMessage = stringResource(R.string.export_pro_dialog_message)
     val sUpgradeToPro = stringResource(R.string.library_upgrade_to_pro)
     val isLite = EditionConfig.isLite
+    val currentEdition = EditionConfig.current
+    val currentEditionLabel = when (currentEdition) {
+        AppEdition.LITE -> stringResource(R.string.more_beta_mode_freemium)
+        AppEdition.PRO -> stringResource(R.string.more_beta_mode_pro)
+    }
     val workspaceSnapshot = remember(context) { WorkspaceResolver.resolve(context) }
     val workingFolderPath = remember(workspaceSnapshot) {
         workspaceSnapshot.workspaceRootUri?.let { uri ->
@@ -728,6 +736,60 @@ private fun MoreRootScreen(
                             LightIndicatorPrefs.setEnabled(context, enabled)
                         }
                     )
+
+                    HorizontalDivider(color = Color(0xFF262626))
+
+                    SettingsHeader(stringResource(R.string.more_beta_mode_section))
+                    SettingsInfoItem(
+                        label = stringResource(R.string.more_beta_mode_current),
+                        value = currentEditionLabel
+                    )
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 12.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = betaCode,
+                            onValueChange = { betaCode = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text(text = stringResource(R.string.more_beta_mode_code_label)) },
+                            singleLine = true
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            TextButton(
+                                onClick = {
+                                    val enabled = EditionConfig.tryEnablePro(context, betaCode)
+                                    Toast.makeText(
+                                        context,
+                                        context.getString(
+                                            if (enabled) {
+                                                R.string.more_beta_mode_pro_enabled
+                                            } else {
+                                                R.string.more_beta_mode_invalid_code
+                                            }
+                                        ),
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                    if (enabled) betaCode = ""
+                                }
+                            ) {
+                                Text(text = stringResource(R.string.more_beta_mode_activate))
+                            }
+                            TextButton(
+                                onClick = {
+                                    EditionConfig.revertToLite(context)
+                                    betaCode = ""
+                                }
+                            ) {
+                                Text(text = stringResource(R.string.more_beta_mode_back_to_freemium))
+                            }
+                        }
+                    }
 
                     HorizontalDivider(color = Color(0xFF262626))
 
