@@ -28,6 +28,7 @@ import android.os.Looper
 import android.os.StrictMode
 import android.os.SystemClock
 import android.util.Log
+import android.view.KeyEvent
 import android.widget.Toast
 import androidx.activity.compose.setContent
 import androidx.appcompat.app.AppCompatActivity
@@ -94,6 +95,13 @@ import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.pow
 
 class MainActivity : AppCompatActivity() {
+    private enum class HardwareInputRoute {
+        NONE,
+        QUICK_PLAYLISTS,
+        LIBRARY_SONGS,
+        PLAYER
+    }
+
     private data class SessionSnapshot(
         val tabKey: String,
         val quickPlaylist: String?,
@@ -131,6 +139,86 @@ class MainActivity : AppCompatActivity() {
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
     private val sessionPersistGateStarted = AtomicBoolean(false)
+    @Volatile
+    private var activeHardwareInputRoute: HardwareInputRoute = HardwareInputRoute.NONE
+    private var quickHardwareCommand: HardwareListCommand = HardwareListCommand.ACTIVATE
+    private var quickHardwareCommandToken by mutableIntStateOf(0)
+    private var quickHardwareReturnCommand: HardwareListCommand = HardwareListCommand.MOVE_NEXT
+    private var quickHardwareReturnToken by mutableIntStateOf(0)
+    private var libraryHardwareCommand: HardwareListCommand = HardwareListCommand.ACTIVATE
+    private var libraryHardwareCommandToken by mutableIntStateOf(0)
+    private var libraryHardwareReturnCommand: HardwareListCommand = HardwareListCommand.MOVE_NEXT
+    private var libraryHardwareReturnToken by mutableIntStateOf(0)
+    private var playerMediaToggleToken by mutableIntStateOf(0)
+    private var playerReturnNavigateDirection by mutableIntStateOf(0)
+    private var playerReturnNavigateToken by mutableIntStateOf(0)
+
+    private fun toHardwareListCommand(keyCode: Int): HardwareListCommand? {
+        return when (keyCode) {
+            KeyEvent.KEYCODE_DPAD_UP,
+            KeyEvent.KEYCODE_PAGE_UP -> HardwareListCommand.MOVE_PREVIOUS
+
+            KeyEvent.KEYCODE_DPAD_DOWN,
+            KeyEvent.KEYCODE_PAGE_DOWN -> HardwareListCommand.MOVE_NEXT
+
+            KeyEvent.KEYCODE_ENTER,
+            KeyEvent.KEYCODE_NUMPAD_ENTER,
+            KeyEvent.KEYCODE_SPACE,
+            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> HardwareListCommand.ACTIVATE
+
+            else -> null
+        }
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+            when (activeHardwareInputRoute) {
+                HardwareInputRoute.QUICK_PLAYLISTS -> {
+                    val command = toHardwareListCommand(event.keyCode)
+                    if (command != null) {
+                        quickHardwareCommand = command
+                        quickHardwareCommandToken += 1
+                        return true
+                    }
+                }
+
+                HardwareInputRoute.LIBRARY_SONGS -> {
+                    val command = toHardwareListCommand(event.keyCode)
+                    if (command != null) {
+                        libraryHardwareCommand = command
+                        libraryHardwareCommandToken += 1
+                        return true
+                    }
+                }
+
+                HardwareInputRoute.PLAYER -> {
+                    when (event.keyCode) {
+                        KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
+                            playerMediaToggleToken += 1
+                            return true
+                        }
+
+                        KeyEvent.KEYCODE_DPAD_UP,
+                        KeyEvent.KEYCODE_PAGE_UP -> {
+                            playerReturnNavigateDirection = -1
+                            playerReturnNavigateToken += 1
+                            return true
+                        }
+
+                        KeyEvent.KEYCODE_DPAD_DOWN,
+                        KeyEvent.KEYCODE_PAGE_DOWN -> {
+                            playerReturnNavigateDirection = 1
+                            playerReturnNavigateToken += 1
+                            return true
+                        }
+                    }
+                }
+
+                HardwareInputRoute.NONE -> Unit
+            }
+        }
+        return super.dispatchKeyEvent(event)
+    }
 
     private fun ensureSessionPersistGateStarted() {
         if (!sessionPersistGateStarted.compareAndSet(false, true)) return
@@ -1065,6 +1153,7 @@ class MainActivity : AppCompatActivity() {
 
                 var isNotesOpen by remember { mutableStateOf(false) }
                 var isFillerSettingsOpen by remember { mutableStateOf(false) }
+                var libraryKeyboardNavigationEnabled by remember { mutableStateOf(false) }
 
                 var currentTrackTempo by remember { mutableStateOf(1f) }
                 var currentTrackPitchSemi by remember { mutableStateOf(0) }
@@ -1695,6 +1784,47 @@ class MainActivity : AppCompatActivity() {
                 fun setOpenedPlaylistAndPersist(name: String?, reason: String) {
                     openedPlaylist = name
                     persistCurrentUiSession(reason = reason)
+                }
+
+                LaunchedEffect(playerMediaToggleToken) {
+                    if (playerMediaToggleToken == 0) return@LaunchedEffect
+                    if (selectedTab !is BottomTab.Player) return@LaunchedEffect
+                    if (currentPlayingUri.isNullOrBlank()) return@LaunchedEffect
+                    val shouldPlay = !isPlaying
+                    isPlaying = shouldPlay
+                    if (shouldPlay) {
+                        exoPlayer.play()
+                    } else {
+                        exoPlayer.pause()
+                    }
+                }
+
+                LaunchedEffect(playerReturnNavigateToken) {
+                    if (playerReturnNavigateToken == 0) return@LaunchedEffect
+                    if (selectedTab !is BottomTab.Player) return@LaunchedEffect
+
+                    val moveCommand = if (playerReturnNavigateDirection < 0) {
+                        HardwareListCommand.MOVE_PREVIOUS
+                    } else {
+                        HardwareListCommand.MOVE_NEXT
+                    }
+
+                    val targetPlaylist = currentPlayingPlaylist ?: selectedQuickPlaylist
+                    when {
+                        !targetPlaylist.isNullOrBlank() -> {
+                            selectedQuickPlaylist = targetPlaylist
+                            openedPlaylist = targetPlaylist
+                            setTabAndPersist(BottomTab.QuickPlaylists, reason = "hardwareReturnFromPlayerPlaylist")
+                            quickHardwareReturnCommand = moveCommand
+                            quickHardwareReturnToken += 1
+                        }
+
+                        !currentPlayingSongId.isNullOrBlank() -> {
+                            setTabAndPersist(BottomTab.Library, reason = "hardwareReturnFromPlayerLibrary")
+                            libraryHardwareReturnCommand = moveCommand
+                            libraryHardwareReturnToken += 1
+                        }
+                    }
                 }
 
                 LaunchedEffect(pendingDemoPlaylistName) {
@@ -2620,6 +2750,14 @@ class MainActivity : AppCompatActivity() {
                         currentPlayingUri = currentPlayingUri,
                         currentPlayingPlaylist = currentPlayingPlaylist
                     )
+                    activeHardwareInputRoute = when {
+                        isSearchOpen -> HardwareInputRoute.NONE
+                        selectedTab is BottomTab.Player -> HardwareInputRoute.PLAYER
+                        selectedTab is BottomTab.QuickPlaylists -> HardwareInputRoute.QUICK_PLAYLISTS
+                        selectedTab is BottomTab.Library && libraryKeyboardNavigationEnabled ->
+                            HardwareInputRoute.LIBRARY_SONGS
+                        else -> HardwareInputRoute.NONE
+                    }
                 }
 
                 LaunchedEffect(Unit) {
@@ -3242,6 +3380,10 @@ class MainActivity : AppCompatActivity() {
                                     onRequestShowPlayer = {
                                         setTabAndPersist(BottomTab.Player, reason = "quickPlaylistShowPlayer")
                                     },
+                                    hardwareCommandToken = quickHardwareCommandToken,
+                                    hardwareCommand = quickHardwareCommand,
+                                    hardwareReturnToCurrentToken = quickHardwareReturnToken,
+                                    hardwareReturnCommand = quickHardwareReturnCommand,
                                     onAddTrackToPlaylist = { playlistName ->
                                         pendingPlaylistTrackTarget = playlistName
                                         pickPlaylistTrackLauncher.launch(
@@ -3296,6 +3438,9 @@ class MainActivity : AppCompatActivity() {
                                         },
                                         onDeleteSmpSong = { songId ->
                                             deleteSmpSongById(songId)
+                                        },
+                                        onKeyboardNavigationAvailabilityChange = { enabled ->
+                                            libraryKeyboardNavigationEnabled = enabled
                                         },
                                         onOpenPlaylistFromLibrary = { name ->
                                             selectedQuickPlaylist = name
@@ -3372,7 +3517,11 @@ class MainActivity : AppCompatActivity() {
                                                     // rien
                                                 }
                                             }
-                                        }
+                                        },
+                                        hardwareCommandToken = libraryHardwareCommandToken,
+                                        hardwareCommand = libraryHardwareCommand,
+                                        hardwareReturnToCurrentToken = libraryHardwareReturnToken,
+                                        hardwareReturnCommand = libraryHardwareReturnCommand
                                     )
 
                                     is BottomTab.AllPlaylists -> AllPlaylistsScreen(

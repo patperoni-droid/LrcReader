@@ -86,6 +86,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.patrick.lrcreader.core.FillerSoundManager
+import com.patrick.lrcreader.core.HardwareListCommand
 import com.patrick.lrcreader.core.MiniTunerVisibilityStore
 import com.patrick.lrcreader.core.NotesRepository
 import com.patrick.lrcreader.core.TunerEngine
@@ -166,6 +167,10 @@ fun QuickPlaylistsScreen(
     onClearNextTrack: () -> Unit = {},
     onConsumeOpenPrompterSignal: () -> Unit = {},
     onRequestShowPlayer: () -> Unit = {},
+    hardwareCommandToken: Int = 0,
+    hardwareCommand: HardwareListCommand = HardwareListCommand.ACTIVATE,
+    hardwareReturnToCurrentToken: Int = 0,
+    hardwareReturnCommand: HardwareListCommand = HardwareListCommand.MOVE_NEXT,
     onAddTrackToPlaylist: (String) -> Unit = {},
     searchToggleSignal: Int = 0,
     indexAll: List<LibraryIndexCache.CachedEntry> = emptyList() // ✅ propre + default
@@ -314,6 +319,7 @@ fun QuickPlaylistsScreen(
     var collapsedGroupIds by rememberSaveable { mutableStateOf(setOf<String>()) }
     var activePlayingGroupHeaderKey by rememberSaveable(internalSelected) { mutableStateOf<String?>(null) }
     var pendingLiveGroupScrollHeaderKey by remember { mutableStateOf<String?>(null) }
+    var keyboardSelectedItem by rememberSaveable(internalSelected) { mutableStateOf<String?>(null) }
 
     var renameTarget by remember { mutableStateOf<String?>(null) }
     var renameText by remember { mutableStateOf("") }
@@ -968,6 +974,76 @@ fun QuickPlaylistsScreen(
         playlistSearchQuery = ""
         isSearchVisible = false
         focusManager.clearFocus(force = true)
+    }
+
+    suspend fun scrollKeyboardSelectionIntoView(targetItem: String) {
+        val rowIndex = visibleRows.indexOfFirst { row -> row.item == targetItem }
+        if (rowIndex >= 0) {
+            listState.animateScrollToItem(rowIndex)
+        }
+    }
+
+    suspend fun moveKeyboardSelection(
+        command: HardwareListCommand,
+        anchorToCurrentTrack: Boolean
+    ) {
+        val playableItems = visibleRows
+            .map { it.item }
+            .filter(::isPlayableAudioItem)
+        if (playableItems.isEmpty()) return
+
+        val anchorItem = when {
+            keyboardSelectedItem in playableItems -> keyboardSelectedItem
+            anchorToCurrentTrack && currentPlayingPlaylist == internalSelected &&
+                currentPlayingPlaylistItemKey in playableItems -> currentPlayingPlaylistItemKey
+            currentPlayingPlaylist == internalSelected &&
+                currentPlayingPlaylistItemKey in playableItems -> currentPlayingPlaylistItemKey
+            currentPlayingUri in playableItems -> currentPlayingUri
+            else -> playableItems.first()
+        } ?: playableItems.first()
+
+        val anchorIndex = playableItems.indexOf(anchorItem).coerceAtLeast(0)
+        val targetIndex = when (command) {
+            HardwareListCommand.MOVE_PREVIOUS -> (anchorIndex - 1).coerceAtLeast(0)
+            HardwareListCommand.MOVE_NEXT -> (anchorIndex + 1).coerceAtMost(playableItems.lastIndex)
+            HardwareListCommand.ACTIVATE -> anchorIndex
+        }
+        val targetItem = playableItems[targetIndex]
+        keyboardSelectedItem = targetItem
+        scrollKeyboardSelectionIntoView(targetItem)
+    }
+
+    LaunchedEffect(hardwareCommandToken, visibleRows, internalSelected) {
+        if (hardwareCommandToken == 0) return@LaunchedEffect
+        if (internalSelected.isNullOrBlank()) return@LaunchedEffect
+        when (hardwareCommand) {
+            HardwareListCommand.MOVE_PREVIOUS,
+            HardwareListCommand.MOVE_NEXT -> moveKeyboardSelection(
+                command = hardwareCommand,
+                anchorToCurrentTrack = false
+            )
+
+            HardwareListCommand.ACTIVATE -> {
+                val currentPlaylist = internalSelected ?: return@LaunchedEffect
+                moveKeyboardSelection(
+                    command = HardwareListCommand.ACTIVATE,
+                    anchorToCurrentTrack = false
+                )
+                val targetItem = keyboardSelectedItem ?: return@LaunchedEffect
+                saveOriginalOrderIfMissing(context, currentPlaylist, songs.toList())
+                onPlaySong(targetItem, currentPlaylist, Color.White)
+                closePlaylistSearch()
+            }
+        }
+    }
+
+    LaunchedEffect(hardwareReturnToCurrentToken, visibleRows, internalSelected) {
+        if (hardwareReturnToCurrentToken == 0) return@LaunchedEffect
+        if (internalSelected.isNullOrBlank()) return@LaunchedEffect
+        moveKeyboardSelection(
+            command = hardwareReturnCommand,
+            anchorToCurrentTrack = true
+        )
     }
 
     val miniTunerState: TunerState = if (isMiniTunerVisible) {
@@ -1643,6 +1719,7 @@ fun QuickPlaylistsScreen(
                             val isChainedNext = nextChainedUri != null && uriString == nextChainedUri
                             val isForcedNext = nextTrackUri != null && uriString == nextTrackUri
                             val isSelected = selectedTrackKeys.contains(uriString)
+                            val isKeyboardSelected = keyboardSelectedItem == uriString && !isSelected
                             val showCurrentMarker = isCurrentPlaying && !isSelected
                             val containingGroupHeaderIndex = findContainingGroupHeaderIndex(songs, itemIndex)
                             val isInsideGroup =
@@ -1661,6 +1738,8 @@ fun QuickPlaylistsScreen(
                                 Color(0x33FFFFFF)
                             else if (isSelected)
                                 Color(0x14FFFFFF)
+                            else if (isKeyboardSelected)
+                                Color(0x224FC3F7)
                             else if (isForcedNext)
                                 Color(0x33D32F2F)
                             else if (isChainedNext)
@@ -1670,6 +1749,8 @@ fun QuickPlaylistsScreen(
                             val rowBorderWidth = if (isSelected) 2.dp else 1.dp
                             val rowBorderColor = if (isSelected)
                                 selectedBorderColor
+                            else if (isKeyboardSelected)
+                                selectedBorderColor.copy(alpha = 0.9f)
                             else if (isCurrentPlaying)
                                 Color.White.copy(alpha = 0.8f)
                             else if (isForcedNext)
@@ -1763,6 +1844,7 @@ fun QuickPlaylistsScreen(
                                         .weight(1f)
                                         .combinedClickable(
                                             onClick = {
+                                                keyboardSelectedItem = uriString
                                                 val currentPlaylist = internalSelected
                                                     ?: return@combinedClickable
                                                 val currentGroupHeaderKey = containingGroupHeaderIndex
@@ -1808,6 +1890,7 @@ fun QuickPlaylistsScreen(
                                             },
                                             onLongClick = {
                                                 if (!isPlayableAudioItem(uriString)) return@combinedClickable
+                                                keyboardSelectedItem = uriString
                                                 selectedTrackKeys = if (selectedTrackKeys.contains(uriString)) {
                                                     selectedTrackKeys - uriString
                                                 } else {

@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -74,7 +75,9 @@ private fun LibrarySongIndicators(song: LibrarySongItem) {
 @Composable
 fun LibrarySongsList(
     songs: List<LibrarySongItem>,
+    listState: LazyListState,
     currentPlayingSongId: String?,
+    keyboardSelectedSongId: String?,
     cardBg: Color,
     rowBorder: Color,
     accent: Color,
@@ -82,6 +85,7 @@ fun LibrarySongsList(
     showRichIndicators: Boolean = true,
     selectedSongs: Set<Uri>,
     onToggleSelect: (Uri) -> Unit,
+    onKeyboardSelectedSongChange: (String) -> Unit,
     onOpenPlayer: (LibrarySongItem) -> Unit,
     onAssignOne: (Uri) -> Unit,
     onShareOne: (Uri) -> Unit,
@@ -92,6 +96,7 @@ fun LibrarySongsList(
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
+        state = listState,
         contentPadding = PaddingValues(bottom = bottomPadding)
     ) {
         items(songs, key = { it.songId }) { song ->
@@ -99,11 +104,18 @@ fun LibrarySongsList(
             val canPlay = song.audioAvailable
             val isSelected = selectedSongs.contains(songUri)
             val isCurrentPlaying = currentPlayingSongId == song.songId
+            val isKeyboardSelected = keyboardSelectedSongId == song.songId
             var menuOpen by remember(song.songId) { mutableStateOf(false) }
             val rowClick = if (selectionMode) {
-                Modifier.clickable { onToggleSelect(songUri) }
+                Modifier.clickable {
+                    onKeyboardSelectedSongChange(song.songId)
+                    onToggleSelect(songUri)
+                }
             } else if (canPlay) {
-                Modifier.clickable { onOpenPlayer(song) }
+                Modifier.clickable {
+                    onKeyboardSelectedSongChange(song.songId)
+                    onOpenPlayer(song)
+                }
             } else {
                 Modifier
             }
@@ -112,11 +124,32 @@ fun LibrarySongsList(
             } else {
                 Color.White
             }
+            val rowShape = RoundedCornerShape(10.dp)
+            val rowBackground = when {
+                isSelected -> accent.copy(alpha = 0.18f)
+                isKeyboardSelected -> accent.copy(alpha = 0.10f)
+                else -> Color.Transparent
+            }
+            val rowStrokeColor = when {
+                isSelected -> accent
+                isKeyboardSelected -> accent.copy(alpha = 0.9f)
+                else -> Color.Transparent
+            }
+            val rowStrokeWidth = if (isSelected || isKeyboardSelected) 2.dp else 0.dp
 
             Column(modifier = Modifier.fillMaxWidth()) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .padding(vertical = 3.dp)
+                        .background(rowBackground, rowShape)
+                        .then(
+                            if (rowStrokeWidth > 0.dp) {
+                                Modifier.border(rowStrokeWidth, rowStrokeColor, rowShape)
+                            } else {
+                                Modifier
+                            }
+                        )
                         .then(rowClick)
                         .alpha(if (canPlay) 1f else 0.72f)
                         .padding(horizontal = 12.dp, vertical = 8.dp),
@@ -134,7 +167,10 @@ fun LibrarySongsList(
                                 if (isSelected) accent else Color.White.copy(alpha = 0.7f),
                                 RoundedCornerShape(4.dp)
                             )
-                            .clickable { onToggleSelect(songUri) },
+                            .clickable {
+                                onKeyboardSelectedSongChange(song.songId)
+                                onToggleSelect(songUri)
+                            },
                         contentAlignment = Alignment.Center
                     ) {
                         if (isSelected) {
@@ -185,6 +221,7 @@ fun LibrarySongsList(
 
                     IconButton(
                         onClick = {
+                            onKeyboardSelectedSongChange(song.songId)
                             if (selectionMode) onToggleSelect(songUri) else onOpenPlayer(song)
                         },
                         enabled = canPlay

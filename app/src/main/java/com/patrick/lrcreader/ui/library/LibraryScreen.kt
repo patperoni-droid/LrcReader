@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MoreVert
@@ -53,6 +54,7 @@ import com.patrick.lrcreader.core.BackupManager
 import com.patrick.lrcreader.core.DjFolderPrefs
 import com.patrick.lrcreader.core.EditionConfig
 import com.patrick.lrcreader.core.ImportAudioManager
+import com.patrick.lrcreader.core.HardwareListCommand
 import com.patrick.lrcreader.core.LibraryIndexCache
 import com.patrick.lrcreader.core.LibraryFullModePolicy
 import com.patrick.lrcreader.core.LibraryTransferFolderPrefs
@@ -507,8 +509,13 @@ fun LibraryScreen(
     onImportGeneratedSmp: suspend (Uri) -> com.patrick.lrcreader.smp.SongUnit?,
     onImportGeneratedSmpFailureReason: () -> String? = { null },
     onDeleteSmpSong: suspend (String) -> Boolean = { false },
+    onKeyboardNavigationAvailabilityChange: (Boolean) -> Unit = {},
     onOpenPlaylistFromLibrary: (String) -> Unit = {},
-    onPlayFromLibrary: (String, Boolean) -> Unit
+    onPlayFromLibrary: (String, Boolean) -> Unit,
+    hardwareCommandToken: Int = 0,
+    hardwareCommand: HardwareListCommand = HardwareListCommand.ACTIVATE,
+    hardwareReturnToCurrentToken: Int = 0,
+    hardwareReturnCommand: HardwareListCommand = HardwareListCommand.MOVE_NEXT
 ) {
     val context = LocalContext.current
     Log.e("SIG_LIB", "SIG#0 TOP composable 2026-02-08 18:00 Z")
@@ -687,6 +694,12 @@ fun LibraryScreen(
     }
     var songItems by remember(libraryUiCacheKey) {
         mutableStateOf(cachedUiSnapshot?.songItems ?: emptyList())
+    }
+    val songListState = rememberSaveable(libraryUiCacheKey, saver = LazyListState.Saver) {
+        LazyListState()
+    }
+    var keyboardSelectedSongId by rememberSaveable(libraryUiCacheKey, libraryViewMode) {
+        mutableStateOf<String?>(null)
     }
     var selectedSongs by remember { mutableStateOf<Set<Uri>>(emptySet()) }
 
@@ -1778,6 +1791,44 @@ fun LibraryScreen(
                 !initialLoadDone ||
                 (isSongBasedViewMode && songItemsLoading)
             )
+    SideEffect {
+        onKeyboardNavigationAvailabilityChange(isSongViewMode)
+    }
+
+    suspend fun scrollKeyboardSongIntoView(songId: String) {
+        val rowIndex = filteredSongItems.indexOfFirst { it.songId == songId }
+        if (rowIndex >= 0) {
+            songListState.animateScrollToItem(rowIndex)
+        }
+    }
+
+    suspend fun moveKeyboardSongSelection(
+        command: HardwareListCommand,
+        anchorToCurrentTrack: Boolean
+    ) {
+        if (!isSongViewMode || filteredSongItems.isEmpty()) return
+        val anchorSongId = when {
+            keyboardSelectedSongId != null &&
+                filteredSongItems.any { it.songId == keyboardSelectedSongId } -> keyboardSelectedSongId
+            anchorToCurrentTrack && !currentPlayingSongId.isNullOrBlank() &&
+                filteredSongItems.any { it.songId == currentPlayingSongId } -> currentPlayingSongId
+            !currentPlayingSongId.isNullOrBlank() &&
+                filteredSongItems.any { it.songId == currentPlayingSongId } -> currentPlayingSongId
+            else -> filteredSongItems.first().songId
+        } ?: filteredSongItems.first().songId
+
+        val anchorIndex = filteredSongItems.indexOfFirst { it.songId == anchorSongId }
+            .coerceAtLeast(0)
+        val targetIndex = when (command) {
+            HardwareListCommand.MOVE_PREVIOUS -> (anchorIndex - 1).coerceAtLeast(0)
+            HardwareListCommand.MOVE_NEXT -> (anchorIndex + 1).coerceAtMost(filteredSongItems.lastIndex)
+            HardwareListCommand.ACTIVATE -> anchorIndex
+        }
+        val targetSong = filteredSongItems[targetIndex]
+        keyboardSelectedSongId = targetSong.songId
+        scrollKeyboardSongIntoView(targetSong.songId)
+    }
+
     LaunchedEffect(searchQuery, activeSearchableCount, activeFilteredCount, currentFolderUri, libraryViewMode) {
         if (BuildConfig.DEBUG) {
             val normalizedQuery = SearchEngine.normalize(searchQuery)
@@ -2212,6 +2263,39 @@ fun LibraryScreen(
         } catch (_: Exception) {
         }
         quickIsPlaying = false
+    }
+
+    LaunchedEffect(hardwareCommandToken, filteredSongItems, isSongViewMode) {
+        if (hardwareCommandToken == 0) return@LaunchedEffect
+        if (!isSongViewMode) return@LaunchedEffect
+        when (hardwareCommand) {
+            HardwareListCommand.MOVE_PREVIOUS,
+            HardwareListCommand.MOVE_NEXT -> moveKeyboardSongSelection(
+                command = hardwareCommand,
+                anchorToCurrentTrack = false
+            )
+
+            HardwareListCommand.ACTIVATE -> {
+                moveKeyboardSongSelection(
+                    command = HardwareListCommand.ACTIVATE,
+                    anchorToCurrentTrack = false
+                )
+                val targetSongId = keyboardSelectedSongId ?: return@LaunchedEffect
+                val targetSong = filteredSongItems.firstOrNull { it.songId == targetSongId } ?: return@LaunchedEffect
+                closeLibrarySearch()
+                stopQuickPlay()
+                onPlayFromLibrary(targetSong.playbackItem, isLibraryFullModeEnabled)
+            }
+        }
+    }
+
+    LaunchedEffect(hardwareReturnToCurrentToken, filteredSongItems, isSongViewMode) {
+        if (hardwareReturnToCurrentToken == 0) return@LaunchedEffect
+        if (!isSongViewMode) return@LaunchedEffect
+        moveKeyboardSongSelection(
+            command = hardwareReturnCommand,
+            anchorToCurrentTrack = true
+        )
     }
 
     fun applyLufsToSelectedSongs(selection: Set<String>) {
@@ -3583,7 +3667,9 @@ fun LibraryScreen(
                             } else {
                                 LibrarySongsList(
                                     songs = filteredSongItems,
+                                    listState = songListState,
                                     currentPlayingSongId = currentPlayingSongId,
+                                    keyboardSelectedSongId = keyboardSelectedSongId,
                                     cardBg = cardBg,
                                     rowBorder = rowBorder,
                                     accent = accent,
@@ -3593,7 +3679,11 @@ fun LibraryScreen(
                                     onToggleSelect = { uri ->
                                         toggleSelection(uri)
                                     },
+                                    onKeyboardSelectedSongChange = { songId ->
+                                        keyboardSelectedSongId = songId
+                                    },
                                     onOpenPlayer = { song ->
+                                        keyboardSelectedSongId = song.songId
                                         closeLibrarySearch()
                                         stopQuickPlay()
                                         onPlayFromLibrary(song.playbackItem, isLibraryFullModeEnabled)
