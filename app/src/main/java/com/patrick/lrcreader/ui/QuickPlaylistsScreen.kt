@@ -63,6 +63,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
@@ -2501,51 +2502,83 @@ fun QuickPlaylistsScreen(
 
     // dialog création titre texte (ancienne méthode)
     if (showCreateTextDialog && internalSelected != null) {
-        AlertDialog(
+        androidx.compose.ui.window.Dialog(
             onDismissRequest = { showCreateTextDialog = false },
-            title = { Text(stringResource(R.string.quickplaylists_new_prompter_title), color = Color.White) },
-            text = {
-                Column {
-                    OutlinedTextField(
-                        value = newTextTitle,
-                        onValueChange = { newTextTitle = it },
-                        label = { Text(stringResource(R.string.common_title_label)) },
-                        singleLine = true
+            properties = androidx.compose.ui.window.DialogProperties(
+                usePlatformDefaultWidth = false
+            )
+        ) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.82f)
+                    .padding(horizontal = 16.dp, vertical = 24.dp)
+                    .imePadding()
+                    .navigationBarsPadding(),
+                shape = RoundedCornerShape(20.dp),
+                color = Color(0xFF222222)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(20.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.quickplaylists_new_prompter_title),
+                        color = Color.White
                     )
-                    Spacer(Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = newTextContent,
-                        onValueChange = { newTextContent = it },
-                        label = { Text(stringResource(R.string.quickplaylists_prompter_text_label)) },
-                        minLines = 5
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    val title = newTextTitle.trim()
-                    val content = newTextContent.trim()
-                    val pl = internalSelected ?: return@TextButton
-
-                    if (title.isNotEmpty() && content.isNotEmpty()) {
-                        val id = TextSongRepository.create(context, title, content)
-                        val uri = "prompter://$id"
-                        PlaylistRepository.assignSongToPlaylist(pl, uri)
-                        songs.add(uri)
+                    Spacer(Modifier.height(16.dp))
+                    Column(
+                        modifier = Modifier
+                            .weight(1f, fill = true)
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState())
+                    ) {
+                        OutlinedTextField(
+                            value = newTextTitle,
+                            onValueChange = { newTextTitle = it },
+                            label = { Text(stringResource(R.string.common_title_label)) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        OutlinedTextField(
+                            value = newTextContent,
+                            onValueChange = { newTextContent = it },
+                            label = { Text(stringResource(R.string.quickplaylists_prompter_text_label)) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 320.dp)
+                        )
                     }
+                    Spacer(Modifier.height(16.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        TextButton(onClick = { showCreateTextDialog = false }) {
+                            Text(stringResource(R.string.common_cancel), color = Color.White)
+                        }
+                        TextButton(onClick = {
+                            val title = newTextTitle.trim()
+                            val content = newTextContent.trim()
+                            val pl = internalSelected ?: return@TextButton
 
-                    showCreateTextDialog = false
-                }) {
-                    Text(stringResource(R.string.common_ok), color = Color.White)
+                            if (title.isNotEmpty() && content.isNotEmpty()) {
+                                val id = TextSongRepository.create(context, title, content)
+                                val uri = "prompter://$id"
+                                PlaylistRepository.assignSongToPlaylist(pl, uri)
+                                songs.add(uri)
+                            }
+
+                            showCreateTextDialog = false
+                        }) {
+                            Text(stringResource(R.string.common_ok), color = Color.White)
+                        }
+                    }
                 }
-            },
-            dismissButton = {
-                TextButton(onClick = { showCreateTextDialog = false }) {
-                    Text(stringResource(R.string.common_cancel), color = Color.White)
-                }
-            },
-            containerColor = Color(0xFF222222)
-        )
+            }
+        }
     }
 
     if (showSavePlaylistDialog) {
