@@ -259,6 +259,7 @@
     <string name="library_view_mode_songs">Mis canciones</string>
     <string name="library_view_mode_files">Archivos</string>
     <string name="library_view_mode_playlists">Playlists</string>
+    <string name="library_view_mode_prompters">Prompters</string>
     <string name="library_view_mode_lufs">LUFS</string>
     <string name="library_header_cd_storage">Acceso al almacenamiento</string>
     <string name="library_storage_header_title">Almacenamiento del dispositivo</string>
@@ -288,6 +289,7 @@
     <string name="library_smp_folder">Mis pistas en vivo</string>
     <string name="library_legacy_backing_tracks_folder">Mis pistas en vivo</string>
     <string name="library_smp_empty_state">Aún no hay pistas en vivo SMP.\nImporta o convierte una canción para verla aquí.</string>
+    <string name="library_prompter_empty_state">Aún no hay prompters.\nCrea un prompter desde una playlist para verlo aquí.</string>
 
     <string name="library_delete_backing_track_title">¿Eliminar esta pista?</string>
     <string name="library_delete_audio_question">Solo pista</string>

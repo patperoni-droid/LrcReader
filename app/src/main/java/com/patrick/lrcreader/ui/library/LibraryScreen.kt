@@ -105,6 +105,7 @@ private val SMP_FOLDER_URI: Uri = Uri.parse("spl-smp://folder")
 private const val LIBRARY_VIEW_MODE_SONGS = "songs"
 private const val LIBRARY_VIEW_MODE_FILES = "files"
 private const val LIBRARY_VIEW_MODE_PLAYLISTS = "playlists"
+private const val LIBRARY_VIEW_MODE_PROMPTERS = "prompters"
 private const val LIBRARY_VIEW_MODE_LUFS = "lufs"
 
 private object LibraryLufsHintPrefs {
@@ -274,10 +275,10 @@ private fun resolveLibraryNavigationRoot(
     filesNavigationRoot: Uri?,
     workspaceRootUri: Uri?
 ): Uri? {
-    return if (libraryViewMode == LIBRARY_VIEW_MODE_FILES) {
-        filesNavigationRoot ?: workspaceRootUri
-    } else {
-        workspaceRootUri
+    return when (libraryViewMode) {
+        LIBRARY_VIEW_MODE_FILES -> filesNavigationRoot ?: workspaceRootUri
+        LIBRARY_VIEW_MODE_PROMPTERS -> PROMPTER_FOLDER_URI
+        else -> workspaceRootUri
     }
 }
 
@@ -576,8 +577,10 @@ fun LibraryScreen(
     val sSongsView = stringResource(R.string.library_view_mode_songs)
     val sFilesView = stringResource(R.string.library_view_mode_files)
     val sPlaylistsView = stringResource(R.string.library_view_mode_playlists)
+    val sPromptersView = stringResource(R.string.library_view_mode_prompters)
     val sLufsView = stringResource(R.string.library_view_mode_lufs)
     val sPlaylistsEmpty = stringResource(R.string.all_playlists_empty)
+    val sPrompterEmptyState = stringResource(R.string.library_prompter_empty_state)
     val sLufsActive = stringResource(R.string.library_lufs_active)
     val sApplyLufs = stringResource(R.string.library_lufs_apply)
     val sRemoveLufs = stringResource(R.string.library_lufs_remove)
@@ -1354,6 +1357,7 @@ fun LibraryScreen(
         val rootFolder = backend.getRootUri()
         val shouldRefreshCurrentFolder =
             isSmpFolderUri(currentFolder) ||
+                isPrompterFolderUri(currentFolder) ||
                 (rootFolder != null && currentFolder.toString() == rootFolder.toString())
         Log.i(
             LIB_SMP_TRACE_TAG,
@@ -1582,7 +1586,9 @@ fun LibraryScreen(
     val isLufsViewMode = libraryViewMode == LIBRARY_VIEW_MODE_LUFS
     val isFilesViewMode = libraryViewMode == LIBRARY_VIEW_MODE_FILES
     val isPlaylistsViewMode = libraryViewMode == LIBRARY_VIEW_MODE_PLAYLISTS
+    val isPrompterViewMode = libraryViewMode == LIBRARY_VIEW_MODE_PROMPTERS
     val isSongBasedViewMode = isSongViewMode || isLufsViewMode
+    val isEntryBasedViewMode = isFilesViewMode || isPrompterViewMode
     var showLibraryHelpDialog by remember { mutableStateOf(false) }
     var hasShownLufsHintThisSession by rememberSaveable { mutableStateOf(false) }
     var showLufsHintDialog by remember { mutableStateOf(false) }
@@ -1771,17 +1777,17 @@ fun LibraryScreen(
     }
     val activeSearchableCount = when {
         isSongBasedViewMode -> searchableSongItems.size
-        isFilesViewMode -> searchableEntries.size
+        isEntryBasedViewMode -> searchableEntries.size
         else -> searchablePlaylists.size
     }
     val activeFilteredCount = when {
         isSongBasedViewMode -> filteredSongItems.size
-        isFilesViewMode -> filteredEntries.size
+        isEntryBasedViewMode -> filteredEntries.size
         else -> filteredPlaylists.size
     }
     val hasVisibleLibraryContent = when {
         isSongBasedViewMode -> searchableSongItems.isNotEmpty()
-        isFilesViewMode -> searchableEntries.isNotEmpty()
+        isEntryBasedViewMode -> searchableEntries.isNotEmpty()
         else -> searchablePlaylists.isNotEmpty()
     }
     val showInitialLibraryLoadingState = currentFolderUri != null &&
@@ -3129,10 +3135,10 @@ fun LibraryScreen(
             indexAll = backend.loadIndex()
             val filesRoot = filesNavigationRoot ?: workspaceRoot
             val backendInitialFolder = resolveFilesInitialFolderForLibrary(filesRoot) ?: workspaceRoot
-            val folderToShow = if (libraryViewMode == LIBRARY_VIEW_MODE_FILES) {
-                backendInitialFolder
-            } else {
-                workspaceRoot
+            val folderToShow = when (libraryViewMode) {
+                LIBRARY_VIEW_MODE_FILES -> backendInitialFolder
+                LIBRARY_VIEW_MODE_PROMPTERS -> PROMPTER_FOLDER_URI
+                else -> workspaceRoot
             }
             Log.i(
                 "LIB_SCAN_DIAG",
@@ -3203,7 +3209,11 @@ fun LibraryScreen(
         isPlaylistsViewMode -> null
         else -> currentFolderUri
     }
-    val headerFolderNameOverride = if (isPlaylistsViewMode) sPlaylistsView else null
+    val headerFolderNameOverride = when {
+        isPlaylistsViewMode -> sPlaylistsView
+        isPrompterViewMode -> sPromptersView
+        else -> null
+    }
     val showSelectionBottomBar = selectedSongs.isNotEmpty() && isSongViewMode
     val selectionBottomPadding = if (showSelectionBottomBar) bottomBarHeight else 0.dp
     val isFilesSelectionContext = isFilesViewMode && selectedSongs.isNotEmpty()
@@ -3476,6 +3486,20 @@ fun LibraryScreen(
                         libraryViewMode = LIBRARY_VIEW_MODE_PLAYLISTS
                         selectedSongs = emptySet()
                         stopQuickPlay()
+                    }
+                )
+                LibraryViewModeButton(
+                    label = sPromptersView,
+                    selected = isPrompterViewMode,
+                    accent = accent,
+                    onClick = {
+                        libraryViewMode = LIBRARY_VIEW_MODE_PROMPTERS
+                        selectedSongs = emptySet()
+                        stopQuickPlay()
+                        LibraryFolderCache.clear()
+                        searchQuery = ""
+                        folderStack = emptyList()
+                        currentFolderUri = PROMPTER_FOLDER_URI
                     }
                 )
                 LibraryViewModeButton(
@@ -3856,8 +3880,10 @@ fun LibraryScreen(
                         } else {
                             val isEmptySmpFolder =
                                 currentFolderUri?.let(::isSmpFolderUri) == true && searchableEntries.isEmpty()
+                            val isEmptyPrompterFolder =
+                                currentFolderUri?.let(::isPrompterFolderUri) == true && searchableEntries.isEmpty()
 
-                            if (isEmptySmpFolder) {
+                            if (isEmptySmpFolder || isEmptyPrompterFolder) {
                                 Box(
                                     modifier = Modifier
                                         .fillMaxSize()
@@ -3865,7 +3891,7 @@ fun LibraryScreen(
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
-                                        text = sSmpEmptyState,
+                                        text = if (isEmptyPrompterFolder) sPrompterEmptyState else sSmpEmptyState,
                                         color = subtitleColor,
                                         fontSize = 13.sp
                                     )

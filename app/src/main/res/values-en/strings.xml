@@ -267,6 +267,7 @@
     <string name="library_view_mode_songs">My songs</string>
     <string name="library_view_mode_files">Files</string>
     <string name="library_view_mode_playlists">Playlists</string>
+    <string name="library_view_mode_prompters">Prompters</string>
     <string name="library_view_mode_lufs">LUFS</string>
     <string name="library_header_cd_storage">Open storage</string>
     <string name="library_storage_header_title">Device storage</string>
@@ -298,6 +299,7 @@
     <string name="library_smp_folder">My Live Tracks</string>
     <string name="library_legacy_backing_tracks_folder">My Live Tracks</string>
     <string name="library_smp_empty_state">No SMP live tracks yet.\nImport or convert a song to see it appear here.</string>
+    <string name="library_prompter_empty_state">No prompters yet.\nCreate a prompter from a playlist to see it appear here.</string>
     <string name="library_smp_detected_importing">SMP file detected, importing track…</string>
 
     <string name="library_delete_backing_track_title">Delete this track?</string>

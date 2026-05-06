@@ -264,6 +264,7 @@
     <string name="library_view_mode_songs">Mes chansons</string>
     <string name="library_view_mode_files">Fichiers</string>
     <string name="library_view_mode_playlists">Playlists</string>
+    <string name="library_view_mode_prompters">Prompteurs</string>
     <string name="library_view_mode_lufs">LUFS</string>
     <string name="library_header_cd_storage">Accès au stockage</string>
     <string name="library_storage_header_title">Stockage de l’appareil</string>
@@ -293,6 +294,7 @@
     <string name="library_smp_folder">Mes morceaux live</string>
     <string name="library_legacy_backing_tracks_folder">Mes morceaux live</string>
     <string name="library_smp_empty_state">Aucun morceau live SMP pour l’instant.\nImporte ou convertis un morceau pour le voir apparaître ici.</string>
+    <string name="library_prompter_empty_state">Aucun prompteur pour l’instant.\nCrée un prompteur depuis une playlist pour le voir apparaître ici.</string>
     <string name="library_smp_detected_importing">Fichier SMP détecté, import du morceau…</string>
 
     <string name="library_delete_backing_track_title">Supprimer ce morceau ?</string>
