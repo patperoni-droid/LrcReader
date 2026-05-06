@@ -777,12 +777,12 @@
     <string name="more_live_songs_export_failed">Impossible de lancer la sauvegarde</string>
     <string name="more_library_restore_title">Restaurer ma bibliothèque</string>
     <string name="more_library_restore_progress">Restauration en cours : %1$d / %2$d</string>
-    <string name="more_library_restore_summary">Cette sauvegarde contient :\n- %1$d morceaux\n- %2$d playlists\n- %3$d conflits détectés</string>
+    <string name="more_library_restore_summary">Cette sauvegarde contient :\n- %1$d morceaux\n- %2$d playlists\n- %3$d prompteur(s)\n- %4$d conflits détectés</string>
     <string name="more_library_restore_keep_existing">Conserver les morceaux existants</string>
     <string name="more_library_restore_replace_existing">Remplacer les morceaux existants</string>
     <string name="more_library_restore_scan_failed">Impossible de lire ce dossier de sauvegarde</string>
     <string name="more_library_restore_empty">Aucun fichier de sauvegarde utilisable dans ce dossier</string>
-    <string name="more_library_restore_result">Restauration terminée : %1$d importé(s), %2$d ignoré(s), %3$d échec(s)\nÉtat : %4$s</string>
+    <string name="more_library_restore_result">Restauration terminée : %1$d morceau(x) importé(s), %2$d ignoré(s), %3$d échec(s)\nPrompteurs : %4$d importé(s), %5$d ignoré(s)\nÉtat : %6$s</string>
     <string name="more_library_restore_result_state_restored">playlists restaurées</string>
     <string name="more_library_restore_result_state_with_warnings">playlists restaurées avec %1$d avertissement(s)</string>
     <string name="more_library_restore_result_state_failed">state.json non appliqué (%1$d conflit(s))</string>

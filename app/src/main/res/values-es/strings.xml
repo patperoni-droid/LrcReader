@@ -683,12 +683,12 @@
     <string name="more_live_songs_export_failed">No se pudo iniciar la copia de seguridad</string>
     <string name="more_library_restore_title">Restaurar mi biblioteca</string>
     <string name="more_library_restore_progress">Restauración en curso: %1$d / %2$d</string>
-    <string name="more_library_restore_summary">Esta copia contiene:\n- %1$d canciones\n- %2$d listas\n- %3$d conflictos detectados</string>
+    <string name="more_library_restore_summary">Esta copia contiene:\n- %1$d canciones\n- %2$d listas\n- %3$d prompter(s)\n- %4$d conflictos detectados</string>
     <string name="more_library_restore_keep_existing">Conservar las canciones existentes</string>
     <string name="more_library_restore_replace_existing">Reemplazar las canciones existentes</string>
     <string name="more_library_restore_scan_failed">No se puede leer esta carpeta de copia</string>
     <string name="more_library_restore_empty">No se encontraron archivos de copia utilizables en esta carpeta</string>
-    <string name="more_library_restore_result">Restauración terminada: %1$d importadas, %2$d omitidas, %3$d fallidas\nEstado: %4$s</string>
+    <string name="more_library_restore_result">Restauración terminada: %1$d canción(es) importadas, %2$d omitidas, %3$d fallidas\nPrompters: %4$d importados, %5$d omitidos\nEstado: %6$s</string>
     <string name="more_library_restore_result_state_restored">listas restauradas</string>
     <string name="more_library_restore_result_state_with_warnings">listas restauradas con %1$d advertencia(s)</string>
     <string name="more_library_restore_result_state_failed">state.json no aplicado (%1$d conflicto(s))</string>

@@ -61,6 +61,7 @@ import com.patrick.lrcreader.core.LegacyLibraryVisibilityPrefs
 import com.patrick.lrcreader.core.LightIndicatorPrefs
 import com.patrick.lrcreader.core.PlayerLaunchMode
 import com.patrick.lrcreader.core.PlayerLaunchPrefs
+import com.patrick.lrcreader.core.TextSongRepository
 import com.patrick.lrcreader.core.UiEntryPrefs
 import com.patrick.lrcreader.core.WorkspaceResolver
 import com.patrick.lrcreader.core.backup.BackupBundleImportedSong
@@ -81,6 +82,7 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import org.json.JSONArray
 import org.json.JSONObject
 
 /* ─────────────────────────────
@@ -449,7 +451,7 @@ private fun MoreRootScreen(
                 runtimeSongIds = runtimeSongIds,
                 candidates = archiveCandidates
             )
-            exportLiveSongsTotal = runtimeSongs.size + workspaceArchivesToCopy.size + 1
+            exportLiveSongsTotal = runtimeSongs.size + workspaceArchivesToCopy.size + 2
 
             var successCount = 0
             var failureCount = 0
@@ -506,6 +508,21 @@ private fun MoreRootScreen(
             completedCount += 1
             exportLiveSongsDone = completedCount
 
+            exportLiveSongsCurrentTitle = "prompters.json"
+            val promptersWritten = withContext(Dispatchers.IO) {
+                writeLibraryBackupPromptersToTree(
+                    context = context.applicationContext,
+                    exportDir = exportTarget
+                )
+            }
+            if (promptersWritten) {
+                successCount += 1
+            } else {
+                failureCount += 1
+            }
+            completedCount += 1
+            exportLiveSongsDone = completedCount
+
             exportLiveSongsCurrentTitle = null
             exportLiveSongsResultMessage = context.getString(
                 R.string.more_live_songs_export_result,
@@ -542,7 +559,9 @@ private fun MoreRootScreen(
                     null
                 }
 
-                scanResult.songCount == 0 && scanResult.stateJson == null -> {
+                scanResult.songCount == 0 &&
+                    scanResult.prompterCount == 0 &&
+                    scanResult.stateJson == null -> {
                     restoreLibraryResultMessage = sLibraryRestoreEmpty
                     null
                 }
@@ -957,6 +976,7 @@ private fun MoreRootScreen(
                                 R.string.more_library_restore_summary,
                                 scan.songCount,
                                 scan.playlistCount,
+                                scan.prompterCount,
                                 scan.conflictCount
                             ),
                             color = Color(0xFFF5F5F5)
@@ -974,7 +994,7 @@ private fun MoreRootScreen(
                                     isRestoringLibrary = true
                                     restoreLibraryDone = 0
                                     restoreLibraryCurrentTitle = null
-                                    restoreLibraryTotal = scan.songCount + if (scan.stateJson != null) 1 else 0
+                                    restoreLibraryTotal = scan.songCount + scan.prompterCount + if (scan.stateJson != null) 1 else 0
                                     val result = withContext(Dispatchers.IO) {
                                         restoreLibraryFromBackupFolder(
                                             context = context.applicationContext,
@@ -1010,7 +1030,7 @@ private fun MoreRootScreen(
                                     isRestoringLibrary = true
                                     restoreLibraryDone = 0
                                     restoreLibraryCurrentTitle = null
-                                    restoreLibraryTotal = scan.songCount + if (scan.stateJson != null) 1 else 0
+                                    restoreLibraryTotal = scan.songCount + scan.prompterCount + if (scan.stateJson != null) 1 else 0
                                     val result = withContext(Dispatchers.IO) {
                                         restoreLibraryFromBackupFolder(
                                             context = context.applicationContext,
@@ -1229,21 +1249,34 @@ private data class LibraryRestoreSmpFile(
     val conflictWithRuntime: Boolean
 )
 
+private data class LibraryRestorePrompterItem(
+    val id: String,
+    val title: String,
+    val text: String,
+    val conflictWithRuntime: Boolean
+)
+
 private data class LibraryRestoreScanResult(
     val folderUri: Uri,
     val smpFiles: List<LibraryRestoreSmpFile>,
     val stateJson: String?,
+    val prompterItems: List<LibraryRestorePrompterItem>,
     val playlistCount: Int,
     val conflictCount: Int
 ) {
     val songCount: Int
         get() = smpFiles.size
+
+    val prompterCount: Int
+        get() = prompterItems.size
 }
 
 private data class LibraryRestoreExecutionResult(
     val importedCount: Int,
     val skippedCount: Int,
     val failedCount: Int,
+    val promptersImportedCount: Int,
+    val promptersSkippedCount: Int,
     val stateRestored: Boolean,
     val stateWarningCount: Int,
     val stateFailureCount: Int,
@@ -1287,9 +1320,14 @@ private fun scanLibraryRestoreFolder(
         .map { it.id.trim() }
         .filter { it.isNotEmpty() }
         .toSet()
+    val runtimePrompterIds = TextSongRepository.exportAll(context).keys
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
+        .toSet()
 
     val selectedSongIds = linkedSetOf<String>()
     var stateJson: String? = null
+    var promptersJson: String? = null
     val smpFiles = root.listFiles()
         .orEmpty()
         .filter { it.isFile }
@@ -1299,6 +1337,15 @@ private fun scanLibraryRestoreFolder(
             when {
                 name.equals("state.json", ignoreCase = true) -> {
                     stateJson = runCatching {
+                        context.contentResolver.openInputStream(file.uri)
+                            ?.bufferedReader(Charsets.UTF_8)
+                            ?.use { it.readText() }
+                    }.getOrNull()?.takeIf { it.isNotBlank() }
+                    null
+                }
+
+                name.equals("prompters.json", ignoreCase = true) -> {
+                    promptersJson = runCatching {
                         context.contentResolver.openInputStream(file.uri)
                             ?.bufferedReader(Charsets.UTF_8)
                             ?.use { it.readText() }
@@ -1327,12 +1374,18 @@ private fun scanLibraryRestoreFolder(
         }
 
     val playlistCount = parseBackupPlaylistCount(stateJson)
+    val prompterItems = parseBackupPrompterItems(
+        rawJson = promptersJson,
+        runtimePrompterIds = runtimePrompterIds
+    )
     return LibraryRestoreScanResult(
         folderUri = treeUri,
         smpFiles = smpFiles,
         stateJson = stateJson,
+        prompterItems = prompterItems,
         playlistCount = playlistCount,
-        conflictCount = smpFiles.count { it.conflictWithRuntime }
+        conflictCount = smpFiles.count { it.conflictWithRuntime } +
+            prompterItems.count { it.conflictWithRuntime }
     )
 }
 
@@ -1341,6 +1394,32 @@ private fun parseBackupPlaylistCount(stateJson: String?): Int {
     return runCatching {
         JSONObject(stateJson).optJSONObject("playlists")?.length() ?: 0
     }.getOrDefault(0)
+}
+
+private fun parseBackupPrompterItems(
+    rawJson: String?,
+    runtimePrompterIds: Set<String>
+): List<LibraryRestorePrompterItem> {
+    if (rawJson.isNullOrBlank()) return emptyList()
+    return runCatching {
+        val root = JSONObject(rawJson)
+        val items = root.optJSONArray("prompters") ?: JSONArray()
+        buildList {
+            for (index in 0 until items.length()) {
+                val item = items.optJSONObject(index) ?: continue
+                val id = item.optString("id", "").trim()
+                if (id.isEmpty()) continue
+                add(
+                    LibraryRestorePrompterItem(
+                        id = id,
+                        title = item.optString("title", "").trim(),
+                        text = item.optString("text", "").trim(),
+                        conflictWithRuntime = id in runtimePrompterIds
+                    )
+                )
+            }
+        }.distinctBy { it.id }
+    }.getOrDefault(emptyList())
 }
 
 private fun restoreLibraryFromBackupFolder(
@@ -1356,9 +1435,13 @@ private fun restoreLibraryFromBackupFolder(
     var importedCount = 0
     var skippedCount = 0
     var failedCount = 0
+    var promptersImportedCount = 0
+    var promptersSkippedCount = 0
     var completed = 0
     var lastImportedSongId: String? = null
-    val total = scanResult.songCount + if (scanResult.stateJson != null) 1 else 0
+    val total = scanResult.songCount +
+        scanResult.prompterCount +
+        if (scanResult.stateJson != null) 1 else 0
 
     scanResult.smpFiles.forEach { smpFile ->
         onProgress(completed, total, smpFile.displayName)
@@ -1399,6 +1482,29 @@ private fun restoreLibraryFromBackupFolder(
         onProgress(completed, total, smpFile.displayName)
     }
 
+    scanResult.prompterItems.forEach { prompter ->
+        onProgress(completed, total, "prompters.json")
+        val existingPrompter = TextSongRepository.get(context, prompter.id)
+        val shouldImport = when {
+            existingPrompter == null -> true
+            conflictMode == LibraryRestoreConflictMode.Replace -> true
+            else -> false
+        }
+        if (shouldImport) {
+            TextSongRepository.importOne(
+                context = context,
+                id = prompter.id,
+                title = prompter.title,
+                content = prompter.text
+            )
+            promptersImportedCount += 1
+        } else {
+            promptersSkippedCount += 1
+        }
+        completed += 1
+        onProgress(completed, total, "prompters.json")
+    }
+
     var stateRestored = false
     var stateWarningCount = 0
     var stateFailureCount = 0
@@ -1427,6 +1533,8 @@ private fun restoreLibraryFromBackupFolder(
         importedCount = importedCount,
         skippedCount = skippedCount,
         failedCount = failedCount,
+        promptersImportedCount = promptersImportedCount,
+        promptersSkippedCount = promptersSkippedCount,
         stateRestored = stateRestored,
         stateWarningCount = stateWarningCount,
         stateFailureCount = stateFailureCount,
@@ -1459,6 +1567,8 @@ private fun formatLibraryRestoreResultMessage(
         result.importedCount,
         result.skippedCount,
         result.failedCount,
+        result.promptersImportedCount,
+        result.promptersSkippedCount,
         stateLine
     )
 }
@@ -1503,6 +1613,37 @@ private fun writeLibraryBackupStateToTree(
     return try {
         context.contentResolver.openOutputStream(stateFile.uri, "w")?.use { output ->
             output.write(stateJson.toByteArray(Charsets.UTF_8))
+            output.flush()
+        } != null
+    } catch (_: Throwable) {
+        false
+    }
+}
+
+private fun writeLibraryBackupPromptersToTree(
+    context: Context,
+    exportDir: DocumentFile
+): Boolean {
+    val items = TextSongRepository.exportAll(context)
+        .toSortedMap()
+        .map { (id, data) ->
+            JSONObject().apply {
+                put("id", id)
+                put("title", data.title)
+                put("text", data.content)
+            }
+        }
+    val root = JSONObject().apply {
+        put("version", 1)
+        put("prompters", JSONArray(items))
+    }
+    val targetFile = exportDir.findFile("prompters.json")
+        ?.takeIf { it.isFile }
+        ?: exportDir.createFile("application/json", "prompters.json")
+        ?: return false
+    return try {
+        context.contentResolver.openOutputStream(targetFile.uri, "w")?.use { output ->
+            output.write(root.toString(2).toByteArray(Charsets.UTF_8))
             output.flush()
         } != null
     } catch (_: Throwable) {
