@@ -989,7 +989,7 @@ fun QuickPlaylistsScreen(
     ) {
         val playableItems = visibleRows
             .map { it.item }
-            .filter(::isPlayableAudioItem)
+            .filter(::isKeyboardSelectablePlaylistItem)
         if (playableItems.isEmpty()) return
 
         val anchorItem = when {
@@ -1162,6 +1162,20 @@ fun QuickPlaylistsScreen(
                             onClick = {
                                 showMenu = false
                                 requestSaveCurrentPlaylist()
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    text = stringResource(R.string.quickplaylists_create_prompter_action),
+                                    color = Color.White
+                                )
+                            },
+                            onClick = {
+                                showMenu = false
+                                newTextTitle = ""
+                                newTextContent = ""
+                                showCreateTextDialog = true
                             }
                         )
 
@@ -3256,6 +3270,11 @@ private fun buildQuickPlaylistSearchTitle(
     return TitleAliasesStore.getTitleForTrack(context, item)
         ?: PlaylistRepository.getAnyCustomTitleForUri(item)
         ?: quickPlaylistFallbackName(item)
+}
+
+private fun isKeyboardSelectablePlaylistItem(item: String): Boolean {
+    if (isGroupHeader(item) || isGroupEnd(item)) return false
+    return isPlayableAudioItem(item) || item.startsWith("prompter://")
 }
 
 private fun quickPlaylistFallbackName(item: String): String {

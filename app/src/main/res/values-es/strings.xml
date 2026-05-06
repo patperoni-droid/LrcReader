@@ -188,6 +188,7 @@
     <string name="quickplaylists_empty">No hay listas de reproducción.\nCrea tu primera lista.</string>
     <string name="quickplaylists_create_playlist_action">Crear una lista de reproducción</string>
     <string name="quickplaylists_save_current_list_action">Guardar la lista actual</string>
+    <string name="quickplaylists_create_prompter_action">Crear prompter</string>
     <string name="quickplaylists_no_playlists_title">No hay listas de reproducción</string>
     <string name="quickplaylists_no_playlists_subtitle">Crea tu primera lista para comenzar</string>
     <string name="quickplaylists_open_playlist_action">Abrir una lista de reproducción</string>
