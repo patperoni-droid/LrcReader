@@ -1002,9 +1002,11 @@ fun LyricsEditorSection(
                                                 .combinedClickable(
                                                     onClick = { tagLineAt(index) },
                                                     onLongClick = {
-                                                        lineMenuIndex = index
-                                                        lineMenuText = line.text
-                                                        lineMenuColorArgb = line.colorArgb
+                                                        selectedSyncLineIndices = if (index in selectedSyncLineIndices) {
+                                                            selectedSyncLineIndices - index
+                                                        } else {
+                                                            selectedSyncLineIndices + index
+                                                        }
                                                     }
                                                 )
                                                 .padding(horizontal = 12.dp, vertical = 8.dp)
@@ -1039,10 +1041,10 @@ fun LyricsEditorSection(
                                                         lineMenuColorArgb = line.colorArgb
                                                     },
                                                     onLongPress = {
-                                                        if (selectedSyncLineIndices.isEmpty()) {
-                                                            selectedSyncLineIndices = setOf(index)
+                                                        selectedSyncLineIndices = if (index in selectedSyncLineIndices) {
+                                                            selectedSyncLineIndices - index
                                                         } else {
-                                                            selectedSyncLineIndices = selectedSyncLineIndices + index
+                                                            selectedSyncLineIndices + index
                                                         }
                                                     }
                                                 )
