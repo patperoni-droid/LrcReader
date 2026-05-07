@@ -151,6 +151,7 @@ fun LyricsEditorSection(
 
     var lineMenuIndex by remember { mutableStateOf<Int?>(null) }
     var lineMenuText by remember { mutableStateOf("") }
+    var lineMenuColorArgb by remember { mutableStateOf<Int?>(null) }
     var selectedSyncLineIndices by remember(currentTrackUri) { mutableStateOf<Set<Int>>(emptySet()) }
     var previousEditingLines by remember(currentTrackUri) { mutableStateOf<List<LrcLine>?>(null) }
     var showEditorHintDialog by remember { mutableStateOf(false) }
@@ -1003,6 +1004,7 @@ fun LyricsEditorSection(
                                                     onLongClick = {
                                                         lineMenuIndex = index
                                                         lineMenuText = line.text
+                                                        lineMenuColorArgb = line.colorArgb
                                                     }
                                                 )
                                                 .padding(horizontal = 12.dp, vertical = 8.dp)
@@ -1026,7 +1028,7 @@ fun LyricsEditorSection(
                                             color = when {
                                                 isSelected -> Color(0xFF80CBC4)
                                                 index == highlightedCapturedIndex -> Color(0xFFFFF176)
-                                                else -> Color.White
+                                                else -> line.colorArgb?.let(::Color) ?: Color.White
                                             },
                                             fontSize = 16.sp,
                                             modifier = Modifier.pointerInput(index, line.text) {
@@ -1034,6 +1036,7 @@ fun LyricsEditorSection(
                                                     onTap = {
                                                         lineMenuIndex = index
                                                         lineMenuText = line.text
+                                                        lineMenuColorArgb = line.colorArgb
                                                     },
                                                     onLongPress = {
                                                         if (selectedSyncLineIndices.isEmpty()) {
@@ -1073,9 +1076,20 @@ fun LyricsEditorSection(
                     // Menu ÉDITER / SUPPRIMER
                     if (lineMenuIndex != null) {
                         val idx = lineMenuIndex!!
+                        val colorOptions = listOf(
+                            null to stringResource(R.string.lyrics_editor_color_none),
+                            0xFFFFFF00.toInt() to stringResource(R.string.lyrics_editor_color_yellow),
+                            0xFFFF5252.toInt() to stringResource(R.string.lyrics_editor_color_red),
+                            0xFF64B5F6.toInt() to stringResource(R.string.lyrics_editor_color_blue),
+                            0xFF66BB6A.toInt() to stringResource(R.string.lyrics_editor_color_green),
+                            0xFFBA68C8.toInt() to stringResource(R.string.lyrics_editor_color_violet)
+                        )
 
                         AlertDialog(
-                            onDismissRequest = { lineMenuIndex = null },
+                            onDismissRequest = {
+                                lineMenuIndex = null
+                                lineMenuColorArgb = null
+                            },
                             title = {
                                 Text(
                                     text = if (showChordPalette) {
@@ -1112,6 +1126,41 @@ fun LyricsEditorSection(
                                             fontSize = 16.sp
                                         )
                                     )
+                                    if (!showChordPalette) {
+                                        Spacer(Modifier.height(16.dp))
+                                        Text(
+                                            text = stringResource(R.string.lyrics_editor_color_section),
+                                            color = Color.White,
+                                            fontSize = 14.sp
+                                        )
+                                        Spacer(Modifier.height(8.dp))
+                                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            colorOptions.forEach { (colorArgb, label) ->
+                                                TextButton(
+                                                    onClick = { lineMenuColorArgb = colorArgb },
+                                                    modifier = Modifier.fillMaxWidth()
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Text(
+                                                            text = label,
+                                                            color = colorArgb?.let(::Color) ?: Color.White,
+                                                            modifier = Modifier.weight(1f)
+                                                        )
+                                                        if (lineMenuColorArgb == colorArgb) {
+                                                            Icon(
+                                                                imageVector = Icons.Filled.Check,
+                                                                contentDescription = null,
+                                                                tint = Color(0xFF80CBC4)
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             },
                             confirmButton = {
@@ -1119,12 +1168,16 @@ fun LyricsEditorSection(
                                     onClick = {
                                         val list = editingLines.toMutableList()
                                         if (idx in list.indices) {
-                                            list[idx] = list[idx].copy(text = lineMenuText.trim())
+                                            list[idx] = list[idx].copy(
+                                                text = lineMenuText.trim(),
+                                                colorArgb = if (showChordPalette) list[idx].colorArgb else lineMenuColorArgb
+                                            )
                                             applyEditingLinesWithUndo(list)
                                         } else if (BuildConfig.DEBUG) {
                                             Log.w("LrcDebug", "EDIT_LINE_SKIPPED invalidIndex idx=$idx size=${list.size}")
                                         }
                                         lineMenuIndex = null
+                                        lineMenuColorArgb = null
                                     }
                                 ) { Text(stringResource(R.string.lyrics_editor_edit), color = Color(0xFF80CBC4)) }
                             },
@@ -1142,10 +1195,14 @@ fun LyricsEditorSection(
                                             }
 
                                             lineMenuIndex = null
+                                            lineMenuColorArgb = null
                                         }
                                     ) { Text(stringResource(R.string.lyrics_editor_delete), color = Color(0xFFFF8A80)) }
 
-                                    TextButton(onClick = { lineMenuIndex = null }) {
+                                    TextButton(onClick = {
+                                        lineMenuIndex = null
+                                        lineMenuColorArgb = null
+                                    }) {
                                         Text(stringResource(R.string.lyrics_editor_cancel), color = Color.LightGray)
                                     }
                                 }

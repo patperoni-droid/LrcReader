@@ -14,7 +14,8 @@ internal data class TrackSettingsEntry(
     val timelineTempoBpm: Int? = null,
     val pitchSemi: Int? = null,
     val eq: TrackSettingsEq? = null,
-    val titleColorByPlaylist: Map<String, Int> = emptyMap()
+    val titleColorByPlaylist: Map<String, Int> = emptyMap(),
+    val lyricsLineColors: Map<String, Int> = emptyMap()
 ) {
     fun isEmpty(): Boolean {
         return volumeDb == null &&
@@ -22,7 +23,8 @@ internal data class TrackSettingsEntry(
             timelineTempoBpm == null &&
             pitchSemi == null &&
             eq == null &&
-            titleColorByPlaylist.isEmpty()
+            titleColorByPlaylist.isEmpty() &&
+            lyricsLineColors.isEmpty()
     }
 }
 
@@ -57,6 +59,14 @@ internal data class TrackSettingsState(
                     colorsObj.put(playlistName, entry.titleColorByPlaylist[playlistName])
                 }
                 trackObj.put("titleColorByPlaylist", colorsObj)
+            }
+
+            if (entry.lyricsLineColors.isNotEmpty()) {
+                val lyricsColorsObj = JSONObject()
+                entry.lyricsLineColors.keys.sorted().forEach { lineKey ->
+                    lyricsColorsObj.put(lineKey, entry.lyricsLineColors[lineKey])
+                }
+                trackObj.put("lyricsLineColors", lyricsColorsObj)
             }
 
             if (trackObj.length() > 0) {
@@ -124,13 +134,25 @@ internal data class TrackSettingsState(
                     }
                 }
 
+                val lyricsColorsObj = obj.optJSONObject("lyricsLineColors")
+                val lyricsLineColors = linkedMapOf<String, Int>()
+                if (lyricsColorsObj != null) {
+                    val lineKeys = lyricsColorsObj.keys().asSequence().toList().sorted()
+                    lineKeys.forEach { lineKey ->
+                        if (lyricsColorsObj.has(lineKey) && !lyricsColorsObj.isNull(lineKey)) {
+                            lyricsLineColors[lineKey] = lyricsColorsObj.optInt(lineKey)
+                        }
+                    }
+                }
+
                 val entry = TrackSettingsEntry(
                     volumeDb = volumeDb,
                     tempo = tempo,
                     timelineTempoBpm = timelineTempoBpm,
                     pitchSemi = pitchSemi,
                     eq = eq,
-                    titleColorByPlaylist = colors
+                    titleColorByPlaylist = colors,
+                    lyricsLineColors = lyricsLineColors
                 )
 
                 if (!entry.isEmpty()) {

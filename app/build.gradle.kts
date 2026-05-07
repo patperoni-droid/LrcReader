@@ -7,6 +7,16 @@ plugins {
     id("org.jetbrains.kotlin.kapt")
 }
 
+val releaseKeystoreFile = file("/Users/patrickperoni/Keystore/stage_music_player.jks")
+val releaseKeyAlias = "stageplayer"
+val releaseStorePassword = providers.gradleProperty("stageReleaseStorePassword")
+    .orElse(providers.environmentVariable("STAGE_RELEASE_STORE_PASSWORD"))
+    .orNull
+val releaseKeyPassword = providers.gradleProperty("stageReleaseKeyPassword")
+    .orElse(providers.environmentVariable("STAGE_RELEASE_KEY_PASSWORD"))
+    .orNull
+val hasReleaseSigningSecrets = !releaseStorePassword.isNullOrBlank() && !releaseKeyPassword.isNullOrBlank()
+
 val enableSoundTouchNative =
     providers.gradleProperty("enableSoundTouchNative")
         .orNull
@@ -68,9 +78,23 @@ android {
         }
     }
 
+    signingConfigs {
+        create("release") {
+            if (releaseKeystoreFile.isFile && hasReleaseSigningSecrets) {
+                storeFile = releaseKeystoreFile
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+
     buildTypes {
         getByName("debug") { /* rien */ }
         getByName("release") {
+            if (releaseKeystoreFile.isFile && hasReleaseSigningSecrets) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

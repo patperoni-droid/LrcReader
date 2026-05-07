@@ -1899,6 +1899,11 @@ class MainActivity : AppCompatActivity() {
                             PlayerLaunchMode.ALWAYS -> true
                             PlayerLaunchMode.NEVER -> false
                             PlayerLaunchMode.AUTOMATIC -> withContext(Dispatchers.IO) {
+                                LyricsMemoryCache.updateScope(LrcStorage.currentWorkspaceScopeKey(ctx))
+                                if (LyricsMemoryCache.get(trackUriString)?.parsedLines?.isNotEmpty() == true) {
+                                    return@withContext true
+                                }
+
                                 val smpSongId = getSmpSongId(trackUriString)
                                 if (smpSongId != null) {
                                     return@withContext smpLibraryScanner.findSongById(smpSongId)?.lyricsPath != null
@@ -1914,7 +1919,12 @@ class MainActivity : AppCompatActivity() {
                                 return@withContext LrcStorage.resolveOriginForTrack(
                                     ctx,
                                     trackUriString
-                                ) != null
+                                ) != null ||
+                                    runCatching {
+                                        val trackUri = Uri.parse(trackUriString)
+                                        !readSyltAsLrcFromUri(ctx, trackUri).isNullOrBlank() ||
+                                            !readUsltFromUri(ctx, trackUri).isNullOrBlank()
+                                    }.getOrDefault(false)
                             }
                         }
                     }

@@ -472,6 +472,13 @@
     <string name="lyrics_editor_line_dialog_title">Line %1$d</string>
     <string name="lyrics_editor_line_dialog_message">Edit the text or delete the phrase.</string>
     <string name="lyrics_editor_line_text_label">Phrase text</string>
+    <string name="lyrics_editor_color_section">Color</string>
+    <string name="lyrics_editor_color_none">None / default</string>
+    <string name="lyrics_editor_color_yellow">Yellow</string>
+    <string name="lyrics_editor_color_red">Red</string>
+    <string name="lyrics_editor_color_blue">Blue</string>
+    <string name="lyrics_editor_color_green">Green</string>
+    <string name="lyrics_editor_color_violet">Violet</string>
     <string name="lyrics_editor_edit">Edit</string>
     <string name="lyrics_editor_delete">Delete</string>
     <string name="lyrics_editor_cancel">Cancel</string>

@@ -591,6 +591,13 @@
     <string name="lyrics_editor_line_dialog_title">Ligne %1$d</string>
     <string name="lyrics_editor_line_dialog_message">Modifier le texte ou supprimer la phrase.</string>
     <string name="lyrics_editor_line_text_label">Texte de la phrase</string>
+    <string name="lyrics_editor_color_section">Couleur</string>
+    <string name="lyrics_editor_color_none">Aucune / défaut</string>
+    <string name="lyrics_editor_color_yellow">Jaune</string>
+    <string name="lyrics_editor_color_red">Rouge</string>
+    <string name="lyrics_editor_color_blue">Bleu</string>
+    <string name="lyrics_editor_color_green">Vert</string>
+    <string name="lyrics_editor_color_violet">Violet</string>
     <string name="lyrics_editor_edit">Modifier</string>
     <string name="lyrics_editor_delete">Supprimer</string>
     <string name="lyrics_editor_cancel">Annuler</string>

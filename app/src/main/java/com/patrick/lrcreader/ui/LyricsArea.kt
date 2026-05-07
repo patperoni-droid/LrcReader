@@ -62,9 +62,11 @@ fun LyricsAreaLazy(
         ) {
             itemsIndexed(parsedLines, key = { idx, _ -> idx }) { index, line ->
                 val isActiveLine = index == currentLrcIndex
+                val baseColor = line.colorArgb?.let(::Color) ?: Color.White
                 val color = when {
-                    isActiveLine -> highlightColor
-                    readabilityModeEnabled -> Color.White
+                    isActiveLine -> line.colorArgb?.let(::Color) ?: highlightColor
+                    readabilityModeEnabled -> baseColor
+                    line.colorArgb != null -> baseColor.copy(alpha = 0.72f)
                     else -> Color.White.copy(alpha = 0.42f)
                 }
                 val fontWeight = when {

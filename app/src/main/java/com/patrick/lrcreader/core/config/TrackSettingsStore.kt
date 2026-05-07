@@ -119,6 +119,31 @@ object TrackSettingsStore {
         }
     }
 
+    fun getLyricsLineColorsByUri(context: Context, uriString: String): Map<String, Int> {
+        return readEntryByUri(context, uriString)?.lyricsLineColors.orEmpty()
+    }
+
+    fun saveLyricsLineColorsByUri(
+        context: Context,
+        uriString: String,
+        lyricsLineColors: Map<String, Int>
+    ): Boolean {
+        val keys = resolveReadKeysForUri(context, uriString) ?: return false
+        val sanitized = lyricsLineColors
+            .filterKeys { it.isNotBlank() }
+            .toSortedMap()
+        return updateTrackLocked(context, keys) { entry ->
+            entry.copy(lyricsLineColors = sanitized)
+        }
+    }
+
+    fun clearLyricsLineColorsByUri(context: Context, uriString: String): Boolean {
+        val keys = resolveReadKeysForUri(context, uriString) ?: return false
+        return updateTrackLocked(context, keys) { entry ->
+            entry.copy(lyricsLineColors = emptyMap())
+        }
+    }
+
     private fun updateTrackLocked(
         context: Context,
         keys: ReadKeys,

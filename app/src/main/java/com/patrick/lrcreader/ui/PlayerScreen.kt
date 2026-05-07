@@ -72,6 +72,7 @@ import com.patrick.lrcreader.core.LyricsViewMode
 import com.patrick.lrcreader.core.MidiCueDispatcher
 import com.patrick.lrcreader.core.TrackLyricsViewPrefs
 import com.patrick.lrcreader.core.TrackTimelineTempoPrefs
+import com.patrick.lrcreader.core.config.TrackSettingsStore
 import com.patrick.lrcreader.core.light.LightAction
 import com.patrick.lrcreader.core.light.LightCueAutoGenerator
 import com.patrick.lrcreader.core.light.LightCue
@@ -1026,7 +1027,12 @@ fun PlayerScreen(
         }
     }
 
+    fun applyStoredLyricsLineColors(trackUriString: String, lines: List<LrcLine>): List<LrcLine> {
+        return hydrateLyricsLineColors(context, trackUriString, lines)
+    }
+
     fun applyCachedLyrics(trackUriString: String, entry: LyricsCacheEntry) {
+        val coloredLines = applyStoredLyricsLineColors(trackUriString, entry.parsedLines)
         Log.d(
             "LrcDebug",
             "LYRICS_CACHE_HIT source=${entry.source} fileName=${entry.resolvedLyricsFileName} path=${entry.debugPath} sourceType=${entry.sourceType}"
@@ -1034,16 +1040,16 @@ fun PlayerScreen(
         LyricsPerf.mark(
             trackUriString,
             "cache_hit",
-            "source=${entry.source} file=${entry.resolvedLyricsFileName} lines=${entry.parsedLines.size} loadedAtMs=${entry.loadedAtMs}"
+            "source=${entry.source} file=${entry.resolvedLyricsFileName} lines=${coloredLines.size} loadedAtMs=${entry.loadedAtMs}"
         )
-        onParsedLinesChange(entry.parsedLines)
+        onParsedLinesChange(coloredLines)
         LyricsPerf.mark(
             trackUriString,
             "ui_apply",
-            "source=CACHE lines=${entry.parsedLines.size}"
+            "source=CACHE lines=${coloredLines.size}"
         )
-        rawLyricsText = entry.parsedLines.joinToString("\n") { it.text }
-        seedEditingLinesIfBetter(entry.parsedLines)
+        rawLyricsText = coloredLines.joinToString("\n") { it.text }
+        seedEditingLinesIfBetter(coloredLines)
         hasLyricsSource = true
         Log.d("LrcDebug", "LYRICS_SOURCE_TYPE ${entry.sourceType ?: "cached"}")
         updateResolvedLyricsFileName(
@@ -1166,23 +1172,24 @@ fun PlayerScreen(
             Log.d("LrcDebug", "LYRICS_SOURCE_TYPE ${storedOrigin?.sourceType ?: "canonical"}")
             val parseStartMs = android.os.SystemClock.elapsedRealtime()
             val parsed = withContext(Dispatchers.Default) { parseLrc(stored) }
+            val coloredParsed = applyStoredLyricsLineColors(currentTrackUri, parsed)
             LyricsPerf.mark(
                 currentTrackUri,
                 "parse_done",
-                "source=LRC_STORAGE ms=${android.os.SystemClock.elapsedRealtime() - parseStartMs} lines=${parsed.size} chars=${stored.length}"
+                "source=LRC_STORAGE ms=${android.os.SystemClock.elapsedRealtime() - parseStartMs} lines=${coloredParsed.size} chars=${stored.length}"
             )
-            onParsedLinesChange(parsed)
+            onParsedLinesChange(coloredParsed)
             LyricsPerf.mark(
                 currentTrackUri,
                 "ui_apply",
-                "source=LRC_STORAGE lines=${parsed.size}"
+                "source=LRC_STORAGE lines=${coloredParsed.size}"
             )
-            rawLyricsText = parsed.joinToString("\n") { it.text }
-            seedEditingLinesIfBetter(parsed)
+            rawLyricsText = coloredParsed.joinToString("\n") { it.text }
+            seedEditingLinesIfBetter(coloredParsed)
             hasLyricsSource = true
             resolvedSource = "LRC_STORAGE"
             cacheResolvedLyrics(
-                parsed = parsed,
+                parsed = coloredParsed,
                 resolvedLyricsFileName = storedOrigin?.fileName,
                 source = "LRC_STORAGE",
                 sourceType = storedOrigin?.sourceType ?: "canonical",
@@ -1227,27 +1234,28 @@ fun PlayerScreen(
             } else {
                 emptyList()
             }
+            val coloredParsed = applyStoredLyricsLineColors(currentTrackUri, parsed)
             LyricsPerf.mark(
                 currentTrackUri,
                 "parse_done",
-                "source=SIDECAR ms=${android.os.SystemClock.elapsedRealtime() - parseStartMs} lines=${parsed.size} chars=${sidecarLrcResult.text.length}"
+                "source=SIDECAR ms=${android.os.SystemClock.elapsedRealtime() - parseStartMs} lines=${coloredParsed.size} chars=${sidecarLrcResult.text.length}"
             )
-            if (parsed.isEmpty() && shouldSkipEmptyUiApply("SIDECAR")) {
+            if (coloredParsed.isEmpty() && shouldSkipEmptyUiApply("SIDECAR")) {
                 resolvedSource = "SIDECAR_EMPTY_SKIPPED"
                 return false
             }
-            onParsedLinesChange(parsed)
+            onParsedLinesChange(coloredParsed)
             LyricsPerf.mark(
                 currentTrackUri,
                 "ui_apply",
-                "source=SIDECAR lines=${parsed.size}"
+                "source=SIDECAR lines=${coloredParsed.size}"
             )
-            rawLyricsText = parsed.joinToString("\n") { it.text }
-            seedEditingLinesIfBetter(parsed)
+            rawLyricsText = coloredParsed.joinToString("\n") { it.text }
+            seedEditingLinesIfBetter(coloredParsed)
             hasLyricsSource = true
             resolvedSource = "SIDECAR"
             cacheResolvedLyrics(
-                parsed = parsed,
+                parsed = coloredParsed,
                 resolvedLyricsFileName = sidecarLrcResult.fileName,
                 source = "SIDECAR",
                 sourceType = "legacy",
@@ -1276,24 +1284,25 @@ fun PlayerScreen(
 
             val parseStartMs = android.os.SystemClock.elapsedRealtime()
             val parsed = withContext(Dispatchers.Default) { parseLrc(syltLrcText) }
+            val coloredParsed = applyStoredLyricsLineColors(currentTrackUri, parsed)
             LyricsPerf.mark(
                 currentTrackUri,
                 "parse_done",
-                "source=SYLT ms=${android.os.SystemClock.elapsedRealtime() - parseStartMs} lines=${parsed.size} chars=${syltLrcText.length}"
+                "source=SYLT ms=${android.os.SystemClock.elapsedRealtime() - parseStartMs} lines=${coloredParsed.size} chars=${syltLrcText.length}"
             )
-            onParsedLinesChange(parsed)
+            onParsedLinesChange(coloredParsed)
             LyricsPerf.mark(
                 currentTrackUri,
                 "ui_apply",
-                "source=SYLT lines=${parsed.size}"
+                "source=SYLT lines=${coloredParsed.size}"
             )
-            rawLyricsText = parsed.joinToString("\n") { it.text }
-            seedEditingLinesIfBetter(parsed)
+            rawLyricsText = coloredParsed.joinToString("\n") { it.text }
+            seedEditingLinesIfBetter(coloredParsed)
             hasLyricsSource = true
             Log.d("LrcDebug", "LYRICS_SOURCE_TYPE embedded")
             resolvedSource = "SYLT"
             cacheResolvedLyrics(
-                parsed = parsed,
+                parsed = coloredParsed,
                 resolvedLyricsFileName = null,
                 source = "SYLT",
                 sourceType = "embedded",
@@ -1319,19 +1328,20 @@ fun PlayerScreen(
 
             val parseStartMs = android.os.SystemClock.elapsedRealtime()
             val parsed = withContext(Dispatchers.Default) { parseLrc(usltText) }
+            val coloredParsed = applyStoredLyricsLineColors(currentTrackUri, parsed)
             LyricsPerf.mark(
                 currentTrackUri,
                 "parse_done",
-                "source=USLT ms=${android.os.SystemClock.elapsedRealtime() - parseStartMs} lines=${parsed.size} chars=${usltText.length}"
+                "source=USLT ms=${android.os.SystemClock.elapsedRealtime() - parseStartMs} lines=${coloredParsed.size} chars=${usltText.length}"
             )
-            onParsedLinesChange(parsed)
+            onParsedLinesChange(coloredParsed)
             LyricsPerf.mark(
                 currentTrackUri,
                 "ui_apply",
-                "source=USLT lines=${parsed.size}"
+                "source=USLT lines=${coloredParsed.size}"
             )
-            rawLyricsText = parsed.joinToString("\n") { it.text }
-            seedEditingLinesIfBetter(parsed)
+            rawLyricsText = coloredParsed.joinToString("\n") { it.text }
+            seedEditingLinesIfBetter(coloredParsed)
             hasLyricsSource = true
             Log.d("LrcDebug", "LYRICS_SOURCE_TYPE embedded")
             resolvedSource = "USLT"
@@ -1881,6 +1891,18 @@ fun PlayerScreen(
                                     return@runCatching null
                                 }
 
+                                val colorsSaved = TrackSettingsStore.saveLyricsLineColorsByUri(
+                                    context = context,
+                                    uriString = targetTrackUri,
+                                    lyricsLineColors = extractLyricsLineColors(lines)
+                                )
+                                if (!colorsSaved) {
+                                    Log.e(
+                                        "LrcDebug",
+                                        "LYRICS_LINE_COLORS_SAVE_FAILED trackUri=$targetTrackUri"
+                                    )
+                                }
+
                                 val resolvedFileName = LrcStorage.resolveOriginForTrack(
                                     context = context,
                                     trackUriString = targetTrackUri
@@ -2087,6 +2109,7 @@ fun PlayerScreen(
                             runCatching {
                                 Log.d(PLAYER_LRC_TAG, "delete_lyrics trackUri=$trackUri")
                                 LrcStorage.deleteForTrack(context, trackUri)
+                                TrackSettingsStore.clearLyricsLineColorsByUri(context, trackUri)
                                 LrcStorage.loadForTrack(context, trackUri).isNullOrBlank()
                             }.getOrDefault(false)
                         }
@@ -3690,6 +3713,35 @@ private fun linesToLrcText(lines: List<LrcLine>): String {
             line.text
         }
     }.trim()
+}
+
+private fun lyricsLineColorKey(line: LrcLine): String {
+    return "${line.timeMs}|${line.text.trim()}"
+}
+
+private fun extractLyricsLineColors(lines: List<LrcLine>): Map<String, Int> {
+    return buildMap {
+        lines.forEach { line ->
+            val colorArgb = line.colorArgb ?: return@forEach
+            val key = lyricsLineColorKey(line)
+            if (key.isNotBlank()) {
+                put(key, colorArgb)
+            }
+        }
+    }
+}
+
+private fun hydrateLyricsLineColors(
+    context: android.content.Context,
+    trackUriString: String,
+    lines: List<LrcLine>
+): List<LrcLine> {
+    if (lines.isEmpty()) return lines
+    val storedColors = TrackSettingsStore.getLyricsLineColorsByUri(context, trackUriString)
+    if (storedColors.isEmpty()) return lines
+    return lines.map { line ->
+        line.copy(colorArgb = storedColors[lyricsLineColorKey(line)])
+    }
 }
 
 private fun baseNameFromTrackUriString(trackUriString: String): String {
