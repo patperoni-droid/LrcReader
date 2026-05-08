@@ -77,6 +77,30 @@ During playback:
 
 ⸻
 
+PLAYER OPENING BEHAVIOR
+
+The Player opening behavior is user-configurable.
+
+Modes:
+- Always:
+  - Player opens every time a track is launched
+- Never:
+  - Playback starts but current screen remains visible
+- Automatic:
+  - Player opens only when the launched track has lyrics/chords or requires player display
+
+Rules:
+- Must not affect audio launch
+- Must not delay playback
+- Must not break lyrics loading
+- “Always” must remain the safest fallback mode
+
+Known risk:
+- Automatic mode depends on reliable lyrics/chords detection.
+- If detection is uncertain, prefer preserving lyrics display and playback stability.
+
+⸻
+
 LYRICS & CHORDS
 
 - Lyrics and chords are independent layers
@@ -116,6 +140,41 @@ Rules:
 UI:
 - controlled from the top-left Player header icon
 - toggle must be immediate and reliable
+
+⸻
+
+LYRIC LINE COLORS
+
+Lyrics lines may have optional display colors.
+
+Purpose:
+- provide visual markers during live performance
+- help identify important phrases, spoken parts, warnings, or structure changes
+
+Behavior:
+- color can be set from the lyric sync editor
+- default/no color must remain supported
+- colored lines must remain readable in Player
+- color must persist after saving and reopening the song
+
+Rules:
+- Must not break standard LRC import/export
+- Must not inject non-standard color tags into LRC text unless explicitly supported
+- Color metadata must remain separate from timing text when possible
+- No color must be treated as default behavior
+
+⸻
+
+LYRIC SYNC SELECTION UX
+
+In the lyric sync editor:
+- long press on an unselected line selects it
+- long press on an already selected line deselects it
+
+Rules:
+- tap behavior must remain unchanged
+- edit/delete/color dialog must remain available
+- selection must not affect audio playback or timing
 
 ⸻
 
@@ -167,6 +226,30 @@ Rules:
 - transitions must be predictable
 - no glitch allowed
 - no timing drift
+
+⸻
+
+LIVE LIST / TEMPORARY QUEUE
+
+The Player can interact with a temporary “Liste live”.
+
+Purpose:
+- allow the user to create a short live sequence while a track is already playing
+- keep the next track visible and predictable
+- chain selected tracks without stress
+
+Expected behavior:
+- if track A is playing and user creates a live list with track B:
+  - A remains the current playing track
+  - B becomes the next effective track
+  - B must be visible as the next track in Player
+  - B must start automatically at the end of A
+
+Rules:
+- Must not override a manually defined next track
+- Must not interfere with DJ mode
+- Must not create hidden or ghost nextTrack state
+- Must remain deterministic after adding C, D, etc.
 
 ⸻
 
@@ -337,6 +420,13 @@ Test at least:
 - track with pitch / speed
 - return -10s behavior (enabled / disabled)
 - launch a track from search and verify search closes
+- Opening mode Always / Never / Automatic
+- Automatic opening with lyrics track
+- Automatic opening with no-lyrics track
+- Create live list while A is already playing, verify B becomes next
+- Add C and D to live list, verify chaining order
+- Color a lyric line, save, reopen, verify persistence
+- Long press selected lyric line again, verify deselection
 
 👉 Must be tested on real device
 
