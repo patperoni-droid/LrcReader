@@ -600,6 +600,54 @@ object AudioEngine {
             ?: error("AudioEngine not initialized. Call getPlayer(context, ...) first.")
     }
 
+    fun createTransitionPlayer(context: Context): ExoPlayer {
+        val appCtx = context.applicationContext
+        val player = ExoPlayer.Builder(appCtx).build()
+        player.trackSelectionParameters =
+            player.trackSelectionParameters
+                .buildUpon()
+                .setAudioOffloadPreferences(
+                    TrackSelectionParameters.AudioOffloadPreferences.Builder()
+                        .setAudioOffloadMode(
+                            TrackSelectionParameters.AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_DISABLED
+                        )
+                        .build()
+                )
+                .build()
+        return player
+    }
+
+    fun adoptTransitionPlayer(
+        context: Context,
+        player: ExoPlayer,
+        onNaturalEnd: () -> Unit
+    ) {
+        val appCtx = context.applicationContext
+        fadeJob?.cancel()
+        speedPitchJob?.cancel()
+        pendingTrackGainDb = null
+        pendingPlayerBus = null
+
+        runCatching { exoPlayer?.release() }
+
+        val lyricsListener = EmbeddedLyricsListener()
+        runCatching { player.addListener(lyricsListener) }
+
+        exoPlayer = player
+        embeddedLyricsListener = lyricsListener
+        onNaturalEndCallback = onNaturalEnd
+        endedListenerAdded = false
+        smokeLastPlaybackState = player.playbackState
+        smokeLastIsPlaying = player.isPlaying
+        fadeMultiplier = 1f
+        playerAppContext = appCtx
+        activePlayerPipeline = PlayerPipeline.PURE_EXO
+
+        ensureCorePlayerListener(player, appCtx)
+        applyFinalVolume()
+        publishPlayerEpoch()
+    }
+
     fun release() {
         fadeJob?.cancel()
         fadeJob = null

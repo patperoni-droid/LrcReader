@@ -148,6 +148,8 @@ fun PlayerScreen(
     onRequestShowPlaylist: () -> Unit,
     currentSongId: String? = null,
     onOpenArrangementHub: () -> Unit = {},
+    manualTransitionTargetTitle: String? = null,
+    onManualCrossfadeToNext: () -> Unit = {},
     onImportGeneratedSmp: suspend (Uri) -> SongUnit? = { null },
     requestedNavigationTarget: String? = null,
     requestedNavigationToken: Int = 0,
@@ -156,6 +158,7 @@ fun PlayerScreen(
     getEffectiveDurationMs: () -> Long,
     seekToMs: (Long) -> Unit
 ) {
+    val isManualTransitionActive = !manualTransitionTargetTitle.isNullOrBlank()
     val listState = rememberSaveable(currentTrackUri, saver = LazyListState.Saver) {
         LazyListState()
     }
@@ -539,7 +542,12 @@ fun PlayerScreen(
             editingTimelineMidiMarkerIndex = null
         }
     }
-    LaunchedEffect(isPlaying, currentTrackUri, projectedTimelineLiveNotes) {
+    LaunchedEffect(isPlaying, currentTrackUri, projectedTimelineLiveNotes, isManualTransitionActive) {
+        if (isManualTransitionActive) {
+            activeLiveNote = null
+            activeLiveNoteFromTimeline = false
+            return@LaunchedEffect
+        }
         while (true) {
             if (isPlaying) {
                 val currentPositionMs = getPositionMs()
@@ -1539,7 +1547,8 @@ fun PlayerScreen(
 
 
     // ---------- Suivi lecture + index ligne courante + MIDI ----------
-    LaunchedEffect(isPlaying, activeDisplayLines, selectedViewMode, userOffsetMs, currentTrackUri) {
+    LaunchedEffect(isPlaying, activeDisplayLines, selectedViewMode, userOffsetMs, currentTrackUri, isManualTransitionActive) {
+        if (isManualTransitionActive) return@LaunchedEffect
         while (true) {
             val d = getEffectiveDurationMs().toInt()
             if (d > 0) durationMs = d
@@ -1602,7 +1611,8 @@ fun PlayerScreen(
         }
     }
 
-    LaunchedEffect(isPlaying, currentTrackUri, hasLightCues, timelineLightPreviewPositionMs) {
+    LaunchedEffect(isPlaying, currentTrackUri, hasLightCues, timelineLightPreviewPositionMs, isManualTransitionActive) {
+        if (isManualTransitionActive) return@LaunchedEffect
         val trackUri = currentTrackUri ?: return@LaunchedEffect
         if (!hasLightCues) return@LaunchedEffect
 
@@ -1635,7 +1645,8 @@ fun PlayerScreen(
     }
 
     // ---------- Autoswitch playlist (-10s) ----------
-    LaunchedEffect(durationMs, positionMs, hasRequestedPlaylist, currentTrackUri, isEditingLyrics, isEditingTimeline, autoReturnArmed) {
+    LaunchedEffect(durationMs, positionMs, hasRequestedPlaylist, currentTrackUri, isEditingLyrics, isEditingTimeline, autoReturnArmed, isManualTransitionActive) {
+        if (isManualTransitionActive) return@LaunchedEffect
         val enabled = AutoReturnPrefs.isEnabled(context)
         if (enabled &&
             autoReturnArmed &&
@@ -1660,7 +1671,8 @@ fun PlayerScreen(
     }
 
     // ---------- Auto-centering ----------
-    LaunchedEffect(isPlaying, activeDisplayLines, selectedViewMode, lyricsBoxHeightPx, currentLrcIndex) {
+    LaunchedEffect(isPlaying, activeDisplayLines, selectedViewMode, lyricsBoxHeightPx, currentLrcIndex, isManualTransitionActive) {
+        if (isManualTransitionActive) return@LaunchedEffect
         if (selectedViewMode != LyricsViewMode.LYRICS) return@LaunchedEffect
         if (activeDisplayLines.isEmpty() || lyricsBoxHeightPx == 0) return@LaunchedEffect
         while (true) {
@@ -2481,13 +2493,14 @@ fun PlayerScreen(
                                     isEditingTimeline = true
                                 }
                             },
+                            onManualCrossfadeToNext = onManualCrossfadeToNext,
                             showWaveformAction = canOpenWaveform,
                             onOpenWaveform = {
                                 currentSongId?.takeIf { it.isNotBlank() }?.let(onOpenWaveform)
                             },
                         )
 
-                        if (!nextTrackTitle.isNullOrBlank()) {
+                        if (!isManualTransitionActive && !nextTrackTitle.isNullOrBlank()) {
                             val blinkTransition = rememberInfiniteTransition(label = "nextTrackBlink")
                             val blinkAlpha by blinkTransition.animateFloat(
                                 initialValue = 1f,
@@ -2576,7 +2589,21 @@ fun PlayerScreen(
                         Spacer(Modifier.height(8.dp))
 
                         Box(modifier = Modifier.weight(1f)) {
-                            if (selectedViewMode == LyricsViewMode.LYRICS) {
+                            if (isManualTransitionActive) {
+                                Box(
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = stringResource(
+                                            R.string.player_transition_to_track,
+                                            manualTransitionTargetTitle.orEmpty()
+                                        ),
+                                        color = Color(0xFFEF9A9A),
+                                        fontSize = 22.sp
+                                    )
+                                }
+                            } else if (selectedViewMode == LyricsViewMode.LYRICS) {
                                 val safeLrcIndex = currentLrcIndex
                                     .coerceIn(0, (parsedLines.size - 1).coerceAtLeast(0))
                                 LyricsAreaLazy(
@@ -2622,7 +2649,7 @@ fun PlayerScreen(
                             }
 
                             // --- NOTE LIVE (AU-DESSUS DES PAROLES) ---
-                            activeLiveNote?.let { note ->
+                            if (!isManualTransitionActive) activeLiveNote?.let { note ->
                                 Box(
                                     modifier = Modifier
                                         .align(Alignment.TopCenter)
@@ -3064,6 +3091,7 @@ private fun ReaderHeader(
     onOpenTimeline: () -> Unit,
     showArrangementAction: Boolean,
     onOpenArrangement: () -> Unit,
+    onManualCrossfadeToNext: () -> Unit,
     showWaveformAction: Boolean,
     onOpenWaveform: () -> Unit,
 ) {
@@ -3141,6 +3169,14 @@ private fun ReaderHeader(
                         fontSize = 13.sp
                     )
                 }
+            }
+
+            IconButton(onClick = onManualCrossfadeToNext) {
+                Text(
+                    text = stringResource(R.string.dj_crossfade),
+                    color = Color(0xFFEF9A9A),
+                    fontSize = 11.sp
+                )
             }
 
             if (showWaveformAction) {

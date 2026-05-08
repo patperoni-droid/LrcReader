@@ -387,6 +387,9 @@
     <string name="player_cd_open_waveform">Ouvrir la waveform</string>
 
     <string name="player_next_track">Prochain: %1$s</string>
+    <string name="player_transition_to_track">Transition vers : %1$s</string>
+    <string name="player_crossfade_no_next_track">Aucun titre suivant défini.</string>
+    <string name="player_crossfade_prepare_failed">Transition impossible.</string>
     <string name="player_live_note_chip">📝 %1$s</string>
     <string name="player_cd_delete_live_note">Supprimer l’annotation live</string>
     <string name="player_hq_unavailable">HQ indisponible</string>

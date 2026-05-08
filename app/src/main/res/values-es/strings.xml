@@ -353,6 +353,9 @@
     <string name="player_cd_open_waveform">Abrir forma de onda</string>
 
     <string name="player_next_track">Siguiente: %1$s</string>
+    <string name="player_transition_to_track">Transición a: %1$s</string>
+    <string name="player_crossfade_no_next_track">No hay una pista siguiente definida.</string>
+    <string name="player_crossfade_prepare_failed">Transición no disponible.</string>
     <string name="player_live_note_chip">📝 %1$s</string>
     <string name="player_hq_unavailable">HQ no disponible</string>
     <string name="player_hq_off_banner">HQ OFF (STUB) =&gt; audio degradado, tono/velocidad desactivados</string>

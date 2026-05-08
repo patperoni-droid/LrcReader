@@ -57,7 +57,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.C
+import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
 import com.patrick.lrcreader.core.*
 import com.patrick.lrcreader.core.audio.AudioEngine
 import com.patrick.lrcreader.core.dj.DjEngine
@@ -90,11 +93,22 @@ import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.suspendCancellableCoroutine
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
+import kotlin.coroutines.resume
 import kotlin.math.pow
 
 class MainActivity : AppCompatActivity() {
+    private data class ManualCrossfadeRequest(
+        val uri: String,
+        val playlist: String?,
+        val playlistItemKey: String?,
+        val title: String,
+        val advanceChainIndexTo: Int? = null,
+        val clearForcedNextAfterSuccess: Boolean = false
+    )
+
     private enum class HardwareInputRoute {
         NONE,
         QUICK_PLAYLISTS,
@@ -1191,6 +1205,10 @@ class MainActivity : AppCompatActivity() {
                 var trimStopJob by remember { mutableStateOf<Job?>(null) }
                 var trimAppliedForThisTrack by remember { mutableStateOf(false) }
                 val nextTrack by PlaybackCoordinator.nextTrack.collectAsState()
+                val manualCrossfadeDurationMs = 5_000L
+                var manualCrossfadeTransitionTitle by remember { mutableStateOf<String?>(null) }
+                var manualCrossfadePlayer by remember { mutableStateOf<ExoPlayer?>(null) }
+                var manualCrossfadeJob by remember { mutableStateOf<Job?>(null) }
                 val nextChainedUri = remember(isChaining, chainIndex, chainQueue) {
                     if (!isChaining) null else nextPlayableUriAfter(chainQueue, chainIndex)
                 }
@@ -1713,6 +1731,9 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 val onEnded = rememberUpdatedState {
+                    if (manualCrossfadeTransitionTitle != null) {
+                        return@rememberUpdatedState
+                    }
                     cancelTrimWatcher()
                     isPlaying = false
                     LightCueDispatcher.resetGlobal()
@@ -1727,6 +1748,14 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 PlaybackCoordinator.stopPlayer = {
+                    manualCrossfadeJob?.cancel()
+                    manualCrossfadeJob = null
+                    manualCrossfadeTransitionTitle = null
+                    manualCrossfadePlayer?.let { player ->
+                        runCatching { player.stop() }
+                        runCatching { player.release() }
+                    }
+                    manualCrossfadePlayer = null
                     cancelTrimWatcher()
                     runCatching { exoPlayer.pause() }
                     isPlaying = false
@@ -1767,6 +1796,80 @@ class MainActivity : AppCompatActivity() {
                         pitch = pitchFactor,
                         reason = "MainActivity.applyTempoAndPitchToPlayer"
                     )
+                }
+
+                fun dbToLinearAttenuation(db: Int): Float {
+                    if (db >= 0) return 1f
+                    return (10f.pow(db / 20f)).coerceIn(0f, 1f)
+                }
+
+                fun resolveQueuedTrackTitle(
+                    playlistItemKey: String,
+                    playlistName: String?,
+                    fallbackUri: String
+                ): String {
+                    val cleanPlaylist = playlistName?.trim()?.takeIf { it.isNotEmpty() }
+                    return cleanPlaylist
+                        ?.let { PlaylistRepository.getCustomTitle(it, playlistItemKey) }
+                        ?.takeIf { it.isNotBlank() }
+                        ?: cleanPlaylist
+                            ?.let { PlaylistRepository.getPlaylistItem(it, playlistItemKey)?.songId }
+                            ?.trim()
+                            ?.takeIf { it.isNotEmpty() }
+                            ?.let { songId -> smpSongsById[songId]?.title?.takeIf { it.isNotBlank() } }
+                        ?: getSmpSongId(playlistItemKey)
+                            ?.let { songId -> smpSongsById[songId]?.title?.takeIf { it.isNotBlank() } }
+                        ?: TitleAliasesStore.getTitleForTrack(ctx, fallbackUri)
+                        ?: indexAll.firstOrNull { it.uriString == fallbackUri }?.name
+                        ?: Uri.parse(fallbackUri).lastPathSegment
+                        ?: HistoryRepository.UNTITLED_FALLBACK
+                }
+
+                suspend fun prepareTransitionPlayer(
+                    player: ExoPlayer,
+                    playableUri: String,
+                    speed: Float,
+                    pitchSemi: Int
+                ): Boolean = suspendCancellableCoroutine { continuation ->
+                    val listener = object : Player.Listener {
+                        override fun onPlaybackStateChanged(state: Int) {
+                            if (state == Player.STATE_READY && continuation.isActive) {
+                                runCatching { player.removeListener(this) }
+                                continuation.resume(true)
+                            }
+                        }
+
+                        override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                            if (continuation.isActive) {
+                                runCatching { player.removeListener(this) }
+                                continuation.resume(false)
+                            }
+                        }
+                    }
+
+                    continuation.invokeOnCancellation {
+                        runCatching { player.removeListener(listener) }
+                    }
+
+                    val pitchFactor = 2f.pow(pitchSemi.coerceIn(-6, 6) / 12f)
+                    player.addListener(listener)
+                    player.setMediaItem(MediaItem.fromUri(playableUri))
+                    player.playbackParameters = PlaybackParameters(
+                        speed.coerceIn(0.5f, 2.0f),
+                        pitchFactor
+                    )
+                    player.prepare()
+                }
+
+                fun cancelManualCrossfadeTransition() {
+                    manualCrossfadeJob?.cancel()
+                    manualCrossfadeJob = null
+                    manualCrossfadeTransitionTitle = null
+                    manualCrossfadePlayer?.let { player ->
+                        runCatching { player.stop() }
+                        runCatching { player.release() }
+                    }
+                    manualCrossfadePlayer = null
                 }
 
                 fun persistCurrentUiSession(reason: String, tabOverride: BottomTab? = null) {
@@ -1890,6 +1993,9 @@ class MainActivity : AppCompatActivity() {
                     playlistItemKey: String? = null,
                     openPlayerScreen: Boolean = true
                 ) {
+                    if (manualCrossfadeTransitionTitle != null) {
+                        return
+                    }
                     suspend fun shouldOpenPlayerScreenForLaunch(
                         trackUriString: String,
                         allowPlayerOpen: Boolean
@@ -2169,44 +2275,46 @@ class MainActivity : AppCompatActivity() {
                                 onEnded.value.invoke()
                             },
                             onError = {
-                                cancelTrimWatcher()
-                                val activeUri = exoPlayer.currentMediaItem
-                                    ?.localConfiguration
-                                    ?.uri
-                                    ?.toString()
-                                val nextArmed = PlaybackCoordinator.peekNextTrack() != null
-                                val durMs = runCatching { exoPlayer.duration }.getOrDefault(C.TIME_UNSET)
-                                val posMs = runCatching { exoPlayer.currentPosition }.getOrDefault(0L)
-                                val nearEnd =
-                                    durMs > 0L &&
-                                    durMs != C.TIME_UNSET &&
-                                    posMs >= (durMs - 1500L).coerceAtLeast(0L)
-                                val treatAsEnded = nextArmed && nearEnd
-                                Log.d(
-                                    SMP_PLAY_TRACE_TAG,
-                                    "PLAYER_ON_ERROR requestedUri=$uriString activeUri=$activeUri playlist=$playlistName token=$myToken playWhenReady=${exoPlayer.playWhenReady} isPlaying=${exoPlayer.isPlaying} state=${exoPlayer.playbackState} pos=$posMs dur=$durMs nextArmed=$nextArmed treatAsEnded=$treatAsEnded"
-                                )
+                                if (manualCrossfadeTransitionTitle == null) {
+                                    cancelTrimWatcher()
+                                    val activeUri = exoPlayer.currentMediaItem
+                                        ?.localConfiguration
+                                        ?.uri
+                                        ?.toString()
+                                    val nextArmed = PlaybackCoordinator.peekNextTrack() != null
+                                    val durMs = runCatching { exoPlayer.duration }.getOrDefault(C.TIME_UNSET)
+                                    val posMs = runCatching { exoPlayer.currentPosition }.getOrDefault(0L)
+                                    val nearEnd =
+                                        durMs > 0L &&
+                                        durMs != C.TIME_UNSET &&
+                                        posMs >= (durMs - 1500L).coerceAtLeast(0L)
+                                    val treatAsEnded = nextArmed && nearEnd
+                                    Log.d(
+                                        SMP_PLAY_TRACE_TAG,
+                                        "PLAYER_ON_ERROR requestedUri=$uriString activeUri=$activeUri playlist=$playlistName token=$myToken playWhenReady=${exoPlayer.playWhenReady} isPlaying=${exoPlayer.isPlaying} state=${exoPlayer.playbackState} pos=$posMs dur=$durMs nextArmed=$nextArmed treatAsEnded=$treatAsEnded"
+                                    )
 
-                                if (BuildConfig.DEBUG) {
-                                    if (treatAsEnded) {
-                                        Log.d(
-                                            "NEXT",
-                                            "NEXT treat error as ended nearEnd pos=$posMs dur=$durMs uri=$uriString"
-                                        )
-                                    } else {
-                                        Log.d(
-                                            "NEXT",
-                                            "NEXT error no fallback pos=$posMs dur=$durMs next=$nextArmed"
-                                        )
+                                    if (BuildConfig.DEBUG) {
+                                        if (treatAsEnded) {
+                                            Log.d(
+                                                "NEXT",
+                                                "NEXT treat error as ended nearEnd pos=$posMs dur=$durMs uri=$uriString"
+                                            )
+                                        } else {
+                                            Log.d(
+                                                "NEXT",
+                                                "NEXT error no fallback pos=$posMs dur=$durMs next=$nextArmed"
+                                            )
+                                        }
                                     }
-                                }
 
-                                if (treatAsEnded) {
-                                    onEnded.value.invoke()
-                                } else {
-                                    isPlaying = false
-                                    LightCueDispatcher.resetGlobal()
-                                    PlaybackCoordinator.onPlayerStop()
+                                    if (treatAsEnded) {
+                                        onEnded.value.invoke()
+                                    } else {
+                                        isPlaying = false
+                                        LightCueDispatcher.resetGlobal()
+                                        PlaybackCoordinator.onPlayerStop()
+                                    }
                                 }
                             }
                         )
@@ -2395,6 +2503,235 @@ class MainActivity : AppCompatActivity() {
                         target = rawTarget,
                         showToastOnFailure = showToastOnFailure
                     )
+                }
+
+                fun resolveManualCrossfadeRequest(): ManualCrossfadeRequest? {
+                    val forcedNext = PlaybackCoordinator.peekNextTrack()
+                    if (forcedNext != null) {
+                        val target = PlaybackRouter.resolve(forcedNext.uri, forcedNext.playlist)
+                        val resolvedTarget = resolvePlaylistAudioTarget(
+                            playlistItemKey = forcedNext.uri,
+                            playlistName = forcedNext.playlist,
+                            rawTarget = target
+                        ) ?: return null
+                        return ManualCrossfadeRequest(
+                            uri = resolvedTarget.uri,
+                            playlist = resolvedTarget.playlist,
+                            playlistItemKey = forcedNext.uri,
+                            title = forcedNext.title.ifBlank {
+                                resolveQueuedTrackTitle(
+                                    playlistItemKey = forcedNext.uri,
+                                    playlistName = forcedNext.playlist,
+                                    fallbackUri = resolvedTarget.uri
+                                )
+                            },
+                            clearForcedNextAfterSuccess = true
+                        )
+                    }
+
+                    if (!isChaining) return null
+                    val targetIndex = nextPlayableIndexAtOrAfter(chainQueue, chainIndex + 1) ?: return null
+                    val itemKey = chainQueue.getOrNull(targetIndex) ?: return null
+                    val target = PlaybackRouter.resolve(itemKey, chainPlaylist)
+                    val resolvedTarget = resolvePlaylistAudioTarget(
+                        playlistItemKey = itemKey,
+                        playlistName = chainPlaylist,
+                        rawTarget = target
+                    ) ?: return null
+                    return ManualCrossfadeRequest(
+                        uri = resolvedTarget.uri,
+                        playlist = resolvedTarget.playlist,
+                        playlistItemKey = itemKey,
+                        title = resolveQueuedTrackTitle(
+                            playlistItemKey = itemKey,
+                            playlistName = resolvedTarget.playlist ?: chainPlaylist,
+                            fallbackUri = resolvedTarget.uri
+                        ),
+                        advanceChainIndexTo = targetIndex
+                    )
+                }
+
+                fun launchManualCrossfadeToNext() {
+                    if (manualCrossfadeTransitionTitle != null) {
+                        return
+                    }
+
+                    val request = resolveManualCrossfadeRequest()
+                    if (request == null || currentPlayingUri.isNullOrBlank()) {
+                        Toast.makeText(
+                            ctx,
+                            ctx.getString(R.string.player_crossfade_no_next_track),
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        return
+                    }
+
+                    manualCrossfadeJob?.cancel()
+                    manualCrossfadeJob = scope.launch {
+                        var adopted = false
+                        try {
+                            val resolvedPlayableUri = withContext(Dispatchers.IO) {
+                                resolvePlayableUriStringForPlayback(ctx, request.uri)
+                            }
+                            if (resolvedPlayableUri.isNullOrBlank()) {
+                                Toast.makeText(
+                                    ctx,
+                                    ctx.getString(R.string.player_crossfade_prepare_failed),
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                                return@launch
+                            }
+
+                            if (resolvedPlayableUri != request.uri) {
+                                PlaylistRepository.replaceSongUriEverywhere(
+                                    oldUri = request.uri,
+                                    newUri = resolvedPlayableUri
+                                )
+                            }
+
+                            data class TargetMixSettings(
+                                val gainDb: Int,
+                                val volumeSource: String,
+                                val tempo: Float,
+                                val pitchSemi: Int
+                            )
+
+                            val targetMixSettings = withContext(Dispatchers.IO) {
+                                TargetMixSettings(
+                                    gainDb = clampTrackDb(TrackVolumePrefs.getDb(ctx, resolvedPlayableUri) ?: DEFAULT_TRACK_GAIN_DB),
+                                    volumeSource = TrackVolumePrefs.getSource(ctx, resolvedPlayableUri),
+                                    tempo = TrackTempoPrefs.getTempo(ctx, resolvedPlayableUri) ?: 1f,
+                                    pitchSemi = TrackPitchPrefs.getSemi(ctx, resolvedPlayableUri) ?: 0
+                                )
+                            }
+
+                            val transitionPlayer = AudioEngine.createTransitionPlayer(ctx)
+                            val prepared = runCatching {
+                                prepareTransitionPlayer(
+                                    player = transitionPlayer,
+                                    playableUri = resolvedPlayableUri,
+                                    speed = targetMixSettings.tempo,
+                                    pitchSemi = targetMixSettings.pitchSemi
+                                )
+                            }.getOrDefault(false)
+
+                            if (!prepared) {
+                                runCatching { transitionPlayer.release() }
+                                Toast.makeText(
+                                    ctx,
+                                    ctx.getString(R.string.player_crossfade_prepare_failed),
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                                return@launch
+                            }
+
+                            cancelTrimWatcher()
+                            manualCrossfadePlayer = transitionPlayer
+                            manualCrossfadeTransitionTitle = request.title
+                            parsedLines = emptyList()
+                            lyricsLoading = false
+                            LightCueDispatcher.resetGlobal()
+                            MidiCueDispatcher.resetForTrack(currentPlayingUri)
+
+                            val fromVolume = runCatching { exoPlayer.volume }.getOrDefault(1f).coerceIn(0f, 1f)
+                            val targetVolume = (dbToLinearAttenuation(targetMixSettings.gainDb) * playerMasterLevel)
+                                .coerceIn(0f, 1f)
+                            transitionPlayer.volume = 0f
+                            transitionPlayer.playWhenReady = true
+                            transitionPlayer.play()
+
+                            val steps = 30
+                            val stepDelayMs = (manualCrossfadeDurationMs / steps).coerceAtLeast(1L)
+                            repeat(steps) { step ->
+                                val progress = (step + 1).toFloat() / steps.toFloat()
+                                runCatching { exoPlayer.volume = (fromVolume * (1f - progress)).coerceIn(0f, 1f) }
+                                runCatching { transitionPlayer.volume = (targetVolume * progress).coerceIn(0f, 1f) }
+                                delay(stepDelayMs)
+                            }
+
+                            currentTrackGainDb = targetMixSettings.gainDb
+                            currentTrackVolumeSource = targetMixSettings.volumeSource
+                            currentTrackTempo = targetMixSettings.tempo
+                            currentTrackPitchSemi = targetMixSettings.pitchSemi
+                            currentPlayingUri = resolvedPlayableUri
+                            currentPlayingPlaylist = request.playlist
+                            armPlaylistPlaybackState(
+                                playlistName = request.playlist,
+                                playbackUri = resolvedPlayableUri,
+                                playlistItemKey = request.playlistItemKey
+                            )
+                            request.advanceChainIndexTo?.let { nextIndex ->
+                                chainIndex = nextIndex
+                            }
+                            if (request.clearForcedNextAfterSuccess) {
+                                PlaybackCoordinator.clearNextTrack(reason = "triggered:manualCrossfade")
+                            }
+                            if (!request.playlist.isNullOrBlank()) {
+                                selectedQuickPlaylist = request.playlist
+                            }
+                            currentLyricsColor = Color.White
+
+                            AudioEngine.adoptTransitionPlayer(ctx, transitionPlayer) {
+                                onEnded.value.invoke()
+                            }
+                            adopted = true
+                            manualCrossfadePlayer = null
+                            AudioEngine.applyTrackGainDb(targetMixSettings.gainDb)
+                            applyTempoAndPitchToPlayer(targetMixSettings.tempo, targetMixSettings.pitchSemi)
+                            PlaybackCoordinator.onPlayerStart()
+                            isPlaying = true
+                            selectedTab = BottomTab.Player
+                            latestSessionSnapshot = SessionSnapshot(
+                                tabKey = TAB_PLAYER,
+                                quickPlaylist = selectedQuickPlaylist,
+                                openedPlaylist = openedPlaylist,
+                                currentPlayingUri = currentPlayingUri,
+                                currentPlayingPlaylist = currentPlayingPlaylist
+                            )
+                            persistSession(reason = "manualCrossfade")
+                            playlistSessionWriteJob?.cancel()
+                            playlistSessionWriteJob = scope.launch(Dispatchers.IO) {
+                                try {
+                                    SessionPrefs.saveLastSession(
+                                        context = ctx,
+                                        trackUri = resolvedPlayableUri,
+                                        playlistName = request.playlist,
+                                        songId = resolveSessionSongIdFromTrackUri(resolvedPlayableUri)
+                                    )
+                                } catch (_: CancellationException) {
+                                }
+                            }
+                            runCatching {
+                                historyRepository.logPlay(
+                                    source = PlaySource.BACKING,
+                                    title = request.title,
+                                    artist = null,
+                                    uri = resolvedPlayableUri
+                                )
+                            }
+                        } catch (cancelError: CancellationException) {
+                            throw cancelError
+                        } catch (error: Throwable) {
+                            Log.e(SMP_PLAY_TRACE_TAG, "MANUAL_CROSSFADE_FAILED", error)
+                            if (manualCrossfadeTransitionTitle != null) {
+                                Toast.makeText(
+                                    ctx,
+                                    ctx.getString(R.string.player_crossfade_prepare_failed),
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        } finally {
+                            if (!adopted) {
+                                manualCrossfadePlayer?.let { player ->
+                                    runCatching { player.stop() }
+                                    runCatching { player.release() }
+                                }
+                                manualCrossfadePlayer = null
+                            }
+                            manualCrossfadeTransitionTitle = null
+                            manualCrossfadeJob = null
+                        }
+                    }
                 }
 
                 fun playlistReferencesForSongId(songId: String): List<Pair<String, String>> {
@@ -3129,6 +3466,9 @@ class MainActivity : AppCompatActivity() {
                                         closeMixSignal = closeMixSignal,
                                         isPlaying = isPlaying,
                                         onIsPlayingChange = { shouldPlay ->
+                                            if (manualCrossfadeTransitionTitle != null) {
+                                                return@PlayerScreen
+                                            }
                                             isPlaying = shouldPlay
                                             if (shouldPlay) exoPlayer.play() else exoPlayer.pause()
                                         },
@@ -3264,6 +3604,8 @@ class MainActivity : AppCompatActivity() {
                                             moreNavigationToken += 1
                                             setTabAndPersist(BottomTab.More, reason = "playerOpenArrangementHub")
                                         },
+                                        manualTransitionTargetTitle = manualCrossfadeTransitionTitle,
+                                        onManualCrossfadeToNext = { launchManualCrossfadeToNext() },
                                         onImportGeneratedSmp = autoImportGeneratedSmp,
                                         requestedNavigationTarget = playerNavigationTarget,
                                         requestedNavigationToken = playerNavigationToken,

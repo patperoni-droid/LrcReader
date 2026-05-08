@@ -125,7 +125,7 @@ fun exoCrossfadePlay(
         AudioEngine.setFadeMultiplier(1f)
 
         val playableUriString = withContext(Dispatchers.IO) {
-            resolvePlayableUriString(context, uriString)
+            resolvePlayableUriStringForPlayback(context, uriString)
         }
         Log.d(
             SMP_PLAY_TRACE_TAG,
@@ -186,7 +186,7 @@ private fun stateName(state: Int): String {
     }
 }
 
-private fun resolvePlayableUriString(context: Context, uriString: String): String? {
+fun resolvePlayableUriStringForPlayback(context: Context, uriString: String): String? {
 
     fun canOpen(u: String): Boolean {
         return runCatching {
