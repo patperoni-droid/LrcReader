@@ -15,6 +15,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Arrangement
@@ -38,8 +39,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -467,7 +466,7 @@ fun WaveformPreviewScreen(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(252.dp)
+                    .height(360.dp)
                     .background(
                         color = Color(0xFF101419),
                         shape = RoundedCornerShape(12.dp)
@@ -591,39 +590,13 @@ fun WaveformPreviewScreen(
                             onScrollChanged = { px ->
                                 WaveformSessionPrefs.saveScroll(context, px)
                             },
+                            onZoomChanged = { nextZoom ->
+                                zoom = nextZoom
+                                WaveformSessionPrefs.saveZoom(context, nextZoom)
+                            },
                             modifier = Modifier.fillMaxSize()
                         )
                     }
-                }
-            }
-
-            Text(
-                text = stringResource(R.string.waveform_zoom_value, zoom),
-                color = Color(0xFFB9C2C8),
-                fontSize = 11.sp
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Slider(
-                    modifier = Modifier.weight(1f),
-                    value = zoom,
-                    onValueChange = {
-                        zoom = it
-                        WaveformSessionPrefs.saveZoom(context, it)
-                    },
-                    valueRange = ZOOM_MIN..ZOOM_MAX
-                )
-                TextButton(
-                    onClick = {
-                        zoom = ZOOM_MIN
-                        WaveformSessionPrefs.saveZoom(context, ZOOM_MIN)
-                    },
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
-                ) {
-                    Text(stringResource(R.string.common_reset), fontSize = 11.sp)
                 }
             }
 
@@ -644,27 +617,6 @@ fun WaveformPreviewScreen(
                 }
 
                 Spacer(modifier = Modifier.width(8.dp))
-
-                TextButton(
-                    onClick = {
-                        stepMs = when (stepMs) {
-                            10 -> 25
-                            25 -> 50
-                            50 -> 100
-                            100 -> 250
-                            else -> 10
-                        }
-                    },
-                    enabled = controlsEnabled
-                ) {
-                    Text(
-                        text = "${stringResource(R.string.waveform_step)} ${stepMs}ms",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(8.dp))
-
                 IconButton(
                     onClick = { nudgePlayhead(stepMs) },
                     enabled = controlsEnabled
@@ -678,7 +630,8 @@ fun WaveformPreviewScreen(
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 TextButton(
                     onClick = {
@@ -695,6 +648,25 @@ fun WaveformPreviewScreen(
                     contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
                 ) {
                     Text("${stringResource(R.string.waveform_in_prefix)} ${formatWaveformMs(inMs)}", fontSize = 12.sp)
+                }
+
+                TextButton(
+                    onClick = {
+                        stepMs = when (stepMs) {
+                            10 -> 25
+                            25 -> 50
+                            50 -> 100
+                            100 -> 250
+                            else -> 10
+                        }
+                    },
+                    enabled = selectedUri != null && durationMs > 0,
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.waveform_step_ms, stepMs),
+                        fontSize = 11.sp
+                    )
                 }
 
                 TextButton(
@@ -949,12 +921,6 @@ fun WaveformPreviewScreen(
                     )
                 }
 
-                Text(
-                    text = stringResource(R.string.waveform_match_volume_target),
-                    color = Color(0xFFB9C2C8),
-                    fontSize = 11.sp
-                )
-
                 LufsLevelIndicator(
                     currentLufs = effectiveLufs,
                     targetLufs = MATCH_VOLUME_TARGET_LUFS,
@@ -984,6 +950,7 @@ private fun WaveformCanvas(
     restoredScrollPx: Int?,
     scrollRestoreKey: String?,
     onScrollChanged: (Int) -> Unit,
+    onZoomChanged: (Float) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val scrollState = rememberScrollState()
@@ -1020,18 +987,9 @@ private fun WaveformCanvas(
 
         LaunchedEffect(zoom, durationMs) {
             if (durationMs <= 0 || viewportWidthPx <= 0f) return@LaunchedEffect
-            val clampedScrollPx = scrollState.value.toFloat().coerceIn(0f, maxScrollPx)
-            val safePlayheadMs = playheadMs.coerceIn(0, durationMs)
-            val playFrac = safePlayheadMs.toFloat() / durationMs.toFloat()
-            val targetScrollPx = (playFrac * canvasWidthPx - viewportWidthPx / 2f).coerceIn(0f, maxScrollPx)
-            val targetScrollInt = targetScrollPx.roundToInt()
-            if (scrollState.value != targetScrollInt) {
-                scrollState.scrollTo(targetScrollInt)
-            } else {
-                val clampedScrollInt = clampedScrollPx.roundToInt()
-                if (scrollState.value != clampedScrollInt) {
-                    scrollState.scrollTo(clampedScrollInt)
-                }
+            val clampedScrollInt = scrollState.value.coerceIn(0, maxScrollPx.roundToInt())
+            if (scrollState.value != clampedScrollInt) {
+                scrollState.scrollTo(clampedScrollInt)
             }
         }
 
@@ -1061,6 +1019,34 @@ private fun WaveformCanvas(
                 modifier = Modifier
                     .width(canvasWidthDp)
                     .fillMaxHeight()
+                    .pointerInput(viewportWidthPx, durationMs) {
+                        if (durationMs <= 0) return@pointerInput
+                        var gestureZoom = zoom
+                        detectTransformGestures { centroid, pan, zoomChange, _ ->
+                            val currentCanvasWidthPx = size.width.coerceAtLeast(1).toFloat()
+                            val currentMaxScrollPx =
+                                (currentCanvasWidthPx - viewportWidthPx).coerceAtLeast(0f)
+                            val previousZoom = gestureZoom
+                            val nextZoom = (previousZoom * zoomChange).coerceIn(ZOOM_MIN, ZOOM_MAX)
+                            gestureZoom = nextZoom
+                            val currentScrollPx = scrollState.value.toFloat().coerceIn(0f, currentMaxScrollPx)
+                            val anchorAbsX = (currentScrollPx + centroid.x).coerceIn(0f, currentCanvasWidthPx)
+                            val anchorFraction = if (currentCanvasWidthPx <= 0f) {
+                                0f
+                            } else {
+                                (anchorAbsX / currentCanvasWidthPx).coerceIn(0f, 1f)
+                            }
+                            if (nextZoom != previousZoom) {
+                                onZoomChanged(nextZoom)
+                            }
+                            val nextCanvasWidthPx = (viewportWidthPx * nextZoom).coerceAtLeast(1f)
+                            val nextMaxScrollPx = (nextCanvasWidthPx - viewportWidthPx).coerceAtLeast(0f)
+                            val anchoredScrollPx =
+                                (anchorFraction * nextCanvasWidthPx - centroid.x).coerceIn(0f, nextMaxScrollPx)
+                            val pannedScrollPx = (anchoredScrollPx - pan.x).coerceIn(0f, nextMaxScrollPx)
+                            scrollState.dispatchRawDelta(pannedScrollPx - currentScrollPx)
+                        }
+                    }
                     .pointerInput(
                         canvasWidthPx,
                         durationMs,
