@@ -151,6 +151,7 @@ fun QuickPlaylistsScreen(
     modifier: Modifier = Modifier,
     onPlaySong: (String, String, Color) -> Unit,
     onPlayFromHere: (List<String>, Int, String) -> Unit = { _, _, _ -> },
+    onArmChainFromCurrent: (List<String>, Int, String) -> Unit = { _, _, _ -> },
     refreshKey: Int,
     openPrompterSignal: Int = 0,
     libraryLoadedSignal: Int = 0,
@@ -2146,6 +2147,26 @@ fun QuickPlaylistsScreen(
                                                     }
                                                     activePlayingGroupHeaderKey = headerKey
                                                     pendingLiveGroupScrollHeaderKey = headerKey
+                                                    val currentGroupedTrackIndex = findCurrentPlayingTrackIndexInPlaylist(pl)
+                                                    val currentGroupedTrack = currentGroupedTrackIndex
+                                                        ?.let(songs::getOrNull)
+                                                    val headerIndex = songs.indexOf(headerKey)
+                                                    if (currentGroupedTrack != null && headerIndex >= 0) {
+                                                        val groupRange = findGroupRange(songs, headerIndex)
+                                                        if (!groupRange.isEmpty()) {
+                                                            val groupQueue = ((groupRange.first + 1)..groupRange.last)
+                                                                .map { idx -> songs[idx] }
+                                                                .filter { item ->
+                                                                    !isGroupHeader(item) &&
+                                                                        !isGroupEnd(item) &&
+                                                                        isPlayableAudioItem(item)
+                                                                }
+                                                            val currentQueueIndex = groupQueue.indexOf(currentGroupedTrack)
+                                                            if (currentQueueIndex >= 0) {
+                                                                onArmChainFromCurrent(groupQueue, currentQueueIndex, pl)
+                                                            }
+                                                        }
+                                                    }
                                                 }
                                                 menuOpen = false
                                             }

@@ -100,6 +100,12 @@ import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.resume
 import kotlin.math.pow
 
+private fun sanitizeDisplayTrackTitle(value: String?): String? {
+    return value
+        ?.trim()
+        ?.takeIf { it.isNotEmpty() && !it.equals("null", ignoreCase = true) }
+}
+
 class MainActivity : AppCompatActivity() {
     private data class ManualCrossfadeRequest(
         val uri: String,
@@ -1239,26 +1245,27 @@ class MainActivity : AppCompatActivity() {
                     smpSongsById,
                     indexAll
                 ) {
-                    nextTrack?.title?.takeIf { it.isNotBlank() } ?: nextChainedUri?.let { queuedItem ->
+                    sanitizeDisplayTrackTitle(nextTrack?.title) ?: nextChainedUri?.let { queuedItem ->
                         val cleanPlaylist = chainPlaylist?.trim()?.takeIf { it.isNotEmpty() }
-                        cleanPlaylist
-                            ?.let { PlaylistRepository.getCustomTitle(it, queuedItem) }
-                            ?.takeIf { it.isNotBlank() }
+                        sanitizeDisplayTrackTitle(
+                            cleanPlaylist?.let { PlaylistRepository.getCustomTitle(it, queuedItem) }
+                        )
                             ?: cleanPlaylist
                                 ?.let { PlaylistRepository.getPlaylistItem(it, queuedItem)?.songId }
                                 ?.trim()
                                 ?.takeIf { it.isNotEmpty() }
                                 ?.let { songId ->
-                                    smpSongsById[songId]?.title?.takeIf { it.isNotBlank() }
+                                    sanitizeDisplayTrackTitle(smpSongsById[songId]?.title)
                                 }
                             ?: getSmpSongId(queuedItem)
                                 ?.let { songId ->
-                                    smpSongsById[songId]?.title?.takeIf { it.isNotBlank() }
+                                    sanitizeDisplayTrackTitle(smpSongsById[songId]?.title)
                                 }
-                            ?: TitleAliasesStore.getTitleForTrack(ctx, queuedItem)?.takeIf { it.isNotBlank() }
-                            ?: PlaylistRepository.getAnyCustomTitleForUri(queuedItem)?.takeIf { it.isNotBlank() }
-                            ?: indexAll.firstOrNull { it.uriString == queuedItem }?.name?.takeIf { it.isNotBlank() }
-                            ?: Uri.parse(queuedItem).lastPathSegment?.takeIf { it.isNotBlank() }
+                            ?: sanitizeDisplayTrackTitle(TitleAliasesStore.getTitleForTrack(ctx, queuedItem))
+                            ?: sanitizeDisplayTrackTitle(PlaylistRepository.getAnyCustomTitleForUri(queuedItem))
+                            ?: sanitizeDisplayTrackTitle(indexAll.firstOrNull { it.uriString == queuedItem }?.name)
+                            ?: sanitizeDisplayTrackTitle(Uri.parse(queuedItem).lastPathSegment)
+                            ?: ctx.getString(R.string.player_next_track_fallback)
                     }
                 }
                 suspend fun syncWorkspaceSmpArchivesToRuntime(
@@ -1812,26 +1819,33 @@ class MainActivity : AppCompatActivity() {
                     return (10f.pow(db / 20f)).coerceIn(0f, 1f)
                 }
 
+                fun sanitizeDisplayTrackTitle(value: String?): String? {
+                    return value
+                        ?.trim()
+                        ?.takeIf { it.isNotEmpty() && !it.equals("null", ignoreCase = true) }
+                }
+
                 fun resolveQueuedTrackTitle(
                     playlistItemKey: String,
                     playlistName: String?,
                     fallbackUri: String
                 ): String {
                     val cleanPlaylist = playlistName?.trim()?.takeIf { it.isNotEmpty() }
-                    return cleanPlaylist
+                    return sanitizeDisplayTrackTitle(
+                        cleanPlaylist
                         ?.let { PlaylistRepository.getCustomTitle(it, playlistItemKey) }
-                        ?.takeIf { it.isNotBlank() }
+                    )
                         ?: cleanPlaylist
                             ?.let { PlaylistRepository.getPlaylistItem(it, playlistItemKey)?.songId }
                             ?.trim()
                             ?.takeIf { it.isNotEmpty() }
-                            ?.let { songId -> smpSongsById[songId]?.title?.takeIf { it.isNotBlank() } }
+                            ?.let { songId -> sanitizeDisplayTrackTitle(smpSongsById[songId]?.title) }
                         ?: getSmpSongId(playlistItemKey)
-                            ?.let { songId -> smpSongsById[songId]?.title?.takeIf { it.isNotBlank() } }
-                        ?: TitleAliasesStore.getTitleForTrack(ctx, fallbackUri)
-                        ?: indexAll.firstOrNull { it.uriString == fallbackUri }?.name
-                        ?: Uri.parse(fallbackUri).lastPathSegment
-                        ?: HistoryRepository.UNTITLED_FALLBACK
+                            ?.let { songId -> sanitizeDisplayTrackTitle(smpSongsById[songId]?.title) }
+                        ?: sanitizeDisplayTrackTitle(TitleAliasesStore.getTitleForTrack(ctx, fallbackUri))
+                        ?: sanitizeDisplayTrackTitle(indexAll.firstOrNull { it.uriString == fallbackUri }?.name)
+                        ?: sanitizeDisplayTrackTitle(Uri.parse(fallbackUri).lastPathSegment)
+                        ?: ctx.getString(R.string.player_next_track_fallback)
                 }
 
                 fun currentManualCrossfadeDurationMs(): Long {
@@ -3814,6 +3828,17 @@ class MainActivity : AppCompatActivity() {
                                         val resolvedStart = nextPlayableIndexAtOrAfter(visibleQueue, startIndex)
                                         if (resolvedStart == null || !playChainFrom(resolvedStart)) {
                                             stopChainPlayback()
+                                        }
+                                    },
+                                    onArmChainFromCurrent = { visibleQueue, currentIndex, playlistName ->
+                                        val resolvedCurrent = nextPlayableIndexAtOrAfter(visibleQueue, currentIndex)
+                                        if (resolvedCurrent == null) {
+                                            stopChainPlayback()
+                                        } else {
+                                            chainQueue = visibleQueue
+                                            chainIndex = resolvedCurrent
+                                            chainPlaylist = playlistName
+                                            isChaining = true
                                         }
                                     },
                                     refreshKey = refreshKey,
