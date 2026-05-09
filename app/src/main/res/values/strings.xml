@@ -261,10 +261,10 @@
     <string name="library_list_move_to_folder">Déplacer vers un dossier</string>
     <string name="library_list_rename">Renommer</string>
     <string name="library_list_delete_permanently">Supprimer définitivement</string>
-    <string name="library_view_mode_songs">Mes chansons</string>
+    <string name="library_view_mode_songs">Songs</string>
     <string name="library_view_mode_files">Fichiers</string>
-    <string name="library_view_mode_playlists">Playlists</string>
-    <string name="library_view_mode_prompters">Prompteurs</string>
+    <string name="library_view_mode_playlists">Lists</string>
+    <string name="library_view_mode_prompters">Lyrics</string>
     <string name="library_view_mode_lufs">LUFS</string>
     <string name="library_header_cd_storage">Accès au stockage</string>
     <string name="library_storage_header_title">Stockage de l’appareil</string>
