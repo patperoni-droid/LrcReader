@@ -221,11 +221,35 @@ Supported behaviors:
 - Define Next → next track queued
 - Auto Play → automatic chaining
 - Crossfade → smooth transition
+- Live transition fade → current track fades out while next track starts immediately
 
 Rules:
 - transitions must be predictable
 - no glitch allowed
 - no timing drift
+- next track must become immediately active for UI/timeline
+- old track must never continue driving lyrics/timeline after handoff
+
+⸻
+
+LIVE PLAYLIST HANDOFF (CRITICAL)
+
+The Player must correctly receive and display playlist chaining information.
+
+Rules:
+- nextTrack must always resolve to a readable title
+- Player must never display null next titles
+- autoplay and live chain must survive UI recomposition
+- playlist UI state must never be used as playback truth
+- playback transitions must preserve nextTrack integrity
+- live chaining must work independently from viewport/UI rendering
+
+The Player must remain synchronized with:
+- playlist order
+- explicit Define Next
+- live red group chaining
+
+👉 Live continuity has priority over UI optimizations.
 
 ⸻
 
@@ -400,6 +424,11 @@ KNOWN PITFALLS
 - Glitches if audio pipeline is unstable
 - UI lag affecting perception of sync
 - Misaligned trims causing bad transitions
+- nextTrack lost during recomposition
+- “Prochain : null” display
+- playlist UI state incorrectly used as playback state
+- crossfade keeping old timeline active
+- autoplay breaking after reorder/group changes
 
 👉 Must be tested carefully
 
@@ -415,6 +444,9 @@ Test at least:
 - define next track during playback
 - auto play sequence
 - crossfade transitions
+- live transition fade between tracks
+- verify next title display during transition
+- verify nextTrack survives reorder/group changes
 - seek forward / backward
 - track with trim IN / OUT
 - track with pitch / speed

@@ -28,9 +28,9 @@ PLAYBACK SAFETY
 - Audio must be fully accessible before playback starts.
 
 - ExoPlayer is the ONLY source of truth for:
-    - playback position
-    - timing
-    - synchronization
+  - playback position
+  - timing
+  - synchronization
 
 👉 No alternative timing system allowed.
 
@@ -43,9 +43,9 @@ THREADING RULES (CRITICAL)
 - No disk I/O on the main thread during live.
 
 - Background work must:
-    - be lightweight
-    - be predictable
-    - never interfere with playback timing
+  - be lightweight
+  - be predictable
+  - never interfere with playback timing
 
 ⸻
 
@@ -69,9 +69,9 @@ TIMELINE SAFETY
 - No dynamic structure changes while playing.
 
 - Event dispatch (MIDI / DMX) must:
-    - be deterministic
-    - avoid duplicate triggers
-    - handle seek safely
+  - be deterministic
+  - avoid duplicate triggers
+  - handle seek safely
 
 ⸻
 
@@ -81,11 +81,72 @@ AUDIO PROCESSING RULES
 - Speed / pitch processing must use stable pipelines only.
 
 - If a processing mode introduces:
-    - crackles
-    - latency
-    - instability
+  - crackles
+  - latency
+  - instability
 
 👉 It must be disabled or replaced.
+
+⸻
+
+LIVE TRANSITION SAFETY (CRITICAL)
+
+Transitions between tracks are live-critical behaviors.
+
+Supported behaviors:
+- autoplay chaining
+- Define Next
+- live red group chaining
+- live transition fade
+- crossfade
+
+Rules:
+- transitions must remain deterministic
+- transitions must not depend on UI rendering state
+- transitions must survive recomposition
+- transitions must not depend on LazyColumn visible indexes
+- nextTrack resolution must use stable references only
+- “Prochain : null” is forbidden in live UI
+
+During live transition fade:
+- the new track becomes immediately authoritative for:
+  - lyrics
+  - chords
+  - timeline
+  - nextTrack logic
+- the old track may continue audio fade-out only
+- the old track must never continue driving timeline events
+
+👉 Audio overlap is allowed.
+👉 Timeline overlap is forbidden.
+
+⸻
+
+PLAYLIST / PLAYER LIVE RULE
+
+Playlist ordering, autoplay, nextTrack resolution, and live chain behavior are considered LIVE-CRITICAL systems.
+
+Any modification touching:
+- playlist reorder
+- groups
+- autoplay
+- nextTrack
+- playback transitions
+- player handoff
+- viewport identity
+- LazyColumn rendering
+
+MUST validate:
+- live chain continuity
+- next title visibility
+- autoplay sequence
+- drag reorder
+- Move to…
+- real-device behavior
+
+No UI optimization may break live continuity.
+
+👉 Stability > convenience.
 
 ⸻
 
@@ -95,9 +156,9 @@ UI BEHAVIOR DURING LIVE
 - UI updates must be lightweight.
 
 - No:
-    - heavy recomposition
-    - large list rebuilds
-    - expensive animations during playback
+  - heavy recomposition
+  - large list rebuilds
+  - expensive animations during playback
 
 👉 Smooth UI = safe live experience.
 
@@ -106,9 +167,9 @@ UI BEHAVIOR DURING LIVE
 STATE MANAGEMENT
 
 - Playback state must be:
-    - consistent
-    - predictable
-    - recoverable
+  - consistent
+  - predictable
+  - recoverable
 
 - No hidden state transitions.
 - No implicit behavior.
@@ -122,9 +183,9 @@ ERROR HANDLING
 - No crash must reach the user during live.
 
 - In case of error:
-    - fail gracefully
-    - preserve playback if possible
-    - avoid stopping the audio engine
+  - fail gracefully
+  - preserve playback if possible
+  - avoid stopping the audio engine
 
 👉 The show must go on.
 
@@ -133,9 +194,9 @@ ERROR HANDLING
 SEEK & TRANSITIONS
 
 - Seek operations must be:
-    - safe
-    - controlled
-    - limited
+  - safe
+  - controlled
+  - limited
 
 - NEVER use seek as a structural mechanism (looping, arrangement).
 
@@ -149,8 +210,8 @@ RESOURCE MANAGEMENT
 - No uncontrolled allocations during playback.
 
 - Avoid:
-    - loading large assets dynamically
-    - creating objects in tight loops
+  - loading large assets dynamically
+  - creating objects in tight loops
 
 👉 Predictability over flexibility.
 
@@ -159,13 +220,13 @@ RESOURCE MANAGEMENT
 MULTI-SOURCE AUDIO (BUS PRINCIPAL)
 
 - Only one main audio source must dominate at a time:
-    - Backing track
-    - DJ
-    - Ambience
+  - Backing track
+  - DJ
+  - Ambience
 
 - Automatic behaviors must prevent:
-    - unintended overlap
-    - audio conflicts
+  - unintended overlap
+  - audio conflicts
 
 👉 The mix must remain controlled at all times.
 
@@ -177,6 +238,23 @@ DEVICE VARIABILITY
 - No timing logic relying on device speed.
 
 👉 Same result on all devices.
+
+⸻
+
+REAL DEVICE VALIDATION (MANDATORY)
+
+Live-critical features must always be validated on a real physical device.
+
+Emulator-only validation is insufficient for:
+- drag & drop
+- live transitions
+- autoplay
+- live chain
+- recomposition-sensitive UI
+- audio overlap
+- nextTrack display
+
+👉 Real stage behavior has priority over emulator behavior.
 
 ⸻
 

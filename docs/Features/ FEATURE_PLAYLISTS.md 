@@ -202,6 +202,39 @@ Rules:
 
 ⸻
 
+LIVE CHAIN / RED GROUP (CRITICAL)
+
+The live red group is a live-critical chaining system.
+
+Purpose:
+- create an immediate live sequence
+- chain selected songs automatically
+- show the next song clearly in the Player
+
+Rules:
+- songs inside the live red group must chain automatically
+- playlist order inside the group must be respected
+- the next song must be resolved before the current song ends
+- the Player must display the readable next title
+- “Prochain : null” is forbidden
+- if the title cannot be resolved, use a safe fallback:
+  “Prochain titre”
+
+The live red group must never depend on:
+- drag UI state
+- visible row index
+- collapsed/expanded UI state
+- temporary viewport keys
+
+It must depend only on:
+- stable playlist structure
+- songId / stable item references
+- explicit group membership
+
+👉 The red live group is part of live playback, not just playlist UI.
+
+⸻
+
 PLAYED TRACK HANDLING
 
 After a song is played:
@@ -294,6 +327,11 @@ KNOWN PITFALLS
 - group boundaries blocking reorder
 - recomposition interrupting pointerInput
 - drag-only workflows difficult on stage conditions
+- red live group not chaining
+- next track not transmitted to Player
+- next title displayed as null
+- playlist UI state used as playback truth
+- group membership lost after reorder
 
 ⸻
 
@@ -315,6 +353,9 @@ Test at least:
 - move song out of group using “Move to…”
 - define next during playback
 - auto play sequence
+- red live group chaining
+- next title blinking in Player
+- readable next title display
 - mark songs as played
 - reset playlist
 - multi-select operations
@@ -322,6 +363,25 @@ Test at least:
 - verify drag continuity during recomposition
 
 👉 Must be tested on real device
+
+⸻
+
+LIVE REGRESSION RULE
+
+Any change touching playlist order, groups, next track, autoplay, or Player handoff must test:
+
+- normal playlist playback
+- red live group chaining
+- next title blinking in Player
+- readable next title display
+- drag reorder
+- Move to…
+- group enter / exit
+- app restart persistence
+
+If any of these fail, the patch must be rejected.
+
+👉 Live stability has priority over every UI improvement.
 
 ⸻
 
