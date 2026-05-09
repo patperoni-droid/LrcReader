@@ -720,7 +720,13 @@
     <string name="quickplaylists_menu_remove_from_playlist">Retirer de la liste</string>
     <string name="quickplaylists_menu_title_color">Couleur du titre</string>
     <string name="quickplaylists_menu_assign_to_group">Attribuer au groupe</string>
+    <string name="quickplaylists_menu_move_to">Déplacer vers…</string>
     <string name="quickplaylists_assign_group_title">Attribuer au groupe</string>
+    <string name="quickplaylists_move_dialog_title">Déplacer vers…</string>
+    <string name="quickplaylists_move_top">tout en haut</string>
+    <string name="quickplaylists_move_bottom">tout en bas</string>
+    <string name="quickplaylists_move_after_item">Après : %1$s</string>
+    <string name="quickplaylists_move_after_group">Après : %1$s</string>
     <string name="quickplaylists_cd_hide_mini_tuner">Masquer l’accordeur mini</string>
     <string name="quickplaylists_cd_show_mini_tuner">Afficher l’accordeur mini</string>
     <string name="quickplaylists_drop_here">Lâcher pour ranger ici</string>

@@ -74,12 +74,78 @@ ORDERING
 
 - User can reorder songs freely
 - User can move songs into groups
+- User can move songs out of groups
+- User can move songs between groups
 - Order must be preserved automatically
 
 Rules:
 - reordering must be instant
 - no lag allowed
 - order must persist across sessions
+
+⸻
+
+DRAG & DROP (CRITICAL)
+
+Playlist drag & drop is a live-critical interaction.
+
+Rules:
+- drag must remain fluid across multiple rows
+- drag must work on real devices, not only emulator
+- reorder must survive recomposition
+- drag identity must use stable viewport keys
+- viewport keys must NEVER depend on visual position/index
+- drag must continue across swaps/recompositions
+- songs can freely:
+  - move inside a group
+  - enter a group
+  - exit a group
+  - move between groups
+
+Group boundary rules:
+- group headers and group ends must not trap songs
+- drag logic must provide explicit fallback behavior at group boundaries
+
+Implementation constraints:
+- playlist reorder logic must remain incremental and lightweight
+- no heavy recomputation during drag
+- no audio/player logic coupled to drag
+
+👉 Drag & drop must feel immediate and natural during live use.
+
+⸻
+
+MOVE TO… ACTION (LIVE SAFE REORDER)
+
+Playlist reorder must also provide a precise alternative to drag & drop.
+
+Context:
+- during live performance
+- on phone screens
+- with sweaty fingers / unstable conditions
+- drag alone may become difficult
+
+Rules:
+- playlist must provide a “Move to…” action
+- action must be available from the song menu
+- movement must remain fast and predictable
+- movement must preserve playlist consistency
+- movement must work:
+  - outside groups
+  - inside groups
+  - between groups
+
+UI requirements:
+- compact dialog/list
+- one line per destination
+- no verbose prefixes like “After:”
+- left-aligned text
+- compact font size
+- lowercase visual style allowed for fast scanning
+- long text may be truncated with ellipsis
+- optimized for quick stage reading
+
+👉 Live usability has priority over decorative UI.
 
 ⸻
 
@@ -206,6 +272,7 @@ Must provide:
 - clear list
 - groups visibility
 - drag & drop reorder
+- move to… action
 - quick actions (play, next, remove)
 
 Must be:
@@ -222,6 +289,11 @@ KNOWN PITFALLS
 - broken group assignment
 - unclear "next" state
 - confusion between playlist and player logic
+- unstable LazyColumn keys during drag
+- viewport key collisions with URI schemes (`content://`, `file://`, etc.)
+- group boundaries blocking reorder
+- recomposition interrupting pointerInput
+- drag-only workflows difficult on stage conditions
 
 ⸻
 
@@ -232,13 +304,22 @@ Test at least:
 - create playlist
 - add songs
 - reorder songs
+- drag song across multiple rows
 - create group
 - move songs into group
+- drag song into group
+- drag song out of group
+- drag song between groups
+- reorder using “Move to…”
+- move song into group using “Move to…”
+- move song out of group using “Move to…”
 - define next during playback
 - auto play sequence
 - mark songs as played
 - reset playlist
 - multi-select operations
+- verify reorder on real phone
+- verify drag continuity during recomposition
 
 👉 Must be tested on real device
 

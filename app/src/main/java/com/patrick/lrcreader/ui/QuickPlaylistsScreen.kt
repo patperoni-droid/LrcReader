@@ -83,6 +83,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -329,6 +331,8 @@ fun QuickPlaylistsScreen(
     var selectedTrackKeys by remember { mutableStateOf(setOf<String>()) }
     var assignGroupTargetUris by remember { mutableStateOf<List<String>>(emptyList()) }
     var assignGroupOptions by remember { mutableStateOf<List<GroupAssignOption>>(emptyList()) }
+    var moveTargetUri by remember { mutableStateOf<String?>(null) }
+    var moveTargetOptions by remember { mutableStateOf<List<PlaylistMoveOption>>(emptyList()) }
 
     var isFillerRunning by remember { mutableStateOf(FillerSoundManager.isPlaying()) }
 
@@ -774,6 +778,28 @@ fun QuickPlaylistsScreen(
         if (movedUris.isNotEmpty()) {
             persistSongsOrder(pl, overwriteOriginal = true)
             selectedTrackKeys = selectedTrackKeys - movedUris
+        }
+    }
+
+    fun openMoveDialogForTarget(targetUri: String) {
+        if (!songs.contains(targetUri)) return
+        val options = buildPlaylistMoveOptions(
+            context = context,
+            songs = songs,
+            sourceUri = targetUri,
+            smpTitleById = smpTitleById
+        )
+        if (options.isNotEmpty()) {
+            moveTargetUri = targetUri
+            moveTargetOptions = options
+        }
+    }
+
+    fun moveTargetToOption(trackUri: String, option: PlaylistMoveOption) {
+        val pl = internalSelected ?: return
+        if (movePlaylistItemToOption(songs, trackUri, option)) {
+            persistSongsOrder(pl, overwriteOriginal = true)
+            keyboardSelectedItem = trackUri
         }
     }
 
@@ -2173,6 +2199,18 @@ fun QuickPlaylistsScreen(
                                             },
                                             enabled = songs.any { isGroupHeader(it) }
                                         )
+                                        DropdownMenuItem(
+                                            text = {
+                                                Text(
+                                                    stringResource(R.string.quickplaylists_menu_move_to),
+                                                    color = Color.White
+                                                )
+                                            },
+                                            onClick = {
+                                                openMoveDialogForTarget(uriString)
+                                                menuOpen = false
+                                            }
+                                        )
                                         if (isInsideGroup) {
                                             DropdownMenuItem(
                                                 text = {
@@ -2432,6 +2470,65 @@ fun QuickPlaylistsScreen(
                     onClick = {
                         assignGroupTargetUris = emptyList()
                         assignGroupOptions = emptyList()
+                    }
+                ) {
+                    Text(stringResource(R.string.common_cancel), color = Color.White)
+                }
+            },
+            containerColor = Color(0xFF222222)
+        )
+    }
+
+    if (moveTargetUri != null && internalSelected != null) {
+        AlertDialog(
+            onDismissRequest = {
+                moveTargetUri = null
+                moveTargetOptions = emptyList()
+            },
+            title = {
+                Text(
+                    stringResource(R.string.quickplaylists_move_dialog_title),
+                    color = Color.White
+                )
+            },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 460.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    moveTargetOptions.forEach { option ->
+                        TextButton(
+                            onClick = {
+                                val targetUri = moveTargetUri
+                                if (!targetUri.isNullOrBlank()) {
+                                    moveTargetToOption(targetUri, option)
+                                }
+                                moveTargetUri = null
+                                moveTargetOptions = emptyList()
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = option.label,
+                                color = Color.White,
+                                fontSize = 14.sp,
+                                textAlign = TextAlign.Start,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        moveTargetUri = null
+                        moveTargetOptions = emptyList()
                     }
                 ) {
                     Text(stringResource(R.string.common_cancel), color = Color.White)
@@ -3238,6 +3335,19 @@ internal data class GroupAssignOption(
     val title: String
 )
 
+private enum class PlaylistMoveOptionKind {
+    TOP,
+    AFTER_ITEM,
+    AFTER_GROUP,
+    BOTTOM
+}
+
+private data class PlaylistMoveOption(
+    val kind: PlaylistMoveOptionKind,
+    val label: String,
+    val targetKey: String? = null
+)
+
 private data class VisiblePlaylistRow(
     val realIndex: Int,
     val item: String
@@ -3332,6 +3442,78 @@ private fun buildQuickPlaylistSearchTitle(
 private fun isKeyboardSelectablePlaylistItem(item: String): Boolean {
     if (isGroupHeader(item) || isGroupEnd(item)) return false
     return isPlayableAudioItem(item) || item.startsWith("prompter://")
+}
+
+private fun buildPlaylistMoveOptions(
+    context: Context,
+    songs: List<String>,
+    sourceUri: String,
+    smpTitleById: Map<String, String>
+): List<PlaylistMoveOption> {
+    if (!songs.contains(sourceUri)) return emptyList()
+    val options = mutableListOf(
+        PlaylistMoveOption(
+            kind = PlaylistMoveOptionKind.TOP,
+            label = context.getString(R.string.quickplaylists_move_top)
+        )
+    )
+
+    songs.forEach { item ->
+        if (item == sourceUri || isGroupEnd(item)) return@forEach
+        val label = if (isGroupHeader(item)) {
+            getGroupTitle(item).lowercase()
+        } else {
+            buildQuickPlaylistSearchTitle(context, item, smpTitleById).lowercase()
+        }
+        options += PlaylistMoveOption(
+            kind = if (isGroupHeader(item)) {
+                PlaylistMoveOptionKind.AFTER_GROUP
+            } else {
+                PlaylistMoveOptionKind.AFTER_ITEM
+            },
+            label = label,
+            targetKey = item
+        )
+    }
+
+    options += PlaylistMoveOption(
+        kind = PlaylistMoveOptionKind.BOTTOM,
+        label = context.getString(R.string.quickplaylists_move_bottom)
+    )
+    return options
+}
+
+private fun movePlaylistItemToOption(
+    items: MutableList<String>,
+    trackUri: String,
+    option: PlaylistMoveOption
+): Boolean {
+    val fromIndex = items.indexOf(trackUri)
+    if (fromIndex == -1) return false
+    val dragged = items[fromIndex]
+    if (isGroupHeader(dragged) || isGroupEnd(dragged)) return false
+
+    items.removeAt(fromIndex)
+    val insertIndex = when (option.kind) {
+        PlaylistMoveOptionKind.TOP -> 0
+        PlaylistMoveOptionKind.BOTTOM -> items.size
+        PlaylistMoveOptionKind.AFTER_ITEM -> {
+            val targetIndex = option.targetKey?.let(items::indexOf) ?: -1
+            if (targetIndex == -1) items.size else (targetIndex + 1).coerceIn(0, items.size)
+        }
+        PlaylistMoveOptionKind.AFTER_GROUP -> {
+            val headerIndex = option.targetKey?.let(items::indexOf) ?: -1
+            if (headerIndex == -1) {
+                items.size
+            } else {
+                val endIndex = findMatchingGroupEndIndex(items, headerIndex)
+                    ?: findGroupRange(items, headerIndex).last
+                (endIndex + 1).coerceIn(0, items.size)
+            }
+        }
+    }
+    items.add(insertIndex, dragged)
+    return true
 }
 
 private fun quickPlaylistFallbackName(item: String): String {

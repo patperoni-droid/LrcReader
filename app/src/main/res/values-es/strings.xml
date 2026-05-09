@@ -631,7 +631,13 @@
     <string name="quickplaylists_menu_remove_from_playlist">Quitar de la lista de reproducción</string>
     <string name="quickplaylists_menu_title_color">Color del título</string>
     <string name="quickplaylists_menu_assign_to_group">Asignar al grupo</string>
+    <string name="quickplaylists_menu_move_to">Mover a…</string>
     <string name="quickplaylists_assign_group_title">Asignar al grupo</string>
+    <string name="quickplaylists_move_dialog_title">Mover a…</string>
+    <string name="quickplaylists_move_top">mover al inicio</string>
+    <string name="quickplaylists_move_bottom">mover al final</string>
+    <string name="quickplaylists_move_after_item">Después de: %1$s</string>
+    <string name="quickplaylists_move_after_group">Después de: %1$s</string>
     <string name="quickplaylists_cd_hide_mini_tuner">Ocultar mini afinador</string>
     <string name="quickplaylists_cd_show_mini_tuner">Mostrar mini afinador</string>
     <string name="quickplaylists_drop_here">Suelta para ordenar aquí</string>
