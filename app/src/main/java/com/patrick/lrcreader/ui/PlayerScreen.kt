@@ -2493,7 +2493,6 @@ fun PlayerScreen(
                                     isEditingTimeline = true
                                 }
                             },
-                            onManualCrossfadeToNext = onManualCrossfadeToNext,
                             showWaveformAction = canOpenWaveform,
                             onOpenWaveform = {
                                 currentSongId?.takeIf { it.isNotBlank() }?.let(onOpenWaveform)
@@ -3091,7 +3090,6 @@ private fun ReaderHeader(
     onOpenTimeline: () -> Unit,
     showArrangementAction: Boolean,
     onOpenArrangement: () -> Unit,
-    onManualCrossfadeToNext: () -> Unit,
     showWaveformAction: Boolean,
     onOpenWaveform: () -> Unit,
 ) {
@@ -3169,14 +3167,6 @@ private fun ReaderHeader(
                         fontSize = 13.sp
                     )
                 }
-            }
-
-            IconButton(onClick = onManualCrossfadeToNext) {
-                Text(
-                    text = stringResource(R.string.dj_crossfade),
-                    color = Color(0xFFEF9A9A),
-                    fontSize = 11.sp
-                )
             }
 
             if (showWaveformAction) {

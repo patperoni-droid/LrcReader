@@ -629,7 +629,7 @@
     <string name="quickplaylists_menu_create_live_list">Crear lista en vivo</string>
     <string name="quickplaylists_menu_add_to_live_list">Añadir a la lista en vivo</string>
     <string name="quickplaylists_menu_cancel_next">Cancelar SIGUIENTE</string>
-    <string name="quickplaylists_menu_remove_from_playlist">Quitar de la lista de reproducción</string>
+    <string name="quickplaylists_menu_remove_from_playlist">Eliminar de la lista</string>
     <string name="quickplaylists_menu_title_color">Color del título</string>
     <string name="quickplaylists_menu_assign_to_group">Asignar al grupo</string>
     <string name="quickplaylists_menu_move_to">Mover a…</string>
