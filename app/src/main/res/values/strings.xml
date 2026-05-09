@@ -390,6 +390,12 @@
     <string name="player_transition_to_track">Transition vers : %1$s</string>
     <string name="player_crossfade_no_next_track">Aucun titre suivant défini.</string>
     <string name="player_crossfade_prepare_failed">Transition impossible.</string>
+    <string name="player_crossfade_duration_2s">2 s</string>
+    <string name="player_crossfade_duration_3s">3 s</string>
+    <string name="player_crossfade_duration_5s">5 s</string>
+    <string name="player_crossfade_duration_8s">8 s</string>
+    <string name="player_crossfade_duration_10s">10 s</string>
+    <string name="player_crossfade_duration_20s">20 s</string>
     <string name="player_live_note_chip">📝 %1$s</string>
     <string name="player_cd_delete_live_note">Supprimer l’annotation live</string>
     <string name="player_hq_unavailable">HQ indisponible</string>
@@ -774,6 +780,7 @@
     <string name="more_item_test_bluetooth_midi">📶  Test Bluetooth MIDI</string>
     <string name="more_auto_return_playlist">Retour auto vers la playlist (10 s avant la fin)</string>
     <string name="more_player_open_mode">Ouverture du lecteur</string>
+    <string name="more_manual_crossfade_duration">Durée du fondu de transition</string>
     <string name="player_open_mode_always">Toujours</string>
     <string name="player_open_mode_never">Jamais</string>
     <string name="player_open_mode_automatic">Automatique (ouvrir seulement si paroles disponibles)</string>

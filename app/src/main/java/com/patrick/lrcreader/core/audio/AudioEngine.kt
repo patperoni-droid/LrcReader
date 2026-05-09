@@ -139,7 +139,8 @@ object AudioEngine {
         embeddedLyricsListener = l
         exoPlayer = player
         activePlayerPipeline = pipeline
-        endedListenerAdded = false
+        corePlayerTarget = null
+        corePlayerListener = null
         smokeLastPlaybackState = Player.STATE_IDLE
         smokeLastIsPlaying = false
 
@@ -199,7 +200,7 @@ object AudioEngine {
 
         exoPlayer = null
         embeddedLyricsListener = null
-        endedListenerAdded = false
+        detachCorePlayerListener()
 
         val rebuilt = buildPlayer(appCtx, targetPipeline)
         ensureCorePlayerListener(rebuilt, appCtx)
@@ -228,9 +229,9 @@ object AudioEngine {
     }
 
     private fun ensureCorePlayerListener(player: ExoPlayer, appCtx: Context) {
-        if (endedListenerAdded) return
-        endedListenerAdded = true
-        player.addListener(object : Player.Listener {
+        if (corePlayerTarget === player && corePlayerListener != null) return
+        detachCorePlayerListener()
+        val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
                 if (BuildConfig.DEBUG &&
                     state == Player.STATE_READY &&
@@ -257,7 +258,10 @@ object AudioEngine {
             override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
                 retryPendingHqApply(reason = "listener:onTracksChanged")
             }
-        })
+        }
+        player.addListener(listener)
+        corePlayerTarget = player
+        corePlayerListener = listener
     }
 
     // -----------------------------
@@ -267,9 +271,20 @@ object AudioEngine {
     private var embeddedLyricsListener: EmbeddedLyricsListener? = null
 
     private var onNaturalEndCallback: (() -> Unit)? = null
-    private var endedListenerAdded = false
+    private var corePlayerTarget: ExoPlayer? = null
+    private var corePlayerListener: Player.Listener? = null
     private var smokeLastPlaybackState: Int = Player.STATE_IDLE
     private var smokeLastIsPlaying: Boolean = false
+
+    private fun detachCorePlayerListener() {
+        val target = corePlayerTarget
+        val listener = corePlayerListener
+        if (target != null && listener != null) {
+            runCatching { target.removeListener(listener) }
+        }
+        corePlayerTarget = null
+        corePlayerListener = null
+    }
 
     // -----------------------------
     // Fade-out (Stop/Pause doux)
@@ -628,6 +643,7 @@ object AudioEngine {
         pendingTrackGainDb = null
         pendingPlayerBus = null
 
+        detachCorePlayerListener()
         runCatching { exoPlayer?.release() }
 
         val lyricsListener = EmbeddedLyricsListener()
@@ -636,7 +652,6 @@ object AudioEngine {
         exoPlayer = player
         embeddedLyricsListener = lyricsListener
         onNaturalEndCallback = onNaturalEnd
-        endedListenerAdded = false
         smokeLastPlaybackState = player.playbackState
         smokeLastIsPlaying = player.isPlaying
         fadeMultiplier = 1f
@@ -646,6 +661,42 @@ object AudioEngine {
         ensureCorePlayerListener(player, appCtx)
         applyFinalVolume()
         publishPlayerEpoch()
+    }
+
+    fun promoteTransitionPlayer(
+        context: Context,
+        player: ExoPlayer,
+        onNaturalEnd: () -> Unit
+    ): ExoPlayer? {
+        val appCtx = context.applicationContext
+        fadeJob?.cancel()
+        speedPitchJob?.cancel()
+        pendingTrackGainDb = null
+        pendingPlayerBus = null
+
+        val previousPlayer = exoPlayer
+        val previousLyricsListener = embeddedLyricsListener
+        detachCorePlayerListener()
+        if (previousPlayer != null && previousLyricsListener != null) {
+            runCatching { previousPlayer.removeListener(previousLyricsListener) }
+        }
+
+        val lyricsListener = EmbeddedLyricsListener()
+        runCatching { player.addListener(lyricsListener) }
+
+        exoPlayer = player
+        embeddedLyricsListener = lyricsListener
+        onNaturalEndCallback = onNaturalEnd
+        smokeLastPlaybackState = player.playbackState
+        smokeLastIsPlaying = player.isPlaying
+        fadeMultiplier = 1f
+        playerAppContext = appCtx
+        activePlayerPipeline = PlayerPipeline.PURE_EXO
+
+        ensureCorePlayerListener(player, appCtx)
+        applyFinalVolume()
+        publishPlayerEpoch()
+        return previousPlayer
     }
 
     fun release() {
@@ -668,7 +719,7 @@ object AudioEngine {
         exoPlayer = null
         embeddedLyricsListener = null
         onNaturalEndCallback = null
-        endedListenerAdded = false
+        detachCorePlayerListener()
         smokeLastPlaybackState = Player.STATE_IDLE
         smokeLastIsPlaying = false
     }

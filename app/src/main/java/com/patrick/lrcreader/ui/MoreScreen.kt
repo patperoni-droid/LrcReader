@@ -61,6 +61,8 @@ import com.patrick.lrcreader.core.BackupManager
 import com.patrick.lrcreader.core.EditionConfig
 import com.patrick.lrcreader.core.LegacyLibraryVisibilityPrefs
 import com.patrick.lrcreader.core.LightIndicatorPrefs
+import com.patrick.lrcreader.core.ManualCrossfadeDurationOption
+import com.patrick.lrcreader.core.ManualCrossfadePrefs
 import com.patrick.lrcreader.core.PlayerLaunchMode
 import com.patrick.lrcreader.core.PlayerLaunchPrefs
 import com.patrick.lrcreader.core.TextSongRepository
@@ -314,6 +316,7 @@ private fun MoreRootScreen(
     }
     var showLanguageDialog by remember { mutableStateOf(false) }
     var showPlayerLaunchDialog by remember { mutableStateOf(false) }
+    var showManualCrossfadeDurationDialog by remember { mutableStateOf(false) }
     var showExportProDialog by remember { mutableStateOf(false) }
     var selectedLanguageTag by remember { mutableStateOf(AppLanguagePrefs.getSavedLanguageTag(context)) }
     var isExportingLiveSongs by remember { mutableStateOf(false) }
@@ -338,6 +341,9 @@ private fun MoreRootScreen(
     }
     var playerLaunchMode by remember {
         mutableStateOf(PlayerLaunchPrefs.getMode(context))
+    }
+    var manualCrossfadeDurationOption by remember {
+        mutableStateOf(ManualCrossfadePrefs.getDurationOption(context))
     }
     var showLightIndicator by remember {
         mutableStateOf(LightIndicatorPrefs.isEnabled(context))
@@ -366,6 +372,14 @@ private fun MoreRootScreen(
         PlayerLaunchMode.ALWAYS -> stringResource(R.string.player_open_mode_always)
         PlayerLaunchMode.NEVER -> stringResource(R.string.player_open_mode_never)
         PlayerLaunchMode.AUTOMATIC -> stringResource(R.string.player_open_mode_automatic)
+    }
+    val currentManualCrossfadeDurationLabel = when (manualCrossfadeDurationOption) {
+        ManualCrossfadeDurationOption.SECONDS_2 -> stringResource(R.string.player_crossfade_duration_2s)
+        ManualCrossfadeDurationOption.SECONDS_3 -> stringResource(R.string.player_crossfade_duration_3s)
+        ManualCrossfadeDurationOption.SECONDS_5 -> stringResource(R.string.player_crossfade_duration_5s)
+        ManualCrossfadeDurationOption.SECONDS_8 -> stringResource(R.string.player_crossfade_duration_8s)
+        ManualCrossfadeDurationOption.SECONDS_10 -> stringResource(R.string.player_crossfade_duration_10s)
+        ManualCrossfadeDurationOption.SECONDS_20 -> stringResource(R.string.player_crossfade_duration_20s)
     }
     val sLiveSongsExportFailed = stringResource(R.string.more_live_songs_export_failed)
     val sLibraryRestoreScanFailed = stringResource(R.string.more_library_restore_scan_failed)
@@ -728,6 +742,12 @@ private fun MoreRootScreen(
                         onClick = { showPlayerLaunchDialog = true }
                     )
 
+                    SettingsItem(
+                        label = stringResource(R.string.more_manual_crossfade_duration),
+                        subtitle = currentManualCrossfadeDurationLabel,
+                        onClick = { showManualCrossfadeDurationDialog = true }
+                    )
+
                     SwitchSettingItem(
                         label = stringResource(R.string.more_show_light_indicator),
                         checked = showLightIndicator,
@@ -908,6 +928,59 @@ private fun MoreRootScreen(
             confirmButton = {},
             dismissButton = {
                 TextButton(onClick = { showPlayerLaunchDialog = false }) {
+                    Text(text = stringResource(R.string.common_cancel))
+                }
+            }
+        )
+    }
+
+    if (showManualCrossfadeDurationDialog) {
+        val crossfadeDurationOptions = listOf(
+            ManualCrossfadeDurationOption.SECONDS_2 to R.string.player_crossfade_duration_2s,
+            ManualCrossfadeDurationOption.SECONDS_3 to R.string.player_crossfade_duration_3s,
+            ManualCrossfadeDurationOption.SECONDS_5 to R.string.player_crossfade_duration_5s,
+            ManualCrossfadeDurationOption.SECONDS_8 to R.string.player_crossfade_duration_8s,
+            ManualCrossfadeDurationOption.SECONDS_10 to R.string.player_crossfade_duration_10s,
+            ManualCrossfadeDurationOption.SECONDS_20 to R.string.player_crossfade_duration_20s
+        )
+
+        AlertDialog(
+            onDismissRequest = { showManualCrossfadeDurationDialog = false },
+            title = { Text(text = stringResource(R.string.more_manual_crossfade_duration)) },
+            text = {
+                Column {
+                    crossfadeDurationOptions.forEach { (option, labelRes) ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    manualCrossfadeDurationOption = option
+                                    ManualCrossfadePrefs.setDurationOption(context, option)
+                                    showManualCrossfadeDurationDialog = false
+                                }
+                                .padding(vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = manualCrossfadeDurationOption == option,
+                                onClick = {
+                                    manualCrossfadeDurationOption = option
+                                    ManualCrossfadePrefs.setDurationOption(context, option)
+                                    showManualCrossfadeDurationDialog = false
+                                }
+                            )
+                            Text(
+                                text = stringResource(labelRes),
+                                color = Color(0xFFF5F5F5),
+                                fontSize = 14.sp
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showManualCrossfadeDurationDialog = false }) {
                     Text(text = stringResource(R.string.common_cancel))
                 }
             }

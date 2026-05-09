@@ -63,6 +63,7 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import com.patrick.lrcreader.core.*
 import com.patrick.lrcreader.core.audio.AudioEngine
+import com.patrick.lrcreader.core.audio.EmbeddedLyricsListener
 import com.patrick.lrcreader.core.dj.DjEngine
 import com.patrick.lrcreader.core.exoCrossfadePlay
 import com.patrick.lrcreader.core.history.HistoryRepository
@@ -1205,10 +1206,11 @@ class MainActivity : AppCompatActivity() {
                 var trimStopJob by remember { mutableStateOf<Job?>(null) }
                 var trimAppliedForThisTrack by remember { mutableStateOf(false) }
                 val nextTrack by PlaybackCoordinator.nextTrack.collectAsState()
-                val manualCrossfadeDurationMs = 5_000L
                 var manualCrossfadeTransitionTitle by remember { mutableStateOf<String?>(null) }
                 var manualCrossfadePlayer by remember { mutableStateOf<ExoPlayer?>(null) }
                 var manualCrossfadeJob by remember { mutableStateOf<Job?>(null) }
+                var transitionFadeOutPlayer by remember { mutableStateOf<ExoPlayer?>(null) }
+                var transitionFadeOutJob by remember { mutableStateOf<Job?>(null) }
                 val nextChainedUri = remember(isChaining, chainIndex, chainQueue) {
                     if (!isChaining) null else nextPlayableUriAfter(chainQueue, chainIndex)
                 }
@@ -1756,6 +1758,13 @@ class MainActivity : AppCompatActivity() {
                         runCatching { player.release() }
                     }
                     manualCrossfadePlayer = null
+                    transitionFadeOutJob?.cancel()
+                    transitionFadeOutJob = null
+                    transitionFadeOutPlayer?.let { player ->
+                        runCatching { player.stop() }
+                        runCatching { player.release() }
+                    }
+                    transitionFadeOutPlayer = null
                     cancelTrimWatcher()
                     runCatching { exoPlayer.pause() }
                     isPlaying = false
@@ -1825,6 +1834,51 @@ class MainActivity : AppCompatActivity() {
                         ?: HistoryRepository.UNTITLED_FALLBACK
                 }
 
+                fun currentManualCrossfadeDurationMs(): Long {
+                    return ManualCrossfadePrefs.getDurationMs(ctx)
+                }
+
+                fun currentManualCrossfadePrerollMs(): Long {
+                    return 400L
+                }
+
+                fun cancelTransitionFadeOut() {
+                    transitionFadeOutJob?.cancel()
+                    transitionFadeOutJob = null
+                    transitionFadeOutPlayer?.let { player ->
+                        runCatching { player.stop() }
+                        runCatching { player.release() }
+                    }
+                    transitionFadeOutPlayer = null
+                }
+
+                fun launchTransitionFadeOut(player: ExoPlayer) {
+                    cancelTransitionFadeOut()
+                    transitionFadeOutPlayer = player
+                    transitionFadeOutJob = scope.launch {
+                        try {
+                            val startVolume = runCatching { player.volume }.getOrDefault(1f).coerceIn(0f, 1f)
+                            val steps = 30
+                            val stepDelayMs = (currentManualCrossfadeDurationMs() / steps).coerceAtLeast(1L)
+                            repeat(steps) { step ->
+                                val progress = (step + 1).toFloat() / steps.toFloat()
+                                runCatching {
+                                    player.volume = (startVolume * (1f - progress)).coerceIn(0f, 1f)
+                                }
+                                delay(stepDelayMs)
+                            }
+                        } finally {
+                            val fadingOutPlayer = transitionFadeOutPlayer
+                            if (fadingOutPlayer === player) {
+                                runCatching { player.stop() }
+                                runCatching { player.release() }
+                                transitionFadeOutPlayer = null
+                                transitionFadeOutJob = null
+                            }
+                        }
+                    }
+                }
+
                 suspend fun prepareTransitionPlayer(
                     player: ExoPlayer,
                     playableUri: String,
@@ -1870,6 +1924,13 @@ class MainActivity : AppCompatActivity() {
                         runCatching { player.release() }
                     }
                     manualCrossfadePlayer = null
+                    transitionFadeOutJob?.cancel()
+                    transitionFadeOutJob = null
+                    transitionFadeOutPlayer?.let { player ->
+                        runCatching { player.stop() }
+                        runCatching { player.release() }
+                    }
+                    transitionFadeOutPlayer = null
                 }
 
                 fun persistCurrentUiSession(reason: String, tabOverride: BottomTab? = null) {
@@ -1996,6 +2057,7 @@ class MainActivity : AppCompatActivity() {
                     if (manualCrossfadeTransitionTitle != null) {
                         return
                     }
+                    cancelTransitionFadeOut()
                     suspend fun shouldOpenPlayerScreenForLaunch(
                         trackUriString: String,
                         allowPlayerOpen: Boolean
@@ -2108,6 +2170,32 @@ class MainActivity : AppCompatActivity() {
                         gainDb = loadedTrackMixSettings.gainDb
                     )
 
+                    val shouldUseImmediateTransition =
+                        runCatching { exoPlayer.isPlaying }.getOrDefault(false) &&
+                            !currentPlayingUri.isNullOrBlank() &&
+                            currentPlayingUri != uriString
+
+                    val playbackPlayer: ExoPlayer
+                    val playbackLyricsListener: EmbeddedLyricsListener
+                    if (shouldUseImmediateTransition) {
+                        val promotedPlayer = AudioEngine.createTransitionPlayer(ctx)
+                        AudioEngine.promoteTransitionPlayer(ctx, promotedPlayer) {
+                            onEnded.value.invoke()
+                        }?.let { fadingOutPlayer ->
+                            launchTransitionFadeOut(fadingOutPlayer)
+                        }
+                        parsedLines = emptyList()
+                        lyricsLoading = false
+                        isPlaying = true
+                        currentPlayingUri = uriString
+                        currentPlayingPlaylist = playlistName
+                        playbackPlayer = promotedPlayer
+                        playbackLyricsListener = AudioEngine.getLyricsListener()
+                    } else {
+                        playbackPlayer = exoPlayer
+                        playbackLyricsListener = embeddedLyricsListener
+                    }
+
                     var lyricsResolveSeq = 0
                     val result = runCatching {
                         cancelTrimWatcher()
@@ -2115,8 +2203,8 @@ class MainActivity : AppCompatActivity() {
 
                         exoCrossfadePlay(
                             context = ctx,
-                            exoPlayer = exoPlayer,
-                            embeddedLyricsListener = embeddedLyricsListener,
+                            exoPlayer = playbackPlayer,
+                            embeddedLyricsListener = playbackLyricsListener,
                             uriString = uriString,
                             playlistName = playlistName,
                             playToken = myToken,
@@ -2211,7 +2299,7 @@ class MainActivity : AppCompatActivity() {
                             },
                             onStart = {
                                 isPlaying = true
-                                val activeUri = exoPlayer.currentMediaItem
+                                val activeUri = playbackPlayer.currentMediaItem
                                     ?.localConfiguration
                                     ?.uri
                                     ?.toString()
@@ -2220,7 +2308,7 @@ class MainActivity : AppCompatActivity() {
                                 currentPlayingPlaylist = playlistName
                                 Log.d(
                                     SMP_PLAY_TRACE_TAG,
-                                    "PLAYER_ON_START requestedUri=$uriString activeUri=$activeUri playlist=$playlistName token=$myToken playWhenReady=${exoPlayer.playWhenReady} isPlaying=${exoPlayer.isPlaying} state=${exoPlayer.playbackState}"
+                                    "PLAYER_ON_START requestedUri=$uriString activeUri=$activeUri playlist=$playlistName token=$myToken playWhenReady=${playbackPlayer.playWhenReady} isPlaying=${playbackPlayer.isPlaying} state=${playbackPlayer.playbackState}"
                                 )
                                 LyricsPerf.mark(
                                     uriString,
@@ -2239,7 +2327,7 @@ class MainActivity : AppCompatActivity() {
                                 }
                                 if (!trimAppliedForThisTrack) {
                                     if (trimConfig.entryMs > 0L) {
-                                        runCatching { exoPlayer.seekTo(trimConfig.entryMs) }
+                                        runCatching { playbackPlayer.seekTo(trimConfig.entryMs) }
                                     }
                                     trimAppliedForThisTrack = true
                                 }
@@ -2247,9 +2335,9 @@ class MainActivity : AppCompatActivity() {
                                 if (trimConfig.mode == "seek-stop" && trimExitMs != null && trimExitMs > 0L) {
                                     trimStopJob = scope.launch {
                                         while (currentPlayToken == myToken) {
-                                            val positionMs = runCatching { exoPlayer.currentPosition }.getOrDefault(0L)
+                                            val positionMs = runCatching { playbackPlayer.currentPosition }.getOrDefault(0L)
                                             if (positionMs >= trimExitMs) {
-                                                runCatching { exoPlayer.pause() }
+                                                runCatching { playbackPlayer.pause() }
                                                 onEnded.value.invoke()
                                                 return@launch
                                             }
@@ -2277,13 +2365,13 @@ class MainActivity : AppCompatActivity() {
                             onError = {
                                 if (manualCrossfadeTransitionTitle == null) {
                                     cancelTrimWatcher()
-                                    val activeUri = exoPlayer.currentMediaItem
+                                    val activeUri = playbackPlayer.currentMediaItem
                                         ?.localConfiguration
                                         ?.uri
                                         ?.toString()
                                     val nextArmed = PlaybackCoordinator.peekNextTrack() != null
-                                    val durMs = runCatching { exoPlayer.duration }.getOrDefault(C.TIME_UNSET)
-                                    val posMs = runCatching { exoPlayer.currentPosition }.getOrDefault(0L)
+                                    val durMs = runCatching { playbackPlayer.duration }.getOrDefault(C.TIME_UNSET)
+                                    val posMs = runCatching { playbackPlayer.currentPosition }.getOrDefault(0L)
                                     val nearEnd =
                                         durMs > 0L &&
                                         durMs != C.TIME_UNSET &&
@@ -2291,7 +2379,7 @@ class MainActivity : AppCompatActivity() {
                                     val treatAsEnded = nextArmed && nearEnd
                                     Log.d(
                                         SMP_PLAY_TRACE_TAG,
-                                        "PLAYER_ON_ERROR requestedUri=$uriString activeUri=$activeUri playlist=$playlistName token=$myToken playWhenReady=${exoPlayer.playWhenReady} isPlaying=${exoPlayer.isPlaying} state=${exoPlayer.playbackState} pos=$posMs dur=$durMs nextArmed=$nextArmed treatAsEnded=$treatAsEnded"
+                                        "PLAYER_ON_ERROR requestedUri=$uriString activeUri=$activeUri playlist=$playlistName token=$myToken playWhenReady=${playbackPlayer.playWhenReady} isPlaying=${playbackPlayer.isPlaying} state=${playbackPlayer.playbackState} pos=$posMs dur=$durMs nextArmed=$nextArmed treatAsEnded=$treatAsEnded"
                                     )
 
                                     if (BuildConfig.DEBUG) {
@@ -2328,8 +2416,8 @@ class MainActivity : AppCompatActivity() {
                         )
                         cancelTrimWatcher()
                         runCatching {
-                            exoPlayer.stop()
-                            exoPlayer.clearMediaItems()
+                            playbackPlayer.stop()
+                            playbackPlayer.clearMediaItems()
                         }
                         isPlaying = false
                         LightCueDispatcher.resetGlobal()
@@ -2639,9 +2727,10 @@ class MainActivity : AppCompatActivity() {
                             transitionPlayer.volume = 0f
                             transitionPlayer.playWhenReady = true
                             transitionPlayer.play()
+                            delay(currentManualCrossfadePrerollMs())
 
                             val steps = 30
-                            val stepDelayMs = (manualCrossfadeDurationMs / steps).coerceAtLeast(1L)
+                            val stepDelayMs = (currentManualCrossfadeDurationMs() / steps).coerceAtLeast(1L)
                             repeat(steps) { step ->
                                 val progress = (step + 1).toFloat() / steps.toFloat()
                                 runCatching { exoPlayer.volume = (fromVolume * (1f - progress)).coerceIn(0f, 1f) }
