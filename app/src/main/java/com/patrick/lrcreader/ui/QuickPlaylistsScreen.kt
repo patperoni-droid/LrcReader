@@ -785,14 +785,14 @@ fun QuickPlaylistsScreen(
                     dragOrderChanged = false
                     dragOffsetPx = 0f
                     val visibleInfo = listState.layoutInfo.visibleItemsInfo.firstOrNull { info ->
-                        (info.key as? String) == itemKey
+                        playlistViewportKeyToItem(info.key) == itemKey
                     }
                     dragYInListViewport = visibleInfo?.let { info ->
                         info.offset + (info.size / 2f)
                     }
                     hoverHeaderKey = dragYInListViewport?.let { dragY ->
                         val viewportItems = listState.layoutInfo.visibleItemsInfo.mapNotNull { info ->
-                            val key = info.key as? String ?: return@mapNotNull null
+                            val key = playlistViewportKeyToItem(info.key) ?: return@mapNotNull null
                             ListViewportItem(key = key, start = info.offset, endExclusive = info.offset + info.size)
                         }
                         findHeaderDropTargetKey(
@@ -845,13 +845,13 @@ fun QuickPlaylistsScreen(
                 if (currentIndex == -1) return@detectDragGesturesAfterLongPress
 
                 val baseY = dragYInListViewport ?: listState.layoutInfo.visibleItemsInfo
-                    .firstOrNull { info -> (info.key as? String) == current }
+                    .firstOrNull { info -> playlistViewportKeyToItem(info.key) == current }
                     ?.let { info -> info.offset + (info.size / 2f) }
                     ?: return@detectDragGesturesAfterLongPress
                 dragYInListViewport = baseY + dragAmount.y
 
                 val viewportItems = listState.layoutInfo.visibleItemsInfo.mapNotNull { info ->
-                    val key = info.key as? String ?: return@mapNotNull null
+                    val key = playlistViewportKeyToItem(info.key) ?: return@mapNotNull null
                     ListViewportItem(key = key, start = info.offset, endExclusive = info.offset + info.size)
                 }
                 hoverHeaderKey = findHeaderDropTargetKey(
@@ -885,6 +885,19 @@ fun QuickPlaylistsScreen(
                             internalSelected?.let { pl ->
                                 PlaylistRepository.updatePlayListOrder(pl, songs.toList())
                             }
+                        } else {
+                            val currentHeaderIndex = findContainingGroupHeaderIndex(songs, currentIndex)
+                            if (currentHeaderIndex != null && hoverHeaderKey == null) {
+                                val groupEndIndex = findMatchingGroupEndIndex(songs, currentHeaderIndex)
+                                    ?: findGroupRange(songs, currentHeaderIndex).last
+                                val dragged = songs.removeAt(currentIndex)
+                                val targetIndex = groupEndIndex.coerceIn(0, songs.size)
+                                songs.add(targetIndex, dragged)
+                                dragOrderChanged = true
+                                internalSelected?.let { pl ->
+                                    PlaylistRepository.updatePlayListOrder(pl, songs.toList())
+                                }
+                            }
                         }
                     }
                     dragOffsetPx = 0f
@@ -904,6 +917,17 @@ fun QuickPlaylistsScreen(
                             dragOrderChanged = true
                             internalSelected?.let { pl ->
                                 PlaylistRepository.updatePlayListOrder(pl, songs.toList())
+                            }
+                        } else {
+                            val currentHeaderIndex = findContainingGroupHeaderIndex(songs, currentIndex)
+                            if (currentHeaderIndex != null && hoverHeaderKey == null) {
+                                val dragged = songs.removeAt(currentIndex)
+                                val targetIndex = currentHeaderIndex.coerceIn(0, songs.size)
+                                songs.add(targetIndex, dragged)
+                                dragOrderChanged = true
+                                internalSelected?.let { pl ->
+                                    PlaylistRepository.updatePlayListOrder(pl, songs.toList())
+                                }
                             }
                         }
                     }
@@ -1387,7 +1411,7 @@ fun QuickPlaylistsScreen(
                             .semantics { testTag = "quick_playlists_list" },
                         state = listState
                     ) {
-                        itemsIndexed(visibleRows, key = { _, row -> "${row.realIndex}:${row.item}" }) { _, row ->
+                        itemsIndexed(visibleRows, key = { _, row -> playlistViewportStableKey(row.item) }) { _, row ->
                             val itemIndex = row.realIndex
                             val uriString = row.item
 
@@ -3316,6 +3340,18 @@ private fun quickPlaylistFallbackName(item: String): String {
     val fromDocId = tail.substringAfterLast(':').substringAfterLast('/')
     return fromDocId.ifBlank {
         tail.ifBlank { decoded.ifBlank { item } }
+    }
+}
+
+private fun playlistViewportStableKey(item: String): String {
+    return "item|$item"
+}
+
+private fun playlistViewportKeyToItem(key: Any?): String? {
+    val rawKey = key as? String ?: return null
+    return when {
+        rawKey.startsWith("item|") -> rawKey.removePrefix("item|")
+        else -> rawKey.substringAfter(':', rawKey)
     }
 }
 
