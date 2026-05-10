@@ -138,6 +138,7 @@ private enum class TimelineEditorMode {
 }
 
 private const val ARRANGEMENT_PREVIEW_FILE_NAME = "preview_arrangement.wav"
+private const val ARRANGEMENT_WAVEFORM_MAX_ZOOM = 240f
 
 private enum class TimelineDisplayMode {
     TIME,
@@ -1945,13 +1946,13 @@ private fun TimelineMeasuresPlaceholder(
                 val peaks = WaveformPeaksCache.getOrCompute(
                     context = context,
                     uri = audioUri,
-                    targetPoints = 2_400,
+                    targetPoints = 20_000,
                     durationMs = durationMs
                 ) {
                     WaveformExtractor.extractNormalizedPeaks(
                         context = context,
                         uri = audioUri,
-                        targetPoints = 2_400
+                        targetPoints = 20_000
                     )
                 }
                 Triple(peaks, durationMs, song)
@@ -2645,45 +2646,37 @@ private fun TimelineMeasuresPlaceholder(
                 lastWaveformFocusMarker = TimelineWaveformFocusMarker.NONE
             },
             onWaveformLongPress = { selectedPositionMs ->
-                val quantizedPositionMs = if (gridEnabled) {
-                    quantizeTimelinePositionToBeat(
-                        positionMs = selectedPositionMs,
-                        tempoBpm = tempoBpm?.toDouble(),
-                        syncPointMs = localMeasureAnchorMs
-                    )
-                } else {
-                    selectedPositionMs.coerceAtLeast(0L)
-                }
+                val waveformPositionMs = selectedPositionMs.coerceAtLeast(0L)
                 val currentInMs = segmentInMs
                 val currentOutMs = segmentOutMs
                 when {
                     currentInMs != null && currentOutMs != null -> {
-                        val distanceToIn = abs(quantizedPositionMs - currentInMs)
-                        val distanceToOut = abs(quantizedPositionMs - currentOutMs)
+                        val distanceToIn = abs(waveformPositionMs - currentInMs)
+                        val distanceToOut = abs(waveformPositionMs - currentOutMs)
                         if (distanceToIn <= distanceToOut) {
-                            segmentInMs = quantizedPositionMs
+                            segmentInMs = waveformPositionMs
                             lastWaveformFocusMarker = TimelineWaveformFocusMarker.IN
-                            onSegmentInChange(quantizedPositionMs)
+                            onSegmentInChange(waveformPositionMs)
                         } else {
-                            segmentOutMs = quantizedPositionMs
+                            segmentOutMs = waveformPositionMs
                             lastWaveformFocusMarker = TimelineWaveformFocusMarker.OUT
-                            onSegmentOutChange(quantizedPositionMs)
+                            onSegmentOutChange(waveformPositionMs)
                         }
                     }
                     currentInMs != null -> {
-                        segmentInMs = quantizedPositionMs
+                        segmentInMs = waveformPositionMs
                         lastWaveformFocusMarker = TimelineWaveformFocusMarker.IN
-                        onSegmentInChange(quantizedPositionMs)
+                        onSegmentInChange(waveformPositionMs)
                     }
                     currentOutMs != null -> {
-                        segmentOutMs = quantizedPositionMs
+                        segmentOutMs = waveformPositionMs
                         lastWaveformFocusMarker = TimelineWaveformFocusMarker.OUT
-                        onSegmentOutChange(quantizedPositionMs)
+                        onSegmentOutChange(waveformPositionMs)
                     }
                     else -> {
-                        segmentInMs = quantizedPositionMs
+                        segmentInMs = waveformPositionMs
                         lastWaveformFocusMarker = TimelineWaveformFocusMarker.IN
-                        onSegmentInChange(quantizedPositionMs)
+                        onSegmentInChange(waveformPositionMs)
                     }
                 }
             }
@@ -3417,7 +3410,8 @@ private fun TimelineGridWaveformSection(
                             ) {
                                 detectTransformGestures { _, pan, zoomChange, _ ->
                                     val previousZoom = waveformZoom
-                                    val nextZoom = (previousZoom * zoomChange).coerceIn(1f, 120f)
+                                    val nextZoom = (previousZoom * zoomChange)
+                                        .coerceIn(1f, ARRANGEMENT_WAVEFORM_MAX_ZOOM)
                                     waveformZoom = nextZoom
 
                                     val visibleFraction = 1f / nextZoom
