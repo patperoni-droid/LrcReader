@@ -1296,6 +1296,7 @@ private fun WaveformCanvas(
                             var deltaXFromDown = 0f
                             var deltaYFromDown = 0f
                             var handleMoved = false
+                            var singleFingerPanActive = false
                             var waveformActionsLockedByLongPressTrim = false
                             var waveformActionsLockedByTransform = false
 
@@ -1353,6 +1354,37 @@ private fun WaveformCanvas(
 
                                 val absX = currentPos.x.coerceIn(0f, widthPx)
                                 val timeMs = xToTimeMs(absX)
+                                val horizontalDragDominant = abs(deltaXFromDown) > abs(deltaYFromDown)
+
+                                if (
+                                    directHandleTarget == DragTarget.NONE &&
+                                    latestZoom > 1f &&
+                                    (
+                                        singleFingerPanActive ||
+                                            (
+                                                maxDistanceFromDown > viewConfiguration.touchSlop &&
+                                                    horizontalDragDominant
+                                                )
+                                        )
+                                ) {
+                                    val panDeltaX = currentPos.x - lastPos.x
+                                    val visibleFraction = 1f / latestZoom.coerceAtLeast(1f)
+                                    val panFraction = if (widthPx > 0f) {
+                                        -panDeltaX / widthPx * visibleFraction
+                                    } else {
+                                        0f
+                                    }
+                                    val (minCenter, maxCenter) = centerBounds(latestZoom)
+                                    singleFingerPanActive = true
+                                    waveformCenterFraction = (waveformCenterFraction + panFraction)
+                                        .coerceIn(minCenter, maxCenter)
+                                    change.consume()
+                                    lastPos = currentPos
+                                    upUptimeMs = change.uptimeMillis
+                                    upAbsX = absX
+                                    if (!change.pressed) break
+                                    continue
+                                }
 
                                 when (directHandleTarget) {
                                     DragTarget.IN -> {
@@ -1413,6 +1445,14 @@ private fun WaveformCanvas(
                             if (waveformActionsLockedByTransform) {
                                 logWaveformGesture(
                                     "PRIMARY_SKIP_AFTER_TRANSFORM",
+                                    "center=$waveformCenterFraction zoom=$latestZoom"
+                                )
+                                return@awaitEachGesture
+                            }
+
+                            if (singleFingerPanActive) {
+                                logWaveformGesture(
+                                    "PRIMARY_PAN_END",
                                     "center=$waveformCenterFraction zoom=$latestZoom"
                                 )
                                 return@awaitEachGesture

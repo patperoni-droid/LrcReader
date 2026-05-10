@@ -3529,7 +3529,7 @@ private fun TimelineGridWaveformSection(
                         val widthPx = size.width
                         val heightPx = size.height
                         val safeDuration = durationMs.coerceAtLeast(1)
-                        val maxIndex = peaks.lastIndex.coerceAtLeast(1)
+                        val peakCount = peaks.size.coerceAtLeast(1)
                         val visibleFraction = 1f / waveformZoom.coerceAtLeast(1f)
                         val startFraction = (waveformCenterFraction - visibleFraction / 2f).coerceIn(0f, 1f)
                         val endFraction = (startFraction + visibleFraction).coerceIn(0f, 1f)
@@ -3537,7 +3537,8 @@ private fun TimelineGridWaveformSection(
                         val waveformNormalColor = Color(0xFF80CBC4)
                         val waveformAccentColor = Color(0xFFB2FF59)
                         peaks.forEachIndexed { index, peak ->
-                            val positionFraction = index.toFloat() / maxIndex.toFloat()
+                            val positionFraction = ((index.toFloat() + 0.5f) / peakCount.toFloat())
+                                .coerceIn(0f, 1f)
                             if (positionFraction < startFraction || positionFraction > effectiveEndFraction) {
                                 return@forEachIndexed
                             }
@@ -3561,7 +3562,8 @@ private fun TimelineGridWaveformSection(
                                 cap = androidx.compose.ui.graphics.StrokeCap.Round
                             )
                             if (index < peaks.lastIndex) {
-                                val nextPositionFraction = (index + 1).toFloat() / maxIndex.toFloat()
+                                val nextPositionFraction = (((index + 1).toFloat() + 0.5f) /
+                                    peakCount.toFloat()).coerceIn(0f, 1f)
                                 val midpointFraction = (positionFraction + nextPositionFraction) / 2f
                                 if (midpointFraction in startFraction..effectiveEndFraction) {
                                     val midpointX = ((midpointFraction - startFraction) /
