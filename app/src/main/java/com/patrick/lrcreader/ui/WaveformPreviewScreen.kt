@@ -7,6 +7,7 @@ import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.media.MediaMetadataRetriever
 import android.net.Uri
+import android.os.SystemClock
 import android.util.Log
 import android.widget.Toast
 import androidx.compose.foundation.Canvas
@@ -15,7 +16,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Arrangement
@@ -46,9 +47,11 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.geometry.Offset
@@ -104,11 +107,16 @@ private const val ZOOM_MAX = 120f
 private const val MATCH_VOLUME_TARGET_LUFS = -14f
 private const val MATCH_VOLUME_MIN_DB = -12
 private const val MATCH_VOLUME_MAX_DB = 0
+private const val WAVEFORM_GESTURE_TAG = "SMP_WAVEFORM_GESTURE"
 
 private enum class DragTarget {
     NONE,
     IN,
     OUT
+}
+
+private fun logWaveformGesture(action: String, details: String) {
+    Log.d(WAVEFORM_GESTURE_TAG, "$action | $details")
 }
 
 @Composable
@@ -517,6 +525,10 @@ fun WaveformPreviewScreen(
                             playheadMs = playheadMs,
                             onTapTimeMs = { tapTimeMs ->
                                 val safeTap = tapTimeMs.coerceIn(0, durationMs.coerceAtLeast(0))
+                                logWaveformGesture(
+                                    "SEEK_TAP",
+                                    "tapTimeMs=$tapTimeMs safeTap=$safeTap isPlayingWave=$isPlayingWave"
+                                )
                                 playheadMs = safeTap
                                 WaveformSessionPrefs.savePlayhead(context, safeTap)
                                 exoPlayer.seekTo(safeTap.toLong())
@@ -544,6 +556,10 @@ fun WaveformPreviewScreen(
                             },
                             onTogglePlayPause = {
                                 if (selectedUri == null || durationMs <= 0) return@WaveformCanvas
+                                logWaveformGesture(
+                                    "TOGGLE_PLAY",
+                                    "isPlayingWaveBefore=$isPlayingWave playheadMs=$playheadMs durationMs=$durationMs"
+                                )
                                 if (isPlayingWave) {
                                     exoPlayer.pause()
                                     val current = exoPlayer.currentPosition.coerceAtLeast(0L).toInt()
@@ -953,126 +969,323 @@ private fun WaveformCanvas(
     onZoomChanged: (Float) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val scrollState = rememberScrollState()
     val density = LocalDensity.current
     var lastTapUptimeMs by remember { mutableStateOf(0L) }
     var lastTapAbsX by remember { mutableStateOf(Float.NaN) }
     var isDraggingHandle by remember { mutableStateOf(false) }
-    var appliedScrollRestoreKey by remember { mutableStateOf<String?>(null) }
+    var isLongPressTrimDragActive by remember { mutableStateOf(false) }
+    var isTransformGestureActive by remember { mutableStateOf(false) }
+    var activeTrimHandleForDebug by remember { mutableStateOf(DragTarget.NONE) }
+    var waveformCenterFraction by remember(peaks, durationMs) { mutableStateOf(0.5f) }
+    var appliedViewportRestoreKey by remember { mutableStateOf<String?>(null) }
 
     BoxWithConstraints(modifier = modifier) {
         val viewportWidthPx = with(density) { maxWidth.toPx() }
-        val canvasWidthDp = maxWidth * zoom
-        val canvasWidthPx = with(density) { canvasWidthDp.toPx() }.coerceAtLeast(1f)
         val handleHitPx = with(density) { 24.dp.toPx() }
         val swipeThresholdPx = with(density) { 28.dp.toPx() }
+        val latestZoom by rememberUpdatedState(zoom)
+        val latestDurationMs by rememberUpdatedState(durationMs)
+        val latestInMs by rememberUpdatedState(inMs)
+        val latestOutMs by rememberUpdatedState(outMs)
+        val latestPlayheadMs by rememberUpdatedState(playheadMs)
+        val latestViewportWidthPx by rememberUpdatedState(viewportWidthPx)
+        val latestHandleHitPx by rememberUpdatedState(handleHitPx)
+        val latestSwipeThresholdPx by rememberUpdatedState(swipeThresholdPx)
+        val latestLongPressTrimDragActive by rememberUpdatedState(isLongPressTrimDragActive)
+        val latestTransformGestureActive by rememberUpdatedState(isTransformGestureActive)
+        val latestActiveTrimHandleForDebug by rememberUpdatedState(activeTrimHandleForDebug)
+        val latestOnTapTimeMs by rememberUpdatedState(onTapTimeMs)
+        val latestOnDragInMs by rememberUpdatedState(onDragInMs)
+        val latestOnDragOutMs by rememberUpdatedState(onDragOutMs)
+        val latestOnSwipeLeftSetIn by rememberUpdatedState(onSwipeLeftSetIn)
+        val latestOnSwipeRightSetOut by rememberUpdatedState(onSwipeRightSetOut)
+        val latestOnZoomChanged by rememberUpdatedState(onZoomChanged)
 
-        val maxScrollPx = (canvasWidthPx - viewportWidthPx).coerceAtLeast(0f)
-
-        LaunchedEffect(scrollRestoreKey, restoredScrollPx, maxScrollPx, zoom, playheadMs, durationMs) {
-            val key = scrollRestoreKey ?: return@LaunchedEffect
-            val savedScroll = restoredScrollPx ?: return@LaunchedEffect
-            if (appliedScrollRestoreKey == key) return@LaunchedEffect
-            val clamped = savedScroll.coerceIn(0, maxScrollPx.roundToInt())
-            scrollState.scrollTo(clamped)
-            appliedScrollRestoreKey = key
+        fun visibleWindow(currentZoom: Float, currentCenter: Float): Triple<Float, Float, Float> {
+            val visibleFraction = 1f / currentZoom.coerceAtLeast(1f)
+            val startFraction = (currentCenter - visibleFraction / 2f).coerceIn(0f, 1f)
+            val endFraction = (startFraction + visibleFraction).coerceIn(0f, 1f)
+            val effectiveEndFraction = if (endFraction <= startFraction) 1f else endFraction
+            return Triple(visibleFraction, startFraction, effectiveEndFraction)
         }
 
-        LaunchedEffect(scrollState) {
-            snapshotFlow { scrollState.value }
+        fun centerBounds(currentZoom: Float): Pair<Float, Float> {
+            val visibleFraction = 1f / currentZoom.coerceAtLeast(1f)
+            val minCenter = visibleFraction / 2f
+            val maxCenter = 1f - minCenter
+            return minCenter to maxCenter
+        }
+
+        fun viewportScrollPx(currentZoom: Float, currentCenter: Float): Int {
+            val (_, startFraction, _) = visibleWindow(currentZoom, currentCenter)
+            val virtualCanvasWidthPx = (viewportWidthPx * currentZoom).coerceAtLeast(1f)
+            return (startFraction * virtualCanvasWidthPx).roundToInt().coerceAtLeast(0)
+        }
+
+        LaunchedEffect(scrollRestoreKey, restoredScrollPx, zoom, durationMs, viewportWidthPx) {
+            val key = scrollRestoreKey ?: return@LaunchedEffect
+            val savedScroll = restoredScrollPx ?: return@LaunchedEffect
+            if (appliedViewportRestoreKey == key) return@LaunchedEffect
+            val visibleFraction = 1f / zoom.coerceAtLeast(1f)
+            val virtualCanvasWidthPx = (viewportWidthPx * zoom).coerceAtLeast(1f)
+            val savedCenterFraction = if (zoom <= 1f) {
+                0.5f
+            } else {
+                val rawCenter = (savedScroll.toFloat() + viewportWidthPx / 2f) / virtualCanvasWidthPx
+                val minCenter = visibleFraction / 2f
+                val maxCenter = 1f - minCenter
+                rawCenter.coerceIn(minCenter, maxCenter)
+            }
+            waveformCenterFraction = savedCenterFraction
+            logWaveformGesture(
+                "VIEWPORT_RESTORE",
+                "key=$key savedScroll=$savedScroll restoredCenter=$savedCenterFraction zoom=$zoom"
+            )
+            appliedViewportRestoreKey = key
+        }
+
+        LaunchedEffect(Unit) {
+            snapshotFlow { viewportScrollPx(zoom, waveformCenterFraction) }
                 .distinctUntilChanged()
                 .debounce(120)
                 .collect { onScrollChanged(it) }
         }
 
-        LaunchedEffect(zoom, durationMs) {
-            if (durationMs <= 0 || viewportWidthPx <= 0f) return@LaunchedEffect
-            val clampedScrollInt = scrollState.value.coerceIn(0, maxScrollPx.roundToInt())
-            if (scrollState.value != clampedScrollInt) {
-                scrollState.scrollTo(clampedScrollInt)
-            }
-        }
-
-        LaunchedEffect(playheadMs, durationMs, canvasWidthPx, viewportWidthPx, isDraggingHandle) {
-            if (durationMs <= 0 || viewportWidthPx <= 0f) return@LaunchedEffect
-            if (isDraggingHandle) return@LaunchedEffect
-            val clampedScrollPx = scrollState.value.toFloat().coerceIn(0f, maxScrollPx)
-            val safePlayheadMs = playheadMs.coerceIn(0, durationMs)
-            val playFrac = safePlayheadMs.toFloat() / durationMs.toFloat()
-            val playX = playFrac * canvasWidthPx
-            val isVisible = playX in clampedScrollPx..(clampedScrollPx + viewportWidthPx)
-            if (!isVisible) {
-                val targetScrollPx = (playX - viewportWidthPx / 2f).coerceIn(0f, maxScrollPx)
-                val targetScrollInt = targetScrollPx.roundToInt()
-                if (scrollState.value != targetScrollInt) {
-                    scrollState.scrollTo(targetScrollInt)
-                }
-            }
-        }
-
-        Row(
+        Canvas(
             modifier = Modifier
                 .fillMaxSize()
-                .horizontalScroll(scrollState)
-        ) {
-            Canvas(
-                modifier = Modifier
-                    .width(canvasWidthDp)
-                    .fillMaxHeight()
-                    .pointerInput(viewportWidthPx, durationMs) {
-                        if (durationMs <= 0) return@pointerInput
-                        var gestureZoom = zoom
-                        detectTransformGestures { centroid, pan, zoomChange, _ ->
-                            val currentCanvasWidthPx = size.width.coerceAtLeast(1).toFloat()
-                            val currentMaxScrollPx =
-                                (currentCanvasWidthPx - viewportWidthPx).coerceAtLeast(0f)
-                            val previousZoom = gestureZoom
-                            val nextZoom = (previousZoom * zoomChange).coerceIn(ZOOM_MIN, ZOOM_MAX)
-                            gestureZoom = nextZoom
-                            val currentScrollPx = scrollState.value.toFloat().coerceIn(0f, currentMaxScrollPx)
-                            val anchorAbsX = (currentScrollPx + centroid.x).coerceIn(0f, currentCanvasWidthPx)
-                            val anchorFraction = if (currentCanvasWidthPx <= 0f) {
-                                0f
-                            } else {
-                                (anchorAbsX / currentCanvasWidthPx).coerceIn(0f, 1f)
+                    .pointerInput(Unit) {
+                        logWaveformGesture(
+                            "TRANSFORM_POINTER_READY",
+                            "viewportWidthPx=$latestViewportWidthPx durationMs=$latestDurationMs zoom=$latestZoom"
+                        )
+                        var transformStep = 0
+                        awaitEachGesture {
+                            var transformHandled = false
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val pressedCount = event.changes.count { it.pressed }
+                                if (pressedCount >= 2 && !latestLongPressTrimDragActive && !isDraggingHandle) {
+                                    if (!transformHandled) {
+                                        transformHandled = true
+                                        isTransformGestureActive = true
+                                        logWaveformGesture(
+                                            "TRANSFORM_START",
+                                            "pressedCount=$pressedCount zoom=$latestZoom center=$waveformCenterFraction"
+                                        )
+                                    }
+                                    transformStep += 1
+                                    val pressedChanges = event.changes.filter { it.pressed && it.previousPressed }
+                                    val currentCentroid = if (pressedChanges.isEmpty()) {
+                                        Offset.Zero
+                                    } else {
+                                        val sumX = pressedChanges.sumOf { it.position.x.toDouble() }.toFloat()
+                                        val sumY = pressedChanges.sumOf { it.position.y.toDouble() }.toFloat()
+                                        Offset(sumX / pressedChanges.size.toFloat(), sumY / pressedChanges.size.toFloat())
+                                    }
+                                    val previousCentroid = if (pressedChanges.isEmpty()) {
+                                        Offset.Zero
+                                    } else {
+                                        val sumX = pressedChanges.sumOf { it.previousPosition.x.toDouble() }.toFloat()
+                                        val sumY = pressedChanges.sumOf { it.previousPosition.y.toDouble() }.toFloat()
+                                        Offset(sumX / pressedChanges.size.toFloat(), sumY / pressedChanges.size.toFloat())
+                                    }
+                                    fun averageDistanceToCentroid(current: Boolean): Float {
+                                        if (pressedChanges.isEmpty()) return 0f
+                                        val centroid = if (current) currentCentroid else previousCentroid
+                                        val total = pressedChanges.sumOf { pointer ->
+                                            val point = if (current) pointer.position else pointer.previousPosition
+                                            hypot(
+                                                (point.x - centroid.x).toDouble(),
+                                                (point.y - centroid.y).toDouble()
+                                            )
+                                        }.toFloat()
+                                        return total / pressedChanges.size.toFloat()
+                                    }
+                                    val previousDistance = averageDistanceToCentroid(current = false)
+                                    val currentDistance = averageDistanceToCentroid(current = true)
+                                    val zoomChange = if (previousDistance > 0f) {
+                                        currentDistance / previousDistance
+                                    } else {
+                                        1f
+                                    }
+                                    val pan = currentCentroid - previousCentroid
+                                    val centroid = currentCentroid
+                                    val currentCanvasWidthPx = size.width.coerceAtLeast(1).toFloat()
+                                    val previousZoom = latestZoom
+                                    val nextZoom = (previousZoom * zoomChange).coerceIn(ZOOM_MIN, ZOOM_MAX)
+                                    if (nextZoom != previousZoom) {
+                                        latestOnZoomChanged(nextZoom)
+                                    }
+                                    val visibleFraction = 1f / nextZoom
+                                    val panFraction = if (currentCanvasWidthPx > 0f) {
+                                        -pan.x / currentCanvasWidthPx * visibleFraction
+                                    } else {
+                                        0f
+                                    }
+                                    val (minCenter, maxCenter) = centerBounds(nextZoom)
+                                    waveformCenterFraction = if (nextZoom <= 1f) {
+                                        0.5f
+                                    } else {
+                                        (waveformCenterFraction + panFraction).coerceIn(minCenter, maxCenter)
+                                    }
+                                    if (transformStep == 1 || transformStep % 8 == 0) {
+                                        logWaveformGesture(
+                                            "TRANSFORM_EVENT",
+                                            "step=$transformStep pointers=$pressedCount centroid=(${centroid.x.roundToInt()},${centroid.y.roundToInt()}) panX=${pan.x.roundToInt()} zoomChange=$zoomChange nextZoom=$nextZoom center=$waveformCenterFraction isLongPressTrimDragActive=$latestLongPressTrimDragActive activeTrimHandle=$latestActiveTrimHandleForDebug"
+                                        )
+                                    }
+                                    event.changes.forEach { it.consume() }
+                                }
+                                if (pressedCount < 2) {
+                                    if (transformHandled) {
+                                        logWaveformGesture(
+                                            "TRANSFORM_END",
+                                            "center=$waveformCenterFraction zoom=$latestZoom"
+                                        )
+                                        isTransformGestureActive = false
+                                    }
+                                    if (event.changes.none { it.pressed }) break
+                                    if (transformHandled) break
+                                }
                             }
-                            if (nextZoom != previousZoom) {
-                                onZoomChanged(nextZoom)
-                            }
-                            val nextCanvasWidthPx = (viewportWidthPx * nextZoom).coerceAtLeast(1f)
-                            val nextMaxScrollPx = (nextCanvasWidthPx - viewportWidthPx).coerceAtLeast(0f)
-                            val anchoredScrollPx =
-                                (anchorFraction * nextCanvasWidthPx - centroid.x).coerceIn(0f, nextMaxScrollPx)
-                            val pannedScrollPx = (anchoredScrollPx - pan.x).coerceIn(0f, nextMaxScrollPx)
-                            scrollState.dispatchRawDelta(pannedScrollPx - currentScrollPx)
                         }
                     }
-                    .pointerInput(
-                        canvasWidthPx,
-                        durationMs,
-                        inMs,
-                        outMs,
-                        handleHitPx,
-                        swipeThresholdPx,
-                        zoom
-                    ) {
-                        if (durationMs <= 0) return@pointerInput
+                    .pointerInput(Unit) {
+                        logWaveformGesture(
+                            "LONG_PRESS_DRAG_READY",
+                            "viewportWidthPx=$latestViewportWidthPx durationMs=$latestDurationMs inMs=$latestInMs outMs=$latestOutMs"
+                        )
+                        var activeLongPressTarget = DragTarget.NONE
+                        var longPressDragStep = 0
+                        fun xToTimeMs(x: Float, widthPx: Float): Int {
+                            val currentDurationMs = latestDurationMs
+                            val (_, startFraction, effectiveEndFraction) =
+                                visibleWindow(latestZoom, waveformCenterFraction)
+                            val localFraction = if (widthPx <= 0f) {
+                                0f
+                            } else {
+                                (x / widthPx).coerceIn(0f, 1f)
+                            }
+                            val selectedFraction =
+                                startFraction + localFraction * (effectiveEndFraction - startFraction)
+                            return (selectedFraction * currentDurationMs).roundToInt()
+                                .coerceIn(0, currentDurationMs)
+                        }
+                        detectDragGesturesAfterLongPress(
+                            onDragStart = { offset ->
+                                if (latestTransformGestureActive) return@detectDragGesturesAfterLongPress
+                                if (latestDurationMs <= 0) return@detectDragGesturesAfterLongPress
+                                val currentInMs = latestInMs
+                                val currentOutMs = latestOutMs
+                                val widthPx = size.width.coerceAtLeast(1).toFloat()
+                                val safeX = offset.x.coerceIn(0f, widthPx)
+                                val touchTimeMs = xToTimeMs(safeX, widthPx)
+                                val inDistance = abs(touchTimeMs - currentInMs)
+                                val outDistance = abs(touchTimeMs - currentOutMs)
+                                activeLongPressTarget =
+                                    if (inDistance <= outDistance) DragTarget.IN else DragTarget.OUT
+                                activeTrimHandleForDebug = activeLongPressTarget
+                                isLongPressTrimDragActive = true
+                                isDraggingHandle = true
+                                longPressDragStep = 0
+                                when (activeLongPressTarget) {
+                                    DragTarget.IN -> latestOnDragInMs(touchTimeMs)
+                                    DragTarget.OUT -> latestOnDragOutMs(touchTimeMs)
+                                    DragTarget.NONE -> Unit
+                                }
+                                logWaveformGesture(
+                                    "LONG_PRESS_START",
+                                    "x=${offset.x.roundToInt()} y=${offset.y.roundToInt()} timeMs=$touchTimeMs distanceToIn=$inDistance distanceToOut=$outDistance chosen=$activeLongPressTarget zoom=$latestZoom center=$waveformCenterFraction isLongPressTrimDragActive=$isLongPressTrimDragActive"
+                                )
+                            },
+                            onDragCancel = {
+                                logWaveformGesture(
+                                    "LONG_PRESS_CANCEL",
+                                    "activeTrimHandle=$activeLongPressTarget inMs=$latestInMs outMs=$latestOutMs center=$waveformCenterFraction"
+                                )
+                                activeLongPressTarget = DragTarget.NONE
+                                activeTrimHandleForDebug = DragTarget.NONE
+                                isLongPressTrimDragActive = false
+                                isDraggingHandle = false
+                            },
+                            onDragEnd = {
+                                logWaveformGesture(
+                                    "LONG_PRESS_END",
+                                    "activeTrimHandle=$activeLongPressTarget inMs=$latestInMs outMs=$latestOutMs center=$waveformCenterFraction"
+                                )
+                                activeLongPressTarget = DragTarget.NONE
+                                activeTrimHandleForDebug = DragTarget.NONE
+                                isLongPressTrimDragActive = false
+                                isDraggingHandle = false
+                            },
+                            onDrag = { change, _ ->
+                                val widthPx = size.width.coerceAtLeast(1).toFloat()
+                                val safeX = change.position.x.coerceIn(0f, widthPx)
+                                val timeMs = xToTimeMs(safeX, widthPx)
+                                longPressDragStep += 1
+                                when (activeLongPressTarget) {
+                                    DragTarget.IN -> latestOnDragInMs(timeMs)
+                                    DragTarget.OUT -> latestOnDragOutMs(timeMs)
+                                    DragTarget.NONE -> Unit
+                                }
+                                if (longPressDragStep == 1 || longPressDragStep % 8 == 0) {
+                                    logWaveformGesture(
+                                        "LONG_PRESS_DRAG",
+                                        "step=$longPressDragStep activeTrimHandle=$activeLongPressTarget x=${change.position.x.roundToInt()} timeMs=$timeMs inMs=${latestInMs} outMs=${latestOutMs} zoom=$latestZoom center=$waveformCenterFraction"
+                                    )
+                                }
+                                change.consume()
+                            }
+                        )
+                    }
+                    .pointerInput(Unit) {
+                        logWaveformGesture(
+                            "PRIMARY_POINTER_READY",
+                            "viewportWidthPx=$latestViewportWidthPx durationMs=$latestDurationMs inMs=$latestInMs outMs=$latestOutMs zoom=$latestZoom"
+                        )
                         awaitEachGesture {
                             val down = awaitFirstDown(requireUnconsumed = false)
                             var pointerId = down.id
-                            val downAbsX = down.position.x.coerceIn(0f, canvasWidthPx)
-                            val inAbsX = (inMs.toFloat() / durationMs.toFloat()) * canvasWidthPx
-                            val outAbsX = (outMs.toFloat() / durationMs.toFloat()) * canvasWidthPx
-                            fun absXToTimeMs(absX: Float): Int {
-                                val fraction = if (canvasWidthPx <= 0f) 0f else (absX / canvasWidthPx).coerceIn(0f, 1f)
-                                return (fraction * durationMs).roundToInt().coerceIn(0, durationMs)
+                            if (latestDurationMs <= 0) return@awaitEachGesture
+                            val widthPx = size.width.coerceAtLeast(1).toFloat()
+                            val currentDurationMs = latestDurationMs
+                            val currentHandleHitPx = latestHandleHitPx
+                            val currentSwipeThresholdPx = latestSwipeThresholdPx
+                            val (_, startFraction, effectiveEndFraction) =
+                                visibleWindow(latestZoom, waveformCenterFraction)
+                            fun timeMsToX(timeMs: Int): Float? {
+                                val fraction =
+                                    timeMs.coerceIn(0, currentDurationMs).toFloat() / currentDurationMs.toFloat()
+                                if (fraction < startFraction || fraction > effectiveEndFraction) return null
+                                return ((fraction - startFraction) /
+                                    (effectiveEndFraction - startFraction)) * widthPx
                             }
-                            val dragTarget = when {
-                                abs(downAbsX - inAbsX) <= handleHitPx -> DragTarget.IN
-                                abs(downAbsX - outAbsX) <= handleHitPx -> DragTarget.OUT
+                            fun xToTimeMs(x: Float): Int {
+                                val localFraction = if (widthPx <= 0f) 0f else (x / widthPx).coerceIn(0f, 1f)
+                                val selectedFraction =
+                                    startFraction + localFraction * (effectiveEndFraction - startFraction)
+                                return (selectedFraction * currentDurationMs).roundToInt().coerceIn(0, currentDurationMs)
+                            }
+                            val downAbsX = down.position.x.coerceIn(0f, widthPx)
+                            val inAbsX = timeMsToX(latestInMs)
+                            val outAbsX = timeMsToX(latestOutMs)
+                            val directHandleTarget = when {
+                                inAbsX != null && abs(downAbsX - inAbsX) <= currentHandleHitPx -> DragTarget.IN
+                                outAbsX != null && abs(downAbsX - outAbsX) <= currentHandleHitPx -> DragTarget.OUT
                                 else -> DragTarget.NONE
                             }
-                            if (dragTarget != DragTarget.NONE) {
+                            val nearestDragTarget = run {
+                                val inDistance = abs(xToTimeMs(downAbsX) - latestInMs)
+                                val outDistance = abs(xToTimeMs(downAbsX) - latestOutMs)
+                                if (inDistance <= outDistance) DragTarget.IN else DragTarget.OUT
+                            }
+                            logWaveformGesture(
+                                "PRIMARY_DOWN",
+                                "x=${down.position.x.roundToInt()} y=${down.position.y.roundToInt()} directHandle=$directHandleTarget nearest=$nearestDragTarget zoom=$latestZoom center=$waveformCenterFraction isLongPressTrimDragActive=$latestLongPressTrimDragActive activeTrimHandle=$latestActiveTrimHandleForDebug"
+                            )
+                            if (directHandleTarget != DragTarget.NONE) {
+                                activeTrimHandleForDebug = directHandleTarget
                                 isDraggingHandle = true
                             }
 
@@ -1083,6 +1296,8 @@ private fun WaveformCanvas(
                             var deltaXFromDown = 0f
                             var deltaYFromDown = 0f
                             var handleMoved = false
+                            var waveformActionsLockedByLongPressTrim = false
+                            var waveformActionsLockedByTransform = false
 
                             while (true) {
                                 val event = awaitPointerEvent()
@@ -1104,22 +1319,66 @@ private fun WaveformCanvas(
                                     hypot(fromDownX.toDouble(), fromDownY.toDouble()).toFloat()
                                 )
 
-                                val absX = currentPos.x.coerceIn(0f, canvasWidthPx)
-                                val timeMs = absXToTimeMs(absX)
+                                val activePressedCount = event.changes.count { it.pressed }
 
-                                when (dragTarget) {
+                                if (latestTransformGestureActive && directHandleTarget == DragTarget.NONE) {
+                                    if (!waveformActionsLockedByTransform) {
+                                        logWaveformGesture(
+                                            "PRIMARY_LOCKED_BY_TRANSFORM",
+                                            "x=${currentPos.x.roundToInt()} y=${currentPos.y.roundToInt()} pressedCount=$activePressedCount center=$waveformCenterFraction"
+                                        )
+                                    }
+                                    waveformActionsLockedByTransform = true
+                                    lastPos = currentPos
+                                    upUptimeMs = change.uptimeMillis
+                                    upAbsX = currentPos.x.coerceIn(0f, widthPx)
+                                    if (!change.pressed) break
+                                    continue
+                                }
+
+                                if (isLongPressTrimDragActive && directHandleTarget == DragTarget.NONE) {
+                                    if (!waveformActionsLockedByLongPressTrim) {
+                                        logWaveformGesture(
+                                            "PRIMARY_LOCKED_BY_LONG_PRESS",
+                                            "x=${currentPos.x.roundToInt()} y=${currentPos.y.roundToInt()} center=$waveformCenterFraction activeTrimHandle=$activeTrimHandleForDebug"
+                                        )
+                                    }
+                                    waveformActionsLockedByLongPressTrim = true
+                                    lastPos = currentPos
+                                    upUptimeMs = change.uptimeMillis
+                                    upAbsX = currentPos.x.coerceIn(0f, widthPx)
+                                    if (!change.pressed) break
+                                    continue
+                                }
+
+                                val absX = currentPos.x.coerceIn(0f, widthPx)
+                                val timeMs = xToTimeMs(absX)
+
+                                when (directHandleTarget) {
                                     DragTarget.IN -> {
                                         if (maxDistanceFromDown > viewConfiguration.touchSlop) {
+                                            isDraggingHandle = true
                                             handleMoved = true
-                                            onDragInMs(timeMs)
+                                            activeTrimHandleForDebug = DragTarget.IN
+                                            latestOnDragInMs(timeMs)
+                                            logWaveformGesture(
+                                                "DIRECT_HANDLE_DRAG",
+                                                "target=IN x=${currentPos.x.roundToInt()} timeMs=$timeMs inMs=${latestInMs} outMs=${latestOutMs} zoom=$latestZoom center=$waveformCenterFraction"
+                                            )
                                             change.consume()
                                         }
                                     }
 
                                     DragTarget.OUT -> {
                                         if (maxDistanceFromDown > viewConfiguration.touchSlop) {
+                                            isDraggingHandle = true
                                             handleMoved = true
-                                            onDragOutMs(timeMs)
+                                            activeTrimHandleForDebug = DragTarget.OUT
+                                            latestOnDragOutMs(timeMs)
+                                            logWaveformGesture(
+                                                "DIRECT_HANDLE_DRAG",
+                                                "target=OUT x=${currentPos.x.roundToInt()} timeMs=$timeMs inMs=${latestInMs} outMs=${latestOutMs} zoom=$latestZoom center=$waveformCenterFraction"
+                                            )
                                             change.consume()
                                         }
                                     }
@@ -1133,8 +1392,29 @@ private fun WaveformCanvas(
                                 if (!change.pressed) break
                             }
 
-                            if (dragTarget != DragTarget.NONE && handleMoved) {
+                            if (handleMoved) {
+                                logWaveformGesture(
+                                    "DIRECT_HANDLE_END",
+                                    "activeTrimHandle=$activeTrimHandleForDebug inMs=${latestInMs} outMs=${latestOutMs}"
+                                )
+                                activeTrimHandleForDebug = DragTarget.NONE
                                 isDraggingHandle = false
+                                return@awaitEachGesture
+                            }
+
+                            if (waveformActionsLockedByLongPressTrim) {
+                                logWaveformGesture(
+                                    "PRIMARY_SKIP_AFTER_LONG_PRESS",
+                                    "activeTrimHandle=$activeTrimHandleForDebug inMs=${latestInMs} outMs=${latestOutMs}"
+                                )
+                                return@awaitEachGesture
+                            }
+
+                            if (waveformActionsLockedByTransform) {
+                                logWaveformGesture(
+                                    "PRIMARY_SKIP_AFTER_TRANSFORM",
+                                    "center=$waveformCenterFraction zoom=$latestZoom"
+                                )
                                 return@awaitEachGesture
                             }
 
@@ -1144,113 +1424,161 @@ private fun WaveformCanvas(
                                 val isDoubleTap = lastTapUptimeMs > 0L &&
                                     (upUptimeMs - lastTapUptimeMs) <= doubleTapWindowMs &&
                                     !lastTapAbsX.isNaN() &&
-                                    abs(upAbsX - lastTapAbsX) <= handleHitPx
+                                    abs(upAbsX - lastTapAbsX) <= currentHandleHitPx
 
-                                val safeAbsX = upAbsX.coerceIn(0f, canvasWidthPx)
-                                val tapTimeMs = absXToTimeMs(safeAbsX)
+                                val safeAbsX = upAbsX.coerceIn(0f, widthPx)
+                                val tapTimeMs = xToTimeMs(safeAbsX)
                                 if (isDoubleTap) {
-                                    val inDistance = abs(tapTimeMs - inMs)
-                                    val outDistance = abs(tapTimeMs - outMs)
+                                    logWaveformGesture(
+                                        "DOUBLE_TAP_TRIM",
+                                        "tapTimeMs=$tapTimeMs inMs=${latestInMs} outMs=${latestOutMs} nearest=${if (abs(tapTimeMs - latestInMs) <= abs(tapTimeMs - latestOutMs)) DragTarget.IN else DragTarget.OUT}"
+                                    )
+                                    val inDistance = abs(tapTimeMs - latestInMs)
+                                    val outDistance = abs(tapTimeMs - latestOutMs)
                                     if (inDistance <= outDistance) {
-                                        onDragInMs(tapTimeMs)
+                                        latestOnDragInMs(tapTimeMs)
                                     } else {
-                                        onDragOutMs(tapTimeMs)
+                                        latestOnDragOutMs(tapTimeMs)
                                     }
                                     lastTapUptimeMs = 0L
                                     lastTapAbsX = Float.NaN
                                 } else {
                                     val pressDurationMs = upUptimeMs - down.uptimeMillis
-                                    if (pressDurationMs >= viewConfiguration.longPressTimeoutMillis) {
-                                        onTogglePlayPause()
-                                    } else {
-                                        onTapTimeMs(tapTimeMs)
+                                    if (pressDurationMs < viewConfiguration.longPressTimeoutMillis) {
+                                        logWaveformGesture(
+                                            "SINGLE_TAP",
+                                            "tapTimeMs=$tapTimeMs pressDurationMs=$pressDurationMs zoom=$latestZoom center=$waveformCenterFraction"
+                                        )
+                                        latestOnTapTimeMs(tapTimeMs)
                                         lastTapUptimeMs = upUptimeMs
                                         lastTapAbsX = upAbsX
                                     }
                                 }
-                            } else if (abs(deltaXFromDown) > abs(deltaYFromDown) && abs(deltaXFromDown) >= swipeThresholdPx) {
-                                if (deltaXFromDown < 0f) onSwipeLeftSetIn() else onSwipeRightSetOut()
+                            } else if (
+                                !latestLongPressTrimDragActive &&
+                                !latestTransformGestureActive &&
+                                directHandleTarget == DragTarget.NONE &&
+                                abs(deltaXFromDown) > abs(deltaYFromDown) &&
+                                abs(deltaXFromDown) >= currentSwipeThresholdPx
+                            ) {
+                                logWaveformGesture(
+                                    "SWIPE_ACTION",
+                                    "direction=${if (deltaXFromDown < 0f) "LEFT_SET_IN" else "RIGHT_SET_OUT"} deltaX=$deltaXFromDown deltaY=$deltaYFromDown playheadMs=$latestPlayheadMs activeTrimHandle=$activeTrimHandleForDebug"
+                                )
+                                if (deltaXFromDown < 0f) latestOnSwipeLeftSetIn() else latestOnSwipeRightSetOut()
                             }
+                            activeTrimHandleForDebug = DragTarget.NONE
                             isDraggingHandle = false
                         }
                     }
-            ) {
-                if (peaks.isEmpty()) return@Canvas
+        ) {
+            if (peaks.isEmpty()) return@Canvas
 
-                val centerY = size.height / 2f
-                val peakCount = peaks.size
-                val dx = size.width / peakCount.toFloat()
-                val strokeWidth = max(1f, dx * 0.7f)
+            val centerY = size.height / 2f
+            val widthPx = size.width
+            val heightPx = size.height
+            val safeDuration = durationMs.coerceAtLeast(1)
+            val maxIndex = peaks.lastIndex.coerceAtLeast(1)
+            val (_, startFraction, effectiveEndFraction) =
+                visibleWindow(zoom.coerceAtLeast(1f), waveformCenterFraction)
+            val arrangementInColor = Color(0xFFFF1744)
+            val arrangementOutColor = Color(0xFFFFC107)
 
-                peaks.forEachIndexed { i, peak ->
-                    val x = i * dx
-                    val halfHeight = peak.coerceIn(0f, 1f) * (size.height * 0.48f)
-                    drawLine(
-                        color = Color(0xFF64D2FF),
-                        start = androidx.compose.ui.geometry.Offset(x, centerY - halfHeight),
-                        end = androidx.compose.ui.geometry.Offset(x, centerY + halfHeight),
-                        strokeWidth = strokeWidth,
-                        cap = StrokeCap.Round
+            peaks.forEachIndexed { index, peak ->
+                val positionFraction = index.toFloat() / maxIndex.toFloat()
+                if (positionFraction < startFraction || positionFraction > effectiveEndFraction) {
+                    return@forEachIndexed
+                }
+                val x = ((positionFraction - startFraction) /
+                    (effectiveEndFraction - startFraction)) * widthPx
+                val halfHeight = peak.coerceIn(0f, 1f) * (heightPx * 0.48f)
+                drawLine(
+                    color = Color(0xFF64D2FF),
+                    start = Offset(x, centerY - halfHeight),
+                    end = Offset(x, centerY + halfHeight),
+                    strokeWidth = max(1f, widthPx / peaks.size.coerceAtLeast(1).toFloat() * 0.7f),
+                    cap = StrokeCap.Round
+                )
+            }
+
+            if (durationMs > 0) {
+                val inFraction = inMs.coerceIn(0, durationMs).toFloat() / durationMs.toFloat()
+                val outFraction = outMs.coerceIn(0, durationMs).toFloat() / durationMs.toFloat()
+                val leftFraction = min(inFraction, outFraction).coerceIn(0f, 1f)
+                val rightFraction = max(inFraction, outFraction).coerceIn(0f, 1f)
+                val overlayStartFraction = max(leftFraction, startFraction)
+                val overlayEndFraction = min(rightFraction, effectiveEndFraction)
+                if (overlayEndFraction > overlayStartFraction) {
+                    val overlayStartX = ((overlayStartFraction - startFraction) /
+                        (effectiveEndFraction - startFraction)) * widthPx
+                    val overlayEndX = ((overlayEndFraction - startFraction) /
+                        (effectiveEndFraction - startFraction)) * widthPx
+                    drawRect(
+                        color = Color(0x224CD964),
+                        topLeft = Offset(overlayStartX, 0f),
+                        size = Size(overlayEndX - overlayStartX, heightPx)
                     )
                 }
 
-                if (durationMs > 0) {
-                    val inX = (inMs.toFloat() / durationMs.toFloat()) * size.width
-                    val outX = (outMs.toFloat() / durationMs.toFloat()) * size.width
-                    val safePlayhead = playheadMs.coerceIn(0, durationMs)
-                    val playheadX = (safePlayhead.toFloat() / durationMs.toFloat()) * size.width
-                    val leftX = min(inX, outX)
-                    val rightX = max(inX, outX)
-
-                    if (rightX > leftX) {
-                        drawRect(
-                            color = Color(0x224CD964),
-                            topLeft = Offset(leftX, 0f),
-                            size = Size(rightX - leftX, size.height)
-                        )
-                    }
-
-                    drawLine(
-                        color = Color(0xFF77FF77),
-                        start = Offset(inX, 0f),
-                        end = Offset(inX, size.height),
-                        strokeWidth = 3.5f
-                    )
-                    drawLine(
-                        color = Color(0xFFFF6B6B),
-                        start = Offset(outX, 0f),
-                        end = Offset(outX, size.height),
-                        strokeWidth = 3.5f
-                    )
+                val safePlayhead = playheadMs.coerceIn(0, durationMs)
+                val playheadFraction = safePlayhead.toFloat() / durationMs.toFloat()
+                if (playheadFraction in startFraction..effectiveEndFraction) {
+                    val playheadX = ((playheadFraction - startFraction) /
+                        (effectiveEndFraction - startFraction)) * widthPx
                     drawLine(
                         color = Color(0xFFE3F2FD),
                         start = Offset(playheadX, 0f),
-                        end = Offset(playheadX, size.height),
+                        end = Offset(playheadX, heightPx),
                         strokeWidth = 3.5f
                     )
-                    drawCircle(
-                        color = Color(0xFF77FF77),
-                        radius = 7f,
-                        center = Offset(inX, 9f)
+                }
+
+                if (inFraction in startFraction..effectiveEndFraction) {
+                    val inX = ((inFraction - startFraction) /
+                        (effectiveEndFraction - startFraction)) * widthPx
+                    drawLine(
+                        color = arrangementInColor.copy(alpha = 0.3f),
+                        start = Offset(inX, 0f),
+                        end = Offset(inX, heightPx),
+                        strokeWidth = 6.5f
                     )
-                    drawCircle(
-                        color = Color(0xFF77FF77),
-                        radius = 7f,
-                        center = Offset(inX, size.height - 9f)
+                    drawLine(
+                        color = arrangementInColor,
+                        start = Offset(inX, 0f),
+                        end = Offset(inX, heightPx),
+                        strokeWidth = 3.5f
                     )
+                    drawCircle(color = arrangementInColor, radius = 7f, center = Offset(inX, 9f))
                     drawCircle(
-                        color = Color(0xFFFF6B6B),
+                        color = arrangementInColor,
                         radius = 7f,
-                        center = Offset(outX, 9f)
+                        center = Offset(inX, heightPx - 9f)
                     )
+                }
+
+                if (outFraction in startFraction..effectiveEndFraction) {
+                    val outX = ((outFraction - startFraction) /
+                        (effectiveEndFraction - startFraction)) * widthPx
+                    drawLine(
+                        color = arrangementOutColor.copy(alpha = 0.28f),
+                        start = Offset(outX, 0f),
+                        end = Offset(outX, heightPx),
+                        strokeWidth = 6.5f
+                    )
+                    drawLine(
+                        color = arrangementOutColor,
+                        start = Offset(outX, 0f),
+                        end = Offset(outX, heightPx),
+                        strokeWidth = 3.5f
+                    )
+                    drawCircle(color = arrangementOutColor, radius = 7f, center = Offset(outX, 9f))
                     drawCircle(
-                        color = Color(0xFFFF6B6B),
+                        color = arrangementOutColor,
                         radius = 7f,
-                        center = Offset(outX, size.height - 9f)
+                        center = Offset(outX, heightPx - 9f)
                     )
                 }
             }
-            Spacer(Modifier.width(2.dp))
         }
     }
 }
