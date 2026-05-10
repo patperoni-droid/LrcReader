@@ -36,7 +36,8 @@ import com.patrick.lrcreader.exo.R
 data class ArrangementListItem(
     val id: String,
     val title: String,
-    val isActive: Boolean = false
+    val isActive: Boolean = false,
+    val isQueued: Boolean = false
 )
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -108,9 +109,17 @@ fun ArrangementListCard(
                         ) {
                             Text(
                                 text = item.title,
-                                color = if (item.isActive) Color(0xFF66BB6A) else Color.White,
+                                color = when {
+                                    item.isActive -> Color(0xFF66BB6A)
+                                    item.isQueued -> Color(0xFFFFD54F)
+                                    else -> Color.White
+                                },
                                 fontSize = 14.sp,
-                                fontWeight = FontWeight.Normal,
+                                fontWeight = when {
+                                    item.isActive -> FontWeight.SemiBold
+                                    item.isQueued -> FontWeight.Medium
+                                    else -> FontWeight.Normal
+                                },
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.weight(1f)

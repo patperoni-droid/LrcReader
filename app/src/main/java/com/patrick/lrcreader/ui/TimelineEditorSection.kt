@@ -1894,6 +1894,19 @@ private fun TimelineMeasuresPlaceholder(
         structurePreviewPlayer.repeatMode = Player.REPEAT_MODE_OFF
         structurePreviewPlayer.volume = 1f
         structurePreviewPlayer.setMediaItem(mediaItem)
+        val autoNextIndex = (startIndex + 1).takeIf { it in segments.indices }
+        if (autoNextIndex != null) {
+            buildTimelineStructureMediaItem(
+                audioPath = audioPath,
+                segment = segments[autoNextIndex]
+            )?.let { nextMediaItem ->
+                structurePreviewPlayer.addMediaItem(nextMediaItem)
+                Log.d(
+                    ARR_STRUCTURE_QUEUE_TAG,
+                    "NEXT_ITEM_AUTO queuedIndex=$autoNextIndex insertionIndex=1 name=${segments[autoNextIndex].name}"
+                )
+            }
+        }
         structurePreviewPlayer.prepare()
         structurePreviewPlayer.play()
     }
@@ -1926,6 +1939,33 @@ private fun TimelineMeasuresPlaceholder(
             )
         }
         queuedStructureSegmentIndex = nextIndex
+    }
+
+    fun preloadAutomaticStructureSegmentPreview(
+        currentIndex: Int,
+        audioPath: String,
+        segments: List<ArrangementSegmentData>
+    ) {
+        val nextIndex = (currentIndex + 1).takeIf { it in segments.indices } ?: return
+        val nextMediaItem = buildTimelineStructureMediaItem(
+            audioPath = audioPath,
+            segment = segments[nextIndex]
+        ) ?: return
+        val insertionIndex = structurePreviewPlayer.currentMediaItemIndex.coerceAtLeast(0) + 1
+        val mediaItemCount = structurePreviewPlayer.mediaItemCount
+        if (mediaItemCount <= insertionIndex) {
+            structurePreviewPlayer.addMediaItem(nextMediaItem)
+            Log.d(
+                ARR_STRUCTURE_QUEUE_TAG,
+                "NEXT_ITEM_AUTO queuedIndex=$nextIndex insertionIndex=$insertionIndex name=${segments[nextIndex].name}"
+            )
+        } else {
+            structurePreviewPlayer.replaceMediaItem(insertionIndex, nextMediaItem)
+            Log.d(
+                ARR_STRUCTURE_QUEUE_TAG,
+                "NEXT_ITEM_AUTO_REPLACED queuedIndex=$nextIndex insertionIndex=$insertionIndex name=${segments[nextIndex].name}"
+            )
+        }
     }
 
     fun persistArrangementState(
@@ -2246,13 +2286,28 @@ private fun TimelineMeasuresPlaceholder(
                     ARR_STRUCTURE_QUEUE_TAG,
                     "MEDIA_ITEM_TRANSITION mediaIndex=${structurePreviewPlayer.currentMediaItemIndex} currentPlayingIndex=$structurePlaybackIndex queuedIndex=$queuedIndex reason=$reason"
                 )
-                if (queuedIndex != null) {
-                    structurePlaybackIndex = queuedIndex
-                    Log.d(
-                        ARR_STRUCTURE_QUEUE_TAG,
-                        "QUEUE_RESET old=$queuedStructureSegmentIndex reason=mediaItemTransition"
-                    )
-                    queuedStructureSegmentIndex = null
+                if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) {
+                    val previousIndex = structurePlaybackIndex
+                    if (queuedIndex != null) {
+                        structurePlaybackIndex = queuedIndex
+                        Log.d(
+                            ARR_STRUCTURE_QUEUE_TAG,
+                            "QUEUE_RESET old=$queuedStructureSegmentIndex reason=mediaItemTransition"
+                        )
+                        queuedStructureSegmentIndex = null
+                    } else {
+                        val autoNextIndex = previousIndex + 1
+                        if (autoNextIndex in latestStructurePlaybackSegments.indices) {
+                            structurePlaybackIndex = autoNextIndex
+                        }
+                    }
+                    latestCurrentSongAudioPath?.takeIf { it.isNotBlank() }?.let { audioPath ->
+                        preloadAutomaticStructureSegmentPreview(
+                            currentIndex = structurePlaybackIndex,
+                            audioPath = audioPath,
+                            segments = latestStructurePlaybackSegments
+                        )
+                    }
                 }
             }
 
@@ -3003,10 +3058,8 @@ private fun TimelineMeasuresPlaceholder(
                     ArrangementListItem(
                         id = index.toString(),
                         title = "${index + 1}. ${segment.name}",
-                        isActive = when {
-                            structurePlaybackActive -> index == structurePlaybackIndex || index == queuedStructureSegmentIndex
-                            else -> false
-                        }
+                        isActive = structurePlaybackActive && index == structurePlaybackIndex,
+                        isQueued = structurePlaybackActive && index == queuedStructureSegmentIndex
                     )
                 },
                 onItemClick = { structureIndexId ->
