@@ -3,24 +3,39 @@
 CRITICAL — CORE RUNTIME COMPONENT
 
 This document describes the Player system.
-It is the central component used during live performance.
+It is the central runtime component used during live performance.
 
-All changes must preserve stability, timing accuracy, and user control.
+All changes must preserve:
+- stability
+- timing accuracy
+- readability
+- predictability
+- user control
+
+Stability always has priority over feature richness.
 
 ⸻
 
-USER GOAL
+# USER GOAL
 
 The user must be able to:
-- play a song instantly
+
+- launch a song instantly
 - see synchronized lyrics or chords
-- control playback easily during live
+- control playback safely during live
 - prepare the next track without stress
+- improvise naturally during performance
 - maintain a smooth and professional flow
+
+The Player must feel:
+- immediate
+- reliable
+- readable
+- musical
 
 ⸻
 
-CORE RESPONSIBILITIES
+# CORE RESPONSIBILITIES
 
 The Player is responsible for:
 
@@ -28,14 +43,17 @@ The Player is responsible for:
 - Timing reference (single source of truth)
 - Lyrics / Chords synchronization
 - Timeline event dispatch (MIDI / DMX)
-- Playback transitions (next, auto-play, crossfade)
-- Track-specific settings (gain, pitch, speed)
+- Playback transitions
+- Define Next / Auto Play
+- Live chaining
+- Track-specific settings
+- Lyrics readability
 
-👉 The Player drives everything during live.
+👉 The Player drives the entire live experience.
 
 ⸻
 
-ARCHITECTURE OVERVIEW
+# ARCHITECTURE OVERVIEW
 
 Main components:
 
@@ -43,11 +61,20 @@ Main components:
 - PlayerScreen (UI)
 - MainActivity (state + player bridge)
 - Timeline dispatcher (MIDI / DMX)
-- Track settings stores (volume, pitch, tempo)
+- PlaybackCoordinator
+- Track settings stores
+
+Additional isolated players may exist for:
+- Arrangement preview
+- Structure preview
+- Editing tools
+
+BUT:
+- the live Player remains the main runtime authority
 
 ⸻
 
-PLAYBACK MODEL
+# PLAYBACK MODEL
 
 - Playback MUST use ExoPlayer only
 - currentPosition is the global time reference
@@ -57,423 +84,474 @@ PLAYBACK MODEL
 - chords
 - MIDI
 - DMX
+- transitions
+- pre-end behavior
 
-No alternative timing system allowed.
+FORBIDDEN:
+- secondary timing systems
+- UI-based timing
+- line-index-based timing
 
 ⸻
 
-PLAYBACK FLOW
+# PLAYBACK FLOW
 
 1. User selects a track
-2. Player loads the corresponding songId data
-3. Audio source is resolved (local file)
-4. Player prepares ExoPlayer
+2. Player resolves songId data
+3. Local audio source is resolved
+4. ExoPlayer prepares media
 5. Playback starts
 
 During playback:
 - currentPosition is continuously read
-- UI is updated
-- timeline events are dispatched
+- lyrics/chords update
+- timeline events dispatch
+- transitions remain synchronized
 
 ⸻
 
-PLAYER OPENING BEHAVIOR
+# PLAYER OPENING BEHAVIOR
 
 The Player opening behavior is user-configurable.
 
 Modes:
-- Always:
-  - Player opens every time a track is launched
-- Never:
-  - Playback starts but current screen remains visible
-- Automatic:
-  - Player opens only when the launched track has lyrics/chords or requires player display
+
+- Always
+  - Player always opens
+
+- Never
+  - Playback starts without opening Player
+
+- Automatic
+  - Player opens only if the track requires visual playback UI
+  - (lyrics, chords, player-dependent content)
 
 Rules:
-- Must not affect audio launch
-- Must not delay playback
-- Must not break lyrics loading
-- “Always” must remain the safest fallback mode
+- must never delay playback
+- must never block audio start
+- must never break lyrics loading
+- “Always” remains the safest fallback
 
-Known risk:
-- Automatic mode depends on reliable lyrics/chords detection.
-- If detection is uncertain, prefer preserving lyrics display and playback stability.
+If uncertainty exists:
+👉 prefer preserving playback + lyrics visibility
 
 ⸻
 
-LYRICS & CHORDS
+# LYRICS & CHORDS
 
-- Lyrics and chords are independent layers
-- Both are time-based (.lrc)
+Lyrics and chords are independent layers.
 
-- UI can switch instantly between:
-  - Lyrics mode
-  - Chords mode
+Both are:
+- time-based
+- synchronized using timestamps
+- dynamically switchable
 
-👉 No reload required
+Supported modes:
+- Lyrics mode
+- Chords mode
 
----
+Switching must be instant.
+No reload allowed.
 
-## LYRICS READABILITY MODE
+⸻
 
-The Player includes a readability display mode for lyrics.
+# LYRICS READABILITY
+
+The Player includes advanced readability behavior for live performance.
 
 Purpose:
-- improve readability in bright daylight / outdoor live conditions
-- allow the user to anticipate upcoming lyrics
-- avoid depending only on the active highlighted line
+- improve readability during concerts
+- support outdoor/daylight conditions
+- reduce cognitive load while singing
+- help anticipation of upcoming lyrics
 
-Behavior:
-- OFF:
-  - active lyric line is fully visible
-  - inactive lines use reduced opacity
-- ON:
-  - all lyric lines are displayed at full opacity
-  - active line remains identifiable with highlight color, bold weight, and slightly larger size
+⸻
+
+## NORMAL MODE
+
+In normal mode:
+
+- current lyric line:
+  - strongly highlighted
+  - visually dominant
+
+- next lyric line:
+  - softly highlighted
+  - lower intensity
+  - anticipation aid for singers
+
+- other lines:
+  - reduced emphasis
+
+Reason:
+During live singing, performers naturally read the next line while singing the current one.
 
 Rules:
-- must not affect lyrics timing
-- must not affect scroll synchronization
+- next-line emphasis must remain softer than active line
+- must not create visual overload
+- must not affect timing logic
+- must not affect scrolling
+
+⸻
+
+## READABILITY MODE (“ALL LINES ILLUMINATED”)
+
+The Player includes a readability mode for difficult visibility situations.
+
+Purpose:
+- outdoor sunlight
+- bright stage conditions
+- distant reading situations
+
+Behavior:
+- all lyric lines remain fully readable
+- active line remains identifiable through:
+  - highlight color
+  - font weight
+  - slightly larger size
+
+IMPORTANT:
+When readability mode is enabled:
+- keep existing behavior unchanged
+- do NOT apply special next-line anticipation styling
+
+Rules:
+- must not affect synchronization
+- must not affect timing
 - must not affect audio playback
-- must be persistent across app sessions
+- state must persist across app sessions
 
 UI:
-- controlled from the top-left Player header icon
+- controlled from top-left Player header icon
 - toggle must be immediate and reliable
 
 ⸻
 
-LYRIC LINE COLORS
+# LYRIC LINE COLORS
 
-Lyrics lines may have optional display colors.
+Lyrics lines may optionally have display colors.
 
 Purpose:
-- provide visual markers during live performance
-- help identify important phrases, spoken parts, warnings, or structure changes
+- visual structure markers
+- spoken sections
+- warnings
+- audience interaction cues
+- live navigation assistance
 
-Behavior:
-- color can be set from the lyric sync editor
+Rules:
+- colors must remain readable
 - default/no color must remain supported
-- colored lines must remain readable in Player
-- color must persist after saving and reopening the song
-
-Rules:
-- Must not break standard LRC import/export
-- Must not inject non-standard color tags into LRC text unless explicitly supported
-- Color metadata must remain separate from timing text when possible
-- No color must be treated as default behavior
+- color persistence required after save/reopen
+- must not corrupt standard LRC compatibility
+- metadata should remain separate from raw timing text when possible
 
 ⸻
 
-LYRIC SYNC SELECTION UX
+# LYRIC SYNC SELECTION UX
 
-In the lyric sync editor:
-- long press on an unselected line selects it
-- long press on an already selected line deselects it
+Inside lyric sync editor:
+
+- long press on unselected line:
+  - selects line
+
+- long press on selected line:
+  - deselects line
 
 Rules:
-- tap behavior must remain unchanged
-- edit/delete/color dialog must remain available
-- selection must not affect audio playback or timing
+- tap behavior unchanged
+- edit/delete/color dialog preserved
+- no playback interruption allowed
 
 ⸻
 
-TIMELINE INTEGRATION
+# TIMELINE INTEGRATION
 
 The Player drives timeline execution:
 
 - MIDI cues
 - DMX cues
-- Notes / markers
+- markers
+- future runtime events
 
 Rules:
-- based on time (ms)
-- no dependency on UI
+- time-based only
 - deterministic triggering
+- independent from UI rendering
 
 👉 The Player is the clock.
 
 ⸻
 
-TRACK SETTINGS (CRITICAL)
+# TRACK SETTINGS (CRITICAL)
 
-Each track can have:
+Each track may contain:
 
-- gain (volume adjustment)
+- gain
 - pitch
 - speed
 - trim IN / OUT
 
 Rules:
 - stored per songId
+- persistent
 - applied at playback
-- never modify original audio
-
-👉 Settings must be stable and persistent.
+- original files must never be modified
 
 ⸻
 
-TRANSITIONS
+# TRANSITIONS
 
-Supported behaviors:
+Supported transitions:
 
-- Play → immediate start
-- Define Next → next track queued
-- Auto Play → automatic chaining
-- Crossfade → smooth transition
-- Live transition fade → current track fades out while next track starts immediately
+- Play
+- Define Next
+- Auto Play
+- Crossfade
+- Live transition fade
 
 Rules:
-- transitions must be predictable
+- transitions must remain predictable
 - no glitch allowed
-- no timing drift
-- next track must become immediately active for UI/timeline
-- old track must never continue driving lyrics/timeline after handoff
+- no timing drift allowed
+- next track must immediately become active timeline source
+- old track must stop driving lyrics/timeline after handoff
 
 ⸻
 
-LIVE PLAYLIST HANDOFF (CRITICAL)
+# LIVE PLAYLIST HANDOFF (CRITICAL)
 
-The Player must correctly receive and display playlist chaining information.
+The Player must preserve nextTrack integrity.
 
 Rules:
-- nextTrack must always resolve to a readable title
-- Player must never display null next titles
-- autoplay and live chain must survive UI recomposition
-- playlist UI state must never be used as playback truth
-- playback transitions must preserve nextTrack integrity
-- live chaining must work independently from viewport/UI rendering
+- nextTrack must always resolve correctly
+- no null next title
+- autoplay survives recomposition
+- playlist UI must never become playback truth
+- live chaining must survive reorder/group operations
 
-The Player must remain synchronized with:
-- playlist order
-- explicit Define Next
-- live red group chaining
-
-👉 Live continuity has priority over UI optimizations.
+👉 Live continuity has priority over UI optimization.
 
 ⸻
 
-LIVE LIST / TEMPORARY QUEUE
+# LIVE LIST / TEMPORARY QUEUE
 
-The Player can interact with a temporary “Liste live”.
+The Player can interact with temporary live queues.
 
 Purpose:
-- allow the user to create a short live sequence while a track is already playing
-- keep the next track visible and predictable
-- chain selected tracks without stress
-
-Expected behavior:
-- if track A is playing and user creates a live list with track B:
-  - A remains the current playing track
-  - B becomes the next effective track
-  - B must be visible as the next track in Player
-  - B must start automatically at the end of A
-
-Rules:
-- Must not override a manually defined next track
-- Must not interfere with DJ mode
-- Must not create hidden or ghost nextTrack state
-- Must remain deterministic after adding C, D, etc.
-
-⸻
-
-PRE-END BEHAVIOR (RETURN -10s)
-
-- When enabled:
-  - The Player automatically returns to the playlist view
-  - approximately 10 seconds before the end of the current track
-
-Purpose:
-- Allow the user to anticipate the next track
-- Prepare transitions without stress
-- Maintain full control during live
-
-Rules:
-- Must NOT interrupt playback
-- Must NOT affect audio timing
-- Must NOT trigger any playback change
-
-👉 This is a UI/navigation behavior ONLY
-👉 Playback continues normally in background
-
-Constraints:
-- Timing must be based on ExoPlayer position
-- Must be consistent across devices
-- Must not trigger multiple times
-
-Optional:
-- Feature must be user-configurable (on/off)
-
-⸻
-
-DEFINE NEXT (LIVE CRITICAL)
-
-- User can select the next track during playback
-- The selected track must be clearly visible (UI feedback)
-- It must start automatically at the end of the current track
-
-👉 No ambiguity allowed
-
-⸻
-
-AUTO PLAY
-
-- When enabled:
-  - tracks follow playlist order automatically
-
-- Must work with:
-  - groups
-  - reordered tracks
-
-👉 Always deterministic behavior
-
-⸻
-
-SEEK BEHAVIOR
-
-- Seek is allowed ONLY for navigation
-
-FORBIDDEN:
-- using seek for loops
-- using seek for arrangement logic
-
-👉 Seek must remain safe and predictable
-
-⸻
-
-## SEARCH EXIT AFTER TRACK LAUNCH
-
-When a track is launched from search results, the search UI must close immediately.
-
-Purpose:
-- avoid returning to stale search results during live
-- ensure the playlist/library is visible when the user comes back
-- keep the -10s return workflow usable
+- prepare short live sequences dynamically
+- improvise safely during performance
+- maintain visible next-track continuity
 
 Behavior:
-- user searches for a track
-- user launches a track from search results
-- playback starts normally
-- search closes immediately
-- normal playlist/library view is restored
+If track A is playing and user adds B:
+- A remains current
+- B becomes effective next track
+- B must be clearly visible as next
+- B must autoplay after A
+
+Rules:
+- must not override manual Define Next
+- must not create ghost nextTrack states
+- must remain deterministic after adding C/D/etc.
+
+⸻
+
+# PRE-END RETURN (-10s)
+
+Optional behavior:
+- automatically returns to playlist screen
+- around 10 seconds before track end
+
+Purpose:
+- prepare next transition
+- reduce stress
+- maintain live control
+
+Rules:
+- playback must continue uninterrupted
+- timing must remain ExoPlayer-based
+- must trigger once only
+- feature must remain configurable
+
+👉 UI/navigation behavior only.
+
+⸻
+
+# DEFINE NEXT (LIVE CRITICAL)
+
+User can define the next track during playback.
+
+Requirements:
+- selected next track must be obvious
+- autoplay handoff must be deterministic
+- no ambiguity allowed
+
+⸻
+
+# AUTO PLAY
+
+When enabled:
+- tracks follow playlist order automatically
+
+Must support:
+- groups
+- reorder
+- live chaining
+
+Behavior must remain deterministic.
+
+⸻
+
+# SEEK BEHAVIOR
+
+Seek is allowed ONLY for navigation.
+
+FORBIDDEN:
+- loop engine based on seek
+- arrangement runtime based on seek
+- unstable seek-loop hacks
+
+Seek must remain safe and predictable.
+
+⸻
+
+# SEARCH EXIT AFTER TRACK LAUNCH
+
+When launching a track from search:
+- search UI must close immediately
+
+Purpose:
+- avoid stale live search states
+- restore playlist visibility
+- preserve -10s workflow
 
 Rules:
 - must not affect playback
-- must not affect Define Next behavior
-- must not clear unrelated playlist state
-- search must remain reusable afterward
+- must not affect Define Next
+- must not clear playlist state
 
 ⸻
 
-UI REQUIREMENTS
+# UI REQUIREMENTS
 
-- Must be readable in live conditions
-- Large text (lyrics / chords)
-- Clear visual hierarchy
-- readability mode for outdoor/daylight situations
+The Player UI must remain:
+- readable
+- minimal
+- stage-safe
+- fast
 
 Must provide:
 - Play / Pause
 - Next / Previous
 - Define Next feedback
-- Mode switch (Lyrics / Chords)
+- Lyrics / Chords switch
+- readability mode
 
-👉 No visual overload
-
-⸻
-
-PERFORMANCE RULES
-
-- UI updates must be lightweight
-- No heavy recomposition during playback
-- No blocking operations
-
-👉 Player must remain fluid at all times
+FORBIDDEN:
+- visual overload
+- unstable animations
+- clutter during live
 
 ⸻
 
-STATE MANAGEMENT
+# PERFORMANCE RULES
 
-- Player state must be explicit:
-  - playing
-  - paused
-  - stopped
-  - loading
+- lightweight recomposition only
+- no blocking operations
+- no heavy work during playback
+- no unnecessary allocations
 
-- No hidden transitions
-- No ambiguous states
-
-👉 Predictable behavior only
+👉 Playback fluidity is critical.
 
 ⸻
 
-ERROR HANDLING
+# STATE MANAGEMENT
 
-- Playback must not crash
-- In case of issue:
-  - fail gracefully
-  - keep UI responsive
+Player states must remain explicit:
 
-👉 Never break the live experience
+- loading
+- playing
+- paused
+- stopped
+
+Rules:
+- no hidden transitions
+- no ambiguous playback states
+- no UI-only playback truth
 
 ⸻
 
-KNOWN PITFALLS
+# ERROR HANDLING
 
-- Desync if timing not based on ExoPlayer
-- Glitches if audio pipeline is unstable
-- UI lag affecting perception of sync
-- Misaligned trims causing bad transitions
-- nextTrack lost during recomposition
-- “Prochain : null” display
-- playlist UI state incorrectly used as playback state
-- crossfade keeping old timeline active
+Playback must never crash the live experience.
+
+In case of issue:
+- fail gracefully
+- preserve UI responsiveness
+- preserve playback if possible
+
+⸻
+
+# KNOWN PITFALLS
+
+- timing desync not based on ExoPlayer
+- unstable audio pipeline
+- heavy Compose recompositions
+- trim misalignment
+- lost nextTrack after recomposition
+- “Next: null”
+- playlist UI becoming playback truth
+- old timeline still active after transition
 - autoplay breaking after reorder/group changes
 
-👉 Must be tested carefully
+👉 All must be tested carefully.
 
 ⸻
 
-TEST SCENARIOS (MANDATORY)
+# TEST SCENARIOS (MANDATORY)
 
 Test at least:
 
-- play a single track
-- switch Lyrics ↔ Chords during playback
-- toggle lyrics readability mode during playback
-- define next track during playback
-- auto play sequence
-- crossfade transitions
-- live transition fade between tracks
-- verify next title display during transition
-- verify nextTrack survives reorder/group changes
-- seek forward / backward
-- track with trim IN / OUT
-- track with pitch / speed
-- return -10s behavior (enabled / disabled)
-- launch a track from search and verify search closes
-- Opening mode Always / Never / Automatic
-- Automatic opening with lyrics track
-- Automatic opening with no-lyrics track
-- Create live list while A is already playing, verify B becomes next
-- Add C and D to live list, verify chaining order
-- Color a lyric line, save, reopen, verify persistence
-- Long press selected lyric line again, verify deselection
+- single-track playback
+- Lyrics ↔ Chords switch during playback
+- readability mode toggle during playback
+- next-line anticipation rendering
+- Define Next during playback
+- Auto Play sequences
+- Crossfade transitions
+- Live transition fade
+- nextTrack display integrity
+- reorder/group persistence
+- seek forward/backward
+- trim IN / OUT
+- pitch/speed
+- pre-end return behavior
+- search launch auto-close
+- Opening modes (Always/Never/Automatic)
+- Automatic mode with lyrics/no-lyrics tracks
+- live queue creation during playback
+- queue chaining stability
+- lyric color persistence
+- long-press deselection
+- readability mode under outdoor conditions
 
-👉 Must be tested on real device
+👉 Real-device testing is mandatory.
 
 ⸻
 
-FINAL RULE
+# FINAL RULE
 
 The Player must ALWAYS feel:
 - instant
 - stable
 - predictable
+- musical
 
 If a change introduces:
-- delay
-- confusion
 - instability
+- confusion
+- lag
+- timing uncertainty
+- UI stress
 
 👉 It must be rejected.
