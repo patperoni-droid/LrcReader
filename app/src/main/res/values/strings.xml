@@ -70,6 +70,7 @@
     <string name="arrangement_add_mode_remove">−</string>
     <string name="arrangement_grid_toggle">Grille</string>
     <string name="arrangement_grid_sync_action">Sync</string>
+    <string name="arrangement_grid_beep_toggle">Bip grille</string>
     <string name="arrangement_remove_segment_invalid">Aucun segment valide à créer</string>
     <string name="arrangement_in_label">IN : %1$s</string>
     <string name="arrangement_out_label">OUT : %1$s</string>
@@ -785,14 +786,6 @@
     <string name="more_item_tuner">🎸  Accordeur</string>
     <string name="more_item_advanced">⚙️  Avancé</string>
     <string name="more_item_test_bluetooth_midi">📶  Test Bluetooth MIDI</string>
-    <string name="more_beep_test_title">Test bip interne</string>
-    <string name="more_beep_test_message">Test isolé du bip. Aucun lien avec Arrangement ni avec le player live.</string>
-    <string name="more_beep_test_bpm_value">Tempo : %1$d BPM</string>
-    <string name="more_beep_test_offset_label">Offset sync (ms)</string>
-    <string name="more_beep_test_status_running">Bips actifs</string>
-    <string name="more_beep_test_status_stopped">Bips arrêtés</string>
-    <string name="more_beep_test_start">Start</string>
-    <string name="more_beep_test_stop">Stop</string>
     <string name="more_auto_return_playlist">Retour auto vers la playlist (10 s avant la fin)</string>
     <string name="more_player_open_mode">Ouverture du lecteur</string>
     <string name="more_manual_crossfade_duration">Durée du fondu de transition</string>

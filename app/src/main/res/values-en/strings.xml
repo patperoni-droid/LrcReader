@@ -70,6 +70,7 @@
     <string name="arrangement_add_mode_remove">−</string>
     <string name="arrangement_grid_toggle">Grid</string>
     <string name="arrangement_grid_sync_action">Sync</string>
+    <string name="arrangement_grid_beep_toggle">Grid beep</string>
     <string name="arrangement_remove_segment_invalid">No valid segment to create</string>
     <string name="arrangement_in_label">IN: %1$s</string>
     <string name="arrangement_out_label">OUT: %1$s</string>
@@ -774,14 +775,6 @@
     <string name="more_item_tuner">🎸  Tuner</string>
     <string name="more_item_advanced">⚙️  Advanced</string>
     <string name="more_item_test_bluetooth_midi">📶  Test Bluetooth MIDI</string>
-    <string name="more_beep_test_title">Internal beep test</string>
-    <string name="more_beep_test_message">Isolated beep test. No link with Arrangement or the live player.</string>
-    <string name="more_beep_test_bpm_value">Tempo: %1$d BPM</string>
-    <string name="more_beep_test_offset_label">Sync offset (ms)</string>
-    <string name="more_beep_test_status_running">Beeps running</string>
-    <string name="more_beep_test_status_stopped">Beeps stopped</string>
-    <string name="more_beep_test_start">Start</string>
-    <string name="more_beep_test_stop">Stop</string>
     <string name="more_auto_return_playlist">Auto return to playlist (10 s before end)</string>
     <string name="more_player_open_mode">Player opening</string>
     <string name="more_manual_crossfade_duration">Transition fade duration</string>

@@ -4,10 +4,7 @@ import android.content.ActivityNotFoundException
 import com.patrick.lrcreader.core.MidiOutput
 import android.content.Context
 import android.content.Intent
-import android.media.AudioManager
-import android.media.ToneGenerator
 import android.net.Uri
-import android.os.SystemClock
 import android.provider.OpenableColumns
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -36,7 +33,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -88,9 +84,6 @@ import com.patrick.lrcreader.smp.SmpUserArchiveRebuilder
 import com.patrick.lrcreader.smp.SmpUserArchiveCandidate
 import com.patrick.lrcreader.smp.SmpWorkspaceArchiveStore
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -139,7 +132,6 @@ fun MoreScreen(
     when (current) {
         MoreSection.Root -> MoreRootScreen(
             modifier = modifier,
-            currentPlayingSongId = currentPlayingSongId,
             onOpenBackup = { navigate("backup") },
             onOpenFiller = { navigate("filler") },
             onOpenHistory = { navigate("history") },
@@ -306,7 +298,6 @@ private fun ArrangementHubScreen(
 @Composable
 private fun MoreRootScreen(
     modifier: Modifier = Modifier,
-    currentPlayingSongId: String?,
     onOpenBackup: () -> Unit,
     onOpenFiller: () -> Unit,
     onOpenHistory: () -> Unit,
@@ -329,7 +320,6 @@ private fun MoreRootScreen(
     var showPlayerLaunchDialog by remember { mutableStateOf(false) }
     var showManualCrossfadeDurationDialog by remember { mutableStateOf(false) }
     var showExportProDialog by remember { mutableStateOf(false) }
-    var showBeepTestDialog by remember { mutableStateOf(false) }
     var selectedLanguageTag by remember { mutableStateOf(AppLanguagePrefs.getSavedLanguageTag(context)) }
     var isExportingLiveSongs by remember { mutableStateOf(false) }
     var exportLiveSongsDone by remember { mutableStateOf(0) }
@@ -366,61 +356,11 @@ private fun MoreRootScreen(
     var showDjMode by remember { mutableStateOf(showDjTab) }
     var showMainBusMode by remember { mutableStateOf(showMainBusTab) }
     var betaCode by remember { mutableStateOf("") }
-    var beepTestTapCount by remember { mutableIntStateOf(0) }
-    var beepTestTapLastAtMs by remember { mutableLongStateOf(0L) }
-    var beepTestBpm by remember { mutableStateOf(120f) }
-    var beepTestOffsetDraft by remember { mutableStateOf("0") }
-    var isBeepTestRunning by remember { mutableStateOf(false) }
-    var beepTestJob by remember { mutableStateOf<Job?>(null) }
-    val beepTestToneGenerator = remember {
-        runCatching { ToneGenerator(AudioManager.STREAM_MUSIC, 70) }.getOrNull()
-    }
 
     androidx.compose.runtime.LaunchedEffect(showDjTab) {
         showDjMode = showDjTab
     }
 
-    fun stopBeepTest() {
-        beepTestJob?.cancel()
-        beepTestJob = null
-        isBeepTestRunning = false
-    }
-
-    fun startBeepTest() {
-        stopBeepTest()
-        val safeBpm = beepTestBpm.toInt().coerceIn(30, 260)
-        val safeOffsetMs = beepTestOffsetDraft.trim().toLongOrNull()?.coerceAtLeast(0L) ?: 0L
-        val beatDurationMs = (60_000.0 / safeBpm.toDouble()).toLong().coerceAtLeast(1L)
-        isBeepTestRunning = true
-        beepTestJob = scope.launch {
-            var nextTickAtMs = SystemClock.elapsedRealtime() + safeOffsetMs
-            while (isActive) {
-                val waitMs = (nextTickAtMs - SystemClock.elapsedRealtime()).coerceAtLeast(0L)
-                delay(waitMs)
-                if (!isActive) break
-                beepTestToneGenerator?.startTone(ToneGenerator.TONE_PROP_BEEP, 70)
-                nextTickAtMs += beatDurationMs
-            }
-        }
-    }
-
-    fun handleHiddenBeepTestTap() {
-        val now = SystemClock.elapsedRealtime()
-        beepTestTapCount = if (now - beepTestTapLastAtMs <= 1_200L) beepTestTapCount + 1 else 1
-        beepTestTapLastAtMs = now
-        if (beepTestTapCount >= 5) {
-            showBeepTestDialog = true
-            beepTestTapCount = 0
-            beepTestTapLastAtMs = 0L
-        }
-    }
-
-    DisposableEffect(Unit) {
-        onDispose {
-            stopBeepTest()
-            runCatching { beepTestToneGenerator?.release() }
-        }
-    }
     androidx.compose.runtime.LaunchedEffect(showMainBusTab) {
         showMainBusMode = showMainBusTab
     }
@@ -717,9 +657,7 @@ private fun MoreRootScreen(
                             color = Color(0xFFFFECB3),
                             fontSize = 15.sp,
                             letterSpacing = 2.sp,
-                            modifier = Modifier
-                                .align(Alignment.Center)
-                                .clickable { handleHiddenBeepTestTap() }
+                            modifier = Modifier.align(Alignment.Center)
                         )
                     }
 
@@ -1293,82 +1231,6 @@ private fun MoreRootScreen(
         )
     }
 
-    if (showBeepTestDialog) {
-        AlertDialog(
-            onDismissRequest = {
-                stopBeepTest()
-                showBeepTestDialog = false
-            },
-            title = {
-                Text(text = stringResource(R.string.more_beep_test_title))
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(
-                        text = stringResource(R.string.more_beep_test_message),
-                        color = Color(0xFFF5F5F5),
-                        fontSize = 13.sp
-                    )
-                    Text(
-                        text = context.getString(
-                            R.string.more_beep_test_bpm_value,
-                            beepTestBpm.toInt()
-                        ),
-                        color = Color(0xFFF5F5F5),
-                        fontSize = 14.sp
-                    )
-                    Slider(
-                        value = beepTestBpm,
-                        onValueChange = { beepTestBpm = it },
-                        valueRange = 30f..260f
-                    )
-                    OutlinedTextField(
-                        value = beepTestOffsetDraft,
-                        onValueChange = { input ->
-                            beepTestOffsetDraft = input.filter { it.isDigit() }.take(5)
-                        },
-                        singleLine = true,
-                        label = {
-                            Text(text = stringResource(R.string.more_beep_test_offset_label))
-                        }
-                    )
-                    Text(
-                        text = stringResource(
-                            if (isBeepTestRunning) {
-                                R.string.more_beep_test_status_running
-                            } else {
-                                R.string.more_beep_test_status_stopped
-                            }
-                        ),
-                        color = if (isBeepTestRunning) Color(0xFF80CBC4) else Color(0xFFB0BEC5),
-                        fontSize = 13.sp
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(
-                            onClick = { startBeepTest() }
-                        ) {
-                            Text(text = stringResource(R.string.more_beep_test_start))
-                        }
-                        Button(
-                            onClick = { stopBeepTest() }
-                        ) {
-                            Text(text = stringResource(R.string.more_beep_test_stop))
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        stopBeepTest()
-                        showBeepTestDialog = false
-                    }
-                ) {
-                    Text(text = stringResource(R.string.common_close))
-                }
-            }
-        )
-    }
 }
 
 @Composable

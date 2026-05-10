@@ -68,6 +68,7 @@
     <string name="arrangement_add_mode_remove">−</string>
     <string name="arrangement_grid_toggle">Cuadrícula</string>
     <string name="arrangement_grid_sync_action">Sync</string>
+    <string name="arrangement_grid_beep_toggle">Bip de cuadrícula</string>
     <string name="arrangement_remove_segment_invalid">No hay segmentos válidos para crear</string>
     <string name="arrangement_in_label">IN: %1$s</string>
     <string name="arrangement_out_label">OUT: %1$s</string>
@@ -692,14 +693,6 @@
     <string name="more_item_tuner">🎸  Afinador</string>
     <string name="more_item_advanced">⚙️  Avanzado</string>
     <string name="more_item_test_bluetooth_midi">📶  Probar Bluetooth MIDI</string>
-    <string name="more_beep_test_title">Prueba interna de bip</string>
-    <string name="more_beep_test_message">Prueba aislada del bip. Sin vínculo con Arrangement ni con el reproductor live.</string>
-    <string name="more_beep_test_bpm_value">Tempo: %1$d BPM</string>
-    <string name="more_beep_test_offset_label">Offset de sync (ms)</string>
-    <string name="more_beep_test_status_running">Bips activos</string>
-    <string name="more_beep_test_status_stopped">Bips detenidos</string>
-    <string name="more_beep_test_start">Start</string>
-    <string name="more_beep_test_stop">Stop</string>
     <string name="more_auto_return_playlist">Regreso automático a la playlist (10 s antes del final)</string>
     <string name="more_player_open_mode">Apertura del reproductor</string>
     <string name="more_manual_crossfade_duration">Duración del fundido de transición</string>

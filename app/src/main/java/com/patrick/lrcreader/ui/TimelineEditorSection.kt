@@ -3,12 +3,10 @@ package com.patrick.lrcreader.ui
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
-import android.media.AudioManager
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.media.MediaMetadataRetriever
 import android.media.MediaScannerConnection
-import android.media.ToneGenerator
 import android.net.Uri
 import android.os.Environment
 import android.os.SystemClock
@@ -1705,7 +1703,6 @@ private fun TimelineMeasuresPlaceholder(
     var localMeasureAnchorMs by remember(measureAnchorMs) { mutableStateOf(measureAnchorMs) }
     var tempoTapTimesMs by remember { mutableStateOf<List<Long>>(emptyList()) }
     var showTapTempoHint by remember { mutableStateOf(false) }
-    var metronomeEnabled by remember { mutableStateOf(false) }
     var loopEnabled by remember { mutableStateOf(false) }
     var revealSyncPointRequest by remember { mutableIntStateOf(0) }
     var preparedLoopStartMs by remember(currentSongId) { mutableStateOf<Long?>(null) }
@@ -1748,9 +1745,6 @@ private fun TimelineMeasuresPlaceholder(
     }
     val arrangementPreviewPlayer = remember(context.applicationContext) {
         ArrangementPreviewPlayer(context.applicationContext)
-    }
-    val toneGenerator = remember {
-        runCatching { ToneGenerator(AudioManager.STREAM_MUSIC, 70) }.getOrNull()
     }
     val arrangementPreviewCacheFile = remember(context.applicationContext) {
         File(context.applicationContext.cacheDir, ARRANGEMENT_PREVIEW_FILE_NAME)
@@ -2106,7 +2100,6 @@ private fun TimelineMeasuresPlaceholder(
         estimateTappedTempoBpm(tempoTapTimesMs)
     }
     val defaultSegmentNameBase = stringResource(R.string.arrangement_segment_default_name)
-    val metronomeReady = tempoBpm != null && savedAnchorMs != null
     val loopReady = tempoBpm != null && savedAnchorMs != null
     val hasSegmentLoop = segmentInMs != null && segmentOutMs != null && segmentInMs != segmentOutMs
     val hasSelectedSegmentLoop =
@@ -2244,11 +2237,6 @@ private fun TimelineMeasuresPlaceholder(
         }
     }
 
-    DisposableEffect(toneGenerator) {
-        onDispose {
-            runCatching { toneGenerator?.release() }
-        }
-    }
     DisposableEffect(structurePreviewPlayer) {
         val listener = object : Player.Listener {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
@@ -2371,12 +2359,6 @@ private fun TimelineMeasuresPlaceholder(
         }
     }
 
-    LaunchedEffect(metronomeReady) {
-        if (!metronomeReady) {
-            metronomeEnabled = false
-        }
-    }
-
     LaunchedEffect(arrangementLoopPreviewActive, arrangementPreviewPlayer) {
         if (!arrangementLoopPreviewActive) return@LaunchedEffect
         while (arrangementLoopPreviewActive) {
@@ -2455,73 +2437,6 @@ private fun TimelineMeasuresPlaceholder(
         loopEnabled = false
         preparedLoopStartMs = null
         stopArrangementLoopPreviewPlayback()
-    }
-
-    LaunchedEffect(metronomeEnabled, isPlaying, tempoBpm, savedAnchorMs) {
-        val safeTempoBpm = tempoBpm ?: return@LaunchedEffect
-        val safeAnchorMs = savedAnchorMs ?: return@LaunchedEffect
-        val generator = toneGenerator ?: return@LaunchedEffect
-        if (!metronomeEnabled || !isPlaying) return@LaunchedEffect
-
-        val beatDurationMs = 60_000.0 / safeTempoBpm.toDouble()
-        val firstStartedPositionMs = kotlinx.coroutines.withTimeoutOrNull(800L) {
-            snapshotFlow { currentPositionMs }
-                .first { latestPositionMs -> latestPositionMs >= safeAnchorMs + 20L }
-        }
-        val stabilizedStartPositionMs = if (firstStartedPositionMs != null) {
-            kotlinx.coroutines.withTimeoutOrNull(160L) {
-                snapshotFlow { currentPositionMs }
-                    .first { latestPositionMs -> latestPositionMs >= firstStartedPositionMs + 10L }
-            }?.toDouble() ?: firstStartedPositionMs.toDouble()
-        } else {
-            currentPositionMs.toDouble().coerceAtLeast(safeAnchorMs.toDouble())
-        }
-        var syncPositionMs = stabilizedStartPositionMs
-        var syncRealtimeMs = SystemClock.elapsedRealtime().toDouble()
-        var lastBeepBeatIndex = Long.MIN_VALUE
-
-        launch {
-            snapshotFlow { currentPositionMs }
-                .collect { latestPositionMs ->
-                    val nowRealtimeMs = SystemClock.elapsedRealtime().toDouble()
-                    val predictedPositionMs = syncPositionMs + (nowRealtimeMs - syncRealtimeMs)
-                    if (abs(latestPositionMs - predictedPositionMs) > 120.0) {
-                        syncPositionMs = latestPositionMs.toDouble()
-                        syncRealtimeMs = nowRealtimeMs
-                    }
-                }
-        }
-
-        val confirmedPositionMs = kotlinx.coroutines.withTimeoutOrNull(160L) {
-            snapshotFlow { currentPositionMs }
-                .first { latestPositionMs -> latestPositionMs >= syncPositionMs + 5.0 }
-        }?.toDouble()
-        if (confirmedPositionMs != null) {
-            syncPositionMs = confirmedPositionMs
-            syncRealtimeMs = SystemClock.elapsedRealtime().toDouble()
-        }
-        val initialRelativeMs = syncPositionMs - safeAnchorMs.toDouble()
-        if (initialRelativeMs in 0.0..minOf(120.0, beatDurationMs / 2.0)) {
-            generator.startTone(ToneGenerator.TONE_PROP_BEEP, 50)
-            lastBeepBeatIndex = 0L
-        }
-
-        while (true) {
-            val nowRealtimeMs = SystemClock.elapsedRealtime().toDouble()
-            val estimatedPositionMs = syncPositionMs + (nowRealtimeMs - syncRealtimeMs)
-            val relativeMs = estimatedPositionMs - safeAnchorMs.toDouble()
-            val nextBeatIndex = when {
-                relativeMs <= 0.0 -> 0L
-                else -> floor(relativeMs / beatDurationMs).toLong() + 1L
-            }
-            val nextBeatPositionMs = safeAnchorMs + nextBeatIndex * beatDurationMs
-            val delayMs = (nextBeatPositionMs - estimatedPositionMs).coerceAtLeast(15.0)
-            kotlinx.coroutines.delay(delayMs.roundToLong())
-            if (nextBeatIndex != lastBeepBeatIndex) {
-                generator.startTone(ToneGenerator.TONE_PROP_BEEP, 50)
-                lastBeepBeatIndex = nextBeatIndex
-            }
-        }
     }
 
     Column(
