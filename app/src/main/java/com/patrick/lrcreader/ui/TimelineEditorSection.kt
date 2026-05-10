@@ -104,6 +104,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import com.patrick.lrcreader.core.EditionConfig
 import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.core.TrackTimelineTempoPrefs
+import com.patrick.lrcreader.core.audio.ArrangementPreviewPlayer
 import com.patrick.lrcreader.core.audio.ArrangementWavRenderer
 import com.patrick.lrcreader.core.waveform.WaveformExtractor
 import com.patrick.lrcreader.core.waveform.WaveformPeaksCache
@@ -367,6 +368,10 @@ fun TimelineEditorSection(
 
     fun playFromMarker(timeMs: Long) {
         requestFocusAt(timeMs)
+        if (tempoStructurePreviewActive) {
+            tempoStructurePreviewStopRequest += 1
+            return
+        }
         if (durationMs > 0) {
             onIsPlayingChange(true)
             runCatching { FillerSoundManager.fadeOutAndStop(200) }
@@ -1701,6 +1706,8 @@ private fun TimelineMeasuresPlaceholder(
     var loopEnabled by remember { mutableStateOf(false) }
     var revealSyncPointRequest by remember { mutableIntStateOf(0) }
     var preparedLoopStartMs by remember(currentSongId) { mutableStateOf<Long?>(null) }
+    var arrangementLoopPreviewActive by remember(currentSongId) { mutableStateOf(false) }
+    var arrangementLoopPositionMs by remember(currentSongId) { mutableLongStateOf(0L) }
     var structurePlaybackActive by remember(currentSongId) { mutableStateOf(false) }
     var structurePlaybackIndex by remember(currentSongId) { mutableIntStateOf(-1) }
     var structurePlaybackAbsolutePositionMs by remember(currentSongId) {
@@ -1709,6 +1716,8 @@ private fun TimelineMeasuresPlaceholder(
     val savedAnchorMs = localMeasureAnchorMs
     val displayedCurrentPositionMs = if (structurePlaybackActive) {
         structurePlaybackAbsolutePositionMs.coerceAtLeast(0L)
+    } else if (arrangementLoopPreviewActive && preparedLoopStartMs != null) {
+        preparedLoopStartMs!! + arrangementLoopPositionMs.coerceAtLeast(0L)
     } else if (isPreparedClipLoopTestActive && preparedLoopStartMs != null) {
         preparedLoopStartMs!! + currentPositionMs.coerceAtLeast(0L)
     } else {
@@ -1732,6 +1741,9 @@ private fun TimelineMeasuresPlaceholder(
     val smpConverter = remember(context) { SmpConverter(context.applicationContext) }
     val structurePreviewPlayer = remember(context.applicationContext) {
         ExoPlayer.Builder(context.applicationContext).build().apply { playWhenReady = false }
+    }
+    val arrangementPreviewPlayer = remember(context.applicationContext) {
+        ArrangementPreviewPlayer(context.applicationContext)
     }
     val toneGenerator = remember {
         runCatching { ToneGenerator(AudioManager.STREAM_MUSIC, 70) }.getOrNull()
@@ -1793,6 +1805,13 @@ private fun TimelineMeasuresPlaceholder(
         onStructurePreviewActiveChange(false)
     }
 
+    fun stopArrangementLoopPreviewPlayback() {
+        runCatching { arrangementPreviewPlayer.stop() }
+        arrangementLoopPreviewActive = false
+        arrangementLoopPositionMs = 0L
+        onStructurePreviewActiveChange(false)
+    }
+
     fun replacePreviewRenderedFile(nextFile: File?) {
         val previousFile = previewRenderedFile
         previewRenderedFile = nextFile
@@ -1809,6 +1828,7 @@ private fun TimelineMeasuresPlaceholder(
 
     fun playArrangementPreviewFile(previewFile: File) {
         stopStructurePreviewPlayback()
+        stopArrangementLoopPreviewPlayback()
         if (isPreparedClipLoopTestActive) {
             onStopPreparedClipLoopTest()
         }
@@ -1904,6 +1924,7 @@ private fun TimelineMeasuresPlaceholder(
     LaunchedEffect(currentSongId) {
         val songId = currentSongId?.trim().orEmpty()
         stopStructurePreviewPlayback()
+        stopArrangementLoopPreviewPlayback()
         currentSongAudioPath = null
         currentSongTitle = null
         replacePreviewRenderedFile(null)
@@ -1922,6 +1943,8 @@ private fun TimelineMeasuresPlaceholder(
             selectedSegmentLoopId = null
             selectedSegmentLoopStartMs = null
             selectedSegmentLoopEndMs = null
+            arrangementLoopPreviewActive = false
+            arrangementLoopPositionMs = 0L
             structurePlaybackActive = false
             structurePlaybackIndex = -1
             structurePlaybackAbsolutePositionMs = 0L
@@ -1987,6 +2010,8 @@ private fun TimelineMeasuresPlaceholder(
         selectedSegmentLoopId = null
         selectedSegmentLoopStartMs = null
         selectedSegmentLoopEndMs = null
+        arrangementLoopPreviewActive = false
+        arrangementLoopPositionMs = 0L
         structurePlaybackActive = false
         structurePlaybackIndex = -1
         structurePlaybackAbsolutePositionMs = 0L
@@ -2030,7 +2055,7 @@ private fun TimelineMeasuresPlaceholder(
         ?.id
     val isLoopHighlighted =
         (loopReady || hasSegmentLoop || hasSelectedSegmentLoop) &&
-            (loopEnabled || isPreparedClipLoopTestActive)
+            (loopEnabled || arrangementLoopPreviewActive || isPreparedClipLoopTestActive)
     val activeLoopRange = remember(
         selectedSegmentLoopStartMs,
         selectedSegmentLoopEndMs,
@@ -2076,8 +2101,9 @@ private fun TimelineMeasuresPlaceholder(
     }
 
     val listenAction: () -> Unit = {
-        if (structurePlaybackActive || wavPreviewActive) {
+        if (structurePlaybackActive || wavPreviewActive || arrangementLoopPreviewActive) {
             stopStructurePreviewPlayback()
+            stopArrangementLoopPreviewPlayback()
         } else {
             val audioPath = currentSongAudioPath
             val playlistSegments = structurePlaybackSegments
@@ -2162,6 +2188,12 @@ private fun TimelineMeasuresPlaceholder(
             runCatching { structurePreviewPlayer.release() }
         }
     }
+    DisposableEffect(arrangementPreviewPlayer) {
+        onDispose {
+            stopArrangementLoopPreviewPlayback()
+            runCatching { arrangementPreviewPlayer.release() }
+        }
+    }
     DisposableEffect(Unit) {
         onDispose {
             if (isPreparedClipLoopTestActive) {
@@ -2172,6 +2204,11 @@ private fun TimelineMeasuresPlaceholder(
     LaunchedEffect(structurePreviewStopRequest) {
         if (structurePreviewStopRequest > 0) {
             stopStructurePreviewPlayback()
+            if (arrangementLoopPreviewActive) {
+                loopEnabled = false
+                preparedLoopStartMs = null
+                stopArrangementLoopPreviewPlayback()
+            }
         }
     }
     LaunchedEffect(structurePlaybackActive, wavPreviewActive, structurePreviewPlayer) {
@@ -2235,10 +2272,19 @@ private fun TimelineMeasuresPlaceholder(
         }
     }
 
+    LaunchedEffect(arrangementLoopPreviewActive, arrangementPreviewPlayer) {
+        if (!arrangementLoopPreviewActive) return@LaunchedEffect
+        while (arrangementLoopPreviewActive) {
+            arrangementLoopPositionMs = arrangementPreviewPlayer.currentPositionMs()
+            kotlinx.coroutines.delay(12L)
+        }
+    }
+
     LaunchedEffect(loopReady, hasSegmentLoop, hasSelectedSegmentLoop) {
         if (structurePlaybackActive) return@LaunchedEffect
         if (!loopReady && !hasSegmentLoop && !hasSelectedSegmentLoop) {
             loopEnabled = false
+            stopArrangementLoopPreviewPlayback()
             if (isPreparedClipLoopTestActive) {
                 onStopPreparedClipLoopTest()
             }
@@ -2254,6 +2300,7 @@ private fun TimelineMeasuresPlaceholder(
     ) {
         if (structurePlaybackActive) return@LaunchedEffect
         if (!loopEnabled) {
+            stopArrangementLoopPreviewPlayback()
             if (isPreparedClipLoopTestActive) {
                 onStopPreparedClipLoopTest()
             }
@@ -2275,13 +2322,34 @@ private fun TimelineMeasuresPlaceholder(
         if (customLoopStartMs != null && customLoopEndMs != null && customLoopStartMs != customLoopEndMs) {
             val loopStartMs = minOf(customLoopStartMs, customLoopEndMs).coerceAtLeast(0L)
             val loopEndMs = maxOf(customLoopStartMs, customLoopEndMs).coerceAtLeast(loopStartMs + 1L)
+            val audioPath = currentSongAudioPath
+            if (audioPath.isNullOrBlank()) {
+                loopEnabled = false
+                preparedLoopStartMs = null
+                stopArrangementLoopPreviewPlayback()
+                return@LaunchedEffect
+            }
+            stopStructurePreviewPlayback()
+            if (isPreparedClipLoopTestActive) {
+                onStopPreparedClipLoopTest()
+            }
+            if (isPlaying) {
+                onIsPlayingChange(false)
+            }
             preparedLoopStartMs = loopStartMs
-            onIsPlayingChange(true)
-            onStartPreparedClipLoopTest(loopStartMs, loopEndMs)
+            arrangementLoopPositionMs = 0L
+            arrangementPreviewPlayer.playLoop(
+                sourceUri = Uri.fromFile(File(audioPath)),
+                startMs = loopStartMs,
+                endMs = loopEndMs
+            )
+            arrangementLoopPreviewActive = true
+            onStructurePreviewActiveChange(true)
             return@LaunchedEffect
         }
         loopEnabled = false
         preparedLoopStartMs = null
+        stopArrangementLoopPreviewPlayback()
     }
 
     LaunchedEffect(metronomeEnabled, isPlaying, tempoBpm, savedAnchorMs) {
@@ -2612,8 +2680,8 @@ private fun TimelineMeasuresPlaceholder(
             peaks = waveformPeaks,
             durationMs = waveformDurationMs,
             currentPositionMs = displayedCurrentPositionMs,
-            isPlaying = isPlaying,
-            isLoopViewLocked = loopEnabled || isPreparedClipLoopTestActive,
+            isPlaying = isPlaying || arrangementLoopPreviewActive,
+            isLoopViewLocked = loopEnabled || arrangementLoopPreviewActive || isPreparedClipLoopTestActive,
             tempoBpm = tempoBpm,
             measureAnchorMs = savedAnchorMs,
             segmentInMs = segmentInMs,
@@ -2628,6 +2696,15 @@ private fun TimelineMeasuresPlaceholder(
             onSeekRequested = { requestedPositionMs ->
                 if (structurePlaybackActive) {
                     seekStructurePreviewToAbsolutePosition(requestedPositionMs)
+                } else if (arrangementLoopPreviewActive) {
+                    val activeLoop = activeLoopRange
+                    if (activeLoop != null) {
+                        val (loopStartMs, loopEndMs) = activeLoop
+                        val relativeSeekMs = (requestedPositionMs - loopStartMs)
+                            .coerceIn(0L, (loopEndMs - loopStartMs - 1L).coerceAtLeast(0L))
+                        arrangementLoopPositionMs = relativeSeekMs
+                        arrangementPreviewPlayer.seekTo(relativeSeekMs)
+                    }
                 } else {
                     val activeLoop = activeLoopRange
                     if (isPreparedClipLoopTestActive && activeLoop != null && onSeekPreparedClipLoopToPosition != null) {
@@ -2874,13 +2951,13 @@ private fun TimelineMeasuresPlaceholder(
                     val loopStartMs = minOf(segment.startMs, segment.endMs).coerceAtLeast(0L)
                     val loopEndMs = maxOf(segment.startMs, segment.endMs).coerceAtLeast(loopStartMs + 1L)
                     stopStructurePreviewPlayback()
+                    stopArrangementLoopPreviewPlayback()
                     selectedSegmentLoopId = segment.id
                     selectedSegmentLoopStartMs = loopStartMs
                     selectedSegmentLoopEndMs = loopEndMs
                     preparedLoopStartMs = loopStartMs
                     loopEnabled = true
                     revealSyncPointRequest += 1
-                    onStartPreparedClipLoopTest(loopStartMs, loopEndMs)
                 },
                 onItemAdd = { segmentId ->
                     if (arrangementSegments.any { it.id == segmentId }) {
@@ -2919,6 +2996,7 @@ private fun TimelineMeasuresPlaceholder(
                     )
                     if (mediaItems.isEmpty()) return@ArrangementListCard
                     stopStructurePreviewPlayback()
+                    stopArrangementLoopPreviewPlayback()
                     selectedSegmentLoopId = null
                     selectedSegmentLoopStartMs = null
                     selectedSegmentLoopEndMs = null
