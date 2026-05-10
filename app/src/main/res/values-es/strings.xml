@@ -68,7 +68,6 @@
     <string name="arrangement_add_mode_remove">−</string>
     <string name="arrangement_grid_toggle">Cuadrícula</string>
     <string name="arrangement_grid_sync_action">Sync</string>
-    <string name="arrangement_grid_beep_toggle">Bip de cuadrícula</string>
     <string name="arrangement_remove_segment_invalid">No hay segmentos válidos para crear</string>
     <string name="arrangement_in_label">IN: %1$s</string>
     <string name="arrangement_out_label">OUT: %1$s</string>
