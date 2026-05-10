@@ -12,6 +12,7 @@ import android.media.ToneGenerator
 import android.net.Uri
 import android.os.Environment
 import android.os.SystemClock
+import android.util.Log
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -75,6 +76,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -140,6 +142,7 @@ private enum class TimelineEditorMode {
 
 private const val ARRANGEMENT_PREVIEW_FILE_NAME = "preview_arrangement.wav"
 private const val ARRANGEMENT_WAVEFORM_MAX_ZOOM = 240f
+private const val ARR_STRUCTURE_QUEUE_TAG = "ARR_STRUCTURE_QUEUE"
 
 private enum class TimelineDisplayMode {
     TIME,
@@ -1710,6 +1713,7 @@ private fun TimelineMeasuresPlaceholder(
     var arrangementLoopPositionMs by remember(currentSongId) { mutableLongStateOf(0L) }
     var structurePlaybackActive by remember(currentSongId) { mutableStateOf(false) }
     var structurePlaybackIndex by remember(currentSongId) { mutableIntStateOf(-1) }
+    var queuedStructureSegmentIndex by remember(currentSongId) { mutableStateOf<Int?>(null) }
     var structurePlaybackAbsolutePositionMs by remember(currentSongId) {
         mutableLongStateOf(currentPositionMs.coerceAtLeast(0L))
     }
@@ -1778,7 +1782,6 @@ private fun TimelineMeasuresPlaceholder(
     var structureSegmentIds by remember(currentSongId) { mutableStateOf<List<String>>(emptyList()) }
     var nextSegmentIndex by remember(currentSongId) { mutableLongStateOf(1L) }
     var renameSegmentId by remember(currentSongId) { mutableStateOf<String?>(null) }
-    var renameDraft by remember(currentSongId) { mutableStateOf(TextFieldValue("")) }
     var segmentOptionsTargetId by remember(currentSongId) { mutableStateOf<String?>(null) }
     var showArrangementExportProDialog by remember(currentSongId) { mutableStateOf(false) }
     var showExportNameDialog by remember(currentSongId) { mutableStateOf(false) }
@@ -1791,12 +1794,19 @@ private fun TimelineMeasuresPlaceholder(
     var suppressNextLoopAutoplay by remember(currentSongId) { mutableStateOf(false) }
 
     fun stopStructurePreviewPlayback() {
+        if (queuedStructureSegmentIndex != null) {
+            Log.d(
+                ARR_STRUCTURE_QUEUE_TAG,
+                "QUEUE_RESET old=$queuedStructureSegmentIndex reason=stopStructurePreviewPlayback"
+            )
+        }
         runCatching { structurePreviewPlayer.pause() }
         runCatching { structurePreviewPlayer.stop() }
         runCatching { structurePreviewPlayer.clearMediaItems() }
         runCatching { structurePreviewPlayer.volume = 1f }
         structurePlaybackActive = false
         structurePlaybackIndex = -1
+        queuedStructureSegmentIndex = null
         structurePlaybackAbsolutePositionMs = currentPositionMs.coerceAtLeast(0L)
         wavPreviewActive = false
         wavPreviewPositionMs = 0L
@@ -1850,6 +1860,78 @@ private fun TimelineMeasuresPlaceholder(
         )
         structurePreviewPlayer.prepare()
         structurePreviewPlayer.play()
+    }
+
+    fun playStructureSegmentPreview(
+        startIndex: Int,
+        audioPath: String,
+        segments: List<ArrangementSegmentData>
+    ) {
+        if (startIndex !in segments.indices) return
+        val requestedSegment = segments[startIndex]
+        Log.d(
+            ARR_STRUCTURE_QUEUE_TAG,
+            "START_SEGMENT requestedIndex=$startIndex name=${requestedSegment.name} startMs=${requestedSegment.startMs} endMs=${requestedSegment.endMs}"
+        )
+        val mediaItem = buildTimelineStructureMediaItem(
+            audioPath = audioPath,
+            segment = requestedSegment
+        ) ?: return
+        structurePlaybackActive = true
+        structurePlaybackIndex = startIndex
+        if (queuedStructureSegmentIndex != null) {
+            Log.d(
+                ARR_STRUCTURE_QUEUE_TAG,
+                "QUEUE_RESET old=$queuedStructureSegmentIndex reason=startStructureSegment"
+            )
+        }
+        queuedStructureSegmentIndex = null
+        structurePlaybackAbsolutePositionMs = minOf(
+            requestedSegment.startMs,
+            requestedSegment.endMs
+        ).coerceAtLeast(0L)
+        Log.d(
+            ARR_STRUCTURE_QUEUE_TAG,
+            "START_SEGMENT_APPLIED currentPlayingIndex=$structurePlaybackIndex isStructureSegmentPlaying=$structurePlaybackActive"
+        )
+        onStructurePreviewActiveChange(true)
+        structurePreviewPlayer.pause()
+        structurePreviewPlayer.clearMediaItems()
+        structurePreviewPlayer.repeatMode = Player.REPEAT_MODE_OFF
+        structurePreviewPlayer.volume = 1f
+        structurePreviewPlayer.setMediaItem(mediaItem)
+        structurePreviewPlayer.prepare()
+        structurePreviewPlayer.play()
+    }
+
+    fun queueStructureSegmentPreview(
+        nextIndex: Int,
+        audioPath: String,
+        segments: List<ArrangementSegmentData>
+    ) {
+        if (nextIndex !in segments.indices) return
+        val queuedSegment = segments[nextIndex]
+        val nextMediaItem = buildTimelineStructureMediaItem(
+            audioPath = audioPath,
+            segment = queuedSegment
+        ) ?: return
+        val insertionIndex = structurePreviewPlayer.currentMediaItemIndex.coerceAtLeast(0) + 1
+        val mediaItemCount = structurePreviewPlayer.mediaItemCount
+        if (mediaItemCount <= insertionIndex) {
+            structurePreviewPlayer.addMediaItem(nextMediaItem)
+            Log.d(
+                ARR_STRUCTURE_QUEUE_TAG,
+                "NEXT_ITEM_SET queuedIndex=$nextIndex insertionIndex=$insertionIndex name=${queuedSegment.name}"
+            )
+        } else {
+            val oldQueuedIndex = queuedStructureSegmentIndex
+            structurePreviewPlayer.replaceMediaItem(insertionIndex, nextMediaItem)
+            Log.d(
+                ARR_STRUCTURE_QUEUE_TAG,
+                "NEXT_ITEM_REPLACED old=$oldQueuedIndex new=$nextIndex insertionIndex=$insertionIndex name=${queuedSegment.name}"
+            )
+        }
+        queuedStructureSegmentIndex = nextIndex
     }
 
     fun persistArrangementState(
@@ -1938,7 +2020,6 @@ private fun TimelineMeasuresPlaceholder(
             structureSegmentIds = emptyList()
             nextSegmentIndex = 1L
             renameSegmentId = null
-            renameDraft = TextFieldValue("")
             segmentOptionsTargetId = null
             selectedSegmentLoopId = null
             selectedSegmentLoopStartMs = null
@@ -1947,6 +2028,7 @@ private fun TimelineMeasuresPlaceholder(
             arrangementLoopPositionMs = 0L
             structurePlaybackActive = false
             structurePlaybackIndex = -1
+            queuedStructureSegmentIndex = null
             structurePlaybackAbsolutePositionMs = 0L
             wavPreviewPositionMs = 0L
             wavPreviewDurationMs = 0L
@@ -2005,7 +2087,6 @@ private fun TimelineMeasuresPlaceholder(
         structureSegmentIds = arrangementData?.structureSegmentIds.orEmpty()
         nextSegmentIndex = resolveNextTimelineArrangementSegmentIndex(arrangementSegments)
         renameSegmentId = null
-        renameDraft = TextFieldValue("")
         segmentOptionsTargetId = null
         selectedSegmentLoopId = null
         selectedSegmentLoopStartMs = null
@@ -2014,6 +2095,7 @@ private fun TimelineMeasuresPlaceholder(
         arrangementLoopPositionMs = 0L
         structurePlaybackActive = false
         structurePlaybackIndex = -1
+        queuedStructureSegmentIndex = null
         structurePlaybackAbsolutePositionMs = 0L
         wavPreviewPositionMs = 0L
         wavPreviewDurationMs = 0L
@@ -2053,6 +2135,8 @@ private fun TimelineMeasuresPlaceholder(
     val activeStructureSegmentId = structurePlaybackSegments
         .getOrNull(structurePlaybackIndex)
         ?.id
+    val latestStructurePlaybackSegments by rememberUpdatedState(structurePlaybackSegments)
+    val latestCurrentSongAudioPath by rememberUpdatedState(currentSongAudioPath)
     val isLoopHighlighted =
         (loopReady || hasSegmentLoop || hasSelectedSegmentLoop) &&
             (loopEnabled || arrangementLoopPreviewActive || isPreparedClipLoopTestActive)
@@ -2168,14 +2252,38 @@ private fun TimelineMeasuresPlaceholder(
     DisposableEffect(structurePreviewPlayer) {
         val listener = object : Player.Listener {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-                if (structurePlaybackActive) {
-                    structurePlaybackIndex = structurePreviewPlayer.currentMediaItemIndex
-                        .coerceAtLeast(0)
+                if (!structurePlaybackActive) return
+                val queuedIndex = queuedStructureSegmentIndex
+                Log.d(
+                    ARR_STRUCTURE_QUEUE_TAG,
+                    "MEDIA_ITEM_TRANSITION mediaIndex=${structurePreviewPlayer.currentMediaItemIndex} currentPlayingIndex=$structurePlaybackIndex queuedIndex=$queuedIndex reason=$reason"
+                )
+                if (queuedIndex != null) {
+                    structurePlaybackIndex = queuedIndex
+                    Log.d(
+                        ARR_STRUCTURE_QUEUE_TAG,
+                        "QUEUE_RESET old=$queuedStructureSegmentIndex reason=mediaItemTransition"
+                    )
+                    queuedStructureSegmentIndex = null
                 }
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (playbackState == Player.STATE_ENDED) {
+                    val validationSegments = latestStructurePlaybackSegments
+                    val validationListSize = validationSegments.size
+                    Log.d(
+                        ARR_STRUCTURE_QUEUE_TAG,
+                        "END_CALLBACK currentPlayingIndex=$structurePlaybackIndex queuedIndex=$queuedStructureSegmentIndex listSize=$validationListSize playerState=$playbackState playWhenReady=${structurePreviewPlayer.playWhenReady} isPlaying=${structurePreviewPlayer.isPlaying}"
+                    )
+                    Log.d(
+                        ARR_STRUCTURE_QUEUE_TAG,
+                        "END_DECISION action=STOP_NO_NEXT currentPlayingIndex=$structurePlaybackIndex queuedIndex=$queuedStructureSegmentIndex listSize=$validationListSize"
+                    )
+                    Log.d(
+                        ARR_STRUCTURE_QUEUE_TAG,
+                        "STOP_AFTER_END reason=no queued segment currentPlayingIndex=$structurePlaybackIndex queuedIndex=$queuedStructureSegmentIndex"
+                    )
                     stopStructurePreviewPlayback()
                 }
             }
@@ -2219,15 +2327,12 @@ private fun TimelineMeasuresPlaceholder(
         while (structurePlaybackActive || wavPreviewActive) {
             val currentMediaItemIndex = runCatching {
                 structurePreviewPlayer.currentMediaItemIndex
-            }.getOrDefault(structurePlaybackIndex).coerceAtLeast(0)
-            if (structurePlaybackActive) {
-                structurePlaybackIndex = currentMediaItemIndex
-            }
+            }.getOrDefault(0).coerceAtLeast(0)
             val isSecondaryPlaying = runCatching { structurePreviewPlayer.isPlaying }.getOrDefault(false)
             val itemDurationMs = runCatching { structurePreviewPlayer.duration }.getOrDefault(0L)
             val itemPositionMs = runCatching { structurePreviewPlayer.currentPosition }.getOrDefault(0L)
             if (structurePlaybackActive) {
-                structurePlaybackSegments.getOrNull(currentMediaItemIndex)?.let { segment ->
+                structurePlaybackSegments.getOrNull(structurePlaybackIndex)?.let { segment ->
                     val segmentStartMs = minOf(segment.startMs, segment.endMs).coerceAtLeast(0L)
                     val segmentEndMs = maxOf(segment.startMs, segment.endMs).coerceAtLeast(segmentStartMs + 1L)
                     val safeItemPositionMs = itemPositionMs.coerceIn(
@@ -2983,45 +3088,38 @@ private fun TimelineMeasuresPlaceholder(
                     ArrangementListItem(
                         id = index.toString(),
                         title = "${index + 1}. ${segment.name}",
-                        isActive = structurePlaybackActive && index == structurePlaybackIndex
+                        isActive = when {
+                            structurePlaybackActive -> index == structurePlaybackIndex || index == queuedStructureSegmentIndex
+                            else -> false
+                        }
                     )
                 },
                 onItemClick = { structureIndexId ->
                     val startIndex = structureIndexId.toIntOrNull() ?: return@ArrangementListCard
                     if (startIndex !in structurePlaybackSegments.indices) return@ArrangementListCard
                     val audioPath = currentSongAudioPath ?: return@ArrangementListCard
-                    val mediaItems = buildTimelineStructureMediaItems(
-                        audioPath = audioPath,
-                        segments = structurePlaybackSegments
+                    Log.d(
+                        ARR_STRUCTURE_QUEUE_TAG,
+                        "CLICK clickedIndex=$startIndex currentPlayingIndex=$structurePlaybackIndex isStructureSegmentPlaying=${structurePlaybackActive && structurePreviewPlayer.isPlaying} queuedBefore=$queuedStructureSegmentIndex action=${if (structurePlaybackActive && structurePreviewPlayer.isPlaying) "QUEUE_NEXT" else "START_NOW"}"
                     )
-                    if (mediaItems.isEmpty()) return@ArrangementListCard
-                    stopStructurePreviewPlayback()
-                    stopArrangementLoopPreviewPlayback()
-                    selectedSegmentLoopId = null
-                    selectedSegmentLoopStartMs = null
-                    selectedSegmentLoopEndMs = null
-                    if (isPreparedClipLoopTestActive) {
-                        onStopPreparedClipLoopTest()
+                    if (structurePlaybackActive && structurePreviewPlayer.isPlaying) {
+                        queueStructureSegmentPreview(startIndex, audioPath, structurePlaybackSegments)
+                    } else {
+                        stopStructurePreviewPlayback()
+                        stopArrangementLoopPreviewPlayback()
+                        selectedSegmentLoopId = null
+                        selectedSegmentLoopStartMs = null
+                        selectedSegmentLoopEndMs = null
+                        if (isPreparedClipLoopTestActive) {
+                            onStopPreparedClipLoopTest()
+                        }
+                        loopEnabled = false
+                        preparedLoopStartMs = null
+                        if (isPlaying) {
+                            onIsPlayingChange(false)
+                        }
+                        playStructureSegmentPreview(startIndex, audioPath, structurePlaybackSegments)
                     }
-                    loopEnabled = false
-                    preparedLoopStartMs = null
-                    if (isPlaying) {
-                        onIsPlayingChange(false)
-                    }
-                    structurePlaybackActive = true
-                    structurePlaybackIndex = startIndex
-                    structurePlaybackAbsolutePositionMs = minOf(
-                        structurePlaybackSegments[startIndex].startMs,
-                        structurePlaybackSegments[startIndex].endMs
-                    ).coerceAtLeast(0L)
-                    onStructurePreviewActiveChange(true)
-                    structurePreviewPlayer.pause()
-                    structurePreviewPlayer.clearMediaItems()
-                    structurePreviewPlayer.repeatMode = Player.REPEAT_MODE_OFF
-                    structurePreviewPlayer.volume = 1f
-                    structurePreviewPlayer.setMediaItems(mediaItems, startIndex, 0L)
-                    structurePreviewPlayer.prepare()
-                    structurePreviewPlayer.play()
                 },
                 onItemAdd = null,
                 onItemDelete = { structureIndexId ->
@@ -3062,6 +3160,10 @@ private fun TimelineMeasuresPlaceholder(
     }
 
     if (renameSegmentId != null) {
+        val targetSegment = arrangementSegments.firstOrNull { it.id == renameSegmentId }
+        var localRenameDraft by remember(renameSegmentId, targetSegment?.name) {
+            mutableStateOf(TextFieldValue(targetSegment?.name.orEmpty()))
+        }
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { renameSegmentId = null },
             title = {
@@ -3072,8 +3174,8 @@ private fun TimelineMeasuresPlaceholder(
             },
             text = {
                 OutlinedTextField(
-                    value = renameDraft,
-                    onValueChange = { renameDraft = it },
+                    value = localRenameDraft,
+                    onValueChange = { localRenameDraft = it },
                     singleLine = true,
                     label = {
                         Text(text = stringResource(R.string.timeline_rename_label))
@@ -3084,9 +3186,9 @@ private fun TimelineMeasuresPlaceholder(
                 Button(
                     onClick = {
                         val targetId = renameSegmentId ?: return@Button
-                        val nextName = renameDraft.text.trim().ifBlank {
-                            arrangementSegments.firstOrNull { it.id == targetId }?.name ?: return@Button
-                        }
+                        val nextName = targetSegment?.let { segment ->
+                            localRenameDraft.text.trim().ifBlank { segment.name }
+                        } ?: return@Button
                         val nextSegments = arrangementSegments.map { segment ->
                             if (segment.id == targetId) {
                                 segment.copy(name = nextName)
@@ -3327,7 +3429,6 @@ private fun TimelineMeasuresPlaceholder(
                             val segment = arrangementSegments.firstOrNull { it.id == segmentOptionsTargetId }
                                 ?: return@clickable
                             renameSegmentId = segment.id
-                            renameDraft = TextFieldValue(segment.name)
                             segmentOptionsTargetId = null
                         }
                     )
@@ -4048,6 +4149,13 @@ private fun buildTimelineStructureMediaItems(
                 .build()
         }
     }
+}
+
+private fun buildTimelineStructureMediaItem(
+    audioPath: String,
+    segment: ArrangementSegmentData
+): MediaItem? {
+    return buildTimelineStructureMediaItems(audioPath, listOf(segment)).firstOrNull()
 }
 
 private fun buildNextTempoExportName(
