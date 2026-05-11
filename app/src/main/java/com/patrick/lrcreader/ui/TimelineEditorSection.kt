@@ -1804,6 +1804,7 @@ private fun TimelineMeasuresPlaceholder(
     var segmentOptionsTargetId by remember(currentSongId) { mutableStateOf<String?>(null) }
     var showArrangementExportProDialog by remember(currentSongId) { mutableStateOf(false) }
     var showExportNameDialog by remember(currentSongId) { mutableStateOf(false) }
+    var showSamplerTestScreen by remember(currentSongId) { mutableStateOf(false) }
     var exportNameDraft by remember(currentSongId) { mutableStateOf(TextFieldValue("")) }
     var isExportNameLoading by remember(currentSongId) { mutableStateOf(false) }
     var isFinalExporting by remember(currentSongId) { mutableStateOf(false) }
@@ -2642,6 +2643,16 @@ private fun TimelineMeasuresPlaceholder(
         stopArrangementLoopPreviewPlayback()
     }
 
+    if (showSamplerTestScreen) {
+        BackHandler {
+            showSamplerTestScreen = false
+        }
+        ArrangementSamplerTestScreen(
+            songId = currentSongId,
+            onClose = { showSamplerTestScreen = false },
+            modifier = Modifier.fillMaxSize()
+        )
+    } else {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -3070,6 +3081,29 @@ private fun TimelineMeasuresPlaceholder(
                     .padding(horizontal = 10.dp, vertical = 8.dp)
             )
         }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.Start
+        ) {
+            Text(
+                text = stringResource(R.string.arrangement_sampler_test_open_action),
+                color = Color(0xFFB0BEC5),
+                fontSize = 14.sp,
+                modifier = Modifier
+                    .clickable {
+                        stopStructurePreviewPlayback(reason = "open_sampler_test")
+                        stopArrangementLoopPreviewPlayback()
+                        if (isPreparedClipLoopTestActive) {
+                            onStopPreparedClipLoopTest()
+                        }
+                        if (isPlaying) {
+                            onIsPlayingChange(false)
+                        }
+                        showSamplerTestScreen = true
+                    }
+                    .padding(horizontal = 10.dp, vertical = 4.dp)
+            )
+        }
         if (isPreviewGenerating) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -3332,6 +3366,7 @@ private fun TimelineMeasuresPlaceholder(
                 fontWeight = FontWeight.Medium
             )
         }
+    }
     }
 
     if (renameSegmentId != null) {

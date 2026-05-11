@@ -883,6 +883,21 @@ Don’t forget to save.</string>
     <string name="library_delete_selected_title">Delete selection</string>
     <string name="library_delete_selected_confirm_text">Delete %1$d selected file(s) permanently?</string>
 
+    <!-- Arrangement sampler test -->
+    <string name="arrangement_sampler_test_open_action">Sampler Test</string>
+    <string name="arrangement_sampler_test_title">Sampler Test</string>
+    <string name="arrangement_sampler_test_load_samples">Load Samples</string>
+    <string name="arrangement_sampler_test_loading">Loading…</string>
+    <string name="arrangement_sampler_test_stop">Stop</string>
+    <string name="arrangement_sampler_test_release">Release</string>
+    <string name="arrangement_sampler_test_play">Play</string>
+    <string name="arrangement_sampler_test_queue_next">Queue Next</string>
+    <string name="arrangement_sampler_test_no_song">No current song.</string>
+    <string name="arrangement_sampler_test_empty_structure">No segment in the current Structure.</string>
+    <string name="arrangement_sampler_test_loaded_status">%1$d sample(s) loaded.</string>
+    <string name="arrangement_sampler_test_error_status">Sample loading error. See Logcat.</string>
+    <string name="arrangement_sampler_test_segment_range">%1$d ms → %2$d ms</string>
+
     <!-- MainActivity -->
     <string name="debug_reset_setup">DEBUG: reset setup</string>
     <string name="main_unknown_screen">Unknown screen</string>

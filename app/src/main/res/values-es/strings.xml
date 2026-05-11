@@ -786,6 +786,21 @@ No olvides guardar.</string>
     <string name="library_bottom_clear_selection">Deseleccionar.</string>
     <string name="library_copying">Copiando…</string>
 
+    <!-- Arrangement sampler test -->
+    <string name="arrangement_sampler_test_open_action">Sampler Test</string>
+    <string name="arrangement_sampler_test_title">Sampler Test</string>
+    <string name="arrangement_sampler_test_load_samples">Load Samples</string>
+    <string name="arrangement_sampler_test_loading">Cargando…</string>
+    <string name="arrangement_sampler_test_stop">Stop</string>
+    <string name="arrangement_sampler_test_release">Release</string>
+    <string name="arrangement_sampler_test_play">Play</string>
+    <string name="arrangement_sampler_test_queue_next">Queue Next</string>
+    <string name="arrangement_sampler_test_no_song">No hay canción actual.</string>
+    <string name="arrangement_sampler_test_empty_structure">No hay segmentos en la Structure actual.</string>
+    <string name="arrangement_sampler_test_loaded_status">%1$d sample(s) cargado(s).</string>
+    <string name="arrangement_sampler_test_error_status">Error al cargar samples. Ver Logcat.</string>
+    <string name="arrangement_sampler_test_segment_range">%1$d ms → %2$d ms</string>
+
     <!-- MainActivity -->
     <string name="debug_reset_setup">DEBUG: reiniciar configuración</string>
     <string name="main_unknown_screen">Pantalla desconocida</string>
