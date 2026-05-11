@@ -103,6 +103,7 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import com.patrick.lrcreader.core.EditionConfig
 import com.patrick.lrcreader.core.FillerSoundManager
+import com.patrick.lrcreader.core.TrackVolumePrefs
 import com.patrick.lrcreader.core.TrackTimelineTempoPrefs
 import com.patrick.lrcreader.core.audio.ArrangementPreviewPlayer
 import com.patrick.lrcreader.core.audio.ArrangementWavRenderer
@@ -116,6 +117,7 @@ import com.patrick.lrcreader.smp.ArrangementStore
 import com.patrick.lrcreader.smp.DEFAULT_TIMELINE_NOTE_DURATION_MS
 import com.patrick.lrcreader.smp.GridSetupData
 import com.patrick.lrcreader.smp.GridSetupStore
+import com.patrick.lrcreader.smp.SmpConfig
 import com.patrick.lrcreader.smp.SmpConverter
 import com.patrick.lrcreader.smp.SmpLibraryScanner
 import com.patrick.lrcreader.smp.SongUnit
@@ -1751,6 +1753,7 @@ private fun TimelineMeasuresPlaceholder(
     }
     var currentSongAudioPath by remember(currentSongId) { mutableStateOf<String?>(null) }
     var currentSongTitle by remember(currentSongId) { mutableStateOf<String?>(null) }
+    var currentSongTrackGainDb by remember(currentSongId) { mutableIntStateOf(0) }
     var previewRenderedFile by remember(currentSongId) { mutableStateOf<File?>(null) }
     var previewRenderedSignature by remember(currentSongId) { mutableStateOf<String?>(null) }
     var wavPreviewActive by remember(currentSongId) { mutableStateOf(false) }
@@ -1786,6 +1789,14 @@ private fun TimelineMeasuresPlaceholder(
         mutableStateOf(TimelineSegmentSelectionMode.KEEP)
     }
     var suppressNextLoopAutoplay by remember(currentSongId) { mutableStateOf(false) }
+    val arrangementTrackGainLinear = remember(currentSongTrackGainDb) {
+        val safeDb = currentSongTrackGainDb.coerceIn(-12, 0)
+        if (safeDb >= 0) {
+            1f
+        } else {
+            10f.pow(safeDb / 20f).coerceIn(0f, 1f)
+        }
+    }
 
     fun stopStructurePreviewPlayback() {
         if (queuedStructureSegmentIndex != null) {
@@ -1797,7 +1808,7 @@ private fun TimelineMeasuresPlaceholder(
         runCatching { structurePreviewPlayer.pause() }
         runCatching { structurePreviewPlayer.stop() }
         runCatching { structurePreviewPlayer.clearMediaItems() }
-        runCatching { structurePreviewPlayer.volume = 1f }
+        runCatching { structurePreviewPlayer.volume = arrangementTrackGainLinear }
         structurePlaybackActive = false
         structurePlaybackIndex = -1
         queuedStructureSegmentIndex = null
@@ -1848,7 +1859,7 @@ private fun TimelineMeasuresPlaceholder(
         structurePreviewPlayer.pause()
         structurePreviewPlayer.clearMediaItems()
         structurePreviewPlayer.repeatMode = Player.REPEAT_MODE_OFF
-        structurePreviewPlayer.volume = 1f
+        structurePreviewPlayer.volume = arrangementTrackGainLinear
         structurePreviewPlayer.setMediaItem(
             MediaItem.fromUri(Uri.fromFile(previewFile))
         )
@@ -1892,7 +1903,7 @@ private fun TimelineMeasuresPlaceholder(
         structurePreviewPlayer.pause()
         structurePreviewPlayer.clearMediaItems()
         structurePreviewPlayer.repeatMode = Player.REPEAT_MODE_OFF
-        structurePreviewPlayer.volume = 1f
+        structurePreviewPlayer.volume = arrangementTrackGainLinear
         structurePreviewPlayer.setMediaItem(mediaItem)
         val autoNextIndex = (startIndex + 1).takeIf { it in segments.indices }
         if (autoNextIndex != null) {
@@ -2043,16 +2054,18 @@ private fun TimelineMeasuresPlaceholder(
         stopArrangementLoopPreviewPlayback()
         currentSongAudioPath = null
         currentSongTitle = null
+        currentSongTrackGainDb = 0
         replacePreviewRenderedFile(null)
         if (songId.isEmpty()) {
             waveformPeaks = emptyList()
             waveformDurationMs = 0
             waveformLoading = false
-            waveformError = false
-            arrangementName = "Arrangement 1"
-            arrangementSegments = emptyList()
-            structureSegmentIds = emptyList()
-            nextSegmentIndex = 1L
+                waveformError = false
+                arrangementName = "Arrangement 1"
+                arrangementSegments = emptyList()
+                structureSegmentIds = emptyList()
+                currentSongTrackGainDb = 0
+                nextSegmentIndex = 1L
             renameSegmentId = null
             segmentOptionsTargetId = null
             selectedSegmentLoopId = null
@@ -2082,6 +2095,9 @@ private fun TimelineMeasuresPlaceholder(
                     ?: error("Missing audio path")
                 val audioUri = Uri.fromFile(File(audioPath))
                 val durationMs = queryTimelineWaveformDurationMs(context, audioUri)
+                val trackGainDb = TrackVolumePrefs.getDb(context, audioUri.toString())
+                    ?: SmpConfig.readPlaybackFromSongUnit(song)?.volumeDb
+                    ?: 0
                 val peaks = WaveformPeaksCache.getOrCompute(
                     context = context,
                     uri = audioUri,
@@ -2094,16 +2110,17 @@ private fun TimelineMeasuresPlaceholder(
                         targetPoints = 20_000
                     )
                 }
-                Triple(peaks, durationMs, song)
+                Quadruple(peaks, durationMs, song, trackGainDb)
             }
         }
 
         result
-            .onSuccess { (peaks, durationMs, song) ->
+            .onSuccess { (peaks, durationMs, song, trackGainDb) ->
                 waveformPeaks = peaks
                 waveformDurationMs = durationMs
                 currentSongAudioPath = song.audioPath
                 currentSongTitle = song.title
+                currentSongTrackGainDb = trackGainDb
                 waveformLoading = false
             }
             .onFailure {
@@ -2111,6 +2128,7 @@ private fun TimelineMeasuresPlaceholder(
                 waveformDurationMs = 0
                 currentSongAudioPath = null
                 currentSongTitle = null
+                currentSongTrackGainDb = 0
                 waveformLoading = false
                 waveformError = true
             }
@@ -2364,7 +2382,7 @@ private fun TimelineMeasuresPlaceholder(
     }
     LaunchedEffect(structurePlaybackActive, wavPreviewActive, structurePreviewPlayer) {
         if (!structurePlaybackActive && !wavPreviewActive) {
-            runCatching { structurePreviewPlayer.volume = 1f }
+            runCatching { structurePreviewPlayer.volume = arrangementTrackGainLinear }
             return@LaunchedEffect
         }
         while (structurePlaybackActive || wavPreviewActive) {
@@ -2390,7 +2408,7 @@ private fun TimelineMeasuresPlaceholder(
                 wavPreviewDurationMs = itemDurationMs.coerceAtLeast(0L)
             }
             val nextVolume = if (!isSecondaryPlaying || itemDurationMs <= 0L) {
-                1f
+                arrangementTrackGainLinear
             } else {
                 val safePositionMs = itemPositionMs.coerceAtLeast(0L)
                 val safeDurationMs = itemDurationMs.coerceAtLeast(1L)
@@ -2399,7 +2417,7 @@ private fun TimelineMeasuresPlaceholder(
                     .coerceIn(0f, 1f)
                 val fadeOutGain = (remainingMs.toFloat() / structurePreviewFadeDurationMs.toFloat())
                     .coerceIn(0f, 1f)
-                minOf(fadeInGain, fadeOutGain)
+                arrangementTrackGainLinear * minOf(fadeInGain, fadeOutGain)
             }
             runCatching { structurePreviewPlayer.volume = nextVolume }
             kotlinx.coroutines.delay(8L)
@@ -2480,6 +2498,7 @@ private fun TimelineMeasuresPlaceholder(
             }
             preparedLoopStartMs = loopStartMs
             arrangementLoopPositionMs = 0L
+            arrangementPreviewPlayer.setTrackGainDb(currentSongTrackGainDb.toFloat())
             arrangementPreviewPlayer.playLoop(
                 sourceUri = Uri.fromFile(File(audioPath)),
                 startMs = loopStartMs,
@@ -3420,6 +3439,13 @@ private fun TimelineMeasuresPlaceholder(
         )
     }
 }
+
+private data class Quadruple<A, B, C, D>(
+    val first: A,
+    val second: B,
+    val third: C,
+    val fourth: D
+)
 
 @Composable
 private fun TimelineGridWaveformSection(

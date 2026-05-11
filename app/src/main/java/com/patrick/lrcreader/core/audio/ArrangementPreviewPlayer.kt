@@ -5,12 +5,23 @@ import android.net.Uri
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import kotlin.math.pow
 
 class ArrangementPreviewPlayer(
     context: Context
 ) {
     private val player = ExoPlayer.Builder(context.applicationContext).build().apply {
         playWhenReady = false
+    }
+
+    fun setTrackGainDb(gainDb: Float) {
+        val safeDb = gainDb.coerceIn(-12f, 0f)
+        val volumeLinear = if (safeDb >= 0f) {
+            1f
+        } else {
+            10f.pow(safeDb / 20f).coerceIn(0f, 1f)
+        }
+        player.volume = volumeLinear
     }
 
     fun playLoop(sourceUri: Uri, startMs: Long, endMs: Long) {
