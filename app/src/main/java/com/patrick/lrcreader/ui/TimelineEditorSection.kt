@@ -144,6 +144,7 @@ private enum class TimelineEditorMode {
 
 private const val ARRANGEMENT_PREVIEW_FILE_NAME = "preview_arrangement.wav"
 private const val ARRANGEMENT_WAVEFORM_MAX_ZOOM = 240f
+private const val ARRANGEMENT_WAVEFORM_VISUAL_PREROLL_MS = 2_000L
 private const val ARR_STRUCTURE_QUEUE_TAG = "ARR_STRUCTURE_QUEUE"
 
 private enum class TimelineDisplayMode {
@@ -315,9 +316,8 @@ fun TimelineEditorSection(
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 4.dp, vertical = 6.dp)
             ) {
-                Text(
-                    text = stringResource(R.string.arrangement_help_message),
-                    color = Color(0xFFE0E0E0)
+                ArrangementHelpPageContent(
+                    message = stringResource(R.string.arrangement_help_message)
                 )
             }
         }
@@ -3530,6 +3530,8 @@ private fun TimelineGridWaveformSection(
                                 detectTapGestures(
                                     onTap = { offset ->
                                         val safeDuration = durationMs.coerceAtLeast(1)
+                                        val visualPreRollMs = ARRANGEMENT_WAVEFORM_VISUAL_PREROLL_MS
+                                        val visualDurationMs = safeDuration.toLong() + visualPreRollMs
                                         val edgeDeadZonePx = 24.dp.toPx()
                                         if (offset.x <= edgeDeadZonePx ||
                                             offset.x >= size.width - edgeDeadZonePx
@@ -3550,16 +3552,20 @@ private fun TimelineGridWaveformSection(
                                         } else {
                                             0f
                                         }
-                                        val selectedFraction = startFraction +
+                                        val selectedVisualFraction = startFraction +
                                             localFraction * (effectiveEndFraction - startFraction)
                                         onSeekRequested(
-                                            (selectedFraction * safeDuration)
-                                                .toLong()
+                                            (
+                                                selectedVisualFraction * visualDurationMs.toFloat() -
+                                                    visualPreRollMs.toFloat()
+                                                ).roundToLong()
                                                 .coerceIn(0L, safeDuration.toLong())
                                         )
                                     },
                                     onLongPress = { offset ->
                                     val safeDuration = durationMs.coerceAtLeast(1)
+                                    val visualPreRollMs = ARRANGEMENT_WAVEFORM_VISUAL_PREROLL_MS
+                                    val visualDurationMs = safeDuration.toLong() + visualPreRollMs
                                     val edgeDeadZonePx = 24.dp.toPx()
                                     if (offset.x <= edgeDeadZonePx ||
                                         offset.x >= size.width - edgeDeadZonePx
@@ -3580,11 +3586,13 @@ private fun TimelineGridWaveformSection(
                                     } else {
                                         0f
                                     }
-                                    val selectedFraction = startFraction +
+                                    val selectedVisualFraction = startFraction +
                                         localFraction * (effectiveEndFraction - startFraction)
                                     onWaveformLongPress(
-                                        (selectedFraction * safeDuration)
-                                            .toLong()
+                                        (
+                                            selectedVisualFraction * visualDurationMs.toFloat() -
+                                                visualPreRollMs.toFloat()
+                                            ).roundToLong()
                                             .coerceIn(0L, safeDuration.toLong())
                                     )
                                     }
@@ -3624,6 +3632,9 @@ private fun TimelineGridWaveformSection(
                         val widthPx = size.width
                         val heightPx = size.height
                         val safeDuration = durationMs.coerceAtLeast(1)
+                        val visualPreRollMs = ARRANGEMENT_WAVEFORM_VISUAL_PREROLL_MS
+                        val visualDurationMs = safeDuration.toLong() + visualPreRollMs
+                        val visualDurationFloat = visualDurationMs.toFloat().coerceAtLeast(1f)
                         val peakCount = peaks.size.coerceAtLeast(1)
                         val visibleFraction = 1f / waveformZoom.coerceAtLeast(1f)
                         val startFraction = (waveformCenterFraction - visibleFraction / 2f).coerceIn(0f, 1f)
@@ -3632,7 +3643,8 @@ private fun TimelineGridWaveformSection(
                         val waveformNormalColor = Color(0xFF80CBC4)
                         val waveformAccentColor = Color(0xFFB2FF59)
                         peaks.forEachIndexed { index, peak ->
-                            val positionFraction = ((index.toFloat() + 0.5f) / peakCount.toFloat())
+                            val realTimeMs = ((index.toFloat() + 0.5f) / peakCount.toFloat()) * safeDuration.toFloat()
+                            val positionFraction = ((realTimeMs + visualPreRollMs.toFloat()) / visualDurationFloat)
                                 .coerceIn(0f, 1f)
                             if (positionFraction < startFraction || positionFraction > effectiveEndFraction) {
                                 return@forEachIndexed
@@ -3657,8 +3669,10 @@ private fun TimelineGridWaveformSection(
                                 cap = androidx.compose.ui.graphics.StrokeCap.Round
                             )
                             if (index < peaks.lastIndex) {
-                                val nextPositionFraction = (((index + 1).toFloat() + 0.5f) /
-                                    peakCount.toFloat()).coerceIn(0f, 1f)
+                                val nextRealTimeMs = (((index + 1).toFloat() + 0.5f) /
+                                    peakCount.toFloat()) * safeDuration.toFloat()
+                                val nextPositionFraction = ((nextRealTimeMs + visualPreRollMs.toFloat()) /
+                                    visualDurationFloat).coerceIn(0f, 1f)
                                 val midpointFraction = (positionFraction + nextPositionFraction) / 2f
                                 if (midpointFraction in startFraction..effectiveEndFraction) {
                                     val midpointX = ((midpointFraction - startFraction) /
@@ -3691,8 +3705,10 @@ private fun TimelineGridWaveformSection(
                         }
 
                         if (tempoBpm != null && tempoBpm > 0 && measureAnchorMs != null) {
-                            val visibleStartMs = startFraction * safeDuration.toFloat()
-                            val visibleEndMs = effectiveEndFraction * safeDuration.toFloat()
+                            val visibleStartMs =
+                                startFraction * visualDurationFloat - visualPreRollMs.toFloat()
+                            val visibleEndMs =
+                                effectiveEndFraction * visualDurationFloat - visualPreRollMs.toFloat()
                             val beatDurationMs = 60_000.0 / tempoBpm.toDouble()
                             val anchorMs = measureAnchorMs.toDouble()
                             var beatIndex = floor((visibleStartMs - anchorMs) / beatDurationMs).toLong()
@@ -3704,7 +3720,10 @@ private fun TimelineGridWaveformSection(
                                 val beatPositionMs = anchorMs + beatIndex * beatDurationMs
                                 if (beatPositionMs > visibleEndMs) break
                                 if (beatPositionMs >= 0.0) {
-                                    val beatFraction = (beatPositionMs / safeDuration.toDouble()).toFloat()
+                                    val beatFraction = (
+                                        (beatPositionMs + visualPreRollMs.toDouble()) /
+                                            visualDurationMs.toDouble()
+                                        ).toFloat()
                                     val beatX = ((beatFraction - startFraction) /
                                         (effectiveEndFraction - startFraction)) * widthPx
                                     val isBarStart = beatIndex.rem(4L) == 0L
@@ -3728,13 +3747,13 @@ private fun TimelineGridWaveformSection(
                             val loopStartMs = minOf(segmentInMs, segmentOutMs).coerceAtLeast(0L)
                             val loopEndMs = maxOf(segmentInMs, segmentOutMs).coerceAtLeast(loopStartMs + 1L)
                             val loopStartFraction = (
-                                loopStartMs.coerceIn(0L, safeDuration.toLong()).toFloat() /
-                                    safeDuration.toFloat()
-                                ).coerceIn(0f, 1f)
+                                loopStartMs.coerceIn(0L, safeDuration.toLong()).toFloat() +
+                                    visualPreRollMs.toFloat()
+                                ) / visualDurationFloat
                             val loopEndFraction = (
-                                loopEndMs.coerceIn(0L, safeDuration.toLong()).toFloat() /
-                                    safeDuration.toFloat()
-                                ).coerceIn(0f, 1f)
+                                loopEndMs.coerceIn(0L, safeDuration.toLong()).toFloat() +
+                                    visualPreRollMs.toFloat()
+                                ) / visualDurationFloat
 
                             if (isRemoveMode) {
                                 val overlayStartX = ((loopStartFraction - startFraction) /
@@ -3782,9 +3801,10 @@ private fun TimelineGridWaveformSection(
                             }
                         }
 
-                        val currentFraction = currentPositionMs
-                            .coerceIn(0L, safeDuration.toLong())
-                            .toFloat() / safeDuration.toFloat()
+                        val currentFraction = (
+                            currentPositionMs.coerceIn(0L, safeDuration.toLong()).toFloat() +
+                                visualPreRollMs.toFloat()
+                            ) / visualDurationFloat
                         if (currentFraction in startFraction..effectiveEndFraction) {
                             val currentX = ((currentFraction - startFraction) /
                                 (effectiveEndFraction - startFraction)) * widthPx
@@ -3797,9 +3817,10 @@ private fun TimelineGridWaveformSection(
                         }
 
                         segmentInMs?.let { inMs ->
-                            val inFraction = inMs
-                                .coerceIn(0L, safeDuration.toLong())
-                                .toFloat() / safeDuration.toFloat()
+                            val inFraction = (
+                                inMs.coerceIn(0L, safeDuration.toLong()).toFloat() +
+                                    visualPreRollMs.toFloat()
+                                ) / visualDurationFloat
                             if (inFraction in startFraction..effectiveEndFraction) {
                                 val inX = ((inFraction - startFraction) /
                                     (effectiveEndFraction - startFraction)) * widthPx
@@ -3818,9 +3839,10 @@ private fun TimelineGridWaveformSection(
                             }
                         }
                         segmentOutMs?.let { outMs ->
-                            val outFraction = outMs
-                                .coerceIn(0L, safeDuration.toLong())
-                                .toFloat() / safeDuration.toFloat()
+                            val outFraction = (
+                                outMs.coerceIn(0L, safeDuration.toLong()).toFloat() +
+                                    visualPreRollMs.toFloat()
+                                ) / visualDurationFloat
                             if (outFraction in startFraction..effectiveEndFraction) {
                                 val outX = ((outFraction - startFraction) /
                                     (effectiveEndFraction - startFraction)) * widthPx
@@ -3840,9 +3862,10 @@ private fun TimelineGridWaveformSection(
                         }
                         if (segmentInMs == null) {
                             measureAnchorMs?.let { anchorMs ->
-                                val anchorFraction = anchorMs
-                                    .coerceIn(0L, safeDuration.toLong())
-                                    .toFloat() / safeDuration.toFloat()
+                                val anchorFraction = (
+                                    anchorMs.coerceIn(0L, safeDuration.toLong()).toFloat() +
+                                        visualPreRollMs.toFloat()
+                                    ) / visualDurationFloat
                                 if (anchorFraction in startFraction..effectiveEndFraction) {
                                     val anchorX = ((anchorFraction - startFraction) /
                                         (effectiveEndFraction - startFraction)) * widthPx
@@ -4196,6 +4219,68 @@ private fun buildNextTempoExportName(
         ?: 1
 
     return "${baseName}_AR${nextIndex.coerceAtLeast(1).toString().padStart(2, '0')}"
+}
+
+@Composable
+private fun ArrangementHelpPageContent(
+    message: String
+) {
+    val sectionTitleRegex = Regex("^\\d+\\)")
+    val lines = remember(message) { message.split('\n') }
+
+    Column(
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        lines.forEach { rawLine ->
+            val line = rawLine.trim()
+            when {
+                line.isBlank() -> Spacer(modifier = Modifier.height(8.dp))
+
+                line.startsWith("🎵") -> {
+                    Text(
+                        text = line,
+                        color = Color.White,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        lineHeight = 24.sp
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                }
+
+                sectionTitleRegex.containsMatchIn(line) -> {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = line,
+                        color = Color.White,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        lineHeight = 22.sp
+                    )
+                }
+
+                line == line.uppercase() || line.endsWith(":") -> {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = line,
+                        color = Color(0xFFF3F6F8),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        lineHeight = 20.sp
+                    )
+                }
+
+                else -> {
+                    Text(
+                        text = line,
+                        color = Color(0xFFD7DEE3),
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Normal,
+                        lineHeight = 21.sp
+                    )
+                }
+            }
+        }
+    }
 }
 
 private fun normalizeTempoExportBaseName(sourceTitle: String?): String {
