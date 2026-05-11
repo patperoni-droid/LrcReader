@@ -12,6 +12,7 @@ import android.os.Environment
 import android.os.SystemClock
 import android.util.Log
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -43,6 +44,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.StickyNote2
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FlashOn
@@ -233,7 +235,7 @@ fun TimelineEditorSection(
     var showPaletteInput by remember { mutableStateOf(false) }
     var showTimelineConfigProDialog by remember { mutableStateOf(false) }
     var showArrangementExportProDialog by remember { mutableStateOf(false) }
-    var showArrangementHelpDialog by remember { mutableStateOf(false) }
+    var showArrangementHelpPage by remember { mutableStateOf(false) }
     var editorMode by remember(startInGridSetup) {
         mutableStateOf(
             if (startInGridSetup) {
@@ -276,6 +278,50 @@ fun TimelineEditorSection(
                 context.startActivity(webIntent)
             }
         }
+    }
+
+    if (showArrangementHelpPage) {
+        BackHandler { showArrangementHelpPage = false }
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color(0xFF121212))
+                .padding(horizontal = 16.dp, vertical = 10.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = { showArrangementHelpPage = false }) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = stringResource(R.string.common_close),
+                        tint = Color.White
+                    )
+                }
+                Text(
+                    text = stringResource(R.string.arrangement_help_title),
+                    color = Color.White,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+
+            Spacer(Modifier.height(8.dp))
+
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 4.dp, vertical = 6.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.arrangement_help_message),
+                    color = Color(0xFFE0E0E0)
+                )
+            }
+        }
+        return
     }
 
     fun requestFocusAt(timeMs: Long) {
@@ -495,7 +541,7 @@ fun TimelineEditorSection(
                 }
                 TimelineEditorMode.GRID_SETUP -> {
                     if (startInGridSetup) {
-                        TextButton(onClick = { showArrangementHelpDialog = true }) {
+                        TextButton(onClick = { showArrangementHelpPage = true }) {
                             Text(
                                 text = stringResource(R.string.arrangement_hub_help_action),
                                 color = Color(0xFF80CBC4),
@@ -508,36 +554,6 @@ fun TimelineEditorSection(
         }
 
         Spacer(Modifier.height(8.dp))
-
-        if (showArrangementHelpDialog) {
-            androidx.compose.material3.AlertDialog(
-                onDismissRequest = { showArrangementHelpDialog = false },
-                title = {
-                    Text(
-                        text = stringResource(R.string.arrangement_help_title),
-                        color = Color.White
-                    )
-                },
-                text = {
-                    Column(
-                        modifier = Modifier.verticalScroll(rememberScrollState())
-                    )
-                    {
-                        Text(
-                            text = stringResource(R.string.arrangement_help_message),
-                            color = Color(0xFFE0E0E0)
-                        )
-                    }
-                },
-                confirmButton = {
-                    TextButton(onClick = { showArrangementHelpDialog = false }) {
-                        Text(text = stringResource(R.string.common_close))
-                    }
-                },
-                containerColor = Color(0xFF121212)
-            )
-        }
-
         when (editorMode) {
             TimelineEditorMode.TIMELINE -> {
                 if (displayMode == TimelineDisplayMode.MEASURES && hasMeasuresGrid) {
