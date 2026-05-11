@@ -95,6 +95,7 @@
     <string name="arrangement_segments_empty">No hay segmentos</string>
     <string name="arrangement_structure_title">Estructura</string>
     <string name="arrangement_structure_empty">No hay estructura</string>
+    <string name="arrangement_structure_audio_preparing">Preparando audio…</string>
     <string name="arrangement_segment_range">%1$s → %2$s</string>
     <string name="arrangement_segment_default_name">Segmento</string>
     <string name="common_ellipsis">…</string>

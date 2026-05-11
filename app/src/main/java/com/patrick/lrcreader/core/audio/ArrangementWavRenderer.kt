@@ -84,6 +84,21 @@ object ArrangementWavRenderer {
         }
     }
 
+    suspend fun decodeSourceToWav(
+        audioPath: String,
+        outputFile: File
+    ): File = withContext(Dispatchers.IO) {
+        runCatching { outputFile.delete() }
+        decodeEntireSourceToWav(
+            audioPath = audioPath,
+            outputFile = outputFile
+        )
+        require(outputFile.isFile && outputFile.length() > WAV_HEADER_SIZE_BYTES) {
+            "Decoded source WAV is empty"
+        }
+        outputFile
+    }
+
     private fun decodeEntireSourceToWav(
         audioPath: String,
         outputFile: File

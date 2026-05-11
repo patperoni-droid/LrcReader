@@ -97,6 +97,7 @@
     <string name="arrangement_segments_empty">Aucun segment</string>
     <string name="arrangement_structure_title">Structure</string>
     <string name="arrangement_structure_empty">Aucune structure</string>
+    <string name="arrangement_structure_audio_preparing">Préparation audio…</string>
     <string name="arrangement_segment_range">%1$s → %2$s</string>
     <string name="arrangement_segment_default_name">Segment</string>
     <string name="common_ellipsis">…</string>
