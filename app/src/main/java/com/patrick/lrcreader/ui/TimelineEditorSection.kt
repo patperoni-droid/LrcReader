@@ -182,6 +182,12 @@ private enum class TimelineWaveformFocusMarker {
     OUT
 }
 
+private enum class TimelineArrangementEditHandle {
+    NONE,
+    IN,
+    OUT
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun TimelineEditorSection(
@@ -265,6 +271,7 @@ fun TimelineEditorSection(
     var focusRequestToken by remember { mutableIntStateOf(0) }
     var tempoStructurePreviewActive by remember { mutableStateOf(false) }
     var tempoStructurePreviewStopRequest by remember { mutableIntStateOf(0) }
+    var tempoStructurePreviewUserStopRequest by remember { mutableIntStateOf(0) }
 
     val openUpgradeToPro: () -> Unit = remember(context) {
         {
@@ -483,7 +490,7 @@ fun TimelineEditorSection(
             IconButton(
                 onClick = {
                     if (tempoStructurePreviewActive) {
-                        tempoStructurePreviewStopRequest += 1
+                        tempoStructurePreviewUserStopRequest += 1
                         return@IconButton
                     }
                     if (editorMode == TimelineEditorMode.GRID_SETUP && isPreparedClipLoopTestActive) {
@@ -844,6 +851,7 @@ fun TimelineEditorSection(
                     onStartPreparedClipLoopTest = onStartPreparedClipLoopTest,
                     onStopPreparedClipLoopTest = onStopPreparedClipLoopTest,
                     structurePreviewStopRequest = tempoStructurePreviewStopRequest,
+                    structurePreviewUserStopRequest = tempoStructurePreviewUserStopRequest,
                     onStructurePreviewActiveChange = { tempoStructurePreviewActive = it }
                 )
             }
@@ -1577,6 +1585,7 @@ private fun GridSetupHost(
     onStopPreparedClipLoopTest: () -> Unit,
     onSeekPreparedClipLoopToPosition: ((Long) -> Unit)? = null,
     structurePreviewStopRequest: Int,
+    structurePreviewUserStopRequest: Int,
     onStructurePreviewActiveChange: (Boolean) -> Unit
 ) {
     val context = LocalContext.current
@@ -1676,6 +1685,7 @@ private fun GridSetupHost(
         onStopPreparedClipLoopTest = onStopPreparedClipLoopTest,
         onSeekPreparedClipLoopToPosition = onSeekPreparedClipLoopToPosition,
         structurePreviewStopRequest = structurePreviewStopRequest,
+        structurePreviewUserStopRequest = structurePreviewUserStopRequest,
         onStructurePreviewActiveChange = onStructurePreviewActiveChange,
         onTempoDraftChange = { input ->
             val nextDraft = input.filter { ch -> ch.isDigit() }.take(3)
@@ -1717,6 +1727,7 @@ private fun TimelineMeasuresPlaceholder(
     onStopPreparedClipLoopTest: () -> Unit,
     onSeekPreparedClipLoopToPosition: ((Long) -> Unit)?,
     structurePreviewStopRequest: Int,
+    structurePreviewUserStopRequest: Int,
     onStructurePreviewActiveChange: (Boolean) -> Unit,
     onTempoDraftChange: (String) -> Unit
 ) {
@@ -1732,6 +1743,8 @@ private fun TimelineMeasuresPlaceholder(
     var structurePlaybackActive by remember(currentSongId) { mutableStateOf(false) }
     var structurePlaybackIndex by remember(currentSongId) { mutableIntStateOf(-1) }
     var queuedStructureSegmentIndex by remember(currentSongId) { mutableStateOf<Int?>(null) }
+    var selectedStructureEditIndex by remember(currentSongId) { mutableStateOf<Int?>(null) }
+    var structureEditFocusRequest by remember(currentSongId) { mutableIntStateOf(0) }
     var structurePlaybackAbsolutePositionMs by remember(currentSongId) {
         mutableLongStateOf(currentPositionMs.coerceAtLeast(0L))
     }
@@ -2120,6 +2133,8 @@ private fun TimelineMeasuresPlaceholder(
         if (structureChanged && structurePlaybackActive) {
             stopStructurePreviewPlayback(reason = "structure_changed")
         }
+        selectedStructureEditIndex = selectedStructureEditIndex
+            ?.takeIf { index -> index in nextStructureSegmentIds.indices }
         nextSegmentIndex = resolveNextTimelineArrangementSegmentIndex(nextSegments)
         persistArrangementState(
             nextSegments = nextSegments,
@@ -2177,6 +2192,8 @@ private fun TimelineMeasuresPlaceholder(
             structurePlaybackActive = false
             structurePlaybackIndex = -1
             queuedStructureSegmentIndex = null
+            selectedStructureEditIndex = null
+            structureEditFocusRequest = 0
             structurePlaybackAbsolutePositionMs = 0L
             wavPreviewPositionMs = 0L
             wavPreviewDurationMs = 0L
@@ -2238,6 +2255,8 @@ private fun TimelineMeasuresPlaceholder(
         arrangementName = arrangementData?.name?.ifBlank { "Arrangement 1" } ?: "Arrangement 1"
         arrangementSegments = arrangementData?.segments.orEmpty()
         structureSegmentIds = arrangementData?.structureSegmentIds.orEmpty()
+        selectedStructureEditIndex = null
+        structureEditFocusRequest = 0
         nextSegmentIndex = resolveNextTimelineArrangementSegmentIndex(arrangementSegments)
         renameSegmentId = null
         segmentOptionsTargetId = null
@@ -2287,6 +2306,10 @@ private fun TimelineMeasuresPlaceholder(
     val activeStructureSegmentId = structurePlaybackSegments
         .getOrNull(structurePlaybackIndex)
         ?.id
+    val selectedStructureEditSegment = selectedStructureEditIndex
+        ?.let { index -> structurePlaybackSegments.getOrNull(index) }
+    val selectedArrangementEditSegment = selectedSegmentLoopId
+        ?.let { segmentId -> arrangementSegments.firstOrNull { it.id == segmentId } }
     val latestStructurePlaybackSegments by rememberUpdatedState(structurePlaybackSegments)
     val latestCurrentSongAudioPath by rememberUpdatedState(currentSongAudioPath)
     val latestCurrentStructureSourcePath by rememberUpdatedState(currentStructureSourcePath)
@@ -2335,6 +2358,23 @@ private fun TimelineMeasuresPlaceholder(
                 structurePreviewPlayer.play()
             }
         }
+    }
+
+    fun selectArrangementSegmentForEdit(
+        segment: ArrangementSegmentData,
+        structureIndex: Int?
+    ) {
+        val selectedStartMs = minOf(segment.startMs, segment.endMs).coerceAtLeast(0L)
+        val selectedEndMs = maxOf(segment.startMs, segment.endMs)
+            .coerceAtLeast(selectedStartMs + 1L)
+        selectedStructureEditIndex = structureIndex
+        segmentInMs = selectedStartMs
+        segmentOutMs = selectedEndMs
+        selectedSegmentLoopId = segment.id
+        selectedSegmentLoopStartMs = selectedStartMs
+        selectedSegmentLoopEndMs = selectedEndMs
+        lastWaveformFocusMarker = TimelineWaveformFocusMarker.IN
+        structureEditFocusRequest += 1
     }
 
     val listenAction: () -> Unit = {
@@ -2503,6 +2543,16 @@ private fun TimelineMeasuresPlaceholder(
                 return@LaunchedEffect
             }
             stopStructurePreviewPlayback(reason = "structure_preview_stop_request")
+            if (arrangementLoopPreviewActive) {
+                loopEnabled = false
+                preparedLoopStartMs = null
+                stopArrangementLoopPreviewPlayback()
+            }
+        }
+    }
+    LaunchedEffect(structurePreviewUserStopRequest) {
+        if (structurePreviewUserStopRequest > 0) {
+            stopStructurePreviewPlayback(reason = "user_transport_stop")
             if (arrangementLoopPreviewActive) {
                 loopEnabled = false
                 preparedLoopStartMs = null
@@ -2920,6 +2970,9 @@ private fun TimelineMeasuresPlaceholder(
             measureAnchorMs = savedAnchorMs,
             segmentInMs = segmentInMs,
             segmentOutMs = segmentOutMs,
+            editableSegmentStartMs = selectedArrangementEditSegment?.startMs,
+            editableSegmentEndMs = selectedArrangementEditSegment?.endMs,
+            editableSegmentFocusRequest = structureEditFocusRequest,
             focusMarker = lastWaveformFocusMarker,
             isRemoveMode = segmentSelectionMode == TimelineSegmentSelectionMode.REMOVE,
             isWaveformExpanded = isWaveformExpanded,
@@ -2988,6 +3041,32 @@ private fun TimelineMeasuresPlaceholder(
                         segmentInMs = waveformPositionMs
                         lastWaveformFocusMarker = TimelineWaveformFocusMarker.IN
                         onSegmentInChange(waveformPositionMs)
+                    }
+                }
+            },
+            onEditableSegmentBoundsChange = { nextStartMs, nextEndMs, commit ->
+                val targetSegment = selectedArrangementEditSegment
+                if (targetSegment != null) {
+                    val boundedStartMs = nextStartMs.coerceAtLeast(0L)
+                    val boundedEndMs = nextEndMs.coerceAtLeast(boundedStartMs + 1L)
+                    val nextSegments = arrangementSegments.map { segment ->
+                        if (segment.id == targetSegment.id) {
+                            segment.copy(startMs = boundedStartMs, endMs = boundedEndMs)
+                        } else {
+                            segment
+                        }
+                    }
+                    arrangementSegments = nextSegments
+                    segmentInMs = boundedStartMs
+                    segmentOutMs = boundedEndMs
+                    selectedSegmentLoopId = targetSegment.id
+                    selectedSegmentLoopStartMs = boundedStartMs
+                    selectedSegmentLoopEndMs = boundedEndMs
+                    if (structurePlaybackActive) {
+                        stopStructurePreviewPlayback(reason = "structure_segment_edited")
+                    }
+                    if (commit) {
+                        persistArrangementState(nextSegments = nextSegments)
                     }
                 }
             }
@@ -3223,12 +3302,11 @@ private fun TimelineMeasuresPlaceholder(
                     val segment = arrangementSegments.firstOrNull { it.id == segmentId }
                         ?: return@ArrangementListCard
                     val loopStartMs = minOf(segment.startMs, segment.endMs).coerceAtLeast(0L)
-                    val loopEndMs = maxOf(segment.startMs, segment.endMs).coerceAtLeast(loopStartMs + 1L)
+                    val structureIndex = structurePlaybackSegments.indexOfFirst { it.id == segment.id }
+                        .takeIf { it >= 0 }
+                    selectArrangementSegmentForEdit(segment, structureIndex)
                     stopStructurePreviewPlayback(reason = "segment_loop_selected")
                     stopArrangementLoopPreviewPlayback()
-                    selectedSegmentLoopId = segment.id
-                    selectedSegmentLoopStartMs = loopStartMs
-                    selectedSegmentLoopEndMs = loopEndMs
                     preparedLoopStartMs = loopStartMs
                     loopEnabled = true
                     revealSyncPointRequest += 1
@@ -3257,13 +3335,16 @@ private fun TimelineMeasuresPlaceholder(
                     ArrangementListItem(
                         id = index.toString(),
                         title = "${index + 1}. ${segment.name}",
-                        isActive = structurePlaybackActive && index == structurePlaybackIndex,
+                        isActive = index == selectedStructureEditIndex ||
+                            (structurePlaybackActive && index == structurePlaybackIndex),
                         isQueued = structurePlaybackActive && index == queuedStructureSegmentIndex
                     )
                 },
                 onItemClick = { structureIndexId ->
                     val startIndex = structureIndexId.toIntOrNull() ?: return@ArrangementListCard
                     if (startIndex !in structurePlaybackSegments.indices) return@ArrangementListCard
+                    val selectedSegment = structurePlaybackSegments[startIndex]
+                    selectArrangementSegmentForEdit(selectedSegment, startIndex)
                     val sourceAudioPath = currentSongAudioPath ?: return@ArrangementListCard
                     Log.d(
                         ARR_STRUCTURE_QUEUE_TAG,
@@ -3276,9 +3357,6 @@ private fun TimelineMeasuresPlaceholder(
                     } else {
                         stopStructurePreviewPlayback(reason = "structure_manual_start")
                         stopArrangementLoopPreviewPlayback()
-                        selectedSegmentLoopId = null
-                        selectedSegmentLoopStartMs = null
-                        selectedSegmentLoopEndMs = null
                         if (isPreparedClipLoopTestActive) {
                             onStopPreparedClipLoopTest()
                         }
@@ -3681,6 +3759,9 @@ private fun TimelineGridWaveformSection(
     measureAnchorMs: Long?,
     segmentInMs: Long?,
     segmentOutMs: Long?,
+    editableSegmentStartMs: Long?,
+    editableSegmentEndMs: Long?,
+    editableSegmentFocusRequest: Int,
     focusMarker: TimelineWaveformFocusMarker,
     isRemoveMode: Boolean,
     isWaveformExpanded: Boolean,
@@ -3690,14 +3771,37 @@ private fun TimelineGridWaveformSection(
     onToggleExpanded: () -> Unit,
     onSeekRequested: (Long) -> Unit,
     onWaveformPanStarted: () -> Unit,
-    onWaveformLongPress: (Long) -> Unit
+    onWaveformLongPress: (Long) -> Unit,
+    onEditableSegmentBoundsChange: (Long, Long, Boolean) -> Unit
 ) {
     var waveformZoom by remember(peaks, durationMs) { mutableStateOf(1f) }
     var waveformCenterFraction by remember(peaks, durationMs) { mutableStateOf(0.5f) }
+    var activeEditHandle by remember { mutableStateOf(TimelineArrangementEditHandle.NONE) }
+    val latestEditableSegmentStartMs by rememberUpdatedState(editableSegmentStartMs)
+    val latestEditableSegmentEndMs by rememberUpdatedState(editableSegmentEndMs)
     val waveformHeight by animateDpAsState(
         targetValue = if (isWaveformExpanded) 270.dp else 140.dp,
         label = "timelineWaveformHeight"
     )
+
+    LaunchedEffect(editableSegmentFocusRequest) {
+        val startMs = editableSegmentStartMs ?: return@LaunchedEffect
+        val endMs = editableSegmentEndMs ?: return@LaunchedEffect
+        val safeDuration = durationMs.coerceAtLeast(1)
+        val visualPreRollMs = ARRANGEMENT_WAVEFORM_VISUAL_PREROLL_MS
+        val visualDurationMs = safeDuration.toLong() + visualPreRollMs
+        val segmentStartMs = minOf(startMs, endMs).coerceAtLeast(0L)
+        val segmentEndMs = maxOf(startMs, endMs).coerceAtLeast(segmentStartMs + 1L)
+        val segmentDurationFraction = (
+            (segmentEndMs - segmentStartMs).toFloat() / visualDurationMs.toFloat().coerceAtLeast(1f)
+            ).coerceIn(0.02f, 1f)
+        val targetVisibleFraction = (segmentDurationFraction * 3.2f).coerceIn(0.08f, 1f)
+        waveformZoom = (1f / targetVisibleFraction).coerceIn(1f, ARRANGEMENT_WAVEFORM_MAX_ZOOM)
+        waveformCenterFraction = (
+            (((segmentStartMs + segmentEndMs) / 2L).toFloat() + visualPreRollMs.toFloat()) /
+                visualDurationMs.toFloat().coerceAtLeast(1f)
+            ).coerceIn(0f, 1f)
+    }
 
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -3804,6 +3908,136 @@ private fun TimelineGridWaveformSection(
                                     )
                                     }
                                 )
+                            }
+                            .pointerInput(
+                                peaks,
+                                durationMs,
+                                waveformZoom,
+                                waveformCenterFraction,
+                                editableSegmentFocusRequest
+                            ) {
+                                fun timeMsForX(x: Float): Long {
+                                    val safeDuration = durationMs.coerceAtLeast(1)
+                                    val visualPreRollMs = ARRANGEMENT_WAVEFORM_VISUAL_PREROLL_MS
+                                    val visualDurationMs = safeDuration.toLong() + visualPreRollMs
+                                    val visibleFraction = 1f / waveformZoom.coerceAtLeast(1f)
+                                    val startFraction = (waveformCenterFraction - visibleFraction / 2f)
+                                        .coerceIn(0f, 1f)
+                                    val endFraction = (startFraction + visibleFraction).coerceIn(0f, 1f)
+                                    val effectiveEndFraction = if (endFraction <= startFraction) 1f else endFraction
+                                    val localFraction = if (size.width > 0) {
+                                        (x / size.width).coerceIn(0f, 1f)
+                                    } else {
+                                        0f
+                                    }
+                                    val selectedVisualFraction = startFraction +
+                                        localFraction * (effectiveEndFraction - startFraction)
+                                    return (
+                                        selectedVisualFraction * visualDurationMs.toFloat() -
+                                            visualPreRollMs.toFloat()
+                                        ).roundToLong()
+                                        .coerceIn(0L, safeDuration.toLong())
+                                }
+
+                                fun xForTimeMs(timeMs: Long): Float? {
+                                    val safeDuration = durationMs.coerceAtLeast(1)
+                                    val visualPreRollMs = ARRANGEMENT_WAVEFORM_VISUAL_PREROLL_MS
+                                    val visualDurationMs = safeDuration.toLong() + visualPreRollMs
+                                    val visualDurationFloat = visualDurationMs.toFloat().coerceAtLeast(1f)
+                                    val visibleFraction = 1f / waveformZoom.coerceAtLeast(1f)
+                                    val startFraction = (waveformCenterFraction - visibleFraction / 2f)
+                                        .coerceIn(0f, 1f)
+                                    val endFraction = (startFraction + visibleFraction).coerceIn(0f, 1f)
+                                    val effectiveEndFraction = if (endFraction <= startFraction) 1f else endFraction
+                                    val positionFraction = (
+                                        timeMs.coerceIn(0L, safeDuration.toLong()).toFloat() +
+                                            visualPreRollMs.toFloat()
+                                        ) / visualDurationFloat
+                                    if (positionFraction !in startFraction..effectiveEndFraction) return null
+                                    return ((positionFraction - startFraction) /
+                                        (effectiveEndFraction - startFraction)) * size.width
+                                }
+
+                                var pendingStartMs: Long? = null
+                                var pendingEndMs: Long? = null
+                                detectDragGestures(
+                                    onDragStart = { offset ->
+                                        val startMs = latestEditableSegmentStartMs
+                                        val endMs = latestEditableSegmentEndMs
+                                        if (startMs == null || endMs == null) {
+                                            activeEditHandle = TimelineArrangementEditHandle.NONE
+                                            pendingStartMs = null
+                                            pendingEndMs = null
+                                            return@detectDragGestures
+                                        }
+                                        val safeStartMs = minOf(startMs, endMs)
+                                        val safeEndMs = maxOf(startMs, endMs)
+                                        pendingStartMs = safeStartMs
+                                        pendingEndMs = safeEndMs
+                                        val inX = xForTimeMs(safeStartMs)
+                                        val outX = xForTimeMs(safeEndMs)
+                                        val handleHitPx = 34.dp.toPx()
+                                        val distanceToIn = inX?.let { abs(offset.x - it) } ?: Float.MAX_VALUE
+                                        val distanceToOut = outX?.let { abs(offset.x - it) } ?: Float.MAX_VALUE
+                                        activeEditHandle = when {
+                                            distanceToIn <= handleHitPx && distanceToIn <= distanceToOut ->
+                                                TimelineArrangementEditHandle.IN
+                                            distanceToOut <= handleHitPx ->
+                                                TimelineArrangementEditHandle.OUT
+                                            else -> TimelineArrangementEditHandle.NONE
+                                        }
+                                    },
+                                    onDragEnd = {
+                                        val startMs = pendingStartMs
+                                        val endMs = pendingEndMs
+                                        if (activeEditHandle != TimelineArrangementEditHandle.NONE &&
+                                            startMs != null &&
+                                            endMs != null
+                                        ) {
+                                            onEditableSegmentBoundsChange(
+                                                minOf(startMs, endMs),
+                                                maxOf(startMs, endMs),
+                                                true
+                                            )
+                                        }
+                                        activeEditHandle = TimelineArrangementEditHandle.NONE
+                                        pendingStartMs = null
+                                        pendingEndMs = null
+                                    },
+                                    onDragCancel = {
+                                        activeEditHandle = TimelineArrangementEditHandle.NONE
+                                        pendingStartMs = null
+                                        pendingEndMs = null
+                                    }
+                                ) { change, _ ->
+                                    val startMs = pendingStartMs ?: latestEditableSegmentStartMs
+                                    val endMs = pendingEndMs ?: latestEditableSegmentEndMs
+                                    if (activeEditHandle == TimelineArrangementEditHandle.NONE ||
+                                        startMs == null ||
+                                        endMs == null
+                                    ) {
+                                        return@detectDragGestures
+                                    }
+                                    change.consume()
+                                    val safeStartMs = minOf(startMs, endMs).coerceAtLeast(0L)
+                                    val safeEndMs = maxOf(startMs, endMs).coerceAtLeast(safeStartMs + 1L)
+                                    val draggedTimeMs = timeMsForX(change.position.x)
+                                    when (activeEditHandle) {
+                                        TimelineArrangementEditHandle.IN -> {
+                                            val nextStartMs = draggedTimeMs.coerceIn(0L, safeEndMs - 1L)
+                                            pendingStartMs = nextStartMs
+                                            pendingEndMs = safeEndMs
+                                            onEditableSegmentBoundsChange(nextStartMs, safeEndMs, false)
+                                        }
+                                        TimelineArrangementEditHandle.OUT -> {
+                                            val nextEndMs = draggedTimeMs.coerceIn(safeStartMs + 1L, durationMs.toLong())
+                                            pendingStartMs = safeStartMs
+                                            pendingEndMs = nextEndMs
+                                            onEditableSegmentBoundsChange(safeStartMs, nextEndMs, false)
+                                        }
+                                        TimelineArrangementEditHandle.NONE -> Unit
+                                    }
+                                }
                             }
                             .pointerInput(
                                 peaks,
@@ -4064,6 +4298,39 @@ private fun TimelineGridWaveformSection(
                                     start = androidx.compose.ui.geometry.Offset(outX, 0f),
                                     end = androidx.compose.ui.geometry.Offset(outX, heightPx),
                                     strokeWidth = 6f
+                                )
+                            }
+                        }
+                        if (editableSegmentStartMs != null &&
+                            editableSegmentEndMs != null &&
+                            editableSegmentStartMs != editableSegmentEndMs
+                        ) {
+                            val editStartMs = minOf(editableSegmentStartMs, editableSegmentEndMs)
+                                .coerceAtLeast(0L)
+                            val editEndMs = maxOf(editableSegmentStartMs, editableSegmentEndMs)
+                                .coerceAtLeast(editStartMs + 1L)
+                            val editStartFraction = (
+                                editStartMs.coerceIn(0L, safeDuration.toLong()).toFloat() +
+                                    visualPreRollMs.toFloat()
+                                ) / visualDurationFloat
+                            val editEndFraction = (
+                                editEndMs.coerceIn(0L, safeDuration.toLong()).toFloat() +
+                                    visualPreRollMs.toFloat()
+                                ) / visualDurationFloat
+                            val editStartX = ((editStartFraction - startFraction) /
+                                (effectiveEndFraction - startFraction)) * widthPx
+                            val editEndX = ((editEndFraction - startFraction) /
+                                (effectiveEndFraction - startFraction)) * widthPx
+                            val clampedEditStartX = editStartX.coerceIn(0f, widthPx)
+                            val clampedEditEndX = editEndX.coerceIn(0f, widthPx)
+                            if (clampedEditEndX > clampedEditStartX) {
+                                drawRect(
+                                    color = Color(0xFF64B5F6).copy(alpha = 0.12f),
+                                    topLeft = Offset(clampedEditStartX, 0f),
+                                    size = androidx.compose.ui.geometry.Size(
+                                        width = clampedEditEndX - clampedEditStartX,
+                                        height = heightPx
+                                    )
                                 )
                             }
                         }
