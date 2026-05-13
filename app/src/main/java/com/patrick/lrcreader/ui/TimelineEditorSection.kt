@@ -2373,6 +2373,8 @@ private fun TimelineMeasuresPlaceholder(
         selectedSegmentLoopId = segment.id
         selectedSegmentLoopStartMs = selectedStartMs
         selectedSegmentLoopEndMs = selectedEndMs
+        preparedLoopStartMs = selectedStartMs
+        suppressNextLoopAutoplay = false
         lastWaveformFocusMarker = TimelineWaveformFocusMarker.IN
         structureEditFocusRequest += 1
     }
@@ -3062,11 +3064,24 @@ private fun TimelineMeasuresPlaceholder(
                     selectedSegmentLoopId = targetSegment.id
                     selectedSegmentLoopStartMs = boundedStartMs
                     selectedSegmentLoopEndMs = boundedEndMs
+                    preparedLoopStartMs = boundedStartMs
+                    suppressNextLoopAutoplay = false
                     if (structurePlaybackActive) {
                         stopStructurePreviewPlayback(reason = "structure_segment_edited")
                     }
                     if (commit) {
                         persistArrangementState(nextSegments = nextSegments)
+                        if (loopEnabled && !structurePlaybackActive && arrangementLoopPreviewActive) {
+                            currentSongAudioPath?.takeIf { it.isNotBlank() }?.let { audioPath ->
+                                arrangementLoopPositionMs = 0L
+                                arrangementPreviewPlayer.playLoop(
+                                    sourceUri = Uri.fromFile(File(audioPath)),
+                                    startMs = boundedStartMs,
+                                    endMs = boundedEndMs
+                                )
+                                onStructurePreviewActiveChange(true)
+                            }
+                        }
                     }
                 }
             }
