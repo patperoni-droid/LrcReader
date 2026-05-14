@@ -41,6 +41,7 @@ object LrcStorage {
     private const val TAG = "LRC_STORAGE"
     private const val WORKSPACE_LOG_TAG = "LRC_WORKSPACE"
     private const val CANONICAL_PREF = "lrc_storage_canonical"
+    private const val SMP_ALIAS_PREF = "lrc_storage_smp_alias"
     private const val RECENT_ORIGIN_CACHE_MAX = 32
 
     private val lyricsFolderSpec = WorkspaceFolderSpec(
@@ -81,8 +82,9 @@ object LrcStorage {
 
     fun loadForTrack(context: Context, trackUriString: String): String? {
         if (trackUriString.isBlank()) return null
+        val effectiveTrackUriString = resolveRuntimeAlias(context, trackUriString)
         val safOnlyBackend = isSafBackend(context)
-        resolveSmpLyricsTarget(context, trackUriString, requireExisting = false)?.let { resolved ->
+        resolveSmpLyricsTarget(context, effectiveTrackUriString, requireExisting = false)?.let { resolved ->
             val text = if (resolved.file.isFile) {
                 runCatching { resolved.file.readText(Charsets.UTF_8) }.getOrNull()
             } else {
@@ -182,21 +184,24 @@ object LrcStorage {
 
     fun resolveOriginForTrack(context: Context, trackUriString: String): TrackLrcOrigin? {
         if (trackUriString.isBlank()) return null
+        val effectiveTrackUriString = resolveRuntimeAlias(context, trackUriString)
         val safOnlyBackend = isSafBackend(context)
         val originStartMs = SystemClock.elapsedRealtime()
         LyricsPerf.mark(trackUriString, "lrc_origin_resolve_start", "backend=${if (safOnlyBackend) "SAF" else "INTERNAL"}")
         logLyricsBackend(context, safOnlyBackend)
 
-        getRecentResolvedOrigin(trackUriString)?.let { cached ->
-            LyricsPerf.mark(
-                trackUriString,
-                "lrc_origin_resolve_done",
-                "ms=${SystemClock.elapsedRealtime() - originStartMs} sourceType=${cached.sourceType} file=${cached.fileName} cache=true"
-            )
-            return cached
+        if (effectiveTrackUriString == trackUriString) {
+            getRecentResolvedOrigin(trackUriString)?.let { cached ->
+                LyricsPerf.mark(
+                    trackUriString,
+                    "lrc_origin_resolve_done",
+                    "ms=${SystemClock.elapsedRealtime() - originStartMs} sourceType=${cached.sourceType} file=${cached.fileName} cache=true"
+                )
+                return cached
+            }
         }
 
-        resolveSmpLyricsTarget(context, trackUriString, requireExisting = true)?.let { resolved ->
+        resolveSmpLyricsTarget(context, effectiveTrackUriString, requireExisting = true)?.let { resolved ->
             return TrackLrcOrigin(
                 source = "LRC_STORAGE_SMP",
                 fileName = resolved.fileName,
@@ -271,11 +276,15 @@ object LrcStorage {
     fun saveForTrack(context: Context, trackUriString: String, lines: List<LrcLine>): Boolean {
         if (trackUriString.isBlank()) return false
         clearRecentResolvedOrigin(trackUriString)
+        val effectiveTrackUriString = resolveRuntimeAlias(context, trackUriString)
+        if (effectiveTrackUriString != trackUriString) {
+            clearRecentResolvedOrigin(effectiveTrackUriString)
+        }
         val text = linesToLrcText(lines)
         val safOnlyBackend = isSafBackend(context)
         logLyricsBackend(context, safOnlyBackend)
 
-        resolveSmpLyricsTarget(context, trackUriString, requireExisting = false)?.let { resolved ->
+        resolveSmpLyricsTarget(context, effectiveTrackUriString, requireExisting = false)?.let { resolved ->
             val written = runCatching {
                 resolved.file.parentFile?.mkdirs()
                 resolved.file.writeText(text, Charsets.UTF_8)
@@ -434,7 +443,26 @@ object LrcStorage {
 
     fun isSmpRuntimeTrack(context: Context, trackUriString: String): Boolean {
         if (trackUriString.isBlank()) return false
-        return resolveSmpRuntimeSongDir(context, trackUriString) != null
+        return resolveSmpRuntimeSongDir(context, resolveRuntimeAlias(context, trackUriString)) != null
+    }
+
+    fun rememberRuntimeAlias(context: Context, sourceTrackUriString: String, runtimeTrackUriString: String) {
+        if (sourceTrackUriString.isBlank() || runtimeTrackUriString.isBlank()) return
+        if (sourceTrackUriString == runtimeTrackUriString) return
+        context.getSharedPreferences(SMP_ALIAS_PREF, Context.MODE_PRIVATE)
+            .edit()
+            .putString(md5(sourceTrackUriString), runtimeTrackUriString)
+            .apply()
+        clearRecentResolvedOrigin(sourceTrackUriString)
+        clearRecentResolvedOrigin(runtimeTrackUriString)
+    }
+
+    fun resolveRuntimeAlias(context: Context, trackUriString: String): String {
+        if (trackUriString.isBlank()) return trackUriString
+        return context.getSharedPreferences(SMP_ALIAS_PREF, Context.MODE_PRIVATE)
+            .getString(md5(trackUriString), null)
+            ?.takeIf { it.isNotBlank() }
+            ?: trackUriString
     }
 
     fun currentWorkspaceScopeKey(context: Context): String? {

@@ -121,6 +121,7 @@ private const val DEFAULT_TIMELINE_LIGHT_CUE_ARGB = 0xFFFF0000L
 private const val DMX_PLAYBACK_POLL_INTERVAL_MS = 20L
 private const val PLAYER_LRC_TAG = "PLAYER_LRC"
 private const val LYRICS_PLAYER_SYNC_DIAG_TAG = "LYRICS_PLAYER_SYNC_DIAG"
+private const val LYRICS_PERSIST_DIAG_TAG = "LYRICS_PERSIST_DIAG"
 
 @Composable
 fun PlayerScreen(
@@ -175,6 +176,7 @@ fun PlayerScreen(
     val isHqAvailable = hqStatus.available
     val showHqOffBanner = isLaboBuild && !isHqAvailable
     var hqToastShownAtMs by remember { mutableStateOf(0L) }
+    var previousPersistDiagSongId by remember { mutableStateOf<String?>(null) }
     val sHqUnavailable = stringResource(R.string.player_hq_unavailable)
     val sAccordsTrackChangedBlocked = stringResource(R.string.player_accords_track_changed_blocked)
     val sAccordsSaveQueueClosed = stringResource(R.string.player_accords_save_queue_closed)
@@ -620,6 +622,18 @@ fun PlayerScreen(
     var resolvedLyricsLrcFileName by remember(currentTrackUri) { mutableStateOf<String?>(null) }
     var lyricsUiVisibleLogged by remember(currentTrackUri) { mutableStateOf(false) }
 
+    LaunchedEffect(currentTrackUri, currentSongId) {
+        val newSongId = currentSongId ?: currentTrackUri
+        val oldSongId = previousPersistDiagSongId
+        if (oldSongId != newSongId) {
+            Log.d(
+                LYRICS_PERSIST_DIAG_TAG,
+                "SONG_CHANGED oldSongId=${oldSongId.orEmpty()} newSongId=${newSongId.orEmpty()}"
+            )
+            previousPersistDiagSongId = newSongId
+        }
+    }
+
     var lyricsBoxHeightPx by remember { mutableStateOf(0) }
     var currentLrcIndex by remember(currentTrackUri) { mutableStateOf(0) }
 
@@ -1048,7 +1062,7 @@ fun PlayerScreen(
     }
 
     fun applyStoredLyricsLineColors(trackUriString: String, lines: List<LrcLine>): List<LrcLine> {
-        return hydrateLyricsLineColors(context, trackUriString, lines)
+        return hydrateLyricsLineColors(context, LrcStorage.resolveRuntimeAlias(context, trackUriString), lines)
     }
 
     fun applyCachedLyrics(trackUriString: String, entry: LyricsCacheEntry) {
@@ -1193,6 +1207,14 @@ fun PlayerScreen(
             val parseStartMs = android.os.SystemClock.elapsedRealtime()
             val parsed = withContext(Dispatchers.Default) { parseLrc(stored) }
             val coloredParsed = applyStoredLyricsLineColors(currentTrackUri, parsed)
+            Log.d(
+                LYRICS_PERSIST_DIAG_TAG,
+                "LOAD_LYRICS songId=${currentSongId ?: currentTrackUri} source=LRC_STORAGE path=${storedOrigin?.debugPath.orEmpty()} lineCount=${coloredParsed.size} colorCount=${coloredParsed.count { it.colorArgb != null }}"
+            )
+            Log.d(
+                LYRICS_PERSIST_DIAG_TAG,
+                "LOAD_LYRICS_SAMPLE songId=${currentSongId ?: currentTrackUri} firstLines/colors=${lyricsRenderSample(coloredParsed)}"
+            )
             LyricsPerf.mark(
                 currentTrackUri,
                 "parse_done",
@@ -1898,11 +1920,19 @@ fun PlayerScreen(
                     currentTrackUri?.let { trackUri ->
                         val preferredAtSave = resolvedLyricsLrcFileName
                         val saveStartMs = android.os.SystemClock.elapsedRealtime()
-                        val isAlreadySmpTrack = LrcStorage.isSmpRuntimeTrack(context, trackUri)
+                        val effectiveTrackUri = LrcStorage.resolveRuntimeAlias(context, trackUri)
+                        val isAlreadySmpTrack = LrcStorage.isSmpRuntimeTrack(context, effectiveTrackUri)
                         LyricsMemoryCache.invalidate(trackUri)
+                        if (effectiveTrackUri != trackUri) {
+                            LyricsMemoryCache.invalidate(effectiveTrackUri)
+                        }
                         Log.d(
                             LYRICS_PLAYER_SYNC_DIAG_TAG,
-                            "PLAYER_LYRICS_CACHE_INVALIDATED songId=${currentSongId ?: trackUri}"
+                            "PLAYER_LYRICS_CACHE_INVALIDATED songId=${currentSongId ?: effectiveTrackUri}"
+                        )
+                        Log.d(
+                            LYRICS_PERSIST_DIAG_TAG,
+                            "AUTOSAVE_START songId=${currentSongId ?: effectiveTrackUri} reason=editor_save"
                         )
                         Log.d(
                             "LrcDebug",
@@ -1913,9 +1943,12 @@ fun PlayerScreen(
                                 val migration = if (isAlreadySmpTrack) {
                                     null
                                 } else {
-                                    ensureSmpTrackForLyricsSave(trackUri)
+                                    ensureSmpTrackForLyricsSave(effectiveTrackUri)
                                 }
-                                val targetTrackUri = migration?.trackUriString ?: trackUri
+                                migration?.let {
+                                    LrcStorage.rememberRuntimeAlias(context, trackUri, it.trackUriString)
+                                }
+                                val targetTrackUri = migration?.trackUriString ?: effectiveTrackUri
                                 if (targetTrackUri != trackUri) {
                                     LyricsMemoryCache.invalidate(targetTrackUri)
                                     Log.d(
@@ -1923,6 +1956,10 @@ fun PlayerScreen(
                                         "PLAYER_LYRICS_CACHE_INVALIDATED songId=${currentSongId ?: targetTrackUri}"
                                     )
                                 }
+                                Log.d(
+                                    LYRICS_PERSIST_DIAG_TAG,
+                                    "AUTOSAVE_TARGET songId=${currentSongId ?: targetTrackUri} path/store=$targetTrackUri"
+                                )
                                 Log.d(
                                     PLAYER_LRC_TAG,
                                     "save_lyrics trackUri=$targetTrackUri lines=${lines.size}"
@@ -1938,7 +1975,7 @@ fun PlayerScreen(
 
                                 val colorsSaved = TrackSettingsStore.saveLyricsLineColorsByUri(
                                     context = context,
-                                    uriString = targetTrackUri,
+                                    uriString = LrcStorage.resolveRuntimeAlias(context, targetTrackUri),
                                     lyricsLineColors = extractLyricsLineColors(lines)
                                 )
                                 if (!colorsSaved) {
@@ -1973,6 +2010,10 @@ fun PlayerScreen(
                                     trackUriString = targetTrackUri,
                                     migration = migration,
                                     resolvedFileName = resolvedFileName,
+                                    debugPath = LrcStorage.resolveOriginForTrack(
+                                        context = context,
+                                        trackUriString = targetTrackUri
+                                    )?.debugPath,
                                     reloadedText = LrcStorage.loadForTrack(context, targetTrackUri)
                                 )
                             }.onFailure { error ->
@@ -1986,6 +2027,10 @@ fun PlayerScreen(
 
                         if (saveOutcome == null || saveOutcome.reloadedText.isNullOrBlank()) {
                             Log.e("LrcDebug", "LYRICS_SAVE_CONFIRMED reload_failed trackUri=$trackUri")
+                            Log.e(
+                                LYRICS_PERSIST_DIAG_TAG,
+                                "AUTOSAVE_FAIL songId=${currentSongId ?: effectiveTrackUri} error=reload_failed"
+                            )
                             return@persistLines false
                         }
 
@@ -2009,6 +2054,10 @@ fun PlayerScreen(
                         Log.d(
                             LYRICS_PLAYER_SYNC_DIAG_TAG,
                             "PLAYER_LYRICS_LOAD songId=${currentSongId ?: saveOutcome.trackUriString} source=EDITOR_SAVE lineCount=${lines.size} colorCount=${lines.count { it.colorArgb != null }}"
+                        )
+                        Log.d(
+                            LYRICS_PERSIST_DIAG_TAG,
+                            "AUTOSAVE_SUCCESS songId=${currentSongId ?: saveOutcome.trackUriString} path=${saveOutcome.debugPath.orEmpty()} lineCount=${lines.size} colorCount=${lines.count { it.colorArgb != null }} fileSize=${saveOutcome.reloadedText.length}"
                         )
                     }
                     true
@@ -3238,6 +3287,7 @@ private data class LyricsPersistOutcome(
     val trackUriString: String,
     val migration: SmpAutoMigrationResult?,
     val resolvedFileName: String?,
+    val debugPath: String?,
     val reloadedText: String?
 )
 

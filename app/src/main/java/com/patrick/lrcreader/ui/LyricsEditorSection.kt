@@ -76,6 +76,7 @@ private val INLINE_LRC_TIME_TAG_REGEX =
 private val LRC_TIMESTAMP_HINT_REGEX = Regex("""\[\d{1,2}:\d{2}""")
 private const val FIRST_CHORD_TIME_MS = 10L
 private const val LYRICS_PLAYER_SYNC_DIAG_TAG = "LYRICS_PLAYER_SYNC_DIAG"
+private const val LYRICS_PERSIST_DIAG_TAG = "LYRICS_PERSIST_DIAG"
 
 private object LyricsEditorHintPrefs {
     private const val PREFS_NAME = "lyrics_editor_hint_prefs"
@@ -1344,8 +1345,16 @@ fun LyricsEditorSection(
                                                             "EDIT_TEXT lineIndex=$idx oldText=${list[idx].text} newText=${lineMenuText.trim()}"
                                                         )
                                                         Log.d(
+                                                            LYRICS_PERSIST_DIAG_TAG,
+                                                            "EDIT_TEXT songId=${currentSongId ?: currentTrackUri.orEmpty()} lineIndex=$idx oldText=${list[idx].text} newText=${lineMenuText.trim()}"
+                                                        )
+                                                        Log.d(
                                                             LYRICS_PLAYER_SYNC_DIAG_TAG,
                                                             "EDIT_COLOR lineIndex=$idx oldColor=${list[idx].colorArgb} newColor=$lineMenuColorArgb"
+                                                        )
+                                                        Log.d(
+                                                            LYRICS_PERSIST_DIAG_TAG,
+                                                            "EDIT_COLOR songId=${currentSongId ?: currentTrackUri.orEmpty()} lineIndex=$idx oldColor=${list[idx].colorArgb} newColor=$lineMenuColorArgb"
                                                         )
                                                         list[idx] = list[idx].copy(
                                                             text = lineMenuText.trim(),
