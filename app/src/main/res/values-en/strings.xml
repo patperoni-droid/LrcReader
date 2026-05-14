@@ -884,6 +884,7 @@ Don’t forget to save.</string>
     <string name="library_delete_selected_confirm_text">Delete %1$d selected file(s) permanently?</string>
 
     <!-- Arrangement sampler test -->
+    <string name="arrangement_undo_action">Undo</string>
     <string name="arrangement_sampler_test_open_action">Sampler Test</string>
     <string name="arrangement_sampler_test_title">Sampler Test</string>
     <string name="arrangement_sampler_test_load_samples">Load Samples</string>

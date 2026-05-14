@@ -787,6 +787,7 @@ No olvides guardar.</string>
     <string name="library_copying">Copiando…</string>
 
     <!-- Arrangement sampler test -->
+    <string name="arrangement_undo_action">Deshacer</string>
     <string name="arrangement_sampler_test_open_action">Sampler Test</string>
     <string name="arrangement_sampler_test_title">Sampler Test</string>
     <string name="arrangement_sampler_test_load_samples">Load Samples</string>

@@ -895,6 +895,7 @@ N’oubliez pas de sauvegarder.</string>
     <string name="library_delete_selected_confirm_text">Supprimer définitivement %1$d fichier(s) sélectionné(s) ?</string>
 
     <!-- Arrangement sampler test -->
+    <string name="arrangement_undo_action">Annuler</string>
     <string name="arrangement_sampler_test_open_action">Sampler Test</string>
     <string name="arrangement_sampler_test_title">Sampler Test</string>
     <string name="arrangement_sampler_test_load_samples">Load Samples</string>
