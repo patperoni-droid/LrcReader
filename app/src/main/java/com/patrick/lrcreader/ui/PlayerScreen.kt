@@ -122,6 +122,7 @@ private const val DMX_PLAYBACK_POLL_INTERVAL_MS = 20L
 private const val PLAYER_LRC_TAG = "PLAYER_LRC"
 private const val LYRICS_PLAYER_SYNC_DIAG_TAG = "LYRICS_PLAYER_SYNC_DIAG"
 private const val LYRICS_PERSIST_DIAG_TAG = "LYRICS_PERSIST_DIAG"
+private const val LYRICS_PIPELINE_TRACE_TAG = "LYRICS_PIPELINE_TRACE"
 
 @Composable
 fun PlayerScreen(
@@ -630,6 +631,10 @@ fun PlayerScreen(
                 LYRICS_PERSIST_DIAG_TAG,
                 "SONG_CHANGED oldSongId=${oldSongId.orEmpty()} newSongId=${newSongId.orEmpty()}"
             )
+            Log.d(
+                LYRICS_PIPELINE_TRACE_TAG,
+                "SONG_CHANGE oldSongId=${oldSongId.orEmpty()} newSongId=${newSongId.orEmpty()}"
+            )
             previousPersistDiagSongId = newSongId
         }
     }
@@ -1068,6 +1073,10 @@ fun PlayerScreen(
     fun applyCachedLyrics(trackUriString: String, entry: LyricsCacheEntry) {
         val coloredLines = applyStoredLyricsLineColors(trackUriString, entry.parsedLines)
         Log.d(
+            LYRICS_PIPELINE_TRACE_TAG,
+            "CACHE_HIT songId=${currentSongId ?: trackUriString} source=${entry.source} lineCount=${coloredLines.size} colorCount=${coloredLines.count { it.colorArgb != null }}"
+        )
+        Log.d(
             "LrcDebug",
             "LYRICS_CACHE_HIT source=${entry.source} fileName=${entry.resolvedLyricsFileName} path=${entry.debugPath} sourceType=${entry.sourceType}"
         )
@@ -1114,12 +1123,20 @@ fun PlayerScreen(
 
         val cacheScopeKey = LrcStorage.currentWorkspaceScopeKey(context)
         LyricsMemoryCache.updateScope(cacheScopeKey)
+        Log.d(
+            LYRICS_PIPELINE_TRACE_TAG,
+            "PLAYER_RELOAD_REQUEST songId=${currentSongId ?: currentTrackUri}"
+        )
         val cachedLyrics = LyricsMemoryCache.get(currentTrackUri)
         if (cachedLyrics != null) {
             applyCachedLyrics(currentTrackUri, cachedLyrics)
             resolvedSource = "CACHE"
             return@LaunchedEffect
         }
+        Log.d(
+            LYRICS_PIPELINE_TRACE_TAG,
+            "CACHE_MISS songId=${currentSongId ?: currentTrackUri}"
+        )
 
         Log.d("LrcDebug", "LYRICS_UI_RESET owner=PlayerScreen uri=$currentTrackUri reason=track_change")
         onParsedLinesChange(emptyList())
@@ -1212,8 +1229,16 @@ fun PlayerScreen(
                 "LOAD_LYRICS songId=${currentSongId ?: currentTrackUri} source=LRC_STORAGE path=${storedOrigin?.debugPath.orEmpty()} lineCount=${coloredParsed.size} colorCount=${coloredParsed.count { it.colorArgb != null }}"
             )
             Log.d(
+                LYRICS_PIPELINE_TRACE_TAG,
+                "PLAYER_LOAD_LYRICS songId=${currentSongId ?: currentTrackUri} source=LRC_STORAGE path=${storedOrigin?.debugPath.orEmpty()} lineCount=${coloredParsed.size} colorCount=${coloredParsed.count { it.colorArgb != null }}"
+            )
+            Log.d(
                 LYRICS_PERSIST_DIAG_TAG,
                 "LOAD_LYRICS_SAMPLE songId=${currentSongId ?: currentTrackUri} firstLines/colors=${lyricsRenderSample(coloredParsed)}"
+            )
+            Log.d(
+                LYRICS_PIPELINE_TRACE_TAG,
+                "PLAYER_RENDER_SAMPLE songId=${currentSongId ?: currentTrackUri} firstLine=${coloredParsed.firstOrNull()?.text.orEmpty()} firstColor=${coloredParsed.firstOrNull()?.colorArgb}"
             )
             LyricsPerf.mark(
                 currentTrackUri,
@@ -1277,6 +1302,14 @@ fun PlayerScreen(
                 emptyList()
             }
             val coloredParsed = applyStoredLyricsLineColors(currentTrackUri, parsed)
+            Log.d(
+                LYRICS_PIPELINE_TRACE_TAG,
+                "PLAYER_LOAD_LYRICS songId=${currentSongId ?: currentTrackUri} source=SIDECAR path=${sidecarLrcResult.debugPath} lineCount=${coloredParsed.size} colorCount=${coloredParsed.count { it.colorArgb != null }}"
+            )
+            Log.d(
+                LYRICS_PIPELINE_TRACE_TAG,
+                "PLAYER_RENDER_SAMPLE songId=${currentSongId ?: currentTrackUri} firstLine=${coloredParsed.firstOrNull()?.text.orEmpty()} firstColor=${coloredParsed.firstOrNull()?.colorArgb}"
+            )
             LyricsPerf.mark(
                 currentTrackUri,
                 "parse_done",
@@ -1327,6 +1360,14 @@ fun PlayerScreen(
             val parseStartMs = android.os.SystemClock.elapsedRealtime()
             val parsed = withContext(Dispatchers.Default) { parseLrc(syltLrcText) }
             val coloredParsed = applyStoredLyricsLineColors(currentTrackUri, parsed)
+            Log.d(
+                LYRICS_PIPELINE_TRACE_TAG,
+                "PLAYER_LOAD_LYRICS songId=${currentSongId ?: currentTrackUri} source=SYLT path=embedded lineCount=${coloredParsed.size} colorCount=${coloredParsed.count { it.colorArgb != null }}"
+            )
+            Log.d(
+                LYRICS_PIPELINE_TRACE_TAG,
+                "PLAYER_RENDER_SAMPLE songId=${currentSongId ?: currentTrackUri} firstLine=${coloredParsed.firstOrNull()?.text.orEmpty()} firstColor=${coloredParsed.firstOrNull()?.colorArgb}"
+            )
             LyricsPerf.mark(
                 currentTrackUri,
                 "parse_done",
@@ -1371,6 +1412,14 @@ fun PlayerScreen(
             val parseStartMs = android.os.SystemClock.elapsedRealtime()
             val parsed = withContext(Dispatchers.Default) { parseLrc(usltText) }
             val coloredParsed = applyStoredLyricsLineColors(currentTrackUri, parsed)
+            Log.d(
+                LYRICS_PIPELINE_TRACE_TAG,
+                "PLAYER_LOAD_LYRICS songId=${currentSongId ?: currentTrackUri} source=USLT path=embedded lineCount=${coloredParsed.size} colorCount=${coloredParsed.count { it.colorArgb != null }}"
+            )
+            Log.d(
+                LYRICS_PIPELINE_TRACE_TAG,
+                "PLAYER_RENDER_SAMPLE songId=${currentSongId ?: currentTrackUri} firstLine=${coloredParsed.firstOrNull()?.text.orEmpty()} firstColor=${coloredParsed.firstOrNull()?.colorArgb}"
+            )
             LyricsPerf.mark(
                 currentTrackUri,
                 "parse_done",
@@ -1763,6 +1812,10 @@ fun PlayerScreen(
                             LYRICS_PLAYER_SYNC_DIAG_TAG,
                             "PLAYER_LYRICS_RENDER_SAMPLE firstLines/colors=${lyricsRenderSample(sorted)}"
                         )
+                        Log.d(
+                            LYRICS_PIPELINE_TRACE_TAG,
+                            "PLAYER_RENDER_SAMPLE songId=${currentSongId ?: currentTrackUri.orEmpty()} firstLine=${sorted.firstOrNull()?.text.orEmpty()} firstColor=${sorted.firstOrNull()?.colorArgb}"
+                        )
                         onParsedLinesChange(sorted)
                         hasLyricsSource = sorted.isNotEmpty()
                     }
@@ -1776,6 +1829,10 @@ fun PlayerScreen(
                         Log.d(
                             LYRICS_PLAYER_SYNC_DIAG_TAG,
                             "PLAYER_LYRICS_RENDER_SAMPLE firstLines/colors=${lyricsRenderSample(persisted)}"
+                        )
+                        Log.d(
+                            LYRICS_PIPELINE_TRACE_TAG,
+                            "PLAYER_RENDER_SAMPLE songId=${currentSongId ?: currentTrackUri.orEmpty()} firstLine=${persisted.firstOrNull()?.text.orEmpty()} firstColor=${persisted.firstOrNull()?.colorArgb}"
                         )
                         onParsedLinesChange(persisted)
                         hasLyricsSource = persisted.isNotEmpty()
@@ -1927,12 +1984,20 @@ fun PlayerScreen(
                             LyricsMemoryCache.invalidate(effectiveTrackUri)
                         }
                         Log.d(
+                            LYRICS_PIPELINE_TRACE_TAG,
+                            "CACHE_INVALIDATE songId=${currentSongId ?: effectiveTrackUri}"
+                        )
+                        Log.d(
                             LYRICS_PLAYER_SYNC_DIAG_TAG,
                             "PLAYER_LYRICS_CACHE_INVALIDATED songId=${currentSongId ?: effectiveTrackUri}"
                         )
                         Log.d(
                             LYRICS_PERSIST_DIAG_TAG,
                             "AUTOSAVE_START songId=${currentSongId ?: effectiveTrackUri} reason=editor_save"
+                        )
+                        Log.d(
+                            LYRICS_PIPELINE_TRACE_TAG,
+                            "SAVE_REQUEST songId=${currentSongId ?: effectiveTrackUri} reason=editor_save lineCount=${lines.size} colorCount=${lines.count { it.colorArgb != null }}"
                         )
                         Log.d(
                             "LrcDebug",
@@ -1961,6 +2026,10 @@ fun PlayerScreen(
                                     "AUTOSAVE_TARGET songId=${currentSongId ?: targetTrackUri} path/store=$targetTrackUri"
                                 )
                                 Log.d(
+                                    LYRICS_PIPELINE_TRACE_TAG,
+                                    "SAVE_START songId=${currentSongId ?: targetTrackUri} target=$targetTrackUri path=$targetTrackUri"
+                                )
+                                Log.d(
                                     PLAYER_LRC_TAG,
                                     "save_lyrics trackUri=$targetTrackUri lines=${lines.size}"
                                 )
@@ -1970,6 +2039,10 @@ fun PlayerScreen(
                                     lines = lines
                                 )
                                 if (!saved) {
+                                    Log.e(
+                                        LYRICS_PIPELINE_TRACE_TAG,
+                                        "SAVE_FAIL songId=${currentSongId ?: targetTrackUri} error=LrcStorage.saveForTrack_false"
+                                    )
                                     return@runCatching null
                                 }
 
@@ -1986,6 +2059,10 @@ fun PlayerScreen(
                                     Log.e(
                                         LYRICS_PLAYER_SYNC_DIAG_TAG,
                                         "AUTOSAVE_FAIL error=lyrics_line_colors_save_failed songId=${currentSongId ?: targetTrackUri}"
+                                    )
+                                    Log.e(
+                                        LYRICS_PIPELINE_TRACE_TAG,
+                                        "SAVE_FAIL songId=${currentSongId ?: targetTrackUri} error=lyrics_line_colors_save_failed"
                                     )
                                 }
 
@@ -2031,6 +2108,10 @@ fun PlayerScreen(
                                 LYRICS_PERSIST_DIAG_TAG,
                                 "AUTOSAVE_FAIL songId=${currentSongId ?: effectiveTrackUri} error=reload_failed"
                             )
+                            Log.e(
+                                LYRICS_PIPELINE_TRACE_TAG,
+                                "SAVE_FAIL songId=${currentSongId ?: effectiveTrackUri} error=reload_failed"
+                            )
                             return@persistLines false
                         }
 
@@ -2058,6 +2139,10 @@ fun PlayerScreen(
                         Log.d(
                             LYRICS_PERSIST_DIAG_TAG,
                             "AUTOSAVE_SUCCESS songId=${currentSongId ?: saveOutcome.trackUriString} path=${saveOutcome.debugPath.orEmpty()} lineCount=${lines.size} colorCount=${lines.count { it.colorArgb != null }} fileSize=${saveOutcome.reloadedText.length}"
+                        )
+                        Log.d(
+                            LYRICS_PIPELINE_TRACE_TAG,
+                            "SAVE_SUCCESS songId=${currentSongId ?: saveOutcome.trackUriString} path=${saveOutcome.debugPath.orEmpty()} fileSize=${saveOutcome.reloadedText.length} lineCount=${lines.size} colorCount=${lines.count { it.colorArgb != null }}"
                         )
                     }
                     true
@@ -2558,6 +2643,12 @@ fun PlayerScreen(
                                     parsedChordLines
                                 } else {
                                     parsedLines
+                                }
+                                if (editingTargetMode == LyricsViewMode.LYRICS) {
+                                    Log.d(
+                                        LYRICS_PIPELINE_TRACE_TAG,
+                                        "EDITOR_OPEN songId=${currentSongId ?: currentTrackUri.orEmpty()} source=PlayerScreen.parsedLines lineCount=${sourceLines.size} colorCount=${sourceLines.count { it.colorArgb != null }}"
+                                    )
                                 }
                                 if (sourceLines.isNotEmpty()) {
                                     rawLyricsText = editorLyricsText(sourceLines)

@@ -77,6 +77,7 @@ private val LRC_TIMESTAMP_HINT_REGEX = Regex("""\[\d{1,2}:\d{2}""")
 private const val FIRST_CHORD_TIME_MS = 10L
 private const val LYRICS_PLAYER_SYNC_DIAG_TAG = "LYRICS_PLAYER_SYNC_DIAG"
 private const val LYRICS_PERSIST_DIAG_TAG = "LYRICS_PERSIST_DIAG"
+private const val LYRICS_PIPELINE_TRACE_TAG = "LYRICS_PIPELINE_TRACE"
 
 private object LyricsEditorHintPrefs {
     private const val PREFS_NAME = "lyrics_editor_hint_prefs"
@@ -568,6 +569,12 @@ fun LyricsEditorSection(
         scope.launch {
             if (!showChordPalette) {
                 Log.d(
+                    LYRICS_PIPELINE_TRACE_TAG,
+                    "SAVE_REQUEST songId=${currentSongId ?: currentTrackUri.orEmpty()} reason=manual_or_exit lineCount=${finalLines.size} colorCount=${finalLines.count { it.colorArgb != null }}"
+                )
+            }
+            if (!showChordPalette) {
+                Log.d(
                     LYRICS_PLAYER_SYNC_DIAG_TAG,
                     "FORCE_SAVE_BEFORE_EXIT_EDITOR songId=${currentSongId ?: currentTrackUri.orEmpty()} lineCount=${finalLines.size}"
                 )
@@ -645,6 +652,10 @@ fun LyricsEditorSection(
         Log.d(
             LYRICS_PLAYER_SYNC_DIAG_TAG,
             "AUTOSAVE_SCHEDULED reason=editor_change songId=${currentSongId ?: currentTrackUri.orEmpty()}"
+        )
+        Log.d(
+            LYRICS_PIPELINE_TRACE_TAG,
+            "SAVE_REQUEST songId=${currentSongId ?: currentTrackUri.orEmpty()} reason=editor_change_scheduled lineCount=${autoSaveLyricsLines.size} colorCount=${autoSaveLyricsLines.count { it.colorArgb != null }}"
         )
         delay(900L)
         while (isPersistBusy) {
@@ -1349,12 +1360,20 @@ fun LyricsEditorSection(
                                                             "EDIT_TEXT songId=${currentSongId ?: currentTrackUri.orEmpty()} lineIndex=$idx oldText=${list[idx].text} newText=${lineMenuText.trim()}"
                                                         )
                                                         Log.d(
+                                                            LYRICS_PIPELINE_TRACE_TAG,
+                                                            "EDIT_TEXT songId=${currentSongId ?: currentTrackUri.orEmpty()} lineIndex=$idx old=${list[idx].text} new=${lineMenuText.trim()}"
+                                                        )
+                                                        Log.d(
                                                             LYRICS_PLAYER_SYNC_DIAG_TAG,
                                                             "EDIT_COLOR lineIndex=$idx oldColor=${list[idx].colorArgb} newColor=$lineMenuColorArgb"
                                                         )
                                                         Log.d(
                                                             LYRICS_PERSIST_DIAG_TAG,
                                                             "EDIT_COLOR songId=${currentSongId ?: currentTrackUri.orEmpty()} lineIndex=$idx oldColor=${list[idx].colorArgb} newColor=$lineMenuColorArgb"
+                                                        )
+                                                        Log.d(
+                                                            LYRICS_PIPELINE_TRACE_TAG,
+                                                            "EDIT_COLOR songId=${currentSongId ?: currentTrackUri.orEmpty()} lineIndex=$idx old=${list[idx].colorArgb} new=$lineMenuColorArgb"
                                                         )
                                                         list[idx] = list[idx].copy(
                                                             text = lineMenuText.trim(),
