@@ -21,6 +21,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitLongPressOrCancellation
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
@@ -3407,6 +3408,19 @@ private fun TimelineMeasuresPlaceholder(
             },
             onEditableSegmentHandleCaptured = {
                 captureSelectedArrangementSegmentUndoSnapshot()
+            },
+            onLoopBoundsChange = { nextStartMs, nextEndMs, commit, handle ->
+                val boundedStartMs = nextStartMs.coerceAtLeast(0L)
+                val boundedEndMs = nextEndMs.coerceAtLeast(boundedStartMs + 1L)
+                segmentInMs = boundedStartMs
+                segmentOutMs = boundedEndMs
+                if (commit) {
+                    when (handle) {
+                        TimelineArrangementEditHandle.IN -> onSegmentInChange(boundedStartMs)
+                        TimelineArrangementEditHandle.OUT -> onSegmentOutChange(boundedEndMs)
+                        TimelineArrangementEditHandle.NONE -> Unit
+                    }
+                }
             }
         )
         Row(
@@ -4125,7 +4139,8 @@ private fun TimelineGridWaveformSection(
     onWaveformPanStarted: () -> Unit,
     onWaveformLongPress: (Long) -> Unit,
     onEditableSegmentBoundsChange: (Long, Long, Boolean, TimelineArrangementEditHandle) -> Unit,
-    onEditableSegmentHandleCaptured: () -> Unit
+    onEditableSegmentHandleCaptured: () -> Unit,
+    onLoopBoundsChange: (Long, Long, Boolean, TimelineArrangementEditHandle) -> Unit
 ) {
     var waveformZoom by remember(peaks, durationMs) { mutableStateOf(1f) }
     var waveformCenterFraction by remember(peaks, durationMs) { mutableStateOf(0.5f) }
@@ -4136,6 +4151,7 @@ private fun TimelineGridWaveformSection(
     val latestUndoStackSize by rememberUpdatedState(undoStackSize)
     val latestOnEditableSegmentBoundsChange by rememberUpdatedState(onEditableSegmentBoundsChange)
     val latestOnEditableSegmentHandleCaptured by rememberUpdatedState(onEditableSegmentHandleCaptured)
+    val latestOnLoopBoundsChange by rememberUpdatedState(onLoopBoundsChange)
     val waveformHeight by animateDpAsState(
         targetValue = if (isWaveformExpanded) 270.dp else 140.dp,
         label = "timelineWaveformHeight"
@@ -4239,43 +4255,9 @@ private fun TimelineGridWaveformSection(
                                                 ).roundToLong()
                                                 .coerceIn(0L, safeDuration.toLong())
                                         )
-                                    },
-                                    onLongPress = { offset ->
-                                    val safeDuration = durationMs.coerceAtLeast(1)
-                                    val visualPreRollMs = ARRANGEMENT_WAVEFORM_VISUAL_PREROLL_MS
-                                    val visualDurationMs = safeDuration.toLong() + visualPreRollMs
-                                    val edgeDeadZonePx = 24.dp.toPx()
-                                    if (offset.x <= edgeDeadZonePx ||
-                                        offset.x >= size.width - edgeDeadZonePx
-                                    ) {
-                                        return@detectTapGestures
-                                    }
-                                    val visibleFraction = 1f / waveformZoom.coerceAtLeast(1f)
-                                    val startFraction = (waveformCenterFraction - visibleFraction / 2f)
-                                        .coerceIn(0f, 1f)
-                                    val endFraction = (startFraction + visibleFraction).coerceIn(0f, 1f)
-                                    val effectiveEndFraction = if (endFraction <= startFraction) {
-                                        1f
-                                    } else {
-                                        endFraction
-                                    }
-                                    val localFraction = if (size.width > 0) {
-                                        (offset.x / size.width).coerceIn(0f, 1f)
-                                    } else {
-                                        0f
-                                    }
-                                    val selectedVisualFraction = startFraction +
-                                        localFraction * (effectiveEndFraction - startFraction)
-                                    onWaveformLongPress(
-                                        (
-                                            selectedVisualFraction * visualDurationMs.toFloat() -
-                                                visualPreRollMs.toFloat()
-                                            ).roundToLong()
-                                            .coerceIn(0L, safeDuration.toLong())
-                                    )
-	                            }
-	                        )
-	                    }
+	                                    }
+		                        )
+		                    }
                             .pointerInput(
                                 peaks,
                                 durationMs,
@@ -4395,36 +4377,39 @@ private fun TimelineGridWaveformSection(
                                             TimelineArrangementEditHandle.OUT
                                         else -> TimelineArrangementEditHandle.NONE
                                     }
-                                    val isSegmentEditMode = startMs != null && endMs != null
-                                    if (pointerCountAtDown > 1 || !isSegmentEditMode) {
-                                        val touchTarget = if (nearestLoopHandle != TimelineArrangementEditHandle.NONE) {
-                                            "LOOP"
-                                        } else {
-                                            "NONE"
-                                        }
-                                        Log.d(
-                                            ARR_UNDO_HANDLE_TAG,
-                                            "TOUCH_START selectedSegmentId=$latestEditableSegmentId " +
-                                                "nearestHandle=$nearestLoopHandle target=$touchTarget " +
-                                                "undoStackSize=$latestUndoStackSize"
-                                        )
-                                        Log.d(
-                                            ARR_SEGMENT_GESTURE_TAG,
-                                            "DRAG_START x=${down.position.x} pointerCount=$pointerCountAtDown " +
-                                                "nearestHandle=$nearestLoopHandle selectedSegmentId=$latestEditableSegmentId " +
-                                                "isSegmentEditMode=$isSegmentEditMode loopStartMs=$loopStartMs " +
-                                                "loopEndMs=$loopEndMs selectedSegmentStartMs=$startMs " +
-                                                "selectedSegmentEndMs=$endMs"
-                                        )
-                                        Log.d(
-                                            ARR_SEGMENT_GESTURE_TAG,
-                                            "HANDLE_CAPTURED handle=${TimelineArrangementEditHandle.NONE} target=NONE"
-                                        )
-                                        return@awaitEachGesture
-                                    }
+	                                    val isSegmentEditMode = startMs != null && endMs != null
+                                    val target = if (isSegmentEditMode) "SEGMENT" else "LOOP"
+                                    val rawTargetStartMs = if (isSegmentEditMode) startMs else loopStartMs
+                                    val rawTargetEndMs = if (isSegmentEditMode) endMs else loopEndMs
+	                                    if (pointerCountAtDown > 1 || rawTargetStartMs == null || rawTargetEndMs == null) {
+	                                        val touchTarget = if (nearestLoopHandle != TimelineArrangementEditHandle.NONE) {
+	                                            "LOOP"
+	                                        } else {
+	                                            "NONE"
+	                                        }
+	                                        Log.d(
+	                                            ARR_UNDO_HANDLE_TAG,
+	                                            "TOUCH_START selectedSegmentId=$latestEditableSegmentId " +
+	                                                "nearestHandle=$nearestLoopHandle target=$touchTarget " +
+	                                                "undoStackSize=$latestUndoStackSize"
+	                                        )
+	                                        Log.d(
+	                                            ARR_SEGMENT_GESTURE_TAG,
+	                                            "DRAG_START x=${down.position.x} pointerCount=$pointerCountAtDown " +
+	                                                "nearestHandle=$nearestLoopHandle selectedSegmentId=$latestEditableSegmentId " +
+	                                                "isSegmentEditMode=$isSegmentEditMode loopStartMs=$loopStartMs " +
+	                                                "loopEndMs=$loopEndMs selectedSegmentStartMs=$startMs " +
+	                                                "selectedSegmentEndMs=$endMs"
+	                                        )
+	                                        Log.d(
+	                                            ARR_SEGMENT_GESTURE_TAG,
+	                                            "HANDLE_CAPTURED handle=${TimelineArrangementEditHandle.NONE} target=NONE"
+	                                        )
+	                                        return@awaitEachGesture
+	                                    }
 
-                                    val safeStartMs = minOf(startMs, endMs)
-                                    val safeEndMs = maxOf(startMs, endMs)
+	                                    val safeStartMs = minOf(rawTargetStartMs, rawTargetEndMs)
+	                                    val safeEndMs = maxOf(rawTargetStartMs, rawTargetEndMs)
                                     var pendingStartMs = safeStartMs
                                     var pendingEndMs = safeEndMs
                                     val inX = xForTimeMs(safeStartMs)
@@ -4438,13 +4423,11 @@ private fun TimelineGridWaveformSection(
                                             TimelineArrangementEditHandle.OUT
                                         else -> TimelineArrangementEditHandle.NONE
                                     }
-                                    val pendingTarget = if (activeEditHandle != TimelineArrangementEditHandle.NONE) {
-                                        "SEGMENT"
-                                    } else if (nearestLoopHandle != TimelineArrangementEditHandle.NONE) {
-                                        "LOOP"
-                                    } else {
-                                        "NONE"
-                                    }
+	                                    val pendingTarget = if (activeEditHandle != TimelineArrangementEditHandle.NONE) {
+	                                        target
+	                                    } else {
+	                                        "NONE"
+	                                    }
                                     val nearestHandle = if (activeEditHandle != TimelineArrangementEditHandle.NONE) {
                                         activeEditHandle
                                     } else {
@@ -4456,30 +4439,56 @@ private fun TimelineGridWaveformSection(
                                             "nearestHandle=$nearestHandle target=$pendingTarget " +
                                             "undoStackSize=$latestUndoStackSize"
                                     )
-                                    Log.d(
-                                        ARR_SEGMENT_GESTURE_TAG,
-                                        "DRAG_START x=${down.position.x} pointerCount=$pointerCountAtDown " +
-                                            "nearestHandle=$nearestHandle selectedSegmentId=$latestEditableSegmentId " +
-                                            "isSegmentEditMode=true loopStartMs=$loopStartMs loopEndMs=$loopEndMs " +
-                                            "selectedSegmentStartMs=$safeStartMs selectedSegmentEndMs=$safeEndMs " +
-                                            "segmentInX=$inX segmentOutX=$outX loopInX=$loopInX loopOutX=$loopOutX"
-                                    )
+	                                    Log.d(
+	                                        ARR_SEGMENT_GESTURE_TAG,
+	                                        "DRAG_START x=${down.position.x} pointerCount=$pointerCountAtDown " +
+	                                            "nearestHandle=$nearestHandle selectedSegmentId=$latestEditableSegmentId " +
+	                                            "isSegmentEditMode=$isSegmentEditMode loopStartMs=$loopStartMs loopEndMs=$loopEndMs " +
+	                                            "selectedSegmentStartMs=$safeStartMs selectedSegmentEndMs=$safeEndMs " +
+	                                            "segmentInX=$inX segmentOutX=$outX loopInX=$loopInX loopOutX=$loopOutX"
+	                                    )
                                     Log.d(
                                         ARR_SEGMENT_GESTURE_TAG,
                                         "HANDLE_CAPTURED handle=$activeEditHandle target=$pendingTarget"
                                     )
                                     val willPushUndo = activeEditHandle != TimelineArrangementEditHandle.NONE &&
                                         pendingTarget == "SEGMENT"
-                                    Log.d(
-                                        ARR_UNDO_HANDLE_TAG,
-                                        "HANDLE_CAPTURED handle=$activeEditHandle target=$pendingTarget " +
-                                            "willPushUndo=$willPushUndo"
-                                    )
-                                    if (activeEditHandle == TimelineArrangementEditHandle.NONE) {
+	                                    Log.d(
+	                                        ARR_UNDO_HANDLE_TAG,
+	                                        "HANDLE_CAPTURED handle=$activeEditHandle target=$pendingTarget " +
+	                                            "willPushUndo=$willPushUndo"
+	                                    )
+	                                    if (activeEditHandle == TimelineArrangementEditHandle.NONE) {
+	                                        return@awaitEachGesture
+	                                    }
+                                    val longPress = awaitLongPressOrCancellation(down.id)
+                                    if (longPress == null) {
+                                        Log.d(
+                                            ARR_UNDO_HANDLE_TAG,
+                                            "HANDLE_RELEASED target=$pendingTarget committed=false reason=long_press_cancelled"
+                                        )
+                                        activeEditHandle = TimelineArrangementEditHandle.NONE
                                         return@awaitEachGesture
                                     }
-                                    latestOnEditableSegmentHandleCaptured()
-                                    var cancelled = false
+	                                    val longPressX = longPress.position.x
+                                    val capturedX = when (activeEditHandle) {
+                                        TimelineArrangementEditHandle.IN -> inX
+                                        TimelineArrangementEditHandle.OUT -> outX
+                                        TimelineArrangementEditHandle.NONE -> null
+                                    }
+                                    if (capturedX == null || abs(longPressX - capturedX) > handleHitPx) {
+                                        Log.d(
+                                            ARR_UNDO_HANDLE_TAG,
+                                            "HANDLE_RELEASED target=$pendingTarget committed=false reason=long_press_moved"
+                                        )
+                                        activeEditHandle = TimelineArrangementEditHandle.NONE
+                                        return@awaitEachGesture
+                                    }
+                                    longPress.consume()
+                                    if (pendingTarget == "SEGMENT") {
+		                                    latestOnEditableSegmentHandleCaptured()
+                                    }
+		                                    var cancelled = false
                                     while (true) {
                                         val event = awaitPointerEvent()
                                         if (event.changes.count { it.pressed } > 1) {
@@ -4507,12 +4516,21 @@ private fun TimelineGridWaveformSection(
                                                         "target=$pendingTarget newStartMs=$nextStartMs " +
                                                         "newEndMs=$safeCurrentEndMs"
                                                 )
-	                                                latestOnEditableSegmentBoundsChange(
-                                                    nextStartMs,
-                                                    safeCurrentEndMs,
-                                                    false,
-                                                    TimelineArrangementEditHandle.IN
-                                                )
+                                                if (pendingTarget == "SEGMENT") {
+		                                                latestOnEditableSegmentBoundsChange(
+                                                        nextStartMs,
+                                                        safeCurrentEndMs,
+                                                        false,
+                                                        TimelineArrangementEditHandle.IN
+                                                    )
+                                                } else {
+                                                    latestOnLoopBoundsChange(
+                                                        nextStartMs,
+                                                        safeCurrentEndMs,
+                                                        false,
+                                                        TimelineArrangementEditHandle.IN
+                                                    )
+                                                }
                                             }
                                             TimelineArrangementEditHandle.OUT -> {
                                                 val safeCurrentStartMs = pendingStartMs.coerceAtLeast(0L)
@@ -4533,12 +4551,21 @@ private fun TimelineGridWaveformSection(
                                                         "target=$pendingTarget newStartMs=$safeCurrentStartMs " +
                                                         "newEndMs=$nextEndMs"
                                                 )
-	                                                latestOnEditableSegmentBoundsChange(
-                                                    safeCurrentStartMs,
-                                                    nextEndMs,
-                                                    false,
-                                                    TimelineArrangementEditHandle.OUT
-                                                )
+                                                if (pendingTarget == "SEGMENT") {
+		                                                latestOnEditableSegmentBoundsChange(
+                                                        safeCurrentStartMs,
+                                                        nextEndMs,
+                                                        false,
+                                                        TimelineArrangementEditHandle.OUT
+                                                    )
+                                                } else {
+                                                    latestOnLoopBoundsChange(
+                                                        safeCurrentStartMs,
+                                                        nextEndMs,
+                                                        false,
+                                                        TimelineArrangementEditHandle.OUT
+                                                    )
+                                                }
                                             }
                                             TimelineArrangementEditHandle.NONE -> Unit
                                         }
@@ -4558,13 +4585,22 @@ private fun TimelineGridWaveformSection(
                                         "HANDLE_RELEASED target=$pendingTarget committed=$shouldCommitSegment"
                                     )
 	                                    if (shouldCommitSegment) {
-                                        latestOnEditableSegmentBoundsChange(
-                                            minOf(pendingStartMs, pendingEndMs),
-                                            maxOf(pendingStartMs, pendingEndMs),
-                                            true,
-                                            activeEditHandle
-                                        )
-                                    }
+                                        if (pendingTarget == "SEGMENT") {
+	                                            latestOnEditableSegmentBoundsChange(
+	                                                minOf(pendingStartMs, pendingEndMs),
+	                                                maxOf(pendingStartMs, pendingEndMs),
+	                                                true,
+	                                                activeEditHandle
+	                                            )
+                                        } else {
+                                            latestOnLoopBoundsChange(
+                                                minOf(pendingStartMs, pendingEndMs),
+                                                maxOf(pendingStartMs, pendingEndMs),
+                                                true,
+                                                activeEditHandle
+                                            )
+                                        }
+	                                    }
                                     activeEditHandle = TimelineArrangementEditHandle.NONE
                                 }
                             }
