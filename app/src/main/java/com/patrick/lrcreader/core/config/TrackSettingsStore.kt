@@ -123,12 +123,44 @@ object TrackSettingsStore {
         return readEntryByUri(context, uriString)?.lyricsLineColors.orEmpty()
     }
 
+    fun getLyricsLineColors(
+        context: Context,
+        songId: String?,
+        uriString: String
+    ): Map<String, Int> {
+        val keys = songId
+            ?.let { resolveReadKeysForSongId(context, it) }
+            ?: resolveReadKeysForUri(context, uriString)
+            ?: return emptyMap()
+        return lock.withLock {
+            readEntryLocked(context, keys)?.lyricsLineColors.orEmpty()
+        }
+    }
+
     fun saveLyricsLineColorsByUri(
         context: Context,
         uriString: String,
         lyricsLineColors: Map<String, Int>
     ): Boolean {
         val keys = resolveReadKeysForUri(context, uriString) ?: return false
+        val sanitized = lyricsLineColors
+            .filterKeys { it.isNotBlank() }
+            .toSortedMap()
+        return updateTrackLocked(context, keys) { entry ->
+            entry.copy(lyricsLineColors = sanitized)
+        }
+    }
+
+    fun saveLyricsLineColors(
+        context: Context,
+        songId: String?,
+        uriString: String,
+        lyricsLineColors: Map<String, Int>
+    ): Boolean {
+        val keys = songId
+            ?.let { resolveReadKeysForSongId(context, it) }
+            ?: resolveReadKeysForUri(context, uriString)
+            ?: return false
         val sanitized = lyricsLineColors
             .filterKeys { it.isNotBlank() }
             .toSortedMap()

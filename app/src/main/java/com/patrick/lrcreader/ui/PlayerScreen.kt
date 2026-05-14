@@ -1067,7 +1067,12 @@ fun PlayerScreen(
     }
 
     fun applyStoredLyricsLineColors(trackUriString: String, lines: List<LrcLine>): List<LrcLine> {
-        return hydrateLyricsLineColors(context, LrcStorage.resolveRuntimeAlias(context, trackUriString), lines)
+        return hydrateLyricsLineColors(
+            context = context,
+            songId = currentSongId,
+            trackUriString = LrcStorage.resolveRuntimeAlias(context, trackUriString),
+            lines = lines
+        )
     }
 
     fun applyCachedLyrics(trackUriString: String, entry: LyricsCacheEntry) {
@@ -2046,8 +2051,9 @@ fun PlayerScreen(
                                     return@runCatching null
                                 }
 
-                                val colorsSaved = TrackSettingsStore.saveLyricsLineColorsByUri(
+                                val colorsSaved = TrackSettingsStore.saveLyricsLineColors(
                                     context = context,
+                                    songId = currentSongId,
                                     uriString = LrcStorage.resolveRuntimeAlias(context, targetTrackUri),
                                     lyricsLineColors = extractLyricsLineColors(lines)
                                 )
@@ -3969,11 +3975,16 @@ private fun extractLyricsLineColors(lines: List<LrcLine>): Map<String, Int> {
 
 private fun hydrateLyricsLineColors(
     context: android.content.Context,
+    songId: String?,
     trackUriString: String,
     lines: List<LrcLine>
 ): List<LrcLine> {
     if (lines.isEmpty()) return lines
-    val storedColors = TrackSettingsStore.getLyricsLineColorsByUri(context, trackUriString)
+    val storedColors = TrackSettingsStore.getLyricsLineColors(
+        context = context,
+        songId = songId,
+        uriString = trackUriString
+    )
     if (storedColors.isEmpty()) return lines
     return lines.map { line ->
         line.copy(colorArgb = findStoredLyricsLineColor(line, storedColors))
