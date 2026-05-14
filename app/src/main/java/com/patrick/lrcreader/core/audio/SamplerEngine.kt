@@ -37,7 +37,7 @@ class SamplerEngine {
 
         val estimatedRamBytes = nextSegments.sumOf { it.estimatedRamBytes.toLong() }
         Log.d(
-            TAG,
+            FLOW_TAG,
             "LOAD_SEGMENTS count=${nextSegments.size} sampleRateHz=${nextSegments.firstOrNull()?.sampleRateHz ?: 0} estimatedRamBytes=$estimatedRamBytes estimatedRamMb=${"%.2f".format(estimatedRamBytes / BYTES_PER_MB)}"
         )
     }
@@ -63,7 +63,7 @@ class SamplerEngine {
             playbackThread = thread
         }
 
-        Log.d(TAG, "PLAY index=$index name=${snapshot[index].name}")
+        Log.d(FLOW_TAG, "PLAY_START index=$index name=${snapshot[index].name}")
         thread.start()
     }
 
@@ -71,7 +71,7 @@ class SamplerEngine {
         val snapshot = segments
         require(index in snapshot.indices) { "Invalid queued segment index: $index" }
         queuedIndex = index
-        Log.d(TAG, "QUEUE_NEXT index=$index name=${snapshot[index].name}")
+        Log.d(FLOW_TAG, "QUEUE_NEXT index=$index name=${snapshot[index].name}")
     }
 
     fun stop() {
@@ -86,6 +86,9 @@ class SamplerEngine {
             audioTrack = null
         }
 
+        if (trackToRelease != null) {
+            Log.d(FLOW_TAG, "AUDIO_TRACK_STOP reason=stop")
+        }
         runCatching { trackToRelease?.pause() }
         runCatching { trackToRelease?.flush() }
         runCatching { trackToRelease?.stop() }
@@ -97,13 +100,13 @@ class SamplerEngine {
 
         currentIndex = null
         queuedIndex = null
-        Log.d(TAG, "STOP")
+        Log.d(FLOW_TAG, "STOP")
     }
 
     fun release() {
         stop()
         segments = emptyList()
-        Log.d(TAG, "RELEASE")
+        Log.d(FLOW_TAG, "RELEASE")
     }
 
     private fun playFromIndex(startIndex: Int) {
@@ -115,25 +118,28 @@ class SamplerEngine {
 
         try {
             track.play()
+            Log.d(FLOW_TAG, "AUDIO_TRACK_START sampleRateHz=$sampleRateHz")
             var index: Int? = startIndex
+            var initialOffsetBytes = 0
             while (!stopRequested.get() && index != null) {
                 val segment = segments.getOrNull(index) ?: break
                 currentIndex = index
                 Log.d(
-                    TAG,
-                    "SEGMENT_START index=$index name=${segment.name} queued=$queuedIndex bytes=${segment.estimatedRamBytes}"
+                    FLOW_TAG,
+                    "NEXT_SEGMENT_START index=$index name=${segment.name} queued=$queuedIndex bytes=${segment.estimatedRamBytes} initialOffsetBytes=$initialOffsetBytes"
                 )
-                writeSegment(track, segment)
+                val transition = writeSegment(track, segment, initialOffsetBytes)
                 if (stopRequested.get()) break
 
-                val nextIndex = queuedIndex
-                queuedIndex = null
+                val nextIndex = transition.nextIndex
+                initialOffsetBytes = transition.nextInitialOffsetBytes
                 index = nextIndex
-                Log.d(TAG, "SEGMENT_END next=$index")
+                Log.d(FLOW_TAG, "SEGMENT_END index=$currentIndex next=$index nextInitialOffsetBytes=$initialOffsetBytes")
             }
         } catch (error: Throwable) {
-            Log.w(TAG, "PLAYBACK_ERROR message=${error.message}", error)
+            Log.w(FLOW_TAG, "PLAYBACK_ERROR message=${error.message}", error)
         } finally {
+            Log.d(FLOW_TAG, "AUDIO_TRACK_STOP reason=thread_finally")
             runCatching { track.pause() }
             runCatching { track.flush() }
             runCatching { track.stop() }
@@ -151,22 +157,137 @@ class SamplerEngine {
         }
     }
 
-    private fun writeSegment(track: AudioTrack, segment: SampleSegment) {
+    private fun writeSegment(
+        track: AudioTrack,
+        segment: SampleSegment,
+        initialOffsetBytes: Int
+    ): SegmentTransition {
         val pcm = segment.pcm16Stereo
-        var offset = 0
-        while (!stopRequested.get() && offset < pcm.size) {
-            val bytesToWrite = minOf(WRITE_CHUNK_BYTES, pcm.size - offset)
+        var nextInitialOffsetBytes = 0
+        val safeInitialOffsetBytes = alignToFrame(initialOffsetBytes)
+            .coerceIn(0, pcm.size)
+        val heldTailBytes = resolveHeldTailBytes(segment)
+        val bodyEnd = if (heldTailBytes > 0 && pcm.size - safeInitialOffsetBytes > heldTailBytes) {
+            pcm.size - heldTailBytes
+        } else {
+            pcm.size
+        }
+
+        writePcmRange(track, pcm, safeInitialOffsetBytes, bodyEnd)
+        if (stopRequested.get()) return SegmentTransition(null, 0)
+
+        val nextIndex = queuedIndex
+        val nextSegment = nextIndex?.let { segments.getOrNull(it) }
+        val transitionCrossfadeBytes = resolveCrossfadeBytes(segment, nextSegment)
+        if (nextIndex != null && nextSegment != null && transitionCrossfadeBytes > 0) {
+            queuedIndex = null
+            val transitionPcm = buildCrossfadePcm(
+                currentPcm = pcm,
+                nextPcm = nextSegment.pcm16Stereo,
+                crossfadeBytes = transitionCrossfadeBytes
+            )
+            writePcmRange(track, transitionPcm, 0, transitionPcm.size)
+            nextInitialOffsetBytes = transitionCrossfadeBytes
+            Log.d(
+                FLOW_TAG,
+                "CROSSFADE_APPLIED durationMs=${crossfadeBytesToMs(transitionCrossfadeBytes, segment.sampleRateHz)} " +
+                    "bytes=$transitionCrossfadeBytes current=$currentIndex next=$nextIndex"
+            )
+        } else {
+            writePcmRange(track, pcm, bodyEnd, pcm.size)
+            queuedIndex = null
+        }
+
+        return SegmentTransition(nextIndex, nextInitialOffsetBytes)
+    }
+
+    private fun writePcmRange(track: AudioTrack, pcm: ByteArray, startOffset: Int, endOffset: Int) {
+        var offset = startOffset.coerceIn(0, pcm.size)
+        val safeEndOffset = endOffset.coerceIn(offset, pcm.size)
+        var totalWritten = 0
+        while (!stopRequested.get() && offset < safeEndOffset) {
+            val bytesToWrite = minOf(WRITE_CHUNK_BYTES, safeEndOffset - offset)
             val written = track.write(pcm, offset, bytesToWrite)
             if (written < 0) {
-                Log.w(TAG, "WRITE_ERROR code=$written current=$currentIndex queued=$queuedIndex")
+                Log.w(FLOW_TAG, "WRITE_ERROR code=$written current=$currentIndex queued=$queuedIndex")
                 break
             }
             if (written == 0) {
+                Log.w(FLOW_TAG, "UNDERRUN_OR_BACKPRESSURE current=$currentIndex queued=$queuedIndex offset=$offset")
                 Thread.yield()
             } else {
                 offset += written
+                totalWritten += written
             }
         }
+        if (totalWritten > 0) {
+            Log.d(FLOW_TAG, "AUDIO_WRITE bytes=$totalWritten current=$currentIndex queued=$queuedIndex")
+        }
+    }
+
+    private fun resolveCrossfadeBytes(current: SampleSegment, next: SampleSegment?): Int {
+        if (next == null || current.sampleRateHz != next.sampleRateHz) return 0
+        val maxCurrentFrames = resolveHeldTailBytes(current) / SampleSegment.BYTES_PER_STEREO_FRAME
+        val maxNextFrames = next.pcm16Stereo.size / SampleSegment.BYTES_PER_STEREO_FRAME / 2
+        val frames = minOf(maxCurrentFrames, maxNextFrames)
+        return (frames * SampleSegment.BYTES_PER_STEREO_FRAME).coerceAtLeast(0)
+    }
+
+    private fun resolveHeldTailBytes(segment: SampleSegment): Int {
+        val requestedFrames = (segment.sampleRateHz * CROSSFADE_DURATION_MS) / 1_000
+        val maxFrames = segment.pcm16Stereo.size / SampleSegment.BYTES_PER_STEREO_FRAME / 2
+        val frames = minOf(requestedFrames, maxFrames)
+        return frames * SampleSegment.BYTES_PER_STEREO_FRAME
+    }
+
+    private fun buildCrossfadePcm(
+        currentPcm: ByteArray,
+        nextPcm: ByteArray,
+        crossfadeBytes: Int
+    ): ByteArray {
+        val safeBytes = alignToFrame(crossfadeBytes)
+            .coerceAtMost(currentPcm.size)
+            .coerceAtMost(nextPcm.size)
+        val output = ByteArray(safeBytes)
+        var offset = 0
+        while (offset < safeBytes) {
+            val frameIndex = offset / SampleSegment.BYTES_PER_STEREO_FRAME
+            val frameCount = (safeBytes / SampleSegment.BYTES_PER_STEREO_FRAME).coerceAtLeast(1)
+            val nextGain = ((frameIndex + 1).toFloat() / frameCount.toFloat()).coerceIn(0f, 1f)
+            val currentGain = 1f - nextGain
+            repeat(SampleSegment.CHANNEL_COUNT) { channel ->
+                val byteOffset = offset + channel * SampleSegment.BYTES_PER_SAMPLE
+                val currentOffset = currentPcm.size - safeBytes + byteOffset
+                val currentSample = readPcm16Le(currentPcm, currentOffset)
+                val nextSample = readPcm16Le(nextPcm, byteOffset)
+                val mixed = (currentSample * currentGain + nextSample * nextGain)
+                    .toInt()
+                    .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
+                writePcm16Le(output, byteOffset, mixed)
+            }
+            offset += SampleSegment.BYTES_PER_STEREO_FRAME
+        }
+        return output
+    }
+
+    private fun readPcm16Le(bytes: ByteArray, offset: Int): Int {
+        val lo = bytes[offset].toInt() and 0xFF
+        val hi = bytes[offset + 1].toInt()
+        return (hi shl 8) or lo
+    }
+
+    private fun writePcm16Le(bytes: ByteArray, offset: Int, value: Int) {
+        bytes[offset] = (value and 0xFF).toByte()
+        bytes[offset + 1] = ((value shr 8) and 0xFF).toByte()
+    }
+
+    private fun alignToFrame(byteCount: Int): Int {
+        return byteCount - (byteCount % SampleSegment.BYTES_PER_STEREO_FRAME)
+    }
+
+    private fun crossfadeBytesToMs(byteCount: Int, sampleRateHz: Int): Long {
+        val frames = byteCount / SampleSegment.BYTES_PER_STEREO_FRAME
+        return (frames * 1_000L) / sampleRateHz.coerceAtLeast(1)
     }
 
     private fun createAudioTrack(sampleRateHz: Int): AudioTrack {
@@ -206,9 +327,16 @@ class SamplerEngine {
 
     private companion object {
         private const val TAG = "SamplerEngine"
+        private const val FLOW_TAG = "ARR_SAMPLER_FLOW"
         private const val WRITE_CHUNK_BYTES = 16 * 1024
         private const val BUFFER_MULTIPLIER = 4
         private const val STOP_JOIN_TIMEOUT_MS = 500L
         private const val BYTES_PER_MB = 1024.0 * 1024.0
+        private const val CROSSFADE_DURATION_MS = 8
     }
+
+    private data class SegmentTransition(
+        val nextIndex: Int?,
+        val nextInitialOffsetBytes: Int
+    )
 }

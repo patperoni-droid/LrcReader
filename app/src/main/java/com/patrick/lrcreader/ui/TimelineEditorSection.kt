@@ -21,7 +21,6 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.awaitLongPressOrCancellation
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
@@ -105,6 +104,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import com.patrick.lrcreader.core.EditionConfig
@@ -136,6 +136,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import kotlin.math.abs
 import kotlin.math.floor
@@ -159,6 +160,20 @@ private const val ARR_SEGMENT_PERSIST_TAG = "ARR_SEGMENT_PERSIST"
 private const val ARR_SEGMENT_GESTURE_TAG = "ARR_SEGMENT_GESTURE"
 private const val ARR_UNDO_HANDLE_TAG = "ARR_UNDO_HANDLE"
 private const val ARR_SEGMENT_STATE_TAG = "ARR_SEGMENT_STATE"
+private const val ARR_TIMING_DIAG_TAG = "ARR_TIMING_DIAG"
+private const val ARR_PREVIEW_WAV_TAG = "ARR_PREVIEW_WAV"
+
+private fun arrangementTimingSourceLabel(audioPath: String?): String {
+    val extension = audioPath
+        ?.substringAfterLast('.', missingDelimiterValue = "")
+        ?.lowercase()
+        .orEmpty()
+    return when (extension) {
+        "wav" -> "WAV"
+        "mp3" -> "MP3"
+        else -> if (audioPath.isNullOrBlank()) "UNKNOWN" else extension.uppercase().ifBlank { "UNKNOWN" }
+    }
+}
 
 private enum class TimelineDisplayMode {
     TIME,
@@ -1922,6 +1937,12 @@ private fun TimelineMeasuresPlaceholder(
     }
 
     fun playArrangementPreviewFile(previewFile: File) {
+        Log.d(
+            ARR_PREVIEW_WAV_TAG,
+            "PLAYER_START_REQUEST path=${previewFile.absolutePath} exists=${previewFile.isFile} " +
+                "size=${previewFile.length()} currentState=${structurePreviewPlayer.playbackState} " +
+                "isPlaying=${structurePreviewPlayer.isPlaying}"
+        )
         stopStructurePreviewPlayback(reason = "playArrangementPreviewFile")
         stopArrangementLoopPreviewPlayback()
         if (isPreparedClipLoopTestActive) {
@@ -1953,6 +1974,18 @@ private fun TimelineMeasuresPlaceholder(
         )
         structurePreviewPlayer.prepare()
         structurePreviewPlayer.play()
+        Log.d(
+            ARR_PREVIEW_WAV_TAG,
+            "PLAYER_START path=${previewFile.absolutePath} exists=${previewFile.isFile} " +
+                "size=${previewFile.length()} mediaItemCount=${structurePreviewPlayer.mediaItemCount} " +
+                "playbackState=${structurePreviewPlayer.playbackState} playWhenReady=${structurePreviewPlayer.playWhenReady}"
+        )
+        Log.d(
+            ARR_TIMING_DIAG_TAG,
+            "PLAY_START playMode=NORMAL_PREVIEW requestedStartMs=0 requestedEndMs=NA " +
+                "actualPlayerPositionMs=${runCatching { structurePreviewPlayer.currentPosition }.getOrDefault(-1L)} " +
+                "source=WAV_PREVIEW sourceUri=${Uri.fromFile(previewFile)}"
+        )
     }
 
     fun playStructureSegmentPreview(
@@ -2043,6 +2076,14 @@ private fun TimelineMeasuresPlaceholder(
             "START_SEGMENT index=$startIndex name=${requestedSegment.name} startMs=${requestedSegment.startMs} endMs=${requestedSegment.endMs} sourceUri=$sourceUri mediaItemCountBefore=$mediaItemCountBefore mediaItemCountAfter=${structurePreviewPlayer.mediaItemCount} currentMediaItemIndex=${structurePreviewPlayer.currentMediaItemIndex}"
         )
         structurePreviewPlayer.play()
+        Log.d(
+            ARR_TIMING_DIAG_TAG,
+            "PLAY_START playMode=STRUCTURE requestedStartMs=${requestedSegment.startMs} " +
+                "requestedEndMs=${requestedSegment.endMs} " +
+                "actualPlayerPositionMs=${runCatching { structurePreviewPlayer.currentPosition }.getOrDefault(-1L)} " +
+                "source=${if (structureUsingWavSource) "WAV_CACHE" else arrangementTimingSourceLabel(audioPath)} " +
+                "segmentId=${requestedSegment.id} mediaItemSourceUri=$sourceUri"
+        )
     }
 
     fun queueStructureSegmentPreview(
@@ -2084,6 +2125,13 @@ private fun TimelineMeasuresPlaceholder(
             )
         }
         queuedStructureSegmentIndex = nextIndex
+        Log.d(
+            ARR_TIMING_DIAG_TAG,
+            "STRUCTURE_QUEUE segmentId=${queuedSegment.id} segmentStartMs=$queuedStartMs " +
+                "segmentEndMs=$queuedEndMs mediaItemSourceUri=$sourceUri " +
+                "transitionTimestampMs=${SystemClock.elapsedRealtime()} expectedStartMs=$queuedStartMs " +
+                "currentPosition=${runCatching { structurePreviewPlayer.currentPosition }.getOrDefault(-1L)}"
+        )
     }
 
     fun preloadAutomaticStructureSegmentPreview(
@@ -2123,6 +2171,13 @@ private fun TimelineMeasuresPlaceholder(
                 "NEXT_ITEM_AUTO currentIndex=$currentIndex nextIndex=$nextIndex name=${nextSegment.name} startMs=$nextStartMs endMs=$nextEndMs sourceUri=$sourceUri mediaItemCountBefore=$mediaItemCount mediaItemCountAfter=${structurePreviewPlayer.mediaItemCount}"
             )
         }
+        Log.d(
+            ARR_TIMING_DIAG_TAG,
+            "STRUCTURE_PRELOAD segmentId=${nextSegment.id} segmentStartMs=$nextStartMs " +
+                "segmentEndMs=$nextEndMs mediaItemSourceUri=$sourceUri " +
+                "transitionTimestampMs=${SystemClock.elapsedRealtime()} expectedStartMs=$nextStartMs " +
+                "currentPosition=${runCatching { structurePreviewPlayer.currentPosition }.getOrDefault(-1L)}"
+        )
     }
 
     fun persistArrangementState(
@@ -2170,8 +2225,8 @@ private fun TimelineMeasuresPlaceholder(
                             "snapshot=${snapshotSegments.firstOrNull { it.id == segmentId }?.persistDebugLabel()} " +
                             "store=${storedData?.segments?.firstOrNull { it.id == segmentId }?.persistDebugLabel()} " +
                             "storeAll=${storedData?.segments.orEmpty().persistDebugSnapshot()}"
-                    )
-                }
+                )
+            }
             }
         }
     }
@@ -2375,6 +2430,13 @@ private fun TimelineMeasuresPlaceholder(
                 currentSongAudioPath = song.audioPath
                 currentSongTitle = song.title
                 currentSongTrackGainDb = trackGainDb
+                Log.d(
+                    ARR_TIMING_DIAG_TAG,
+                    "LOAD songId=$songId audioPath=${song.audioPath} " +
+                        "sourceUri=${song.audioPath?.let { Uri.fromFile(File(it)) }} " +
+                        "waveformDurationMs=$durationMs playerDurationMs=$durationMs " +
+                        "durationDiffMs=0 source=${arrangementTimingSourceLabel(song.audioPath)}"
+                )
                 waveformLoading = false
             }
             .onFailure {
@@ -2625,6 +2687,18 @@ private fun TimelineMeasuresPlaceholder(
             stopStructurePreviewPlayback(reason = "structure_segment_edited")
         }
         if (commit) {
+            val committedHandleTimeMs = when (handle) {
+                TimelineArrangementEditHandle.IN -> boundedStartMs
+                TimelineArrangementEditHandle.OUT -> boundedEndMs
+                TimelineArrangementEditHandle.NONE -> boundedStartMs
+            }
+            Log.d(
+                ARR_TIMING_DIAG_TAG,
+                "ACTION action=${if (handle == TimelineArrangementEditHandle.OUT) "SET_OUT" else "SET_IN"} " +
+                    "x=HANDLE calculatedTimeMs=$committedHandleTimeMs clampedTimeMs=$committedHandleTimeMs " +
+                    "waveformZoom=NA waveformCenterFraction=NA startFraction=NA endFraction=NA " +
+                    "safeDurationMs=$waveformDurationMs segmentId=${targetSegment.id}"
+            )
             Log.d(
                 ARR_SEGMENT_PERSIST_TAG,
                 "COMMIT_START segmentId=${targetSegment.id} " +
@@ -2642,6 +2716,12 @@ private fun TimelineMeasuresPlaceholder(
                         sourceUri = Uri.fromFile(File(audioPath)),
                         startMs = boundedStartMs,
                         endMs = boundedEndMs
+                    )
+                    Log.d(
+                        ARR_TIMING_DIAG_TAG,
+                        "PLAY_START playMode=LOOP requestedStartMs=$boundedStartMs requestedEndMs=$boundedEndMs " +
+                            "actualPlayerPositionMs=${arrangementPreviewPlayer.currentPositionMs()} " +
+                            "source=${arrangementTimingSourceLabel(audioPath)} sourceUri=${Uri.fromFile(File(audioPath))}"
                     )
                     onStructurePreviewActiveChange(true)
                 }
@@ -2669,7 +2749,20 @@ private fun TimelineMeasuresPlaceholder(
     }
 
     val listenAction: () -> Unit = {
+        Log.d(
+            ARR_PREVIEW_WAV_TAG,
+            "PREVIEW_REQUESTED songId=${currentSongId?.trim().orEmpty()} " +
+                "audioPath=$currentSongAudioPath structureCount=${structurePlaybackSegments.size} " +
+                "structurePlaybackActive=$structurePlaybackActive wavPreviewActive=$wavPreviewActive " +
+                "arrangementLoopPreviewActive=$arrangementLoopPreviewActive isPreviewGenerating=$isPreviewGenerating"
+        )
         if (structurePlaybackActive || wavPreviewActive || arrangementLoopPreviewActive) {
+            Log.d(
+                ARR_PREVIEW_WAV_TAG,
+                "PREVIEW_STOP_REQUEST reason=listen_action_toggle " +
+                    "structurePlaybackActive=$structurePlaybackActive wavPreviewActive=$wavPreviewActive " +
+                    "arrangementLoopPreviewActive=$arrangementLoopPreviewActive"
+            )
             stopStructurePreviewPlayback(reason = "listen_action_stop")
             stopArrangementLoopPreviewPlayback()
         } else {
@@ -2689,11 +2782,29 @@ private fun TimelineMeasuresPlaceholder(
                         file.isFile &&
                         previewRenderedSignature == previewRenderSignature
                 }
+                Log.d(
+                    ARR_PREVIEW_WAV_TAG,
+                    "SOURCE_ARRANGEMENT audioPath=$audioPath outputPath=${arrangementPreviewCacheFile.absolutePath} " +
+                        "signature=$previewRenderSignature reusable=${reusablePreviewFile != null} " +
+                        "segments=${playlistSegments.joinToString { segment ->
+                            "${segment.id}:${segment.startMs}-${segment.endMs}"
+                        }}"
+                )
                 if (reusablePreviewFile != null) {
+                    Log.d(
+                        ARR_PREVIEW_WAV_TAG,
+                        "REUSE_PREVIEW path=${reusablePreviewFile.absolutePath} exists=${reusablePreviewFile.isFile} " +
+                            "size=${reusablePreviewFile.length()}"
+                    )
                     playArrangementPreviewFile(reusablePreviewFile)
                 } else {
                     isPreviewGenerating = true
                     scope.launch {
+                        Log.d(
+                            ARR_PREVIEW_WAV_TAG,
+                            "RENDER_START audioPath=$audioPath outputPath=${arrangementPreviewCacheFile.absolutePath} " +
+                                "segmentCount=${playlistSegments.size}"
+                        )
                         val result = runCatching {
                             ArrangementWavRenderer.render(
                                 context = context.applicationContext,
@@ -2710,11 +2821,23 @@ private fun TimelineMeasuresPlaceholder(
 
                         result
                             .onSuccess { previewFile ->
+                                Log.d(
+                                    ARR_PREVIEW_WAV_TAG,
+                                    "RENDER_END path=${previewFile.absolutePath} exists=${previewFile.isFile} " +
+                                        "size=${previewFile.length()}"
+                                )
                                 replacePreviewRenderedFile(previewFile)
                                 previewRenderedSignature = previewRenderSignature
                                 playArrangementPreviewFile(previewFile)
                             }
-                            .onFailure {
+                            .onFailure { error ->
+                                Log.w(
+                                    ARR_PREVIEW_WAV_TAG,
+                                    "RENDER_FAIL outputPath=${arrangementPreviewCacheFile.absolutePath} " +
+                                        "exists=${arrangementPreviewCacheFile.isFile} size=${arrangementPreviewCacheFile.length()} " +
+                                        "error=${error.message}",
+                                    error
+                                )
                                 Toast.makeText(
                                     context,
                                     context.getString(R.string.arrangement_preview_failed),
@@ -2746,6 +2869,21 @@ private fun TimelineMeasuresPlaceholder(
                     ARR_STRUCTURE_FLOW_TAG,
                     "MEDIA_ITEM_TRANSITION reason=$reason mediaItemCount=$mediaItemCount currentMediaItemIndex=$currentMediaItemIndex currentStructureIndex=$structurePlaybackIndex queuedStructureSegmentIndex=$queuedIndex autoNextStructureIndex=$autoNextStructureIndex sourceUri=$sourceUri"
                 )
+                val expectedSegmentIndex = queuedIndex ?: autoNextStructureIndex ?: structurePlaybackIndex
+                val expectedSegment = latestStructurePlaybackSegments.getOrNull(expectedSegmentIndex)
+                if (expectedSegment != null) {
+                    val expectedStartMs = minOf(expectedSegment.startMs, expectedSegment.endMs).coerceAtLeast(0L)
+                    val expectedEndMs = maxOf(expectedSegment.startMs, expectedSegment.endMs)
+                        .coerceAtLeast(expectedStartMs + 1L)
+                    Log.d(
+                        ARR_TIMING_DIAG_TAG,
+                        "STRUCTURE_TRANSITION segmentId=${expectedSegment.id} " +
+                            "segmentStartMs=$expectedStartMs segmentEndMs=$expectedEndMs " +
+                            "mediaItemSourceUri=$sourceUri transitionTimestampMs=${SystemClock.elapsedRealtime()} " +
+                            "expectedStartMs=$expectedStartMs " +
+                            "currentPosition=${runCatching { structurePreviewPlayer.currentPosition }.getOrDefault(-1L)}"
+                    )
+                }
                 if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) {
                     val previousIndex = structurePlaybackIndex
                     if (queuedIndex != null) {
@@ -2772,7 +2910,24 @@ private fun TimelineMeasuresPlaceholder(
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
+                if (wavPreviewActive) {
+                    Log.d(
+                        ARR_PREVIEW_WAV_TAG,
+                        "PLAYER_STATE state=$playbackState isPlaying=${structurePreviewPlayer.isPlaying} " +
+                            "position=${structurePreviewPlayer.currentPosition} duration=${structurePreviewPlayer.duration} " +
+                            "mediaItemCount=${structurePreviewPlayer.mediaItemCount}"
+                    )
+                }
                 if (playbackState == Player.STATE_ENDED) {
+                    if (wavPreviewActive && !structurePlaybackActive) {
+                        Log.d(
+                            ARR_PREVIEW_WAV_TAG,
+                            "PLAYER_ENDED position=${structurePreviewPlayer.currentPosition} " +
+                                "duration=${structurePreviewPlayer.duration}"
+                        )
+                        stopStructurePreviewPlayback(reason = "wav_preview_ended")
+                        return
+                    }
                     val validationSegments = latestStructurePlaybackSegments
                     val validationListSize = validationSegments.size
                     val mediaItemCount = structurePreviewPlayer.mediaItemCount
@@ -2798,6 +2953,17 @@ private fun TimelineMeasuresPlaceholder(
                         "STOP_AFTER_END reason=no queued segment currentPlayingIndex=$structurePlaybackIndex queuedIndex=$queuedStructureSegmentIndex"
                     )
                     stopStructurePreviewPlayback(reason = "state_ended_no_next")
+                }
+            }
+
+            override fun onPlayerError(error: PlaybackException) {
+                if (wavPreviewActive) {
+                    Log.w(
+                        ARR_PREVIEW_WAV_TAG,
+                        "PLAYER_ERROR message=${error.message} code=${error.errorCode} " +
+                            "position=${structurePreviewPlayer.currentPosition} duration=${structurePreviewPlayer.duration}",
+                        error
+                    )
                 }
             }
         }
@@ -2826,10 +2992,20 @@ private fun TimelineMeasuresPlaceholder(
         if (structurePreviewStopRequest > 0) {
             val activeStructurePlayback = structurePlaybackActive &&
                 runCatching { structurePreviewPlayer.isPlaying }.getOrDefault(false)
+            val activeWavPreviewPlayback = wavPreviewActive &&
+                runCatching { structurePreviewPlayer.isPlaying }.getOrDefault(false)
             if (activeStructurePlayback) {
                 Log.d(
                     ARR_STRUCTURE_FLOW_TAG,
                     "STOP_IGNORED reason=structure_preview_stop_request active_structure_playback=true currentStructureIndex=$structurePlaybackIndex queuedStructureSegmentIndex=$queuedStructureSegmentIndex mediaItemCount=${structurePreviewPlayer.mediaItemCount}"
+                )
+                return@LaunchedEffect
+            }
+            if (activeWavPreviewPlayback) {
+                Log.d(
+                    ARR_PREVIEW_WAV_TAG,
+                    "STOP_IGNORED reason=structure_preview_stop_request active_wav_preview=true " +
+                        "position=${structurePreviewPlayer.currentPosition} duration=${structurePreviewPlayer.duration}"
                 )
                 return@LaunchedEffect
             }
@@ -2856,6 +3032,7 @@ private fun TimelineMeasuresPlaceholder(
             runCatching { structurePreviewPlayer.volume = arrangementTrackGainLinear }
             return@LaunchedEffect
         }
+        var lastTimingDiagLogMs = 0L
         while (structurePlaybackActive || wavPreviewActive) {
             val currentMediaItemIndex = runCatching {
                 structurePreviewPlayer.currentMediaItemIndex
@@ -2877,6 +3054,36 @@ private fun TimelineMeasuresPlaceholder(
             if (wavPreviewActive) {
                 wavPreviewPositionMs = itemPositionMs.coerceAtLeast(0L)
                 wavPreviewDurationMs = itemDurationMs.coerceAtLeast(0L)
+            }
+            val nowMs = SystemClock.elapsedRealtime()
+            if (nowMs - lastTimingDiagLogMs >= 500L) {
+                lastTimingDiagLogMs = nowMs
+                val source = when {
+                    wavPreviewActive -> "WAV_PREVIEW"
+                    structureUsingWavSource -> "WAV_CACHE"
+                    else -> arrangementTimingSourceLabel(currentStructureSourcePath ?: currentSongAudioPath)
+                }
+                val playerAbsolutePositionMs = if (structurePlaybackActive) {
+                    structurePlaybackSegments.getOrNull(structurePlaybackIndex)?.let { segment ->
+                        minOf(segment.startMs, segment.endMs).coerceAtLeast(0L) +
+                            itemPositionMs.coerceAtLeast(0L)
+                    } ?: itemPositionMs.coerceAtLeast(0L)
+                } else {
+                    itemPositionMs.coerceAtLeast(0L)
+                }
+                val visualPlayheadMs = if (structurePlaybackActive) {
+                    structurePlaybackAbsolutePositionMs
+                } else {
+                    wavPreviewPositionMs
+                }
+                Log.d(
+                    ARR_TIMING_DIAG_TAG,
+                    "PLAYHEAD visualPlayheadMs=$visualPlayheadMs " +
+                        "playerCurrentPositionMs=$playerAbsolutePositionMs " +
+                        "rawPlayerPositionMs=$itemPositionMs diffMs=${visualPlayheadMs - playerAbsolutePositionMs} " +
+                        "source=$source isLoopActive=$arrangementLoopPreviewActive " +
+                        "isStructureActive=$structurePlaybackActive"
+                )
             }
             val nextVolume = if (!isSecondaryPlaying || itemDurationMs <= 0L) {
                 arrangementTrackGainLinear
@@ -2905,8 +3112,38 @@ private fun TimelineMeasuresPlaceholder(
 
     LaunchedEffect(arrangementLoopPreviewActive, arrangementPreviewPlayer) {
         if (!arrangementLoopPreviewActive) return@LaunchedEffect
+        var lastTimingDiagLogMs = 0L
+        var lastPlayerPositionMs = 0L
         while (arrangementLoopPreviewActive) {
-            arrangementLoopPositionMs = arrangementPreviewPlayer.currentPositionMs()
+            val playerPositionMs = arrangementPreviewPlayer.currentPositionMs()
+            val loopStartMs = activeLoopRange?.first ?: preparedLoopStartMs ?: 0L
+            val loopEndMs = activeLoopRange?.second ?: loopStartMs
+            if (playerPositionMs + 30L < lastPlayerPositionMs) {
+                val visualAfterMs = loopStartMs + playerPositionMs
+                val playerAfterMs = loopStartMs + playerPositionMs
+                Log.d(
+                    ARR_TIMING_DIAG_TAG,
+                    "LOOP_RETURN loopStartMs=$loopStartMs loopEndMs=$loopEndMs " +
+                        "playerPositionBefore=$lastPlayerPositionMs playerPositionAfter=$playerPositionMs " +
+                        "diffMs=${visualAfterMs - playerAfterMs}"
+                )
+            }
+            lastPlayerPositionMs = playerPositionMs
+            arrangementLoopPositionMs = playerPositionMs
+            val nowMs = SystemClock.elapsedRealtime()
+            if (nowMs - lastTimingDiagLogMs >= 500L) {
+                lastTimingDiagLogMs = nowMs
+                val visualPlayheadMs = loopStartMs + arrangementLoopPositionMs.coerceAtLeast(0L)
+                val playerAbsoluteMs = loopStartMs + playerPositionMs.coerceAtLeast(0L)
+                Log.d(
+                    ARR_TIMING_DIAG_TAG,
+                    "PLAYHEAD visualPlayheadMs=$visualPlayheadMs " +
+                        "playerCurrentPositionMs=$playerAbsoluteMs " +
+                        "rawPlayerPositionMs=$playerPositionMs diffMs=${visualPlayheadMs - playerAbsoluteMs} " +
+                        "source=${arrangementTimingSourceLabel(currentSongAudioPath)} " +
+                        "isLoopActive=$arrangementLoopPreviewActive isStructureActive=$structurePlaybackActive"
+                )
+            }
             kotlinx.coroutines.delay(12L)
         }
     }
@@ -2971,6 +3208,12 @@ private fun TimelineMeasuresPlaceholder(
                 sourceUri = Uri.fromFile(File(audioPath)),
                 startMs = loopStartMs,
                 endMs = loopEndMs
+            )
+            Log.d(
+                ARR_TIMING_DIAG_TAG,
+                "PLAY_START playMode=LOOP requestedStartMs=$loopStartMs requestedEndMs=$loopEndMs " +
+                    "actualPlayerPositionMs=${arrangementPreviewPlayer.currentPositionMs()} " +
+                    "source=${arrangementTimingSourceLabel(audioPath)} sourceUri=${Uri.fromFile(File(audioPath))}"
             )
             arrangementLoopPreviewActive = true
             onStructurePreviewActiveChange(true)
@@ -3196,6 +3439,12 @@ private fun TimelineMeasuresPlaceholder(
                     } else {
                         displayedCurrentPositionMs.coerceAtLeast(0L)
                     }
+                    Log.d(
+                        ARR_TIMING_DIAG_TAG,
+                        "ACTION action=SET_IN x=BUTTON calculatedTimeMs=$nextInMs clampedTimeMs=$nextInMs " +
+                            "waveformZoom=NA waveformCenterFraction=NA startFraction=NA endFraction=NA " +
+                            "safeDurationMs=$waveformDurationMs"
+                    )
                     suppressNextLoopAutoplay = !isPlaying
                     lastWaveformFocusMarker = TimelineWaveformFocusMarker.IN
                     if (selectedArrangementEditSegment != null) {
@@ -3259,6 +3508,12 @@ private fun TimelineMeasuresPlaceholder(
                     } else {
                         displayedCurrentPositionMs.coerceAtLeast(0L)
                     }
+                    Log.d(
+                        ARR_TIMING_DIAG_TAG,
+                        "ACTION action=SET_OUT x=BUTTON calculatedTimeMs=$nextOutMs clampedTimeMs=$nextOutMs " +
+                            "waveformZoom=NA waveformCenterFraction=NA startFraction=NA endFraction=NA " +
+                            "safeDurationMs=$waveformDurationMs"
+                    )
                     suppressNextLoopAutoplay = !isPlaying
                     lastWaveformFocusMarker = TimelineWaveformFocusMarker.OUT
                     if (selectedArrangementEditSegment != null) {
@@ -3304,6 +3559,14 @@ private fun TimelineMeasuresPlaceholder(
             revealAnchorRequest = revealSyncPointRequest,
             onToggleExpanded = { isWaveformExpanded = !isWaveformExpanded },
             onSeekRequested = { requestedPositionMs ->
+                Log.d(
+                    ARR_TIMING_DIAG_TAG,
+                    "ACTION action=SEEK x=NA calculatedTimeMs=$requestedPositionMs " +
+                        "clampedTimeMs=${requestedPositionMs.coerceAtLeast(0L)} " +
+                        "waveformZoom=NA waveformCenterFraction=NA startFraction=NA endFraction=NA " +
+                        "safeDurationMs=$waveformDurationMs isLoopActive=$arrangementLoopPreviewActive " +
+                        "isStructureActive=$structurePlaybackActive"
+                )
                 if (structurePlaybackActive) {
                     seekStructurePreviewToAbsolutePosition(requestedPositionMs)
                 } else if (arrangementLoopPreviewActive) {
@@ -4248,16 +4511,24 @@ private fun TimelineGridWaveformSection(
                                         }
                                         val selectedVisualFraction = startFraction +
                                             localFraction * (effectiveEndFraction - startFraction)
-                                        onSeekRequested(
-                                            (
-                                                selectedVisualFraction * visualDurationMs.toFloat() -
-                                                    visualPreRollMs.toFloat()
-                                                ).roundToLong()
-                                                .coerceIn(0L, safeDuration.toLong())
+                                        val calculatedTimeMs = (
+                                            selectedVisualFraction * visualDurationMs.toFloat() -
+                                                visualPreRollMs.toFloat()
+                                            ).roundToLong()
+                                        val clampedTimeMs = calculatedTimeMs
+                                            .coerceIn(0L, safeDuration.toLong())
+                                        Log.d(
+                                            ARR_TIMING_DIAG_TAG,
+                                            "ACTION action=TAP x=${offset.x} calculatedTimeMs=$calculatedTimeMs " +
+                                                "clampedTimeMs=$clampedTimeMs waveformZoom=$waveformZoom " +
+                                                "waveformCenterFraction=$waveformCenterFraction " +
+                                                "startFraction=$startFraction endFraction=$effectiveEndFraction " +
+                                                "safeDurationMs=$safeDuration"
                                         )
-	                                    }
-		                        )
-		                    }
+                                        onSeekRequested(clampedTimeMs)
+		                                    }
+			                        )
+			                    }
                             .pointerInput(
                                 peaks,
                                 durationMs,
@@ -4409,9 +4680,10 @@ private fun TimelineGridWaveformSection(
 	                                    }
 
 	                                    val safeStartMs = minOf(rawTargetStartMs, rawTargetEndMs)
-	                                    val safeEndMs = maxOf(rawTargetStartMs, rawTargetEndMs)
-                                    var pendingStartMs = safeStartMs
-                                    var pendingEndMs = safeEndMs
+                                    val safeEndMs = maxOf(rawTargetStartMs, rawTargetEndMs)
+	                                    var pendingStartMs = safeStartMs
+	                                    var pendingEndMs = safeEndMs
+                                    var pendingX = down.position.x
                                     val inX = xForTimeMs(safeStartMs)
                                     val outX = xForTimeMs(safeEndMs)
                                     val distanceToIn = inX?.let { abs(down.position.x - it) } ?: Float.MAX_VALUE
@@ -4461,19 +4733,47 @@ private fun TimelineGridWaveformSection(
 	                                    if (activeEditHandle == TimelineArrangementEditHandle.NONE) {
 	                                        return@awaitEachGesture
 	                                    }
-                                    val longPress = awaitLongPressOrCancellation(down.id)
-                                    if (longPress == null) {
-                                        Log.d(
-                                            ARR_UNDO_HANDLE_TAG,
-                                            "HANDLE_RELEASED target=$pendingTarget committed=false reason=long_press_cancelled"
+                                    var longPressPosition = down.position
+                                    var latestLongPressChange = down
+                                    val longPressCancelled = withTimeoutOrNull(
+                                        viewConfiguration.longPressTimeoutMillis
+                                    ) {
+                                        var cancelled = false
+                                        while (!cancelled) {
+                                            val event = awaitPointerEvent()
+                                            if (event.changes.count { it.pressed } > 1) {
+                                                cancelled = true
+                                                continue
+                                            }
+                                            val change = event.changes.firstOrNull { it.id == down.id }
+                                            if (change == null) {
+                                                cancelled = true
+                                                continue
+                                            }
+                                            if (!change.pressed || change.isConsumed) {
+                                                cancelled = true
+                                                continue
+                                            }
+                                            latestLongPressChange = change
+                                            longPressPosition = change.position
+                                            if ((change.position - down.position).getDistance() > viewConfiguration.touchSlop) {
+                                                cancelled = true
+                                            }
+                                        }
+                                        cancelled
+                                    } ?: false
+	                                    if (longPressCancelled) {
+	                                        Log.d(
+	                                            ARR_UNDO_HANDLE_TAG,
+	                                            "HANDLE_RELEASED target=$pendingTarget committed=false reason=long_press_cancelled"
                                         )
-                                        activeEditHandle = TimelineArrangementEditHandle.NONE
-                                        return@awaitEachGesture
-                                    }
-	                                    val longPressX = longPress.position.x
-                                    val capturedX = when (activeEditHandle) {
-                                        TimelineArrangementEditHandle.IN -> inX
-                                        TimelineArrangementEditHandle.OUT -> outX
+	                                        activeEditHandle = TimelineArrangementEditHandle.NONE
+	                                        return@awaitEachGesture
+	                                    }
+		                                    val longPressX = longPressPosition.x
+	                                    val capturedX = when (activeEditHandle) {
+	                                        TimelineArrangementEditHandle.IN -> inX
+	                                        TimelineArrangementEditHandle.OUT -> outX
                                         TimelineArrangementEditHandle.NONE -> null
                                     }
                                     if (capturedX == null || abs(longPressX - capturedX) > handleHitPx) {
@@ -4481,10 +4781,10 @@ private fun TimelineGridWaveformSection(
                                             ARR_UNDO_HANDLE_TAG,
                                             "HANDLE_RELEASED target=$pendingTarget committed=false reason=long_press_moved"
                                         )
-                                        activeEditHandle = TimelineArrangementEditHandle.NONE
-                                        return@awaitEachGesture
-                                    }
-                                    longPress.consume()
+	                                        activeEditHandle = TimelineArrangementEditHandle.NONE
+	                                        return@awaitEachGesture
+	                                    }
+	                                    latestLongPressChange.consume()
                                     if (pendingTarget == "SEGMENT") {
 		                                    latestOnEditableSegmentHandleCaptured()
                                     }
@@ -4498,6 +4798,7 @@ private fun TimelineGridWaveformSection(
                                         val change = event.changes.firstOrNull { it.id == down.id } ?: break
                                         if (!change.pressed) break
                                         change.consume()
+                                        pendingX = change.position.x
                                         val draggedTimeMs = timeMsForX(change.position.x)
                                         when (activeEditHandle) {
                                             TimelineArrangementEditHandle.IN -> {
@@ -4584,9 +4885,32 @@ private fun TimelineGridWaveformSection(
                                         ARR_UNDO_HANDLE_TAG,
                                         "HANDLE_RELEASED target=$pendingTarget committed=$shouldCommitSegment"
                                     )
-	                                    if (shouldCommitSegment) {
+		                                    if (shouldCommitSegment) {
+                                        val safeDuration = durationMs.coerceAtLeast(1)
+                                        val visualPreRollMs = ARRANGEMENT_WAVEFORM_VISUAL_PREROLL_MS
+                                        val visualDurationMs = safeDuration.toLong() + visualPreRollMs
+                                        val visibleFraction = 1f / waveformZoom.coerceAtLeast(1f)
+                                        val startFraction = (waveformCenterFraction - visibleFraction / 2f)
+                                            .coerceIn(0f, 1f)
+                                        val endFraction = (startFraction + visibleFraction).coerceIn(0f, 1f)
+                                        val effectiveEndFraction = if (endFraction <= startFraction) 1f else endFraction
+                                        val committedTimeMs = when (activeEditHandle) {
+                                            TimelineArrangementEditHandle.IN -> pendingStartMs
+                                            TimelineArrangementEditHandle.OUT -> pendingEndMs
+                                            TimelineArrangementEditHandle.NONE -> pendingStartMs
+                                        }
+                                        Log.d(
+                                            ARR_TIMING_DIAG_TAG,
+                                            "ACTION action=${if (activeEditHandle == TimelineArrangementEditHandle.OUT) "SET_OUT" else "SET_IN"} " +
+                                                "x=$pendingX calculatedTimeMs=${timeMsForX(pendingX)} " +
+                                                "clampedTimeMs=$committedTimeMs waveformZoom=$waveformZoom " +
+                                                "waveformCenterFraction=$waveformCenterFraction " +
+                                                "startFraction=$startFraction endFraction=$effectiveEndFraction " +
+                                                "safeDurationMs=$safeDuration visualDurationMs=$visualDurationMs " +
+                                                "target=$pendingTarget selectedSegmentId=$latestEditableSegmentId"
+                                        )
                                         if (pendingTarget == "SEGMENT") {
-	                                            latestOnEditableSegmentBoundsChange(
+		                                            latestOnEditableSegmentBoundsChange(
 	                                                minOf(pendingStartMs, pendingEndMs),
 	                                                maxOf(pendingStartMs, pendingEndMs),
 	                                                true,
