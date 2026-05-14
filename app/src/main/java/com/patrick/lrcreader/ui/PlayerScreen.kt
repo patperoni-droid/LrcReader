@@ -120,6 +120,7 @@ import kotlin.math.pow
 private const val DEFAULT_TIMELINE_LIGHT_CUE_ARGB = 0xFFFF0000L
 private const val DMX_PLAYBACK_POLL_INTERVAL_MS = 20L
 private const val PLAYER_LRC_TAG = "PLAYER_LRC"
+private const val LYRICS_PLAYER_SYNC_DIAG_TAG = "LYRICS_PLAYER_SYNC_DIAG"
 
 @Composable
 fun PlayerScreen(
@@ -739,8 +740,17 @@ fun PlayerScreen(
         editingTrackUri = null
     }
 
+    fun lyricsRenderSample(lines: List<LrcLine>): String =
+        lines.take(3).joinToString(" || ") { line ->
+            "${line.timeMs}:${line.text.take(32)}:${line.colorArgb}"
+        }
+
     fun requestCloseLyricsEditor() {
-        if (editingLinesDirty && editingTargetMode == LyricsViewMode.LYRICS) {
+        if (editingTargetMode == LyricsViewMode.LYRICS) {
+            Log.d(
+                LYRICS_PLAYER_SYNC_DIAG_TAG,
+                "EXIT_EDITOR_TO_PLAYER songId=${currentSongId ?: currentTrackUri.orEmpty()} pendingChanges=$editingLinesDirty"
+            )
             saveAndCloseRequestToken++
         } else if (editingLinesDirty) {
             showUnsavedLyricsDialog = true
@@ -1700,6 +1710,7 @@ fun PlayerScreen(
             LyricsEditorSection(
                 highlightColor = highlightColor,
                 currentTrackUri = currentTrackUri,
+                currentSongId = currentSongId,
                 isEditingLyrics = isEditingLyrics,
                 onCloseEditor = { requestCloseLyricsEditor() },
                 rawLyricsText = rawLyricsText,
@@ -1726,6 +1737,10 @@ fun PlayerScreen(
                     editingLines = sorted
                     editingLinesDirty = false
                     if (editingTargetMode == LyricsViewMode.LYRICS) {
+                        Log.d(
+                            LYRICS_PLAYER_SYNC_DIAG_TAG,
+                            "PLAYER_LYRICS_RENDER_SAMPLE firstLines/colors=${lyricsRenderSample(sorted)}"
+                        )
                         onParsedLinesChange(sorted)
                         hasLyricsSource = sorted.isNotEmpty()
                     }
@@ -1736,6 +1751,10 @@ fun PlayerScreen(
                     editingLines = persisted
                     editingLinesDirty = false
                     if (editingTargetMode == LyricsViewMode.LYRICS) {
+                        Log.d(
+                            LYRICS_PLAYER_SYNC_DIAG_TAG,
+                            "PLAYER_LYRICS_RENDER_SAMPLE firstLines/colors=${lyricsRenderSample(persisted)}"
+                        )
                         onParsedLinesChange(persisted)
                         hasLyricsSource = persisted.isNotEmpty()
                     }
@@ -1882,6 +1901,10 @@ fun PlayerScreen(
                         val isAlreadySmpTrack = LrcStorage.isSmpRuntimeTrack(context, trackUri)
                         LyricsMemoryCache.invalidate(trackUri)
                         Log.d(
+                            LYRICS_PLAYER_SYNC_DIAG_TAG,
+                            "PLAYER_LYRICS_CACHE_INVALIDATED songId=${currentSongId ?: trackUri}"
+                        )
+                        Log.d(
                             "LrcDebug",
                             "LYRICS_SAVE_CONFIRMED start trackUri=$trackUri lines=${lines.size}"
                         )
@@ -1895,6 +1918,10 @@ fun PlayerScreen(
                                 val targetTrackUri = migration?.trackUriString ?: trackUri
                                 if (targetTrackUri != trackUri) {
                                     LyricsMemoryCache.invalidate(targetTrackUri)
+                                    Log.d(
+                                        LYRICS_PLAYER_SYNC_DIAG_TAG,
+                                        "PLAYER_LYRICS_CACHE_INVALIDATED songId=${currentSongId ?: targetTrackUri}"
+                                    )
                                 }
                                 Log.d(
                                     PLAYER_LRC_TAG,
@@ -1918,6 +1945,10 @@ fun PlayerScreen(
                                     Log.e(
                                         "LrcDebug",
                                         "LYRICS_LINE_COLORS_SAVE_FAILED trackUri=$targetTrackUri"
+                                    )
+                                    Log.e(
+                                        LYRICS_PLAYER_SYNC_DIAG_TAG,
+                                        "AUTOSAVE_FAIL error=lyrics_line_colors_save_failed songId=${currentSongId ?: targetTrackUri}"
                                     )
                                 }
 
@@ -1974,6 +2005,10 @@ fun PlayerScreen(
                         Log.d(
                             "LrcDebug",
                             "LYRICS_SAVE_CONFIRMED end trackUri=${saveOutcome.trackUriString} originalTrackUri=$trackUri durationMs=$elapsedMs resolved=${saveOutcome.resolvedFileName} migrated=${saveOutcome.migration != null}"
+                        )
+                        Log.d(
+                            LYRICS_PLAYER_SYNC_DIAG_TAG,
+                            "PLAYER_LYRICS_LOAD songId=${currentSongId ?: saveOutcome.trackUriString} source=EDITOR_SAVE lineCount=${lines.size} colorCount=${lines.count { it.colorArgb != null }}"
                         )
                     }
                     true

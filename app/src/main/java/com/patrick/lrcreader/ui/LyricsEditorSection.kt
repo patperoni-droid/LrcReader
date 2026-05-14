@@ -75,6 +75,7 @@ private val INLINE_LRC_TIME_TAG_REGEX =
     Regex("""\[(\d{1,2}):(\d{1,2})(?:\.(\d{1,3}))?]""")
 private val LRC_TIMESTAMP_HINT_REGEX = Regex("""\[\d{1,2}:\d{2}""")
 private const val FIRST_CHORD_TIME_MS = 10L
+private const val LYRICS_PLAYER_SYNC_DIAG_TAG = "LYRICS_PLAYER_SYNC_DIAG"
 
 private object LyricsEditorHintPrefs {
     private const val PREFS_NAME = "lyrics_editor_hint_prefs"
@@ -100,6 +101,7 @@ private object LyricsEditorHintPrefs {
 fun LyricsEditorSection(
     highlightColor: Color,
     currentTrackUri: String?,
+    currentSongId: String? = null,
     isEditingLyrics: Boolean,
     onCloseEditor: () -> Unit,
     rawLyricsText: String,
@@ -563,6 +565,12 @@ fun LyricsEditorSection(
     fun handleSave() {
         val finalLines = buildPersistableLinesForCurrentDraft()
         scope.launch {
+            if (!showChordPalette) {
+                Log.d(
+                    LYRICS_PLAYER_SYNC_DIAG_TAG,
+                    "FORCE_SAVE_BEFORE_EXIT_EDITOR songId=${currentSongId ?: currentTrackUri.orEmpty()} lineCount=${finalLines.size}"
+                )
+            }
             while (isPersistBusy) {
                 delay(100L)
             }
@@ -580,11 +588,31 @@ fun LyricsEditorSection(
                 }
 
                 Log.d("LrcDebug", "EDITOR_SAVE currentTrackUri=$currentTrackUri lines=${finalLines.size}")
+                if (!showChordPalette) {
+                    Log.d(
+                        LYRICS_PLAYER_SYNC_DIAG_TAG,
+                        "AUTOSAVE_START reason=manual_or_exit songId=${currentSongId ?: currentTrackUri.orEmpty()} lineCount=${finalLines.size}"
+                    )
+                }
 
                 val persisted = onPersistLines(finalLines)
-                if (!persisted) return@launch
+                if (!persisted) {
+                    if (!showChordPalette) {
+                        Log.e(
+                            LYRICS_PLAYER_SYNC_DIAG_TAG,
+                            "AUTOSAVE_FAIL error=onPersistLines_false reason=manual_or_exit songId=${currentSongId ?: currentTrackUri.orEmpty()}"
+                        )
+                    }
+                    return@launch
+                }
 
                 previousEditingLines = null
+                if (!showChordPalette) {
+                    Log.d(
+                        LYRICS_PLAYER_SYNC_DIAG_TAG,
+                        "AUTOSAVE_SUCCESS songId=${currentSongId ?: currentTrackUri.orEmpty()} lineCount=${finalLines.size} colorCount=${finalLines.count { it.colorArgb != null }}"
+                    )
+                }
                 onSaveSortedLines(finalLines)
             } finally {
                 isPersistBusy = false
@@ -613,6 +641,10 @@ fun LyricsEditorSection(
         }
         if (lastAutoSavedLyricsSignature == autoSaveLyricsSignature) return@LaunchedEffect
 
+        Log.d(
+            LYRICS_PLAYER_SYNC_DIAG_TAG,
+            "AUTOSAVE_SCHEDULED reason=editor_change songId=${currentSongId ?: currentTrackUri.orEmpty()}"
+        )
         delay(900L)
         while (isPersistBusy) {
             delay(100L)
@@ -637,11 +669,25 @@ fun LyricsEditorSection(
             }
 
             Log.d("LrcDebug", "EDITOR_AUTOSAVE currentTrackUri=$currentTrackUri lines=${finalLines.size}")
+            Log.d(
+                LYRICS_PLAYER_SYNC_DIAG_TAG,
+                "AUTOSAVE_START reason=editor_change songId=${currentSongId ?: currentTrackUri.orEmpty()} lineCount=${finalLines.size}"
+            )
             val persisted = onPersistLines(finalLines)
-            if (!persisted) return@LaunchedEffect
+            if (!persisted) {
+                Log.e(
+                    LYRICS_PLAYER_SYNC_DIAG_TAG,
+                    "AUTOSAVE_FAIL error=onPersistLines_false reason=editor_change songId=${currentSongId ?: currentTrackUri.orEmpty()}"
+                )
+                return@LaunchedEffect
+            }
 
             onPersistSucceeded(finalLines)
             lastAutoSavedLyricsSignature = finalSignature
+            Log.d(
+                LYRICS_PLAYER_SYNC_DIAG_TAG,
+                "AUTOSAVE_SUCCESS songId=${currentSongId ?: currentTrackUri.orEmpty()} lineCount=${finalLines.size} colorCount=${finalLines.count { it.colorArgb != null }}"
+            )
         } finally {
             isPersistBusy = false
         }
@@ -1293,6 +1339,14 @@ fun LyricsEditorSection(
                                                 onClick = {
                                                     val list = editingLines.toMutableList()
                                                     if (idx in list.indices) {
+                                                        Log.d(
+                                                            LYRICS_PLAYER_SYNC_DIAG_TAG,
+                                                            "EDIT_TEXT lineIndex=$idx oldText=${list[idx].text} newText=${lineMenuText.trim()}"
+                                                        )
+                                                        Log.d(
+                                                            LYRICS_PLAYER_SYNC_DIAG_TAG,
+                                                            "EDIT_COLOR lineIndex=$idx oldColor=${list[idx].colorArgb} newColor=$lineMenuColorArgb"
+                                                        )
                                                         list[idx] = list[idx].copy(
                                                             text = lineMenuText.trim(),
                                                             colorArgb = if (showChordPalette) list[idx].colorArgb else lineMenuColorArgb
