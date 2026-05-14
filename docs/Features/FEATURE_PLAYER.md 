@@ -155,6 +155,47 @@ No reload allowed.
 
 ⸻
 
+# LYRICS EDITOR AUTO-SAVE
+
+The lyrics editor must auto-save user work.
+
+Covered changes:
+- lyric text
+- timestamps
+- line colors
+- LRC import results
+- line edit/delete operations
+
+Rules:
+- leaving the editor must not lose work
+- auto-save must run only after real changes
+- pending changes must be flushed before returning to Player when needed
+- the visible Save button is no longer the central lyrics workflow
+- Chords editor behavior must not regress
+
+⸻
+
+# LYRICS PERSISTENCE PIPELINE
+
+Runtime lyrics data is split by responsibility:
+
+- `lyrics.lrc`
+  - lyric text
+  - timestamps
+
+- SongUnit `config.json`
+  - visual lyrics metadata
+  - line colors
+
+Rules:
+- `songId` is the preferred stable identity
+- never depend only on `file://audio.mp3` when `songId` is available
+- never inject line colors into standard LRC text
+- do not create a second competing lyrics store
+- import/export LRC compatibility must remain intact
+
+⸻
+
 # LYRICS READABILITY
 
 The Player includes advanced readability behavior for live performance.
@@ -242,8 +283,12 @@ Rules:
 - colors must remain readable
 - default/no color must remain supported
 - color persistence required after save/reopen
+- color persistence required after song change
+- color persistence required after app restart
 - must not corrupt standard LRC compatibility
-- metadata should remain separate from raw timing text when possible
+- metadata must remain separate from raw timing text
+- read and write must use the same stable key
+- SongUnit metadata is the expected runtime location
 
 ⸻
 
@@ -260,7 +305,23 @@ Inside lyric sync editor:
 Rules:
 - tap behavior unchanged
 - edit/delete/color dialog preserved
+- edit dialog must stay comfortable on phone
+- color choices must use a compact palette
+- touch workflow must remain direct
 - no playback interruption allowed
+
+⸻
+
+# EDITOR → PLAYER SYNCHRONIZATION
+
+After editing lyrics, returning to Player must show the latest data immediately.
+
+Rules:
+- flush pending auto-save before leaving editor when needed
+- invalidate lyrics cache after text/timestamp/color changes
+- Player must not render stale cached lyrics
+- current song reload must preserve `songId` identity
+- do not modify AudioEngine to fix lyrics/editor behavior
 
 ⸻
 
@@ -292,10 +353,11 @@ Each track may contain:
 - trim IN / OUT
 
 Rules:
-- stored per songId
+- stored per songId when available
 - persistent
 - applied at playback
 - original files must never be modified
+- legacy URI/path keys may exist but must not override stable song identity
 
 ⸻
 
@@ -492,6 +554,20 @@ In case of issue:
 
 ⸻
 
+# LYRICS DIAGNOSTICS
+
+Useful temporary tags:
+
+- `LYRICS_PIPELINE_TRACE`
+- `LYRICS_COLOR_SAVE_DIAG`
+
+Rules:
+- diagnostics may be used to validate editor → save → Player reload
+- logs must be reduced once stability is confirmed
+- diagnostics must not become playback logic
+
+⸻
+
 # KNOWN PITFALLS
 
 - timing desync not based on ExoPlayer
@@ -503,6 +579,11 @@ In case of issue:
 - playlist UI becoming playback truth
 - old timeline still active after transition
 - autoplay breaking after reorder/group changes
+- stale lyrics cache after editor changes
+- lyrics text saved without matching color metadata
+- line colors keyed differently between save and load
+- relying only on `file://audio.mp3` when `songId` exists
+- breaking Chords editor while fixing Lyrics editor
 
 👉 All must be tested carefully.
 
@@ -532,7 +613,14 @@ Test at least:
 - live queue creation during playback
 - queue chaining stability
 - lyric color persistence
+- lyric text auto-save without pressing Save
+- lyric timestamp auto-save
+- lyric color persistence after song change
+- lyric color persistence after app restart
+- Player refresh immediately after leaving lyrics editor
 - long-press deselection
+- compact Synchro line edit dialog
+- compact Synchro color palette
 - readability mode under outdoor conditions
 
 👉 Real-device testing is mandatory.

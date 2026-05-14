@@ -104,9 +104,17 @@ Segment A → Segment B → Segment C
 - pan :  
   → libère le focus (IN/OUT)
 
+- édition directe waveform :
+  → IN / OUT peuvent être ajustés depuis la waveform
+
 - comportement :  
   → priorité au contrôle utilisateur  
   → pas de verrouillage forcé du centre
+
+Règles :
+
+- pinch zoom, pan et poignées de segments doivent coexister
+- éviter les conflits de gestes entre déplacement waveform et édition segment
 
 ---
 
@@ -133,9 +141,11 @@ Bouton Ajouter :
 
 ### Principe
 
+- preview de travail rapide
 - player secondaire local
 - playlist de segments clipés (MediaItems)
 - lecture fluide basée sur ExoPlayer
+- structure basée sur segments préparés
 
 ---
 
@@ -173,7 +183,28 @@ Bouton Ajouter :
 ✔ ne pas toucher player principal  
 ✔ ne pas casser timeMs  
 ✔ isoler la preview  
-✔ aucun seek forcé non maîtrisé
+✔ aucun seek forcé non maîtrisé  
+✔ transitions préparées  
+✔ stop protection obligatoire
+
+👉 La Structure ne doit jamais piloter le Player principal.
+
+---
+
+## 🧪 SAMPLER EXPÉRIMENTAL
+
+### Principe
+
+- Sampler PCM expérimental
+- utilisé pour tester transitions et segments Arrangement
+- ne pilote jamais le Player principal
+- ne doit pas être couplé à AudioEngine live
+
+### Règles
+
+✔ usage limité aux tests / preview Arrangement  
+✔ pas de traitement lourd pendant le live  
+✔ reste expérimental tant qu’il n’est pas promu officiellement
 
 ---
 
@@ -183,13 +214,16 @@ Bouton Ajouter :
 
 Le bouton “Écouter” génère une preview audio du montage final.
 
+👉 Preview WAV = rendu fidèle de validation.
+
 ---
 
 ### Fichier
 
-- un seul fichier temporaire :  
+- cache contrôlé autour du fichier temporaire :  
   preview_arrangement.wav
 - stocké dans le cache
+- aucun fichier temporaire accumulé
 
 ---
 
@@ -206,6 +240,7 @@ Le bouton “Écouter” génère une preview audio du montage final.
 
 - fichier conservé pendant la session
 - supprimé automatiquement à la sortie de la page
+- nettoyage obligatoire
 
 👉 évite toute accumulation
 
@@ -232,7 +267,7 @@ Validation rapide + fidèle du rendu final
 
 ## 🔊 CORRECTION AUDIO
 
-- micro fade (~12 ms)  
+- micro fade court  
   → atténue les clics aux transitions
 
 ⚠️ peut introduire une légère variation de volume
@@ -250,6 +285,7 @@ Arrangement → WAV → SMP → runtime
 - rendu WAV final via ArrangementWavRenderer
 - conversion en SMP
 - import automatique dans la bibliothèque
+- le SongUnit runtime doit être exploitable directement après export
 
 👉 morceau immédiatement exploitable
 
@@ -349,9 +385,17 @@ Fonction :
 
 ### Séparation fondamentale
 
-- preview structure (rapide)
-- preview WAV (fidèle)
-- export (final)
+- preview Structure = travail rapide sur segments
+- preview WAV = rendu fidèle de validation
+- export = génération finale SMP/runtime
+
+### Règles critiques
+
+- La Structure ne doit jamais piloter le Player principal.
+- Aucun traitement lourd pendant le live.
+- Les transitions doivent être préparées.
+- Le cache WAV doit rester contrôlé et nettoyé.
+- Ne pas modifier AudioEngine pour corriger Arrangement preview.
 
 ---
 
@@ -361,6 +405,8 @@ Fonction :
 - logique cachée ou automatique imprévisible
 - accumulation de fichiers temporaires
 - dépendance UI pour logique audio
+- coupler Sampler expérimental et Player principal
+- modifier AudioEngine pour corriger la preview Arrangement
 
 ---
 
