@@ -740,7 +740,9 @@ fun PlayerScreen(
     }
 
     fun requestCloseLyricsEditor() {
-        if (editingLinesDirty) {
+        if (editingLinesDirty && editingTargetMode == LyricsViewMode.LYRICS) {
+            saveAndCloseRequestToken++
+        } else if (editingLinesDirty) {
             showUnsavedLyricsDialog = true
         } else {
             closeLyricsEditorImmediately()
@@ -1733,6 +1735,10 @@ fun PlayerScreen(
                     rawLyricsText = editorLyricsText(persisted)
                     editingLines = persisted
                     editingLinesDirty = false
+                    if (editingTargetMode == LyricsViewMode.LYRICS) {
+                        onParsedLinesChange(persisted)
+                        hasLyricsSource = persisted.isNotEmpty()
+                    }
                 },
                 onPersistLines = persistLines@{ lines ->
                     if (editingTargetMode == LyricsViewMode.CHORDS) {

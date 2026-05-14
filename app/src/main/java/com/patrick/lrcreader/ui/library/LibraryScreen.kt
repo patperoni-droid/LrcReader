@@ -627,6 +627,7 @@ fun LibraryScreen(
     var lrcEditorUri by remember { mutableStateOf<Uri?>(null) }
     var lrcEditorName by remember { mutableStateOf("") }
     var lrcEditorText by remember { mutableStateOf("") }
+    var lrcEditorSavedText by remember { mutableStateOf("") }
 
     val storageMode = workspaceSnapshot.mode
 
@@ -2261,6 +2262,18 @@ fun LibraryScreen(
                 ?.use { it.write(text) }
             true
         }.getOrElse { false }
+    }
+
+    fun closeLrcEditorWithAutosave() {
+        val uri = lrcEditorUri
+        if (uri != null && lrcEditorText != lrcEditorSavedText) {
+            if (writeTextToUri(uri, lrcEditorText)) {
+                lrcEditorSavedText = lrcEditorText
+            } else {
+                Log.e("LRC", "Échec écriture sur $uri")
+            }
+        }
+        showLrcEditor = false
     }
 
     fun stopQuickPlay() {
@@ -3976,6 +3989,7 @@ fun LibraryScreen(
                                     }.getOrNull() ?: "lyrics.lrc"
 
                                     lrcEditorText = readTextFromUri(lrcUri) ?: ""
+                                    lrcEditorSavedText = lrcEditorText
                                     showLrcEditor = true
                                 },
 
@@ -4998,8 +5012,18 @@ fun LibraryScreen(
 
             // ---------------- LRC EDITOR DIALOG ----------------
             if (showLrcEditor) {
+                LaunchedEffect(lrcEditorUri, lrcEditorText) {
+                    val uri = lrcEditorUri ?: return@LaunchedEffect
+                    if (lrcEditorText == lrcEditorSavedText) return@LaunchedEffect
+                    delay(900L)
+                    if (writeTextToUri(uri, lrcEditorText)) {
+                        lrcEditorSavedText = lrcEditorText
+                    } else {
+                        Log.e("LRC", "Échec écriture sur $uri")
+                    }
+                }
                 androidx.compose.ui.window.Dialog(
-                    onDismissRequest = { showLrcEditor = false },
+                    onDismissRequest = { closeLrcEditorWithAutosave() },
                     properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
                 ) {
                     androidx.compose.material3.Surface(
@@ -5035,19 +5059,8 @@ fun LibraryScreen(
                                 horizontalArrangement = Arrangement.End
                             ) {
                                 androidx.compose.material3.TextButton(
-                                    onClick = { showLrcEditor = false }
-                                ) { androidx.compose.material3.Text(stringResource(R.string.common_cancel)) }
-
-                                Spacer(Modifier.width(8.dp))
-
-                                androidx.compose.material3.TextButton(
-                                    onClick = {
-                                        val uri = lrcEditorUri ?: return@TextButton
-                                        val ok = writeTextToUri(uri, lrcEditorText)
-                                        if (ok) showLrcEditor = false
-                                        else Log.e("LRC", "Échec écriture sur $uri")
-                                    }
-                                ) { androidx.compose.material3.Text(stringResource(R.string.common_save)) }
+                                    onClick = { closeLrcEditorWithAutosave() }
+                                ) { androidx.compose.material3.Text(stringResource(R.string.common_close)) }
                             }
                         }
                     }

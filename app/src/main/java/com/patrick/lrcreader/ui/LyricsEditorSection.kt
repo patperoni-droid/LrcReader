@@ -158,6 +158,7 @@ fun LyricsEditorSection(
     var editorHintDoNotShowAgain by remember { mutableStateOf(false) }
     var hasShownEditorHintThisSession by remember { mutableStateOf(false) }
     var showChordHelpDialog by remember { mutableStateOf(false) }
+    var lastAutoSavedLyricsSignature by remember(currentTrackUri, showChordPalette) { mutableStateOf<String?>(null) }
     val displayedPalette = paletteChords
     val editorHintTitleRes = if (showChordPalette) {
         R.string.chords_editor_hint_title
@@ -278,6 +279,42 @@ fun LyricsEditorSection(
             )
         }
     }
+
+    fun buildPersistableLinesForCurrentDraft(): List<LrcLine> {
+        val rawHasTimestamps = rawContainsLrcTimestamps(rawTextFieldValue.text)
+        val parsedRawLines = if (rawHasTimestamps) {
+            parseLrc(rawTextFieldValue.text).filter { it.text.isNotBlank() }
+        } else {
+            emptyList()
+        }
+        val simpleLines = if (rawHasTimestamps) {
+            parsedRawLines.map { it.text }
+        } else {
+            rawToPlainLines(rawTextFieldValue.text)
+        }
+        if (simpleLines.isEmpty()) return emptyList()
+
+        return when (currentEditTab) {
+            0 -> {
+                if (rawHasTimestamps) {
+                    parsedRawLines
+                } else if (editingLines.isEmpty()) {
+                    simpleLines.map { txt -> LrcLine(timeMs = 0L, text = txt) }
+                } else {
+                    mergeLyricsWithOldTimings(
+                        newLines = simpleLines,
+                        oldLines = editingLines
+                    )
+                }
+            }
+            else -> editingLines.filter { it.text.isNotBlank() }
+        }
+    }
+
+    fun lyricsSignature(lines: List<LrcLine>): String =
+        lines.joinToString(separator = "\n") { line ->
+            "${line.timeMs}\u0001${line.colorArgb ?: ""}\u0001${line.text}"
+        }
 
     fun switchEditTab(targetTab: Int) {
         if (targetTab == currentEditTab) return
@@ -520,22 +557,14 @@ fun LyricsEditorSection(
 
     // 🔹 Enregistrer
     fun handleSave() {
-        if (isPersistBusy) return
-        val rawHasTimestamps = rawContainsLrcTimestamps(rawTextFieldValue.text)
-        val parsedRawLines = if (rawHasTimestamps) {
-            parseLrc(rawTextFieldValue.text).filter { it.text.isNotBlank() }
-        } else {
-            emptyList()
-        }
-        val simpleLines = if (rawHasTimestamps) {
-            parsedRawLines.map { it.text }
-        } else {
-            rawToPlainLines(rawTextFieldValue.text)
-        }
+        val finalLines = buildPersistableLinesForCurrentDraft()
         scope.launch {
+            while (isPersistBusy) {
+                delay(100L)
+            }
             isPersistBusy = true
             try {
-                if (simpleLines.isEmpty()) {
+                if (finalLines.isEmpty()) {
                     val deleted = onDeletePersisted()
                     if (!deleted) return@launch
                     previousEditingLines = editingLines.map { it.copy() }
@@ -544,22 +573,6 @@ fun LyricsEditorSection(
                     rawTextFieldValue = TextFieldValue("", TextRange(0))
                     onSaveSortedLines(emptyList())
                     return@launch
-                }
-
-                val finalLines: List<LrcLine> = when (currentEditTab) {
-                    0 -> {
-                        if (rawHasTimestamps) {
-                            parsedRawLines
-                        } else if (editingLines.isEmpty()) {
-                            simpleLines.map { txt -> LrcLine(timeMs = 0L, text = txt) }
-                        } else {
-                            mergeLyricsWithOldTimings(
-                                newLines = simpleLines,
-                                oldLines = editingLines
-                            )
-                        }
-                    }
-                    else -> editingLines.filter { it.text.isNotBlank() }
                 }
 
                 Log.d("LrcDebug", "EDITOR_SAVE currentTrackUri=$currentTrackUri lines=${finalLines.size}")
@@ -572,6 +585,61 @@ fun LyricsEditorSection(
             } finally {
                 isPersistBusy = false
             }
+        }
+    }
+
+    val autoSaveLyricsLines = remember(
+        showChordPalette,
+        rawTextFieldValue.text,
+        editingLines,
+        currentEditTab
+    ) {
+        if (showChordPalette) emptyList() else buildPersistableLinesForCurrentDraft()
+    }
+    val autoSaveLyricsSignature = remember(autoSaveLyricsLines) {
+        lyricsSignature(autoSaveLyricsLines)
+    }
+
+    LaunchedEffect(currentTrackUri, showChordPalette, autoSaveLyricsSignature) {
+        if (showChordPalette || currentTrackUri.isNullOrBlank()) return@LaunchedEffect
+
+        if (lastAutoSavedLyricsSignature == null) {
+            lastAutoSavedLyricsSignature = autoSaveLyricsSignature
+            return@LaunchedEffect
+        }
+        if (lastAutoSavedLyricsSignature == autoSaveLyricsSignature) return@LaunchedEffect
+
+        delay(900L)
+        while (isPersistBusy) {
+            delay(100L)
+        }
+
+        val finalLines = buildPersistableLinesForCurrentDraft()
+        val finalSignature = lyricsSignature(finalLines)
+        if (lastAutoSavedLyricsSignature == finalSignature) return@LaunchedEffect
+
+        isPersistBusy = true
+        try {
+            if (finalLines.isEmpty()) {
+                val deleted = onDeletePersisted()
+                if (!deleted) return@LaunchedEffect
+                previousEditingLines = editingLines.map { it.copy() }
+                onEditingLinesChange(emptyList())
+                onRawLyricsTextChange("")
+                rawTextFieldValue = TextFieldValue("", TextRange(0))
+                onPersistSucceeded(emptyList())
+                lastAutoSavedLyricsSignature = finalSignature
+                return@LaunchedEffect
+            }
+
+            Log.d("LrcDebug", "EDITOR_AUTOSAVE currentTrackUri=$currentTrackUri lines=${finalLines.size}")
+            val persisted = onPersistLines(finalLines)
+            if (!persisted) return@LaunchedEffect
+
+            onPersistSucceeded(finalLines)
+            lastAutoSavedLyricsSignature = finalSignature
+        } finally {
+            isPersistBusy = false
         }
     }
 
@@ -695,16 +763,18 @@ fun LyricsEditorSection(
                 }
             }
 
-            IconButton(
-                onClick = { handleSave() },
-                enabled = !isPersistBusy,
-                modifier = Modifier.padding(start = 4.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Check,
-                    contentDescription = stringResource(R.string.lyrics_editor_cd_save_lyrics),
-                    tint = Color(0xFF80CBC4)
-                )
+            if (showChordPalette) {
+                IconButton(
+                    onClick = { handleSave() },
+                    enabled = !isPersistBusy,
+                    modifier = Modifier.padding(start = 4.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Check,
+                        contentDescription = stringResource(R.string.lyrics_editor_cd_save_lyrics),
+                        tint = Color(0xFF80CBC4)
+                    )
+                }
             }
         }
 
