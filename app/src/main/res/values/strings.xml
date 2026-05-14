@@ -600,7 +600,6 @@
     <string name="lyrics_editor_tag_button">TAG</string>
     <string name="lyrics_editor_cd_play_from_line">Lire depuis cette phrase</string>
     <string name="lyrics_editor_line_dialog_title">Ligne %1$d</string>
-    <string name="lyrics_editor_line_dialog_message">Modifier le texte ou supprimer la phrase.</string>
     <string name="lyrics_editor_line_text_label">Texte de la phrase</string>
     <string name="lyrics_editor_color_section">Couleur</string>
     <string name="lyrics_editor_color_none">Aucune / défaut</string>

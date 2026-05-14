@@ -7,6 +7,8 @@ import android.os.SystemClock
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -41,6 +43,8 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.patrick.lrcreader.core.ChordPaletteStore
 import com.patrick.lrcreader.core.CueMidiStore
 import com.patrick.lrcreader.core.FillerSoundManager
@@ -1157,32 +1161,42 @@ fun LyricsEditorSection(
                             0xFFBA68C8.toInt() to stringResource(R.string.lyrics_editor_color_violet)
                         )
 
-                        AlertDialog(
+                        Dialog(
                             onDismissRequest = {
                                 lineMenuIndex = null
                                 lineMenuColorArgb = null
                             },
-                            title = {
-                                Text(
-                                    text = if (showChordPalette) {
-                                        "Modifier l’accord"
-                                    } else {
-                                        stringResource(R.string.lyrics_editor_line_dialog_title, idx + 1)
-                                    },
-                                    color = Color.White
-                                )
-                            },
-                            text = {
-                                Column(Modifier.fillMaxWidth()) {
+                            properties = DialogProperties(usePlatformDefaultWidth = false)
+                        ) {
+                            androidx.compose.material3.Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth(0.94f)
+                                    .wrapContentHeight(),
+                                shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp),
+                                tonalElevation = 8.dp,
+                                color = Color(0xFF161616)
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(18.dp)
+                                ) {
                                     Text(
-                                        text = stringResource(R.string.lyrics_editor_line_dialog_message),
-                                        color = Color(0xFFB0BEC5),
-                                        fontSize = 13.sp
+                                        text = if (showChordPalette) {
+                                            "Modifier l’accord"
+                                        } else {
+                                            stringResource(R.string.lyrics_editor_line_dialog_title, idx + 1)
+                                        },
+                                        color = Color.White,
+                                        fontSize = 18.sp
                                     )
-                                    Spacer(Modifier.height(12.dp))
+                                    Spacer(Modifier.height(14.dp))
                                     OutlinedTextField(
                                         value = lineMenuText,
                                         onValueChange = { lineMenuText = it },
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .heightIn(min = 116.dp),
                                         label = {
                                             Text(
                                                 if (showChordPalette) {
@@ -1195,37 +1209,49 @@ fun LyricsEditorSection(
                                         singleLine = false,
                                         textStyle = androidx.compose.ui.text.TextStyle(
                                             color = Color.White,
-                                            fontSize = 16.sp
+                                            fontSize = 18.sp
                                         )
                                     )
                                     if (!showChordPalette) {
-                                        Spacer(Modifier.height(16.dp))
+                                        Spacer(Modifier.height(18.dp))
                                         Text(
                                             text = stringResource(R.string.lyrics_editor_color_section),
                                             color = Color.White,
                                             fontSize = 14.sp
                                         )
-                                        Spacer(Modifier.height(8.dp))
-                                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Spacer(Modifier.height(10.dp))
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
                                             colorOptions.forEach { (colorArgb, label) ->
+                                                val isSelected = lineMenuColorArgb == colorArgb
                                                 TextButton(
                                                     onClick = { lineMenuColorArgb = colorArgb },
-                                                    modifier = Modifier.fillMaxWidth()
+                                                    modifier = Modifier.size(42.dp),
+                                                    contentPadding = PaddingValues(0.dp)
                                                 ) {
-                                                    Row(
-                                                        modifier = Modifier.fillMaxWidth(),
-                                                        verticalAlignment = Alignment.CenterVertically
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(34.dp)
+                                                            .background(
+                                                                color = colorArgb?.let(::Color) ?: Color.Transparent,
+                                                                shape = androidx.compose.foundation.shape.CircleShape
+                                                            )
+                                                            .border(
+                                                                width = if (isSelected) 3.dp else 1.dp,
+                                                                color = if (isSelected) Color(0xFF80CBC4) else Color(0xFF607D8B),
+                                                                shape = androidx.compose.foundation.shape.CircleShape
+                                                            ),
+                                                        contentAlignment = Alignment.Center
                                                     ) {
-                                                        Text(
-                                                            text = label,
-                                                            color = colorArgb?.let(::Color) ?: Color.White,
-                                                            modifier = Modifier.weight(1f)
-                                                        )
-                                                        if (lineMenuColorArgb == colorArgb) {
+                                                        if (isSelected) {
                                                             Icon(
                                                                 imageVector = Icons.Filled.Check,
-                                                                contentDescription = null,
-                                                                tint = Color(0xFF80CBC4)
+                                                                contentDescription = label,
+                                                                tint = if (colorArgb == null) Color(0xFF80CBC4) else Color.Black,
+                                                                modifier = Modifier.size(18.dp)
                                                             )
                                                         }
                                                     }
@@ -1233,53 +1259,59 @@ fun LyricsEditorSection(
                                             }
                                         }
                                     }
-                                }
-                            },
-                            confirmButton = {
-                                TextButton(
-                                    onClick = {
-                                        val list = editingLines.toMutableList()
-                                        if (idx in list.indices) {
-                                            list[idx] = list[idx].copy(
-                                                text = lineMenuText.trim(),
-                                                colorArgb = if (showChordPalette) list[idx].colorArgb else lineMenuColorArgb
-                                            )
-                                            applyEditingLinesWithUndo(list)
-                                        } else if (BuildConfig.DEBUG) {
-                                            Log.w("LrcDebug", "EDIT_LINE_SKIPPED invalidIndex idx=$idx size=${list.size}")
-                                        }
-                                        lineMenuIndex = null
-                                        lineMenuColorArgb = null
-                                    }
-                                ) { Text(stringResource(R.string.lyrics_editor_edit), color = Color(0xFF80CBC4)) }
-                            },
-                            dismissButton = {
-                                Row {
-                                    TextButton(
-                                    onClick = {
-                                        val list = editingLines.toMutableList()
-                                        if (idx in list.indices) {
-                                            list.removeAt(idx)
-                                            applyEditingLinesWithUndo(list)
-                                            selectedSyncLineIndices = selectedSyncLineIndices.filter { it in list.indices }.toSet()
-                                        } else if (BuildConfig.DEBUG) {
-                                            Log.w("LrcDebug", "DELETE_LINE_SKIPPED invalidIndex idx=$idx size=${list.size}")
+                                    Spacer(Modifier.height(16.dp))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        TextButton(
+                                            onClick = {
+                                                val list = editingLines.toMutableList()
+                                                if (idx in list.indices) {
+                                                    list.removeAt(idx)
+                                                    applyEditingLinesWithUndo(list)
+                                                    selectedSyncLineIndices = selectedSyncLineIndices.filter { it in list.indices }.toSet()
+                                                } else if (BuildConfig.DEBUG) {
+                                                    Log.w("LrcDebug", "DELETE_LINE_SKIPPED invalidIndex idx=$idx size=${list.size}")
+                                                }
+
+                                                lineMenuIndex = null
+                                                lineMenuColorArgb = null
                                             }
-
-                                            lineMenuIndex = null
-                                            lineMenuColorArgb = null
+                                        ) {
+                                            Text(stringResource(R.string.lyrics_editor_delete), color = Color(0xFFFF8A80))
                                         }
-                                    ) { Text(stringResource(R.string.lyrics_editor_delete), color = Color(0xFFFF8A80)) }
-
-                                    TextButton(onClick = {
-                                        lineMenuIndex = null
-                                        lineMenuColorArgb = null
-                                    }) {
-                                        Text(stringResource(R.string.lyrics_editor_cancel), color = Color.LightGray)
+                                        Row {
+                                            TextButton(onClick = {
+                                                lineMenuIndex = null
+                                                lineMenuColorArgb = null
+                                            }) {
+                                                Text(stringResource(R.string.lyrics_editor_cancel), color = Color.LightGray)
+                                            }
+                                            TextButton(
+                                                onClick = {
+                                                    val list = editingLines.toMutableList()
+                                                    if (idx in list.indices) {
+                                                        list[idx] = list[idx].copy(
+                                                            text = lineMenuText.trim(),
+                                                            colorArgb = if (showChordPalette) list[idx].colorArgb else lineMenuColorArgb
+                                                        )
+                                                        applyEditingLinesWithUndo(list)
+                                                    } else if (BuildConfig.DEBUG) {
+                                                        Log.w("LrcDebug", "EDIT_LINE_SKIPPED invalidIndex idx=$idx size=${list.size}")
+                                                    }
+                                                    lineMenuIndex = null
+                                                    lineMenuColorArgb = null
+                                                }
+                                            ) {
+                                                Text(stringResource(R.string.lyrics_editor_edit), color = Color(0xFF80CBC4))
+                                            }
+                                        }
                                     }
                                 }
                             }
-                        )
+                        }
                     }
                 } // <-- ferme Column onglet Synchro
             }     // <-- ferme "1 -> {"
