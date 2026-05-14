@@ -3748,7 +3748,35 @@ private fun linesToLrcText(lines: List<LrcLine>): String {
 }
 
 private fun lyricsLineColorKey(line: LrcLine): String {
+    return "${lyricsLineColorTimeKey(line.timeMs)}|${line.text.trim()}"
+}
+
+private fun lyricsLineColorTimeKey(timeMs: Long): Long {
+    if (timeMs <= 0L) return 0L
+    return (timeMs / 10L) * 10L
+}
+
+private fun legacyLyricsLineColorKey(line: LrcLine): String {
     return "${line.timeMs}|${line.text.trim()}"
+}
+
+private fun findStoredLyricsLineColor(line: LrcLine, storedColors: Map<String, Int>): Int? {
+    storedColors[lyricsLineColorKey(line)]?.let { return it }
+    storedColors[legacyLyricsLineColorKey(line)]?.let { return it }
+
+    val textKey = line.text.trim()
+    if (textKey.isBlank()) return null
+    val normalizedTime = lyricsLineColorTimeKey(line.timeMs)
+    storedColors.forEach { (key, colorArgb) ->
+        val separatorIndex = key.indexOf('|')
+        if (separatorIndex <= 0 || separatorIndex >= key.lastIndex) return@forEach
+        val storedTime = key.substring(0, separatorIndex).toLongOrNull() ?: return@forEach
+        val storedText = key.substring(separatorIndex + 1)
+        if (storedText == textKey && kotlin.math.abs(storedTime - normalizedTime) < 10L) {
+            return colorArgb
+        }
+    }
+    return null
 }
 
 private fun extractLyricsLineColors(lines: List<LrcLine>): Map<String, Int> {
@@ -3772,7 +3800,7 @@ private fun hydrateLyricsLineColors(
     val storedColors = TrackSettingsStore.getLyricsLineColorsByUri(context, trackUriString)
     if (storedColors.isEmpty()) return lines
     return lines.map { line ->
-        line.copy(colorArgb = storedColors[lyricsLineColorKey(line)])
+        line.copy(colorArgb = findStoredLyricsLineColor(line, storedColors))
     }
 }
 
