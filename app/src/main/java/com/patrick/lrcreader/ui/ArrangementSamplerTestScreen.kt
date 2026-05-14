@@ -4,6 +4,7 @@ import android.net.Uri
 import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -59,6 +60,10 @@ fun ArrangementSamplerTestScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val samplerEngine = remember { SamplerEngine() }
+    val crossfadeOptionsMs = remember { listOf(0, 8, 20, 50, 100) }
+    val antiClickFadeOptionsMs = remember { listOf(0, 1, 2, 3, 5) }
+    var selectedCrossfadeMs by remember { mutableStateOf(0) }
+    var selectedAntiClickFadeMs by remember { mutableStateOf(0) }
     var structureSegments by remember(songId) { mutableStateOf<List<ArrangementSegmentData>>(emptyList()) }
     var isLoadingSamples by remember(songId) { mutableStateOf(false) }
     var loadedSamplesCount by remember(songId) { mutableStateOf(0) }
@@ -70,6 +75,14 @@ fun ArrangementSamplerTestScreen(
 
     DisposableEffect(samplerEngine) {
         onDispose { samplerEngine.release() }
+    }
+
+    LaunchedEffect(selectedCrossfadeMs) {
+        samplerEngine.setCrossfadeDurationMs(selectedCrossfadeMs)
+    }
+
+    LaunchedEffect(selectedAntiClickFadeMs) {
+        samplerEngine.setAntiClickFadeDurationMs(selectedAntiClickFadeMs)
     }
 
     LaunchedEffect(songId) {
@@ -193,6 +206,64 @@ fun ArrangementSamplerTestScreen(
                 }
             ) {
                 Text(stringResource(R.string.arrangement_sampler_test_release))
+            }
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            crossfadeOptionsMs.forEach { optionMs ->
+                val selected = optionMs == selectedCrossfadeMs
+                Text(
+                    text = "${optionMs}ms",
+                    color = if (selected) Color(0xFF80CBC4) else Color(0xFFB0BEC5),
+                    fontSize = 13.sp,
+                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                    modifier = Modifier.clickable {
+                        selectedCrossfadeMs = optionMs
+                        samplerEngine.setCrossfadeDurationMs(optionMs)
+                    }
+                )
+                if (optionMs != crossfadeOptionsMs.last()) {
+                    Text(
+                        text = "·",
+                        color = Color(0xFF607D8B),
+                        fontSize = 13.sp
+                    )
+                }
+            }
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = "Anti-clic:",
+                color = Color(0xFF90A4AE),
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium
+            )
+            antiClickFadeOptionsMs.forEach { optionMs ->
+                val selected = optionMs == selectedAntiClickFadeMs
+                Text(
+                    text = "${optionMs}ms",
+                    color = if (selected) Color(0xFF80CBC4) else Color(0xFFB0BEC5),
+                    fontSize = 13.sp,
+                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                    modifier = Modifier.clickable {
+                        selectedAntiClickFadeMs = optionMs
+                        samplerEngine.setAntiClickFadeDurationMs(optionMs)
+                    }
+                )
+                if (optionMs != antiClickFadeOptionsMs.last()) {
+                    Text(
+                        text = "·",
+                        color = Color(0xFF607D8B),
+                        fontSize = 13.sp
+                    )
+                }
             }
         }
 

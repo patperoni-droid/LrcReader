@@ -28,6 +28,22 @@ class SamplerEngine {
     @Volatile
     private var queuedIndex: Int? = null
 
+    @Volatile
+    private var crossfadeDurationMs: Int = DEFAULT_CROSSFADE_DURATION_MS
+
+    @Volatile
+    private var antiClickFadeDurationMs: Int = DEFAULT_ANTI_CLICK_FADE_DURATION_MS
+
+    fun setCrossfadeDurationMs(durationMs: Int) {
+        crossfadeDurationMs = durationMs.coerceAtLeast(0)
+        Log.d(FLOW_TAG, "CROSSFADE_DURATION_SET durationMs=$crossfadeDurationMs")
+    }
+
+    fun setAntiClickFadeDurationMs(durationMs: Int) {
+        antiClickFadeDurationMs = durationMs.coerceAtLeast(0)
+        Log.d(FLOW_TAG, "ANTI_CLICK_FADE_SET durationMs=$antiClickFadeDurationMs")
+    }
+
     fun loadSegments(nextSegments: List<SampleSegment>) {
         stop()
         validateSegments(nextSegments)
@@ -38,7 +54,7 @@ class SamplerEngine {
         val estimatedRamBytes = nextSegments.sumOf { it.estimatedRamBytes.toLong() }
         Log.d(
             FLOW_TAG,
-            "LOAD_SEGMENTS count=${nextSegments.size} sampleRateHz=${nextSegments.firstOrNull()?.sampleRateHz ?: 0} estimatedRamBytes=$estimatedRamBytes estimatedRamMb=${"%.2f".format(estimatedRamBytes / BYTES_PER_MB)}"
+            "LOAD_SEGMENTS count=${nextSegments.size} sampleRateHz=${nextSegments.firstOrNull()?.sampleRateHz ?: 0} estimatedRamBytes=$estimatedRamBytes estimatedRamMb=${"%.2f".format(estimatedRamBytes / BYTES_PER_MB)} crossfadeDurationMs=$crossfadeDurationMs antiClickFadeDurationMs=$antiClickFadeDurationMs"
         )
     }
 
@@ -121,6 +137,7 @@ class SamplerEngine {
             Log.d(FLOW_TAG, "AUDIO_TRACK_START sampleRateHz=$sampleRateHz")
             var index: Int? = startIndex
             var initialOffsetBytes = 0
+            var initialFadeInBytes = 0
             while (!stopRequested.get() && index != null) {
                 val segment = segments.getOrNull(index) ?: break
                 currentIndex = index
@@ -128,13 +145,18 @@ class SamplerEngine {
                     FLOW_TAG,
                     "NEXT_SEGMENT_START index=$index name=${segment.name} queued=$queuedIndex bytes=${segment.estimatedRamBytes} initialOffsetBytes=$initialOffsetBytes"
                 )
-                val transition = writeSegment(track, segment, initialOffsetBytes)
+                val transition = writeSegment(track, segment, initialOffsetBytes, initialFadeInBytes)
                 if (stopRequested.get()) break
 
                 val nextIndex = transition.nextIndex
                 initialOffsetBytes = transition.nextInitialOffsetBytes
+                initialFadeInBytes = transition.nextInitialFadeInBytes
                 index = nextIndex
-                Log.d(FLOW_TAG, "SEGMENT_END index=$currentIndex next=$index nextInitialOffsetBytes=$initialOffsetBytes")
+                Log.d(
+                    FLOW_TAG,
+                    "SEGMENT_END index=$currentIndex next=$index " +
+                        "nextInitialOffsetBytes=$initialOffsetBytes nextInitialFadeInBytes=$initialFadeInBytes"
+                )
             }
         } catch (error: Throwable) {
             Log.w(FLOW_TAG, "PLAYBACK_ERROR message=${error.message}", error)
@@ -160,12 +182,16 @@ class SamplerEngine {
     private fun writeSegment(
         track: AudioTrack,
         segment: SampleSegment,
-        initialOffsetBytes: Int
+        initialOffsetBytes: Int,
+        initialFadeInBytes: Int
     ): SegmentTransition {
         val pcm = segment.pcm16Stereo
         var nextInitialOffsetBytes = 0
+        var nextInitialFadeInBytes = 0
         val safeInitialOffsetBytes = alignToFrame(initialOffsetBytes)
             .coerceIn(0, pcm.size)
+        val safeInitialFadeInBytes = alignToFrame(initialFadeInBytes)
+            .coerceIn(0, pcm.size - safeInitialOffsetBytes)
         val heldTailBytes = resolveHeldTailBytes(segment)
         val bodyEnd = if (heldTailBytes > 0 && pcm.size - safeInitialOffsetBytes > heldTailBytes) {
             pcm.size - heldTailBytes
@@ -173,12 +199,51 @@ class SamplerEngine {
             pcm.size
         }
 
-        writePcmRange(track, pcm, safeInitialOffsetBytes, bodyEnd)
+        val bodyStart = if (safeInitialFadeInBytes > 0) {
+            val fadeInEnd = (safeInitialOffsetBytes + safeInitialFadeInBytes).coerceAtMost(bodyEnd)
+            writePcmRange(
+                track = track,
+                pcm = buildFadePcm(
+                    sourcePcm = pcm,
+                    startOffset = safeInitialOffsetBytes,
+                    byteCount = fadeInEnd - safeInitialOffsetBytes,
+                    fadeIn = true
+                ),
+                startOffset = 0,
+                endOffset = fadeInEnd - safeInitialOffsetBytes
+            )
+            fadeInEnd
+        } else {
+            safeInitialOffsetBytes
+        }
+        writePcmRange(track, pcm, bodyStart, bodyEnd)
         if (stopRequested.get()) return SegmentTransition(null, 0)
 
         val nextIndex = queuedIndex
         val nextSegment = nextIndex?.let { segments.getOrNull(it) }
         val transitionCrossfadeBytes = resolveCrossfadeBytes(segment, nextSegment)
+        val antiClickFadeBytes = resolveAntiClickFadeBytes(segment, nextSegment)
+        if (nextIndex != null && nextSegment != null) {
+            val previousLastSamplesEnergy = calculatePcmEnergy(
+                pcm = segment.pcm16Stereo,
+                sampleRateHz = segment.sampleRateHz,
+                fromEnd = true
+            )
+            val nextFirstSamplesEnergy = calculatePcmEnergy(
+                pcm = nextSegment.pcm16Stereo,
+                sampleRateHz = nextSegment.sampleRateHz,
+                fromEnd = false
+            )
+            Log.d(
+                FLOW_TAG,
+                "CUT_ANALYSIS previousSegmentId=${segment.id} nextSegmentId=${nextSegment.id} " +
+                    "previousEndMs=${segment.endMs} nextStartMs=${nextSegment.startMs} " +
+                    "previousLastSamplesEnergy=$previousLastSamplesEnergy " +
+                    "nextFirstSamplesEnergy=$nextFirstSamplesEnergy " +
+                    "energyDiff=${kotlin.math.abs(previousLastSamplesEnergy - nextFirstSamplesEnergy)} " +
+                    "transitionDuration=${crossfadeBytesToMs(transitionCrossfadeBytes, segment.sampleRateHz)}"
+            )
+        }
         if (nextIndex != null && nextSegment != null && transitionCrossfadeBytes > 0) {
             queuedIndex = null
             val transitionPcm = buildCrossfadePcm(
@@ -194,11 +259,33 @@ class SamplerEngine {
                     "bytes=$transitionCrossfadeBytes current=$currentIndex next=$nextIndex"
             )
         } else {
-            writePcmRange(track, pcm, bodyEnd, pcm.size)
+            if (nextIndex != null && nextSegment != null && antiClickFadeBytes > 0) {
+                val fadeOutStart = (pcm.size - antiClickFadeBytes).coerceAtLeast(bodyEnd)
+                writePcmRange(track, pcm, bodyEnd, fadeOutStart)
+                writePcmRange(
+                    track = track,
+                    pcm = buildFadePcm(
+                        sourcePcm = pcm,
+                        startOffset = fadeOutStart,
+                        byteCount = pcm.size - fadeOutStart,
+                        fadeIn = false
+                    ),
+                    startOffset = 0,
+                    endOffset = pcm.size - fadeOutStart
+                )
+                nextInitialFadeInBytes = antiClickFadeBytes
+                Log.d(
+                    FLOW_TAG,
+                    "ANTI_CLICK_FADE_APPLIED durationMs=${crossfadeBytesToMs(antiClickFadeBytes, segment.sampleRateHz)} " +
+                        "bytes=$antiClickFadeBytes current=$currentIndex next=$nextIndex"
+                )
+            } else {
+                writePcmRange(track, pcm, bodyEnd, pcm.size)
+            }
             queuedIndex = null
         }
 
-        return SegmentTransition(nextIndex, nextInitialOffsetBytes)
+        return SegmentTransition(nextIndex, nextInitialOffsetBytes, nextInitialFadeInBytes)
     }
 
     private fun writePcmRange(track: AudioTrack, pcm: ByteArray, startOffset: Int, endOffset: Int) {
@@ -234,9 +321,18 @@ class SamplerEngine {
     }
 
     private fun resolveHeldTailBytes(segment: SampleSegment): Int {
-        val requestedFrames = (segment.sampleRateHz * CROSSFADE_DURATION_MS) / 1_000
+        val requestedFrames = (segment.sampleRateHz * crossfadeDurationMs.coerceAtLeast(0)) / 1_000
         val maxFrames = segment.pcm16Stereo.size / SampleSegment.BYTES_PER_STEREO_FRAME / 2
         val frames = minOf(requestedFrames, maxFrames)
+        return frames * SampleSegment.BYTES_PER_STEREO_FRAME
+    }
+
+    private fun resolveAntiClickFadeBytes(current: SampleSegment, next: SampleSegment?): Int {
+        if (next == null || current.sampleRateHz != next.sampleRateHz) return 0
+        val requestedFrames = (current.sampleRateHz * antiClickFadeDurationMs.coerceAtLeast(0)) / 1_000
+        val maxCurrentFrames = current.pcm16Stereo.size / SampleSegment.BYTES_PER_STEREO_FRAME / 2
+        val maxNextFrames = next.pcm16Stereo.size / SampleSegment.BYTES_PER_STEREO_FRAME / 2
+        val frames = minOf(requestedFrames, maxCurrentFrames, maxNextFrames)
         return frames * SampleSegment.BYTES_PER_STEREO_FRAME
     }
 
@@ -270,6 +366,36 @@ class SamplerEngine {
         return output
     }
 
+    private fun buildFadePcm(
+        sourcePcm: ByteArray,
+        startOffset: Int,
+        byteCount: Int,
+        fadeIn: Boolean
+    ): ByteArray {
+        val safeStart = alignToFrame(startOffset).coerceIn(0, sourcePcm.size)
+        val safeBytes = alignToFrame(byteCount)
+            .coerceAtLeast(0)
+            .coerceAtMost(sourcePcm.size - safeStart)
+        val output = ByteArray(safeBytes)
+        val frameCount = (safeBytes / SampleSegment.BYTES_PER_STEREO_FRAME).coerceAtLeast(1)
+        var offset = 0
+        while (offset < safeBytes) {
+            val frameIndex = offset / SampleSegment.BYTES_PER_STEREO_FRAME
+            val progress = ((frameIndex + 1).toFloat() / frameCount.toFloat()).coerceIn(0f, 1f)
+            val gain = if (fadeIn) progress else 1f - progress
+            repeat(SampleSegment.CHANNEL_COUNT) { channel ->
+                val byteOffset = offset + channel * SampleSegment.BYTES_PER_SAMPLE
+                val sample = readPcm16Le(sourcePcm, safeStart + byteOffset)
+                val faded = (sample * gain)
+                    .toInt()
+                    .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
+                writePcm16Le(output, byteOffset, faded)
+            }
+            offset += SampleSegment.BYTES_PER_STEREO_FRAME
+        }
+        return output
+    }
+
     private fun readPcm16Le(bytes: ByteArray, offset: Int): Int {
         val lo = bytes[offset].toInt() and 0xFF
         val hi = bytes[offset + 1].toInt()
@@ -288,6 +414,34 @@ class SamplerEngine {
     private fun crossfadeBytesToMs(byteCount: Int, sampleRateHz: Int): Long {
         val frames = byteCount / SampleSegment.BYTES_PER_STEREO_FRAME
         return (frames * 1_000L) / sampleRateHz.coerceAtLeast(1)
+    }
+
+    private fun calculatePcmEnergy(
+        pcm: ByteArray,
+        sampleRateHz: Int,
+        fromEnd: Boolean
+    ): Long {
+        val requestedFrames = (sampleRateHz.coerceAtLeast(1) * CUT_ANALYSIS_WINDOW_MS) / 1_000
+        val availableFrames = pcm.size / SampleSegment.BYTES_PER_STEREO_FRAME
+        val frames = minOf(requestedFrames.coerceAtLeast(1), availableFrames).coerceAtLeast(0)
+        if (frames <= 0) return 0L
+
+        val startOffset = if (fromEnd) {
+            pcm.size - frames * SampleSegment.BYTES_PER_STEREO_FRAME
+        } else {
+            0
+        }.coerceAtLeast(0)
+        val endOffset = (startOffset + frames * SampleSegment.BYTES_PER_STEREO_FRAME)
+            .coerceAtMost(pcm.size)
+        var sum = 0L
+        var sampleCount = 0
+        var offset = startOffset
+        while (offset + 1 < endOffset) {
+            sum += kotlin.math.abs(readPcm16Le(pcm, offset).toLong())
+            sampleCount += 1
+            offset += SampleSegment.BYTES_PER_SAMPLE
+        }
+        return if (sampleCount == 0) 0L else sum / sampleCount.toLong()
     }
 
     private fun createAudioTrack(sampleRateHz: Int): AudioTrack {
@@ -332,11 +486,14 @@ class SamplerEngine {
         private const val BUFFER_MULTIPLIER = 4
         private const val STOP_JOIN_TIMEOUT_MS = 500L
         private const val BYTES_PER_MB = 1024.0 * 1024.0
-        private const val CROSSFADE_DURATION_MS = 8
+        private const val DEFAULT_CROSSFADE_DURATION_MS = 0
+        private const val DEFAULT_ANTI_CLICK_FADE_DURATION_MS = 0
+        private const val CUT_ANALYSIS_WINDOW_MS = 10
     }
 
     private data class SegmentTransition(
         val nextIndex: Int?,
-        val nextInitialOffsetBytes: Int
+        val nextInitialOffsetBytes: Int,
+        val nextInitialFadeInBytes: Int = 0
     )
 }

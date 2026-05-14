@@ -373,4 +373,4 @@ Créer un système :
 - fiable en live
 - sans friction utilisateur
 
-👉 un véritable outil de travail musical 💥
+👉 un véritable outil de travail musical 💥alors 
