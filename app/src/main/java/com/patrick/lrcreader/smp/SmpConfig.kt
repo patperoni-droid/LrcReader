@@ -16,7 +16,8 @@ data class SmpConfig(
     val title: String?,
     val id: String?,
     val files: FilesConfig? = null,
-    val playback: PlaybackConfig? = null
+    val playback: PlaybackConfig? = null,
+    val lyricsLineColors: Map<String, Int>? = null
 ) {
     data class FilesConfig(
         val audio: String?,
@@ -150,6 +151,13 @@ data class SmpConfig(
             id?.takeIf { it.isNotBlank() }?.let { put("id", it) }
             files?.toJsonOrNull()?.let { put("files", it) }
             playback?.toJsonOrNull()?.let { put("playback", it) }
+            lyricsLineColors?.let { colors ->
+                val colorsJson = JSONObject()
+                colors.keys.sorted().forEach { key ->
+                    colorsJson.put(key, colors[key])
+                }
+                put("lyricsLineColors", colorsJson)
+            }
         }
     }
 
@@ -169,7 +177,8 @@ data class SmpConfig(
                 playback = resolvePlaybackForSongUnit(
                     context = context,
                     songUnit = songUnit
-                )
+                ),
+                lyricsLineColors = readLyricsLineColorsFromSongUnit(songUnit)
             )
         }
 
@@ -189,7 +198,8 @@ data class SmpConfig(
                     title = json.optString("title").trim().ifBlank { null },
                     id = json.optString("id").trim().ifBlank { null },
                     files = parseFiles(json),
-                    playback = parsePlayback(json)
+                    playback = parsePlayback(json),
+                    lyricsLineColors = parseLyricsLineColors(json)
                 )
             } catch (e: Exception) {
                 Log.e(TAG, "Impossible de parser config.json", e)
@@ -240,6 +250,17 @@ data class SmpConfig(
                     it.dmxCues != null ||
                     it.prompter != null
             }
+        }
+
+        private fun parseLyricsLineColors(json: JSONObject): Map<String, Int>? {
+            val colorsJson = json.optJSONObject("lyricsLineColors") ?: return null
+            val colors = linkedMapOf<String, Int>()
+            colorsJson.keys().asSequence().toList().sorted().forEach { key ->
+                if (key.isNotBlank() && colorsJson.has(key) && !colorsJson.isNull(key)) {
+                    colors[key] = colorsJson.optInt(key)
+                }
+            }
+            return colors
         }
 
         private fun JSONObject.optStringOrNull(key: String): String? {
@@ -299,6 +320,19 @@ data class SmpConfig(
                 ?: return null
             return runCatching {
                 fromJsonOrNull(configFile.readText(Charsets.UTF_8))?.playback
+            }.getOrNull()
+        }
+
+        fun readLyricsLineColorsFromSongUnit(songUnit: SongUnit): Map<String, Int>? {
+            val configFile = songUnit.storageFolder
+                ?.takeIf { it.isNotBlank() }
+                ?.let(::File)
+                ?.takeIf { it.isDirectory }
+                ?.let { File(it, "config.json") }
+                ?.takeIf { it.isFile }
+                ?: return null
+            return runCatching {
+                fromJsonOrNull(configFile.readText(Charsets.UTF_8))?.lyricsLineColors
             }.getOrNull()
         }
 
