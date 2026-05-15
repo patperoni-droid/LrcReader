@@ -4337,7 +4337,17 @@ class MainActivity : AppCompatActivity() {
         persistSession(reason = "onStop")
         lifecycleScope.launch(Dispatchers.IO) {
             val playlistsStartMs = SystemClock.elapsedRealtime()
-            runCatching { PlaylistStateStore.savePlaylistsSnapshot(this@MainActivity) }
+            runCatching {
+                PlaylistStateStore.savePlaylistsSnapshot(
+                    context = this@MainActivity,
+                    transientGroupTitles = setOf(
+                        getString(R.string.quickplaylists_group_current),
+                        "Groupe en cours",
+                        "Current group",
+                        "Grupo en curso"
+                    )
+                )
+            }
                 .onFailure { Log.e("BOOTSTEP", "PlaylistStateStore.savePlaylistsSnapshot:onStop failed", it) }
             Log.e(
                 "ANR_TRACE",

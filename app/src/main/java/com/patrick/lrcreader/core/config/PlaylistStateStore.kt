@@ -3,7 +3,11 @@ package com.patrick.lrcreader.core.config
 import android.content.Context
 import android.os.SystemClock
 import android.util.Log
+import com.patrick.lrcreader.core.getGroupTitle
+import com.patrick.lrcreader.core.isGroupEnd
+import com.patrick.lrcreader.core.isGroupHeader
 import com.patrick.lrcreader.core.PlaylistRepository
+import com.patrick.lrcreader.exo.R
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -23,6 +27,7 @@ internal object PlaylistStateStore {
     private var diskReadTotalMs: Long = 0
     private var saveInFlight: Boolean = false
     private var savePending: Boolean = false
+    private var pendingTransientGroupTitles: Set<String> = emptySet()
 
     data class RestoreResult(
         val success: Boolean,
@@ -110,21 +115,36 @@ internal object PlaylistStateStore {
         return withLockBlocking {
             val internalState = readStateLocked(context)
             val workspaceState = WorkspacePlaylistFilesStore.readAll(context)
-            val state = mergeWorkspacePlaylists(
+            val mergedState = mergeWorkspacePlaylists(
                 internalState = internalState,
                 workspaceState = workspaceState
             )
+            val transientTitles = currentGroupTransientTitles(context)
+            val state = stripTransientGroupsFromState(
+                state = mergedState,
+                transientGroupTitles = transientTitles
+            )
             Log.d(
                 PERSIST_LOG_TAG,
-                "restore.begin internal=${internalState.playlists.keys.sorted()} workspace=${workspaceState.playlists.keys.sorted()} merged=${state.playlists.keys.sorted()} counts=${
+                "restore.begin internal=${internalState.playlists.keys.sorted()} workspace=${workspaceState.playlists.keys.sorted()} merged=${mergedState.playlists.keys.sorted()} cleaned=${state.playlists.keys.sorted()} counts=${
                     state.playlists.toSortedMap().entries.joinToString { "${it.key}:${it.value.items.size}" }
                 }"
             )
             PlaylistRepository.clearAll()
             restoreStateIntoRepository(state)
             cachedState = state
+            if (state != internalState) {
+                writeStateLocked(
+                    context = context,
+                    state = state,
+                    failureLabel = "restorePlaylistsIntoRepository: transient group cleanup write failed"
+                )
+            }
             val workspaceMigrated = if (shouldSyncWorkspaceFiles(state, workspaceState)) {
-                WorkspacePlaylistFilesStore.syncFromRepository(context)
+                WorkspacePlaylistFilesStore.syncFromRepository(
+                    context = context,
+                    transientGroupTitles = transientTitles
+                )
             } else {
                 true
             }
@@ -156,13 +176,27 @@ internal object PlaylistStateStore {
         }
     }
 
-    fun savePlaylistsSnapshot(context: Context): Boolean {
+    private fun currentGroupTransientTitles(context: Context): Set<String> {
+        return setOf(
+            context.getString(R.string.quickplaylists_group_current),
+            "Groupe en cours",
+            "Current group",
+            "Grupo en curso"
+        ).mapTo(linkedSetOf()) { it.trim() }
+            .filterTo(linkedSetOf()) { it.isNotEmpty() }
+    }
+
+    fun savePlaylistsSnapshot(
+        context: Context,
+        transientGroupTitles: Set<String> = emptySet()
+    ): Boolean {
         val startMs = SystemClock.elapsedRealtime()
         val threadName = Thread.currentThread().name
         Log.e(ANR_PLAYLIST_TAG, "save:start thread=$threadName")
         synchronized(saveCoordinatorLock) {
             if (saveInFlight) {
                 savePending = true
+                pendingTransientGroupTitles = pendingTransientGroupTitles + transientGroupTitles
                 Log.e(
                     ANR_PLAYLIST_TAG,
                     "save:coalesced thread=$threadName pending=true"
@@ -172,15 +206,24 @@ internal object PlaylistStateStore {
             saveInFlight = true
         }
         var anySaved = false
+        var activeTransientGroupTitles = transientGroupTitles
         try {
             while (true) {
-                anySaved = performSavePlaylistsSnapshot(context, startMs, threadName) || anySaved
+                anySaved = performSavePlaylistsSnapshot(
+                    context = context,
+                    startMs = startMs,
+                    threadName = threadName,
+                    transientGroupTitles = activeTransientGroupTitles
+                ) || anySaved
                 val rerun = synchronized(saveCoordinatorLock) {
                     if (savePending) {
                         savePending = false
+                        activeTransientGroupTitles = pendingTransientGroupTitles
+                        pendingTransientGroupTitles = emptySet()
                         true
                     } else {
                         saveInFlight = false
+                        pendingTransientGroupTitles = emptySet()
                         false
                     }
                 }
@@ -195,6 +238,7 @@ internal object PlaylistStateStore {
         } catch (t: Throwable) {
             synchronized(saveCoordinatorLock) {
                 saveInFlight = false
+                pendingTransientGroupTitles = emptySet()
             }
             throw t
         }
@@ -203,7 +247,8 @@ internal object PlaylistStateStore {
     private fun performSavePlaylistsSnapshot(
         context: Context,
         startMs: Long,
-        threadName: String
+        threadName: String,
+        transientGroupTitles: Set<String>
     ): Boolean {
         return withLockBlocking {
             val current = readStateLocked(context)
@@ -234,6 +279,9 @@ internal object PlaylistStateStore {
             val nextMap = linkedMapOf<String, PlaylistStateEntry>()
             repoPlaylists.sorted().forEach { playlistName ->
                 val previous = current.playlists[playlistName] ?: PlaylistStateEntry()
+                val transientTitles = transientGroupTitles
+                    .mapTo(linkedSetOf()) { it.trim() }
+                    .filterTo(linkedSetOf()) { it.isNotEmpty() }
                 val items = PlaylistRepository.getAllItemsRaw(playlistName).map { item ->
                     PlaylistStateItem(
                         uri = item.uri,
@@ -243,8 +291,20 @@ internal object PlaylistStateStore {
                             ?.ifBlank { null }
                     )
                 }
+                val savedItems = stripTransientGroupItems(
+                    items = items,
+                    transientGroupTitles = transientTitles
+                )
+                val savedManualOrder = stripTransientGroupStoredKeys(
+                    storedKeys = previous.manualOrder,
+                    transientGroupTitles = transientTitles
+                )
+                val savedOriginalOrder = stripTransientGroupStoredKeys(
+                    storedKeys = previous.originalOrder,
+                    transientGroupTitles = transientTitles
+                )
                 if (playlistName == DEMO_PLAYLIST_NAME) {
-                    items.forEach { item ->
+                    savedItems.forEach { item ->
                         Log.i(
                             DEMO_TITLES_TAG,
                             "snapshot:save playlist=$playlistName uri=${item.uri} songId=${item.songId ?: "null"} customTitle=${item.customTitle ?: "null"}"
@@ -253,7 +313,9 @@ internal object PlaylistStateStore {
                 }
                 nextMap[playlistName] = previous.copy(
                     exists = true,
-                    items = items,
+                    items = savedItems,
+                    manualOrder = savedManualOrder,
+                    originalOrder = savedOriginalOrder,
                     updatedAt = System.currentTimeMillis()
                 )
             }
@@ -264,7 +326,10 @@ internal object PlaylistStateStore {
                     playlists = nextMap
                 )
             )
-            val workspaceSaved = WorkspacePlaylistFilesStore.syncFromRepository(context)
+            val workspaceSaved = WorkspacePlaylistFilesStore.syncFromRepository(
+                context = context,
+                transientGroupTitles = transientGroupTitles
+            )
             Log.d(
                 PERSIST_LOG_TAG,
                 "save.end internalSaved=$internalSaved workspaceSaved=$workspaceSaved playlists=$repoPlaylists"
@@ -275,6 +340,95 @@ internal object PlaylistStateStore {
             )
             internalSaved || workspaceSaved
         }
+    }
+
+    private fun stripTransientGroupItems(
+        items: List<PlaylistStateItem>,
+        transientGroupTitles: Set<String>
+    ): List<PlaylistStateItem> {
+        if (transientGroupTitles.isEmpty()) return items
+        return stripTransientGroupMarkers(
+            values = items,
+            transientGroupTitles = transientGroupTitles,
+            markerValue = { it.uri }
+        )
+    }
+
+    private fun stripTransientGroupsFromState(
+        state: PlaylistState,
+        transientGroupTitles: Set<String>
+    ): PlaylistState {
+        if (transientGroupTitles.isEmpty() || state.playlists.isEmpty()) return state
+        val cleaned = state.playlists.mapValues { (_, entry) ->
+            entry.copy(
+                items = stripTransientGroupItems(
+                    items = entry.items,
+                    transientGroupTitles = transientGroupTitles
+                ),
+                manualOrder = stripTransientGroupStoredKeys(
+                    storedKeys = entry.manualOrder,
+                    transientGroupTitles = transientGroupTitles
+                ),
+                originalOrder = stripTransientGroupStoredKeys(
+                    storedKeys = entry.originalOrder,
+                    transientGroupTitles = transientGroupTitles
+                )
+            )
+        }
+        return state.copy(playlists = cleaned)
+    }
+
+    private fun stripTransientGroupStoredKeys(
+        storedKeys: List<String>,
+        transientGroupTitles: Set<String>
+    ): List<String> {
+        if (transientGroupTitles.isEmpty() || storedKeys.isEmpty()) return storedKeys
+        return stripTransientGroupMarkers(
+            values = storedKeys,
+            transientGroupTitles = transientGroupTitles,
+            markerValue = { key -> key.removePrefix("uri:") }
+        )
+    }
+
+    private fun <T> stripTransientGroupMarkers(
+        values: List<T>,
+        transientGroupTitles: Set<String>,
+        markerValue: (T) -> String
+    ): List<T> {
+        if (transientGroupTitles.isEmpty() || values.isEmpty()) return values
+        val keep = BooleanArray(values.size) { true }
+        values.forEachIndexed { index, value ->
+            val marker = markerValue(value)
+            if (!isGroupHeader(marker) || getGroupTitle(marker) !in transientGroupTitles) {
+                return@forEachIndexed
+            }
+            keep[index] = false
+            findMatchingTransientGroupEndIndex(
+                values = values,
+                headerIndex = index,
+                markerValue = markerValue
+            )?.let { endIndex ->
+                keep[endIndex] = false
+            }
+        }
+        return values.filterIndexed { index, _ -> keep[index] }
+    }
+
+    private fun <T> findMatchingTransientGroupEndIndex(
+        values: List<T>,
+        headerIndex: Int,
+        markerValue: (T) -> String
+    ): Int? {
+        var depth = 0
+        for (index in headerIndex + 1 until values.size) {
+            val marker = markerValue(values[index])
+            when {
+                isGroupHeader(marker) -> depth++
+                isGroupEnd(marker) && depth > 0 -> depth--
+                isGroupEnd(marker) -> return index
+            }
+        }
+        return null
     }
 
     private fun writePlaylistEntryLocked(

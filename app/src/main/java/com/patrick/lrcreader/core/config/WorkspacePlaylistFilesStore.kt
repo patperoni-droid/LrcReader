@@ -7,6 +7,9 @@ import android.util.Log
 import androidx.documentfile.provider.DocumentFile
 import com.patrick.lrcreader.core.BackupFolderPrefs
 import com.patrick.lrcreader.core.PlaylistRepository
+import com.patrick.lrcreader.core.getGroupTitle
+import com.patrick.lrcreader.core.isGroupEnd
+import com.patrick.lrcreader.core.isGroupHeader
 import java.io.File
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
@@ -42,24 +45,63 @@ internal object WorkspacePlaylistFilesStore {
         }
     }
 
-    fun syncFromRepository(context: Context): Boolean {
+    fun syncFromRepository(
+        context: Context,
+        transientGroupTitles: Set<String> = emptySet()
+    ): Boolean {
         val now = System.currentTimeMillis()
+        val transientTitles = transientGroupTitles
+            .mapTo(linkedSetOf()) { it.trim() }
+            .filterTo(linkedSetOf()) { it.isNotEmpty() }
         val playlists = PlaylistRepository.getPlaylists().sorted().associateWith { playlistName ->
+            val items = PlaylistRepository.getAllItemsRaw(playlistName).map { item ->
+                PlaylistStateItem(
+                    uri = item.uri,
+                    songId = item.songId?.trim()?.ifBlank { null },
+                    customTitle = PlaylistRepository.getCustomTitle(playlistName, item.uri)
+                        ?.trim()
+                        ?.ifBlank { null }
+                )
+            }
             WorkspacePlaylistFile(
                 name = playlistName,
-                items = PlaylistRepository.getAllItemsRaw(playlistName).map { item ->
-                    PlaylistStateItem(
-                        uri = item.uri,
-                        songId = item.songId?.trim()?.ifBlank { null },
-                        customTitle = PlaylistRepository.getCustomTitle(playlistName, item.uri)
-                            ?.trim()
-                            ?.ifBlank { null }
-                    )
-                },
+                items = stripTransientGroupItems(items, transientTitles),
                 updatedAt = now
             )
         }
         return writeAll(context, playlists)
+    }
+
+    private fun stripTransientGroupItems(
+        items: List<PlaylistStateItem>,
+        transientGroupTitles: Set<String>
+    ): List<PlaylistStateItem> {
+        if (transientGroupTitles.isEmpty()) return items
+        val keep = BooleanArray(items.size) { true }
+        items.forEachIndexed { index, item ->
+            val uri = item.uri
+            if (!isGroupHeader(uri) || getGroupTitle(uri) !in transientGroupTitles) {
+                return@forEachIndexed
+            }
+            keep[index] = false
+            findMatchingGroupEndIndex(items, index)?.let { endIndex ->
+                keep[endIndex] = false
+            }
+        }
+        return items.filterIndexed { index, _ -> keep[index] }
+    }
+
+    private fun findMatchingGroupEndIndex(items: List<PlaylistStateItem>, headerIndex: Int): Int? {
+        var depth = 0
+        for (index in headerIndex + 1 until items.size) {
+            val uri = items[index].uri
+            when {
+                isGroupHeader(uri) -> depth++
+                isGroupEnd(uri) && depth > 0 -> depth--
+                isGroupEnd(uri) -> return index
+            }
+        }
+        return null
     }
 
     private fun writeAll(
