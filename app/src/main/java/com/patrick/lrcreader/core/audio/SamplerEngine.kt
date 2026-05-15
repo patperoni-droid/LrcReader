@@ -34,6 +34,18 @@ class SamplerEngine {
     @Volatile
     private var antiClickFadeDurationMs: Int = DEFAULT_ANTI_CLICK_FADE_DURATION_MS
 
+    @Volatile
+    var autoAdvanceSequentially: Boolean = false
+
+    @Volatile
+    var onSegmentStart: ((Int) -> Unit)? = null
+
+    @Volatile
+    var onSegmentTransition: ((Int, Int) -> Unit)? = null
+
+    @Volatile
+    var onPlaybackEnded: (() -> Unit)? = null
+
     fun setCrossfadeDurationMs(durationMs: Int) {
         crossfadeDurationMs = durationMs.coerceAtLeast(0)
         Log.d(FLOW_TAG, "CROSSFADE_DURATION_SET durationMs=$crossfadeDurationMs")
@@ -141,6 +153,7 @@ class SamplerEngine {
             while (!stopRequested.get() && index != null) {
                 val segment = segments.getOrNull(index) ?: break
                 currentIndex = index
+                onSegmentStart?.invoke(index)
                 Log.d(
                     FLOW_TAG,
                     "NEXT_SEGMENT_START index=$index name=${segment.name} queued=$queuedIndex bytes=${segment.estimatedRamBytes} initialOffsetBytes=$initialOffsetBytes"
@@ -151,6 +164,9 @@ class SamplerEngine {
                 val nextIndex = transition.nextIndex
                 initialOffsetBytes = transition.nextInitialOffsetBytes
                 initialFadeInBytes = transition.nextInitialFadeInBytes
+                if (nextIndex != null) {
+                    onSegmentTransition?.invoke(index, nextIndex)
+                }
                 index = nextIndex
                 Log.d(
                     FLOW_TAG,
@@ -176,6 +192,9 @@ class SamplerEngine {
             }
             currentIndex = null
             queuedIndex = null
+            if (!stopRequested.get()) {
+                onPlaybackEnded?.invoke()
+            }
         }
     }
 
@@ -219,7 +238,13 @@ class SamplerEngine {
         writePcmRange(track, pcm, bodyStart, bodyEnd)
         if (stopRequested.get()) return SegmentTransition(null, 0)
 
-        val nextIndex = queuedIndex
+        val nextIndex = queuedIndex ?: if (autoAdvanceSequentially) {
+            currentIndex
+                ?.plus(1)
+                ?.takeIf { it in segments.indices }
+        } else {
+            null
+        }
         val nextSegment = nextIndex?.let { segments.getOrNull(it) }
         val transitionCrossfadeBytes = resolveCrossfadeBytes(segment, nextSegment)
         val antiClickFadeBytes = resolveAntiClickFadeBytes(segment, nextSegment)

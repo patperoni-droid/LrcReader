@@ -322,7 +322,7 @@ fun ArrangementSamplerTestScreen(
     }
 }
 
-private fun buildSampleSegmentsFromWav(
+fun buildSampleSegmentsFromWav(
     wavFile: File,
     structureSegments: List<ArrangementSegmentData>
 ): List<SampleSegment> {

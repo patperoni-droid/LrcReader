@@ -114,6 +114,7 @@ import com.patrick.lrcreader.core.TrackTimelineTempoPrefs
 import com.patrick.lrcreader.core.audio.ArrangementPreviewPlayer
 import com.patrick.lrcreader.core.audio.ArrangementSourceWavCache
 import com.patrick.lrcreader.core.audio.ArrangementWavRenderer
+import com.patrick.lrcreader.core.audio.SamplerEngine
 import com.patrick.lrcreader.core.waveform.WaveformExtractor
 import com.patrick.lrcreader.core.waveform.WaveformPeaksCache
 import com.patrick.lrcreader.core.light.LightSceneState
@@ -156,6 +157,7 @@ private const val ARRANGEMENT_WAVEFORM_VISUAL_PREROLL_MS = 2_000L
 private const val ARR_STRUCTURE_QUEUE_TAG = "ARR_STRUCTURE_QUEUE"
 private const val ARR_STRUCTURE_WAV_TAG = "ARR_STRUCTURE_WAV"
 private const val ARR_STRUCTURE_FLOW_TAG = "ARR_STRUCTURE_FLOW"
+private const val ARR_STRUCTURE_SAMPLER_TAG = "ARR_STRUCTURE_SAMPLER"
 private const val ARR_SEGMENT_PERSIST_TAG = "ARR_SEGMENT_PERSIST"
 private const val ARR_SEGMENT_GESTURE_TAG = "ARR_SEGMENT_GESTURE"
 private const val ARR_UNDO_HANDLE_TAG = "ARR_UNDO_HANDLE"
@@ -1815,6 +1817,7 @@ private fun TimelineMeasuresPlaceholder(
     val structurePreviewPlayer = remember(context.applicationContext) {
         ExoPlayer.Builder(context.applicationContext).build().apply { playWhenReady = false }
     }
+    val structureSamplerEngine = remember { SamplerEngine() }
     val arrangementPreviewPlayer = remember(context.applicationContext) {
         ArrangementPreviewPlayer(context.applicationContext)
     }
@@ -1826,6 +1829,9 @@ private fun TimelineMeasuresPlaceholder(
     var currentSongTrackGainDb by remember(currentSongId) { mutableIntStateOf(0) }
     var currentStructureSourcePath by remember(currentSongId) { mutableStateOf<String?>(null) }
     var structureUsingWavSource by remember(currentSongId) { mutableStateOf(false) }
+    var structureUsingSampler by remember(currentSongId) { mutableStateOf(false) }
+    var structureSamplerReady by remember(currentSongId) { mutableStateOf(false) }
+    var structureSamplerSegmentStartRealtimeMs by remember(currentSongId) { mutableLongStateOf(0L) }
     var isStructureAudioPreparing by remember(currentSongId) { mutableStateOf(false) }
     var previewRenderedFile by remember(currentSongId) { mutableStateOf<File?>(null) }
     var previewRenderedSignature by remember(currentSongId) { mutableStateOf<String?>(null) }
@@ -1895,6 +1901,8 @@ private fun TimelineMeasuresPlaceholder(
         }
         runCatching { structurePreviewPlayer.pause() }
         runCatching { structurePreviewPlayer.stop() }
+        runCatching { structureSamplerEngine.stop() }
+        Log.d(ARR_STRUCTURE_SAMPLER_TAG, "STOP reason=$reason")
         Log.d(
             ARR_STRUCTURE_FLOW_TAG,
             "CLEAR_MEDIA_ITEMS_CALL reason=$reason mediaItemCountBefore=$mediaItemCountBefore"
@@ -1906,6 +1914,9 @@ private fun TimelineMeasuresPlaceholder(
         queuedStructureSegmentIndex = null
         currentStructureSourcePath = null
         structureUsingWavSource = false
+        structureUsingSampler = false
+        structureSamplerReady = false
+        structureSamplerSegmentStartRealtimeMs = 0L
         isStructureAudioPreparing = false
         structurePlaybackAbsolutePositionMs = currentPositionMs.coerceAtLeast(0L)
         wavPreviewActive = false
@@ -2006,6 +2017,7 @@ private fun TimelineMeasuresPlaceholder(
             segment = requestedSegment
         ) ?: return
         structurePlaybackActive = true
+        structureUsingSampler = false
         structurePlaybackIndex = startIndex
         currentStructureSourcePath = audioPath
         if (queuedStructureSegmentIndex != null) {
@@ -2086,11 +2098,70 @@ private fun TimelineMeasuresPlaceholder(
         )
     }
 
+    fun playStructureSegmentWithSampler(
+        startIndex: Int,
+        sourcePath: String,
+        segments: List<ArrangementSegmentData>
+    ): Boolean {
+        if (startIndex !in segments.indices || !structureSamplerReady) {
+            return false
+        }
+        val requestedSegment = segments[startIndex]
+        Log.d(
+            ARR_STRUCTURE_SAMPLER_TAG,
+            "USING_SAMPLER true"
+        )
+        Log.d(
+            ARR_STRUCTURE_SAMPLER_TAG,
+            "PLAY_SEGMENT index=$startIndex"
+        )
+        return runCatching {
+            structurePreviewPlayer.pause()
+            structurePreviewPlayer.stop()
+            structurePreviewPlayer.clearMediaItems()
+            structurePlaybackActive = true
+            structureUsingSampler = true
+            structureUsingWavSource = true
+            structurePlaybackIndex = startIndex
+            queuedStructureSegmentIndex = null
+            currentStructureSourcePath = sourcePath
+            structureSamplerSegmentStartRealtimeMs = SystemClock.elapsedRealtime()
+            structurePlaybackAbsolutePositionMs = minOf(
+                requestedSegment.startMs,
+                requestedSegment.endMs
+            ).coerceAtLeast(0L)
+            onStructurePreviewActiveChange(true)
+            structureSamplerEngine.play(startIndex)
+        }.onFailure { error ->
+            Log.w(
+                ARR_STRUCTURE_SAMPLER_TAG,
+                "FALLBACK_EXOPLAYER reason=sampler_play_failed error=${error.message}",
+                error
+            )
+            structureUsingSampler = false
+        }.isSuccess
+    }
+
     fun queueStructureSegmentPreview(
         nextIndex: Int,
         audioPath: String,
         segments: List<ArrangementSegmentData>
     ) {
+        if (structureUsingSampler && structurePlaybackActive) {
+            if (nextIndex !in segments.indices) return
+            runCatching {
+                structureSamplerEngine.queueNext(nextIndex)
+                queuedStructureSegmentIndex = nextIndex
+                Log.d(ARR_STRUCTURE_SAMPLER_TAG, "QUEUE_NEXT index=$nextIndex")
+            }.onFailure { error ->
+                Log.w(
+                    ARR_STRUCTURE_SAMPLER_TAG,
+                    "FALLBACK_EXOPLAYER reason=sampler_queue_failed error=${error.message}",
+                    error
+                )
+            }
+            return
+        }
         if (nextIndex !in segments.indices) return
         val queuedSegment = segments[nextIndex]
         val queuedStartMs = minOf(queuedSegment.startMs, queuedSegment.endMs).coerceAtLeast(0L)
@@ -2538,11 +2609,57 @@ private fun TimelineMeasuresPlaceholder(
         )
         previousObservedSegmentState = newState
     }
-	    val latestArrangementSegments by rememberUpdatedState(arrangementSegments)
+    val latestArrangementSegments by rememberUpdatedState(arrangementSegments)
     val latestStructureSegmentIds by rememberUpdatedState(structureSegmentIds)
     val latestStructurePlaybackSegments by rememberUpdatedState(structurePlaybackSegments)
     val latestCurrentSongAudioPath by rememberUpdatedState(currentSongAudioPath)
     val latestCurrentStructureSourcePath by rememberUpdatedState(currentStructureSourcePath)
+    DisposableEffect(structureSamplerEngine) {
+        structureSamplerEngine.autoAdvanceSequentially = true
+        structureSamplerEngine.setCrossfadeDurationMs(0)
+        structureSamplerEngine.setAntiClickFadeDurationMs(2)
+        structureSamplerEngine.onSegmentStart = { index ->
+            scope.launch(Dispatchers.Main) {
+                val segment = latestStructurePlaybackSegments.getOrNull(index)
+                Log.d(
+                    ARR_STRUCTURE_SAMPLER_TAG,
+                    "PLAY_SEGMENT index=$index name=${segment?.name.orEmpty()}"
+                )
+                if (segment != null && structurePlaybackActive && structureUsingSampler) {
+                    val previousIndex = structurePlaybackIndex
+                    structurePlaybackIndex = index
+                    queuedStructureSegmentIndex = null
+                    structureSamplerSegmentStartRealtimeMs = SystemClock.elapsedRealtime()
+                    structurePlaybackAbsolutePositionMs = minOf(segment.startMs, segment.endMs).coerceAtLeast(0L)
+                    if (previousIndex >= 0 && previousIndex != index) {
+                        Log.d(
+                            ARR_STRUCTURE_SAMPLER_TAG,
+                            "TRANSITION indexFrom=$previousIndex indexTo=$index"
+                        )
+                    }
+                }
+            }
+        }
+        structureSamplerEngine.onSegmentTransition = { fromIndex, toIndex ->
+            Log.d(
+                ARR_STRUCTURE_SAMPLER_TAG,
+                "TRANSITION indexFrom=$fromIndex indexTo=$toIndex"
+            )
+        }
+        structureSamplerEngine.onPlaybackEnded = {
+            scope.launch(Dispatchers.Main) {
+                Log.d(ARR_STRUCTURE_SAMPLER_TAG, "STOP reason=sampler_ended")
+                stopStructurePreviewPlayback(reason = "sampler_ended")
+            }
+        }
+        onDispose {
+            structureSamplerEngine.onSegmentStart = null
+            structureSamplerEngine.onSegmentTransition = null
+            structureSamplerEngine.onPlaybackEnded = null
+            structureSamplerEngine.autoAdvanceSequentially = false
+            structureSamplerEngine.release()
+        }
+    }
     val isLoopHighlighted =
         (loopReady || hasSegmentLoop || hasSelectedSegmentLoop) &&
             (loopEnabled || arrangementLoopPreviewActive || isPreparedClipLoopTestActive)
@@ -2580,6 +2697,26 @@ private fun TimelineMeasuresPlaceholder(
         val segmentEndMs = maxOf(targetSegment.startMs, targetSegment.endMs).coerceAtLeast(segmentStartMs + 1L)
         val relativePositionMs = (targetPositionMs - segmentStartMs)
             .coerceIn(0L, (segmentEndMs - segmentStartMs - 1L).coerceAtLeast(0L))
+        if (structureUsingSampler) {
+            val fallbackSourcePath = currentStructureSourcePath
+                ?.takeIf { it.isNotBlank() }
+                ?: currentSongAudioPath
+                ?: return
+            Log.d(
+                ARR_STRUCTURE_SAMPLER_TAG,
+                "FALLBACK_EXOPLAYER reason=seek_not_supported targetIndex=$targetSegmentIndex"
+            )
+            structureUsingSampler = false
+            runCatching { structureSamplerEngine.stop() }
+            playStructureSegmentPreview(
+                startIndex = targetSegmentIndex,
+                audioPath = fallbackSourcePath,
+                segments = structurePlaybackSegments
+            )
+            runCatching { structurePreviewPlayer.seekTo(0, relativePositionMs) }
+            structurePlaybackAbsolutePositionMs = segmentStartMs + relativePositionMs
+            return
+        }
         structurePlaybackIndex = targetSegmentIndex
         structurePlaybackAbsolutePositionMs = segmentStartMs + relativePositionMs
         runCatching { structurePreviewPlayer.seekTo(targetSegmentIndex, relativePositionMs) }
@@ -2991,7 +3128,7 @@ private fun TimelineMeasuresPlaceholder(
     LaunchedEffect(structurePreviewStopRequest) {
         if (structurePreviewStopRequest > 0) {
             val activeStructurePlayback = structurePlaybackActive &&
-                runCatching { structurePreviewPlayer.isPlaying }.getOrDefault(false)
+                (structureUsingSampler || runCatching { structurePreviewPlayer.isPlaying }.getOrDefault(false))
             val activeWavPreviewPlayback = wavPreviewActive &&
                 runCatching { structurePreviewPlayer.isPlaying }.getOrDefault(false)
             if (activeStructurePlayback) {
@@ -3039,7 +3176,14 @@ private fun TimelineMeasuresPlaceholder(
             }.getOrDefault(0).coerceAtLeast(0)
             val isSecondaryPlaying = runCatching { structurePreviewPlayer.isPlaying }.getOrDefault(false)
             val itemDurationMs = runCatching { structurePreviewPlayer.duration }.getOrDefault(0L)
-            val itemPositionMs = runCatching { structurePreviewPlayer.currentPosition }.getOrDefault(0L)
+            val samplerPositionMs = if (structurePlaybackActive && structureUsingSampler) {
+                (SystemClock.elapsedRealtime() - structureSamplerSegmentStartRealtimeMs)
+                    .coerceAtLeast(0L)
+            } else {
+                null
+            }
+            val itemPositionMs = samplerPositionMs
+                ?: runCatching { structurePreviewPlayer.currentPosition }.getOrDefault(0L)
             if (structurePlaybackActive) {
                 structurePlaybackSegments.getOrNull(structurePlaybackIndex)?.let { segment ->
                     val segmentStartMs = minOf(segment.startMs, segment.endMs).coerceAtLeast(0L)
@@ -3060,6 +3204,7 @@ private fun TimelineMeasuresPlaceholder(
                 lastTimingDiagLogMs = nowMs
                 val source = when {
                     wavPreviewActive -> "WAV_PREVIEW"
+                    structureUsingSampler -> "SAMPLER"
                     structureUsingWavSource -> "WAV_CACHE"
                     else -> arrangementTimingSourceLabel(currentStructureSourcePath ?: currentSongAudioPath)
                 }
@@ -3971,11 +4116,13 @@ private fun TimelineMeasuresPlaceholder(
                         source = "STRUCTURE_COLUMN"
                     )
                     val sourceAudioPath = currentSongAudioPath ?: return@ArrangementListCard
+                    val isStructureSegmentPlaying = structurePlaybackActive &&
+                        (structureUsingSampler || runCatching { structurePreviewPlayer.isPlaying }.getOrDefault(false))
                     Log.d(
                         ARR_STRUCTURE_QUEUE_TAG,
-                        "CLICK clickedIndex=$startIndex currentPlayingIndex=$structurePlaybackIndex isStructureSegmentPlaying=${structurePlaybackActive && structurePreviewPlayer.isPlaying} queuedBefore=$queuedStructureSegmentIndex action=${if (structurePlaybackActive && structurePreviewPlayer.isPlaying) "QUEUE_NEXT" else "START_NOW"}"
+                        "CLICK clickedIndex=$startIndex currentPlayingIndex=$structurePlaybackIndex isStructureSegmentPlaying=$isStructureSegmentPlaying queuedBefore=$queuedStructureSegmentIndex action=${if (isStructureSegmentPlaying) "QUEUE_NEXT" else "START_NOW"}"
                     )
-                    if (structurePlaybackActive && structurePreviewPlayer.isPlaying) {
+                    if (isStructureSegmentPlaying) {
                         val activeSourcePath = currentStructureSourcePath?.takeIf { it.isNotBlank() }
                             ?: sourceAudioPath
                         queueStructureSegmentPreview(startIndex, activeSourcePath, structurePlaybackSegments)
@@ -3995,6 +4142,10 @@ private fun TimelineMeasuresPlaceholder(
                             val sourceUri = Uri.fromFile(File(sourceAudioPath))
                             val preparedSourceResult = withContext(Dispatchers.IO) {
                                 runCatching {
+                                    Log.d(
+                                        ARR_STRUCTURE_SAMPLER_TAG,
+                                        "PRELOAD_START songId=${currentSongId?.trim().orEmpty()} segmentCount=${structurePlaybackSegments.size}"
+                                    )
                                     ArrangementSourceWavCache.ensureSourceWav(
                                         context = context.applicationContext,
                                         songId = currentSongId?.trim().orEmpty(),
@@ -4006,11 +4157,57 @@ private fun TimelineMeasuresPlaceholder(
                             preparedSourceResult
                                 .onSuccess { wavFile ->
                                     structureUsingWavSource = true
-                                    playStructureSegmentPreview(
+                                    val sampleResult = withContext(Dispatchers.IO) {
+                                        runCatching {
+                                            buildSampleSegmentsFromWav(
+                                                wavFile = wavFile,
+                                                structureSegments = structurePlaybackSegments
+                                            )
+                                        }
+                                    }
+                                    sampleResult
+                                        .onSuccess { sampleSegments ->
+                                            runCatching {
+                                                structureSamplerEngine.loadSegments(sampleSegments)
+                                                structureSamplerReady = true
+                                                Log.d(
+                                                    ARR_STRUCTURE_SAMPLER_TAG,
+                                                    "PRELOAD_DONE segmentCount=${sampleSegments.size} source=${wavFile.absolutePath}"
+                                                )
+                                            }.onFailure { error ->
+                                                structureSamplerReady = false
+                                                Log.w(
+                                                    ARR_STRUCTURE_SAMPLER_TAG,
+                                                    "PRELOAD_FAIL reason=sampler_load_failed error=${error.message}",
+                                                    error
+                                                )
+                                            }
+                                        }
+                                        .onFailure { error ->
+                                            structureSamplerReady = false
+                                            Log.w(
+                                                ARR_STRUCTURE_SAMPLER_TAG,
+                                                "PRELOAD_FAIL reason=sample_build_failed error=${error.message}",
+                                                error
+                                            )
+                                        }
+                                    val samplerStarted = playStructureSegmentWithSampler(
                                         startIndex = startIndex,
-                                        audioPath = wavFile.absolutePath,
+                                        sourcePath = wavFile.absolutePath,
                                         segments = structurePlaybackSegments
                                     )
+                                    if (!samplerStarted) {
+                                        Log.d(
+                                            ARR_STRUCTURE_SAMPLER_TAG,
+                                            "FALLBACK_EXOPLAYER reason=sampler_not_ready"
+                                        )
+                                        Log.d(ARR_STRUCTURE_SAMPLER_TAG, "USING_SAMPLER false")
+                                        playStructureSegmentPreview(
+                                            startIndex = startIndex,
+                                            audioPath = wavFile.absolutePath,
+                                            segments = structurePlaybackSegments
+                                        )
+                                    }
                                 }
                                 .onFailure { error ->
                                     Log.w(
@@ -4018,10 +4215,21 @@ private fun TimelineMeasuresPlaceholder(
                                         "CACHE_BUILD_FAIL error=${error.message}",
                                         error
                                     )
+                                    Log.w(
+                                        ARR_STRUCTURE_SAMPLER_TAG,
+                                        "PRELOAD_FAIL reason=wav_cache_failed error=${error.message}",
+                                        error
+                                    )
                                     Log.d(
                                         ARR_STRUCTURE_WAV_TAG,
                                         "FALLBACK_MP3 reason=cache_build_fail"
                                     )
+                                    Log.d(
+                                        ARR_STRUCTURE_SAMPLER_TAG,
+                                        "FALLBACK_EXOPLAYER reason=wav_cache_failed"
+                                    )
+                                    Log.d(ARR_STRUCTURE_SAMPLER_TAG, "USING_SAMPLER false")
+                                    structureSamplerReady = false
                                     structureUsingWavSource = false
                                     playStructureSegmentPreview(
                                         startIndex = startIndex,
