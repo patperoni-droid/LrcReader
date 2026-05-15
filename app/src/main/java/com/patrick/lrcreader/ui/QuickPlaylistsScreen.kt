@@ -2047,6 +2047,9 @@ fun QuickPlaylistsScreen(
                                         onDismissRequest = { menuOpen = false },
                                         modifier = Modifier.background(Color(0xFF1E1E1E))
                                     ) {
+                                        val groupMenuBackground = Color(0xFF0A6C97).copy(alpha = 0.46f)
+                                        val groupMenuBorder = Color(0xFF75C7E8).copy(alpha = 0.55f)
+                                        val groupMenuIcon = Color(0xFFB3E5FC)
                                         DropdownMenuItem(
                                             text = {
                                                 Row(
@@ -2171,17 +2174,33 @@ fun QuickPlaylistsScreen(
                                                 menuOpen = false
                                             }
                                         )
-                                        HorizontalDivider(
-                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                            color = Color(0xFF2F2F2F)
-                                        )
                                         DropdownMenuItem(
                                             text = {
-                                                Text(
-                                                    stringResource(R.string.quickplaylists_menu_insert_group_above),
-                                                    color = Color.White
-                                                )
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .clip(RoundedCornerShape(12.dp))
+                                                        .background(groupMenuBackground)
+                                                        .border(1.dp, groupMenuBorder, RoundedCornerShape(12.dp))
+                                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Filled.Folder,
+                                                        contentDescription = null,
+                                                        tint = groupMenuIcon,
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                    Text(
+                                                        stringResource(R.string.quickplaylists_menu_insert_group_above),
+                                                        color = Color.White,
+                                                        fontSize = 15.sp,
+                                                        fontWeight = FontWeight.Medium
+                                                    )
+                                                }
                                             },
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
                                             onClick = {
                                                 val pl = internalSelected
                                                 if (pl != null) {
@@ -2202,7 +2221,32 @@ fun QuickPlaylistsScreen(
                                             }
                                         )
                                         DropdownMenuItem(
-                                            text = { Text(stringResource(R.string.quickplaylists_menu_assign_to_group), color = Color.White) },
+                                            text = {
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .clip(RoundedCornerShape(12.dp))
+                                                        .background(groupMenuBackground)
+                                                        .border(1.dp, groupMenuBorder, RoundedCornerShape(12.dp))
+                                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Filled.Folder,
+                                                        contentDescription = null,
+                                                        tint = groupMenuIcon,
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                    Text(
+                                                        stringResource(R.string.quickplaylists_menu_assign_to_group),
+                                                        color = Color.White,
+                                                        fontSize = 15.sp,
+                                                        fontWeight = FontWeight.Medium
+                                                    )
+                                                }
+                                            },
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
                                             onClick = {
                                                 val selectedBatch = songs.filter { key ->
                                                     key in selectedTrackKeys && isPlaylistGroupableItem(key)
@@ -2220,26 +2264,34 @@ fun QuickPlaylistsScreen(
                                             },
                                             enabled = songs.any { isGroupHeader(it) }
                                         )
-                                        DropdownMenuItem(
-                                            text = {
-                                                Text(
-                                                    stringResource(R.string.quickplaylists_menu_move_to),
-                                                    color = Color.White
-                                                )
-                                            },
-                                            onClick = {
-                                                openMoveDialogForTarget(uriString)
-                                                menuOpen = false
-                                            }
-                                        )
                                         if (isInsideGroup) {
                                             DropdownMenuItem(
                                                 text = {
-                                                    Text(
-                                                        stringResource(R.string.quickplaylists_menu_remove_from_group),
-                                                        color = Color.White
-                                                    )
+                                                    Row(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .clip(RoundedCornerShape(12.dp))
+                                                            .background(groupMenuBackground)
+                                                            .border(1.dp, groupMenuBorder, RoundedCornerShape(12.dp))
+                                                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Filled.Folder,
+                                                            contentDescription = null,
+                                                            tint = groupMenuIcon,
+                                                            modifier = Modifier.size(18.dp)
+                                                        )
+                                                        Text(
+                                                            stringResource(R.string.quickplaylists_menu_remove_from_group),
+                                                            color = Color.White,
+                                                            fontSize = 15.sp,
+                                                            fontWeight = FontWeight.Medium
+                                                        )
+                                                    }
                                                 },
+                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
                                                 onClick = {
                                                     val selectedBatch = songs.filter { key ->
                                                         key in selectedTrackKeys && isPlaylistGroupableItem(key)
@@ -2257,6 +2309,22 @@ fun QuickPlaylistsScreen(
                                                 }
                                             )
                                         }
+                                        HorizontalDivider(
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                            color = Color(0xFF2F2F2F)
+                                        )
+                                        DropdownMenuItem(
+                                            text = {
+                                                Text(
+                                                    stringResource(R.string.quickplaylists_menu_move_to),
+                                                    color = Color.White
+                                                )
+                                            },
+                                            onClick = {
+                                                openMoveDialogForTarget(uriString)
+                                                menuOpen = false
+                                            }
+                                        )
                                         if (nextTrackUri != null) {
                                             DropdownMenuItem(
                                                 text = { Text(stringResource(R.string.quickplaylists_menu_cancel_next), color = Color.White) },
