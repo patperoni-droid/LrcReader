@@ -597,7 +597,7 @@ fun QuickPlaylistsScreen(
 
     LaunchedEffect(songs.size) {
         selectedTrackKeys = selectedTrackKeys.filterTo(linkedSetOf()) { key ->
-            songs.contains(key) && isPlayableAudioItem(key)
+            songs.contains(key) && isPlaylistGroupableItem(key)
         }
         if (previousSongsSize == 0 && songs.size > 0) {
             val now = SystemClock.elapsedRealtime()
@@ -836,7 +836,7 @@ fun QuickPlaylistsScreen(
                     val hoverHeader = hoverHeaderKey
                     if (
                         dragged != null &&
-                        isPlayableAudioItem(dragged) &&
+                        isPlaylistGroupableItem(dragged) &&
                         hoverHeader != null &&
                         isGroupHeader(hoverHeader)
                     ) {
@@ -890,7 +890,7 @@ fun QuickPlaylistsScreen(
                 )
 
                 dragOffsetPx += dragAmount.y
-                val lockReorderForDrop = isPlayableAudioItem(current) && hoverHeaderKey != null
+                val lockReorderForDrop = isPlaylistGroupableItem(current) && hoverHeaderKey != null
                 if (lockReorderForDrop) {
                     dragOffsetPx = 0f
                     return@detectDragGesturesAfterLongPress
@@ -1789,7 +1789,7 @@ fun QuickPlaylistsScreen(
                             val showCurrentMarker = isCurrentPlaying && !isSelected
                             val containingGroupHeaderIndex = findContainingGroupHeaderIndex(songs, itemIndex)
                             val isInsideGroup =
-                                isPlayableAudioItem(uriString) && isItemInsideGroup(songs, itemIndex)
+                                isPlaylistGroupableItem(uriString) && isItemInsideGroup(songs, itemIndex)
                             val activeGroupHeaderKey = containingGroupHeaderIndex?.let { idx -> songs.getOrNull(idx) }
                             val isInsideActivePlayingGroup =
                                 isInsideGroup && activeGroupHeaderKey == activePlayingGroupHeaderKey
@@ -1955,7 +1955,7 @@ fun QuickPlaylistsScreen(
                                                 // ce qui donne l'impression que le titre "descend direct".
                                             },
                                             onLongClick = {
-                                                if (!isPlayableAudioItem(uriString)) return@combinedClickable
+                                                if (!isPlaylistGroupableItem(uriString)) return@combinedClickable
                                                 keyboardSelectedItem = uriString
                                                 selectedTrackKeys = if (selectedTrackKeys.contains(uriString)) {
                                                     selectedTrackKeys - uriString
@@ -2205,7 +2205,7 @@ fun QuickPlaylistsScreen(
                                             text = { Text(stringResource(R.string.quickplaylists_menu_assign_to_group), color = Color.White) },
                                             onClick = {
                                                 val selectedBatch = songs.filter { key ->
-                                                    key in selectedTrackKeys && isPlayableAudioItem(key)
+                                                    key in selectedTrackKeys && isPlaylistGroupableItem(key)
                                                 }
                                                 val targets = if (
                                                     uriString in selectedTrackKeys &&
@@ -2242,7 +2242,7 @@ fun QuickPlaylistsScreen(
                                                 },
                                                 onClick = {
                                                     val selectedBatch = songs.filter { key ->
-                                                        key in selectedTrackKeys && isPlayableAudioItem(key)
+                                                        key in selectedTrackKeys && isPlaylistGroupableItem(key)
                                                     }
                                                     val targets = if (
                                                         uriString in selectedTrackKeys &&
@@ -3094,7 +3094,7 @@ internal fun assignTrackToGroupByHeaderKey(
 ): Boolean {
     val fromIndex = items.indexOf(trackUri)
     if (fromIndex == -1) return false
-    if (!isPlayableAudioItem(items[fromIndex])) return false
+    if (!isPlaylistGroupableItem(items[fromIndex])) return false
 
     val headerIndex = items.indexOf(headerKey)
     if (headerIndex == -1) return false
@@ -3121,7 +3121,7 @@ internal fun assignTracksToGroupByHeaderKey(
     if (trackUris.isEmpty()) return 0
     val targetSet = trackUris.toSet()
     var movedCount = 0
-    val ordered = items.filter { it in targetSet && isPlayableAudioItem(it) }
+    val ordered = items.filter { it in targetSet && isPlaylistGroupableItem(it) }
     ordered.forEach { trackUri ->
         if (assignTrackToGroupByHeaderKey(items, trackUri, headerKey)) {
             movedCount++
@@ -3134,7 +3134,7 @@ internal fun moveItemOutOfGroup(items: MutableList<String>, trackUri: String): B
     val fromIndex = items.indexOf(trackUri)
     if (fromIndex == -1) return false
     val dragged = items[fromIndex]
-    if (!isPlayableAudioItem(dragged)) return false
+    if (!isPlaylistGroupableItem(dragged)) return false
 
     var headerIndex = -1
     for (cursor in (fromIndex - 1) downTo 0) {
@@ -3179,7 +3179,7 @@ internal fun moveTracksOutOfGroup(
     if (trackUris.isEmpty()) return emptySet()
     val targetSet = trackUris.toSet()
     val ordered = items.withIndex()
-        .filter { (idx, key) -> key in targetSet && isPlayableAudioItem(key) && idx in items.indices }
+        .filter { (idx, key) -> key in targetSet && isPlaylistGroupableItem(key) && idx in items.indices }
         .sortedByDescending { it.index }
         .map { it.value }
 
@@ -3461,8 +3461,11 @@ private fun buildQuickPlaylistSearchTitle(
 }
 
 private fun isKeyboardSelectablePlaylistItem(item: String): Boolean {
-    if (isGroupHeader(item) || isGroupEnd(item)) return false
-    return isPlayableAudioItem(item) || item.startsWith("prompter://")
+    return isPlaylistGroupableItem(item)
+}
+
+private fun isPlaylistGroupableItem(item: String): Boolean {
+    return item.isNotBlank() && !isGroupHeader(item) && !isGroupEnd(item)
 }
 
 private fun buildPlaylistMoveOptions(
@@ -3566,7 +3569,7 @@ internal fun findHeaderDropTargetKey(
     headerPaddingPx: Float = 0f
 ): String? {
     val dragged = draggedItemKey ?: return null
-    if (!isPlayableAudioItem(dragged)) return null
+    if (!isPlaylistGroupableItem(dragged)) return null
 
     val hoverHit = viewportItems.firstOrNull { item ->
         dragY >= (item.start - headerPaddingPx) &&
