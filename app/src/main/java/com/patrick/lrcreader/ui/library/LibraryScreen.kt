@@ -4627,6 +4627,10 @@ fun LibraryScreen(
                                         if (deleted) {
                                             selectedSongs = selectedSongs - deleteUri
                                             LibraryFolderCache.clear()
+                                            songItems = buildLibrarySongItemsAsync()
+                                            if (isSmpFolderUri(currentFolderUri)) {
+                                                showSmpEntriesImmediately(refreshSmpEntriesAsync())
+                                            }
                                         } else {
                                             Toast.makeText(context, sDeleteSmpFailed, Toast.LENGTH_SHORT).show()
                                         }

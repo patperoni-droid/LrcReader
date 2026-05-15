@@ -235,8 +235,8 @@
     <string name="library_delete_folder_title">Supprimer le dossier</string>
     <string name="library_delete_folder_confirm_text">Supprimer définitivement ce dossier et son contenu ?</string>
     <string name="library_delete_action">Supprimer</string>
-    <string name="library_delete_smp_title">Supprimer ce morceau SMP ?</string>
-    <string name="library_delete_smp_confirm_text">Supprimer uniquement le morceau SMP interne. Le fichier legacy source ne sera pas supprimé.</string>
+    <string name="library_delete_smp_title">Supprimer ce morceau ?</string>
+    <string name="library_delete_smp_confirm_text">Supprimer ce morceau de l’application ?</string>
     <string name="library_delete_smp_failed">Suppression du morceau SMP impossible.</string>
     <string name="library_share_smp_failed">Partage du morceau SMP impossible.</string>
     <string name="library_copy_failed">Copie impossible.</string>
