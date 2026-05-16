@@ -246,6 +246,9 @@ During live singing, performers naturally read the next line while singing the c
 
 Rules:
 - next-line emphasis must remain softer than active line
+- when `activeLineCount > 1`, all active immobile lines must keep identical full opacity
+- multi-line active display is intended to reduce visual jump sensations during live reading
+- prompter visual stability has priority over decorative emphasis differences
 - must not create visual overload
 - must not affect timing logic
 - must not affect scrolling

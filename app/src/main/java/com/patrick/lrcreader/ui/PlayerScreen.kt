@@ -2947,6 +2947,7 @@ fun PlayerScreen(
                                     isConcertMode = isConcertMode,
                                     readabilityModeEnabled = readabilityModeEnabled,
                                     currentLrcIndex = safeLrcIndex,
+                                    activeLyricsLineCount = activeLyricsLineCount,
                                     onLyricsBoxHeightChange = { lyricsBoxHeightPx = it },
                                     highlightColor = highlightColor,
                                     onLineClick = { index, timeMs ->
