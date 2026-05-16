@@ -2537,7 +2537,9 @@ class MainActivity : AppCompatActivity() {
                         "RESOLVE_SMP ok songId=${song.id} resolvedUri=$resolvedUri playlist=$playlistName"
                     )
                     runCatching {
-                        TitleAliasesStore.setTitleForTrack(ctx, resolvedUri, song.title)
+                        if (TitleAliasesStore.getTitleForTrack(ctx, resolvedUri).isNullOrBlank()) {
+                            TitleAliasesStore.setTitleForTrack(ctx, resolvedUri, song.title)
+                        }
                     }.onFailure { error ->
                         Log.w(
                             "SMP",
