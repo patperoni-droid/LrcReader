@@ -126,6 +126,8 @@ private const val LYRICS_PLAYER_SYNC_DIAG_TAG = "LYRICS_PLAYER_SYNC_DIAG"
 private const val LYRICS_PERSIST_DIAG_TAG = "LYRICS_PERSIST_DIAG"
 private const val LYRICS_PIPELINE_TRACE_TAG = "LYRICS_PIPELINE_TRACE"
 private const val LYRICS_ACTIVE_LINES_DIAG_TAG = "LYRICS_ACTIVE_LINES_DIAG"
+private const val LYRICS_AUTOSAVE_CRASH_DIAG_TAG = "LYRICS_AUTOSAVE_CRASH_DIAG"
+private const val LYRICS_STUCK_DIAG_TAG = "LYRICS_STUCK_DIAG"
 
 @Composable
 fun PlayerScreen(
@@ -651,6 +653,8 @@ fun PlayerScreen(
 
     var lyricsBoxHeightPx by remember { mutableStateOf(0) }
     var currentLrcIndex by remember(currentTrackUri) { mutableStateOf(0) }
+    var lastStuckDiagActiveIndex by remember(currentTrackUri) { mutableStateOf<Int?>(null) }
+    var lastStuckDiagLogElapsedMs by remember(currentTrackUri) { mutableStateOf(0L) }
 
     var lastMidiIndex by remember(currentTrackUri) { mutableStateOf(-1) }
     var userScrolling by remember { mutableStateOf(false) }
@@ -1085,8 +1089,58 @@ fun PlayerScreen(
         )
     }
 
+    fun normalizeLyricsForRuntime(
+        source: String,
+        lines: List<LrcLine>
+    ): List<LrcLine> {
+        if (lines.isEmpty()) return emptyList()
+        val syncLines = lines.filterIndexed { index, line ->
+            val valid = line.timeMs > 0L
+            if (!valid) {
+                Log.w(
+                    LYRICS_STUCK_DIAG_TAG,
+                    "RUNTIME_IGNORE_UNSYNCED source=$source songId=${currentSongId ?: currentTrackUri.orEmpty()} index=$index timestampMs=${line.timeMs} text=${line.text.take(160)}"
+                )
+            }
+            valid
+        }
+        if (syncLines.isEmpty()) {
+            Log.w(
+                LYRICS_STUCK_DIAG_TAG,
+                "RUNTIME_NO_SYNC_LINES source=$source songId=${currentSongId ?: currentTrackUri.orEmpty()} originalLineCount=${lines.size}"
+            )
+            return emptyList()
+        }
+        val sorted = syncLines.sortedWith(compareBy<LrcLine> { it.timeMs }.thenBy { it.text })
+        if (sorted != syncLines) {
+            Log.w(
+                LYRICS_STUCK_DIAG_TAG,
+                "RUNTIME_SORT_APPLIED source=$source songId=${currentSongId ?: currentTrackUri.orEmpty()} originalLineCount=${lines.size} syncLineCount=${syncLines.size}"
+            )
+        }
+        val duplicateCount = sorted.zipWithNext().count { (left, right) ->
+            left.timeMs == right.timeMs
+        }
+        if (duplicateCount > 0) {
+            Log.w(
+                LYRICS_STUCK_DIAG_TAG,
+                "RUNTIME_DUPLICATE_TIMESTAMPS source=$source songId=${currentSongId ?: currentTrackUri.orEmpty()} duplicateAdjacentCount=$duplicateCount"
+            )
+        }
+        if (syncLines.size != lines.size) {
+            Log.w(
+                LYRICS_STUCK_DIAG_TAG,
+                "RUNTIME_FILTER_APPLIED source=$source songId=${currentSongId ?: currentTrackUri.orEmpty()} originalLineCount=${lines.size} runtimeLineCount=${sorted.size}"
+            )
+        }
+        return sorted
+    }
+
     fun applyCachedLyrics(trackUriString: String, entry: LyricsCacheEntry) {
-        val coloredLines = applyStoredLyricsLineColors(trackUriString, entry.parsedLines)
+        val coloredLines = normalizeLyricsForRuntime(
+            source = "CACHE",
+            lines = applyStoredLyricsLineColors(trackUriString, entry.parsedLines)
+        )
         Log.d(
             LYRICS_PIPELINE_TRACE_TAG,
             "CACHE_HIT songId=${currentSongId ?: trackUriString} source=${entry.source} lineCount=${coloredLines.size} colorCount=${coloredLines.count { it.colorArgb != null }}"
@@ -1211,6 +1265,10 @@ fun PlayerScreen(
         suspend fun tryStoredLyrics(): Boolean {
             val storedLoadStartMs = android.os.SystemClock.elapsedRealtime()
             Log.d(PLAYER_LRC_TAG, "load_lyrics trackUri=$currentTrackUri")
+            Log.d(
+                LYRICS_AUTOSAVE_CRASH_DIAG_TAG,
+                "PLAYER_LYRICS_RELOAD_START"
+            )
             val stored = withContext(Dispatchers.IO) {
                 LrcStorage.loadForTrack(context, currentTrackUri)
             }
@@ -1238,7 +1296,10 @@ fun PlayerScreen(
             Log.d("LrcDebug", "LYRICS_SOURCE_TYPE ${storedOrigin?.sourceType ?: "canonical"}")
             val parseStartMs = android.os.SystemClock.elapsedRealtime()
             val parsed = withContext(Dispatchers.Default) { parseLrc(stored) }
-            val coloredParsed = applyStoredLyricsLineColors(currentTrackUri, parsed)
+            val coloredParsed = normalizeLyricsForRuntime(
+                source = "LRC_STORAGE",
+                lines = applyStoredLyricsLineColors(currentTrackUri, parsed)
+            )
             Log.d(
                 LYRICS_PERSIST_DIAG_TAG,
                 "LOAD_LYRICS songId=${currentSongId ?: currentTrackUri} source=LRC_STORAGE path=${storedOrigin?.debugPath.orEmpty()} lineCount=${coloredParsed.size} colorCount=${coloredParsed.count { it.colorArgb != null }}"
@@ -1254,6 +1315,16 @@ fun PlayerScreen(
             Log.d(
                 LYRICS_PIPELINE_TRACE_TAG,
                 "PLAYER_RENDER_SAMPLE songId=${currentSongId ?: currentTrackUri} firstLine=${coloredParsed.firstOrNull()?.text.orEmpty()} firstColor=${coloredParsed.firstOrNull()?.colorArgb}"
+            )
+            logLyricsStuckLoadSnapshot(
+                songId = currentSongId ?: currentTrackUri,
+                lyricsFilePath = storedOrigin?.debugPath,
+                raw = stored,
+                parsed = coloredParsed
+            )
+            Log.d(
+                LYRICS_AUTOSAVE_CRASH_DIAG_TAG,
+                "PLAYER_LYRICS_RELOAD_OK parsedLineCount=${coloredParsed.size}"
             )
             LyricsPerf.mark(
                 currentTrackUri,
@@ -1316,7 +1387,10 @@ fun PlayerScreen(
             } else {
                 emptyList()
             }
-            val coloredParsed = applyStoredLyricsLineColors(currentTrackUri, parsed)
+            val coloredParsed = normalizeLyricsForRuntime(
+                source = "SIDECAR",
+                lines = applyStoredLyricsLineColors(currentTrackUri, parsed)
+            )
             Log.d(
                 LYRICS_PIPELINE_TRACE_TAG,
                 "PLAYER_LOAD_LYRICS songId=${currentSongId ?: currentTrackUri} source=SIDECAR path=${sidecarLrcResult.debugPath} lineCount=${coloredParsed.size} colorCount=${coloredParsed.count { it.colorArgb != null }}"
@@ -1374,7 +1448,10 @@ fun PlayerScreen(
 
             val parseStartMs = android.os.SystemClock.elapsedRealtime()
             val parsed = withContext(Dispatchers.Default) { parseLrc(syltLrcText) }
-            val coloredParsed = applyStoredLyricsLineColors(currentTrackUri, parsed)
+            val coloredParsed = normalizeLyricsForRuntime(
+                source = "SYLT",
+                lines = applyStoredLyricsLineColors(currentTrackUri, parsed)
+            )
             Log.d(
                 LYRICS_PIPELINE_TRACE_TAG,
                 "PLAYER_LOAD_LYRICS songId=${currentSongId ?: currentTrackUri} source=SYLT path=embedded lineCount=${coloredParsed.size} colorCount=${coloredParsed.count { it.colorArgb != null }}"
@@ -1426,7 +1503,10 @@ fun PlayerScreen(
 
             val parseStartMs = android.os.SystemClock.elapsedRealtime()
             val parsed = withContext(Dispatchers.Default) { parseLrc(usltText) }
-            val coloredParsed = applyStoredLyricsLineColors(currentTrackUri, parsed)
+            val coloredParsed = normalizeLyricsForRuntime(
+                source = "USLT",
+                lines = applyStoredLyricsLineColors(currentTrackUri, parsed)
+            )
             Log.d(
                 LYRICS_PIPELINE_TRACE_TAG,
                 "PLAYER_LOAD_LYRICS songId=${currentSongId ?: currentTrackUri} source=USLT path=embedded lineCount=${coloredParsed.size} colorCount=${coloredParsed.count { it.colorArgb != null }}"
@@ -1452,7 +1532,7 @@ fun PlayerScreen(
             Log.d("LrcDebug", "LYRICS_SOURCE_TYPE embedded")
             resolvedSource = "USLT"
             cacheResolvedLyrics(
-                parsed = parsed,
+                parsed = coloredParsed,
                 resolvedLyricsFileName = null,
                 source = "USLT",
                 sourceType = "embedded",
@@ -1679,7 +1759,46 @@ fun PlayerScreen(
                 val posMs = (p.toLong() - totalOffsetMs).coerceAtLeast(0L)
                 val newIndex = findActiveLrcIndex(activeDisplayLines, posMs)
                 if (newIndex >= 0 && newIndex != currentLrcIndex) {
+                    Log.d(
+                        LYRICS_STUCK_DIAG_TAG,
+                        "ACTIVE_INDEX_CHANGE ${currentLrcIndex} -> $newIndex oldText=${activeDisplayLines.getOrNull(currentLrcIndex)?.text.orEmpty()} newText=${activeDisplayLines.getOrNull(newIndex)?.text.orEmpty()} playerPositionMs=$posMs"
+                    )
                     currentLrcIndex = newIndex
+                }
+                if (selectedViewMode == LyricsViewMode.LYRICS && newIndex >= 0) {
+                    val nowElapsedMs = android.os.SystemClock.elapsedRealtime()
+                    if (nowElapsedMs - lastStuckDiagLogElapsedMs >= 500L) {
+                        lastStuckDiagLogElapsedMs = nowElapsedMs
+                        val activeLine = activeDisplayLines.getOrNull(newIndex)
+                        val nextIndex = (newIndex + 1).takeIf { it in activeDisplayLines.indices }
+                        val nextLine = nextIndex?.let { activeDisplayLines.getOrNull(it) }
+                        val lastParsedIndex = activeDisplayLines.lastIndex
+                        val isAtLastLine = newIndex == lastParsedIndex
+                        val reason = when {
+                            lastStuckDiagActiveIndex == null -> "initial"
+                            lastStuckDiagActiveIndex == newIndex && isAtLastLine -> "same_index_at_last_line"
+                            lastStuckDiagActiveIndex == newIndex -> "same_index_waiting_next_timestamp"
+                            nextLine != null && activeLine != null && nextLine.timeMs <= activeLine.timeMs -> "next_timestamp_not_increasing"
+                            else -> "advanced"
+                        }
+                        Log.d(
+                            LYRICS_STUCK_DIAG_TAG,
+                            "PLAYBACK playerPositionMs=$posMs activeLyricIndex=$newIndex activeTimestampMs=${activeLine?.timeMs} nextLyricIndex=${nextIndex ?: "null"} nextTimestampMs=${nextLine?.timeMs ?: "null"} lastParsedIndex=$lastParsedIndex isAtLastLine=$isAtLastLine reason=$reason"
+                        )
+                        if (nextLine == null && activeDisplayLines.isNotEmpty()) {
+                            Log.w(
+                                LYRICS_STUCK_DIAG_TAG,
+                                "LYRICS_STUCK_SUSPECT playerPositionMs=$posMs activeIndex=$newIndex activeTimestampMs=${activeLine?.timeMs} nextTimestampMs=null parsedLineCount=${activeDisplayLines.size}"
+                            )
+                        }
+                        if (nextLine != null && activeLine != null && nextLine.timeMs <= activeLine.timeMs) {
+                            Log.w(
+                                LYRICS_STUCK_DIAG_TAG,
+                                "LYRICS_STUCK_SUSPECT playerPositionMs=$posMs activeIndex=$newIndex activeTimestampMs=${activeLine.timeMs} nextTimestampMs=${nextLine.timeMs} parsedLineCount=${activeDisplayLines.size}"
+                            )
+                        }
+                        lastStuckDiagActiveIndex = newIndex
+                    }
                 }
 
                 if (
@@ -3765,6 +3884,44 @@ private data class AccordsWriteRequest(
     val preferredLrcFileName: String?,
     val lines: List<LrcLine>
 )
+
+private fun logLyricsStuckLoadSnapshot(
+    songId: String?,
+    lyricsFilePath: String?,
+    raw: String,
+    parsed: List<LrcLine>
+) {
+    val rawLines = raw.lines()
+    val candidateRawLines = rawLines
+        .map { it.trim() }
+        .filter { line ->
+            line.isNotBlank() && !line.startsWith("[offset:", ignoreCase = true)
+        }
+    Log.d(
+        LYRICS_STUCK_DIAG_TAG,
+        "LOAD songId=${songId.orEmpty()} lyricsFilePath=${lyricsFilePath.orEmpty()} rawLineCount=${rawLines.size} parsedLineCount=${parsed.size} firstTimestampMs=${parsed.firstOrNull()?.timeMs ?: "null"} lastTimestampMs=${parsed.lastOrNull()?.timeMs ?: "null"}"
+    )
+    parsed.forEachIndexed { index, line ->
+        val rawLine = candidateRawLines.getOrNull(index).orEmpty()
+        Log.d(
+            LYRICS_STUCK_DIAG_TAG,
+            "PARSED_LINE index=$index timestampMs=${line.timeMs} rawLine=${rawLine.take(180)} parsedText=${line.text.take(180)}"
+        )
+        val previous = parsed.getOrNull(index - 1)
+        if (previous != null && line.timeMs > 0L && previous.timeMs > 0L && line.timeMs < previous.timeMs) {
+            Log.w(
+                LYRICS_STUCK_DIAG_TAG,
+                "TIMESTAMP_NON_MONOTONIC index=$index previousTimestampMs=${previous.timeMs} timestampMs=${line.timeMs} rawLine=${rawLine.take(180)}"
+            )
+        }
+    }
+    if (candidateRawLines.size != parsed.size) {
+        Log.w(
+            LYRICS_STUCK_DIAG_TAG,
+            "RAW_PARSED_COUNT_MISMATCH songId=${songId.orEmpty()} candidateRawLineCount=${candidateRawLines.size} parsedLineCount=${parsed.size}"
+        )
+    }
+}
 
 private fun readSidecarLrcSmart(
     context: android.content.Context,

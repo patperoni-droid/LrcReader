@@ -78,6 +78,7 @@ private const val FIRST_CHORD_TIME_MS = 10L
 private const val LYRICS_PLAYER_SYNC_DIAG_TAG = "LYRICS_PLAYER_SYNC_DIAG"
 private const val LYRICS_PERSIST_DIAG_TAG = "LYRICS_PERSIST_DIAG"
 private const val LYRICS_PIPELINE_TRACE_TAG = "LYRICS_PIPELINE_TRACE"
+private const val LYRICS_AUTOSAVE_CRASH_DIAG_TAG = "LYRICS_AUTOSAVE_CRASH_DIAG"
 
 private object LyricsEditorHintPrefs {
     private const val PREFS_NAME = "lyrics_editor_hint_prefs"
@@ -563,69 +564,95 @@ fun LyricsEditorSection(
         updatePalette("", persist = false)
     }
 
-    // 🔹 Enregistrer
-    fun handleSave() {
+    suspend fun persistCurrentDraftAndClose() {
         val finalLines = buildPersistableLinesForCurrentDraft()
-        scope.launch {
+        if (!showChordPalette) {
+            Log.d(
+                LYRICS_AUTOSAVE_CRASH_DIAG_TAG,
+                "EDITOR_EXIT_FLUSH_START"
+            )
+            Log.d(
+                LYRICS_AUTOSAVE_CRASH_DIAG_TAG,
+                "AUTOSAVE_REQUEST reason=manual_or_exit"
+            )
+            Log.d(
+                LYRICS_PIPELINE_TRACE_TAG,
+                "SAVE_REQUEST songId=${currentSongId ?: currentTrackUri.orEmpty()} reason=manual_or_exit lineCount=${finalLines.size} colorCount=${finalLines.count { it.colorArgb != null }}"
+            )
+            Log.d(
+                LYRICS_PLAYER_SYNC_DIAG_TAG,
+                "FORCE_SAVE_BEFORE_EXIT_EDITOR songId=${currentSongId ?: currentTrackUri.orEmpty()} lineCount=${finalLines.size}"
+            )
+        }
+        while (isPersistBusy) {
             if (!showChordPalette) {
                 Log.d(
-                    LYRICS_PIPELINE_TRACE_TAG,
-                    "SAVE_REQUEST songId=${currentSongId ?: currentTrackUri.orEmpty()} reason=manual_or_exit lineCount=${finalLines.size} colorCount=${finalLines.count { it.colorArgb != null }}"
+                    LYRICS_AUTOSAVE_CRASH_DIAG_TAG,
+                    "AUTOSAVE_CONCURRENT_BLOCKED"
                 )
             }
+            delay(100L)
+        }
+        isPersistBusy = true
+        try {
+            if (finalLines.isEmpty()) {
+                val deleted = onDeletePersisted()
+                if (!deleted) return
+                previousEditingLines = editingLines.map { it.copy() }
+                onEditingLinesChange(emptyList())
+                onRawLyricsTextChange("")
+                rawTextFieldValue = TextFieldValue("", TextRange(0))
+                if (!showChordPalette) {
+                    Log.d(LYRICS_AUTOSAVE_CRASH_DIAG_TAG, "EDITOR_EXIT_FLUSH_OK")
+                }
+                onSaveSortedLines(emptyList())
+                return
+            }
+
+            Log.d("LrcDebug", "EDITOR_SAVE currentTrackUri=$currentTrackUri lines=${finalLines.size}")
             if (!showChordPalette) {
+                Log.d(
+                    LYRICS_AUTOSAVE_CRASH_DIAG_TAG,
+                    "AUTOSAVE_START pendingChangeCount=${finalLines.size}"
+                )
                 Log.d(
                     LYRICS_PLAYER_SYNC_DIAG_TAG,
-                    "FORCE_SAVE_BEFORE_EXIT_EDITOR songId=${currentSongId ?: currentTrackUri.orEmpty()} lineCount=${finalLines.size}"
+                    "AUTOSAVE_START reason=manual_or_exit songId=${currentSongId ?: currentTrackUri.orEmpty()} lineCount=${finalLines.size}"
                 )
             }
-            while (isPersistBusy) {
-                delay(100L)
-            }
-            isPersistBusy = true
-            try {
-                if (finalLines.isEmpty()) {
-                    val deleted = onDeletePersisted()
-                    if (!deleted) return@launch
-                    previousEditingLines = editingLines.map { it.copy() }
-                    onEditingLinesChange(emptyList())
-                    onRawLyricsTextChange("")
-                    rawTextFieldValue = TextFieldValue("", TextRange(0))
-                    onSaveSortedLines(emptyList())
-                    return@launch
-                }
 
-                Log.d("LrcDebug", "EDITOR_SAVE currentTrackUri=$currentTrackUri lines=${finalLines.size}")
+            val persisted = onPersistLines(finalLines)
+            if (!persisted) {
                 if (!showChordPalette) {
-                    Log.d(
+                    Log.e(
+                        LYRICS_AUTOSAVE_CRASH_DIAG_TAG,
+                        "AUTOSAVE_WRITE_FAIL exception=onPersistLines_false"
+                    )
+                    Log.e(
                         LYRICS_PLAYER_SYNC_DIAG_TAG,
-                        "AUTOSAVE_START reason=manual_or_exit songId=${currentSongId ?: currentTrackUri.orEmpty()} lineCount=${finalLines.size}"
+                        "AUTOSAVE_FAIL error=onPersistLines_false reason=manual_or_exit songId=${currentSongId ?: currentTrackUri.orEmpty()}"
                     )
                 }
-
-                val persisted = onPersistLines(finalLines)
-                if (!persisted) {
-                    if (!showChordPalette) {
-                        Log.e(
-                            LYRICS_PLAYER_SYNC_DIAG_TAG,
-                            "AUTOSAVE_FAIL error=onPersistLines_false reason=manual_or_exit songId=${currentSongId ?: currentTrackUri.orEmpty()}"
-                        )
-                    }
-                    return@launch
-                }
-
-                previousEditingLines = null
-                if (!showChordPalette) {
-                    Log.d(
-                        LYRICS_PLAYER_SYNC_DIAG_TAG,
-                        "AUTOSAVE_SUCCESS songId=${currentSongId ?: currentTrackUri.orEmpty()} lineCount=${finalLines.size} colorCount=${finalLines.count { it.colorArgb != null }}"
-                    )
-                }
-                onSaveSortedLines(finalLines)
-            } finally {
-                isPersistBusy = false
+                return
             }
+
+            previousEditingLines = null
+            if (!showChordPalette) {
+                Log.d(LYRICS_AUTOSAVE_CRASH_DIAG_TAG, "EDITOR_EXIT_FLUSH_OK")
+                Log.d(
+                    LYRICS_PLAYER_SYNC_DIAG_TAG,
+                    "AUTOSAVE_SUCCESS songId=${currentSongId ?: currentTrackUri.orEmpty()} lineCount=${finalLines.size} colorCount=${finalLines.count { it.colorArgb != null }}"
+                )
+            }
+            onSaveSortedLines(finalLines)
+        } finally {
+            isPersistBusy = false
         }
+    }
+
+    // 🔹 Enregistrer
+    fun handleSave() {
+        scope.launch { persistCurrentDraftAndClose() }
     }
 
     val autoSaveLyricsLines = remember(
@@ -654,11 +681,19 @@ fun LyricsEditorSection(
             "AUTOSAVE_SCHEDULED reason=editor_change songId=${currentSongId ?: currentTrackUri.orEmpty()}"
         )
         Log.d(
+            LYRICS_AUTOSAVE_CRASH_DIAG_TAG,
+            "AUTOSAVE_REQUEST reason=editor_change"
+        )
+        Log.d(
             LYRICS_PIPELINE_TRACE_TAG,
             "SAVE_REQUEST songId=${currentSongId ?: currentTrackUri.orEmpty()} reason=editor_change_scheduled lineCount=${autoSaveLyricsLines.size} colorCount=${autoSaveLyricsLines.count { it.colorArgb != null }}"
         )
         delay(900L)
         while (isPersistBusy) {
+            Log.d(
+                LYRICS_AUTOSAVE_CRASH_DIAG_TAG,
+                "AUTOSAVE_CONCURRENT_BLOCKED"
+            )
             delay(100L)
         }
 
@@ -682,11 +717,19 @@ fun LyricsEditorSection(
 
             Log.d("LrcDebug", "EDITOR_AUTOSAVE currentTrackUri=$currentTrackUri lines=${finalLines.size}")
             Log.d(
+                LYRICS_AUTOSAVE_CRASH_DIAG_TAG,
+                "AUTOSAVE_START pendingChangeCount=${finalLines.size}"
+            )
+            Log.d(
                 LYRICS_PLAYER_SYNC_DIAG_TAG,
                 "AUTOSAVE_START reason=editor_change songId=${currentSongId ?: currentTrackUri.orEmpty()} lineCount=${finalLines.size}"
             )
             val persisted = onPersistLines(finalLines)
             if (!persisted) {
+                Log.e(
+                    LYRICS_AUTOSAVE_CRASH_DIAG_TAG,
+                    "AUTOSAVE_WRITE_FAIL exception=onPersistLines_false"
+                )
                 Log.e(
                     LYRICS_PLAYER_SYNC_DIAG_TAG,
                     "AUTOSAVE_FAIL error=onPersistLines_false reason=editor_change songId=${currentSongId ?: currentTrackUri.orEmpty()}"
@@ -707,7 +750,7 @@ fun LyricsEditorSection(
 
     LaunchedEffect(saveAndCloseRequestToken) {
         if (saveAndCloseRequestToken > 0) {
-            handleSave()
+            persistCurrentDraftAndClose()
         }
     }
 
@@ -1354,6 +1397,10 @@ fun LyricsEditorSection(
                                                         Log.d(
                                                             LYRICS_PLAYER_SYNC_DIAG_TAG,
                                                             "EDIT_TEXT lineIndex=$idx oldText=${list[idx].text} newText=${lineMenuText.trim()}"
+                                                        )
+                                                        Log.d(
+                                                            LYRICS_AUTOSAVE_CRASH_DIAG_TAG,
+                                                            "EDIT_TEXT_CHANGED lineIndex=$idx timestamp=${list[idx].timeMs} oldText=${list[idx].text} newText=${lineMenuText.trim()}"
                                                         )
                                                         Log.d(
                                                             LYRICS_PERSIST_DIAG_TAG,

@@ -170,8 +170,11 @@ Rules:
 - leaving the editor must not lose work
 - auto-save must run only after real changes
 - pending changes must be flushed before returning to Player when needed
+- lyrics writes must be serialized and atomic when using runtime files
+- editor exit must wait for the final lyrics flush before returning to Player
 - the visible Save button is no longer the central lyrics workflow
 - Chords editor behavior must not regress
+- priority: never lose user lyrics
 
 ⸻
 
@@ -193,6 +196,20 @@ Rules:
 - never inject line colors into standard LRC text
 - do not create a second competing lyrics store
 - import/export LRC compatibility must remain intact
+
+⸻
+
+# LRC RUNTIME ROBUSTNESS
+
+The Player must tolerate damaged LRC content.
+
+Rules:
+- parse LRC line by line and log invalid lines
+- one invalid LRC line must never block the whole song
+- runtime playback may ignore unsynchronized or invalid timestamp lines
+- runtime playback may sort valid synchronized lines by `timestampMs`
+- never silently rewrite or delete the original LRC file during runtime cleanup
+- editor/import/export behavior must remain compatible with standard LRC files
 
 ⸻
 

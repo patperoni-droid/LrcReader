@@ -2,6 +2,7 @@ package com.patrick.lrcreader.core
 
 import android.content.Context
 import android.net.Uri
+import android.system.Os
 import android.os.SystemClock
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
@@ -9,8 +10,11 @@ import android.util.Log
 import androidx.documentfile.provider.DocumentFile
 import com.patrick.lrcreader.smp.SmpConfig
 import java.io.File
+import java.io.FileOutputStream
 import java.security.MessageDigest
 import java.util.LinkedHashMap
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 
 object LrcStorage {
 
@@ -40,6 +44,7 @@ object LrcStorage {
 
     private const val TAG = "LRC_STORAGE"
     private const val WORKSPACE_LOG_TAG = "LRC_WORKSPACE"
+    private const val LYRICS_AUTOSAVE_CRASH_DIAG_TAG = "LYRICS_AUTOSAVE_CRASH_DIAG"
     private const val CANONICAL_PREF = "lrc_storage_canonical"
     private const val SMP_ALIAS_PREF = "lrc_storage_smp_alias"
     private const val RECENT_ORIGIN_CACHE_MAX = 32
@@ -64,6 +69,8 @@ object LrcStorage {
             return size > RECENT_ORIGIN_CACHE_MAX
         }
     }
+
+    private val lyricsSaveLock = ReentrantLock()
 
     // ------------------------------------------------------------
     // API
@@ -274,6 +281,18 @@ object LrcStorage {
     }
 
     fun saveForTrack(context: Context, trackUriString: String, lines: List<LrcLine>): Boolean {
+        if (lyricsSaveLock.isLocked) {
+            Log.d(
+                LYRICS_AUTOSAVE_CRASH_DIAG_TAG,
+                "AUTOSAVE_CONCURRENT_BLOCKED trackUri=$trackUriString"
+            )
+        }
+        return lyricsSaveLock.withLock {
+            saveForTrackLocked(context, trackUriString, lines)
+        }
+    }
+
+    private fun saveForTrackLocked(context: Context, trackUriString: String, lines: List<LrcLine>): Boolean {
         if (trackUriString.isBlank()) return false
         clearRecentResolvedOrigin(trackUriString)
         val effectiveTrackUriString = resolveRuntimeAlias(context, trackUriString)
@@ -287,8 +306,11 @@ object LrcStorage {
         resolveSmpLyricsTarget(context, effectiveTrackUriString, requireExisting = false)?.let { resolved ->
             val written = runCatching {
                 resolved.file.parentFile?.mkdirs()
-                resolved.file.writeText(text, Charsets.UTF_8)
-                true
+                writeTextAtomically(
+                    target = resolved.file,
+                    text = text,
+                    lineCount = lines.size
+                )
             }.getOrDefault(false)
             if (written) {
                 cacheRecentResolvedOrigin(
@@ -1080,11 +1102,25 @@ object LrcStorage {
             Log.d(TAG, "mode SAF save uri=${target.uri}")
 
             context.contentResolver.openOutputStream(target.uri, "w")?.use { out ->
+                Log.d(
+                    LYRICS_AUTOSAVE_CRASH_DIAG_TAG,
+                    "AUTOSAVE_WRITE_START filePath=${target.uri}"
+                )
                 out.write(text.toByteArray(Charsets.UTF_8))
                 out.flush()
             } ?: return null
+            Log.d(
+                LYRICS_AUTOSAVE_CRASH_DIAG_TAG,
+                "AUTOSAVE_WRITE_OK fileSize=${text.toByteArray(Charsets.UTF_8).size} lineCount=${text.lineSequence().count()}"
+            )
 
             target.uri.toString()
+        }.onFailure { error ->
+            Log.e(
+                LYRICS_AUTOSAVE_CRASH_DIAG_TAG,
+                "AUTOSAVE_WRITE_FAIL exception=${error.message}",
+                error
+            )
         }.getOrNull()
     }
 
@@ -1576,7 +1612,15 @@ object LrcStorage {
         val (upperDir, _) = dirs
         val outFile = File(upperDir, cleanTargetName)
         return runCatching {
-            outFile.writeText(text, Charsets.UTF_8)
+            if (stageKey == lyricsFolderSpec.stageKey) {
+                writeTextAtomically(
+                    target = outFile,
+                    text = text,
+                    lineCount = text.lineSequence().count()
+                )
+            } else {
+                outFile.writeText(text, Charsets.UTF_8)
+            }
             logWorkspaceSuccess(
                 stage = "save_internal_$stageKey",
                 snapshot = resolveWorkspaceSnapshot(context),
@@ -1675,6 +1719,46 @@ object LrcStorage {
         val md = MessageDigest.getInstance("MD5")
         val bytes = md.digest(s.toByteArray(Charsets.UTF_8))
         return bytes.joinToString("") { "%02x".format(it) }
+    }
+
+    private fun writeTextAtomically(
+        target: File,
+        text: String,
+        lineCount: Int
+    ): Boolean {
+        val parent = target.parentFile ?: return false
+        if (!parent.exists() && !parent.mkdirs()) return false
+        val tmp = File(parent, "${target.name}.tmp")
+        return runCatching {
+            Log.d(
+                LYRICS_AUTOSAVE_CRASH_DIAG_TAG,
+                "AUTOSAVE_WRITE_START filePath=${target.absolutePath}"
+            )
+            val bytes = text.toByteArray(Charsets.UTF_8)
+            FileOutputStream(tmp, false).use { output ->
+                output.write(bytes)
+                output.flush()
+                output.fd.sync()
+            }
+            runCatching {
+                Os.rename(tmp.absolutePath, target.absolutePath)
+            }.getOrElse {
+                if (target.exists() && !target.delete()) throw it
+                if (!tmp.renameTo(target)) throw it
+            }
+            Log.d(
+                LYRICS_AUTOSAVE_CRASH_DIAG_TAG,
+                "AUTOSAVE_WRITE_OK fileSize=${target.length()} lineCount=$lineCount"
+            )
+            true
+        }.onFailure { error ->
+            runCatching { tmp.delete() }
+            Log.e(
+                LYRICS_AUTOSAVE_CRASH_DIAG_TAG,
+                "AUTOSAVE_WRITE_FAIL exception=${error.message}",
+                error
+            )
+        }.getOrDefault(false)
     }
 
     private fun linesToLrcText(lines: List<LrcLine>): String {
