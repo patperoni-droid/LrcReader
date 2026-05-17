@@ -25,6 +25,8 @@ import java.io.File
 
 private var lastEndListener: Player.Listener? = null
 private const val SMP_PLAY_TRACE_TAG = "SMP_PLAY_TRACE"
+private const val PITCH_TRANSITION_DIAG_TAG = "PITCH_TRANSITION_DIAG"
+private const val PITCH_TRANSITION_GUARD_TAG = "PITCH_TRANSITION_GUARD"
 
 fun exoCrossfadePlay(
     context: Context,
@@ -38,15 +40,49 @@ fun exoCrossfadePlay(
     onStart: () -> Unit,
     onError: () -> Unit,
     onNaturalEnd: () -> Unit = {},
+    beforePrepare: ((ExoPlayer, String) -> Unit)? = null,
+    sequentialNoCrossfade: Boolean = false,
     fadeDurationMs: Long = 1000L
 ) {
     CoroutineScope(Dispatchers.Main).launch {
+        val requestedNextUri = uriString
         Log.d(
             SMP_PLAY_TRACE_TAG,
             "EXO_REQUEST uri=$uriString playlist=$playlistName token=$playToken currentMedia=${exoPlayer.currentMediaItem?.localConfiguration?.uri}"
         )
+        Log.d(
+            PITCH_TRANSITION_GUARD_TAG,
+            "currentSongId=${exoPlayer.currentMediaItem?.localConfiguration?.uri} nextSongId=$requestedNextUri " +
+                "currentUri=${exoPlayer.currentMediaItem?.localConfiguration?.uri} nextUri=$requestedNextUri sequential=$sequentialNoCrossfade"
+        )
 
         if (getCurrentToken() != playToken) return@launch
+
+        val playableUriString = withContext(Dispatchers.IO) {
+            resolvePlayableUriStringForPlayback(context, requestedNextUri)
+        }
+        Log.d(
+            SMP_PLAY_TRACE_TAG,
+            "EXO_RESOLVE uri=$requestedNextUri token=$playToken playable=$playableUriString"
+        )
+
+        if (playableUriString == null) {
+            Log.e("PlayUriCheck", "UNRESOLVABLE uri=$requestedNextUri")
+            Log.e(
+                SMP_PLAY_TRACE_TAG,
+                "EXO_UNRESOLVABLE uri=$requestedNextUri token=$playToken"
+            )
+            onError()
+            return@launch
+        }
+
+        if (playableUriString != requestedNextUri) {
+            Log.w("PlayUriCheck", "AUTO-MIGRATE old=$requestedNextUri -> new=$playableUriString")
+            PlaylistRepository.replaceSongUriEverywhere(oldUri = requestedNextUri, newUri = playableUriString)
+        }
+
+        lastEndListener?.let { old -> runCatching { exoPlayer.removeListener(old) } }
+        lastEndListener = null
 
         val wasPlaying = exoPlayer.isPlaying
         if (wasPlaying) {
@@ -74,8 +110,6 @@ fun exoCrossfadePlay(
         runCatching { embeddedLyricsListener.reset() }
         runCatching { exoPlayer.removeListener(embeddedLyricsListener) }
         exoPlayer.addListener(embeddedLyricsListener)
-
-        lastEndListener?.let { old -> runCatching { exoPlayer.removeListener(old) } }
 
         val endListener = object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
@@ -118,42 +152,46 @@ fun exoCrossfadePlay(
         exoPlayer.addListener(endListener)
 
         // ✅ stop réel de l'ancien titre AVANT de remettre le volume "normal"
+        Log.d(
+            PITCH_TRANSITION_GUARD_TAG,
+            "beforeStop mediaItem=${exoPlayer.currentMediaItem?.localConfiguration?.uri} " +
+                "nextUri=$playableUriString sequential=$sequentialNoCrossfade"
+        )
+        runCatching { exoPlayer.playWhenReady = false }
         runCatching { exoPlayer.stop() }
         runCatching { exoPlayer.clearMediaItems() }
+        Log.d(
+            PITCH_TRANSITION_GUARD_TAG,
+            "afterClear mediaItemCount=${exoPlayer.mediaItemCount} currentMedia=${exoPlayer.currentMediaItem?.localConfiguration?.uri} " +
+                "nextUri=$playableUriString sequential=$sequentialNoCrossfade"
+        )
 
         // ✅ maintenant seulement, on remet le bus à 1 pour le nouveau titre
         AudioEngine.setFadeMultiplier(1f)
 
-        val playableUriString = withContext(Dispatchers.IO) {
-            resolvePlayableUriStringForPlayback(context, uriString)
-        }
         Log.d(
-            SMP_PLAY_TRACE_TAG,
-            "EXO_RESOLVE uri=$uriString token=$playToken playable=$playableUriString"
+            PITCH_TRANSITION_DIAG_TAG,
+            "PLAYER_PARAMS_BEFORE_START speed=${exoPlayer.playbackParameters.speed} pitch=${exoPlayer.playbackParameters.pitch} state=${stateName(exoPlayer.playbackState)} isPlaying=${exoPlayer.isPlaying}"
         )
-
-        if (playableUriString == null) {
-            Log.e("PlayUriCheck", "UNRESOLVABLE uri=$uriString")
-            Log.e(
-                SMP_PLAY_TRACE_TAG,
-                "EXO_UNRESOLVABLE uri=$uriString token=$playToken"
-            )
-            onError()
-            return@launch
-        }
-
-        if (playableUriString != uriString) {
-            Log.w("PlayUriCheck", "AUTO-MIGRATE old=$uriString -> new=$playableUriString")
-            PlaylistRepository.replaceSongUriEverywhere(oldUri = uriString, newUri = playableUriString)
-        }
-
+        beforePrepare?.invoke(exoPlayer, playableUriString)
+        Log.d(
+            PITCH_TRANSITION_DIAG_TAG,
+            "PLAYER_PARAMS_AFTER_PREPARE_APPLY speed=${exoPlayer.playbackParameters.speed} pitch=${exoPlayer.playbackParameters.pitch} state=${stateName(exoPlayer.playbackState)} isPlaying=${exoPlayer.isPlaying}"
+        )
         Log.d(
             SMP_PLAY_TRACE_TAG,
             "EXO_SET_MEDIA uri=$uriString token=$playToken media=$playableUriString"
         )
+        Log.d(PITCH_TRANSITION_GUARD_TAG, "beforeSetNext uri=$playableUriString sequential=$sequentialNoCrossfade")
+        Log.d(PITCH_TRANSITION_DIAG_TAG, "MEDIA_ITEM_SET songId=$uriString media=$playableUriString")
         SmpLaunchTiming.markExoPrepareStart(playableUriString)
         exoPlayer.setMediaItem(MediaItem.fromUri(playableUriString))
+        Log.d(
+            PITCH_TRANSITION_GUARD_TAG,
+            "afterSetNext mediaItem=${exoPlayer.currentMediaItem?.localConfiguration?.uri} requested=$requestedNextUri sequential=$sequentialNoCrossfade"
+        )
         exoPlayer.prepare()
+        Log.d(PITCH_TRANSITION_DIAG_TAG, "PREPARE songId=$uriString")
         Log.d(
             SMP_PLAY_TRACE_TAG,
             "EXO_PREPARE uri=$uriString token=$playToken state=${stateName(exoPlayer.playbackState)} playWhenReady=${exoPlayer.playWhenReady}"
@@ -164,11 +202,20 @@ fun exoCrossfadePlay(
 
         PlaybackCoordinator.requestStartPlayer()
         exoPlayer.play()
+        Log.d(PITCH_TRANSITION_GUARD_TAG, "playStarted songId=$requestedNextUri mediaItem=${exoPlayer.currentMediaItem?.localConfiguration?.uri}")
+        Log.d(
+            PITCH_TRANSITION_DIAG_TAG,
+            "PLAY songId=$uriString speed=${exoPlayer.playbackParameters.speed} pitch=${exoPlayer.playbackParameters.pitch} state=${stateName(exoPlayer.playbackState)} isPlaying=${exoPlayer.isPlaying}"
+        )
         Log.d(
             SMP_PLAY_TRACE_TAG,
             "EXO_PLAY uri=$uriString token=$playToken state=${stateName(exoPlayer.playbackState)} playWhenReady=${exoPlayer.playWhenReady} isPlaying=${exoPlayer.isPlaying}"
         )
         onStart()
+        Log.d(
+            PITCH_TRANSITION_DIAG_TAG,
+            "PLAYER_PARAMS_AFTER_START speed=${exoPlayer.playbackParameters.speed} pitch=${exoPlayer.playbackParameters.pitch} state=${stateName(exoPlayer.playbackState)} isPlaying=${exoPlayer.isPlaying}"
+        )
 
         val lyrics = embeddedLyricsListener.lyrics.filterNotNull().firstOrNull()
         if (getCurrentToken() != playToken) return@launch

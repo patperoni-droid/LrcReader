@@ -29,6 +29,8 @@ object AudioEngine {
 
     private const val TS_TAG = "AUDIO_TS"
     private const val PLAYER_SMOKE_TAG = "PLAYER_SMOKE"
+    private const val PITCH_TRANSITION_DIAG_TAG = "PITCH_TRANSITION_DIAG"
+    private const val AUDIO_PLAYER_DIAG_TAG = "AUDIO_PLAYER_DIAG"
 
     // -----------------------------
     // Time-stretch mode (sécurité)
@@ -162,6 +164,22 @@ object AudioEngine {
             mediaUri = player.currentMediaItem?.localConfiguration?.uri?.toString(),
             positionMs = runCatching { player.currentPosition }.getOrDefault(0L),
             playWhenReady = runCatching { player.playWhenReady || player.isPlaying }.getOrDefault(false)
+        )
+    }
+
+    private fun logPlayerDiag(label: String, player: ExoPlayer?, role: String) {
+        if (player == null) {
+            Log.d(AUDIO_PLAYER_DIAG_TAG, "$label playerId=null role=$role")
+            return
+        }
+        Log.d(
+            AUDIO_PLAYER_DIAG_TAG,
+            "$label playerId=${System.identityHashCode(player)} role=$role " +
+                "isPlaying=${runCatching { player.isPlaying }.getOrDefault(false)} " +
+                "mediaUri=${player.currentMediaItem?.localConfiguration?.uri} " +
+                "volume=${runCatching { player.volume }.getOrDefault(-1f)} " +
+                "playbackParameters=${player.playbackParameters.speed}/${player.playbackParameters.pitch} " +
+                "appliedGain=$trackGainLinear appliedLufs=sourcePref pipeline=$activePlayerPipeline"
         )
     }
 
@@ -407,6 +425,130 @@ object AudioEngine {
 
             applySpeedPitchNow(finalS, finalP, reason = reason)
         }
+    }
+
+    fun applySpeedPitchForPreparedStart(
+        player: ExoPlayer,
+        speed: Float,
+        pitch: Float,
+        reason: String = ""
+    ) {
+        val s = speed.coerceIn(0.5f, 2.0f)
+        val pi = pitch.coerceIn(0.5f, 2.0f)
+        val isNeutral = abs(s - 1f) < 0.0005f && abs(pi - 1f) < 0.0005f
+        currentSpeed = s
+        currentPitchRatio = pi
+        pendingSpeed = s
+        pendingPitch = pi
+        speedPitchJob?.cancel()
+        speedPitchJob = null
+
+        val usesActiveCustomPipeline = player === exoPlayer &&
+            activePlayerPipeline == PlayerPipeline.CUSTOM_ST_SINK &&
+            timeStretchMode == TimeStretchMode.HQ
+
+        if (usesActiveCustomPipeline) {
+            soundTouchProcessor.setEnabled(!isNeutral)
+            val before = player.playbackParameters
+            if (abs(before.speed - 1f) > 0.0005f || abs(before.pitch - 1f) > 0.0005f) {
+                player.playbackParameters = PlaybackParameters(1f, 1f)
+            }
+            if (!isNeutral) {
+                val pitchSemi = ratioToSemitones(pi)
+                soundTouchProcessor.setTempoRatioAndPitchSemi(
+                    tempoRatio = s,
+                    pitchSemi = pitchSemi
+                )
+                hqApplyPending = !soundTouchProcessor.ensureHqInit()
+                if (!hqApplyPending) {
+                    soundTouchProcessor.setTempoRatioAndPitchSemi(
+                        tempoRatio = s,
+                        pitchSemi = pitchSemi
+                    )
+                }
+            } else {
+                hqApplyPending = false
+            }
+        } else {
+            val before = player.playbackParameters
+            if (abs(before.speed - s) > 0.0005f || abs(before.pitch - pi) > 0.0005f) {
+                player.playbackParameters = PlaybackParameters(s, pi)
+            }
+            hqApplyPending = false
+        }
+
+        Log.d(
+            PITCH_TRANSITION_DIAG_TAG,
+            "APPLY_PLAYBACK_PARAMS speed=$s pitch=$pi reason=$reason directPreparedStart=true custom=$usesActiveCustomPipeline"
+        )
+    }
+
+    fun prepareMainPlayerForSequentialStart(
+        context: Context,
+        speed: Float,
+        pitch: Float,
+        onNaturalEnd: () -> Unit
+    ): ExoPlayer {
+        val appCtx = context.applicationContext
+        playerAppContext = appCtx
+        onNaturalEndCallback = onNaturalEnd
+
+        val s = speed.coerceIn(0.5f, 2.0f)
+        val pi = pitch.coerceIn(0.5f, 2.0f)
+        val desiredPipeline = resolveDesiredPlayerPipeline(speed = s, pitch = pi)
+        val current = exoPlayer
+
+        logPlayerDiag("sequentialBeforePrepare", current, "main")
+        fadeJob?.cancel()
+        fadeJob = null
+        speedPitchJob?.cancel()
+        speedPitchJob = null
+        currentSpeed = s
+        currentPitchRatio = pi
+        pendingSpeed = s
+        pendingPitch = pi
+
+        val player = if (current == null) {
+            buildPlayer(appCtx, desiredPipeline).also {
+                Log.d(AUDIO_PLAYER_DIAG_TAG, "activePlayerAfterSequential=create playerId=${System.identityHashCode(it)} pipeline=$desiredPipeline")
+                publishPlayerEpoch()
+            }
+        } else if (activePlayerPipeline != desiredPipeline) {
+            Log.d(
+                AUDIO_PLAYER_DIAG_TAG,
+                "releaseTransitionPlayer reason=sequentialPipelineSwitch playerId=${System.identityHashCode(current)} from=$activePlayerPipeline to=$desiredPipeline"
+            )
+            detachCorePlayerListener()
+            runCatching { current.playWhenReady = false }
+            runCatching { current.stop() }
+            runCatching { current.clearMediaItems() }
+            runCatching { current.release() }
+            runCatching { soundTouchProcessor.reset() }
+            buildPlayer(appCtx, desiredPipeline).also {
+                Log.d(AUDIO_PLAYER_DIAG_TAG, "activePlayerAfterSequential=rebuild playerId=${System.identityHashCode(it)} pipeline=$desiredPipeline")
+                publishPlayerEpoch()
+            }
+        } else {
+            current
+        }
+
+        embeddedLyricsListener?.let { listener ->
+            runCatching { player.removeListener(listener) }
+            runCatching { player.addListener(listener) }
+        }
+        ensureCorePlayerListener(player, appCtx)
+        fadeMultiplier = 1f
+        applyFinalVolume()
+
+        if (desiredPipeline == PlayerPipeline.PURE_EXO) {
+            runCatching { soundTouchProcessor.reset() }
+            hqApplyPending = false
+        } else {
+            armHqAfterRebuildIfNeeded(reason = "sequentialStart")
+        }
+
+        logPlayerDiag("sequentialReady", player, "main")
+        return player
     }
 
     // -----------------------------

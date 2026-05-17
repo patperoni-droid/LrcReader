@@ -120,6 +120,23 @@ During live transition fade:
 👉 Audio overlap is allowed.
 👉 Timeline overlap is forbidden.
 
+Pitch/speed transition guard:
+- if the current track OR the next track has non-neutral pitch/speed, double-player crossfade is forbidden
+- non-neutral means pitch != 0 semitone or speed != 1.0
+- use a sequential live-safe transition instead:
+  - short fade-out
+  - full stop/clear/release or cleanup of the old audible player
+  - controlled reset of volume/gain/LUFS state
+  - playback parameters applied before `prepare()` / `play()`
+  - launch through the standard Player pipeline
+- normal -> normal may keep the existing crossfade
+- after sequential handoff, only one live audio player may remain audible
+
+Known pitfall:
+Pitch/speed transitions must never leave a promoted/transition player alive after handoff.
+
+👉 Stability live > advanced crossfade.
+
 ⸻
 
 PLAYLIST / PLAYER LIVE RULE

@@ -402,6 +402,39 @@ Rules:
 - next track must immediately become active timeline source
 - old track must stop driving lyrics/timeline after handoff
 
+## Pitch/Speed Transition Guard (Live Critical)
+
+When the current track OR the next track uses non-neutral pitch/speed:
+- pitch != 0 semitone
+- or speed != 1.0
+
+The Player must NOT use double-player crossfade or audio overlap.
+
+Required behavior:
+- use a live-safe sequential transition
+- apply a short fade-out
+- stop, clear, and release/cleanup the old active player when needed
+- reset controlled volume/gain/LUFS state before the next start
+- apply playback parameters before `prepare()` / `play()`
+- launch the next track through the standard Player pipeline
+
+The standard pipeline must still apply:
+- gain
+- LUFS-derived gain
+- pitch
+- speed
+- timeline handoff
+- lyrics handoff
+
+Rules:
+- normal -> normal may keep the existing crossfade
+- pitch/speed involved -> sequential transition only
+- after sequential handoff, only one live audio player may remain audible
+- the next track must become the only authoritative source for audio, lyrics, chords, and timeline
+
+Reason:
+Double-player transitions with pitch/speed can cause inherited playback parameters, stale gain/LUFS state, ghost players, old-track restart, or audible relaunch.
+
 ⸻
 
 # LIVE PLAYLIST HANDOFF (CRITICAL)
@@ -602,6 +635,7 @@ Rules:
 - “Next: null”
 - playlist UI becoming playback truth
 - old timeline still active after transition
+- pitch/speed transitions leaving a promoted/transition player alive after handoff
 - autoplay breaking after reorder/group changes
 - stale lyrics cache after editor changes
 - lyrics text saved without matching color metadata
