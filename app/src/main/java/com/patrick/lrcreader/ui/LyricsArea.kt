@@ -36,7 +36,6 @@ fun LyricsAreaLazy(
     isConcertMode: Boolean,
     readabilityModeEnabled: Boolean,
     currentLrcIndex: Int,
-    activeLyricsLineCount: Int,
     guidedReadingColorsEnabled: Boolean,
     guidedReadingColorA: Int,
     guidedReadingColorB: Int,
@@ -69,12 +68,7 @@ fun LyricsAreaLazy(
         ) {
             itemsIndexed(parsedLines, key = { idx, _ -> idx }) { index, line ->
                 val isActiveLine = index == currentLrcIndex
-                val blockSize = activeLyricsLineCount.coerceIn(1, 3)
-                val activeBlockStartIndex = (currentLrcIndex / blockSize) * blockSize
-                val isActiveBlockLine = blockSize > 1 &&
-                    index in activeBlockStartIndex until (activeBlockStartIndex + blockSize)
                 val isNextActiveLine = !readabilityModeEnabled &&
-                    blockSize == 1 &&
                     index == currentLrcIndex + 1
                 val manualColor = line.colorArgb?.let(::Color)
                 val guidedColor = if (guidedReadingColorsEnabled) {
@@ -86,7 +80,6 @@ fun LyricsAreaLazy(
                 val activeColor = manualColor ?: guidedColor ?: highlightColor
                 val color = when {
                     isActiveLine -> activeColor
-                    isActiveBlockLine -> activeColor
                     isNextActiveLine -> activeColor.copy(alpha = 0.62f)
                     readabilityModeEnabled -> baseColor
                     manualColor != null || guidedColor != null -> baseColor.copy(alpha = 0.72f)
@@ -99,14 +92,12 @@ fun LyricsAreaLazy(
                 )
                 val fontWeight = when {
                     isActiveLine -> FontWeight.Bold
-                    isActiveBlockLine -> FontWeight.Bold
                     isNextActiveLine -> FontWeight.Medium
                     readabilityModeEnabled -> FontWeight.Medium
                     else -> FontWeight.Normal
                 }
                 val fontSize = when {
                     isActiveLine -> 27.sp
-                    isActiveBlockLine -> 27.sp
                     isNextActiveLine -> 26.sp
                     else -> 25.sp
                 }

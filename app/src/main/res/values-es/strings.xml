@@ -352,9 +352,6 @@
     <string name="player_cd_next">Siguiente</string>
     <string name="player_cd_change_style">Cambiar estilo</string>
     <string name="player_cd_toggle_readability">Activar el modo de legibilidad de letras</string>
-    <string name="player_active_lines_button">%1$dL</string>
-    <string name="player_active_lines_title">Líneas activas</string>
-    <string name="player_active_lines_option">%1$d línea(s)</string>
     <string name="player_cd_track_mix">Mezcla de pista</string>
     <string name="player_cd_edit_lyrics">Editar letras</string>
     <string name="player_cd_open_waveform">Abrir forma de onda</string>

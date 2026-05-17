@@ -400,3 +400,21 @@ If a change introduces:
 - loss of control
 
 👉 It must be rejected.
+
+## ⚠️ Playlist Title Persistence
+
+When a user renames a title from a playlist:
+
+- the custom display title must persist after playback
+- playback must never restore older metadata automatically
+- custom user metadata always has priority over imported audio metadata
+
+Rules:
+- playback must not reset edited user state
+- audio source filename must never be renamed automatically
+- playlist display title persistence must survive:
+  - playback
+  - screen reload
+  - app restart
+
+The stable identity remains `songId`.

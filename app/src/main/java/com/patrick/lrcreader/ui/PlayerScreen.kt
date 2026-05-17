@@ -38,8 +38,6 @@ import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -125,7 +123,6 @@ private const val PLAYER_LRC_TAG = "PLAYER_LRC"
 private const val LYRICS_PLAYER_SYNC_DIAG_TAG = "LYRICS_PLAYER_SYNC_DIAG"
 private const val LYRICS_PERSIST_DIAG_TAG = "LYRICS_PERSIST_DIAG"
 private const val LYRICS_PIPELINE_TRACE_TAG = "LYRICS_PIPELINE_TRACE"
-private const val LYRICS_ACTIVE_LINES_DIAG_TAG = "LYRICS_ACTIVE_LINES_DIAG"
 private const val LYRICS_AUTOSAVE_CRASH_DIAG_TAG = "LYRICS_AUTOSAVE_CRASH_DIAG"
 private const val LYRICS_STUCK_DIAG_TAG = "LYRICS_STUCK_DIAG"
 
@@ -607,13 +604,6 @@ fun PlayerScreen(
     var isConcertMode by remember { mutableStateOf(DisplayPrefs.isConcertMode(context)) }
     var readabilityModeEnabled by remember {
         mutableStateOf(DisplayPrefs.isLyricsReadabilityMode(context))
-    }
-    var activeLyricsLineCount by remember {
-        mutableIntStateOf(DisplayPrefs.getActiveLyricsLineCount(context))
-    }
-    var lastActiveLinesScrollTrace by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(activeLyricsLineCount) {
-        Log.d(LYRICS_ACTIVE_LINES_DIAG_TAG, "PLAYER_ACTIVE_LINES value=$activeLyricsLineCount")
     }
     var selectedViewMode by rememberSaveable(currentTrackUri) {
         mutableStateOf(
@@ -1678,17 +1668,7 @@ fun PlayerScreen(
     fun centerCurrentLineLazy(state: LazyListState) {
         if (selectedViewMode != LyricsViewMode.LYRICS) return
         if (activeDisplayLines.isEmpty()) return
-        val blockSize = activeLyricsLineCount.coerceIn(1, 3)
-        val targetScrollIndex = ((currentLrcIndex / blockSize) * blockSize)
-            .coerceIn(0, activeDisplayLines.lastIndex)
-        val traceKey = "$currentLrcIndex:$blockSize:$targetScrollIndex"
-        if (traceKey != lastActiveLinesScrollTrace) {
-            Log.d(
-                LYRICS_ACTIVE_LINES_DIAG_TAG,
-                "SCROLL_TARGET activeLineIndex=$currentLrcIndex blockSize=$blockSize targetBlockStartIndex=$targetScrollIndex"
-            )
-            lastActiveLinesScrollTrace = traceKey
-        }
+        val targetScrollIndex = currentLrcIndex.coerceIn(0, activeDisplayLines.lastIndex)
         scope.launch {
             val visible = state.layoutInfo.visibleItemsInfo.firstOrNull { it.index == targetScrollIndex }
             if (visible == null) state.scrollToItem(targetScrollIndex)
@@ -1899,7 +1879,7 @@ fun PlayerScreen(
     }
 
     // ---------- Auto-centering ----------
-    LaunchedEffect(isPlaying, activeDisplayLines, selectedViewMode, lyricsBoxHeightPx, currentLrcIndex, activeLyricsLineCount, isManualTransitionActive) {
+    LaunchedEffect(isPlaying, activeDisplayLines, selectedViewMode, lyricsBoxHeightPx, currentLrcIndex, isManualTransitionActive) {
         if (isManualTransitionActive) return@LaunchedEffect
         if (selectedViewMode != LyricsViewMode.LYRICS) return@LaunchedEffect
         if (activeDisplayLines.isEmpty() || lyricsBoxHeightPx == 0) return@LaunchedEffect
@@ -2765,12 +2745,6 @@ fun PlayerScreen(
                                 readabilityModeEnabled = !readabilityModeEnabled
                                 DisplayPrefs.setLyricsReadabilityMode(context, readabilityModeEnabled)
                             },
-                            activeLyricsLineCount = activeLyricsLineCount,
-                            onActiveLyricsLineCountChange = { count ->
-                                activeLyricsLineCount = count
-                                Log.d(LYRICS_ACTIVE_LINES_DIAG_TAG, "PLAYER_ACTIVE_LINES value=$count")
-                                DisplayPrefs.setActiveLyricsLineCount(context, count)
-                            },
                             autoReturnEnabled = isAutoReturnEnabled,
                             onToggleAutoReturn = {
                                 val newValue = !isAutoReturnEnabled
@@ -2951,7 +2925,6 @@ fun PlayerScreen(
                                     isConcertMode = isConcertMode,
                                     readabilityModeEnabled = readabilityModeEnabled,
                                     currentLrcIndex = safeLrcIndex,
-                                    activeLyricsLineCount = activeLyricsLineCount,
                                     guidedReadingColorsEnabled = guidedReadingColorsEnabled,
                                     guidedReadingColorA = guidedReadingColorA,
                                     guidedReadingColorB = guidedReadingColorB,
@@ -3420,8 +3393,6 @@ private fun LyricsViewSelector(
 private fun ReaderHeader(
     readabilityModeEnabled: Boolean,
     onToggleReadabilityMode: () -> Unit,
-    activeLyricsLineCount: Int,
-    onActiveLyricsLineCountChange: (Int) -> Unit,
     autoReturnEnabled: Boolean,
     onToggleAutoReturn: () -> Unit,
     highlightColor: Color,
@@ -3436,7 +3407,6 @@ private fun ReaderHeader(
     showWaveformAction: Boolean,
     onOpenWaveform: () -> Unit,
 ) {
-    var activeLinesMenuOpen by remember { mutableStateOf(false) }
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -3461,42 +3431,6 @@ private fun ReaderHeader(
                     contentDescription = stringResource(R.string.player_cd_toggle_readability),
                     tint = if (readabilityModeEnabled) highlightColor else Color(0xFFCFD8DC)
                 )
-            }
-
-            Box {
-                IconButton(onClick = { activeLinesMenuOpen = true }) {
-                    Text(
-                        text = stringResource(
-                            R.string.player_active_lines_button,
-                            activeLyricsLineCount.coerceIn(1, 3)
-                        ),
-                        color = highlightColor,
-                        fontSize = 12.sp
-                    )
-                }
-                DropdownMenu(
-                    expanded = activeLinesMenuOpen,
-                    onDismissRequest = { activeLinesMenuOpen = false }
-                ) {
-                    DropdownMenuItem(
-                        text = {
-                            Text(stringResource(R.string.player_active_lines_title))
-                        },
-                        enabled = false,
-                        onClick = {}
-                    )
-                    (1..3).forEach { count ->
-                        DropdownMenuItem(
-                            text = {
-                                Text(stringResource(R.string.player_active_lines_option, count))
-                            },
-                            onClick = {
-                                activeLinesMenuOpen = false
-                                onActiveLyricsLineCountChange(count)
-                            }
-                        )
-                    }
-                }
             }
 
             Spacer(modifier = Modifier.weight(1f))

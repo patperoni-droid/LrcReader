@@ -2,7 +2,6 @@
 package com.patrick.lrcreader.core
 
 import android.content.Context
-import android.util.Log
 import androidx.core.content.edit
 
 object DisplayPrefs {
@@ -10,7 +9,6 @@ object DisplayPrefs {
     private const val PREFS_NAME = "display_prefs"
     private const val KEY_CONCERT_MODE = "concert_mode" // true = mode concert (dégradé), false = tout uniforme
     private const val KEY_LYRICS_READABILITY_MODE = "lyrics_readability_mode"
-    private const val KEY_ACTIVE_LYRICS_LINE_COUNT = "active_lyrics_line_count"
     private const val KEY_GUIDED_READING_COLORS_ENABLED = "guided_reading_colors_enabled"
     private const val KEY_GUIDED_READING_COLOR_A = "guided_reading_color_a"
     private const val KEY_GUIDED_READING_COLOR_B = "guided_reading_color_b"
@@ -38,20 +36,6 @@ object DisplayPrefs {
     fun setLyricsReadabilityMode(ctx: Context, value: Boolean) {
         prefs(ctx).edit {
             putBoolean(KEY_LYRICS_READABILITY_MODE, value)
-        }
-    }
-
-    fun getActiveLyricsLineCount(ctx: Context): Int {
-        val value = prefs(ctx).getInt(KEY_ACTIVE_LYRICS_LINE_COUNT, 1).coerceIn(1, 3)
-        Log.d("LYRICS_ACTIVE_LINES_DIAG", "PREF_READ value=$value")
-        return value
-    }
-
-    fun setActiveLyricsLineCount(ctx: Context, value: Int) {
-        val safeValue = value.coerceIn(1, 3)
-        Log.d("LYRICS_ACTIVE_LINES_DIAG", "PREF_SET value=$safeValue")
-        prefs(ctx).edit {
-            putInt(KEY_ACTIVE_LYRICS_LINE_COUNT, safeValue)
         }
     }
 

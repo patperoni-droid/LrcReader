@@ -249,8 +249,6 @@ Rules:
 - manual lyric line colors always override guided alternating colors
 - guided colors are UI/runtime only and must never rewrite LRC files
 - next-line emphasis must remain softer than active line
-- when `activeLineCount > 1`, all active immobile lines must keep identical full opacity
-- multi-line active display is intended to reduce visual jump sensations during live reading
 - active line changes may use a light fade transition around 160 ms to soften visual jumps
 - this fade must not affect lyrics timing, scrolling, or audio playback
 - prompter visual stability has priority over decorative emphasis differences
