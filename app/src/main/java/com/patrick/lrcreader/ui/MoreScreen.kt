@@ -69,14 +69,21 @@ import com.patrick.lrcreader.core.LegacyLibraryVisibilityPrefs
 import com.patrick.lrcreader.core.LightIndicatorPrefs
 import com.patrick.lrcreader.core.ManualCrossfadeDurationOption
 import com.patrick.lrcreader.core.ManualCrossfadePrefs
+import com.patrick.lrcreader.core.PlaylistRepository
 import com.patrick.lrcreader.core.PlayerLaunchMode
 import com.patrick.lrcreader.core.PlayerLaunchPrefs
 import com.patrick.lrcreader.core.TextSongRepository
 import com.patrick.lrcreader.core.UiEntryPrefs
 import com.patrick.lrcreader.core.WorkspaceResolver
+import com.patrick.lrcreader.core.buildSmpItem
 import com.patrick.lrcreader.core.backup.BackupBundleImportedSong
 import com.patrick.lrcreader.core.backup.BackupStateRemapResult
 import com.patrick.lrcreader.core.backup.BackupStateRemapper
+import com.patrick.lrcreader.core.getSmpSongId
+import com.patrick.lrcreader.core.isGroupEnd
+import com.patrick.lrcreader.core.isGroupHeader
+import com.patrick.lrcreader.core.isPrompterItem
+import com.patrick.lrcreader.core.config.PlaylistStateStore
 import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.smp.SmpArchiveSongIdResolver
 import com.patrick.lrcreader.smp.SmpExporter
@@ -334,6 +341,7 @@ private fun MoreRootScreen(
     var restoreLibraryTotal by remember { mutableStateOf(0) }
     var restoreLibraryCurrentTitle by remember { mutableStateOf<String?>(null) }
     var restoreLibraryResultMessage by remember { mutableStateOf<String?>(null) }
+    var playlistImportResultMessage by remember { mutableStateOf<String?>(null) }
     var pendingRestoreScan by remember { mutableStateOf<LibraryRestoreScanResult?>(null) }
     // ✅ Séquence de Program Change pour le test MIDI
     val testProgramChanges = listOf(8, 39, 58, 127)
@@ -622,6 +630,34 @@ private fun MoreRootScreen(
         }
     }
 
+    val importPlaylistLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { pickedUri ->
+        if (pickedUri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    val raw = context.contentResolver.openInputStream(pickedUri)
+                        ?.bufferedReader(Charsets.UTF_8)
+                        ?.use { it.readText() }
+                        .orEmpty()
+                    importPlaylistFile(
+                        context = context.applicationContext,
+                        rawJson = raw
+                    )
+                }.getOrElse {
+                    PlaylistFileImportResult(
+                        importedPlaylistCount = 0,
+                        foundCount = 0,
+                        missingCount = 0,
+                        failed = true
+                    )
+                }
+            }
+            playlistImportResultMessage = formatPlaylistImportResultMessage(context, result)
+        }
+    }
+
     // Même type de fond que la console / accordeur
     val backgroundBrush = Brush.verticalGradient(
         listOf(
@@ -720,6 +756,18 @@ private fun MoreRootScreen(
                         onClick = {
                             if (isRestoringLibrary || isExportingLiveSongs) return@SettingsItem
                             restoreLibraryFolderLauncher.launch(exportLiveSongsTreeUri)
+                        }
+                    )
+                    SettingsItem(
+                        label = stringResource(R.string.more_item_import_playlist),
+                        onClick = {
+                            importPlaylistLauncher.launch(
+                                arrayOf(
+                                    "application/json",
+                                    "text/plain",
+                                    "*/*"
+                                )
+                            )
                         }
                     )
 
@@ -1165,6 +1213,23 @@ private fun MoreRootScreen(
             },
             confirmButton = {
                 TextButton(onClick = { restoreLibraryResultMessage = null }) {
+                    Text(text = stringResource(R.string.common_close))
+                }
+            }
+        )
+    }
+
+    playlistImportResultMessage?.let { message ->
+        AlertDialog(
+            onDismissRequest = { playlistImportResultMessage = null },
+            title = {
+                Text(text = stringResource(R.string.more_item_import_playlist))
+            },
+            text = {
+                Text(text = message)
+            },
+            confirmButton = {
+                TextButton(onClick = { playlistImportResultMessage = null }) {
                     Text(text = stringResource(R.string.common_close))
                 }
             }
@@ -1801,6 +1866,216 @@ private fun parseBackupPlaylistCount(stateJson: String?): Int {
     }.getOrDefault(0)
 }
 
+private data class PlaylistFileImportItem(
+    val uri: String,
+    val songId: String? = null,
+    val customTitle: String? = null
+)
+
+private data class PlaylistFileImportSource(
+    val name: String,
+    val items: List<PlaylistFileImportItem>
+)
+
+private data class PlaylistFileImportResult(
+    val importedPlaylistCount: Int,
+    val foundCount: Int,
+    val missingCount: Int,
+    val failed: Boolean
+)
+
+private fun importPlaylistFile(
+    context: Context,
+    rawJson: String
+): PlaylistFileImportResult {
+    val sources = parsePlaylistImportSources(context, rawJson)
+    if (sources.isEmpty()) {
+        return PlaylistFileImportResult(
+            importedPlaylistCount = 0,
+            foundCount = 0,
+            missingCount = 0,
+            failed = true
+        )
+    }
+
+    val runtimeSongIds = SmpLibraryScanner(context).listSongs()
+        .map { it.id.trim() }
+        .filter { it.isNotEmpty() }
+        .toSet()
+    val runtimePrompterIds = TextSongRepository.exportAll(context).keys
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
+        .toSet()
+
+    var importedPlaylistCount = 0
+    var foundCount = 0
+    var missingCount = 0
+
+    sources.forEach { source ->
+        val targetName = uniquePlaylistImportName(source.name)
+        val importedOrder = mutableListOf<String>()
+        PlaylistRepository.addPlaylist(targetName)
+
+        source.items.forEach { item ->
+            val rawUri = item.uri.trim()
+            when {
+                rawUri.isBlank() -> Unit
+
+                isGroupHeader(rawUri) || isGroupEnd(rawUri) -> {
+                    PlaylistRepository.assignSongToPlaylist(targetName, rawUri)
+                    importedOrder += rawUri
+                }
+
+                isPrompterItem(rawUri) -> {
+                    val prompterId = rawUri.removePrefix("prompter://").trim()
+                    if (prompterId.isNotEmpty() && prompterId in runtimePrompterIds) {
+                        PlaylistRepository.assignSongToPlaylist(targetName, rawUri)
+                        importedOrder += rawUri
+                        foundCount += 1
+                    } else {
+                        missingCount += 1
+                    }
+                }
+
+                else -> {
+                    val songId = item.songId?.trim()?.takeIf { it.isNotEmpty() }
+                        ?: getSmpSongId(rawUri)
+                    if (songId != null && songId in runtimeSongIds) {
+                        val playlistUri = buildSmpItem(songId)
+                        PlaylistRepository.assignSongToPlaylist(
+                            playlistName = targetName,
+                            songUri = playlistUri,
+                            songId = songId
+                        )
+                        item.customTitle
+                            ?.trim()
+                            ?.takeIf { it.isNotEmpty() }
+                            ?.let { title ->
+                                PlaylistRepository.renameSongInPlaylist(targetName, playlistUri, title)
+                            }
+                        importedOrder += playlistUri
+                        foundCount += 1
+                    } else {
+                        missingCount += 1
+                    }
+                }
+            }
+        }
+
+        if (importedOrder.isNotEmpty()) {
+            PlaylistRepository.updatePlayListOrder(targetName, importedOrder)
+            importedPlaylistCount += 1
+        } else {
+            PlaylistRepository.deletePlaylist(targetName)
+        }
+    }
+
+    if (importedPlaylistCount > 0) {
+        PlaylistStateStore.savePlaylistsSnapshot(context)
+    }
+
+    return PlaylistFileImportResult(
+        importedPlaylistCount = importedPlaylistCount,
+        foundCount = foundCount,
+        missingCount = missingCount,
+        failed = importedPlaylistCount == 0
+    )
+}
+
+private fun parsePlaylistImportSources(
+    context: Context,
+    rawJson: String
+): List<PlaylistFileImportSource> {
+    if (rawJson.isBlank()) return emptyList()
+    return runCatching {
+        val root = JSONObject(rawJson)
+        val singleName = root.optString("name", "").trim()
+        val singleItems = root.optJSONArray("items")
+        if (singleItems != null) {
+            return@runCatching listOf(
+                PlaylistFileImportSource(
+                    name = singleName.ifBlank { context.getString(R.string.playlist_import_default_name) },
+                    items = parsePlaylistImportItems(singleItems)
+                )
+            )
+        }
+
+        val playlists = root.optJSONObject("playlists") ?: return@runCatching emptyList()
+        val names = playlists.keys()
+        buildList {
+            while (names.hasNext()) {
+                val name = names.next()
+                val arr = playlists.optJSONArray(name) ?: continue
+                add(
+                    PlaylistFileImportSource(
+                        name = name.trim().ifBlank { context.getString(R.string.playlist_import_default_name) },
+                        items = parsePlaylistImportItems(arr)
+                    )
+                )
+            }
+        }
+    }.getOrDefault(emptyList())
+}
+
+private fun parsePlaylistImportItems(arr: JSONArray): List<PlaylistFileImportItem> {
+    return buildList {
+        for (index in 0 until arr.length()) {
+            val value = arr.opt(index)
+            if (value is JSONObject) {
+                val uri = value.optString("uri", "").trim()
+                if (uri.isBlank()) continue
+                add(
+                    PlaylistFileImportItem(
+                        uri = uri,
+                        songId = value.optString("songId", "").trim().ifBlank { null },
+                        customTitle = value.optString("customTitle", "").trim().ifBlank {
+                            value.optString("title", "").trim().ifBlank { null }
+                        }
+                    )
+                )
+            } else {
+                val uri = arr.optString(index, "").trim()
+                if (uri.isNotBlank()) {
+                    add(PlaylistFileImportItem(uri = uri))
+                }
+            }
+        }
+    }
+}
+
+private fun uniquePlaylistImportName(sourceName: String): String {
+    val clean = sourceName.trim().ifBlank { "Playlist" }
+    val existing = PlaylistRepository.getPlaylists().toSet()
+    if (clean !in existing) return clean
+    var index = 2
+    while (true) {
+        val candidate = "$clean ($index)"
+        if (candidate !in existing) return candidate
+        index += 1
+    }
+}
+
+private fun formatPlaylistImportResultMessage(
+    context: Context,
+    result: PlaylistFileImportResult
+): String {
+    if (result.failed) {
+        return context.getString(R.string.playlist_import_failed)
+    }
+    return if (result.missingCount > 0) {
+        context.getString(
+            R.string.playlist_import_done_with_missing,
+            result.foundCount,
+            result.missingCount
+        )
+    } else {
+        context.getString(
+            R.string.playlist_import_done,
+            result.foundCount
+        )
+    }
+}
+
 private fun parseBackupPrompterItems(
     rawJson: String?,
     runtimePrompterIds: Set<String>
@@ -1920,9 +2195,12 @@ private fun restoreLibraryFromBackupFolder(
         when (val remapResult = BackupStateRemapper.remapBundleStateJson(stateJson, importedSongs)) {
             is BackupStateRemapResult.Success -> {
                 stateWarningCount = remapResult.warnings.size
-                BackupManager.importState(context, remapResult.stateJson) {
-                    lastPlayed = it
-                }
+                BackupManager.importState(
+                    context = context,
+                    json = remapResult.stateJson,
+                    mergePlaylists = true
+                ) { lastPlayed = it }
+                PlaylistStateStore.savePlaylistsSnapshot(context)
                 stateRestored = true
             }
 

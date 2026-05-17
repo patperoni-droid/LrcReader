@@ -694,9 +694,25 @@ object BackupManager {
     fun importState(
         context: Context,
         json: String,
+        mergePlaylists: Boolean = false,
         onLastPlayed: (LastPlayed?) -> Unit = {}
     ) {
         val root = JSONObject(json)
+        val importedPlaylistNameBySource = linkedMapOf<String, String>()
+
+        fun uniqueRestoredPlaylistName(sourceName: String): String {
+            val clean = sourceName.trim().ifBlank { "Playlist" }
+            val existing = PlaylistRepository.getPlaylists().toSet()
+            if (clean !in existing) return clean
+            val restored = "$clean (restaurée)"
+            if (restored !in existing) return restored
+            var index = 2
+            while (true) {
+                val candidate = "$clean ($index)"
+                if (candidate !in existing) return candidate
+                index += 1
+            }
+        }
 
         // map locale lazy: on ne scanne que si une URI non-content a besoin de résolution.
         var localByName: Map<String, String>? = null
@@ -712,12 +728,16 @@ object BackupManager {
         // 1) playlists
         val playlistsJson = root.optJSONObject("playlists")
         if (playlistsJson != null) {
-            PlaylistRepository.clearAll()
+            if (!mergePlaylists) {
+                PlaylistRepository.clearAll()
+            }
             val names = playlistsJson.keys()
             while (names.hasNext()) {
-                val name = names.next()
+                val sourceName = names.next()
+                val name = if (mergePlaylists) uniqueRestoredPlaylistName(sourceName) else sourceName
+                importedPlaylistNameBySource[sourceName] = name
                 PlaylistRepository.addPlaylist(name)
-                val arr = playlistsJson.getJSONArray(name)
+                val arr = playlistsJson.getJSONArray(sourceName)
                 for (i in 0 until arr.length()) {
                     val entry = arr.opt(i)
                     val oldUri: String
@@ -758,8 +778,9 @@ object BackupManager {
         if (playedJson != null) {
             val names = playedJson.keys()
             while (names.hasNext()) {
-                val name = names.next()
-                val arr = playedJson.getJSONArray(name)
+                val sourceName = names.next()
+                val name = importedPlaylistNameBySource[sourceName] ?: sourceName
+                val arr = playedJson.getJSONArray(sourceName)
                 for (i in 0 until arr.length()) {
                     val oldUri = arr.getString(i)
                     val fixedUri = mapUriIfNeeded(context, ::localByNameProvider, oldUri, stats = uriStats)
@@ -856,8 +877,9 @@ object BackupManager {
         if (reviewJson != null) {
             val names = reviewJson.keys()
             while (names.hasNext()) {
-                val name = names.next()
-                val arr = reviewJson.getJSONArray(name)
+                val sourceName = names.next()
+                val name = importedPlaylistNameBySource[sourceName] ?: sourceName
+                val arr = reviewJson.getJSONArray(sourceName)
 
                 PlaylistRepository.clearReviewForPlaylist(name)
 
@@ -874,8 +896,9 @@ object BackupManager {
         if (colorsJson != null) {
             val names = colorsJson.keys()
             while (names.hasNext()) {
-                val name = names.next()
-                val colorLong = colorsJson.optLong(name, 0xFFE86FFF)
+                val sourceName = names.next()
+                val name = importedPlaylistNameBySource[sourceName] ?: sourceName
+                val colorLong = colorsJson.optLong(sourceName, 0xFFE86FFF)
                 PlaylistRepository.setPlaylistColor(name, colorLong)
             }
         }
@@ -1090,7 +1113,7 @@ object BackupManager {
         } ?: return false
 
         return try {
-            importState(context, json, onLastPlayed)
+            importState(context = context, json = json, onLastPlayed = onLastPlayed)
             true
         } catch (_: Exception) {
             false

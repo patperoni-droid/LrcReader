@@ -779,6 +779,11 @@
     <string name="more_item_export_live_songs_subtitle">Crée une sauvegarde complète de vos morceaux et playlists. Vous pourrez restaurer votre bibliothèque à l’identique.</string>
     <string name="more_item_restore_library">Restaurer ma bibliothèque</string>
     <string name="more_item_restore_library_subtitle">Importe les morceaux et playlists depuis un dossier de sauvegarde sans supprimer les autres morceaux.</string>
+    <string name="more_item_import_playlist">Importer une playlist</string>
+    <string name="playlist_import_default_name">Playlist importée</string>
+    <string name="playlist_import_done">Playlist importée. %1$d morceaux retrouvés.</string>
+    <string name="playlist_import_done_with_missing">Playlist importée. %1$d morceaux retrouvés, %2$d morceaux manquants. Certains morceaux sont introuvables.</string>
+    <string name="playlist_import_failed">Impossible d’importer cette playlist</string>
     <string name="more_item_editing">🛠  Édition</string>
     <string name="more_item_audio">🔊  Audio</string>
     <string name="more_item_language">🌐  Langue</string>

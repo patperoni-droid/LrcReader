@@ -689,6 +689,11 @@
     <string name="more_item_export_live_songs_subtitle">Crea una copia de seguridad completa de tus canciones y listas. Podrás restaurar tu biblioteca exactamente como está.</string>
     <string name="more_item_restore_library">Restaurar mi biblioteca</string>
     <string name="more_item_restore_library_subtitle">Importa canciones y listas desde una carpeta de copia sin eliminar tus otras canciones.</string>
+    <string name="more_item_import_playlist">Importar una playlist</string>
+    <string name="playlist_import_default_name">Playlist importada</string>
+    <string name="playlist_import_done">Playlist importada. %1$d canciones encontradas.</string>
+    <string name="playlist_import_done_with_missing">Playlist importada. %1$d canciones encontradas, %2$d canciones faltantes. Algunas canciones no se encuentran.</string>
+    <string name="playlist_import_failed">No se pudo importar esta playlist</string>
     <string name="more_item_editing">🛠  Edición</string>
     <string name="more_item_audio">🔊  Audio</string>
     <string name="more_item_language">🌐  Idioma</string>

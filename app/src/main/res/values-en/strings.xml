@@ -771,6 +771,11 @@
     <string name="more_item_export_live_songs_subtitle">Creates a full backup of your songs and playlists. You can restore your library exactly as it is.</string>
     <string name="more_item_restore_library">Restore my library</string>
     <string name="more_item_restore_library_subtitle">Imports songs and playlists from a backup folder without deleting your other songs.</string>
+    <string name="more_item_import_playlist">Import a playlist</string>
+    <string name="playlist_import_default_name">Imported playlist</string>
+    <string name="playlist_import_done">Playlist imported. %1$d songs found.</string>
+    <string name="playlist_import_done_with_missing">Playlist imported. %1$d songs found, %2$d songs missing. Some songs could not be found.</string>
+    <string name="playlist_import_failed">Unable to import this playlist</string>
     <string name="more_item_editing">🛠  Editing</string>
     <string name="more_item_audio">🔊  Audio</string>
     <string name="more_item_language">🌐  Language</string>
