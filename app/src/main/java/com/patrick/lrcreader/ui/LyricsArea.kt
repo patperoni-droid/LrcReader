@@ -1,6 +1,8 @@
 // LyricsAreaLazy.kt
 package com.patrick.lrcreader.ui
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -8,6 +10,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -79,6 +82,11 @@ fun LyricsAreaLazy(
                     line.colorArgb != null -> baseColor.copy(alpha = 0.72f)
                     else -> Color.White.copy(alpha = 0.42f)
                 }
+                val animatedColor by animateColorAsState(
+                    targetValue = color,
+                    animationSpec = tween(durationMillis = 160),
+                    label = "lyricsLineColor"
+                )
                 val fontWeight = when {
                     isActiveLine -> FontWeight.Bold
                     isActiveBlockLine -> FontWeight.Bold
@@ -102,7 +110,7 @@ fun LyricsAreaLazy(
                 ) {
                     Text(
                         text = line.text,
-                        color = color,
+                        color = animatedColor,
                         fontWeight = fontWeight,
                         fontSize = fontSize,
                         lineHeight = 30.sp,
