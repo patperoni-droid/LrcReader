@@ -368,6 +368,13 @@ private fun MoreRootScreen(
     var showDjMode by remember { mutableStateOf(showDjTab) }
     var showMainBusMode by remember { mutableStateOf(showMainBusTab) }
     var betaCode by remember { mutableStateOf("") }
+    var settingsHelpTitle by remember { mutableStateOf<String?>(null) }
+    var settingsHelpText by remember { mutableStateOf<String?>(null) }
+
+    fun openSettingsHelp(title: String, text: String) {
+        settingsHelpTitle = title
+        settingsHelpText = text
+    }
 
     androidx.compose.runtime.LaunchedEffect(showDjTab) {
         showDjMode = showDjTab
@@ -691,9 +698,11 @@ private fun MoreRootScreen(
                         subtitle = null,
                         onClick = onOpenArrangement
                     )
+                    val exportLiveSongsLabel = stringResource(R.string.more_item_export_live_songs)
                     SettingsItem(
-                        label = stringResource(R.string.more_item_export_live_songs),
-                        subtitle = stringResource(R.string.more_item_export_live_songs_subtitle),
+                        label = exportLiveSongsLabel,
+                        helpText = stringResource(R.string.more_item_export_live_songs_subtitle),
+                        onHelpClick = { help -> openSettingsHelp(exportLiveSongsLabel, help) },
                         onClick = {
                             if (isExportingLiveSongs) return@SettingsItem
                             if (isLite) {
@@ -703,9 +712,11 @@ private fun MoreRootScreen(
                             exportLiveSongsFolderLauncher.launch(exportLiveSongsTreeUri)
                         }
                     )
+                    val restoreLibraryLabel = stringResource(R.string.more_item_restore_library)
                     SettingsItem(
-                        label = stringResource(R.string.more_item_restore_library),
-                        subtitle = stringResource(R.string.more_item_restore_library_subtitle),
+                        label = restoreLibraryLabel,
+                        helpText = stringResource(R.string.more_item_restore_library_subtitle),
+                        onHelpClick = { help -> openSettingsHelp(restoreLibraryLabel, help) },
                         onClick = {
                             if (isRestoringLibrary || isExportingLiveSongs) return@SettingsItem
                             restoreLibraryFolderLauncher.launch(exportLiveSongsTreeUri)
@@ -717,7 +728,7 @@ private fun MoreRootScreen(
                     // Bloc interface / audio
                     SettingsItem(
                         label = stringResource(R.string.more_item_language),
-                        subtitle = stringResource(
+                        value = stringResource(
                             R.string.settings_language_subtitle,
                             currentLanguageLabel
                         ),
@@ -728,15 +739,21 @@ private fun MoreRootScreen(
                     SettingsItem(stringResource(R.string.more_item_tuner), onClick = onOpenTuner)
 
                     SettingsHeader(stringResource(R.string.settings_lyrics_section))
+                    val guidedReadingColorsLabel = stringResource(R.string.settings_guided_reading_colors)
                     SettingsItem(
-                        label = stringResource(R.string.settings_guided_reading_colors),
-                        subtitle = guidedReadingColorsSubtitle,
+                        label = guidedReadingColorsLabel,
+                        value = guidedReadingColorsSubtitle,
+                        helpText = stringResource(R.string.settings_guided_reading_colors_hint),
+                        onHelpClick = { help -> openSettingsHelp(guidedReadingColorsLabel, help) },
                         onClick = { showGuidedReadingColorsDialog = true }
                     )
 
+                    val showDjLabel = stringResource(R.string.more_show_dj_mode)
                     SwitchSettingItem(
-                        label = stringResource(R.string.more_show_dj_mode),
+                        label = showDjLabel,
                         checked = showDjMode,
+                        helpText = stringResource(R.string.more_show_dj_mode_help),
+                        onHelpClick = { help -> openSettingsHelp(showDjLabel, help) },
                         onCheckedChange = { enabled ->
                             showDjMode = enabled
                             UiEntryPrefs.setShowDjTab(context, enabled)
@@ -744,9 +761,12 @@ private fun MoreRootScreen(
                         }
                     )
 
+                    val showMainBusLabel = stringResource(R.string.more_show_main_bus)
                     SwitchSettingItem(
-                        label = stringResource(R.string.more_show_main_bus),
+                        label = showMainBusLabel,
                         checked = showMainBusMode,
+                        helpText = stringResource(R.string.more_show_main_bus_help),
+                        onHelpClick = { help -> openSettingsHelp(showMainBusLabel, help) },
                         onCheckedChange = { enabled ->
                             showMainBusMode = enabled
                             UiEntryPrefs.setShowMainBusTab(context, enabled)
@@ -755,30 +775,42 @@ private fun MoreRootScreen(
                     )
 
                     // 🔁 Retour auto vers la playlist (ON/OFF)
+                    val autoReturnLabel = stringResource(R.string.more_auto_return_playlist)
                     SwitchSettingItem(
-                        label = stringResource(R.string.more_auto_return_playlist),
+                        label = autoReturnLabel,
                         checked = autoReturnEnabled,
+                        helpText = stringResource(R.string.more_auto_return_playlist_help),
+                        onHelpClick = { help -> openSettingsHelp(autoReturnLabel, help) },
                         onCheckedChange = { enabled ->
                             autoReturnEnabled = enabled
                             AutoReturnPrefs.setEnabled(context, enabled)
                         }
                     )
 
+                    val playerOpenModeLabel = stringResource(R.string.more_player_open_mode)
                     SettingsItem(
-                        label = stringResource(R.string.more_player_open_mode),
-                        subtitle = currentPlayerLaunchModeLabel,
+                        label = playerOpenModeLabel,
+                        value = currentPlayerLaunchModeLabel,
+                        helpText = stringResource(R.string.more_player_open_mode_help),
+                        onHelpClick = { help -> openSettingsHelp(playerOpenModeLabel, help) },
                         onClick = { showPlayerLaunchDialog = true }
                     )
 
+                    val manualCrossfadeLabel = stringResource(R.string.more_manual_crossfade_duration)
                     SettingsItem(
-                        label = stringResource(R.string.more_manual_crossfade_duration),
-                        subtitle = currentManualCrossfadeDurationLabel,
+                        label = manualCrossfadeLabel,
+                        value = currentManualCrossfadeDurationLabel,
+                        helpText = stringResource(R.string.more_manual_crossfade_duration_help),
+                        onHelpClick = { help -> openSettingsHelp(manualCrossfadeLabel, help) },
                         onClick = { showManualCrossfadeDurationDialog = true }
                     )
 
+                    val lightIndicatorLabel = stringResource(R.string.more_show_light_indicator)
                     SwitchSettingItem(
-                        label = stringResource(R.string.more_show_light_indicator),
+                        label = lightIndicatorLabel,
                         checked = showLightIndicator,
+                        helpText = stringResource(R.string.more_show_light_indicator_help),
+                        onHelpClick = { help -> openSettingsHelp(lightIndicatorLabel, help) },
                         onCheckedChange = { enabled ->
                             showLightIndicator = enabled
                             LightIndicatorPrefs.setEnabled(context, enabled)
@@ -908,6 +940,17 @@ private fun MoreRootScreen(
                 TextButton(onClick = { showLanguageDialog = false }) {
                     Text(text = stringResource(R.string.common_cancel))
                 }
+            }
+        )
+    }
+
+    if (settingsHelpTitle != null && settingsHelpText != null) {
+        SettingHelpDialog(
+            title = settingsHelpTitle.orEmpty(),
+            text = settingsHelpText.orEmpty(),
+            onDismiss = {
+                settingsHelpTitle = null
+                settingsHelpText = null
             }
         )
     }
@@ -1297,25 +1340,39 @@ private fun SettingsHeader(label: String) {
 private fun SettingsItem(
     label: String,
     subtitle: String? = null,
+    value: String? = null,
+    helpText: String? = subtitle,
+    onHelpClick: (String) -> Unit = {},
     onClick: () -> Unit
 ) {
-    Column(
+    Row(
         Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(vertical = 12.dp, horizontal = 14.dp)
+            .padding(vertical = 10.dp, horizontal = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
             text = label,
             color = Color(0xFFF5F5F5),
-            fontSize = 14.sp
+            fontSize = 14.sp,
+            modifier = Modifier.weight(1f)
         )
-        if (!subtitle.isNullOrBlank()) {
-            Spacer(Modifier.height(4.dp))
+        if (!value.isNullOrBlank()) {
             Text(
-                text = subtitle,
+                text = value,
                 color = Color(0xFF9E9E9E),
-                fontSize = 12.sp
+                fontSize = 12.sp,
+                textAlign = TextAlign.End,
+                modifier = Modifier
+                    .padding(start = 10.dp)
+                    .weight(0.7f, fill = false)
+            )
+        }
+        if (!helpText.isNullOrBlank()) {
+            SettingsHelpIcon(
+                onClick = { onHelpClick(helpText) },
+                modifier = Modifier.padding(start = 8.dp)
             )
         }
     }
@@ -1326,30 +1383,82 @@ private fun SettingsItem(
 private fun SwitchSettingItem(
     label: String,
     checked: Boolean,
+    helpText: String? = null,
+    onHelpClick: (String) -> Unit = {},
     onCheckedChange: (Boolean) -> Unit
 ) {
-    Column(
-        Modifier
+    Row(
+        modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 14.dp, vertical = 8.dp)
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = label,
-                color = Color(0xFFF5F5F5),
-                fontSize = 14.sp,
-                modifier = Modifier.weight(1f)
-            )
-            Switch(
-                checked = checked,
-                onCheckedChange = onCheckedChange
+        Text(
+            text = label,
+            color = Color(0xFFF5F5F5),
+            fontSize = 14.sp,
+            modifier = Modifier.weight(1f)
+        )
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange
+        )
+        if (!helpText.isNullOrBlank()) {
+            SettingsHelpIcon(
+                onClick = { onHelpClick(helpText) },
+                modifier = Modifier.padding(start = 8.dp)
             )
         }
     }
     HorizontalDivider(color = Color(0xFF1E1E1E))
+}
+
+@Composable
+private fun SettingsHelpIcon(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .width(32.dp)
+            .height(32.dp)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = "?",
+            color = Color(0xFFFFECB3),
+            fontSize = 15.sp,
+            textAlign = TextAlign.Center
+        )
+    }
+}
+
+@Composable
+private fun SettingHelpDialog(
+    title: String,
+    text: String,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(text = title) },
+        text = {
+            Text(
+                text = text,
+                modifier = Modifier
+                    .heightIn(max = 360.dp)
+                    .verticalScroll(rememberScrollState()),
+                fontSize = 14.sp,
+                color = Color(0xFFE0E0E0)
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = stringResource(R.string.common_close))
+            }
+        }
+    )
 }
 
 @Composable
