@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -62,6 +63,7 @@ import com.patrick.lrcreader.core.AppLanguagePrefs
 import com.patrick.lrcreader.core.AppEdition
 import com.patrick.lrcreader.core.AutoReturnPrefs
 import com.patrick.lrcreader.core.BackupManager
+import com.patrick.lrcreader.core.DisplayPrefs
 import com.patrick.lrcreader.core.EditionConfig
 import com.patrick.lrcreader.core.LegacyLibraryVisibilityPrefs
 import com.patrick.lrcreader.core.LightIndicatorPrefs
@@ -319,6 +321,7 @@ private fun MoreRootScreen(
     var showLanguageDialog by remember { mutableStateOf(false) }
     var showPlayerLaunchDialog by remember { mutableStateOf(false) }
     var showManualCrossfadeDurationDialog by remember { mutableStateOf(false) }
+    var showGuidedReadingColorsDialog by remember { mutableStateOf(false) }
     var showExportProDialog by remember { mutableStateOf(false) }
     var selectedLanguageTag by remember { mutableStateOf(AppLanguagePrefs.getSavedLanguageTag(context)) }
     var isExportingLiveSongs by remember { mutableStateOf(false) }
@@ -349,6 +352,15 @@ private fun MoreRootScreen(
     }
     var showLightIndicator by remember {
         mutableStateOf(LightIndicatorPrefs.isEnabled(context))
+    }
+    var guidedReadingColorsEnabled by remember {
+        mutableStateOf(DisplayPrefs.isGuidedReadingColorsEnabled(context))
+    }
+    var guidedReadingColorA by remember {
+        mutableIntStateOf(DisplayPrefs.getGuidedReadingColorA(context))
+    }
+    var guidedReadingColorB by remember {
+        mutableIntStateOf(DisplayPrefs.getGuidedReadingColorB(context))
     }
     var showOldWorldInLibrary by remember {
         mutableStateOf(LegacyLibraryVisibilityPrefs.isOldWorldVisible(context))
@@ -384,6 +396,13 @@ private fun MoreRootScreen(
         ManualCrossfadeDurationOption.SECONDS_10 -> stringResource(R.string.player_crossfade_duration_10s)
         ManualCrossfadeDurationOption.SECONDS_20 -> stringResource(R.string.player_crossfade_duration_20s)
     }
+    val guidedReadingColorsSubtitle = stringResource(
+        if (guidedReadingColorsEnabled) {
+            R.string.settings_guided_reading_colors_enabled
+        } else {
+            R.string.settings_guided_reading_colors_disabled
+        }
+    )
     val sLiveSongsExportFailed = stringResource(R.string.more_live_songs_export_failed)
     val sLibraryRestoreScanFailed = stringResource(R.string.more_library_restore_scan_failed)
     val sLibraryRestoreEmpty = stringResource(R.string.more_library_restore_empty)
@@ -708,6 +727,13 @@ private fun MoreRootScreen(
                     // Accordeur, dans le bloc Audio
                     SettingsItem(stringResource(R.string.more_item_tuner), onClick = onOpenTuner)
 
+                    SettingsHeader(stringResource(R.string.settings_lyrics_section))
+                    SettingsItem(
+                        label = stringResource(R.string.settings_guided_reading_colors),
+                        subtitle = guidedReadingColorsSubtitle,
+                        onClick = { showGuidedReadingColorsDialog = true }
+                    )
+
                     SwitchSettingItem(
                         label = stringResource(R.string.more_show_dj_mode),
                         checked = showDjMode,
@@ -986,6 +1012,27 @@ private fun MoreRootScreen(
                     Text(text = stringResource(R.string.common_cancel))
                 }
             }
+        )
+    }
+
+    if (showGuidedReadingColorsDialog) {
+        GuidedReadingColorsDialog(
+            enabled = guidedReadingColorsEnabled,
+            colorA = guidedReadingColorA,
+            colorB = guidedReadingColorB,
+            onEnabledChange = { enabled ->
+                guidedReadingColorsEnabled = enabled
+                DisplayPrefs.setGuidedReadingColorsEnabled(context, enabled)
+            },
+            onColorAChange = { color ->
+                guidedReadingColorA = color
+                DisplayPrefs.setGuidedReadingColorA(context, color)
+            },
+            onColorBChange = { color ->
+                guidedReadingColorB = color
+                DisplayPrefs.setGuidedReadingColorB(context, color)
+            },
+            onDismiss = { showGuidedReadingColorsDialog = false }
         )
     }
 
@@ -1304,6 +1351,117 @@ private fun SwitchSettingItem(
     }
     HorizontalDivider(color = Color(0xFF1E1E1E))
 }
+
+@Composable
+private fun GuidedReadingColorsDialog(
+    enabled: Boolean,
+    colorA: Int,
+    colorB: Int,
+    onEnabledChange: (Boolean) -> Unit,
+    onColorAChange: (Int) -> Unit,
+    onColorBChange: (Int) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val options = listOf(
+        GuidedReadingColorOption(DisplayPrefs.DEFAULT_GUIDED_READING_COLOR_A, R.string.settings_guided_reading_color_white),
+        GuidedReadingColorOption(DisplayPrefs.DEFAULT_GUIDED_READING_COLOR_B, R.string.settings_guided_reading_color_soft_yellow),
+        GuidedReadingColorOption(0xFF90CAF9.toInt(), R.string.settings_guided_reading_color_soft_blue),
+        GuidedReadingColorOption(0xFFA5D6A7.toInt(), R.string.settings_guided_reading_color_soft_green)
+    )
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(text = stringResource(R.string.settings_guided_reading_colors)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = stringResource(R.string.settings_guided_reading_colors_enabled),
+                        color = Color(0xFFF5F5F5),
+                        fontSize = 14.sp,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Switch(
+                        checked = enabled,
+                        onCheckedChange = onEnabledChange
+                    )
+                }
+                Text(
+                    text = stringResource(R.string.settings_guided_reading_colors_hint),
+                    color = Color(0xFFBDBDBD),
+                    fontSize = 12.sp
+                )
+                GuidedReadingColorPickerRow(
+                    label = stringResource(R.string.settings_guided_reading_color_a),
+                    selectedColor = colorA,
+                    options = options,
+                    onColorChange = onColorAChange
+                )
+                GuidedReadingColorPickerRow(
+                    label = stringResource(R.string.settings_guided_reading_color_b),
+                    selectedColor = colorB,
+                    options = options,
+                    onColorChange = onColorBChange
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = stringResource(R.string.common_close))
+            }
+        }
+    )
+}
+
+@Composable
+private fun GuidedReadingColorPickerRow(
+    label: String,
+    selectedColor: Int,
+    options: List<GuidedReadingColorOption>,
+    onColorChange: (Int) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(
+            text = label,
+            color = Color(0xFFF5F5F5),
+            fontSize = 13.sp
+        )
+        options.forEach { option ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onColorChange(option.argb) }
+                    .padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                RadioButton(
+                    selected = selectedColor == option.argb,
+                    onClick = { onColorChange(option.argb) }
+                )
+                Box(
+                    modifier = Modifier
+                        .width(32.dp)
+                        .height(20.dp)
+                        .background(Color(option.argb), RoundedCornerShape(6.dp))
+                )
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    text = stringResource(option.labelRes),
+                    color = Color(0xFFF5F5F5),
+                    fontSize = 13.sp
+                )
+            }
+        }
+    }
+}
+
+private data class GuidedReadingColorOption(
+    val argb: Int,
+    val labelRes: Int
+)
 
 @Composable
 private fun SettingsInfoItem(

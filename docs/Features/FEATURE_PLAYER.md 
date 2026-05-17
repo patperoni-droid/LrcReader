@@ -245,6 +245,9 @@ Reason:
 During live singing, performers naturally read the next line while singing the current one.
 
 Rules:
+- optional Guided Reading Colors may alternate lyric lines at runtime for live visual tracking
+- manual lyric line colors always override guided alternating colors
+- guided colors are UI/runtime only and must never rewrite LRC files
 - next-line emphasis must remain softer than active line
 - when `activeLineCount > 1`, all active immobile lines must keep identical full opacity
 - multi-line active display is intended to reduce visual jump sensations during live reading

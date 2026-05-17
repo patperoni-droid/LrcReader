@@ -701,6 +701,17 @@
     <string name="more_auto_return_playlist">Regreso automático a la playlist (10 s antes del final)</string>
     <string name="more_player_open_mode">Apertura del reproductor</string>
     <string name="more_manual_crossfade_duration">Duración del fundido de transición</string>
+    <string name="settings_lyrics_section">Letras</string>
+    <string name="settings_guided_reading_colors">Colores de lectura guiada</string>
+    <string name="settings_guided_reading_colors_enabled">Activado</string>
+    <string name="settings_guided_reading_colors_disabled">Desactivado</string>
+    <string name="settings_guided_reading_colors_hint">Alterna automáticamente las líneas sin reemplazar los colores manuales.</string>
+    <string name="settings_guided_reading_color_a">Color A</string>
+    <string name="settings_guided_reading_color_b">Color B</string>
+    <string name="settings_guided_reading_color_white">Blanco</string>
+    <string name="settings_guided_reading_color_soft_yellow">Amarillo suave</string>
+    <string name="settings_guided_reading_color_soft_blue">Azul suave</string>
+    <string name="settings_guided_reading_color_soft_green">Verde suave</string>
     <string name="player_open_mode_always">Siempre</string>
     <string name="player_open_mode_never">Nunca</string>
     <string name="player_open_mode_automatic">Automático (abrir solo si hay letras disponibles)</string>

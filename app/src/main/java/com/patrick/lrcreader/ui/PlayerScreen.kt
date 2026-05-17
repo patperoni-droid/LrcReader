@@ -2938,6 +2938,10 @@ fun PlayerScreen(
                             } else if (selectedViewMode == LyricsViewMode.LYRICS) {
                                 val safeLrcIndex = currentLrcIndex
                                     .coerceIn(0, (parsedLines.size - 1).coerceAtLeast(0))
+                                val guidedReadingColorsEnabled =
+                                    DisplayPrefs.isGuidedReadingColorsEnabled(context)
+                                val guidedReadingColorA = DisplayPrefs.getGuidedReadingColorA(context)
+                                val guidedReadingColorB = DisplayPrefs.getGuidedReadingColorB(context)
                                 LyricsAreaLazy(
                                     modifier = Modifier.fillMaxSize(),
                                     listState = listState,
@@ -2948,6 +2952,9 @@ fun PlayerScreen(
                                     readabilityModeEnabled = readabilityModeEnabled,
                                     currentLrcIndex = safeLrcIndex,
                                     activeLyricsLineCount = activeLyricsLineCount,
+                                    guidedReadingColorsEnabled = guidedReadingColorsEnabled,
+                                    guidedReadingColorA = guidedReadingColorA,
+                                    guidedReadingColorB = guidedReadingColorB,
                                     onLyricsBoxHeightChange = { lyricsBoxHeightPx = it },
                                     highlightColor = highlightColor,
                                     onLineClick = { index, timeMs ->

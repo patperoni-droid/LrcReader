@@ -37,6 +37,9 @@ fun LyricsAreaLazy(
     readabilityModeEnabled: Boolean,
     currentLrcIndex: Int,
     activeLyricsLineCount: Int,
+    guidedReadingColorsEnabled: Boolean,
+    guidedReadingColorA: Int,
+    guidedReadingColorB: Int,
     onLyricsBoxHeightChange: (Int) -> Unit,
     highlightColor: Color,
     onLineClick: (index: Int, timeMs: Long) -> Unit
@@ -73,13 +76,20 @@ fun LyricsAreaLazy(
                 val isNextActiveLine = !readabilityModeEnabled &&
                     blockSize == 1 &&
                     index == currentLrcIndex + 1
-                val baseColor = line.colorArgb?.let(::Color) ?: Color.White
+                val manualColor = line.colorArgb?.let(::Color)
+                val guidedColor = if (guidedReadingColorsEnabled) {
+                    Color(if (index % 2 == 0) guidedReadingColorA else guidedReadingColorB)
+                } else {
+                    null
+                }
+                val baseColor = manualColor ?: guidedColor ?: Color.White
+                val activeColor = manualColor ?: guidedColor ?: highlightColor
                 val color = when {
-                    isActiveLine -> line.colorArgb?.let(::Color) ?: highlightColor
-                    isActiveBlockLine -> line.colorArgb?.let(::Color) ?: highlightColor
-                    isNextActiveLine -> (line.colorArgb?.let(::Color) ?: highlightColor).copy(alpha = 0.62f)
+                    isActiveLine -> activeColor
+                    isActiveBlockLine -> activeColor
+                    isNextActiveLine -> activeColor.copy(alpha = 0.62f)
                     readabilityModeEnabled -> baseColor
-                    line.colorArgb != null -> baseColor.copy(alpha = 0.72f)
+                    manualColor != null || guidedColor != null -> baseColor.copy(alpha = 0.72f)
                     else -> Color.White.copy(alpha = 0.42f)
                 }
                 val animatedColor by animateColorAsState(

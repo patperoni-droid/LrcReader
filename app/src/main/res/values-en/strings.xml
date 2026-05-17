@@ -783,6 +783,17 @@
     <string name="more_auto_return_playlist">Auto return to playlist (10 s before end)</string>
     <string name="more_player_open_mode">Player opening</string>
     <string name="more_manual_crossfade_duration">Transition fade duration</string>
+    <string name="settings_lyrics_section">Lyrics</string>
+    <string name="settings_guided_reading_colors">Guided Reading Colors</string>
+    <string name="settings_guided_reading_colors_enabled">Enabled</string>
+    <string name="settings_guided_reading_colors_disabled">Disabled</string>
+    <string name="settings_guided_reading_colors_hint">Automatically alternate lines without replacing manual line colors.</string>
+    <string name="settings_guided_reading_color_a">Color A</string>
+    <string name="settings_guided_reading_color_b">Color B</string>
+    <string name="settings_guided_reading_color_white">White</string>
+    <string name="settings_guided_reading_color_soft_yellow">Soft yellow</string>
+    <string name="settings_guided_reading_color_soft_blue">Soft blue</string>
+    <string name="settings_guided_reading_color_soft_green">Soft green</string>
     <string name="player_open_mode_always">Always</string>
     <string name="player_open_mode_never">Never</string>
     <string name="player_open_mode_automatic">Automatic (open only if lyrics are available)</string>
