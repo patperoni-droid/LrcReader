@@ -833,6 +833,11 @@
     <string name="more_live_songs_export_failed">Impossible de lancer la sauvegarde</string>
     <string name="more_library_restore_title">Restaurer ma bibliothèque</string>
     <string name="more_library_restore_progress">Restauration en cours : %1$d / %2$d</string>
+    <string name="more_library_restore_preparing">Préparation de la restauration…</string>
+    <string name="more_library_restore_analyzing">Analyse de la sauvegarde…</string>
+    <string name="more_library_restore_importing">Importation des morceaux…</string>
+    <string name="more_library_restore_rebuilding">Reconstruction de la bibliothèque…</string>
+    <string name="more_library_restore_playlists">Restauration des playlists…</string>
     <string name="more_library_restore_summary">Cette sauvegarde contient :\n- %1$d morceaux\n- %2$d playlists\n- %3$d prompteur(s)\n- %4$d conflits détectés</string>
     <string name="more_library_restore_keep_existing">Conserver les morceaux existants</string>
     <string name="more_library_restore_replace_existing">Remplacer les morceaux existants</string>

@@ -32,6 +32,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
@@ -344,6 +345,7 @@ private fun MoreRootScreen(
     var restoreLibraryDone by remember { mutableStateOf(0) }
     var restoreLibraryTotal by remember { mutableStateOf(0) }
     var restoreLibraryCurrentTitle by remember { mutableStateOf<String?>(null) }
+    var restoreLibraryStageText by remember { mutableStateOf<String?>(null) }
     var restoreLibraryResultMessage by remember { mutableStateOf<String?>(null) }
     var playlistImportResultMessage by remember { mutableStateOf<String?>(null) }
     var pendingRestoreScan by remember { mutableStateOf<LibraryRestoreScanResult?>(null) }
@@ -425,6 +427,11 @@ private fun MoreRootScreen(
     val sLiveSongsExportFailed = stringResource(R.string.more_live_songs_export_failed)
     val sLibraryRestoreScanFailed = stringResource(R.string.more_library_restore_scan_failed)
     val sLibraryRestoreEmpty = stringResource(R.string.more_library_restore_empty)
+    val sLibraryRestorePreparing = stringResource(R.string.more_library_restore_preparing)
+    val sLibraryRestoreAnalyzing = stringResource(R.string.more_library_restore_analyzing)
+    val sLibraryRestoreImporting = stringResource(R.string.more_library_restore_importing)
+    val sLibraryRestoreRebuilding = stringResource(R.string.more_library_restore_rebuilding)
+    val sLibraryRestorePlaylists = stringResource(R.string.more_library_restore_playlists)
     val sExportProDialogTitle = stringResource(R.string.export_pro_dialog_title)
     val sExportProDialogMessage = stringResource(R.string.export_pro_dialog_message)
     val sUpgradeToPro = stringResource(R.string.library_upgrade_to_pro)
@@ -600,7 +607,11 @@ private fun MoreRootScreen(
     val restoreLibraryFolderLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree()
     ) { pickedUri ->
-        if (pickedUri == null) return@rememberLauncherForActivityResult
+        if (pickedUri == null) {
+            restoreLibraryStageText = null
+            return@rememberLauncherForActivityResult
+        }
+        restoreLibraryStageText = sLibraryRestoreAnalyzing
         runCatching {
             context.contentResolver.takePersistableUriPermission(
                 pickedUri,
@@ -619,6 +630,7 @@ private fun MoreRootScreen(
             pendingRestoreScan = when {
                 scanResult == null -> {
                     restoreLibraryResultMessage = sLibraryRestoreScanFailed
+                    restoreLibraryStageText = null
                     null
                 }
 
@@ -626,10 +638,14 @@ private fun MoreRootScreen(
                     scanResult.prompterCount == 0 &&
                     scanResult.stateJson == null -> {
                     restoreLibraryResultMessage = sLibraryRestoreEmpty
+                    restoreLibraryStageText = null
                     null
                 }
 
-                else -> scanResult
+                else -> {
+                    restoreLibraryStageText = null
+                    scanResult
+                }
             }
         }
     }
@@ -659,6 +675,52 @@ private fun MoreRootScreen(
                 }
             }
             playlistImportResultMessage = formatPlaylistImportResultMessage(context, result)
+        }
+    }
+
+    fun startLibraryRestore(
+        scan: LibraryRestoreScanResult,
+        conflictMode: LibraryRestoreConflictMode
+    ) {
+        pendingRestoreScan = null
+        scope.launch {
+            isRestoringLibrary = true
+            restoreLibraryStageText = sLibraryRestoreImporting
+            restoreLibraryDone = 0
+            restoreLibraryCurrentTitle = null
+            restoreLibraryTotal = scan.songCount + scan.prompterCount + if (scan.stateJson != null) 1 else 0
+            try {
+                val result = withContext(Dispatchers.IO) {
+                    restoreLibraryFromBackupFolder(
+                        context = context.applicationContext,
+                        scanResult = scan,
+                        conflictMode = conflictMode
+                    ) { done, total, currentTitle ->
+                        restoreLibraryDone = done
+                        restoreLibraryTotal = total
+                        restoreLibraryCurrentTitle = currentTitle
+                        restoreLibraryStageText = when {
+                            currentTitle == "state.json" -> sLibraryRestorePlaylists
+                            total > 0 && done >= scan.songCount -> sLibraryRestoreRebuilding
+                            else -> sLibraryRestoreImporting
+                        }
+                    }
+                }
+                onAfterImport(result.lastPlayed)
+                if (result.importedCount > 0) {
+                    onAfterSmpRestore(result.importedCount, result.lastImportedSongId)
+                }
+                restoreLibraryResultMessage = formatLibraryRestoreResultMessage(
+                    context = context,
+                    result = result
+                )
+            } catch (_: Exception) {
+                restoreLibraryResultMessage = sLibraryRestoreScanFailed
+            } finally {
+                restoreLibraryCurrentTitle = null
+                restoreLibraryStageText = null
+                isRestoringLibrary = false
+            }
         }
     }
 
@@ -759,6 +821,7 @@ private fun MoreRootScreen(
                         onHelpClick = { help -> openSettingsHelp(restoreLibraryLabel, help) },
                         onClick = {
                             if (isRestoringLibrary || isExportingLiveSongs) return@SettingsItem
+                            restoreLibraryStageText = sLibraryRestorePreparing
                             restoreLibraryFolderLauncher.launch(exportLiveSongsTreeUri)
                         }
                     )
@@ -1160,33 +1223,49 @@ private fun MoreRootScreen(
         )
     }
 
-    if (isRestoringLibrary) {
-        AlertDialog(
-            onDismissRequest = {},
-            title = {
-                Text(text = stringResource(R.string.more_library_restore_title))
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    if (restoreLibraryStageText != null || isRestoringLibrary) {
+        Dialog(onDismissRequest = {}) {
+            Surface(
+                shape = RoundedCornerShape(18.dp),
+                color = Color(0xFF1B1B1B)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(22.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    CircularProgressIndicator(color = Color(0xFF90CAF9))
                     Text(
-                        text = context.getString(
+                        text = restoreLibraryStageText ?: sLibraryRestorePreparing,
+                        color = Color(0xFFF5F5F5),
+                        fontSize = 16.sp,
+                        textAlign = TextAlign.Center
+                    )
+                    if (isRestoringLibrary && restoreLibraryTotal > 0) {
+                    Text(
+                        text = stringResource(
                             R.string.more_library_restore_progress,
                             restoreLibraryDone,
                             restoreLibraryTotal
                         ),
-                        color = Color(0xFFF5F5F5)
+                        color = Color(0xFFB0BEC5),
+                        fontSize = 13.sp,
+                        textAlign = TextAlign.Center
                     )
+                    }
                     restoreLibraryCurrentTitle?.takeIf { it.isNotBlank() }?.let { title ->
                         Text(
                             text = title,
                             color = Color(0xFF9E9E9E),
-                            fontSize = 12.sp
+                            fontSize = 12.sp,
+                            textAlign = TextAlign.Center
                         )
                     }
                 }
-            },
-            confirmButton = {}
-        )
+            }
+        }
     }
 
     exportLiveSongsResultMessage?.let { message ->
@@ -1285,34 +1364,7 @@ private fun MoreRootScreen(
                     ) {
                         TextButton(
                             onClick = {
-                                pendingRestoreScan = null
-                                scope.launch {
-                                    isRestoringLibrary = true
-                                    restoreLibraryDone = 0
-                                    restoreLibraryCurrentTitle = null
-                                    restoreLibraryTotal = scan.songCount + scan.prompterCount + if (scan.stateJson != null) 1 else 0
-                                    val result = withContext(Dispatchers.IO) {
-                                        restoreLibraryFromBackupFolder(
-                                            context = context.applicationContext,
-                                            scanResult = scan,
-                                            conflictMode = LibraryRestoreConflictMode.Preserve
-                                        ) { done, total, currentTitle ->
-                                            restoreLibraryDone = done
-                                            restoreLibraryTotal = total
-                                            restoreLibraryCurrentTitle = currentTitle
-                                    }
-                                }
-                                onAfterImport(result.lastPlayed)
-                                if (result.importedCount > 0) {
-                                    onAfterSmpRestore(result.importedCount, result.lastImportedSongId)
-                                }
-                                restoreLibraryCurrentTitle = null
-                                restoreLibraryResultMessage = formatLibraryRestoreResultMessage(
-                                    context = context,
-                                    result = result
-                                    )
-                                    isRestoringLibrary = false
-                                }
+                                startLibraryRestore(scan, LibraryRestoreConflictMode.Preserve)
                             },
                             modifier = Modifier.fillMaxWidth()
                         ) {
@@ -1321,34 +1373,7 @@ private fun MoreRootScreen(
 
                         TextButton(
                             onClick = {
-                                pendingRestoreScan = null
-                                scope.launch {
-                                    isRestoringLibrary = true
-                                    restoreLibraryDone = 0
-                                    restoreLibraryCurrentTitle = null
-                                    restoreLibraryTotal = scan.songCount + scan.prompterCount + if (scan.stateJson != null) 1 else 0
-                                    val result = withContext(Dispatchers.IO) {
-                                        restoreLibraryFromBackupFolder(
-                                            context = context.applicationContext,
-                                            scanResult = scan,
-                                            conflictMode = LibraryRestoreConflictMode.Replace
-                                        ) { done, total, currentTitle ->
-                                            restoreLibraryDone = done
-                                            restoreLibraryTotal = total
-                                            restoreLibraryCurrentTitle = currentTitle
-                                    }
-                                }
-                                onAfterImport(result.lastPlayed)
-                                if (result.importedCount > 0) {
-                                    onAfterSmpRestore(result.importedCount, result.lastImportedSongId)
-                                }
-                                restoreLibraryCurrentTitle = null
-                                restoreLibraryResultMessage = formatLibraryRestoreResultMessage(
-                                    context = context,
-                                    result = result
-                                    )
-                                    isRestoringLibrary = false
-                                }
+                                startLibraryRestore(scan, LibraryRestoreConflictMode.Replace)
                             },
                             modifier = Modifier.fillMaxWidth()
                         ) {

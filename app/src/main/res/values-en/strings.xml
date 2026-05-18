@@ -825,6 +825,11 @@
     <string name="more_live_songs_export_failed">Unable to start the backup</string>
     <string name="more_library_restore_title">Restore my library</string>
     <string name="more_library_restore_progress">Restore in progress: %1$d / %2$d</string>
+    <string name="more_library_restore_preparing">Preparing restore…</string>
+    <string name="more_library_restore_analyzing">Analyzing backup…</string>
+    <string name="more_library_restore_importing">Importing songs…</string>
+    <string name="more_library_restore_rebuilding">Rebuilding library…</string>
+    <string name="more_library_restore_playlists">Restoring playlists…</string>
     <string name="more_library_restore_summary">This backup contains:\n- %1$d songs\n- %2$d playlists\n- %3$d prompter(s)\n- %4$d conflicts detected</string>
     <string name="more_library_restore_keep_existing">Keep existing songs</string>
     <string name="more_library_restore_replace_existing">Replace existing songs</string>
