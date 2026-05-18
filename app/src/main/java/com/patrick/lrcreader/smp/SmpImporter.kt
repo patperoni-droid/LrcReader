@@ -105,7 +105,10 @@ class SmpImporter(private val context: Context) {
             )
 
             val config = extracted.config
-            val title = config.title ?: displayName.removeSmpSuffix().ifBlank { "Untitled" }
+            val title = firstNonBlankTitle(
+                config.title,
+                displayName.removeSmpSuffix()
+            )
             val rawConfigId = config.id
             val stableConfigId = sanitizeSongId(rawConfigId)
             val songId = stableConfigId ?: "song_${UUID.randomUUID()}"
@@ -191,6 +194,14 @@ class SmpImporter(private val context: Context) {
                 midiPath = extracted.midiFileName?.let { File(destinationDir, it).absolutePath },
                 dmxPath = extracted.dmxFileName?.let { File(destinationDir, it).absolutePath },
                 prompterPath = extracted.prompterFileName?.let { File(destinationDir, it).absolutePath }
+            )
+            Log.d(
+                "RESTORE_DIAG",
+                "importedSongId=$songId importedTitle=$title importedDisplayTitle=$title importedAudioPath=${audioPath ?: "null"}"
+            )
+            Log.d(
+                "RESTORE_DIAG",
+                "configExists=${File(destinationDir, CONFIG_FILE_NAME).isFile} configTitle=${config.title ?: "null"} metadataTitle=${songUnit.title}"
             )
             if (!SmpMetaStore.write(songUnit)) {
                 Log.w(TAG, "Ecriture meta.json impossible après import songId=$songId dir=${destinationDir.absolutePath}")
@@ -565,6 +576,14 @@ class SmpImporter(private val context: Context) {
         } else {
             this
         }
+    }
+
+    private fun firstNonBlankTitle(vararg candidates: String?): String {
+        return candidates
+            .asSequence()
+            .mapNotNull { it?.trim() }
+            .firstOrNull { it.isNotEmpty() && !it.equals("null", ignoreCase = true) }
+            ?: "Titre sans nom"
     }
 
     private data class ExtractedArchive(

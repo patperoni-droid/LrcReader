@@ -21,6 +21,7 @@ import java.net.URLDecoder
 object BackupManager {
 
     private const val IMPORT_LOG_TAG = "BACKUP_IMPORT"
+    private const val RESTORE_DIAG_TAG = "RESTORE_DIAG"
     private const val BOOT_TAG = "BOOTSTEP"
     private const val AUTO_BACKUP_TAG = "AUTO_BACKUP"
     private const val ANR_BACKUP_TAG = "ANR_BACKUP"
@@ -691,6 +692,21 @@ object BackupManager {
         return oldUri
     }
 
+    private fun extractRuntimeSongId(uriString: String): String? {
+        val path = runCatching { Uri.parse(uriString).path }.getOrNull()
+            ?.replace('\\', '/')
+            ?: return null
+        val marker = "/tracks/"
+        val markerIndex = path.lastIndexOf(marker)
+        if (markerIndex < 0) return null
+        val remainder = path.substring(markerIndex + marker.length)
+        val separatorIndex = remainder.indexOf('/')
+        if (separatorIndex <= 0) return null
+        return remainder.substring(0, separatorIndex)
+            .trim()
+            .takeIf { it.isNotEmpty() }
+    }
+
     fun importState(
         context: Context,
         json: String,
@@ -757,17 +773,39 @@ object BackupManager {
                         backupName = null
                         backupSongId = null
                     }
-                    val fixedUri = mapUriIfNeeded(
-                        context = context,
-                        localByNameProvider = ::localByNameProvider,
-                        oldUri = oldUri,
-                        backupName = backupName,
-                        stats = uriStats
+                    val entrySongId = backupSongId
+                        ?: getSmpSongId(oldUri)
+                        ?: extractRuntimeSongId(oldUri)
+                    val fixedUri = if (entrySongId != null) {
+                        buildSmpItem(entrySongId)
+                    } else {
+                        mapUriIfNeeded(
+                            context = context,
+                            localByNameProvider = ::localByNameProvider,
+                            oldUri = oldUri,
+                            backupName = backupName,
+                            stats = uriStats
+                        )
+                    }
+                    val restoredSongId = getSmpSongId(fixedUri)
+                        ?: entrySongId
+                        ?: extractRuntimeSongId(fixedUri)
+                    val playlistUri = restoredSongId?.let { buildSmpItem(it) } ?: fixedUri
+                    if (playlistUri.isBlank() || playlistUri.equals("null", ignoreCase = true)) {
+                        Log.w(
+                            RESTORE_DIAG_TAG,
+                            "playlistItem skippedInvalidUri originalUri=$oldUri"
+                        )
+                        continue
+                    }
+                    Log.d(
+                        RESTORE_DIAG_TAG,
+                        "playlistItem songId=${restoredSongId ?: "null"} uri=$playlistUri originalUri=$oldUri"
                     )
                     PlaylistRepository.assignSongToPlaylist(
                         playlistName = name,
-                        songUri = fixedUri,
-                        songId = backupSongId
+                        songUri = playlistUri,
+                        songId = restoredSongId
                     )
                 }
             }

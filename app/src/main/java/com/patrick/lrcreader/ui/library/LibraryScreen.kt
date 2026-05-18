@@ -964,9 +964,21 @@ fun LibraryScreen(
 
     fun resolveSongDisplayTitle(songId: String, fallbackTitle: String): String {
         val playbackItem = buildSmpItem(songId)
-        return TitleAliasesStore.getTitleForTrack(context, playbackItem)
-            ?: PlaylistRepository.getAnyCustomTitleForUri(playbackItem)
-            ?: fallbackTitle
+        val aliasTitle = TitleAliasesStore.getTitleForTrack(context, playbackItem)
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() && !it.equals("null", ignoreCase = true) }
+        val customTitle = PlaylistRepository.getAnyCustomTitleForUri(playbackItem)
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() && !it.equals("null", ignoreCase = true) }
+        val resolvedTitle = aliasTitle
+            ?: customTitle
+            ?: fallbackTitle.takeIf { it.isNotBlank() && !it.equals("null", ignoreCase = true) }
+            ?: songId
+        Log.d(
+            "LIBRARY_DIAG",
+            "songId=$songId initialTitle=$fallbackTitle alias=${aliasTitle ?: "null"} custom=${customTitle ?: "null"} resolvedTitle=$resolvedTitle"
+        )
+        return resolvedTitle
     }
 
     fun buildLibrarySongItems(): List<LibrarySongItem> {

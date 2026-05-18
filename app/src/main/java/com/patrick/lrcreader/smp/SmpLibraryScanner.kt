@@ -104,9 +104,20 @@ class SmpLibraryScanner(private val context: Context) {
             emptyList()
         }
 
+        val title = firstNonBlankTitle(
+            meta?.title,
+            config?.title,
+            songDir.name
+        )
+        val configFile = File(songDir, CONFIG_FILE_NAME)
+        Log.d(
+            "LIBRARY_INDEX_DIAG",
+            "songId=${songDir.name} title=$title displayTitle=$title audioPath=${audioFile?.absolutePath ?: "null"} configPath=${configFile.absolutePath} configExists=${configFile.isFile}"
+        )
+
         val songUnit = SongUnit(
             id = songDir.name,
-            title = meta?.title ?: config?.title ?: songDir.name,
+            title = title,
             storageFolder = songDir.absolutePath,
             audioPath = audioFile?.absolutePath,
             lyricsPath = resolveOptionalPath(songDir, meta?.lyricsFile, "lyrics.lrc"),
@@ -213,5 +224,13 @@ class SmpLibraryScanner(private val context: Context) {
             Log.i(TRACE_TAG, "step=runtime_config_invalid dir=${songDir.absolutePath}")
             null
         }
+    }
+
+    private fun firstNonBlankTitle(vararg candidates: String?): String {
+        return candidates
+            .asSequence()
+            .mapNotNull { it?.trim() }
+            .firstOrNull { it.isNotEmpty() && !it.equals("null", ignoreCase = true) }
+            ?: "Titre sans nom"
     }
 }

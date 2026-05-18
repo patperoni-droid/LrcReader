@@ -711,6 +711,7 @@
     <string name="quickplaylists_loading_playlists">Chargement des playlists...</string>
     <string name="quickplaylists_restoring_session">Restauration de la session...</string>
     <string name="quickplaylists_text_fallback_title">(Texte)</string>
+    <string name="quickplaylists_missing_title">Titre manquant</string>
     <string name="quickplaylists_badge_next_forced">PROCHAIN</string>
     <string name="quickplaylists_badge_next">NEXT</string>
     <string name="quickplaylists_menu_play">Auto Play</string>

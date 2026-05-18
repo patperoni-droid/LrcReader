@@ -625,6 +625,7 @@
     <string name="quickplaylists_loading_playlists">Cargando listas...</string>
     <string name="quickplaylists_restoring_session">Restaurando sesión...</string>
     <string name="quickplaylists_text_fallback_title">(Texto)</string>
+    <string name="quickplaylists_missing_title">Título faltante</string>
     <string name="quickplaylists_badge_next_forced">SIGUIENTE</string>
     <string name="quickplaylists_badge_next">SIGUIENTE</string>
     <string name="quickplaylists_menu_play">Auto Play</string>

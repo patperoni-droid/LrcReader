@@ -2614,8 +2614,20 @@ class MainActivity : AppCompatActivity() {
                         "RESOLVE_SMP ok songId=${song.id} resolvedUri=$resolvedUri playlist=$playlistName"
                     )
                     runCatching {
-                        if (TitleAliasesStore.getTitleForTrack(ctx, resolvedUri).isNullOrBlank()) {
+                        val loadedTitle = sanitizeDisplayTrackTitle(song.title)
+                        Log.d(
+                            "PLAYER_DIAG",
+                            "loadedTitle=${loadedTitle ?: "null"} songId=${song.id} uri=$resolvedUri"
+                        )
+                        if (
+                            loadedTitle != null &&
+                            sanitizeDisplayTrackTitle(TitleAliasesStore.getTitleForTrack(ctx, resolvedUri)) == null
+                        ) {
                             TitleAliasesStore.setTitleForTrack(ctx, resolvedUri, song.title)
+                            Log.d(
+                                "PLAYER_DIAG",
+                                "updatedLibraryTitle=$loadedTitle songId=${song.id} uri=$resolvedUri"
+                            )
                         }
                     }.onFailure { error ->
                         Log.w(

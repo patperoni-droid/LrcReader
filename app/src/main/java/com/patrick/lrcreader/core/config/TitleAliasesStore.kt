@@ -297,7 +297,7 @@ object TitleAliasesStore {
     private fun findAlias(map: Map<String, String>, keys: ReadKeys): String? {
         resolveAllTouchedKeys(keys).forEach { key ->
             val value = map[key].orEmpty().trim()
-            if (value.isNotEmpty()) {
+            if (value.isNotEmpty() && !value.equals("null", ignoreCase = true)) {
                 return value
             }
         }

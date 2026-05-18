@@ -263,7 +263,9 @@ fun QuickPlaylistsScreen(
         }
     }
     val smpTitleById = remember(smpSongsById) {
-        smpSongsById.mapValues { (_, song) -> song.title.ifBlank { song.id } }
+        smpSongsById.mapValues { (_, song) ->
+            cleanQuickPlaylistTitle(song.title) ?: song.id
+        }
     }
     val smpPlaybackUriById = remember(smpSongsById) {
         smpSongsById.values
@@ -1707,17 +1709,21 @@ fun QuickPlaylistsScreen(
                             // 🔹 NOM D’AFFICHAGE
                             val _forceNotes = notesVersion
                             val smpAliasTitle = if (smpSongId != null) {
-                                TitleAliasesStore.getTitleForTrack(context, uriString)
+                                cleanQuickPlaylistTitle(TitleAliasesStore.getTitleForTrack(context, uriString))
                             } else {
                                 null
                             }
                             val smpCustomTitle = if (smpSongId != null) {
-                                PlaylistRepository.getAnyCustomTitleForUri(uriString)
+                                cleanQuickPlaylistTitle(PlaylistRepository.getAnyCustomTitleForUri(uriString))
                             } else {
                                 null
                             }
-                            val smpResolvedTitle = if (smpSongId != null) {
-                                smpTitleById[smpSongId]
+                            val smpLibraryTitle = if (smpSongId != null) {
+                                cleanQuickPlaylistTitle(smpTitleById[smpSongId])
+                                    ?: cleanQuickPlaylistTitle(smpSongsById[smpSongId]?.title)
+                                    ?: cleanQuickPlaylistTitle(
+                                        runCatching { smpLibraryScanner.findSongById(smpSongId)?.title }.getOrNull()
+                                    )
                             } else {
                                 null
                             }
@@ -1738,22 +1744,28 @@ fun QuickPlaylistsScreen(
                                 }
                             } else {
                                 if (smpSongId != null) {
-                                    smpAliasTitle
-                                        ?: smpCustomTitle
-                                        ?: smpResolvedTitle
-                                        ?: "SMP $smpSongId"
+                                    smpCustomTitle
+                                        ?: smpLibraryTitle
+                                        ?: smpAliasTitle
+                                        ?: stringResource(R.string.quickplaylists_missing_title)
                                 } else {
                                     // 👉 Audio normal (alias global)
-                                    TitleAliasesStore.getTitleForTrack(context, uriString)
-                                        ?: PlaylistRepository.getAnyCustomTitleForUri(uriString)
+                                    cleanQuickPlaylistTitle(TitleAliasesStore.getTitleForTrack(context, uriString))
+                                        ?: cleanQuickPlaylistTitle(PlaylistRepository.getAnyCustomTitleForUri(uriString))
                                         ?: baseNameClean
                                 }
                             }
-                            if (internalSelected == "SPL Demo" && smpSongId != null) {
-                                Log.i(
-                                    DEMO_TITLES_TAG,
-                                    "ui:resolve playlist=SPL Demo uri=$uriString songId=$smpSongId alias=${smpAliasTitle ?: "null"} custom=${smpCustomTitle ?: "null"} smpTitle=${smpResolvedTitle ?: "null"} final=$displayName fallback=${displayName == "SMP $smpSongId"}"
+                            if (smpSongId != null) {
+                                Log.d(
+                                    "PLAYLIST_DIAG",
+                                    "itemUri=$uriString songId=$smpSongId rawTitle=$baseNameClean alias=${smpAliasTitle ?: "null"} libraryTitle=${smpLibraryTitle ?: "null"} resolvedTitle=$displayName"
                                 )
+                                if (internalSelected == "SPL Demo") {
+                                    Log.i(
+                                        DEMO_TITLES_TAG,
+                                        "ui:resolve playlist=SPL Demo uri=$uriString songId=$smpSongId alias=${smpAliasTitle ?: "null"} custom=${smpCustomTitle ?: "null"} smpTitle=${smpLibraryTitle ?: "null"} final=$displayName fallback=${displayName == context.getString(R.string.quickplaylists_missing_title)}"
+                                    )
+                                }
                             }
 
                             val isPlayed = internalSelected?.let {
@@ -3517,15 +3529,21 @@ private fun buildQuickPlaylistSearchTitle(
 
     val smpSongId = getSmpSongId(item)
     if (smpSongId != null) {
-        return TitleAliasesStore.getTitleForTrack(context, item)
-            ?: PlaylistRepository.getAnyCustomTitleForUri(item)
-            ?: smpTitleById[smpSongId]
-            ?: "SMP $smpSongId"
+        return cleanQuickPlaylistTitle(PlaylistRepository.getAnyCustomTitleForUri(item))
+            ?: cleanQuickPlaylistTitle(smpTitleById[smpSongId])
+            ?: cleanQuickPlaylistTitle(TitleAliasesStore.getTitleForTrack(context, item))
+            ?: context.getString(R.string.quickplaylists_missing_title)
     }
 
-    return TitleAliasesStore.getTitleForTrack(context, item)
-        ?: PlaylistRepository.getAnyCustomTitleForUri(item)
+    return cleanQuickPlaylistTitle(TitleAliasesStore.getTitleForTrack(context, item))
+        ?: cleanQuickPlaylistTitle(PlaylistRepository.getAnyCustomTitleForUri(item))
         ?: quickPlaylistFallbackName(item)
+}
+
+private fun cleanQuickPlaylistTitle(value: String?): String? {
+    return value
+        ?.trim()
+        ?.takeIf { it.isNotEmpty() && !it.equals("null", ignoreCase = true) }
 }
 
 private fun isKeyboardSelectablePlaylistItem(item: String): Boolean {

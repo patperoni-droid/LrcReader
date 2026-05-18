@@ -129,8 +129,13 @@ object BackupStateRemapper {
                         context = context,
                         failures = failures
                     ) ?: return null
+                    val remappedSongId = context.resolveImportedSongId(oldUri)
+                        ?: getSmpSongId(remappedUri)
                     JSONObject(entryValue.toString()).apply {
                         put("uri", remappedUri)
+                        if (remappedSongId != null) {
+                            put("songId", remappedSongId)
+                        }
                     }
                 }
             }
@@ -291,6 +296,14 @@ object BackupStateRemapper {
             return RuntimeUriRemapResult.Remapped(
                 uriString = targetFile.toURI().toString()
             )
+        }
+
+        fun resolveImportedSongId(value: String): String? {
+            getSmpSongId(value)?.let { bundleSongId ->
+                return importedByBundleSongId[bundleSongId]?.importedSongId
+            }
+            val runtimeRef = parseRuntimeRef(value) ?: return null
+            return importedByBundleSongId[runtimeRef.bundleSongId]?.importedSongId
         }
 
         private fun parseRuntimeRef(uriString: String): RuntimeRef? {

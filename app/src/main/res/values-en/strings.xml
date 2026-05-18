@@ -703,6 +703,7 @@
     <string name="quickplaylists_loading_playlists">Loading playlists...</string>
     <string name="quickplaylists_restoring_session">Restoring session...</string>
     <string name="quickplaylists_text_fallback_title">(Text)</string>
+    <string name="quickplaylists_missing_title">Missing title</string>
     <string name="quickplaylists_badge_next_forced">NEXT</string>
     <string name="quickplaylists_badge_next">NEXT</string>
     <string name="quickplaylists_menu_play">Auto Play</string>

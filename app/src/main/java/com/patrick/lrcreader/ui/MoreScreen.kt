@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.provider.OpenableColumns
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -84,11 +85,12 @@ import com.patrick.lrcreader.core.isGroupEnd
 import com.patrick.lrcreader.core.isGroupHeader
 import com.patrick.lrcreader.core.isPrompterItem
 import com.patrick.lrcreader.core.config.PlaylistStateStore
+import com.patrick.lrcreader.core.config.TitleAliasesStore
 import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.smp.SmpArchiveSongIdResolver
 import com.patrick.lrcreader.smp.SmpExporter
+import com.patrick.lrcreader.smp.SmpImporter
 import com.patrick.lrcreader.smp.SmpLibraryScanner
-import com.patrick.lrcreader.smp.SmpSecureImportPipeline
 import com.patrick.lrcreader.smp.SmpUserArchiveRebuilder
 import com.patrick.lrcreader.smp.SmpUserArchiveCandidate
 import com.patrick.lrcreader.smp.SmpWorkspaceArchiveStore
@@ -101,6 +103,8 @@ import java.util.Date
 import java.util.Locale
 import org.json.JSONArray
 import org.json.JSONObject
+
+private const val RESTORE_DIAG_TAG = "RESTORE_DIAG"
 
 /* ─────────────────────────────
    Écran "Plus" (Paramètres)
@@ -1782,68 +1786,127 @@ private fun scanLibraryRestoreFolder(
     context: Context,
     treeUri: Uri
 ): LibraryRestoreScanResult? {
+    Log.d(RESTORE_DIAG_TAG, "selectedRootUri=$treeUri")
     val root = DocumentFile.fromTreeUri(context, treeUri) ?: return null
     if (!root.isDirectory) return null
 
-    val runtimeSongIds = SmpLibraryScanner(context)
+    val runtimeSongsById = SmpLibraryScanner(context)
         .listSongs()
-        .map { it.id.trim() }
-        .filter { it.isNotEmpty() }
-        .toSet()
+        .mapNotNull { song ->
+            val songId = song.id.trim().takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+            songId to song
+        }
+        .toMap()
+    val runtimeSongIds = runtimeSongsById.keys
     val runtimePrompterIds = TextSongRepository.exportAll(context).keys
         .map { it.trim() }
         .filter { it.isNotEmpty() }
         .toSet()
 
     val selectedSongIds = linkedSetOf<String>()
+    val selectedUris = linkedSetOf<String>()
+    val selectedNameSizes = linkedSetOf<String>()
     var stateJson: String? = null
     var promptersJson: String? = null
-    val smpFiles = root.listFiles()
+    val directFiles = root.listFiles()
         .orEmpty()
         .filter { it.isFile }
         .sortedBy { it.name.orEmpty().lowercase() }
-        .mapNotNull { file ->
-            val name = file.name.orEmpty()
-            when {
-                name.equals("state.json", ignoreCase = true) -> {
-                    stateJson = runCatching {
-                        context.contentResolver.openInputStream(file.uri)
-                            ?.bufferedReader(Charsets.UTF_8)
-                            ?.use { it.readText() }
-                    }.getOrNull()?.takeIf { it.isNotBlank() }
-                    null
+    val smpFiles = mutableListOf<LibraryRestoreSmpFile>()
+    var rawSmpCount = 0
+    val parent = root.uri.toString()
+    directFiles.forEach { file ->
+        val name = file.name.orEmpty()
+        when {
+            name.equals("state.json", ignoreCase = true) -> {
+                stateJson = runCatching {
+                    context.contentResolver.openInputStream(file.uri)
+                        ?.bufferedReader(Charsets.UTF_8)
+                        ?.use { it.readText() }
+                }.getOrNull()?.takeIf { it.isNotBlank() }
+                Log.d(
+                    RESTORE_DIAG_TAG,
+                    "stateJsonFound=${stateJson != null} uri=${file.uri}"
+                )
+            }
+
+            name.equals("prompters.json", ignoreCase = true) -> {
+                promptersJson = runCatching {
+                    context.contentResolver.openInputStream(file.uri)
+                        ?.bufferedReader(Charsets.UTF_8)
+                        ?.use { it.readText() }
+                }.getOrNull()?.takeIf { it.isNotBlank() }
+            }
+
+            isMacBackupNoiseFile(name) -> {
+                if (SmpWorkspaceArchiveStore.isSupportedArchiveFileName(name)) {
+                    rawSmpCount += 1
+                }
+                Log.d(
+                    RESTORE_DIAG_TAG,
+                    "ignoredMacResourceFork name=$name uri=${file.uri} parent=$parent size=${file.length()}"
+                )
+            }
+
+            !SmpWorkspaceArchiveStore.isSupportedArchiveFileName(name) -> Unit
+
+            else -> {
+                rawSmpCount += 1
+                val index = rawSmpCount
+                val uriString = file.uri.toString()
+                val size = file.length()
+                val stableSongId = SmpArchiveSongIdResolver.readStableSongId(context, file.uri)
+                    ?.trim()
+                    ?.takeIf { it.isNotEmpty() }
+                Log.d(
+                    RESTORE_DIAG_TAG,
+                    "discoveredSmp index=$index name=$name uri=${file.uri} parent=$parent size=$size songId=${stableSongId ?: "null"} source=selected_folder"
+                )
+
+                if (stableSongId != null && !selectedSongIds.add(stableSongId)) {
+                    Log.d(
+                        RESTORE_DIAG_TAG,
+                        "duplicateBySongId=$stableSongId name=$name uri=${file.uri} size=$size"
+                    )
+                    return@forEach
                 }
 
-                name.equals("prompters.json", ignoreCase = true) -> {
-                    promptersJson = runCatching {
-                        context.contentResolver.openInputStream(file.uri)
-                            ?.bufferedReader(Charsets.UTF_8)
-                            ?.use { it.readText() }
-                    }.getOrNull()?.takeIf { it.isNotBlank() }
-                    null
+                if (!selectedUris.add(uriString)) {
+                    Log.d(RESTORE_DIAG_TAG, "duplicateByUri=$uriString name=$name size=$size")
+                    return@forEach
                 }
 
-                !SmpWorkspaceArchiveStore.isSupportedArchiveFileName(name) -> null
-
-                else -> {
-                    val stableSongId = SmpArchiveSongIdResolver.readStableSongId(context, file.uri)
-                        ?.trim()
-                        ?.takeIf { it.isNotEmpty() }
-                    if (stableSongId != null && !selectedSongIds.add(stableSongId)) {
-                        null
-                    } else {
-                        LibraryRestoreSmpFile(
-                            uri = file.uri,
-                            displayName = name,
-                            stableSongId = stableSongId,
-                            conflictWithRuntime = stableSongId != null && stableSongId in runtimeSongIds
-                        )
-                    }
+                val nameSizeKey = "${name.lowercase(Locale.ROOT)}|$size"
+                if (!selectedNameSizes.add(nameSizeKey)) {
+                    Log.d(
+                        RESTORE_DIAG_TAG,
+                        "duplicateByName=$name size=$size uri=${file.uri}"
+                    )
+                    return@forEach
                 }
+
+                val existingSong = stableSongId?.let { runtimeSongsById[it] }
+                if (stableSongId != null && existingSong != null) {
+                    Log.d(
+                        RESTORE_DIAG_TAG,
+                        "conflict songId=$stableSongId existingTitle=${existingSong.title} incomingTitle=$name incomingUri=${file.uri}"
+                    )
+                }
+                smpFiles += LibraryRestoreSmpFile(
+                    uri = file.uri,
+                    displayName = name,
+                    stableSongId = stableSongId,
+                    conflictWithRuntime = existingSong != null
+                )
             }
         }
+    }
 
     val playlistCount = parseBackupPlaylistCount(stateJson)
+    Log.d(
+        RESTORE_DIAG_TAG,
+        "discoveredSmp rawCount=$rawSmpCount count=${smpFiles.size} source=selected_folder stateJsonFound=${stateJson != null}"
+    )
     val prompterItems = parseBackupPrompterItems(
         rawJson = promptersJson,
         runtimePrompterIds = runtimePrompterIds
@@ -1859,11 +1922,72 @@ private fun scanLibraryRestoreFolder(
     )
 }
 
+private fun isMacBackupNoiseFile(name: String): Boolean {
+    val cleanName = name.trim()
+    return cleanName.equals(".DS_Store", ignoreCase = true) ||
+        cleanName.startsWith("._") ||
+        cleanName.startsWith(".")
+}
+
 private fun parseBackupPlaylistCount(stateJson: String?): Int {
     if (stateJson.isNullOrBlank()) return 0
     return runCatching {
         JSONObject(stateJson).optJSONObject("playlists")?.length() ?: 0
     }.getOrDefault(0)
+}
+
+private fun logPlaylistRestoreDiagnostics(
+    stateJson: String,
+    runtimeSongIds: Set<String>
+) {
+    runCatching {
+        val playlists = JSONObject(stateJson).optJSONObject("playlists") ?: return
+        val names = playlists.keys()
+        while (names.hasNext()) {
+            val playlistName = names.next()
+            Log.d(RESTORE_DIAG_TAG, "playlistRestore name=$playlistName source=state_json")
+            val arr = playlists.optJSONArray(playlistName) ?: continue
+            for (index in 0 until arr.length()) {
+                val entry = arr.opt(index)
+                val uri = when (entry) {
+                    is JSONObject -> entry.optString("uri", "").trim()
+                    else -> entry?.toString().orEmpty().trim()
+                }
+                if (uri.isBlank() || isGroupHeader(uri) || isGroupEnd(uri) || isPrompterItem(uri)) {
+                    continue
+                }
+                val songId = when (entry) {
+                    is JSONObject -> entry.optString("songId", "").trim().ifBlank { null }
+                    else -> null
+                } ?: getSmpSongId(uri) ?: extractRuntimeSongIdForRestoreDiag(uri)
+                Log.d(
+                    RESTORE_DIAG_TAG,
+                    "playlistItem songId=${songId ?: "null"} playlistItemExistsInLibrary=${songId != null && songId in runtimeSongIds}"
+                )
+                Log.d(
+                    RESTORE_DIAG_TAG,
+                    "playlistRestoreReady libraryContains songId=${songId ?: "null"} ${songId != null && songId in runtimeSongIds}"
+                )
+            }
+        }
+    }.onFailure { error ->
+        Log.w(RESTORE_DIAG_TAG, "playlistRestore diagnostics failed=${error.message}")
+    }
+}
+
+private fun extractRuntimeSongIdForRestoreDiag(uriString: String): String? {
+    val path = runCatching { Uri.parse(uriString).path }.getOrNull()
+        ?.replace('\\', '/')
+        ?: return null
+    val marker = "/tracks/"
+    val markerIndex = path.lastIndexOf(marker)
+    if (markerIndex < 0) return null
+    val remainder = path.substring(markerIndex + marker.length)
+    val separatorIndex = remainder.indexOf('/')
+    if (separatorIndex <= 0) return null
+    return remainder.substring(0, separatorIndex)
+        .trim()
+        .takeIf { it.isNotEmpty() }
 }
 
 private data class PlaylistFileImportItem(
@@ -1914,6 +2038,7 @@ private fun importPlaylistFile(
     sources.forEach { source ->
         val targetName = uniquePlaylistImportName(source.name)
         val importedOrder = mutableListOf<String>()
+        Log.d(RESTORE_DIAG_TAG, "playlistRestore name=$targetName source=playlist_file")
         PlaylistRepository.addPlaylist(targetName)
 
         source.items.forEach { item ->
@@ -1940,6 +2065,10 @@ private fun importPlaylistFile(
                 else -> {
                     val songId = item.songId?.trim()?.takeIf { it.isNotEmpty() }
                         ?: getSmpSongId(rawUri)
+                    Log.d(
+                        RESTORE_DIAG_TAG,
+                        "playlistItem songId=${songId ?: "null"} playlistItemExistsInLibrary=${songId != null && songId in runtimeSongIds}"
+                    )
                     if (songId != null && songId in runtimeSongIds) {
                         val playlistUri = buildSmpItem(songId)
                         PlaylistRepository.assignSongToPlaylist(
@@ -1971,7 +2100,12 @@ private fun importPlaylistFile(
     }
 
     if (importedPlaylistCount > 0) {
-        PlaylistStateStore.savePlaylistsSnapshot(context)
+        val saved = PlaylistStateStore.savePlaylistsSnapshot(context)
+        val restored = PlaylistStateStore.restorePlaylistsIntoRepository(context)
+        Log.d(
+            RESTORE_DIAG_TAG,
+            "playlistImportPersist saved=$saved restored=${restored.success} restoredPlaylistCount=${restored.restoredPlaylistCount}"
+        )
     }
 
     return PlaylistFileImportResult(
@@ -2023,7 +2157,7 @@ private fun parsePlaylistImportItems(arr: JSONArray): List<PlaylistFileImportIte
             val value = arr.opt(index)
             if (value is JSONObject) {
                 val uri = value.optString("uri", "").trim()
-                if (uri.isBlank()) continue
+                if (uri.isBlank() || uri.equals("null", ignoreCase = true)) continue
                 add(
                     PlaylistFileImportItem(
                         uri = uri,
@@ -2035,7 +2169,7 @@ private fun parsePlaylistImportItems(arr: JSONArray): List<PlaylistFileImportIte
                 )
             } else {
                 val uri = arr.optString(index, "").trim()
-                if (uri.isNotBlank()) {
+                if (uri.isNotBlank() && !uri.equals("null", ignoreCase = true)) {
                     add(PlaylistFileImportItem(uri = uri))
                 }
             }
@@ -2109,9 +2243,11 @@ private fun restoreLibraryFromBackupFolder(
     onProgress: (done: Int, total: Int, currentTitle: String?) -> Unit
 ): LibraryRestoreExecutionResult {
     val scanner = SmpLibraryScanner(context)
-    val secureImportPipeline = SmpSecureImportPipeline(context)
+    val importer = SmpImporter(context)
     val runtimeSongsById = scanner.listSongs().associateBy { it.id.trim() }
+    Log.d(RESTORE_DIAG_TAG, "libraryIndexCountBeforeRefresh=${runtimeSongsById.size}")
     val importedSongs = mutableListOf<BackupBundleImportedSong>()
+    val importedOrExistingSongIds = linkedSetOf<String>()
     var importedCount = 0
     var skippedCount = 0
     var failedCount = 0
@@ -2133,29 +2269,73 @@ private fun restoreLibraryFromBackupFolder(
             conflictMode == LibraryRestoreConflictMode.Replace -> true
             else -> false
         }
-        if (!shouldImport && existingSong != null && stableSongId != null) {
+        if (!shouldImport && existingSong != null) {
             skippedCount += 1
+            importedOrExistingSongIds += existingSong.id
+            Log.d(
+                RESTORE_DIAG_TAG,
+                "skippedDuplicateSongId=$stableSongId importedSongId=${existingSong.id}"
+            )
             importedSongs += BackupBundleImportedSong(
                 bundleSongId = stableSongId,
                 importedSongId = existingSong.id,
                 storageFolder = existingSong.storageFolder
             )
         } else {
-            val importResult = secureImportPipeline.import(smpFile.uri)
-            val importedSong = importResult.importedSong
-            if (importResult.isSuccess && importedSong != null) {
+            Log.d(RESTORE_DIAG_TAG, "importing uri=${smpFile.uri}")
+            val importedSong = importer.importSmp(smpFile.uri)
+            val runtimePath = importedSong?.storageFolder
+            val runtimeExists = runtimePath
+                ?.takeIf { it.isNotBlank() }
+                ?.let(::File)
+                ?.isDirectory == true
+            Log.d(
+                RESTORE_DIAG_TAG,
+                "importedResult success=${importedSong != null && runtimeExists} songId=${importedSong?.id ?: "null"} title=${importedSong?.title ?: "null"}"
+            )
+            Log.d(
+                RESTORE_DIAG_TAG,
+                "importedSongId=${importedSong?.id ?: "null"} importedTitle=${importedSong?.title ?: "null"} importedDisplayTitle=${importedSong?.title ?: "null"} importedAudioPath=${importedSong?.audioPath ?: "null"}"
+            )
+            Log.d(
+                RESTORE_DIAG_TAG,
+                "runtimePath=${runtimePath ?: "null"} runtimeExists=$runtimeExists"
+            )
+            if (importedSong != null && runtimeExists) {
                 importedCount += 1
                 lastImportedSongId = importedSong.id
+                importedOrExistingSongIds += importedSong.id
+                val cleanImportedTitle = importedSong.title
+                    .trim()
+                    .takeIf { it.isNotEmpty() && !it.equals("null", ignoreCase = true) }
+                if (cleanImportedTitle != null) {
+                    TitleAliasesStore.setTitleForTrack(
+                        context = context,
+                        trackUriString = buildSmpItem(importedSong.id),
+                        newTitle = cleanImportedTitle
+                    )
+                    Log.d(
+                        RESTORE_DIAG_TAG,
+                        "libraryRegister songId=${importedSong.id} updatedLibraryTitle=$cleanImportedTitle"
+                    )
+                }
+                Log.d(
+                    RESTORE_DIAG_TAG,
+                    "libraryRegister songId=${importedSong.id}"
+                )
                 stableSongId?.let { bundleSongId ->
                     importedSongs += BackupBundleImportedSong(
                         bundleSongId = bundleSongId,
                         importedSongId = importedSong.id,
-                        storageFolder = importedSong.storageFolder,
-                        durableArchiveUri = importResult.durableArchiveUri?.toString()
+                        storageFolder = importedSong.storageFolder
                     )
                 }
             } else {
                 failedCount += 1
+                Log.d(
+                    RESTORE_DIAG_TAG,
+                    "importedResult success=false songId=${stableSongId ?: "null"} title=${smpFile.displayName} failure=${importer.lastFailureReason ?: "unknown"}"
+                )
             }
         }
         completed += 1
@@ -2189,18 +2369,51 @@ private fun restoreLibraryFromBackupFolder(
     var stateWarningCount = 0
     var stateFailureCount = 0
     var lastPlayed: BackupManager.LastPlayed? = null
+    Log.d(
+        RESTORE_DIAG_TAG,
+        "importedSuccessCount=$importedCount importedFailCount=$failedCount"
+    )
+    Log.d(RESTORE_DIAG_TAG, "libraryIndexCountBeforeRefresh=${runtimeSongsById.size}")
+    val songsAfterImportById = scanner.listSongs()
+        .associateBy { it.id.trim() }
+    Log.d(RESTORE_DIAG_TAG, "libraryIndexCountAfterRefresh=${songsAfterImportById.size}")
+    val missingImportedSongIds = importedOrExistingSongIds
+        .filter { it !in songsAfterImportById.keys }
+    importedOrExistingSongIds.forEach { songId ->
+        Log.d(
+            RESTORE_DIAG_TAG,
+            "playlistRestoreReady libraryContains songId=$songId ${songId in songsAfterImportById.keys}"
+        )
+    }
+    missingImportedSongIds.forEach { songId ->
+        Log.e(
+            RESTORE_DIAG_TAG,
+            "playlistRestoreBlocked missingImportedSongId=$songId libraryIndexCountAfterRefresh=${songsAfterImportById.size}"
+        )
+    }
 
     scanResult.stateJson?.let { stateJson ->
         onProgress(completed, total, "state.json")
-        when (val remapResult = BackupStateRemapper.remapBundleStateJson(stateJson, importedSongs)) {
+        if (missingImportedSongIds.isNotEmpty()) {
+            stateFailureCount += missingImportedSongIds.size
+        } else when (val remapResult = BackupStateRemapper.remapBundleStateJson(stateJson, importedSongs)) {
             is BackupStateRemapResult.Success -> {
                 stateWarningCount = remapResult.warnings.size
+                logPlaylistRestoreDiagnostics(
+                    stateJson = remapResult.stateJson,
+                    runtimeSongIds = songsAfterImportById.keys
+                )
                 BackupManager.importState(
                     context = context,
                     json = remapResult.stateJson,
                     mergePlaylists = true
                 ) { lastPlayed = it }
-                PlaylistStateStore.savePlaylistsSnapshot(context)
+                val saved = PlaylistStateStore.savePlaylistsSnapshot(context)
+                val restored = PlaylistStateStore.restorePlaylistsIntoRepository(context)
+                Log.d(
+                    RESTORE_DIAG_TAG,
+                    "libraryIndexCountAfterRestart=${scanner.listSongs().size} playlistStoreSaved=$saved playlistStoreReload=${restored.success} restoredPlaylistCount=${restored.restoredPlaylistCount}"
+                )
                 stateRestored = true
             }
 
