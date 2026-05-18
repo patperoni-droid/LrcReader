@@ -398,6 +398,7 @@
     <string name="setup_import_prompt_subtitle">Puedes importar ahora o hacerlo después desde la biblioteca.</string>
     <string name="setup_import_later">Después</string>
     <string name="setup_import_now">Importar</string>
+    <string name="setup_workspace_android_confirmation_hint">Android te pedirá después confirmar “Usar esta carpeta”.</string>
 
     <!-- DJ UI sections -->
     <string name="dj_bus_mix_auto">DJ BUS / AUTO MIX</string>

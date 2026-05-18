@@ -432,6 +432,7 @@
     <string name="setup_workspace_title">Choose your work folder</string>
     <string name="setup_workspace_explainer">This folder will be used to organize your songs, SMP files, and backups.</string>
     <string name="setup_workspace_music_recommended">Recommended folder: Music</string>
+    <string name="setup_workspace_android_confirmation_hint">Android will then ask you to confirm “Use this folder”.</string>
     <string name="setup_use_music_workspace">Use Music folder</string>
     <string name="setup_choose_workspace">Choose my folder</string>
     <string name="setup_workspace_unavailable_title">This folder won\'t work</string>

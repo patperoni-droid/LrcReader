@@ -1,10 +1,7 @@
 package com.patrick.lrcreader.ui.library
 
-import android.Manifest
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.Uri
-import android.os.Build
 import android.provider.DocumentsContract
 import android.util.Log
 import android.widget.Toast
@@ -22,7 +19,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.ContextCompat
 import androidx.documentfile.provider.DocumentFile
 import com.patrick.lrcreader.core.StorageModePrefs
 import com.patrick.lrcreader.exo.R
@@ -31,7 +27,6 @@ import kotlinx.coroutines.launch
 private const val SETUP_STORAGE_TAG = "SETUP_STORAGE"
 
 private enum class SetupOnboardingStep {
-    MUSIC_ACCESS,
     WORKSPACE,
     COMPLETE
 }
@@ -49,15 +44,7 @@ fun SetupInstallScreen(
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
 
-    var currentStep by remember {
-        mutableStateOf(
-            if (hasMusicLibraryPermission(context)) {
-                SetupOnboardingStep.WORKSPACE
-            } else {
-                SetupOnboardingStep.MUSIC_ACCESS
-            }
-        )
-    }
+    var currentStep by remember { mutableStateOf(SetupOnboardingStep.WORKSPACE) }
     var isInstallingDemo by remember { mutableStateOf(false) }
 
     var showBadFolderDialog by remember { mutableStateOf(false) }
@@ -91,19 +78,6 @@ fun SetupInstallScreen(
             "setup:workspace_ready mode=${folders.snapshot.mode} status=${folders.snapshot.status} root=${folders.rootUri} audio=${folders.audioUri} smp=${folders.smpUri} dj=${folders.djUri}"
         )
         currentStep = SetupOnboardingStep.COMPLETE
-    }
-
-    val requestMusicPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        if (!granted) {
-            Toast.makeText(
-                context,
-                context.getString(R.string.setup_music_access_denied),
-                Toast.LENGTH_SHORT
-            ).show()
-        }
-        currentStep = SetupOnboardingStep.WORKSPACE
     }
 
     val pickDocumentsLauncher = rememberLauncherForActivityResult(
@@ -142,42 +116,6 @@ fun SetupInstallScreen(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             when (currentStep) {
-                SetupOnboardingStep.MUSIC_ACCESS -> {
-                    Text(
-                        stringResource(R.string.setup_music_access_title),
-                        color = titleColor,
-                        fontSize = 26.sp
-                    )
-
-                    Spacer(Modifier.height(10.dp))
-
-                    Text(
-                        stringResource(R.string.setup_music_access_message),
-                        color = subtitleColor,
-                        fontSize = 14.sp,
-                        lineHeight = 18.sp,
-                        textAlign = TextAlign.Center
-                    )
-
-                    Spacer(Modifier.height(26.dp))
-
-                    Button(
-                        onClick = {
-                            requestMusicPermissionLauncher.launch(requiredMusicPermission())
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(56.dp),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color.White,
-                            contentColor = Color.Black
-                        )
-                    ) {
-                        Text(stringResource(R.string.setup_music_access_button), fontSize = 16.sp)
-                    }
-                }
-
                 SetupOnboardingStep.WORKSPACE -> {
                     Text(
                         stringResource(R.string.setup_workspace_title),
@@ -201,6 +139,16 @@ fun SetupInstallScreen(
                         stringResource(R.string.setup_workspace_music_recommended),
                         color = Color(0xFF6F7A80),
                         fontSize = 12.sp,
+                        textAlign = TextAlign.Center
+                    )
+
+                    Spacer(Modifier.height(10.dp))
+
+                    Text(
+                        stringResource(R.string.setup_workspace_android_confirmation_hint),
+                        color = Color(0xFF8D969B),
+                        fontSize = 12.sp,
+                        lineHeight = 16.sp,
                         textAlign = TextAlign.Center
                     )
 
@@ -393,21 +341,6 @@ fun SetupInstallScreen(
 }
 
 // ---------------- HELPERS (TOP-LEVEL) ----------------
-
-private fun requiredMusicPermission(): String {
-    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        Manifest.permission.READ_MEDIA_AUDIO
-    } else {
-        Manifest.permission.READ_EXTERNAL_STORAGE
-    }
-}
-
-private fun hasMusicLibraryPermission(context: android.content.Context): Boolean {
-    return ContextCompat.checkSelfPermission(
-        context,
-        requiredMusicPermission()
-    ) == PackageManager.PERMISSION_GRANTED
-}
 
 private fun createWorkspacePickerIntent(preferMusicFolder: Boolean): Intent {
     return Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
