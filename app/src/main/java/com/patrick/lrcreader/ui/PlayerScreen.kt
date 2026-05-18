@@ -2,7 +2,10 @@
 androidx.compose.foundation.ExperimentalFoundationApi::class)
 package com.patrick.lrcreader.ui
 
+import android.app.Activity
+import android.content.Context
 import android.util.Log
+import android.view.WindowManager
 import android.widget.Toast
 import java.io.File
 import android.net.Uri
@@ -126,6 +129,12 @@ private const val LYRICS_PIPELINE_TRACE_TAG = "LYRICS_PIPELINE_TRACE"
 private const val LYRICS_AUTOSAVE_CRASH_DIAG_TAG = "LYRICS_AUTOSAVE_CRASH_DIAG"
 private const val LYRICS_STUCK_DIAG_TAG = "LYRICS_STUCK_DIAG"
 
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is android.content.ContextWrapper -> baseContext.findActivity()
+    else -> null
+}
+
 @Composable
 fun PlayerScreen(
     modifier: Modifier = Modifier,
@@ -169,6 +178,17 @@ fun PlayerScreen(
     }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val activity = remember(context) { context.findActivity() }
+    DisposableEffect(activity, isPlaying) {
+        if (isPlaying) {
+            activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+        onDispose {
+            activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+    }
     val showLightIndicator = remember(context) { LightIndicatorPrefs.isEnabled(context) }
     val dmxUiVisible = EditionConfig.isPro && EditionConfig.isDmxUiEnabled
     val timelineDmxUiVisible = true
