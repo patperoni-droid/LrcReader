@@ -297,6 +297,19 @@ Playlist must:
 - survive app restart
 - remain consistent with library
 
+Restore rules:
+- restored playlists must reference SMP songs by `smp://songId`
+- display resolution for `smp://songId` must use the current Library index
+- playback must never be required to hydrate playlist titles
+- restored playlists must survive restart, device transfer, and backup restore without manual repair
+
+Title resolution must ignore:
+- null
+- `"null"`
+- blank
+
+If a referenced songId is missing after restore, use a clear localized fallback instead of displaying `null`.
+
 ⸻
 
 UI REQUIREMENTS

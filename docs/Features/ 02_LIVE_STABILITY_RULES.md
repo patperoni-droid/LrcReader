@@ -57,8 +57,14 @@ ALL required data must be prepared BEFORE playback:
 - trims (IN / OUT) computed
 - timeline data loaded (MIDI / DMX / notes)
 - playback parameters ready (gain, pitch, speed)
+- restored Library index and playlist titles ready after backup restore
 
 👉 ZERO preparation during playback.
+
+Restore live rule:
+- a restored backup must be immediately exploitable in live conditions
+- Library titles and playlist titles must not require opening or playing a song to repair themselves
+- playlists restored from another device must survive restart without manual cleanup
 
 ⸻
 

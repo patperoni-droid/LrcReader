@@ -107,6 +107,43 @@ Rules:
 
 ⸻
 
+SMP RESTORE CONSISTENCY
+
+A full SMP restore must rebuild the usable app state before any playback:
+
+1. import valid .smp files into the official runtime SongUnit storage
+2. refresh/rebuild the Library index from runtime
+3. validate restored songIds against that index
+4. restore and persist playlists only after validation
+
+Rules:
+- restored .smp files must become runtime SongUnits directly
+- playlist restore must never run against a stale Library index
+- playback must not be required to hydrate Library metadata
+- invalid transport noise files such as macOS `._*.smp` must be ignored
+
+👉 A restored backup must be immediately usable from the Library.
+
+⸻
+
+TITLE RESOLUTION
+
+No Library SongUnit may expose a display title that is:
+- null
+- `"null"`
+- blank
+
+Title fallback order:
+1. display title / app alias
+2. title from runtime metadata
+3. audio metadata when available
+4. archive or file name
+5. localized placeholder
+
+👉 The Library must never show `null` to the user.
+
+⸻
+
 FILE BROWSING
 
 The Library may provide file browsing.

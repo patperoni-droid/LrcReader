@@ -138,6 +138,16 @@ All song-related data must:
 
 👉 No duplicated storage logic allowed
 
+Restore consistency:
+- complete restore must rebuild runtime SongUnits, the Library index, and playlists before playback
+- restored .smp packages must be imported into `/files/tracks/{songId}/`
+- playlists may be persisted only after the refreshed Library index contains the referenced songIds
+- playback must not be used as a metadata repair step
+
+Title consistency:
+- runtime SongUnits must never expose null, `"null"`, or blank display titles
+- title fallback must end in a localized placeholder if no metadata is available
+
 ⸻
 
 PLAYLIST MODEL
