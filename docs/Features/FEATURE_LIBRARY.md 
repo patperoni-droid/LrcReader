@@ -172,6 +172,26 @@ Rules:
 
 ⸻
 
+FIRST LAUNCH / PERMISSIONS
+
+First launch must ask only for what is strictly needed to create the usable Library workspace.
+
+Rules:
+- avoid duplicate permission prompts between SMP UI and Android system popups
+- the setup flow starts with the SAF work folder selection
+- SMP must warn the user before Android asks to confirm `Use this folder`
+- Android media permissions must not be requested during first launch if the SAF workspace flow is enough
+
+Deferred permissions:
+- DJ must not request audio permission or a DJ folder until the user opens or uses DJ features
+- filler / ambience sound must not request a folder until the user selects a custom source
+- tuner / microphone must request `RECORD_AUDIO` only when the tuner or mini-tuner is used
+- backup / restore must open SAF pickers only when the user starts the action
+
+👉 Permissions belong to the moment of use, not to app installation.
+
+⸻
+
 SCAN / RESCAN
 
 Library scanning must be safe and predictable.
