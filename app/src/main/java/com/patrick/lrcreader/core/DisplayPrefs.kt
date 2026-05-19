@@ -12,8 +12,22 @@ object DisplayPrefs {
     private const val KEY_GUIDED_READING_COLORS_ENABLED = "guided_reading_colors_enabled"
     private const val KEY_GUIDED_READING_COLOR_A = "guided_reading_color_a"
     private const val KEY_GUIDED_READING_COLOR_B = "guided_reading_color_b"
+    private const val KEY_LYRICS_TEXT_SIZE = "lyrics_text_size"
     const val DEFAULT_GUIDED_READING_COLOR_A: Int = 0xFFFFFFFF.toInt()
     const val DEFAULT_GUIDED_READING_COLOR_B: Int = 0xFFFFF176.toInt()
+
+    enum class LyricsTextSize {
+        SMALL,
+        NORMAL,
+        LARGE,
+        EXTRA_LARGE;
+
+        companion object {
+            fun fromStoredValue(value: String?): LyricsTextSize {
+                return entries.firstOrNull { it.name == value } ?: NORMAL
+            }
+        }
+    }
 
     private fun prefs(ctx: Context) =
         ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -66,6 +80,18 @@ object DisplayPrefs {
     fun setGuidedReadingColorB(ctx: Context, value: Int) {
         prefs(ctx).edit {
             putInt(KEY_GUIDED_READING_COLOR_B, value)
+        }
+    }
+
+    fun getLyricsTextSize(ctx: Context): LyricsTextSize {
+        return LyricsTextSize.fromStoredValue(
+            prefs(ctx).getString(KEY_LYRICS_TEXT_SIZE, LyricsTextSize.NORMAL.name)
+        )
+    }
+
+    fun setLyricsTextSize(ctx: Context, value: LyricsTextSize) {
+        prefs(ctx).edit {
+            putString(KEY_LYRICS_TEXT_SIZE, value.name)
         }
     }
 }

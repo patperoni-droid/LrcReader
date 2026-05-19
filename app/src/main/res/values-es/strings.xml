@@ -709,6 +709,12 @@
     <string name="more_manual_crossfade_duration">Duración del fundido de transición</string>
     <string name="more_manual_crossfade_duration_help">Define la duración del fundido usado en las transiciones manuales entre dos canciones.</string>
     <string name="settings_lyrics_section">Letras</string>
+    <string name="settings_lyrics_text_size">Tamaño de las letras</string>
+    <string name="settings_lyrics_text_size_small">Pequeño</string>
+    <string name="settings_lyrics_text_size_normal">Normal</string>
+    <string name="settings_lyrics_text_size_large">Grande</string>
+    <string name="settings_lyrics_text_size_extra_large">Muy grande</string>
+    <string name="settings_lyrics_text_size_hint">Ajusta el tamaño de visualización de las letras en el reproductor.</string>
     <string name="settings_guided_reading_colors">Colores de lectura guiada</string>
     <string name="settings_guided_reading_colors_enabled">Activado</string>
     <string name="settings_guided_reading_colors_disabled">Desactivado</string>

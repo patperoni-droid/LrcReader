@@ -791,6 +791,12 @@
     <string name="more_manual_crossfade_duration">Transition fade duration</string>
     <string name="more_manual_crossfade_duration_help">Sets the fade duration used for manual transitions between two songs.</string>
     <string name="settings_lyrics_section">Lyrics</string>
+    <string name="settings_lyrics_text_size">Lyrics size</string>
+    <string name="settings_lyrics_text_size_small">Small</string>
+    <string name="settings_lyrics_text_size_normal">Normal</string>
+    <string name="settings_lyrics_text_size_large">Large</string>
+    <string name="settings_lyrics_text_size_extra_large">Very large</string>
+    <string name="settings_lyrics_text_size_hint">Adjusts the display size of lyrics in the Player.</string>
     <string name="settings_guided_reading_colors">Guided Reading Colors</string>
     <string name="settings_guided_reading_colors_enabled">Enabled</string>
     <string name="settings_guided_reading_colors_disabled">Disabled</string>

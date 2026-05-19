@@ -248,6 +248,10 @@ Rules:
 - optional Guided Reading Colors may alternate lyric lines at runtime for live visual tracking
 - manual lyric line colors always override guided alternating colors
 - guided colors are UI/runtime only and must never rewrite LRC files
+- global Lyrics Size controls Player lyric font size for device, tablet, and stage-distance differences
+- Lyrics Size V1 is global only; no per-song lyric size override yet
+- very large lyric sizes may still hit current fixed 3-line rendering limits
+- future improvement may use dynamic wrapping / dynamic lyric row height
 - next-line emphasis must remain softer than active line
 - active line changes may use a light fade transition around 160 ms to soften visual jumps
 - this fade must not affect lyrics timing, scrolling, or audio playback

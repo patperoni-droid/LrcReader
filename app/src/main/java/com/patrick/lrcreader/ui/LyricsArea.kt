@@ -20,11 +20,12 @@ import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.patrick.lrcreader.core.DisplayPrefs
 import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.core.LrcLine
-import kotlin.math.abs
 
 @Composable
 fun LyricsAreaLazy(
@@ -39,10 +40,12 @@ fun LyricsAreaLazy(
     guidedReadingColorsEnabled: Boolean,
     guidedReadingColorA: Int,
     guidedReadingColorB: Int,
+    lyricsTextSize: DisplayPrefs.LyricsTextSize,
     onLyricsBoxHeightChange: (Int) -> Unit,
     highlightColor: Color,
     onLineClick: (index: Int, timeMs: Long) -> Unit
 ) {
+    val lyricSizes = lyricsTextSizes(lyricsTextSize)
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -97,9 +100,9 @@ fun LyricsAreaLazy(
                     else -> FontWeight.Normal
                 }
                 val fontSize = when {
-                    isActiveLine -> 27.sp
-                    isNextActiveLine -> 26.sp
-                    else -> 25.sp
+                    isActiveLine -> lyricSizes.activeSp.sp
+                    isNextActiveLine -> lyricSizes.nextSp.sp
+                    else -> lyricSizes.defaultSp.sp
                 }
 
                 Box(
@@ -114,9 +117,10 @@ fun LyricsAreaLazy(
                         color = animatedColor,
                         fontWeight = fontWeight,
                         fontSize = fontSize,
-                        lineHeight = 30.sp,
+                        lineHeight = lyricSizes.lineHeightSp.sp,
                         textAlign = TextAlign.Center,
                         maxLines = 3,
+                        overflow = TextOverflow.Ellipsis,
                         style = TextStyle(
                             platformStyle = PlatformTextStyle(includeFontPadding = false)
                         )
@@ -124,5 +128,44 @@ fun LyricsAreaLazy(
                 }
             }
         }
+    }
+}
+
+private data class LyricsTextSizes(
+    val defaultSp: Int,
+    val nextSp: Int,
+    val activeSp: Int,
+    val lineHeightSp: Int
+)
+
+private fun lyricsTextSizes(size: DisplayPrefs.LyricsTextSize): LyricsTextSizes {
+    return when (size) {
+        DisplayPrefs.LyricsTextSize.SMALL -> LyricsTextSizes(
+            defaultSp = 21,
+            nextSp = 22,
+            activeSp = 23,
+            lineHeightSp = 26
+        )
+
+        DisplayPrefs.LyricsTextSize.NORMAL -> LyricsTextSizes(
+            defaultSp = 25,
+            nextSp = 26,
+            activeSp = 27,
+            lineHeightSp = 30
+        )
+
+        DisplayPrefs.LyricsTextSize.LARGE -> LyricsTextSizes(
+            defaultSp = 28,
+            nextSp = 29,
+            activeSp = 30,
+            lineHeightSp = 34
+        )
+
+        DisplayPrefs.LyricsTextSize.EXTRA_LARGE -> LyricsTextSizes(
+            defaultSp = 31,
+            nextSp = 32,
+            activeSp = 33,
+            lineHeightSp = 38
+        )
     }
 }

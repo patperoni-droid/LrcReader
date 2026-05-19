@@ -334,6 +334,7 @@ private fun MoreRootScreen(
     var showPlayerLaunchDialog by remember { mutableStateOf(false) }
     var showManualCrossfadeDurationDialog by remember { mutableStateOf(false) }
     var showGuidedReadingColorsDialog by remember { mutableStateOf(false) }
+    var showLyricsTextSizeDialog by remember { mutableStateOf(false) }
     var showExportProDialog by remember { mutableStateOf(false) }
     var selectedLanguageTag by remember { mutableStateOf(AppLanguagePrefs.getSavedLanguageTag(context)) }
     var isExportingLiveSongs by remember { mutableStateOf(false) }
@@ -375,6 +376,9 @@ private fun MoreRootScreen(
     }
     var guidedReadingColorB by remember {
         mutableIntStateOf(DisplayPrefs.getGuidedReadingColorB(context))
+    }
+    var lyricsTextSize by remember {
+        mutableStateOf(DisplayPrefs.getLyricsTextSize(context))
     }
     var showOldWorldInLibrary by remember {
         mutableStateOf(LegacyLibraryVisibilityPrefs.isOldWorldVisible(context))
@@ -424,6 +428,12 @@ private fun MoreRootScreen(
             R.string.settings_guided_reading_colors_disabled
         }
     )
+    val lyricsTextSizeLabel = when (lyricsTextSize) {
+        DisplayPrefs.LyricsTextSize.SMALL -> stringResource(R.string.settings_lyrics_text_size_small)
+        DisplayPrefs.LyricsTextSize.NORMAL -> stringResource(R.string.settings_lyrics_text_size_normal)
+        DisplayPrefs.LyricsTextSize.LARGE -> stringResource(R.string.settings_lyrics_text_size_large)
+        DisplayPrefs.LyricsTextSize.EXTRA_LARGE -> stringResource(R.string.settings_lyrics_text_size_extra_large)
+    }
     val sLiveSongsExportFailed = stringResource(R.string.more_live_songs_export_failed)
     val sLibraryRestoreScanFailed = stringResource(R.string.more_library_restore_scan_failed)
     val sLibraryRestoreEmpty = stringResource(R.string.more_library_restore_empty)
@@ -854,6 +864,15 @@ private fun MoreRootScreen(
                     SettingsItem(stringResource(R.string.more_item_tuner), onClick = onOpenTuner)
 
                     SettingsHeader(stringResource(R.string.settings_lyrics_section))
+                    val lyricsTextSizeSettingLabel = stringResource(R.string.settings_lyrics_text_size)
+                    SettingsItem(
+                        label = lyricsTextSizeSettingLabel,
+                        value = lyricsTextSizeLabel,
+                        helpText = stringResource(R.string.settings_lyrics_text_size_hint),
+                        onHelpClick = { help -> openSettingsHelp(lyricsTextSizeSettingLabel, help) },
+                        onClick = { showLyricsTextSizeDialog = true }
+                    )
+
                     val guidedReadingColorsLabel = stringResource(R.string.settings_guided_reading_colors)
                     SettingsItem(
                         label = guidedReadingColorsLabel,
@@ -1170,6 +1189,17 @@ private fun MoreRootScreen(
                     Text(text = stringResource(R.string.common_cancel))
                 }
             }
+        )
+    }
+
+    if (showLyricsTextSizeDialog) {
+        LyricsTextSizeDialog(
+            selected = lyricsTextSize,
+            onSelected = { size ->
+                lyricsTextSize = size
+                DisplayPrefs.setLyricsTextSize(context, size)
+            },
+            onDismiss = { showLyricsTextSizeDialog = false }
         )
     }
 
@@ -1553,6 +1583,69 @@ private fun SettingHelpDialog(
             }
         }
     )
+}
+
+@Composable
+private fun LyricsTextSizeDialog(
+    selected: DisplayPrefs.LyricsTextSize,
+    onSelected: (DisplayPrefs.LyricsTextSize) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val options = listOf(
+        DisplayPrefs.LyricsTextSize.SMALL,
+        DisplayPrefs.LyricsTextSize.NORMAL,
+        DisplayPrefs.LyricsTextSize.LARGE,
+        DisplayPrefs.LyricsTextSize.EXTRA_LARGE
+    )
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(text = stringResource(R.string.settings_lyrics_text_size)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = stringResource(R.string.settings_lyrics_text_size_hint),
+                    color = Color(0xFFBDBDBD),
+                    fontSize = 12.sp
+                )
+                Spacer(Modifier.height(4.dp))
+                options.forEach { option ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onSelected(option) }
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = selected == option,
+                            onClick = { onSelected(option) }
+                        )
+                        Text(
+                            text = lyricsTextSizeOptionLabel(option),
+                            color = Color(0xFFF5F5F5),
+                            fontSize = 14.sp
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = stringResource(R.string.common_close))
+            }
+        }
+    )
+}
+
+@Composable
+private fun lyricsTextSizeOptionLabel(size: DisplayPrefs.LyricsTextSize): String {
+    return when (size) {
+        DisplayPrefs.LyricsTextSize.SMALL -> stringResource(R.string.settings_lyrics_text_size_small)
+        DisplayPrefs.LyricsTextSize.NORMAL -> stringResource(R.string.settings_lyrics_text_size_normal)
+        DisplayPrefs.LyricsTextSize.LARGE -> stringResource(R.string.settings_lyrics_text_size_large)
+        DisplayPrefs.LyricsTextSize.EXTRA_LARGE -> stringResource(R.string.settings_lyrics_text_size_extra_large)
+    }
 }
 
 @Composable

@@ -2936,6 +2936,7 @@ fun PlayerScreen(
                                     DisplayPrefs.isGuidedReadingColorsEnabled(context)
                                 val guidedReadingColorA = DisplayPrefs.getGuidedReadingColorA(context)
                                 val guidedReadingColorB = DisplayPrefs.getGuidedReadingColorB(context)
+                                val lyricsTextSize = DisplayPrefs.getLyricsTextSize(context)
                                 LyricsAreaLazy(
                                     modifier = Modifier.fillMaxSize(),
                                     listState = listState,
@@ -2948,6 +2949,7 @@ fun PlayerScreen(
                                     guidedReadingColorsEnabled = guidedReadingColorsEnabled,
                                     guidedReadingColorA = guidedReadingColorA,
                                     guidedReadingColorB = guidedReadingColorB,
+                                    lyricsTextSize = lyricsTextSize,
                                     onLyricsBoxHeightChange = { lyricsBoxHeightPx = it },
                                     highlightColor = highlightColor,
                                     onLineClick = { index, timeMs ->
