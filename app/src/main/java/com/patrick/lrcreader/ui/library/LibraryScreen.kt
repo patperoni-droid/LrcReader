@@ -567,6 +567,7 @@ fun LibraryScreen(
     val sDeletePermanently = stringResource(R.string.library_list_delete_permanently)
     val sDeleteSmpTitle = stringResource(R.string.library_delete_smp_title)
     val sDeleteSmpConfirmText = stringResource(R.string.library_delete_smp_confirm_text)
+    val sDeleteSelectedSmpConfirmText = stringResource(R.string.library_delete_selected_smp_confirm_text)
     val sDeleteSmpFailed = stringResource(R.string.library_delete_smp_failed)
     val sShareSmpFailed = stringResource(R.string.library_share_smp_failed)
     val sCopyFailed = stringResource(R.string.library_copy_failed)
@@ -1511,6 +1512,7 @@ fun LibraryScreen(
     var pendingDeletePlan by remember { mutableStateOf<LibraryDeletePlan?>(null) }
     var deleteInProgress by remember { mutableStateOf(false) }
     var pendingDeleteSelection by remember { mutableStateOf<List<Uri>>(emptyList()) }
+    var pendingDeleteSmpSelection by remember { mutableStateOf<List<Uri>>(emptyList()) }
     var pendingDeleteSmpUri by remember { mutableStateOf<Uri?>(null) }
     var deleteSmpInProgress by remember { mutableStateOf(false) }
 
@@ -3463,7 +3465,7 @@ fun LibraryScreen(
                 onImportSmp = {
                     onImportExternalSmp()
                 },
-                selectionCount = if (isFilesSelectionContext) selectedSongs.size else 0,
+                selectionCount = if (isFilesSelectionContext || showSelectionBottomBar) selectedSongs.size else 0,
                 onCopySelection = if (isFilesSelectionContext) {
                     { openCopyBrowserForSelection(selectedSongs) }
                 } else {
@@ -3476,10 +3478,12 @@ fun LibraryScreen(
                 },
                 onDeleteSelection = if (isFilesSelectionContext) {
                     { pendingDeleteSelection = normalizeSelection(selectedSongs) }
+                } else if (showSelectionBottomBar) {
+                    { pendingDeleteSmpSelection = normalizeSelection(selectedSongs) }
                 } else {
                     null
                 },
-                onClearSelection = if (isFilesSelectionContext) {
+                onClearSelection = if (isFilesSelectionContext || showSelectionBottomBar) {
                     { selectedSongs = emptySet() }
                 } else {
                     null
@@ -4604,6 +4608,105 @@ fun LibraryScreen(
                             onClick = {
                                 if (deleteInProgress) return@TextButton
                                 pendingDeleteSelection = emptyList()
+                            }
+                        ) {
+                            androidx.compose.material3.Text(stringResource(R.string.common_cancel))
+                        }
+                    }
+                )
+            }
+
+            if (pendingDeleteSmpSelection.isNotEmpty()) {
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = {
+                        if (deleteSmpInProgress) return@AlertDialog
+                        pendingDeleteSmpSelection = emptyList()
+                    },
+                    title = {
+                        androidx.compose.material3.Text(
+                            context.getString(
+                                R.string.library_delete_selected_smp_title,
+                                pendingDeleteSmpSelection.size
+                            )
+                        )
+                    },
+                    text = {
+                        androidx.compose.material3.Text(sDeleteSelectedSmpConfirmText)
+                    },
+                    confirmButton = {
+                        androidx.compose.material3.TextButton(
+                            enabled = !deleteSmpInProgress,
+                            onClick = {
+                                if (deleteSmpInProgress) return@TextButton
+                                val selection = pendingDeleteSmpSelection
+                                scope.launch {
+                                    deleteSmpInProgress = true
+                                    startLoading(sDeleting, determinate = false)
+                                    var successCount = 0
+                                    var failureCount = 0
+                                    try {
+                                        selection.forEach { uri ->
+                                            val songId = getSmpSongId(uri.toString())
+                                            val deleted = if (songId != null) {
+                                                onDeleteSmpSong(songId)
+                                            } else {
+                                                false
+                                            }
+                                            if (deleted) {
+                                                successCount += 1
+                                                selectedSongs = selectedSongs - uri
+                                            } else {
+                                                failureCount += 1
+                                            }
+                                        }
+
+                                        LibraryFolderCache.clear()
+                                        songItems = buildLibrarySongItemsAsync()
+                                        if (isSmpFolderUri(currentFolderUri)) {
+                                            showSmpEntriesImmediately(refreshSmpEntriesAsync())
+                                        }
+
+                                        if (failureCount > 0) {
+                                            Toast.makeText(
+                                                context,
+                                                context.getString(
+                                                    R.string.library_delete_selected_smp_partial_failure,
+                                                    failureCount,
+                                                    selection.size
+                                                ),
+                                                Toast.LENGTH_LONG
+                                            ).show()
+                                        } else {
+                                            Toast.makeText(
+                                                context,
+                                                context.getString(
+                                                    R.string.library_delete_selected_smp_success,
+                                                    successCount
+                                                ),
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                        }
+                                    } finally {
+                                        deleteSmpInProgress = false
+                                        pendingDeleteSmpSelection = emptyList()
+                                        selectedSongs = emptySet()
+                                        stopLoadingNice()
+                                    }
+                                }
+                            }
+                        ) {
+                            androidx.compose.material3.Text(
+                                stringResource(R.string.library_delete_action),
+                                color = Color(0xFFFF6464)
+                            )
+                        }
+                    },
+                    dismissButton = {
+                        androidx.compose.material3.TextButton(
+                            enabled = !deleteSmpInProgress,
+                            onClick = {
+                                if (deleteSmpInProgress) return@TextButton
+                                pendingDeleteSmpSelection = emptyList()
                             }
                         ) {
                             androidx.compose.material3.Text(stringResource(R.string.common_cancel))

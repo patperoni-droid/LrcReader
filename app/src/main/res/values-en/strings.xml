@@ -919,6 +919,10 @@ Don’t forget to save.</string>
     <string name="library_copying">Copying…</string>
     <string name="library_delete_selected_title">Delete selection</string>
     <string name="library_delete_selected_confirm_text">Delete %1$d selected file(s) permanently?</string>
+    <string name="library_delete_selected_smp_title">Delete %1$d songs from the library?</string>
+    <string name="library_delete_selected_smp_confirm_text">They will be removed from Stage Music Player and playlists. External backups will not be deleted.</string>
+    <string name="library_delete_selected_smp_success">%1$d songs deleted.</string>
+    <string name="library_delete_selected_smp_partial_failure">Partial deletion: %1$d failure(s) out of %2$d song(s).</string>
 
     <!-- Arrangement sampler test -->
     <string name="arrangement_undo_action">Undo</string>

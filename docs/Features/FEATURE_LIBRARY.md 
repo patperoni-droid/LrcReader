@@ -215,6 +215,7 @@ User must be able to:
 Rules:
 - order must be preserved when useful
 - destructive operations must be confirmed
+- multi-selection delete from live songs must reuse the normal runtime SongUnit deletion pipeline
 
 ⸻
 
@@ -244,6 +245,8 @@ Rules:
 - these actions must never be confused
 - destructive delete requires confirmation
 - app must clearly explain what will be deleted
+- deleting live songs from the Library removes active runtime SongUnits and playlist references only
+- external `.smp` backup/export archives must never be deleted automatically by Library runtime deletion
 
 ⸻
 

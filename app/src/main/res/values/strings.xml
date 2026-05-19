@@ -927,6 +927,10 @@ N’oubliez pas de sauvegarder.</string>
     <string name="library_copying">Copie…</string>
     <string name="library_delete_selected_title">Supprimer la sélection</string>
     <string name="library_delete_selected_confirm_text">Supprimer définitivement %1$d fichier(s) sélectionné(s) ?</string>
+    <string name="library_delete_selected_smp_title">Supprimer %1$d morceaux de la bibliothèque ?</string>
+    <string name="library_delete_selected_smp_confirm_text">Ils seront retirés de Stage Music Player et des playlists. Les sauvegardes externes ne seront pas supprimées.</string>
+    <string name="library_delete_selected_smp_success">%1$d morceaux supprimés.</string>
+    <string name="library_delete_selected_smp_partial_failure">Suppression partielle : %1$d échec(s) sur %2$d morceau(x).</string>
 
     <!-- Arrangement sampler test -->
     <string name="arrangement_undo_action">Annuler</string>

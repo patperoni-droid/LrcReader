@@ -93,9 +93,7 @@ fun LibraryHeader(
         currentFolderUri.scheme != "spl-prompter" &&
         currentFolderUri.scheme != "spl-smp"
     val isSelectionContext = selectionCount > 0 &&
-        onCopySelection != null &&
-        onMoveSelection != null &&
-        onDeleteSelection != null
+        (onCopySelection != null || onMoveSelection != null || onDeleteSelection != null || onClearSelection != null)
 
     Row(
         modifier = modifier
@@ -154,27 +152,38 @@ fun LibraryHeader(
                 onDismissRequest = { actionsExpanded = false }
             ) {
                 if (isSelectionContext) {
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.library_bottom_copy)) },
-                        onClick = {
-                            actionsExpanded = false
-                            onCopySelection?.invoke()
-                        }
-                    )
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.library_bottom_move)) },
-                        onClick = {
-                            actionsExpanded = false
-                            onMoveSelection?.invoke()
-                        }
-                    )
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.library_bottom_delete)) },
-                        onClick = {
-                            actionsExpanded = false
-                            onDeleteSelection?.invoke()
-                        }
-                    )
+                    if (onCopySelection != null) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.library_bottom_copy)) },
+                            onClick = {
+                                actionsExpanded = false
+                                onCopySelection()
+                            }
+                        )
+                    }
+                    if (onMoveSelection != null) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.library_bottom_move)) },
+                            onClick = {
+                                actionsExpanded = false
+                                onMoveSelection()
+                            }
+                        )
+                    }
+                    if (onDeleteSelection != null) {
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    text = stringResource(R.string.library_bottom_delete),
+                                    color = Color(0xFFD32F2F)
+                                )
+                            },
+                            onClick = {
+                                actionsExpanded = false
+                                onDeleteSelection()
+                            }
+                        )
+                    }
                     if (onClearSelection != null) {
                         HorizontalDivider()
                         DropdownMenuItem(
