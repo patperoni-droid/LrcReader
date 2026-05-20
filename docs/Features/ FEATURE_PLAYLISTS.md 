@@ -65,6 +65,10 @@ Rules:
 - groups do NOT affect playback engine directly
 - groups can be collapsed / expanded
 - groups can contain multiple songs
+- groups may have an optional custom color
+- if no custom color is stored, the default group color must remain unchanged
+- songs inside a group inherit a softer visual tint from the group color
+- group color is visual metadata only and must not affect playback, autoplay, or live chain logic
 
 👉 Groups improve readability during live
 
@@ -283,6 +287,7 @@ Playlist stores:
 - songId references
 - order
 - group metadata
+- optional group color metadata
 
 Must NOT store:
 - audio files
@@ -296,6 +301,8 @@ Playlist must:
 - be saved automatically
 - survive app restart
 - remain consistent with library
+- restore optional group colors after app restart
+- remain backward compatible with groups that have no stored color
 
 Restore rules:
 - restored playlists must reference SMP songs by `smp://songId`
@@ -317,6 +324,7 @@ UI REQUIREMENTS
 Must provide:
 - clear list
 - groups visibility
+- group color customization
 - drag & drop reorder
 - move to… action
 - quick actions (play, next, remove)
@@ -357,6 +365,7 @@ Test at least:
 - reorder songs
 - drag song across multiple rows
 - create group
+- change group color and verify child tint
 - move songs into group
 - drag song into group
 - drag song out of group
