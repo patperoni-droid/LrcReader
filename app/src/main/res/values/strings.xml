@@ -733,6 +733,16 @@
     <string name="quickplaylists_cd_hide_mini_tuner">Masquer l’accordeur mini</string>
     <string name="quickplaylists_cd_show_mini_tuner">Afficher l’accordeur mini</string>
     <string name="quickplaylists_drop_here">Lâcher pour ranger ici</string>
+    <string name="quickplaylists_menu_change_group_color">Changer la couleur</string>
+    <string name="quickplaylists_group_color_title">Couleur du groupe</string>
+    <string name="quickplaylists_group_color_default">Couleur par défaut</string>
+    <string name="quickplaylists_group_color_red">Rouge</string>
+    <string name="quickplaylists_group_color_blue">Bleu</string>
+    <string name="quickplaylists_group_color_green">Vert</string>
+    <string name="quickplaylists_group_color_purple">Violet</string>
+    <string name="quickplaylists_group_color_orange">Orange</string>
+    <string name="quickplaylists_group_color_yellow">Jaune</string>
+    <string name="quickplaylists_group_color_gray">Gris</string>
     <string name="quickplaylists_menu_delete_group">Supprimer le groupe</string>
     <string name="quickplaylists_menu_insert_group_above">Insérer groupe au-dessus</string>
     <string name="quickplaylists_menu_remove_from_group">Retirer du groupe</string>

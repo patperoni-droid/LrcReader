@@ -30,6 +30,21 @@ class PlaylistItemMarkersTest {
     }
 
     @Test
+    fun groupColor_isOptionalAndPreservedOnRename() {
+        val marker = buildGroupHeader("Rock")
+
+        assertEquals(null, getGroupColorArgb(marker))
+
+        val colored = setGroupColorArgb(marker, 0xFF2E7D32)
+        val renamed = renameGroupHeader(colored, "Versions")
+
+        assertTrue(isGroupHeader(colored))
+        assertEquals(0xFF2E7D32, getGroupColorArgb(colored))
+        assertEquals(0xFF2E7D32, getGroupColorArgb(renamed))
+        assertEquals("Versions", getGroupTitle(renamed))
+    }
+
+    @Test
     fun buildGroupHeader_generatesDifferentIds() {
         val one = buildGroupHeader("A")
         val two = buildGroupHeader("A")

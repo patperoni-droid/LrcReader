@@ -97,6 +97,7 @@ import com.patrick.lrcreader.core.TunerState
 import com.patrick.lrcreader.core.buildGroupEnd
 import com.patrick.lrcreader.core.buildGroupHeader
 import com.patrick.lrcreader.core.canonicalPlaylistPlaybackKey
+import com.patrick.lrcreader.core.getGroupColorArgb
 import com.patrick.lrcreader.core.getGroupUuid
 import com.patrick.lrcreader.core.getGroupTitle
 import com.patrick.lrcreader.core.isGroupEnd
@@ -106,6 +107,7 @@ import com.patrick.lrcreader.core.getSmpSongId
 import com.patrick.lrcreader.core.PlaylistRepository
 import com.patrick.lrcreader.core.PlaylistTrackLimitPolicy
 import com.patrick.lrcreader.core.renameGroupHeader
+import com.patrick.lrcreader.core.setGroupColorArgb
 import com.patrick.lrcreader.core.TextSongRepository
 import com.patrick.lrcreader.core.config.PlaylistStateStore
 import com.patrick.lrcreader.core.config.TrackSettingsStore
@@ -331,6 +333,7 @@ fun QuickPlaylistsScreen(
     var renameText by remember { mutableStateOf("") }
     var renameGroupTarget by remember { mutableStateOf<String?>(null) }
     var renameGroupText by remember { mutableStateOf("") }
+    var groupColorTarget by remember { mutableStateOf<String?>(null) }
     var selectedTrackKeys by remember { mutableStateOf(setOf<String>()) }
     var assignGroupTargetUris by remember { mutableStateOf<List<String>>(emptyList()) }
     var assignGroupOptions by remember { mutableStateOf<List<GroupAssignOption>>(emptyList()) }
@@ -1488,6 +1491,13 @@ fun QuickPlaylistsScreen(
                                 }
                                 val folderBlue = Color(0xFF0A6C97)
                                 val folderBlueBorder = Color(0xFF07506F)
+                                val groupColorArgb = getGroupColorArgb(uriString)
+                                val groupColor = groupColorArgb?.let { Color(it) } ?: folderBlue
+                                val groupBorderColor = if (groupColorArgb == null) {
+                                    folderBlueBorder
+                                } else {
+                                    groupColor.copy(alpha = 0.82f)
+                                }
                                 val activeGroupRed = Color(0xFFD32F2F)
                                 val activeGroupRedBorder = Color(0xFF9A0007)
                                 val animatedActiveGroupRed = if (isActivePlayingGroup && isPlaying) {
@@ -1504,12 +1514,12 @@ fun QuickPlaylistsScreen(
                                 val rowBorder = if (isDropTargetHeader) {
                                     Color.White.copy(alpha = 0.70f)
                                 } else {
-                                    if (isActivePlayingGroup) activeGroupRedBorder else folderBlueBorder
+                                    if (isActivePlayingGroup) activeGroupRedBorder else groupBorderColor
                                 }
                                 val rowBackground = if (isDropTargetHeader) {
                                     Color(0xFF1184B8)
                                 } else {
-                                    if (isActivePlayingGroup) animatedActiveGroupRed else folderBlue
+                                    if (isActivePlayingGroup) animatedActiveGroupRed else groupColor
                                 }
 
                                 Row(
@@ -1664,6 +1674,18 @@ fun QuickPlaylistsScreen(
                                             DropdownMenuItem(
                                                 text = {
                                                     Text(
+                                                        stringResource(R.string.quickplaylists_menu_change_group_color),
+                                                        color = Color.White
+                                                    )
+                                                },
+                                                onClick = {
+                                                    groupColorTarget = uriString
+                                                    menuOpen = false
+                                                }
+                                            )
+                                            DropdownMenuItem(
+                                                text = {
+                                                    Text(
                                                         stringResource(R.string.quickplaylists_menu_delete_group),
                                                         color = Color(0xFFFF8A80)
                                                     )
@@ -1806,8 +1828,12 @@ fun QuickPlaylistsScreen(
                             val isInsideActivePlayingGroup =
                                 isInsideGroup && activeGroupHeaderKey == activePlayingGroupHeaderKey
                             val rowShape = RoundedCornerShape(12.dp)
-                            val groupTint = Color(0xFF0A6C97).copy(alpha = 0.38f)
-                            val groupAccent = Color(0xFF0A6C97).copy(alpha = 0.95f)
+                            val containingGroupColor = activeGroupHeaderKey
+                                ?.let { getGroupColorArgb(it) }
+                                ?.let { Color(it) }
+                                ?: Color(0xFF0A6C97)
+                            val groupTint = containingGroupColor.copy(alpha = 0.38f)
+                            val groupAccent = containingGroupColor.copy(alpha = 0.95f)
                             val activeGroupTint = Color(0xFFD32F2F).copy(alpha = 0.30f)
                             val activeGroupAccent = Color(0xFFD32F2F).copy(alpha = 0.92f)
                             val selectedBorderColor = Color(0xCC4FC3F7)
@@ -2513,6 +2539,84 @@ fun QuickPlaylistsScreen(
             },
             dismissButton = {
                 TextButton(onClick = { renameGroupTarget = null }) {
+                    Text(stringResource(R.string.common_cancel), color = Color.White)
+                }
+            },
+            containerColor = Color(0xFF222222)
+        )
+    }
+
+    if (groupColorTarget != null && internalSelected != null) {
+        val target = groupColorTarget
+        val selectedColor = target?.let { getGroupColorArgb(it) }
+        AlertDialog(
+            onDismissRequest = { groupColorTarget = null },
+            title = {
+                Text(
+                    stringResource(R.string.quickplaylists_group_color_title),
+                    color = Color.White
+                )
+            },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    quickPlaylistGroupColorOptions().forEach { option ->
+                        val isSelectedColor = option.argb == selectedColor
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable {
+                                    val pl = internalSelected
+                                    val currentTarget = groupColorTarget
+                                    if (pl != null && currentTarget != null) {
+                                        val index = songs.indexOf(currentTarget)
+                                        if (index >= 0 && isGroupHeader(songs[index])) {
+                                            val nextHeader = setGroupColorArgb(songs[index], option.argb)
+                                            songs[index] = nextHeader
+                                            collapsedGroupIds = if (currentTarget in collapsedGroupIds) {
+                                                collapsedGroupIds - currentTarget + nextHeader
+                                            } else {
+                                                collapsedGroupIds
+                                            }
+                                            if (activePlayingGroupHeaderKey == currentTarget) {
+                                                activePlayingGroupHeaderKey = nextHeader
+                                            }
+                                            persistSongsOrder(pl, overwriteOriginal = true)
+                                        }
+                                    }
+                                    groupColorTarget = null
+                                }
+                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            val swatchColor = option.argb?.let { Color(it) } ?: Color(0xFF0A6C97)
+                            Box(
+                                modifier = Modifier
+                                    .size(22.dp)
+                                    .clip(RoundedCornerShape(999.dp))
+                                    .background(swatchColor)
+                                    .border(
+                                        width = if (isSelectedColor) 2.dp else 1.dp,
+                                        color = if (isSelectedColor) Color.White else Color.White.copy(alpha = 0.45f),
+                                        shape = RoundedCornerShape(999.dp)
+                                    )
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Text(
+                                text = stringResource(option.labelRes),
+                                color = Color.White,
+                                fontSize = 14.sp
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { groupColorTarget = null }) {
                     Text(stringResource(R.string.common_cancel), color = Color.White)
                 }
             },
@@ -3834,6 +3938,22 @@ private fun clearSongColor(context: Context, playlist: String, uri: String) {
         .remove(songColorKey(playlist, uri))
         .apply()
 }
+
+private data class QuickPlaylistGroupColorOption(
+    val labelRes: Int,
+    val argb: Long?
+)
+
+private fun quickPlaylistGroupColorOptions(): List<QuickPlaylistGroupColorOption> = listOf(
+    QuickPlaylistGroupColorOption(R.string.quickplaylists_group_color_default, null),
+    QuickPlaylistGroupColorOption(R.string.quickplaylists_group_color_red, 0xFFD32F2F),
+    QuickPlaylistGroupColorOption(R.string.quickplaylists_group_color_blue, 0xFF0A6C97),
+    QuickPlaylistGroupColorOption(R.string.quickplaylists_group_color_green, 0xFF2E7D32),
+    QuickPlaylistGroupColorOption(R.string.quickplaylists_group_color_purple, 0xFF7B1FA2),
+    QuickPlaylistGroupColorOption(R.string.quickplaylists_group_color_orange, 0xFFE65100),
+    QuickPlaylistGroupColorOption(R.string.quickplaylists_group_color_yellow, 0xFFF9A825),
+    QuickPlaylistGroupColorOption(R.string.quickplaylists_group_color_gray, 0xFF616161)
+)
 
 // ✅ Helpers durée audio (AU NIVEAU FICHIER)
 private fun getAudioDurationMsQP(context: Context, uriString: String): Long? {

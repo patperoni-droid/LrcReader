@@ -647,6 +647,16 @@
     <string name="quickplaylists_cd_hide_mini_tuner">Ocultar mini afinador</string>
     <string name="quickplaylists_cd_show_mini_tuner">Mostrar mini afinador</string>
     <string name="quickplaylists_drop_here">Suelta para ordenar aquí</string>
+    <string name="quickplaylists_menu_change_group_color">Cambiar color</string>
+    <string name="quickplaylists_group_color_title">Color del grupo</string>
+    <string name="quickplaylists_group_color_default">Color predeterminado</string>
+    <string name="quickplaylists_group_color_red">Rojo</string>
+    <string name="quickplaylists_group_color_blue">Azul</string>
+    <string name="quickplaylists_group_color_green">Verde</string>
+    <string name="quickplaylists_group_color_purple">Violeta</string>
+    <string name="quickplaylists_group_color_orange">Naranja</string>
+    <string name="quickplaylists_group_color_yellow">Amarillo</string>
+    <string name="quickplaylists_group_color_gray">Gris</string>
     <string name="quickplaylists_menu_delete_group">Eliminar el grupo</string>
     <string name="quickplaylists_menu_insert_group_above">Insertar grupo arriba</string>
     <string name="quickplaylists_menu_remove_from_group">Quitar del grupo</string>

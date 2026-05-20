@@ -15,7 +15,8 @@ private const val SMP_ITEM_PREFIX = "smp://"
 
 private data class GroupMarkerParts(
     val uuid: String,
-    val encodedTitle: String
+    val encodedTitle: String,
+    val colorHex: String?
 )
 
 fun isGroupHeader(item: String): Boolean = parseGroupMarker(item) != null
@@ -39,7 +40,20 @@ fun renameGroupHeader(item: String, newTitle: String): String {
     val parts = parseGroupMarker(item) ?: return buildGroupHeader(newTitle)
     val cleanTitle = newTitle.trim().ifBlank { GROUP_DEFAULT_TITLE }
     val encodedTitle = URLEncoder.encode(cleanTitle, StandardCharsets.UTF_8.name())
-    return "$GROUP_MARKER_PREFIX${parts.uuid}|$encodedTitle"
+    return buildGroupHeaderMarker(parts.uuid, encodedTitle, parts.colorHex)
+}
+
+fun getGroupColorArgb(item: String): Long? {
+    val colorHex = parseGroupMarker(item)?.colorHex ?: return null
+    return colorHex.toLongOrNull(16)
+}
+
+fun setGroupColorArgb(item: String, colorArgb: Long?): String {
+    val parts = parseGroupMarker(item) ?: return item
+    val cleanColor = colorArgb
+        ?.takeIf { it in 0x00000000L..0xFFFFFFFFL }
+        ?.let { "%08X".format(it) }
+    return buildGroupHeaderMarker(parts.uuid, parts.encodedTitle, cleanColor)
 }
 
 fun getGroupUuid(item: String): String? {
@@ -79,16 +93,26 @@ fun isPlayableAudioItem(item: String): Boolean = item.isNotBlank() && !isVirtual
 
 private fun parseGroupMarker(item: String): GroupMarkerParts? {
     if (!item.startsWith(GROUP_MARKER_PREFIX)) return null
-    val parts = item.split('|', limit = 4)
-    if (parts.size != 4) return null
+    val parts = item.split('|', limit = 5)
+    if (parts.size !in 4..5) return null
     if (parts[0] != GROUP_MARKER_TOKEN || parts[1] != GROUP_MARKER_VERSION) return null
     val uuid = parts[2].trim()
     val encodedTitle = parts[3]
     if (uuid.isEmpty() || encodedTitle.isEmpty()) return null
+    val colorHex = parts.getOrNull(4)
+        ?.trim()
+        ?.uppercase()
+        ?.takeIf { it.matches(Regex("[0-9A-F]{8}")) }
     return GroupMarkerParts(
         uuid = uuid,
-        encodedTitle = encodedTitle
+        encodedTitle = encodedTitle,
+        colorHex = colorHex
     )
+}
+
+private fun buildGroupHeaderMarker(uuid: String, encodedTitle: String, colorHex: String?): String {
+    val base = "$GROUP_MARKER_PREFIX$uuid|$encodedTitle"
+    return colorHex?.let { "$base|$it" } ?: base
 }
 
 private fun parseGroupEndUuid(item: String): String? {
