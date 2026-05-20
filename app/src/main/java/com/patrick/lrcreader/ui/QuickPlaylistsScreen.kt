@@ -114,7 +114,6 @@ import com.patrick.lrcreader.core.config.TrackSettingsStore
 import com.patrick.lrcreader.core.config.TitleAliasesStore
 import com.patrick.lrcreader.core.search.SearchEngine
 import com.patrick.lrcreader.exo.BuildConfig
-import com.patrick.lrcreader.smp.SmpLibraryScanner
 import kotlinx.coroutines.yield
 import java.io.File
 import java.net.URLDecoder
@@ -179,11 +178,11 @@ fun QuickPlaylistsScreen(
     hardwareReturnCommand: HardwareListCommand = HardwareListCommand.MOVE_NEXT,
     onAddTrackToPlaylist: (String) -> Unit = {},
     searchToggleSignal: Int = 0,
+    smpSongsCache: Map<String, com.patrick.lrcreader.smp.SongUnit> = emptyMap(),
     indexAll: List<LibraryIndexCache.CachedEntry> = emptyList() // ✅ propre + default
 ) {
 
     val context = LocalContext.current
-    val smpLibraryScanner = remember(context) { SmpLibraryScanner(context) }
     val sQuickplaylistsNewGroupDefault = stringResource(R.string.quickplaylists_group_new_default)
     val sQuickplaylistsCurrentGroup = stringResource(R.string.quickplaylists_group_current)
     val sQuickplaylistsCreateLiveList = stringResource(R.string.quickplaylists_menu_create_live_list)
@@ -249,19 +248,16 @@ fun QuickPlaylistsScreen(
     var playlistContentLoaded by remember(resolvedPlaylistSelection) {
         mutableStateOf(cachedPlaylistSnapshot?.loaded == true)
     }
-    val smpSongsById = remember(refreshKey, libraryLoadedSignal, repoVersion, smpSongIdsInPlaylist) {
+    val smpSongsById = remember(refreshKey, libraryLoadedSignal, repoVersion, smpSongIdsInPlaylist, smpSongsCache) {
         if (
             cachedPlaylistSnapshot?.loaded == true &&
             cachedPlaylistSnapshot.loadStamp == playlistLoadStamp
         ) {
-            cachedPlaylistSnapshot.smpSongsById
+            cachedPlaylistSnapshot.smpSongsById + smpSongsCache.filterKeys { it in smpSongIdsInPlaylist }
         } else if (smpSongIdsInPlaylist.isEmpty()) {
             emptyMap()
         } else {
-            smpLibraryScanner.listSongs()
-                .asSequence()
-                .filter { it.id in smpSongIdsInPlaylist }
-                .associateBy { it.id }
+            smpSongsCache.filterKeys { it in smpSongIdsInPlaylist }
         }
     }
     val smpTitleById = remember(smpSongsById) {
@@ -1743,9 +1739,6 @@ fun QuickPlaylistsScreen(
                             val smpLibraryTitle = if (smpSongId != null) {
                                 cleanQuickPlaylistTitle(smpTitleById[smpSongId])
                                     ?: cleanQuickPlaylistTitle(smpSongsById[smpSongId]?.title)
-                                    ?: cleanQuickPlaylistTitle(
-                                        runCatching { smpLibraryScanner.findSongById(smpSongId)?.title }.getOrNull()
-                                    )
                             } else {
                                 null
                             }

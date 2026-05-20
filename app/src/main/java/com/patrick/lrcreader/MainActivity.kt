@@ -1633,11 +1633,7 @@ class MainActivity : AppCompatActivity() {
 
 	                fun resolveSmpPlaybackTrim(songId: String?): SmpConfig.PlaybackConfig? {
 	                    val cleanSongId = songId?.trim().takeUnless { it.isNullOrEmpty() } ?: return null
-	                    val song = smpSongsById[cleanSongId] ?: runCatching {
-	                        smpLibraryScanner.findSongById(cleanSongId)
-	                    }.getOrNull()?.also { scannedSong ->
-	                        smpSongsById = smpSongsById + (scannedSong.id to scannedSong)
-	                    } ?: return null
+	                    val song = smpSongsById[cleanSongId] ?: return null
 	                    return SmpConfig.readPlaybackFromSongUnit(song)
 	                }
 
@@ -2108,14 +2104,10 @@ class MainActivity : AppCompatActivity() {
 
                                 val smpSongId = getSmpSongId(trackUriString)
                                 if (smpSongId != null) {
-                                    return@withContext smpLibraryScanner.findSongById(smpSongId)?.lyricsPath != null
+                                    return@withContext smpSongsById[smpSongId]?.lyricsPath != null
                                 }
 
                                 smpSongsById.values.firstOrNull { it.audioPath == trackUriString }
-                                    ?.let { return@withContext it.lyricsPath != null }
-
-                                smpLibraryScanner.listSongs()
-                                    .firstOrNull { it.audioPath == trackUriString }
                                     ?.let { return@withContext it.lyricsPath != null }
 
                                 return@withContext LrcStorage.resolveOriginForTrack(
@@ -2550,28 +2542,14 @@ class MainActivity : AppCompatActivity() {
                         SMP_PLAY_TRACE_TAG,
                         "RESOLVE_SMP start songId=$songId playlist=$playlistName cacheHit=${cachedSong != null}"
                     )
-                    val song = cachedSong ?: run {
-                        val scannedSong = runCatching {
-                            smpLibraryScanner.findSongById(songId)
-                        }.getOrElse { error ->
-                            Log.w("SMP", "Lecture SMP impossible: scan échoué pour songId=$songId", error)
-                            null
-                        }
-                        if (scannedSong != null) {
-                            smpSongsById = smpSongsById + (scannedSong.id to scannedSong)
-                            Log.i(
-                                "SMP",
-                                "Lecture SMP: cache resynchronisé depuis le scanner songId=${scannedSong.id} title=${scannedSong.title}"
-                            )
-                        }
-                        scannedSong
-                    }
+                    val song = cachedSong
                     if (song == null) {
                         Log.d(
                             SMP_PLAY_TRACE_TAG,
                             "RESOLVE_SMP miss songId=$songId playlist=$playlistName"
                         )
-                        Log.w("SMP", "Lecture SMP impossible: songId introuvable=$songId playlist=$playlistName")
+                        Log.w("SMP", "Lecture SMP impossible sans scan live: songId absent du cache=$songId playlist=$playlistName")
+                        smpCacheRefreshTick++
                         if (showToastOnFailure) {
                             Toast.makeText(ctx, "Morceau SMP introuvable", Toast.LENGTH_SHORT).show()
                         }
@@ -4010,7 +3988,8 @@ class MainActivity : AppCompatActivity() {
                                             )
                                         )
                                     },
-                                    searchToggleSignal = playlistSearchToggleSignal
+                                    searchToggleSignal = playlistSearchToggleSignal,
+                                    smpSongsCache = smpSongsById
                                     )
 
                                     is BottomTab.Library -> LibraryScreen(
