@@ -827,6 +827,9 @@
     <string name="local_link_ip_label">Local IP</string>
     <string name="local_link_token_label">Token</string>
     <string name="local_link_remote_label">Receiver</string>
+    <string name="local_link_current_song_label">Current song</string>
+    <string name="local_link_shared_song_label">Sent song</string>
+    <string name="local_link_lines_sent_label">Lines sent</string>
     <string name="local_link_empty_value">-</string>
     <string name="local_link_manual_pairing_hint">On the receiver, enter this IP and port. QR code is not included in this V1.</string>
     <string name="local_link_start_server">Start server</string>
@@ -834,9 +837,14 @@
     <string name="local_link_server_ready">Server ready</string>
     <string name="local_link_server_stopped">Server stopped</string>
     <string name="local_link_test_song_title">Test song</string>
+    <string name="local_link_live_song_title">Current live song</string>
     <string name="local_link_send_test_song">Send test song</string>
+    <string name="local_link_send_current_song">Send current song</string>
     <string name="local_link_stop_clock">Stop clock</string>
     <string name="local_link_clock_state">Seq %1$d</string>
+    <string name="local_link_no_current_song">No current song</string>
+    <string name="local_link_no_live_lyrics">Lyrics missing or not loaded</string>
+    <string name="local_link_live_share_running">Live share running</string>
     <string name="local_link_test_payload_title">LocalLink test song</string>
     <string-array name="local_link_test_payload_lines">
         <item>LocalLink experimental test</item>

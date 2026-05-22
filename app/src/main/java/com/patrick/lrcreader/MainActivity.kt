@@ -1167,6 +1167,7 @@ class MainActivity : AppCompatActivity() {
                 var openedPlaylist by rememberSaveable { mutableStateOf<String?>(initialOpenedPlaylist) }
 
                 var currentPlayingUri by remember { mutableStateOf<String?>(null) }
+                var currentPlayingTitle by rememberSaveable { mutableStateOf<String?>(null) }
                 var currentPlayingPlaylist by rememberSaveable { mutableStateOf<String?>(initialLastPlaylist) }
                 var currentPlayingPlaylistItemKey by rememberSaveable { mutableStateOf<String?>(null) }
                 val currentPlayingSongId = remember(currentPlayingUri) {
@@ -2132,6 +2133,7 @@ class MainActivity : AppCompatActivity() {
                         ?: indexAll.firstOrNull { it.uriString == uriString }?.name
                         ?: Uri.parse(uriString).lastPathSegment
                         ?: HistoryRepository.UNTITLED_FALLBACK
+                    currentPlayingTitle = sanitizeDisplayTrackTitle(backingTitle)
 
                     LyricsPerf.mark(
                         uriString,
@@ -2856,6 +2858,7 @@ class MainActivity : AppCompatActivity() {
                             currentTrackTempo = targetMixSettings.tempo
                             currentTrackPitchSemi = targetMixSettings.pitchSemi
                             currentPlayingUri = resolvedPlayableUri
+                            currentPlayingTitle = request.title
                             currentPlayingPlaylist = request.playlist
                             armPlaylistPlaybackState(
                                 playlistName = request.playlist,
@@ -3039,6 +3042,7 @@ class MainActivity : AppCompatActivity() {
                         lyricsLoading = false
                         parsedLines = emptyList()
                         currentPlayingUri = null
+                        currentPlayingTitle = null
                         currentPlayingPlaylist = null
                         currentPlayingPlaylistItemKey = null
                         currentPlayToken += 1
@@ -3269,6 +3273,9 @@ class MainActivity : AppCompatActivity() {
 
                     if (!lastUri.isNullOrBlank()) {
                         currentPlayingUri = lastUri
+                        currentPlayingTitle = sanitizeDisplayTrackTitle(TitleAliasesStore.getTitleForTrack(ctx, lastUri))
+                            ?: sanitizeDisplayTrackTitle(indexAll.firstOrNull { it.uriString == lastUri }?.name)
+                            ?: sanitizeDisplayTrackTitle(Uri.parse(lastUri).lastPathSegment)
                         currentPlayingPlaylist = lastPlaylist
                         currentPlayingPlaylistItemKey = null
 
@@ -4133,6 +4140,51 @@ class MainActivity : AppCompatActivity() {
                                         context = ctx,
                                         currentWaveformSongId = currentPlayingSongId,
                                         currentPlayingSongId = currentPlayingSongId,
+                                        currentPlayingTitle = currentPlayingTitle
+                                            ?: currentPlayingSongId
+                                                ?.let { songId -> sanitizeDisplayTrackTitle(smpSongsById[songId]?.title) }
+                                            ?: currentPlayingUri
+                                                ?.let { uri -> sanitizeDisplayTrackTitle(TitleAliasesStore.getTitleForTrack(ctx, uri)) }
+                                            ?: currentPlayingUri
+                                                ?.let { uri -> sanitizeDisplayTrackTitle(indexAll.firstOrNull { it.uriString == uri }?.name) }
+                                            ?: currentPlayingUri
+                                                ?.let { uri -> sanitizeDisplayTrackTitle(Uri.parse(uri).lastPathSegment) },
+                                        currentParsedLines = parsedLines,
+                                        getCurrentPositionMs = {
+                                            runCatching { exoPlayer.currentPosition }.getOrDefault(0L)
+                                        },
+                                        getCurrentDurationMs = {
+                                            runCatching {
+                                                resolveEffectiveDurationMs(
+                                                    requestedUri = currentPlayingUri,
+                                                    activeUri = exoPlayer.currentMediaItem
+                                                        ?.localConfiguration
+                                                        ?.uri
+                                                        ?.toString()
+                                                )
+                                            }.getOrDefault(C.TIME_UNSET)
+                                                .takeIf { it > 0L && it != C.TIME_UNSET }
+                                        },
+                                        isCurrentTrackPlaying = {
+                                            runCatching { exoPlayer.isPlaying }.getOrDefault(isPlaying)
+                                        },
+                                        loadCurrentParsedLines = {
+                                            val uri = currentPlayingUri
+                                            when {
+                                                parsedLines.isNotEmpty() -> parsedLines
+                                                uri.isNullOrBlank() -> emptyList()
+                                                else -> {
+                                                    LyricsMemoryCache.updateScope(LrcStorage.currentWorkspaceScopeKey(ctx))
+                                                    LyricsMemoryCache.get(uri)?.parsedLines?.takeIf { it.isNotEmpty() }
+                                                        ?: withContext(Dispatchers.IO) {
+                                                            LrcStorage.loadForTrack(ctx, uri)
+                                                                ?.takeIf { it.isNotBlank() }
+                                                                ?.let { parseLrc(it) }
+                                                                .orEmpty()
+                                                        }
+                                                }
+                                            }
+                                        },
                                         requestedRoute = moreNavigationTarget,
                                         requestedRouteToken = moreNavigationToken,
                                         showDjTab = showDjTab,

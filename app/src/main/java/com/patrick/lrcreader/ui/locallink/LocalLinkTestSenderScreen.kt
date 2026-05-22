@@ -24,6 +24,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -32,6 +33,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.patrick.lrcreader.core.LrcLine
 import com.patrick.lrcreader.core.locallink.ClockMessage
 import com.patrick.lrcreader.core.locallink.HelloMessage
 import com.patrick.lrcreader.core.locallink.LocalLinkMessage
@@ -51,6 +53,13 @@ import java.util.Collections
 @Composable
 fun LocalLinkTestSenderScreen(
     modifier: Modifier = Modifier,
+    currentSongId: String? = null,
+    currentSongTitle: String? = null,
+    currentParsedLines: List<LrcLine> = emptyList(),
+    getCurrentPositionMs: () -> Long = { 0L },
+    getCurrentDurationMs: () -> Long? = { null },
+    isCurrentTrackPlaying: () -> Boolean = { false },
+    loadCurrentParsedLines: suspend () -> List<LrcLine> = { currentParsedLines },
     onBack: () -> Unit
 ) {
     KeepScreenOn()
@@ -64,6 +73,13 @@ fun LocalLinkTestSenderScreen(
     val receiverReadyStatus = stringResource(R.string.local_link_receiver_ready_status)
     val testSongTitle = stringResource(R.string.local_link_test_payload_title)
     val testSongLines = context.resources.getStringArray(R.array.local_link_test_payload_lines).toList()
+    val latestSongId by rememberUpdatedState(currentSongId?.trim()?.takeIf { it.isNotEmpty() })
+    val latestSongTitle by rememberUpdatedState(currentSongTitle?.trim()?.takeIf { it.isNotEmpty() })
+    val latestParsedLines by rememberUpdatedState(currentParsedLines)
+    val latestGetPositionMs by rememberUpdatedState(getCurrentPositionMs)
+    val latestGetDurationMs by rememberUpdatedState(getCurrentDurationMs)
+    val latestIsPlaying by rememberUpdatedState(isCurrentTrackPlaying)
+    val latestLoadParsedLines by rememberUpdatedState(loadCurrentParsedLines)
     var server by remember { mutableStateOf<LocalLinkServer?>(null) }
     var port by remember { mutableStateOf<Int?>(null) }
     var clockJob by remember { mutableStateOf<Job?>(null) }
@@ -71,11 +87,15 @@ fun LocalLinkTestSenderScreen(
     var isClockRunning by remember { mutableStateOf(false) }
     var remoteStatus by remember { mutableStateOf("") }
     var statusRes by remember { mutableStateOf(R.string.local_link_server_stopped) }
+    var linesSent by remember { mutableStateOf<Int?>(null) }
+    var sharedSongTitle by remember { mutableStateOf<String?>(null) }
 
     fun closeServer() {
         clockJob?.cancel()
         clockJob = null
         isClockRunning = false
+        linesSent = null
+        sharedSongTitle = null
         server?.close()
         server = null
         port = null
@@ -147,6 +167,10 @@ fun LocalLinkTestSenderScreen(
                     InfoLine(
                         label = stringResource(R.string.local_link_remote_label),
                         value = remoteStatus.ifBlank { emptyValue }
+                    )
+                    InfoLine(
+                        label = stringResource(R.string.local_link_current_song_label),
+                        value = latestSongTitle ?: emptyValue
                     )
                     Text(
                         text = stringResource(R.string.local_link_manual_pairing_hint),
@@ -263,6 +287,107 @@ fun LocalLinkTestSenderScreen(
                     )
                 }
             }
+
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF101714)),
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.local_link_live_song_title),
+                        color = Color.White,
+                        fontSize = 17.sp
+                    )
+                    InfoLine(
+                        label = stringResource(R.string.local_link_shared_song_label),
+                        value = sharedSongTitle ?: emptyValue
+                    )
+                    InfoLine(
+                        label = stringResource(R.string.local_link_lines_sent_label),
+                        value = linesSent?.toString() ?: emptyValue
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Button(
+                            enabled = server != null,
+                            onClick = {
+                                val activeServer = server ?: return@Button
+                                val initialSongId = latestSongId
+                                if (initialSongId == null) {
+                                    statusRes = R.string.local_link_no_current_song
+                                    return@Button
+                                }
+                                clockJob?.cancel()
+                                clockJob = scope.launch {
+                                    var lastPacketSongId: String? = null
+                                    isClockRunning = true
+                                    while (isActive) {
+                                        val songId = latestSongId
+                                        if (songId == null) {
+                                            statusRes = R.string.local_link_no_current_song
+                                            linesSent = null
+                                            sharedSongTitle = null
+                                            delay(200L)
+                                            continue
+                                        }
+                                        val title = latestSongTitle ?: songId
+                                        if (songId != lastPacketSongId) {
+                                            val loadedLines = runCatching {
+                                                latestLoadParsedLines()
+                                            }.getOrDefault(latestParsedLines)
+                                            val safeLines = loadedLines.ifEmpty { latestParsedLines }
+                                            activeServer.send(
+                                                liveLyricsPacket(
+                                                    songId = songId,
+                                                    title = title,
+                                                    lines = safeLines,
+                                                    durationMs = latestGetDurationMs(),
+                                                    seq = seq++
+                                                )
+                                            )
+                                            lastPacketSongId = songId
+                                            sharedSongTitle = title
+                                            linesSent = safeLines.size
+                                            statusRes = if (safeLines.isEmpty()) {
+                                                R.string.local_link_no_live_lyrics
+                                            } else {
+                                                R.string.local_link_live_share_running
+                                            }
+                                        }
+
+                                        activeServer.send(
+                                            ClockMessage(
+                                                songId = songId,
+                                                timeMs = latestGetPositionMs().coerceAtLeast(0L),
+                                                isPlaying = latestIsPlaying(),
+                                                seq = seq++,
+                                                sentAtMs = SystemClock.elapsedRealtime()
+                                            )
+                                        )
+                                        delay(200L)
+                                    }
+                                    isClockRunning = false
+                                }
+                            }
+                        ) {
+                            Text(stringResource(R.string.local_link_send_current_song))
+                        }
+                        TextButton(
+                            enabled = isClockRunning,
+                            onClick = {
+                                clockJob?.cancel()
+                                clockJob = null
+                                isClockRunning = false
+                            }
+                        ) {
+                            Text(stringResource(R.string.local_link_stop_clock))
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -293,6 +418,24 @@ private fun testLyricsPacket(
         title = title,
         lines = lines,
         durationMs = 32_000L,
+        seq = seq
+    )
+}
+
+private fun liveLyricsPacket(
+    songId: String,
+    title: String,
+    lines: List<LrcLine>,
+    durationMs: Long?,
+    seq: Long
+): LyricsPacketMessage {
+    return LyricsPacketMessage(
+        songId = songId,
+        title = title,
+        lines = lines.map { line ->
+            LyricsLinePayload(timeMs = line.timeMs, text = line.text)
+        },
+        durationMs = durationMs?.takeIf { it > 0L },
         seq = seq
     )
 }

@@ -835,6 +835,9 @@
     <string name="local_link_ip_label">IP locale</string>
     <string name="local_link_token_label">Token</string>
     <string name="local_link_remote_label">Récepteur</string>
+    <string name="local_link_current_song_label">Morceau courant</string>
+    <string name="local_link_shared_song_label">Morceau envoyé</string>
+    <string name="local_link_lines_sent_label">Lignes envoyées</string>
     <string name="local_link_empty_value">-</string>
     <string name="local_link_manual_pairing_hint">Sur le récepteur, entrez cette IP et ce port. QR code non inclus dans cette V1.</string>
     <string name="local_link_start_server">Démarrer serveur</string>
@@ -842,9 +845,14 @@
     <string name="local_link_server_ready">Serveur prêt</string>
     <string name="local_link_server_stopped">Serveur arrêté</string>
     <string name="local_link_test_song_title">Morceau test</string>
+    <string name="local_link_live_song_title">Morceau courant live</string>
     <string name="local_link_send_test_song">Envoyer morceau test</string>
+    <string name="local_link_send_current_song">Envoyer morceau courant</string>
     <string name="local_link_stop_clock">Stop horloge</string>
     <string name="local_link_clock_state">Seq %1$d</string>
+    <string name="local_link_no_current_song">Aucun morceau courant</string>
+    <string name="local_link_no_live_lyrics">Paroles absentes ou non chargées</string>
+    <string name="local_link_live_share_running">Partage live actif</string>
     <string name="local_link_test_payload_title">Morceau test LocalLink</string>
     <string-array name="local_link_test_payload_lines">
         <item>Test expérimental LocalLink</item>

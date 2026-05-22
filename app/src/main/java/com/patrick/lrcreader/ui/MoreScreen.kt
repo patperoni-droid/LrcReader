@@ -69,6 +69,7 @@ import com.patrick.lrcreader.core.DisplayPrefs
 import com.patrick.lrcreader.core.EditionConfig
 import com.patrick.lrcreader.core.LegacyLibraryVisibilityPrefs
 import com.patrick.lrcreader.core.LightIndicatorPrefs
+import com.patrick.lrcreader.core.LrcLine
 import com.patrick.lrcreader.core.ManualCrossfadeDurationOption
 import com.patrick.lrcreader.core.ManualCrossfadePrefs
 import com.patrick.lrcreader.core.PlaylistRepository
@@ -118,6 +119,12 @@ fun MoreScreen(
     context: Context,
     currentWaveformSongId: String? = null,
     currentPlayingSongId: String? = null,
+    currentPlayingTitle: String? = null,
+    currentParsedLines: List<LrcLine> = emptyList(),
+    getCurrentPositionMs: () -> Long = { 0L },
+    getCurrentDurationMs: () -> Long? = { null },
+    isCurrentTrackPlaying: () -> Boolean = { false },
+    loadCurrentParsedLines: suspend () -> List<LrcLine> = { currentParsedLines },
     requestedRoute: String? = null,
     requestedRouteToken: Int = 0,
     showDjTab: Boolean = false,
@@ -196,6 +203,13 @@ fun MoreScreen(
 
         MoreSection.LocalLinkSender -> LocalLinkTestSenderScreen(
             modifier = modifier,
+            currentSongId = currentPlayingSongId,
+            currentSongTitle = currentPlayingTitle,
+            currentParsedLines = currentParsedLines,
+            getCurrentPositionMs = getCurrentPositionMs,
+            getCurrentDurationMs = getCurrentDurationMs,
+            isCurrentTrackPlaying = isCurrentTrackPlaying,
+            loadCurrentParsedLines = loadCurrentParsedLines,
             onBack = { navigate("root") }
         )
 
