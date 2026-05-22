@@ -1,0 +1,342 @@
+package com.patrick.lrcreader.ui.locallink
+
+import android.app.Activity
+import android.view.WindowManager
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.patrick.lrcreader.core.LrcLine
+import com.patrick.lrcreader.core.findActiveLrcIndex
+import com.patrick.lrcreader.core.locallink.ClockMessage
+import com.patrick.lrcreader.core.locallink.HelloMessage
+import com.patrick.lrcreader.core.locallink.LocalLinkClient
+import com.patrick.lrcreader.core.locallink.LocalLinkMessage
+import com.patrick.lrcreader.core.locallink.LyricsPacketMessage
+import com.patrick.lrcreader.core.locallink.ReceiverStatusMessage
+import com.patrick.lrcreader.core.locallink.UnknownMessage
+import com.patrick.lrcreader.exo.R
+import kotlinx.coroutines.launch
+
+@Composable
+fun LocalLinkReceiverScreen(
+    modifier: Modifier = Modifier,
+    onBack: () -> Unit
+) {
+    KeepScreenOn()
+
+    val scope = rememberCoroutineScope()
+    var host by remember { mutableStateOf("") }
+    var portText by remember { mutableStateOf("") }
+    var receiverState by remember { mutableStateOf(ReceiverState.Waiting) }
+    var statusMessageRes by remember { mutableStateOf<Int?>(null) }
+    var client by remember { mutableStateOf<LocalLinkClient?>(null) }
+    var packet by remember { mutableStateOf<LyricsPacketMessage?>(null) }
+    var clock by remember { mutableStateOf<ClockMessage?>(null) }
+    val receiverDeviceName = stringResource(R.string.local_link_receiver_device_name)
+    val experimentalToken = stringResource(R.string.local_link_experimental_token)
+
+    val lines = remember(packet) {
+        packet?.lines
+            ?.map { LrcLine(timeMs = it.timeMs, text = it.text) }
+            .orEmpty()
+    }
+    val activeIndex = remember(lines, clock) {
+        findActiveLrcIndex(lines, clock?.timeMs ?: 0L)
+    }
+
+    fun disconnect() {
+        client?.close()
+        client = null
+        receiverState = ReceiverState.Disconnected
+    }
+
+    fun handleMessage(message: LocalLinkMessage) {
+        when (message) {
+            is HelloMessage -> receiverState = ReceiverState.Connected
+            is LyricsPacketMessage -> {
+                packet = message
+                clock = null
+                receiverState = ReceiverState.Connected
+            }
+            is ClockMessage -> {
+                val activeSongId = packet?.songId
+                if (activeSongId == null || activeSongId == message.songId) {
+                    clock = message
+                    receiverState = ReceiverState.Connected
+                } else {
+                    receiverState = ReceiverState.Desynced
+                }
+            }
+            is UnknownMessage -> receiverState = ReceiverState.Desynced
+            else -> Unit
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose { disconnect() }
+    }
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    listOf(Color(0xFF080808), Color(0xFF111515), Color(0xFF080808))
+                )
+            )
+            .padding(16.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            HeaderRow(
+                title = stringResource(R.string.local_link_receiver_title),
+                onBack = onBack
+            )
+
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF151515)),
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    ReceiverStatusPill(receiverState)
+                    OutlinedTextField(
+                        value = host,
+                        onValueChange = { host = it.trim() },
+                        label = { Text(stringResource(R.string.local_link_host_label)) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = portText,
+                        onValueChange = { portText = it.filter(Char::isDigit) },
+                        label = { Text(stringResource(R.string.local_link_port_label)) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Button(
+                            enabled = client == null,
+                            onClick = {
+                                val port = portText.toIntOrNull()
+                                if (host.isBlank() || port == null) {
+                                    statusMessageRes = R.string.local_link_invalid_address
+                                    receiverState = ReceiverState.Desynced
+                                    return@Button
+                                }
+                                val nextClient = LocalLinkClient(
+                                    host = host,
+                                    port = port,
+                                    sessionId = "receiver-${System.currentTimeMillis()}",
+                                    token = experimentalToken,
+                                    deviceName = receiverDeviceName,
+                                    reconnectAttempts = 1
+                                )
+                                client = nextClient
+                                receiverState = ReceiverState.Waiting
+                                statusMessageRes = null
+                                scope.launch {
+                                    val connected = nextClient.connect(scope) { message ->
+                                        scope.launch { handleMessage(message) }
+                                    }
+                                    if (!connected) {
+                                        client = null
+                                        receiverState = ReceiverState.Disconnected
+                                        statusMessageRes = R.string.local_link_connection_failed
+                                    } else {
+                                        nextClient.send(
+                                            ReceiverStatusMessage(
+                                                state = "ready",
+                                                activeSongId = packet?.songId,
+                                                seq = clock?.seq ?: 0L
+                                            )
+                                        )
+                                    }
+                                }
+                            }
+                        ) {
+                            Text(stringResource(R.string.local_link_connect))
+                        }
+                        TextButton(
+                            enabled = client != null,
+                            onClick = { disconnect() }
+                        ) {
+                            Text(stringResource(R.string.local_link_disconnect))
+                        }
+                    }
+                    statusMessageRes?.let { resId ->
+                        Text(
+                            text = stringResource(resId),
+                            color = Color(0xFFFFAB91),
+                            fontSize = 13.sp
+                        )
+                    }
+                }
+            }
+
+            LyricsWindow(
+                title = packet?.title ?: stringResource(R.string.local_link_no_lyrics),
+                previous = lines.getOrNull(activeIndex - 1)?.text,
+                current = lines.getOrNull(activeIndex)?.text,
+                next = lines.getOrNull(activeIndex + 1)?.text,
+                timeMs = clock?.timeMs
+            )
+        }
+    }
+}
+
+@Composable
+private fun LyricsWindow(
+    title: String,
+    previous: String?,
+    current: String?,
+    next: String?,
+    timeMs: Long?
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF101214)),
+        shape = RoundedCornerShape(10.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Text(
+                text = title,
+                color = Color(0xFFB2DFDB),
+                fontSize = 18.sp,
+                textAlign = TextAlign.Center
+            )
+            Text(
+                text = previous.orEmpty(),
+                color = Color(0xFF8C8C8C),
+                fontSize = 19.sp,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Text(
+                text = current ?: stringResource(R.string.local_link_waiting_for_clock),
+                color = Color.White,
+                fontSize = 30.sp,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Text(
+                text = next.orEmpty(),
+                color = Color(0xFF9FB3B0),
+                fontSize = 20.sp,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = timeMs?.let { stringResource(R.string.local_link_time_value, it) }
+                    ?: stringResource(R.string.local_link_no_clock),
+                color = Color(0xFF777777),
+                fontSize = 12.sp
+            )
+        }
+    }
+}
+
+@Composable
+private fun ReceiverStatusPill(state: ReceiverState) {
+    val color = when (state) {
+        ReceiverState.Waiting -> Color(0xFFFFC107)
+        ReceiverState.Connected -> Color(0xFF66BB6A)
+        ReceiverState.Desynced -> Color(0xFFFF7043)
+        ReceiverState.Disconnected -> Color(0xFF9E9E9E)
+    }
+    Text(
+        text = stringResource(state.labelRes),
+        color = Color.Black,
+        fontSize = 13.sp,
+        modifier = Modifier
+            .background(color, RoundedCornerShape(999.dp))
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+    )
+}
+
+@Composable
+internal fun HeaderRow(
+    title: String,
+    onBack: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        TextButton(onClick = onBack) {
+            Text(stringResource(R.string.common_back_arrow))
+        }
+        Text(
+            text = title,
+            color = Color.White,
+            fontSize = 20.sp,
+            modifier = Modifier.weight(1f),
+            textAlign = TextAlign.Center
+        )
+        Spacer(Modifier.weight(0.35f))
+    }
+}
+
+@Composable
+internal fun KeepScreenOn() {
+    val activity = LocalContext.current as? Activity
+    DisposableEffect(activity) {
+        activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        onDispose {
+            activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+    }
+}
+
+private enum class ReceiverState(val labelRes: Int) {
+    Waiting(R.string.local_link_state_waiting),
+    Connected(R.string.local_link_state_connected),
+    Desynced(R.string.local_link_state_desynced),
+    Disconnected(R.string.local_link_state_disconnected)
+}

@@ -38,23 +38,27 @@ class LocalLinkServer(
         serverSocket = socket
         boundPort = socket.localPort
         acceptJob = scope.launch(dispatcher) {
-            runCatching {
-                val clientSocket = socket.accept()
-                val nextConnection = LocalLinkConnection(
-                    socket = clientSocket,
-                    dispatcher = dispatcher,
-                    onClosed = { markDisconnected() }
-                )
-                connection?.close()
-                connection = nextConnection
-                session = session.copy(connected = true)
-                nextConnection.startReading(scope) { message ->
-                    handleIncoming(message)
-                    onMessage(message)
+            while (!socket.isClosed) {
+                runCatching {
+                    val clientSocket = socket.accept()
+                    val nextConnection = LocalLinkConnection(
+                        socket = clientSocket,
+                        dispatcher = dispatcher,
+                        onClosed = { markDisconnected() }
+                    )
+                    connection?.close()
+                    connection = nextConnection
+                    session = session.copy(connected = true)
+                    nextConnection.startReading(scope) { message ->
+                        handleIncoming(message)
+                        onMessage(message)
+                    }
+                    nextConnection.send(localHello())
+                }.onFailure {
+                    if (!socket.isClosed) {
+                        markDisconnected()
+                    }
                 }
-                nextConnection.send(localHello())
-            }.onFailure {
-                markDisconnected()
             }
         }
         boundPort

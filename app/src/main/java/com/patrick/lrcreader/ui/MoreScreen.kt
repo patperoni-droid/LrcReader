@@ -95,6 +95,8 @@ import com.patrick.lrcreader.smp.SmpLibraryScanner
 import com.patrick.lrcreader.smp.SmpUserArchiveRebuilder
 import com.patrick.lrcreader.smp.SmpUserArchiveCandidate
 import com.patrick.lrcreader.smp.SmpWorkspaceArchiveStore
+import com.patrick.lrcreader.ui.locallink.LocalLinkReceiverScreen
+import com.patrick.lrcreader.ui.locallink.LocalLinkTestSenderScreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -150,6 +152,8 @@ fun MoreScreen(
             onOpenFiller = { navigate("filler") },
             onOpenHistory = { navigate("history") },
             onOpenArrangement = { navigate("arrangement") },
+            onOpenLocalLinkSender = { navigate("local_link_sender") },
+            onOpenLocalLinkReceiver = { navigate("local_link_receiver") },
             onOpenWaveformPreview = { navigate("waveform_preview") },
             showDjTab = showDjTab,
             showMainBusTab = showMainBusTab,
@@ -190,6 +194,16 @@ fun MoreScreen(
             onBack = { navigate("root") }
         )
 
+        MoreSection.LocalLinkSender -> LocalLinkTestSenderScreen(
+            modifier = modifier,
+            onBack = { navigate("root") }
+        )
+
+        MoreSection.LocalLinkReceiver -> LocalLinkReceiverScreen(
+            modifier = modifier,
+            onBack = { navigate("root") }
+        )
+
         MoreSection.WaveformPreview -> WaveformPreviewScreen(
             modifier = modifier,
             onBack = { navigate("root") },
@@ -223,6 +237,8 @@ private enum class MoreSection(val route: String) {
     Backup("backup"),
     Filler("filler"),
     History("history"),
+    LocalLinkSender("local_link_sender"),
+    LocalLinkReceiver("local_link_receiver"),
     WaveformPreview("waveform_preview"),
     Arrangement("arrangement"),
     ArrangementFromTempo("arrangement_from_tempo")
@@ -316,6 +332,8 @@ private fun MoreRootScreen(
     onOpenFiller: () -> Unit,
     onOpenHistory: () -> Unit,
     onOpenArrangement: () -> Unit,
+    onOpenLocalLinkSender: () -> Unit,
+    onOpenLocalLinkReceiver: () -> Unit,
     onOpenWaveformPreview: () -> Unit,
     showDjTab: Boolean,
     showMainBusTab: Boolean,
@@ -846,6 +864,16 @@ private fun MoreRootScreen(
                                 )
                             )
                         }
+                    )
+                    SettingsItem(
+                        label = stringResource(R.string.more_item_local_link_sender),
+                        subtitle = stringResource(R.string.more_item_local_link_experimental_subtitle),
+                        onClick = onOpenLocalLinkSender
+                    )
+                    SettingsItem(
+                        label = stringResource(R.string.more_item_local_link_receiver),
+                        subtitle = stringResource(R.string.more_item_local_link_experimental_subtitle),
+                        onClick = onOpenLocalLinkReceiver
                     )
 
                     HorizontalDivider(color = Color(0xFF262626))

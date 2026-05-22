@@ -102,6 +102,30 @@ class LocalLinkTransportTest {
     }
 
     @Test
+    fun serverAcceptsNewClientAfterDisconnect() = runBlocking {
+        val server = testServer()
+        val port = server.start(this)
+        val firstClient = testClient(port)
+        val secondClient = testClient(port)
+
+        try {
+            assertTrue(firstClient.connect(this))
+            assertTrue(waitUntil { server.session.connected && firstClient.session.connected })
+
+            firstClient.close()
+            assertTrue(waitUntil { !server.session.connected })
+
+            assertTrue(secondClient.connect(this))
+            assertTrue(waitUntil { server.session.connected && secondClient.session.connected })
+            assertEquals("client-device", server.session.remoteDeviceName)
+        } finally {
+            firstClient.close()
+            secondClient.close()
+            server.close()
+        }
+    }
+
+    @Test
     fun clientConnect_returnsFalseWhenServerUnavailable() = runBlocking {
         val client = LocalLinkClient(
             host = "127.0.0.1",

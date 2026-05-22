@@ -702,6 +702,9 @@
     <string name="more_item_restore_library">Restaurar mi biblioteca</string>
     <string name="more_item_restore_library_subtitle">Importa canciones y listas desde una carpeta de copia sin eliminar tus otras canciones.</string>
     <string name="more_item_import_playlist">Importar una playlist</string>
+    <string name="more_item_local_link_sender">LocalLink: emisor de prueba</string>
+    <string name="more_item_local_link_receiver">LocalLink: receptor de letras</string>
+    <string name="more_item_local_link_experimental_subtitle">Prototipo experimental aislado del reproductor live.</string>
     <string name="playlist_import_default_name">Playlist importada</string>
     <string name="playlist_import_done">Playlist importada. %1$d canciones encontradas.</string>
     <string name="playlist_import_done_with_missing">Playlist importada. %1$d canciones encontradas, %2$d canciones faltantes. Algunas canciones no se encuentran.</string>
@@ -718,6 +721,51 @@
     <string name="more_player_open_mode_help">Elige cuándo se abre el reproductor al iniciar una canción: siempre, nunca o solo si hay letras disponibles.</string>
     <string name="more_manual_crossfade_duration">Duración del fundido de transición</string>
     <string name="more_manual_crossfade_duration_help">Define la duración del fundido usado en las transiciones manuales entre dos canciones.</string>
+    <string name="local_link_sender_title">Emisor de prueba LocalLink</string>
+    <string name="local_link_receiver_title">Receptor de letras LocalLink</string>
+    <string name="local_link_sender_device_name">Emisor de prueba SMP</string>
+    <string name="local_link_receiver_device_name">Receptor de letras SMP</string>
+    <string name="local_link_experimental_token">experimental</string>
+    <string name="local_link_receiver_ready_status">Receptor listo</string>
+    <string name="local_link_host_label">Dirección IP</string>
+    <string name="local_link_port_label">Puerto</string>
+    <string name="local_link_connect">Conectar</string>
+    <string name="local_link_disconnect">Desconectar</string>
+    <string name="local_link_state_waiting">En espera</string>
+    <string name="local_link_state_connected">Conectado</string>
+    <string name="local_link_state_desynced">Desincronizado</string>
+    <string name="local_link_state_disconnected">Desconectado</string>
+    <string name="local_link_invalid_address">Dirección o puerto inválido.</string>
+    <string name="local_link_connection_failed">No se pudo conectar.</string>
+    <string name="local_link_no_lyrics">No se han recibido letras</string>
+    <string name="local_link_waiting_for_clock">Esperando reloj…</string>
+    <string name="local_link_time_value">%1$d ms</string>
+    <string name="local_link_no_clock">Sin reloj</string>
+    <string name="local_link_status_label">Estado</string>
+    <string name="local_link_ip_label">IP local</string>
+    <string name="local_link_token_label">Token</string>
+    <string name="local_link_remote_label">Receptor</string>
+    <string name="local_link_empty_value">-</string>
+    <string name="local_link_manual_pairing_hint">En el receptor, introduce esta IP y este puerto. El código QR no está incluido en esta V1.</string>
+    <string name="local_link_start_server">Iniciar servidor</string>
+    <string name="local_link_stop_server">Detener</string>
+    <string name="local_link_server_ready">Servidor listo</string>
+    <string name="local_link_server_stopped">Servidor detenido</string>
+    <string name="local_link_test_song_title">Canción de prueba</string>
+    <string name="local_link_send_test_song">Enviar canción de prueba</string>
+    <string name="local_link_stop_clock">Detener reloj</string>
+    <string name="local_link_clock_state">Seq %1$d</string>
+    <string name="local_link_test_payload_title">Canción de prueba LocalLink</string>
+    <string-array name="local_link_test_payload_lines">
+        <item>Prueba experimental LocalLink</item>
+        <item>El receptor sigue el reloj remoto</item>
+        <item>Solo timeMs elige la línea activa</item>
+        <item>Sin conexión al Player en este prototipo</item>
+        <item>La red puede caer sin detener el live</item>
+        <item>Las letras llegan ya procesadas</item>
+        <item>Los mensajes clock siguen siendo pequeños</item>
+        <item>Fin de la canción de prueba</item>
+    </string-array>
     <string name="settings_lyrics_section">Letras</string>
     <string name="settings_lyrics_text_size">Tamaño de las letras</string>
     <string name="settings_lyrics_text_size_small">Pequeño</string>
