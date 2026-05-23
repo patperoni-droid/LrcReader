@@ -3585,7 +3585,6 @@ class MainActivity : AppCompatActivity() {
                                     loadParsedLines = {
                                         val uri = currentPlayingUri
                                         when {
-                                            parsedLines.isNotEmpty() -> parsedLines
                                             uri.isNullOrBlank() -> emptyList()
                                             else -> {
                                                 LyricsMemoryCache.updateScope(LrcStorage.currentWorkspaceScopeKey(ctx))

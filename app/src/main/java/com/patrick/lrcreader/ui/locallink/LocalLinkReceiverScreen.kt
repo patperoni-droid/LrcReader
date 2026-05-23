@@ -24,6 +24,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -68,6 +69,9 @@ fun LocalLinkReceiverScreen(
     var client by remember { mutableStateOf<LocalLinkClient?>(null) }
     var packet by remember { mutableStateOf<LyricsPacketMessage?>(null) }
     var clock by remember { mutableStateOf<ClockMessage?>(null) }
+    var activeSongId by remember { mutableStateOf<String?>(null) }
+    var lastTimeMs by remember { mutableStateOf<Long?>(null) }
+    var lastLoggedLineIndex by remember { mutableStateOf<Int?>(null) }
     val receiverDeviceName = stringResource(R.string.local_link_receiver_device_name)
     val experimentalToken = stringResource(R.string.local_link_experimental_token)
 
@@ -80,6 +84,16 @@ fun LocalLinkReceiverScreen(
         findActiveLrcIndex(lines, clock?.timeMs ?: 0L)
     }
 
+    LaunchedEffect(activeSongId, activeIndex) {
+        if (activeSongId != null && activeIndex >= 0 && activeIndex != lastLoggedLineIndex) {
+            Log.d(
+                LOCAL_LINK_DIAG_TAG,
+                "receiver_line_index_changed songId=$activeSongId index=$activeIndex"
+            )
+            lastLoggedLineIndex = activeIndex
+        }
+    }
+
     fun disconnect() {
         client?.close()
         client = null
@@ -90,16 +104,52 @@ fun LocalLinkReceiverScreen(
         when (message) {
             is HelloMessage -> receiverState = ReceiverState.Connected
             is LyricsPacketMessage -> {
+                Log.d(
+                    LOCAL_LINK_DIAG_TAG,
+                    "receiver_packet_received songId=${message.songId} title=${message.title} lineCount=${message.lines.size}"
+                )
                 packet = message
                 clock = null
+                lastTimeMs = null
+                lastLoggedLineIndex = null
+                if (message.lines.isNotEmpty()) {
+                    if (activeSongId != message.songId) {
+                        Log.d(
+                            LOCAL_LINK_DIAG_TAG,
+                            "receiver_active_song_changed previous=$activeSongId next=${message.songId}"
+                        )
+                    }
+                    activeSongId = message.songId
+                } else {
+                    activeSongId = null
+                    Log.d(
+                        LOCAL_LINK_DIAG_TAG,
+                        "receiver_clock_ignored reason=empty_packet songId=${message.songId}"
+                    )
+                }
                 receiverState = ReceiverState.Connected
             }
             is ClockMessage -> {
-                val activeSongId = packet?.songId
-                if (activeSongId == null || activeSongId == message.songId) {
+                Log.d(
+                    LOCAL_LINK_DIAG_TAG,
+                    "receiver_clock_received songId=${message.songId} timeMs=${message.timeMs}"
+                )
+                val expectedSongId = activeSongId
+                if (expectedSongId == null) {
+                    Log.d(
+                        LOCAL_LINK_DIAG_TAG,
+                        "receiver_clock_ignored reason=missing_packet songId=${message.songId}"
+                    )
+                    receiverState = ReceiverState.Desynced
+                } else if (expectedSongId == message.songId) {
                     clock = message
+                    lastTimeMs = message.timeMs
                     receiverState = ReceiverState.Connected
                 } else {
+                    Log.d(
+                        LOCAL_LINK_DIAG_TAG,
+                        "receiver_clock_ignored reason=song_mismatch expected=$expectedSongId actual=${message.songId}"
+                    )
                     receiverState = ReceiverState.Desynced
                 }
             }

@@ -406,6 +406,7 @@ fun LocalLinkTestSenderScreen(
                                     runtime.isClockRunning = true
                                     while (isActive) {
                                         val songId = runtime.currentSongId()
+                                        var clockSentAfterPacket = false
                                         if (!activeServer.session.connected) {
                                             lastPacketSongId = null
                                             runtime.statusRes = R.string.local_link_no_receiver_connected
@@ -432,8 +433,8 @@ fun LocalLinkTestSenderScreen(
                                                     error
                                                 )
                                                 runtime.statusDetail = error.message ?: error::class.java.simpleName
-                                            }.getOrDefault(runtime.currentParsedLines())
-                                            val safeLines = loadedLines.ifEmpty { runtime.currentParsedLines() }
+                                            }.getOrDefault(emptyList())
+                                            val safeLines = loadedLines
                                             val packet = liveLyricsPacket(
                                                 songId = songId,
                                                 title = title,
@@ -462,6 +463,27 @@ fun LocalLinkTestSenderScreen(
                                                 } else {
                                                     R.string.local_link_live_share_running
                                                 }
+                                                val packetClockMs = runtime.currentPositionMs().coerceAtLeast(0L)
+                                                val packetClockSent = activeServer.send(
+                                                    ClockMessage(
+                                                        songId = songId,
+                                                        timeMs = packetClockMs,
+                                                        isPlaying = runtime.isPlaying(),
+                                                        seq = runtime.seq++,
+                                                        sentAtMs = SystemClock.elapsedRealtime()
+                                                    )
+                                                )
+                                                if (packetClockSent) {
+                                                    Log.d(
+                                                        LOCAL_LINK_DIAG_TAG,
+                                                        "sender_clock_sent_after_packet songId=$songId timeMs=$packetClockMs isPlaying=${runtime.isPlaying()}"
+                                                    )
+                                                    lastClockSongId = songId
+                                                    lastClockMs = packetClockMs
+                                                    clockSentAfterPacket = true
+                                                } else {
+                                                    lastPacketSongId = null
+                                                }
                                             } else {
                                                 Log.w(
                                                     LOCAL_LINK_DIAG_TAG,
@@ -483,25 +505,27 @@ fun LocalLinkTestSenderScreen(
                                                 "sender_seek_or_restart songId=$songId from=$previousClockMs to=$currentTimeMs"
                                             )
                                         }
-                                        val clockSent = activeServer.send(
-                                            ClockMessage(
-                                                songId = songId,
-                                                timeMs = currentTimeMs,
-                                                isPlaying = runtime.isPlaying(),
-                                                seq = runtime.seq++,
-                                                sentAtMs = SystemClock.elapsedRealtime()
+                                        if (!clockSentAfterPacket) {
+                                            val clockSent = activeServer.send(
+                                                ClockMessage(
+                                                    songId = songId,
+                                                    timeMs = currentTimeMs,
+                                                    isPlaying = runtime.isPlaying(),
+                                                    seq = runtime.seq++,
+                                                    sentAtMs = SystemClock.elapsedRealtime()
+                                                )
                                             )
-                                        )
-                                        if (!clockSent) {
-                                            lastPacketSongId = null
-                                        } else if (lastClockSongId != songId || currentTimeMs < 500L) {
-                                            Log.d(
-                                                LOCAL_LINK_DIAG_TAG,
-                                                "sender_clock_sent songId=$songId timeMs=$currentTimeMs isPlaying=${runtime.isPlaying()}"
-                                            )
+                                            if (!clockSent) {
+                                                lastPacketSongId = null
+                                            } else if (lastClockSongId != songId || currentTimeMs < 500L) {
+                                                Log.d(
+                                                    LOCAL_LINK_DIAG_TAG,
+                                                    "sender_clock_sent songId=$songId timeMs=$currentTimeMs isPlaying=${runtime.isPlaying()}"
+                                                )
+                                            }
+                                            lastClockSongId = songId
+                                            lastClockMs = currentTimeMs
                                         }
-                                        lastClockSongId = songId
-                                        lastClockMs = currentTimeMs
                                         delay(200L)
                                     }
                                     runtime.isClockRunning = false
