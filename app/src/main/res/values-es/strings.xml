@@ -731,10 +731,13 @@
     <string name="local_link_port_label">Puerto</string>
     <string name="local_link_connect">Conectar</string>
     <string name="local_link_disconnect">Desconectar</string>
+    <string name="local_link_reconnect">Reconectar</string>
     <string name="local_link_state_waiting">En espera</string>
     <string name="local_link_state_connected">Conectado</string>
+    <string name="local_link_state_reconnecting">Reconectando</string>
     <string name="local_link_state_desynced">Desincronizado</string>
     <string name="local_link_state_disconnected">Desconectado</string>
+    <string name="local_link_receiver_setup_hint">Misma Wi-Fi o hotspot local. No se necesita Internet.</string>
     <string name="local_link_invalid_address">Dirección o puerto inválido.</string>
     <string name="local_link_connection_failed">No se pudo conectar.</string>
     <string name="local_link_no_lyrics">No se han recibido letras</string>

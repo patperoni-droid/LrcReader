@@ -1,6 +1,7 @@
 package com.patrick.lrcreader.ui.locallink
 
 import android.app.Activity
+import android.content.Context
 import android.util.Log
 import android.view.WindowManager
 import androidx.compose.foundation.background
@@ -9,13 +10,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -32,7 +34,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -49,9 +50,13 @@ import com.patrick.lrcreader.core.locallink.LyricsPacketMessage
 import com.patrick.lrcreader.core.locallink.ReceiverStatusMessage
 import com.patrick.lrcreader.core.locallink.UnknownMessage
 import com.patrick.lrcreader.exo.R
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private const val LOCAL_LINK_DIAG_TAG = "LOCAL_LINK_DIAG"
+private const val LOCAL_LINK_PREFS = "local_link_receiver"
+private const val LOCAL_LINK_PREF_HOST = "host"
+private const val LOCAL_LINK_PREF_PORT = "port"
 
 @Composable
 fun LocalLinkReceiverScreen(
@@ -60,13 +65,19 @@ fun LocalLinkReceiverScreen(
 ) {
     KeepScreenOn()
 
+    val context = LocalContext.current
+    val prefs = remember(context) {
+        context.getSharedPreferences(LOCAL_LINK_PREFS, Context.MODE_PRIVATE)
+    }
     val scope = rememberCoroutineScope()
-    var host by remember { mutableStateOf("") }
-    var portText by remember { mutableStateOf("") }
+    var host by remember { mutableStateOf(prefs.getString(LOCAL_LINK_PREF_HOST, "").orEmpty()) }
+    var portText by remember { mutableStateOf(prefs.getString(LOCAL_LINK_PREF_PORT, "").orEmpty()) }
     var receiverState by remember { mutableStateOf(ReceiverState.Waiting) }
     var statusMessageRes by remember { mutableStateOf<Int?>(null) }
     var statusDetail by remember { mutableStateOf<String?>(null) }
     var client by remember { mutableStateOf<LocalLinkClient?>(null) }
+    var shouldStayConnected by remember { mutableStateOf(false) }
+    var reconnecting by remember { mutableStateOf(false) }
     var packet by remember { mutableStateOf<LyricsPacketMessage?>(null) }
     var clock by remember { mutableStateOf<ClockMessage?>(null) }
     var activeSongId by remember { mutableStateOf<String?>(null) }
@@ -95,6 +106,8 @@ fun LocalLinkReceiverScreen(
     }
 
     fun disconnect() {
+        shouldStayConnected = false
+        reconnecting = false
         client?.close()
         client = null
         receiverState = ReceiverState.Disconnected
@@ -158,132 +171,172 @@ fun LocalLinkReceiverScreen(
         }
     }
 
+    fun connectReceiver() {
+        val port = portText.toIntOrNull()
+        if (host.isBlank() || port == null) {
+            statusMessageRes = R.string.local_link_invalid_address
+            receiverState = ReceiverState.Desynced
+            return
+        }
+        prefs.edit()
+            .putString(LOCAL_LINK_PREF_HOST, host)
+            .putString(LOCAL_LINK_PREF_PORT, portText)
+            .apply()
+        val nextClient = LocalLinkClient(
+            host = host,
+            port = port,
+            sessionId = "receiver-${System.currentTimeMillis()}",
+            token = experimentalToken,
+            deviceName = receiverDeviceName,
+            reconnectAttempts = 1
+        )
+        client?.close()
+        client = nextClient
+        shouldStayConnected = true
+        receiverState = if (reconnecting) ReceiverState.Reconnecting else ReceiverState.Waiting
+        statusMessageRes = null
+        statusDetail = null
+        scope.launch {
+            Log.d(
+                LOCAL_LINK_DIAG_TAG,
+                "receiver_connect_start host=$host port=$port"
+            )
+            val connected = nextClient.connect(scope) { message ->
+                scope.launch { handleMessage(message) }
+            }
+            if (!connected) {
+                reconnecting = false
+                client = null
+                receiverState = ReceiverState.Disconnected
+                statusMessageRes = R.string.local_link_connection_failed
+                statusDetail = nextClient.lastFailureReason
+                Log.w(
+                    LOCAL_LINK_DIAG_TAG,
+                    "receiver_connect_failed host=$host port=$port reason=${nextClient.lastFailureReason}"
+                )
+            } else {
+                reconnecting = false
+                Log.d(
+                    LOCAL_LINK_DIAG_TAG,
+                    "receiver_connect_ok host=$host port=$port"
+                )
+                nextClient.send(
+                    ReceiverStatusMessage(
+                        state = "ready",
+                        activeSongId = packet?.songId,
+                        seq = clock?.seq ?: 0L
+                    )
+                )
+            }
+        }
+    }
+
     DisposableEffect(Unit) {
         onDispose { disconnect() }
+    }
+
+    LaunchedEffect(client, shouldStayConnected, host, portText) {
+        while (shouldStayConnected) {
+            delay(2_000L)
+            val activeClient = client
+            if (activeClient != null && !activeClient.session.connected && !reconnecting) {
+                reconnecting = true
+                receiverState = ReceiverState.Reconnecting
+                delay(1_500L)
+                connectReceiver()
+            }
+        }
     }
 
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    listOf(Color(0xFF080808), Color(0xFF111515), Color(0xFF080808))
-                )
-            )
-            .padding(16.dp)
+            .background(Color.Black)
+            .windowInsetsPadding(WindowInsets.statusBars)
+            .padding(12.dp)
     ) {
         Column(
             modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+                .fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            HeaderRow(
-                title = stringResource(R.string.local_link_receiver_title),
-                onBack = onBack
-            )
-
-            Card(
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF151515)),
-                shape = RoundedCornerShape(10.dp),
-                modifier = Modifier.fillMaxWidth()
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Column(
-                    modifier = Modifier.padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                TextButton(onClick = onBack) {
+                    Text(stringResource(R.string.common_back_arrow), color = Color(0xFF9E9E9E))
+                }
+                ReceiverStatusPill(receiverState)
+                Spacer(Modifier.weight(1f))
+                TextButton(
+                    onClick = { connectReceiver() }
                 ) {
-                    ReceiverStatusPill(receiverState)
-                    OutlinedTextField(
-                        value = host,
-                        onValueChange = { host = it.trim() },
-                        label = { Text(stringResource(R.string.local_link_host_label)) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
+                    Text(
+                        text = stringResource(R.string.local_link_reconnect),
+                        color = Color(0xFFBDBDBD)
                     )
-                    OutlinedTextField(
-                        value = portText,
-                        onValueChange = { portText = it.filter(Char::isDigit) },
-                        label = { Text(stringResource(R.string.local_link_port_label)) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Button(
-                            enabled = client == null,
-                            onClick = {
-                                val port = portText.toIntOrNull()
-                                if (host.isBlank() || port == null) {
-                                    statusMessageRes = R.string.local_link_invalid_address
-                                    receiverState = ReceiverState.Desynced
-                                    return@Button
-                                }
-                                val nextClient = LocalLinkClient(
-                                    host = host,
-                                    port = port,
-                                    sessionId = "receiver-${System.currentTimeMillis()}",
-                                    token = experimentalToken,
-                                    deviceName = receiverDeviceName,
-                                    reconnectAttempts = 1
-                                )
-                                client = nextClient
-                                receiverState = ReceiverState.Waiting
-                                statusMessageRes = null
-                                statusDetail = null
-                                scope.launch {
-                                    Log.d(
-                                        LOCAL_LINK_DIAG_TAG,
-                                        "receiver_connect_start host=$host port=$port"
-                                    )
-                                    val connected = nextClient.connect(scope) { message ->
-                                        scope.launch { handleMessage(message) }
-                                    }
-                                    if (!connected) {
-                                        client = null
-                                        receiverState = ReceiverState.Disconnected
-                                        statusMessageRes = R.string.local_link_connection_failed
-                                        statusDetail = nextClient.lastFailureReason
-                                        Log.w(
-                                            LOCAL_LINK_DIAG_TAG,
-                                            "receiver_connect_failed host=$host port=$port reason=${nextClient.lastFailureReason}"
-                                        )
-                                    } else {
-                                        Log.d(
-                                            LOCAL_LINK_DIAG_TAG,
-                                            "receiver_connect_ok host=$host port=$port"
-                                        )
-                                        nextClient.send(
-                                            ReceiverStatusMessage(
-                                                state = "ready",
-                                                activeSongId = packet?.songId,
-                                                seq = clock?.seq ?: 0L
-                                            )
-                                        )
-                                    }
-                                }
+                }
+            }
+
+            if (packet == null || receiverState == ReceiverState.Disconnected || receiverState == ReceiverState.Desynced) {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF101010)),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.local_link_receiver_setup_hint),
+                            color = Color(0xFFE0E0E0),
+                            fontSize = 14.sp
+                        )
+                        OutlinedTextField(
+                            value = host,
+                            onValueChange = { host = it.trim() },
+                            label = { Text(stringResource(R.string.local_link_host_label)) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = portText,
+                            onValueChange = { portText = it.filter(Char::isDigit) },
+                            label = { Text(stringResource(R.string.local_link_port_label)) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Button(
+                                enabled = client == null,
+                                onClick = { connectReceiver() }
+                            ) {
+                                Text(stringResource(R.string.local_link_connect))
                             }
-                        ) {
-                            Text(stringResource(R.string.local_link_connect))
+                            TextButton(
+                                enabled = client != null,
+                                onClick = { disconnect() }
+                            ) {
+                                Text(stringResource(R.string.local_link_disconnect))
+                            }
                         }
-                        TextButton(
-                            enabled = client != null,
-                            onClick = { disconnect() }
-                        ) {
-                            Text(stringResource(R.string.local_link_disconnect))
+                        statusMessageRes?.let { resId ->
+                            Text(
+                                text = stringResource(resId),
+                                color = Color(0xFFFFAB91),
+                                fontSize = 13.sp
+                            )
                         }
-                    }
-                    statusMessageRes?.let { resId ->
-                        Text(
-                            text = stringResource(resId),
-                            color = Color(0xFFFFAB91),
-                            fontSize = 13.sp
-                        )
-                    }
-                    statusDetail?.let { detail ->
-                        Text(
-                            text = detail,
-                            color = Color(0xFFFFCCBC),
-                            fontSize = 12.sp
-                        )
+                        statusDetail?.let { detail ->
+                            Text(
+                                text = detail,
+                                color = Color(0xFFFFCCBC),
+                                fontSize = 12.sp
+                            )
+                        }
                     }
                 }
             }
@@ -293,7 +346,7 @@ fun LocalLinkReceiverScreen(
                 previous = lines.getOrNull(activeIndex - 1)?.text,
                 current = lines.getOrNull(activeIndex)?.text,
                 next = lines.getOrNull(activeIndex + 1)?.text,
-                timeMs = clock?.timeMs
+                modifier = Modifier.weight(1f)
             )
         }
     }
@@ -305,55 +358,47 @@ private fun LyricsWindow(
     previous: String?,
     current: String?,
     next: String?,
-    timeMs: Long?
+    modifier: Modifier = Modifier
 ) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF101214)),
-        shape = RoundedCornerShape(10.dp),
-        modifier = Modifier.fillMaxWidth()
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(horizontal = 4.dp, vertical = 18.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
-            Text(
-                text = title,
-                color = Color(0xFFB2DFDB),
-                fontSize = 18.sp,
-                textAlign = TextAlign.Center
-            )
-            Text(
-                text = previous.orEmpty(),
-                color = Color(0xFF8C8C8C),
-                fontSize = 19.sp,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth()
-            )
-            Text(
-                text = current ?: stringResource(R.string.local_link_waiting_for_clock),
-                color = Color.White,
-                fontSize = 30.sp,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth()
-            )
-            Text(
-                text = next.orEmpty(),
-                color = Color(0xFF9FB3B0),
-                fontSize = 20.sp,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth()
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                text = timeMs?.let { stringResource(R.string.local_link_time_value, it) }
-                    ?: stringResource(R.string.local_link_no_clock),
-                color = Color(0xFF777777),
-                fontSize = 12.sp
-            )
-        }
+        Text(
+            text = title,
+            color = Color(0xFFBDBDBD),
+            fontSize = 18.sp,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(Modifier.height(34.dp))
+        Text(
+            text = previous.orEmpty(),
+            color = Color(0xFF5F5F5F),
+            fontSize = 26.sp,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(Modifier.height(24.dp))
+        Text(
+            text = current ?: stringResource(R.string.local_link_waiting_for_clock),
+            color = Color.White,
+            fontSize = 44.sp,
+            textAlign = TextAlign.Center,
+            lineHeight = 52.sp,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(Modifier.height(24.dp))
+        Text(
+            text = next.orEmpty(),
+            color = Color(0xFF8A8A8A),
+            fontSize = 28.sp,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth()
+        )
     }
 }
 
@@ -362,16 +407,17 @@ private fun ReceiverStatusPill(state: ReceiverState) {
     val color = when (state) {
         ReceiverState.Waiting -> Color(0xFFFFC107)
         ReceiverState.Connected -> Color(0xFF66BB6A)
+        ReceiverState.Reconnecting -> Color(0xFF42A5F5)
         ReceiverState.Desynced -> Color(0xFFFF7043)
         ReceiverState.Disconnected -> Color(0xFF9E9E9E)
     }
     Text(
         text = stringResource(state.labelRes),
         color = Color.Black,
-        fontSize = 13.sp,
+        fontSize = 12.sp,
         modifier = Modifier
             .background(color, RoundedCornerShape(999.dp))
-            .padding(horizontal = 12.dp, vertical = 6.dp)
+            .padding(horizontal = 10.dp, vertical = 5.dp)
     )
 }
 
@@ -412,6 +458,7 @@ internal fun KeepScreenOn() {
 private enum class ReceiverState(val labelRes: Int) {
     Waiting(R.string.local_link_state_waiting),
     Connected(R.string.local_link_state_connected),
+    Reconnecting(R.string.local_link_state_reconnecting),
     Desynced(R.string.local_link_state_desynced),
     Disconnected(R.string.local_link_state_disconnected)
 }

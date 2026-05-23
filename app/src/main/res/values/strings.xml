@@ -821,10 +821,13 @@
     <string name="local_link_port_label">Port</string>
     <string name="local_link_connect">Connecter</string>
     <string name="local_link_disconnect">Déconnecter</string>
+    <string name="local_link_reconnect">Reconnecter</string>
     <string name="local_link_state_waiting">En attente</string>
     <string name="local_link_state_connected">Connecté</string>
+    <string name="local_link_state_reconnecting">Reconnexion</string>
     <string name="local_link_state_desynced">Désynchronisé</string>
     <string name="local_link_state_disconnected">Déconnecté</string>
+    <string name="local_link_receiver_setup_hint">Même Wi-Fi ou hotspot local. Internet n’est pas nécessaire.</string>
     <string name="local_link_invalid_address">Adresse ou port invalide.</string>
     <string name="local_link_connection_failed">Connexion impossible.</string>
     <string name="local_link_no_lyrics">Aucune parole reçue</string>

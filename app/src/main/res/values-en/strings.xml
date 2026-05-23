@@ -813,10 +813,13 @@
     <string name="local_link_port_label">Port</string>
     <string name="local_link_connect">Connect</string>
     <string name="local_link_disconnect">Disconnect</string>
+    <string name="local_link_reconnect">Reconnect</string>
     <string name="local_link_state_waiting">Waiting</string>
     <string name="local_link_state_connected">Connected</string>
+    <string name="local_link_state_reconnecting">Reconnecting</string>
     <string name="local_link_state_desynced">Desynced</string>
     <string name="local_link_state_disconnected">Disconnected</string>
+    <string name="local_link_receiver_setup_hint">Same Wi-Fi or local hotspot. Internet is not required.</string>
     <string name="local_link_invalid_address">Invalid address or port.</string>
     <string name="local_link_connection_failed">Connection failed.</string>
     <string name="local_link_no_lyrics">No lyrics received</string>
