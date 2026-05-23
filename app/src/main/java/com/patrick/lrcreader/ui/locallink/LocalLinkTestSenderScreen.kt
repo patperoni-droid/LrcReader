@@ -24,7 +24,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -43,7 +42,10 @@ import com.patrick.lrcreader.core.locallink.LyricsLinePayload
 import com.patrick.lrcreader.core.locallink.LyricsPacketMessage
 import com.patrick.lrcreader.core.locallink.ReceiverStatusMessage
 import com.patrick.lrcreader.exo.R
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -52,6 +54,35 @@ import java.net.NetworkInterface
 import java.util.Collections
 
 private const val LOCAL_LINK_DIAG_TAG = "LOCAL_LINK_DIAG"
+
+private object LocalLinkExperimentalSenderRuntime {
+    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    var server by mutableStateOf<LocalLinkServer?>(null)
+    var port by mutableStateOf<Int?>(null)
+    var clockJob by mutableStateOf<Job?>(null)
+    var seq by mutableLongStateOf(1L)
+    var isClockRunning by mutableStateOf(false)
+    var remoteStatus by mutableStateOf("")
+    var statusRes by mutableStateOf(R.string.local_link_server_stopped)
+    var statusDetail by mutableStateOf<String?>(null)
+    var linesSent by mutableStateOf<Int?>(null)
+    var sharedSongTitle by mutableStateOf<String?>(null)
+
+    fun closeServer() {
+        Log.d(LOCAL_LINK_DIAG_TAG, "sender_server_stopped port=$port")
+        clockJob?.cancel()
+        clockJob = null
+        isClockRunning = false
+        linesSent = null
+        sharedSongTitle = null
+        server?.close()
+        server = null
+        port = null
+        remoteStatus = ""
+        statusRes = R.string.local_link_server_stopped
+        statusDetail = null
+    }
+}
 
 @Composable
 fun LocalLinkTestSenderScreen(
@@ -67,8 +98,8 @@ fun LocalLinkTestSenderScreen(
 ) {
     KeepScreenOn()
 
-    val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val runtime = LocalLinkExperimentalSenderRuntime
     val localIp = remember { findLocalIpv4Address() ?: "127.0.0.1" }
     val emptyValue = stringResource(R.string.local_link_empty_value)
     val senderDeviceName = stringResource(R.string.local_link_sender_device_name)
@@ -83,47 +114,19 @@ fun LocalLinkTestSenderScreen(
     val latestGetDurationMs by rememberUpdatedState(getCurrentDurationMs)
     val latestIsPlaying by rememberUpdatedState(isCurrentTrackPlaying)
     val latestLoadParsedLines by rememberUpdatedState(loadCurrentParsedLines)
-    var server by remember { mutableStateOf<LocalLinkServer?>(null) }
-    var port by remember { mutableStateOf<Int?>(null) }
-    var clockJob by remember { mutableStateOf<Job?>(null) }
-    var seq by remember { mutableLongStateOf(1L) }
-    var isClockRunning by remember { mutableStateOf(false) }
-    var remoteStatus by remember { mutableStateOf("") }
-    var statusRes by remember { mutableStateOf(R.string.local_link_server_stopped) }
-    var statusDetail by remember { mutableStateOf<String?>(null) }
-    var linesSent by remember { mutableStateOf<Int?>(null) }
-    var sharedSongTitle by remember { mutableStateOf<String?>(null) }
-
-    fun closeServer() {
-        clockJob?.cancel()
-        clockJob = null
-        isClockRunning = false
-        linesSent = null
-        sharedSongTitle = null
-        server?.close()
-        server = null
-        port = null
-        statusRes = R.string.local_link_server_stopped
-        statusDetail = null
-    }
-
     fun handleIncoming(message: LocalLinkMessage) {
         when (message) {
             is HelloMessage -> {
-                remoteStatus = message.deviceName
+                runtime.remoteStatus = message.deviceName
                 Log.d(LOCAL_LINK_DIAG_TAG, "sender_received_hello remote=${message.deviceName}")
             }
-            is ReceiverStatusMessage -> remoteStatus = if (message.state == "ready") {
+            is ReceiverStatusMessage -> runtime.remoteStatus = if (message.state == "ready") {
                 receiverReadyStatus
             } else {
                 message.state
             }
             else -> Unit
         }
-    }
-
-    DisposableEffect(Unit) {
-        onDispose { closeServer() }
     }
 
     Box(
@@ -144,7 +147,10 @@ fun LocalLinkTestSenderScreen(
         ) {
             HeaderRow(
                 title = stringResource(R.string.local_link_sender_title),
-                onBack = onBack
+                onBack = {
+                    runtime.closeServer()
+                    onBack()
+                }
             )
 
             Card(
@@ -158,7 +164,7 @@ fun LocalLinkTestSenderScreen(
                 ) {
                     InfoLine(
                         label = stringResource(R.string.local_link_status_label),
-                        value = stringResource(statusRes)
+                        value = stringResource(runtime.statusRes)
                     )
                     InfoLine(
                         label = stringResource(R.string.local_link_ip_label),
@@ -166,7 +172,7 @@ fun LocalLinkTestSenderScreen(
                     )
                     InfoLine(
                         label = stringResource(R.string.local_link_port_label),
-                        value = port?.toString() ?: emptyValue
+                        value = runtime.port?.toString() ?: emptyValue
                     )
                     InfoLine(
                         label = stringResource(R.string.local_link_token_label),
@@ -174,7 +180,7 @@ fun LocalLinkTestSenderScreen(
                     )
                     InfoLine(
                         label = stringResource(R.string.local_link_remote_label),
-                        value = remoteStatus.ifBlank { emptyValue }
+                        value = runtime.remoteStatus.ifBlank { emptyValue }
                     )
                     InfoLine(
                         label = stringResource(R.string.local_link_current_song_label),
@@ -185,7 +191,7 @@ fun LocalLinkTestSenderScreen(
                         color = Color(0xFF9E9E9E),
                         fontSize = 13.sp
                     )
-                    statusDetail?.let { detail ->
+                    runtime.statusDetail?.let { detail ->
                         Text(
                             text = detail,
                             color = Color(0xFFFFCCBC),
@@ -194,23 +200,23 @@ fun LocalLinkTestSenderScreen(
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Button(
-                            enabled = server == null,
+                            enabled = runtime.server == null,
                             onClick = {
                                 val nextServer = LocalLinkServer(
                                     sessionId = "sender-${System.currentTimeMillis()}",
                                     token = experimentalToken,
                                     deviceName = senderDeviceName
                                 )
-                                server = nextServer
-                                statusDetail = null
-                                scope.launch {
+                                runtime.server = nextServer
+                                runtime.statusDetail = null
+                                runtime.scope.launch {
                                     runCatching {
-                                        nextServer.start(scope) { message ->
-                                            scope.launch { handleIncoming(message) }
+                                        nextServer.start(runtime.scope) { message ->
+                                            runtime.scope.launch { handleIncoming(message) }
                                         }
                                     }.onSuccess { startedPort ->
-                                        port = startedPort
-                                        statusRes = R.string.local_link_server_ready
+                                        runtime.port = startedPort
+                                        runtime.statusRes = R.string.local_link_server_ready
                                         Log.d(
                                             LOCAL_LINK_DIAG_TAG,
                                             "sender_server_started port=$startedPort addresses=${findLocalIpv4Addresses().joinToString()}"
@@ -218,10 +224,10 @@ fun LocalLinkTestSenderScreen(
                                     }.onFailure { error ->
                                         Log.w(LOCAL_LINK_DIAG_TAG, "sender_server_start_failed", error)
                                         nextServer.close()
-                                        server = null
-                                        port = null
-                                        statusRes = R.string.local_link_server_start_failed
-                                        statusDetail = error.message ?: error::class.java.simpleName
+                                        runtime.server = null
+                                        runtime.port = null
+                                        runtime.statusRes = R.string.local_link_server_start_failed
+                                        runtime.statusDetail = error.message ?: error::class.java.simpleName
                                     }
                                 }
                             }
@@ -229,8 +235,8 @@ fun LocalLinkTestSenderScreen(
                             Text(stringResource(R.string.local_link_start_server))
                         }
                         TextButton(
-                            enabled = server != null,
-                            onClick = { closeServer() }
+                            enabled = runtime.server != null,
+                            onClick = { runtime.closeServer() }
                         ) {
                             Text(stringResource(R.string.local_link_stop_server))
                         }
@@ -254,22 +260,22 @@ fun LocalLinkTestSenderScreen(
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Button(
-                            enabled = server != null,
+                            enabled = runtime.server != null,
                             onClick = {
-                                val activeServer = server ?: return@Button
-                                clockJob?.cancel()
-                                clockJob = scope.launch {
+                                val activeServer = runtime.server ?: return@Button
+                                runtime.clockJob?.cancel()
+                                runtime.clockJob = runtime.scope.launch {
                                     val songId = "local-link-test-song"
                                     activeServer.send(
                                         testLyricsPacket(
                                             songId = songId,
-                                            seq = seq++,
+                                            seq = runtime.seq++,
                                             title = testSongTitle,
                                             lineTexts = testSongLines
                                         )
                                     )
                                     val startedAt = SystemClock.elapsedRealtime()
-                                    isClockRunning = true
+                                    runtime.isClockRunning = true
                                     while (isActive) {
                                         val timeMs = SystemClock.elapsedRealtime() - startedAt
                                         activeServer.send(
@@ -277,7 +283,7 @@ fun LocalLinkTestSenderScreen(
                                                 songId = songId,
                                                 timeMs = timeMs,
                                                 isPlaying = true,
-                                                seq = seq++,
+                                                seq = runtime.seq++,
                                                 sentAtMs = SystemClock.elapsedRealtime()
                                             )
                                         )
@@ -289,29 +295,29 @@ fun LocalLinkTestSenderScreen(
                                             songId = songId,
                                             timeMs = 32_000L,
                                             isPlaying = false,
-                                            seq = seq++,
+                                            seq = runtime.seq++,
                                             sentAtMs = SystemClock.elapsedRealtime()
                                         )
                                     )
-                                    isClockRunning = false
+                                    runtime.isClockRunning = false
                                 }
                             }
                         ) {
                             Text(stringResource(R.string.local_link_send_test_song))
                         }
                         TextButton(
-                            enabled = isClockRunning,
+                            enabled = runtime.isClockRunning,
                             onClick = {
-                                clockJob?.cancel()
-                                clockJob = null
-                                isClockRunning = false
+                                runtime.clockJob?.cancel()
+                                runtime.clockJob = null
+                                runtime.isClockRunning = false
                             }
                         ) {
                             Text(stringResource(R.string.local_link_stop_clock))
                         }
                     }
                     Text(
-                        text = stringResource(R.string.local_link_clock_state, seq),
+                        text = stringResource(R.string.local_link_clock_state, runtime.seq),
                         color = Color(0xFF9E9E9E),
                         fontSize = 13.sp
                     )
@@ -334,41 +340,47 @@ fun LocalLinkTestSenderScreen(
                     )
                     InfoLine(
                         label = stringResource(R.string.local_link_shared_song_label),
-                        value = sharedSongTitle ?: emptyValue
+                        value = runtime.sharedSongTitle ?: emptyValue
                     )
                     InfoLine(
                         label = stringResource(R.string.local_link_lines_sent_label),
-                        value = linesSent?.toString() ?: emptyValue
+                        value = runtime.linesSent?.toString() ?: emptyValue
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Button(
-                            enabled = server != null,
+                            enabled = runtime.server != null,
                             onClick = {
-                                val activeServer = server ?: return@Button
+                                val activeServer = runtime.server ?: return@Button
                                 val initialSongId = latestSongId
                                 if (initialSongId == null) {
-                                    statusRes = R.string.local_link_no_current_song
+                                    runtime.statusRes = R.string.local_link_no_current_song
                                     return@Button
                                 }
-                                clockJob?.cancel()
-                                clockJob = scope.launch {
+                                runtime.clockJob?.cancel()
+                                runtime.clockJob = runtime.scope.launch {
                                     var lastPacketSongId: String? = null
-                                    isClockRunning = true
+                                    var lastClockSongId: String? = null
+                                    var lastClockMs: Long? = null
+                                    runtime.isClockRunning = true
                                     while (isActive) {
                                         val songId = latestSongId
                                         if (!activeServer.session.connected) {
                                             lastPacketSongId = null
-                                            statusRes = R.string.local_link_no_receiver_connected
+                                            runtime.statusRes = R.string.local_link_no_receiver_connected
                                         }
                                         if (songId == null) {
-                                            statusRes = R.string.local_link_no_current_song
-                                            linesSent = null
-                                            sharedSongTitle = null
+                                            runtime.statusRes = R.string.local_link_no_current_song
+                                            runtime.linesSent = null
+                                            runtime.sharedSongTitle = null
                                             delay(200L)
                                             continue
                                         }
                                         val title = latestSongTitle ?: songId
                                         if (songId != lastPacketSongId) {
+                                            Log.d(
+                                                LOCAL_LINK_DIAG_TAG,
+                                                "sender_song_changed previous=$lastPacketSongId next=$songId"
+                                            )
                                             val loadedLines = runCatching {
                                                 latestLoadParsedLines()
                                             }.onFailure { error ->
@@ -377,7 +389,7 @@ fun LocalLinkTestSenderScreen(
                                                     "sender_live_lyrics_prepare_failed songId=$songId",
                                                     error
                                                 )
-                                                statusDetail = error.message ?: error::class.java.simpleName
+                                                runtime.statusDetail = error.message ?: error::class.java.simpleName
                                             }.getOrDefault(latestParsedLines)
                                             val safeLines = loadedLines.ifEmpty { latestParsedLines }
                                             val packet = liveLyricsPacket(
@@ -385,7 +397,7 @@ fun LocalLinkTestSenderScreen(
                                                 title = title,
                                                 lines = safeLines,
                                                 durationMs = latestGetDurationMs(),
-                                                seq = seq++
+                                                seq = runtime.seq++
                                             )
                                             val packetSent = activeServer.send(packet)
                                             if (packetSent) {
@@ -393,11 +405,12 @@ fun LocalLinkTestSenderScreen(
                                                     LOCAL_LINK_DIAG_TAG,
                                                     "sender_live_packet_sent songId=$songId lines=${safeLines.size}"
                                                 )
+                                                Log.d(LOCAL_LINK_DIAG_TAG, "sender_packet_resent songId=$songId")
                                                 lastPacketSongId = songId
-                                                sharedSongTitle = title
-                                                linesSent = safeLines.size
-                                                statusDetail = null
-                                                statusRes = if (safeLines.isEmpty()) {
+                                                runtime.sharedSongTitle = title
+                                                runtime.linesSent = safeLines.size
+                                                runtime.statusDetail = null
+                                                runtime.statusRes = if (safeLines.isEmpty()) {
                                                     R.string.local_link_no_live_lyrics
                                                 } else {
                                                     R.string.local_link_live_share_running
@@ -408,36 +421,54 @@ fun LocalLinkTestSenderScreen(
                                                     "sender_live_packet_not_sent songId=$songId connected=${activeServer.session.connected}"
                                                 )
                                                 lastPacketSongId = null
-                                                statusRes = R.string.local_link_no_receiver_connected
+                                                runtime.statusRes = R.string.local_link_no_receiver_connected
                                             }
                                         }
 
+                                        val currentTimeMs = latestGetPositionMs().coerceAtLeast(0L)
+                                        val previousClockMs = lastClockMs
+                                        if (lastClockSongId == songId &&
+                                            previousClockMs != null &&
+                                            currentTimeMs + 1_000L < previousClockMs
+                                        ) {
+                                            Log.d(
+                                                LOCAL_LINK_DIAG_TAG,
+                                                "sender_seek_or_restart songId=$songId from=$previousClockMs to=$currentTimeMs"
+                                            )
+                                        }
                                         val clockSent = activeServer.send(
                                             ClockMessage(
                                                 songId = songId,
-                                                timeMs = latestGetPositionMs().coerceAtLeast(0L),
+                                                timeMs = currentTimeMs,
                                                 isPlaying = latestIsPlaying(),
-                                                seq = seq++,
+                                                seq = runtime.seq++,
                                                 sentAtMs = SystemClock.elapsedRealtime()
                                             )
                                         )
                                         if (!clockSent) {
                                             lastPacketSongId = null
+                                        } else if (lastClockSongId != songId || currentTimeMs < 500L) {
+                                            Log.d(
+                                                LOCAL_LINK_DIAG_TAG,
+                                                "sender_clock_sent songId=$songId timeMs=$currentTimeMs isPlaying=${latestIsPlaying()}"
+                                            )
                                         }
+                                        lastClockSongId = songId
+                                        lastClockMs = currentTimeMs
                                         delay(200L)
                                     }
-                                    isClockRunning = false
+                                    runtime.isClockRunning = false
                                 }
                             }
                         ) {
                             Text(stringResource(R.string.local_link_send_current_song))
                         }
                         TextButton(
-                            enabled = isClockRunning,
+                            enabled = runtime.isClockRunning,
                             onClick = {
-                                clockJob?.cancel()
-                                clockJob = null
-                                isClockRunning = false
+                                runtime.clockJob?.cancel()
+                                runtime.clockJob = null
+                                runtime.isClockRunning = false
                             }
                         ) {
                             Text(stringResource(R.string.local_link_stop_clock))
