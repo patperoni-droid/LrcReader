@@ -24,7 +24,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -55,7 +54,7 @@ import java.util.Collections
 
 private const val LOCAL_LINK_DIAG_TAG = "LOCAL_LINK_DIAG"
 
-private object LocalLinkExperimentalSenderRuntime {
+object LocalLinkExperimentalSenderRuntime {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     var server by mutableStateOf<LocalLinkServer?>(null)
     var port by mutableStateOf<Int?>(null)
@@ -67,6 +66,46 @@ private object LocalLinkExperimentalSenderRuntime {
     var statusDetail by mutableStateOf<String?>(null)
     var linesSent by mutableStateOf<Int?>(null)
     var sharedSongTitle by mutableStateOf<String?>(null)
+
+    private var currentSongIdProvider: () -> String? = { null }
+    private var currentSongTitleProvider: () -> String? = { null }
+    private var currentParsedLinesProvider: () -> List<LrcLine> = { emptyList() }
+    private var currentPositionProvider: () -> Long = { 0L }
+    private var currentDurationProvider: () -> Long? = { null }
+    private var isPlayingProvider: () -> Boolean = { false }
+    private var loadParsedLinesProvider: suspend () -> List<LrcLine> = { emptyList() }
+
+    fun updateLiveSource(
+        currentSongId: () -> String?,
+        currentSongTitle: () -> String?,
+        currentParsedLines: () -> List<LrcLine>,
+        currentPositionMs: () -> Long,
+        currentDurationMs: () -> Long?,
+        isPlaying: () -> Boolean,
+        loadParsedLines: suspend () -> List<LrcLine>
+    ) {
+        currentSongIdProvider = currentSongId
+        currentSongTitleProvider = currentSongTitle
+        currentParsedLinesProvider = currentParsedLines
+        currentPositionProvider = currentPositionMs
+        currentDurationProvider = currentDurationMs
+        isPlayingProvider = isPlaying
+        loadParsedLinesProvider = loadParsedLines
+    }
+
+    fun currentSongId(): String? = currentSongIdProvider()?.trim()?.takeIf { it.isNotEmpty() }
+
+    fun currentSongTitle(): String? = currentSongTitleProvider()?.trim()?.takeIf { it.isNotEmpty() }
+
+    fun currentParsedLines(): List<LrcLine> = currentParsedLinesProvider()
+
+    fun currentPositionMs(): Long = currentPositionProvider()
+
+    fun currentDurationMs(): Long? = currentDurationProvider()
+
+    fun isPlaying(): Boolean = isPlayingProvider()
+
+    suspend fun loadParsedLines(): List<LrcLine> = loadParsedLinesProvider()
 
     fun closeServer() {
         Log.d(LOCAL_LINK_DIAG_TAG, "sender_server_stopped port=$port")
@@ -107,13 +146,15 @@ fun LocalLinkTestSenderScreen(
     val receiverReadyStatus = stringResource(R.string.local_link_receiver_ready_status)
     val testSongTitle = stringResource(R.string.local_link_test_payload_title)
     val testSongLines = context.resources.getStringArray(R.array.local_link_test_payload_lines).toList()
-    val latestSongId by rememberUpdatedState(currentSongId?.trim()?.takeIf { it.isNotEmpty() })
-    val latestSongTitle by rememberUpdatedState(currentSongTitle?.trim()?.takeIf { it.isNotEmpty() })
-    val latestParsedLines by rememberUpdatedState(currentParsedLines)
-    val latestGetPositionMs by rememberUpdatedState(getCurrentPositionMs)
-    val latestGetDurationMs by rememberUpdatedState(getCurrentDurationMs)
-    val latestIsPlaying by rememberUpdatedState(isCurrentTrackPlaying)
-    val latestLoadParsedLines by rememberUpdatedState(loadCurrentParsedLines)
+    runtime.updateLiveSource(
+        currentSongId = { currentSongId },
+        currentSongTitle = { currentSongTitle },
+        currentParsedLines = { currentParsedLines },
+        currentPositionMs = getCurrentPositionMs,
+        currentDurationMs = getCurrentDurationMs,
+        isPlaying = isCurrentTrackPlaying,
+        loadParsedLines = loadCurrentParsedLines
+    )
     fun handleIncoming(message: LocalLinkMessage) {
         when (message) {
             is HelloMessage -> {
@@ -184,7 +225,7 @@ fun LocalLinkTestSenderScreen(
                     )
                     InfoLine(
                         label = stringResource(R.string.local_link_current_song_label),
-                        value = latestSongTitle ?: emptyValue
+                        value = runtime.currentSongTitle() ?: emptyValue
                     )
                     Text(
                         text = stringResource(R.string.local_link_manual_pairing_hint),
@@ -351,19 +392,20 @@ fun LocalLinkTestSenderScreen(
                             enabled = runtime.server != null,
                             onClick = {
                                 val activeServer = runtime.server ?: return@Button
-                                val initialSongId = latestSongId
+                                val initialSongId = runtime.currentSongId()
                                 if (initialSongId == null) {
                                     runtime.statusRes = R.string.local_link_no_current_song
                                     return@Button
                                 }
                                 runtime.clockJob?.cancel()
                                 runtime.clockJob = runtime.scope.launch {
+                                    Log.d(LOCAL_LINK_DIAG_TAG, "sender_sharing_active")
                                     var lastPacketSongId: String? = null
                                     var lastClockSongId: String? = null
                                     var lastClockMs: Long? = null
                                     runtime.isClockRunning = true
                                     while (isActive) {
-                                        val songId = latestSongId
+                                        val songId = runtime.currentSongId()
                                         if (!activeServer.session.connected) {
                                             lastPacketSongId = null
                                             runtime.statusRes = R.string.local_link_no_receiver_connected
@@ -375,14 +417,14 @@ fun LocalLinkTestSenderScreen(
                                             delay(200L)
                                             continue
                                         }
-                                        val title = latestSongTitle ?: songId
+                                        val title = runtime.currentSongTitle() ?: songId
                                         if (songId != lastPacketSongId) {
                                             Log.d(
                                                 LOCAL_LINK_DIAG_TAG,
-                                                "sender_song_changed previous=$lastPacketSongId next=$songId"
+                                                "sender_detected_song_change previous=$lastPacketSongId next=$songId"
                                             )
                                             val loadedLines = runCatching {
-                                                latestLoadParsedLines()
+                                                runtime.loadParsedLines()
                                             }.onFailure { error ->
                                                 Log.w(
                                                     LOCAL_LINK_DIAG_TAG,
@@ -390,22 +432,27 @@ fun LocalLinkTestSenderScreen(
                                                     error
                                                 )
                                                 runtime.statusDetail = error.message ?: error::class.java.simpleName
-                                            }.getOrDefault(latestParsedLines)
-                                            val safeLines = loadedLines.ifEmpty { latestParsedLines }
+                                            }.getOrDefault(runtime.currentParsedLines())
+                                            val safeLines = loadedLines.ifEmpty { runtime.currentParsedLines() }
                                             val packet = liveLyricsPacket(
                                                 songId = songId,
                                                 title = title,
                                                 lines = safeLines,
-                                                durationMs = latestGetDurationMs(),
+                                                durationMs = runtime.currentDurationMs(),
                                                 seq = runtime.seq++
                                             )
                                             val packetSent = activeServer.send(packet)
                                             if (packetSent) {
                                                 Log.d(
                                                     LOCAL_LINK_DIAG_TAG,
-                                                    "sender_live_packet_sent songId=$songId lines=${safeLines.size}"
+                                                    "sender_auto_packet_sent songId=$songId lines=${safeLines.size}"
                                                 )
-                                                Log.d(LOCAL_LINK_DIAG_TAG, "sender_packet_resent songId=$songId")
+                                                if (safeLines.isEmpty()) {
+                                                    Log.d(LOCAL_LINK_DIAG_TAG, "sender_no_lyrics_for_current_song songId=$songId")
+                                                }
+                                                if (lastPacketSongId == null && activeServer.session.connected) {
+                                                    Log.d(LOCAL_LINK_DIAG_TAG, "sender_packet_resend_after_reconnect songId=$songId")
+                                                }
                                                 lastPacketSongId = songId
                                                 runtime.sharedSongTitle = title
                                                 runtime.linesSent = safeLines.size
@@ -425,7 +472,7 @@ fun LocalLinkTestSenderScreen(
                                             }
                                         }
 
-                                        val currentTimeMs = latestGetPositionMs().coerceAtLeast(0L)
+                                        val currentTimeMs = runtime.currentPositionMs().coerceAtLeast(0L)
                                         val previousClockMs = lastClockMs
                                         if (lastClockSongId == songId &&
                                             previousClockMs != null &&
@@ -440,7 +487,7 @@ fun LocalLinkTestSenderScreen(
                                             ClockMessage(
                                                 songId = songId,
                                                 timeMs = currentTimeMs,
-                                                isPlaying = latestIsPlaying(),
+                                                isPlaying = runtime.isPlaying(),
                                                 seq = runtime.seq++,
                                                 sentAtMs = SystemClock.elapsedRealtime()
                                             )
@@ -450,7 +497,7 @@ fun LocalLinkTestSenderScreen(
                                         } else if (lastClockSongId != songId || currentTimeMs < 500L) {
                                             Log.d(
                                                 LOCAL_LINK_DIAG_TAG,
-                                                "sender_clock_sent songId=$songId timeMs=$currentTimeMs isPlaying=${latestIsPlaying()}"
+                                                "sender_clock_sent songId=$songId timeMs=$currentTimeMs isPlaying=${runtime.isPlaying()}"
                                             )
                                         }
                                         lastClockSongId = songId

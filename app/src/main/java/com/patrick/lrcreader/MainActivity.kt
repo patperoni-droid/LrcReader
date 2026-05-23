@@ -90,6 +90,7 @@ import com.patrick.lrcreader.smp.SmpWorkspaceArchiveStore
 import com.patrick.lrcreader.ui.*
 import com.patrick.lrcreader.ui.library.LibraryScreen
 import com.patrick.lrcreader.ui.library.ensureWorkspaceLibraryFolders
+import com.patrick.lrcreader.ui.locallink.LocalLinkExperimentalSenderRuntime
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.collectLatest
@@ -3548,6 +3549,56 @@ class MainActivity : AppCompatActivity() {
                                     title = sBatchProgressTitle,
                                     label = playlistBatchProgressLabel,
                                     progress = playlistBatchProgressValue
+                                )
+                                LocalLinkExperimentalSenderRuntime.updateLiveSource(
+                                    currentSongId = { currentPlayingSongId },
+                                    currentSongTitle = {
+                                        currentPlayingTitle
+                                            ?: currentPlayingSongId
+                                                ?.let { songId -> sanitizeDisplayTrackTitle(smpSongsById[songId]?.title) }
+                                            ?: currentPlayingUri
+                                                ?.let { uri -> sanitizeDisplayTrackTitle(TitleAliasesStore.getTitleForTrack(ctx, uri)) }
+                                            ?: currentPlayingUri
+                                                ?.let { uri -> sanitizeDisplayTrackTitle(indexAll.firstOrNull { it.uriString == uri }?.name) }
+                                            ?: currentPlayingUri
+                                                ?.let { uri -> sanitizeDisplayTrackTitle(Uri.parse(uri).lastPathSegment) }
+                                    },
+                                    currentParsedLines = { parsedLines },
+                                    currentPositionMs = {
+                                        runCatching { exoPlayer.currentPosition }.getOrDefault(0L)
+                                    },
+                                    currentDurationMs = {
+                                        runCatching {
+                                            resolveEffectiveDurationMs(
+                                                requestedUri = currentPlayingUri,
+                                                activeUri = exoPlayer.currentMediaItem
+                                                    ?.localConfiguration
+                                                    ?.uri
+                                                    ?.toString()
+                                            )
+                                        }.getOrDefault(C.TIME_UNSET)
+                                            .takeIf { it > 0L && it != C.TIME_UNSET }
+                                    },
+                                    isPlaying = {
+                                        runCatching { exoPlayer.isPlaying }.getOrDefault(isPlaying)
+                                    },
+                                    loadParsedLines = {
+                                        val uri = currentPlayingUri
+                                        when {
+                                            parsedLines.isNotEmpty() -> parsedLines
+                                            uri.isNullOrBlank() -> emptyList()
+                                            else -> {
+                                                LyricsMemoryCache.updateScope(LrcStorage.currentWorkspaceScopeKey(ctx))
+                                                LyricsMemoryCache.get(uri)?.parsedLines?.takeIf { it.isNotEmpty() }
+                                                    ?: withContext(Dispatchers.IO) {
+                                                        LrcStorage.loadForTrack(ctx, uri)
+                                                            ?.takeIf { it.isNotBlank() }
+                                                            ?.let { parseLrc(it) }
+                                                            .orEmpty()
+                                                    }
+                                            }
+                                        }
+                                    }
                                 )
                                 when (selectedTab) {
 
