@@ -1,6 +1,7 @@
 package com.patrick.lrcreader.ui.locallink
 
 import android.app.Activity
+import android.util.Log
 import android.view.WindowManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -49,6 +50,8 @@ import com.patrick.lrcreader.core.locallink.UnknownMessage
 import com.patrick.lrcreader.exo.R
 import kotlinx.coroutines.launch
 
+private const val LOCAL_LINK_DIAG_TAG = "LOCAL_LINK_DIAG"
+
 @Composable
 fun LocalLinkReceiverScreen(
     modifier: Modifier = Modifier,
@@ -61,6 +64,7 @@ fun LocalLinkReceiverScreen(
     var portText by remember { mutableStateOf("") }
     var receiverState by remember { mutableStateOf(ReceiverState.Waiting) }
     var statusMessageRes by remember { mutableStateOf<Int?>(null) }
+    var statusDetail by remember { mutableStateOf<String?>(null) }
     var client by remember { mutableStateOf<LocalLinkClient?>(null) }
     var packet by remember { mutableStateOf<LyricsPacketMessage?>(null) }
     var clock by remember { mutableStateOf<ClockMessage?>(null) }
@@ -174,7 +178,12 @@ fun LocalLinkReceiverScreen(
                                 client = nextClient
                                 receiverState = ReceiverState.Waiting
                                 statusMessageRes = null
+                                statusDetail = null
                                 scope.launch {
+                                    Log.d(
+                                        LOCAL_LINK_DIAG_TAG,
+                                        "receiver_connect_start host=$host port=$port"
+                                    )
                                     val connected = nextClient.connect(scope) { message ->
                                         scope.launch { handleMessage(message) }
                                     }
@@ -182,7 +191,16 @@ fun LocalLinkReceiverScreen(
                                         client = null
                                         receiverState = ReceiverState.Disconnected
                                         statusMessageRes = R.string.local_link_connection_failed
+                                        statusDetail = nextClient.lastFailureReason
+                                        Log.w(
+                                            LOCAL_LINK_DIAG_TAG,
+                                            "receiver_connect_failed host=$host port=$port reason=${nextClient.lastFailureReason}"
+                                        )
                                     } else {
+                                        Log.d(
+                                            LOCAL_LINK_DIAG_TAG,
+                                            "receiver_connect_ok host=$host port=$port"
+                                        )
                                         nextClient.send(
                                             ReceiverStatusMessage(
                                                 state = "ready",
@@ -208,6 +226,13 @@ fun LocalLinkReceiverScreen(
                             text = stringResource(resId),
                             color = Color(0xFFFFAB91),
                             fontSize = 13.sp
+                        )
+                    }
+                    statusDetail?.let { detail ->
+                        Text(
+                            text = detail,
+                            color = Color(0xFFFFCCBC),
+                            fontSize = 12.sp
                         )
                     }
                 }

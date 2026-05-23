@@ -754,6 +754,8 @@
     <string name="local_link_stop_server">Detener</string>
     <string name="local_link_server_ready">Servidor listo</string>
     <string name="local_link_server_stopped">Servidor detenido</string>
+    <string name="local_link_server_start_failed">No se pudo iniciar el servidor</string>
+    <string name="local_link_no_receiver_connected">No hay receptor conectado</string>
     <string name="local_link_test_song_title">Canción de prueba</string>
     <string name="local_link_live_song_title">Canción live actual</string>
     <string name="local_link_send_test_song">Enviar canción de prueba</string>

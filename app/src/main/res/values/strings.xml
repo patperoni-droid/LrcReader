@@ -844,6 +844,8 @@
     <string name="local_link_stop_server">Arrêter</string>
     <string name="local_link_server_ready">Serveur prêt</string>
     <string name="local_link_server_stopped">Serveur arrêté</string>
+    <string name="local_link_server_start_failed">Démarrage serveur impossible</string>
+    <string name="local_link_no_receiver_connected">Aucun récepteur connecté</string>
     <string name="local_link_test_song_title">Morceau test</string>
     <string name="local_link_live_song_title">Morceau courant live</string>
     <string name="local_link_send_test_song">Envoyer morceau test</string>

@@ -24,6 +24,10 @@ class LocalLinkClient(
     var session: LocalLinkSession = LocalLinkSession(sessionId = sessionId)
         private set
 
+    @Volatile
+    var lastFailureReason: String? = null
+        private set
+
     private var connection: LocalLinkConnection? = null
 
     suspend fun connect(
@@ -70,6 +74,8 @@ class LocalLinkClient(
                 onMessage(message)
             }
             nextConnection.send(localHello())
+        }.onFailure { error ->
+            lastFailureReason = error.message ?: error::class.java.simpleName
         }.getOrDefault(false)
     }
 
