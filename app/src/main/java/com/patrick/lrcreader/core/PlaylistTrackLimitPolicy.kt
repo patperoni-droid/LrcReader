@@ -20,7 +20,7 @@ object PlaylistTrackLimitPolicy {
     }
 
     fun countLimitedTrackItems(items: List<String>): Int {
-        return items.count { item -> isPlayableAudioItem(item) }
+        return items.count { item -> isPlayableAudioItem(item) || isVariantFamilyItem(item) }
     }
 
     fun canAddTracks(

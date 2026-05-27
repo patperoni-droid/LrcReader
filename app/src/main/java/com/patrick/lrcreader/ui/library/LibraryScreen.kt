@@ -64,9 +64,11 @@ import com.patrick.lrcreader.core.SmpPreparationNoticePrefs
 import com.patrick.lrcreader.core.TrackVolumePrefs
 import com.patrick.lrcreader.core.TextSongRepository
 import com.patrick.lrcreader.core.WorkspaceResolver
+import com.patrick.lrcreader.core.buildVariantFamilyItem
 import com.patrick.lrcreader.core.buildSmpItem
 import com.patrick.lrcreader.core.hasDjGlobalAudioAccess
 import com.patrick.lrcreader.core.getSmpSongId
+import com.patrick.lrcreader.core.isVariantFamilyItem
 import com.patrick.lrcreader.core.config.TitleAliasesStore
 import com.patrick.lrcreader.core.config.SongIdKeyResolver
 import com.patrick.lrcreader.core.search.SearchEngine
@@ -1587,6 +1589,37 @@ fun LibraryScreen(
         selectedSongs = if (selectedSongs.contains(uri)) selectedSongs - uri else selectedSongs + uri
     }
 
+    fun createVariantFamilyFromSelection(selection: Set<Uri>) {
+        val selectedSongIds = selection
+            .mapNotNull { uri -> getSmpSongId(uri.toString()) }
+            .toSet()
+        if (selectedSongIds.size < 2) {
+            Toast.makeText(
+                context,
+                context.getString(R.string.library_variant_family_selection_min),
+                Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
+
+        val orderedSelectedSongs = selection
+            .mapNotNull { uri ->
+                val songId = getSmpSongId(uri.toString()) ?: return@mapNotNull null
+                songItems.firstOrNull { it.songId == songId }
+            }
+        val parentSong = orderedSelectedSongs.firstOrNull()
+            ?: songItems.firstOrNull { it.songId in selectedSongIds }
+            ?: return
+
+        SongVariantFamiliesStore.createOrReplaceFamily(
+            context = context,
+            title = parentSong.displayTitle,
+            songIds = selectedSongIds,
+            parentSongId = parentSong.songId
+        )
+        selectedSongs = emptySet()
+    }
+
     fun beginAliasRename(entry: LibraryEntry, initialTitle: String? = null) {
         renameTarget = entry
         renameText = initialTitle
@@ -2730,6 +2763,7 @@ fun LibraryScreen(
             selection.forEach { uri ->
                 val uriString = uri.toString()
                 when {
+                    isVariantFamilyItem(uriString) -> directItemUris += uriString
                     uriString.startsWith("prompter://") -> directItemUris += uriString
                     getSmpSongId(uriString) != null -> {
                         directItemUris += uriString
@@ -3783,6 +3817,18 @@ fun LibraryScreen(
                                         selectedSongs = setOf(uri)
                                         showAssignDialog = true
                                     },
+                                    onAssignFamily = { family ->
+                                        selectedSongs = setOf(
+                                            Uri.parse(
+                                                buildVariantFamilyItem(
+                                                    familyId = family.id,
+                                                    title = family.title,
+                                                    songIds = family.songIds
+                                                )
+                                            )
+                                        )
+                                        showAssignDialog = true
+                                    },
                                     onShareOne = { uri ->
                                         shareSmpSong(uri)
                                     },
@@ -4195,6 +4241,11 @@ fun LibraryScreen(
                                 selectedCount = selectedSongs.size,
                                 onAssign = if (isSongViewMode) {
                                     { showAssignDialog = true }
+                                } else {
+                                    null
+                                },
+                                onCreateFamily = if (isSongViewMode && selectedSongs.size >= 2) {
+                                    { createVariantFamilyFromSelection(selectedSongs) }
                                 } else {
                                     null
                                 },

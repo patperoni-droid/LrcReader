@@ -11,6 +11,8 @@ private const val GROUP_MARKER_VERSION = "v1"
 private const val GROUP_DEFAULT_TITLE = "Group"
 const val GROUP_END_PREFIX = "__SPL_GROUP_END__|v1|"
 private const val GROUP_END_TOKEN = "__SPL_GROUP_END__"
+private const val VARIANT_FAMILY_MARKER_PREFIX = "__SPL_VARIANT_FAMILY__|v1|"
+private const val VARIANT_FAMILY_MARKER_TOKEN = "__SPL_VARIANT_FAMILY__"
 private const val SMP_ITEM_PREFIX = "smp://"
 
 private data class GroupMarkerParts(
@@ -19,9 +21,73 @@ private data class GroupMarkerParts(
     val colorHex: String?
 )
 
+private data class VariantFamilyMarkerParts(
+    val id: String,
+    val title: String?,
+    val songIds: Set<String>
+)
+
 fun isGroupHeader(item: String): Boolean = parseGroupMarker(item) != null
 
 fun isGroupEnd(item: String): Boolean = parseGroupEndUuid(item) != null
+
+fun buildVariantFamilyItem(
+    familyId: String,
+    title: String? = null,
+    songIds: Set<String> = emptySet()
+): String {
+    val cleanFamilyId = familyId.trim().ifBlank { UUID.randomUUID().toString() }
+    val encodedFamilyId = URLEncoder.encode(cleanFamilyId, StandardCharsets.UTF_8.name())
+    val cleanTitle = title?.trim()?.takeIf { it.isNotEmpty() }
+    val cleanSongIds = songIds.mapNotNull { it.trim().takeIf(String::isNotEmpty) }
+    if (cleanTitle == null || cleanSongIds.isEmpty()) {
+        return "$VARIANT_FAMILY_MARKER_PREFIX$encodedFamilyId"
+    }
+    val encodedTitle = URLEncoder.encode(cleanTitle, StandardCharsets.UTF_8.name())
+    val encodedSongIds = cleanSongIds
+        .map { URLEncoder.encode(it, StandardCharsets.UTF_8.name()) }
+        .joinToString(",")
+    return "$VARIANT_FAMILY_MARKER_PREFIX$encodedFamilyId|$encodedTitle|$encodedSongIds"
+}
+
+fun isVariantFamilyItem(item: String): Boolean = getVariantFamilyId(item) != null
+
+fun getVariantFamilyId(item: String): String? = parseVariantFamilyMarker(item)?.id
+
+fun getVariantFamilyTitle(item: String): String? = parseVariantFamilyMarker(item)?.title
+
+fun getVariantFamilySongIds(item: String): Set<String> =
+    parseVariantFamilyMarker(item)?.songIds.orEmpty()
+
+private fun parseVariantFamilyMarker(item: String): VariantFamilyMarkerParts? {
+    if (!item.startsWith(VARIANT_FAMILY_MARKER_PREFIX)) return null
+    val parts = item.split('|', limit = 5)
+    if (parts.size !in 3..5) return null
+    if (parts[0] != VARIANT_FAMILY_MARKER_TOKEN || parts[1] != GROUP_MARKER_VERSION) return null
+    val encodedFamilyId = parts[2].trim()
+    if (encodedFamilyId.isEmpty()) return null
+    val familyId = runCatching {
+        URLDecoder.decode(encodedFamilyId, StandardCharsets.UTF_8.name()).trim()
+    }.getOrNull()?.takeIf { it.isNotEmpty() } ?: return null
+    val title = parts.getOrNull(3)
+        ?.takeIf { it.isNotBlank() }
+        ?.let { encoded ->
+            runCatching {
+                URLDecoder.decode(encoded, StandardCharsets.UTF_8.name()).trim()
+            }.getOrNull()
+        }
+        ?.takeIf { it.isNotEmpty() }
+    val songIds = parts.getOrNull(4)
+        ?.split(',')
+        ?.mapNotNull { encoded ->
+            runCatching {
+                URLDecoder.decode(encoded, StandardCharsets.UTF_8.name()).trim()
+            }.getOrNull()?.takeIf { it.isNotEmpty() }
+        }
+        ?.toSet()
+        .orEmpty()
+    return VariantFamilyMarkerParts(familyId, title, songIds)
+}
 
 fun buildGroupHeader(title: String): String {
     val cleanTitle = title.trim().ifBlank { GROUP_DEFAULT_TITLE }
@@ -96,7 +162,7 @@ fun isSmpItem(item: String): Boolean = getSmpSongId(item) != null
 fun isPrompterItem(item: String): Boolean = item.startsWith("prompter://")
 
 fun isVirtualPlaylistItem(item: String): Boolean =
-    isGroupHeader(item) || isGroupEnd(item) || isPrompterItem(item)
+    isGroupHeader(item) || isGroupEnd(item) || isPrompterItem(item) || isVariantFamilyItem(item)
 
 fun isPlayableAudioItem(item: String): Boolean = item.isNotBlank() && !isVirtualPlaylistItem(item)
 

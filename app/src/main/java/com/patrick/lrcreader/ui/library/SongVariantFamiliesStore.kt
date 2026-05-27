@@ -9,7 +9,9 @@ import java.util.UUID
 data class SongVariantFamily(
     val id: String,
     val title: String,
-    val songIds: Set<String>
+    val songIds: Set<String>,
+    val parentSongId: String? = null,
+    val activeSongId: String? = null
 )
 
 object SongVariantFamiliesStore {
@@ -37,17 +39,34 @@ object SongVariantFamiliesStore {
                         }
                     }
                     if (songIds.isNotEmpty()) {
-                        add(SongVariantFamily(id = id, title = title, songIds = songIds))
+                        val parentSongId = obj.optString("parentSongId").trim().takeIf { it in songIds }
+                        val activeSongId = obj.optString("activeSongId").trim().takeIf { it in songIds }
+                        add(
+                            SongVariantFamily(
+                                id = id,
+                                title = title,
+                                songIds = songIds,
+                                parentSongId = parentSongId,
+                                activeSongId = activeSongId
+                            )
+                        )
                     }
                 }
             }
         }.getOrDefault(emptyList())
     }
 
-    fun createOrReplaceFamily(context: Context, title: String, songIds: Set<String>) {
+    fun createOrReplaceFamily(
+        context: Context,
+        title: String,
+        songIds: Set<String>,
+        parentSongId: String? = null
+    ) {
         val cleanTitle = title.trim().takeIf { it.isNotEmpty() } ?: return
         val cleanSongIds = songIds.mapNotNull { it.trim().takeIf(String::isNotEmpty) }.toSet()
         if (cleanSongIds.isEmpty()) return
+        val cleanParentSongId = parentSongId?.trim()?.takeIf { it in cleanSongIds }
+            ?: cleanSongIds.first()
 
         val normalizedTitle = normalizeFamilyTitle(cleanTitle)
         val next = load(context)
@@ -56,9 +75,49 @@ object SongVariantFamiliesStore {
             SongVariantFamily(
                 id = UUID.randomUUID().toString(),
                 title = cleanTitle,
-                songIds = cleanSongIds
+                songIds = cleanSongIds,
+                parentSongId = cleanParentSongId,
+                activeSongId = cleanParentSongId
             )
 
+        save(context, next)
+    }
+
+    fun setActiveSongId(context: Context, familyId: String, songId: String) {
+        val cleanFamilyId = familyId.trim().takeIf { it.isNotEmpty() } ?: return
+        val cleanSongId = songId.trim().takeIf { it.isNotEmpty() } ?: return
+        val families = load(context)
+        val next = families.map { family ->
+            if (family.id == cleanFamilyId && cleanSongId in family.songIds) {
+                family.copy(activeSongId = cleanSongId)
+            } else {
+                family
+            }
+        }
+        if (next != families) {
+            save(context, next)
+        }
+    }
+
+    fun upsertFamily(context: Context, family: SongVariantFamily) {
+        val cleanId = family.id.trim().takeIf { it.isNotEmpty() } ?: return
+        val cleanTitle = family.title.trim().takeIf { it.isNotEmpty() } ?: return
+        val cleanSongIds = family.songIds.mapNotNull { it.trim().takeIf(String::isNotEmpty) }.toSet()
+        if (cleanSongIds.isEmpty()) return
+        val cleanFamily = family.copy(
+            id = cleanId,
+            title = cleanTitle,
+            songIds = cleanSongIds,
+            parentSongId = family.parentSongId?.takeIf { it in cleanSongIds } ?: cleanSongIds.first(),
+            activeSongId = family.activeSongId?.takeIf { it in cleanSongIds }
+                ?: family.parentSongId?.takeIf { it in cleanSongIds }
+                ?: cleanSongIds.first()
+        )
+        val normalizedTitle = normalizeFamilyTitle(cleanTitle)
+        val next = load(context)
+            .filterNot { it.id == cleanId || normalizeFamilyTitle(it.title) == normalizedTitle }
+            .filterNot { existing -> existing.songIds.any { it in cleanSongIds } } +
+            cleanFamily
         save(context, next)
     }
 
@@ -69,6 +128,8 @@ object SongVariantFamiliesStore {
                 JSONObject()
                     .put("id", family.id)
                     .put("title", family.title)
+                    .put("parentSongId", family.parentSongId ?: JSONObject.NULL)
+                    .put("activeSongId", family.activeSongId ?: family.parentSongId ?: JSONObject.NULL)
                     .put("songIds", JSONArray().also { ids ->
                         family.songIds.sorted().forEach(ids::put)
                     })

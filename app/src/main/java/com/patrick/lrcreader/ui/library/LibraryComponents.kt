@@ -88,6 +88,7 @@ fun LibraryBottomBar(
     bottomBarHeight: Dp,
     selectedCount: Int,
     onAssign: (() -> Unit)?,
+    onCreateFamily: (() -> Unit)? = null,
     onCopy: (() -> Unit)?,
     onMove: (() -> Unit)?,
     onDelete: (() -> Unit)?,
@@ -116,6 +117,12 @@ fun LibraryBottomBar(
         if (onAssign != null) {
             TextButton(onClick = onAssign) {
                 Text(stringResource(R.string.library_bottom_assign), color = Color.White)
+            }
+            Spacer(Modifier.width(8.dp))
+        }
+        if (onCreateFamily != null) {
+            TextButton(onClick = onCreateFamily) {
+                Text(stringResource(R.string.library_variant_create_family), color = Color.White)
             }
             Spacer(Modifier.width(8.dp))
         }

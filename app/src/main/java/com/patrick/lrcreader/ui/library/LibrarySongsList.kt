@@ -179,6 +179,7 @@ fun LibrarySongsList(
     onKeyboardSelectedSongChange: (String) -> Unit,
     onOpenPlayer: (LibrarySongItem) -> Unit,
     onAssignOne: (Uri) -> Unit,
+    onAssignFamily: (SongVariantFamily) -> Unit,
     onShareOne: (Uri) -> Unit,
     onRenameOne: (LibrarySongItem) -> Unit,
     onDeleteOne: (Uri) -> Unit
@@ -208,7 +209,6 @@ fun LibrarySongsList(
             if (row is LibrarySongListRow.Family) {
                 val group = row.group
                 val primarySong = group.songs.first()
-                val primaryUri = remember(primarySong.playbackItem) { Uri.parse(primarySong.playbackItem) }
                 val isExpanded = group.family.id in expandedFamilyIds
                 val anySelected = group.songs.any { selectedSongs.contains(Uri.parse(it.playbackItem)) }
                 val isCurrentPlaying = group.songs.any { currentPlayingSongId == it.songId }
@@ -311,7 +311,7 @@ fun LibrarySongsList(
                                     },
                                     onClick = {
                                         familyMenuOpen = false
-                                        onAssignOne(primaryUri)
+                                        onAssignFamily(group.family)
                                     }
                                 )
                             }

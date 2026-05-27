@@ -35,6 +35,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
@@ -99,6 +100,9 @@ import com.patrick.lrcreader.core.buildGroupHeader
 import com.patrick.lrcreader.core.buildSmpItem
 import com.patrick.lrcreader.core.buildSmpOccurrenceItem
 import com.patrick.lrcreader.core.canonicalPlaylistPlaybackKey
+import com.patrick.lrcreader.core.getVariantFamilyId
+import com.patrick.lrcreader.core.getVariantFamilySongIds
+import com.patrick.lrcreader.core.getVariantFamilyTitle
 import com.patrick.lrcreader.core.getGroupColorArgb
 import com.patrick.lrcreader.core.getGroupUuid
 import com.patrick.lrcreader.core.getGroupTitle
@@ -106,6 +110,7 @@ import com.patrick.lrcreader.core.isGroupEnd
 import com.patrick.lrcreader.core.isGroupHeader
 import com.patrick.lrcreader.core.isPlayableAudioItem
 import com.patrick.lrcreader.core.getSmpSongId
+import com.patrick.lrcreader.core.isVariantFamilyItem
 import com.patrick.lrcreader.core.PlaylistRepository
 import com.patrick.lrcreader.core.PlaylistTrackLimitPolicy
 import com.patrick.lrcreader.core.renameGroupHeader
@@ -116,6 +121,9 @@ import com.patrick.lrcreader.core.config.TrackSettingsStore
 import com.patrick.lrcreader.core.config.TitleAliasesStore
 import com.patrick.lrcreader.core.search.SearchEngine
 import com.patrick.lrcreader.exo.BuildConfig
+import com.patrick.lrcreader.ui.library.SongVariantFamiliesStore
+import com.patrick.lrcreader.ui.library.SongVariantFamily
+import com.patrick.lrcreader.ui.library.variantLabelFor
 import kotlinx.coroutines.yield
 import java.io.File
 import java.net.URLDecoder
@@ -204,6 +212,9 @@ fun QuickPlaylistsScreen(
 
     val scope = rememberCoroutineScope()
     val titleAliasVersion = TitleAliasesStore.version.intValue
+    val variantFamilyVersion = SongVariantFamiliesStore.version.intValue
+    val variantFamilies = remember(variantFamilyVersion) { SongVariantFamiliesStore.load(context) }
+    val variantFamilyById = remember(variantFamilies) { variantFamilies.associateBy { it.id } }
 
 // ✅ IMPORTANT : on observe le repo RAM (sinon la playlist garde des URI "morts" après rename en bibliothèque)
     val repoVersion = PlaylistRepository.version.value
@@ -230,6 +241,7 @@ fun QuickPlaylistsScreen(
             append("|libraryLoadedSignal=").append(libraryLoadedSignal)
             append("|playlistsReady=").append(playlistsReady)
             append("|titleAliasVersion=").append(titleAliasVersion)
+            append("|variantFamilyVersion=").append(variantFamilyVersion)
         }
     }
     val cachedPlaylistSnapshot = remember(resolvedPlaylistSelection) {
@@ -242,9 +254,16 @@ fun QuickPlaylistsScreen(
             addAll(cachedPlaylistSnapshot?.songs.orEmpty())
         }
     }
-    val smpSongIdsInPlaylist by remember {
+    val smpSongIdsInPlaylist by remember(variantFamilyById) {
         derivedStateOf {
-            songs.mapNotNull { getSmpSongId(it) }.toSet()
+            songs.flatMap { item ->
+                val family = variantFamilyForPlaylistItem(item, variantFamilyById)
+                if (family != null) {
+                    family.songIds
+                } else {
+                    listOfNotNull(getSmpSongId(item))
+                }
+            }.toSet()
         }
     }
     var playlistContentLoaded by remember(resolvedPlaylistSelection) {
@@ -323,6 +342,7 @@ fun QuickPlaylistsScreen(
     var dragYInListViewport by remember { mutableStateOf<Float?>(null) }
     var hoverHeaderKey by remember { mutableStateOf<String?>(null) }
     var collapsedGroupIds by rememberSaveable { mutableStateOf(setOf<String>()) }
+    var expandedVariantFamilyIds by rememberSaveable(internalSelected) { mutableStateOf(setOf<String>()) }
     var activePlayingGroupHeaderKey by rememberSaveable(internalSelected) { mutableStateOf<String?>(null) }
     var pendingLiveGroupScrollHeaderKey by remember { mutableStateOf<String?>(null) }
     var keyboardSelectedItem by rememberSaveable(internalSelected) { mutableStateOf<String?>(null) }
@@ -430,6 +450,7 @@ fun QuickPlaylistsScreen(
         libraryLoadedSignal,
         playlistsReady,
         titleAliasVersion,
+        variantFamilyVersion,
         smpPlaybackUriById
     ) {
         val pl = internalSelected
@@ -530,8 +551,9 @@ fun QuickPlaylistsScreen(
             playlistTotalMs = withContext(Dispatchers.IO) {
                 var acc = 0L
                 for (u in listSnapshot) {
-                    if (!isPlayableAudioItem(u)) continue
-                    val durationSource = getSmpSongId(u)?.let { smpPlaybackUriById[it] } ?: u
+                    val playbackItem = resolveVariantFamilyPlaybackItem(u, variantFamilyById)
+                    if (!isPlayableAudioItem(playbackItem)) continue
+                    val durationSource = getSmpSongId(playbackItem)?.let { smpPlaybackUriById[it] } ?: playbackItem
                     val cached = durationCache[durationSource]
                     val d = cached
                         ?: (getAudioDurationMsQP(context, durationSource) ?: 0L).also {
@@ -673,17 +695,19 @@ fun QuickPlaylistsScreen(
         if (currentPlayingPlaylist == playlist && !currentPlayingPlaylistItemKey.isNullOrBlank()) {
             val currentItemKey = currentPlayingPlaylistItemKey
             val byItemKey = songs.indexOfFirst { item ->
-                isPlayableAudioItem(item) &&
+                val playbackItem = resolveVariantFamilyPlaybackItem(item, variantFamilyById)
+                isPlayableAudioItem(playbackItem) &&
                     canonicalPlaylistPlaybackKey(
                         playlistItemKey = item,
-                        playbackUri = item
+                        playbackUri = playbackItem
                     ) == currentItemKey
             }
             if (byItemKey >= 0) return byItemKey
         }
         val currentUri = currentPlayingUri?.takeIf { it.isNotBlank() } ?: return null
         val byUri = songs.indexOfFirst { item ->
-            isPlayableAudioItem(item) && item == currentUri
+            val playbackItem = resolveVariantFamilyPlaybackItem(item, variantFamilyById)
+            isPlayableAudioItem(playbackItem) && playbackItem == currentUri
         }
         return byUri.takeIf { it >= 0 }
     }
@@ -1021,6 +1045,7 @@ fun QuickPlaylistsScreen(
         notesVersion,
         titleAliasVersion,
         repoVersion,
+        variantFamilyVersion,
         smpTitleById
     ) {
         songs.associateWith { item ->
@@ -1130,8 +1155,9 @@ fun QuickPlaylistsScreen(
                     anchorToCurrentTrack = false
                 )
                 val targetItem = keyboardSelectedItem ?: return@LaunchedEffect
+                val playbackItem = resolveVariantFamilyPlaybackItem(targetItem, variantFamilyById)
                 saveOriginalOrderIfMissing(context, currentPlaylist, songs.toList())
-                onPlaySong(targetItem, currentPlaylist, Color.White)
+                onPlaySong(playbackItem, currentPlaylist, Color.White)
                 closePlaylistSearch()
             }
         }
@@ -1490,6 +1516,256 @@ fun QuickPlaylistsScreen(
                             val itemIndex = row.realIndex
                             val uriString = row.item
 
+                            getVariantFamilyId(uriString)?.let { familyId ->
+                                val family = variantFamilyForPlaylistItem(uriString, variantFamilyById)
+                                if (family == null) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(rowHeight)
+                                            .padding(vertical = 4.dp, horizontal = 2.dp)
+                                            .background(Color(0xFF181818), RoundedCornerShape(12.dp))
+                                            .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(12.dp))
+                                            .padding(horizontal = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = quickPlaylistFallbackName(uriString).uppercase(),
+                                            color = Color.White.copy(alpha = 0.65f),
+                                            fontSize = 13.sp,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        Box {
+                                            var menuOpen by remember { mutableStateOf(false) }
+                                            IconButton(onClick = { menuOpen = true }) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.MoreVert,
+                                                    contentDescription = stringResource(R.string.common_cd_options),
+                                                    tint = Color.White.copy(alpha = 0.75f)
+                                                )
+                                            }
+                                            DropdownMenu(
+                                                expanded = menuOpen,
+                                                onDismissRequest = { menuOpen = false },
+                                                modifier = Modifier.background(Color(0xFF1E1E1E))
+                                            ) {
+                                                DropdownMenuItem(
+                                                    text = {
+                                                        Text(
+                                                            stringResource(R.string.quickplaylists_menu_remove_from_playlist),
+                                                            color = Color.White
+                                                        )
+                                                    },
+                                                    onClick = {
+                                                        internalSelected?.let { pl ->
+                                                            PlaylistRepository.removeSongFromPlaylist(pl, uriString)
+                                                        }
+                                                        songs.remove(uriString)
+                                                        menuOpen = false
+                                                    }
+                                                )
+                                            }
+                                        }
+                                    }
+                                    return@itemsIndexed
+                                }
+
+                                val originalLabel = stringResource(R.string.library_variant_original)
+                                val activeSongId = activeSongIdForFamily(family)
+                                val activePlaybackItem = activeSongId?.let(::buildSmpItem) ?: uriString
+                                val isExpanded = family.id in expandedVariantFamilyIds
+                                val isCurrentPlaying = currentPlayingUri == activePlaybackItem ||
+                                    currentPlayingPlaylistItemKey == activePlaybackItem
+                                val isForcedNext = nextTrackUri != null && nextTrackUri == activePlaybackItem
+                                val displayTitle = variantFamilyPlaylistTitle(family, smpTitleById, originalLabel)
+                                val orderedSongIds = remember(family) {
+                                    buildList {
+                                        family.parentSongId?.takeIf { it in family.songIds }?.let(::add)
+                                        family.songIds.sorted().forEach { songId ->
+                                            if (songId !in this) add(songId)
+                                        }
+                                    }
+                                }
+                                val rowShape = RoundedCornerShape(12.dp)
+
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 4.dp, horizontal = 2.dp)
+                                        .background(Color(0xFF152033), rowShape)
+                                        .border(
+                                            width = if (isCurrentPlaying) 2.dp else 1.dp,
+                                            color = if (isCurrentPlaying) Color.White.copy(alpha = 0.85f) else Color(0x664FC3F7),
+                                            shape = rowShape
+                                        )
+                                        .padding(horizontal = 8.dp, vertical = 7.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(36.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = if (isExpanded) "▼" else "▶",
+                                            color = Color(0xFF81D4FA),
+                                            fontSize = 14.sp,
+                                            modifier = Modifier
+                                                .width(26.dp)
+                                                .clickable {
+                                                    expandedVariantFamilyIds = if (isExpanded) {
+                                                        expandedVariantFamilyIds - family.id
+                                                    } else {
+                                                        expandedVariantFamilyIds + family.id
+                                                    }
+                                                }
+                                        )
+                                        Text(
+                                            text = displayTitle.uppercase(),
+                                            color = if (isCurrentPlaying) Color(0xFFFFFDE7) else Color.White,
+                                            fontSize = 14.sp,
+                                            fontWeight = if (isCurrentPlaying) FontWeight.SemiBold else FontWeight.Normal,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .clickable {
+                                                    keyboardSelectedItem = uriString
+                                                    val currentPlaylist = internalSelected ?: return@clickable
+                                                    saveOriginalOrderIfMissing(context, currentPlaylist, songs.toList())
+                                                    onPlaySong(activePlaybackItem, currentPlaylist, Color.White)
+                                                    closePlaylistSearch()
+                                                }
+                                        )
+                                        if (isForcedNext) {
+                                            Text(
+                                                text = stringResource(R.string.quickplaylists_badge_next_forced),
+                                                color = Color.White,
+                                                fontSize = 10.sp,
+                                                modifier = Modifier
+                                                    .padding(end = 6.dp)
+                                                    .background(Color(0xFFD32F2F), RoundedCornerShape(999.dp))
+                                                    .padding(horizontal = 7.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                        Box {
+                                            var menuOpen by remember { mutableStateOf(false) }
+                                            IconButton(onClick = { menuOpen = true }) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.MoreVert,
+                                                    contentDescription = stringResource(R.string.common_cd_options),
+                                                    tint = Color(0xFF81D4FA)
+                                                )
+                                            }
+                                            DropdownMenu(
+                                                expanded = menuOpen,
+                                                onDismissRequest = { menuOpen = false },
+                                                modifier = Modifier.background(Color(0xFF1E1E1E))
+                                            ) {
+                                                DropdownMenuItem(
+                                                    text = { Text(stringResource(R.string.quickplaylists_menu_play), color = Color.White) },
+                                                    onClick = {
+                                                        val currentPlaylist = internalSelected
+                                                        if (currentPlaylist != null) {
+                                                            val visibleQueue = resolveVariantFamilyPlaybackQueue(songs.toList(), variantFamilyById)
+                                                            val startIndex = songs.indexOf(uriString)
+                                                            if (startIndex >= 0) {
+                                                                activePlayingGroupHeaderKey = null
+                                                                onPlayFromHere(visibleQueue, startIndex, currentPlaylist)
+                                                                closePlaylistSearch()
+                                                            }
+                                                        }
+                                                        menuOpen = false
+                                                    }
+                                                )
+                                                if (nextTrackUri != null) {
+                                                    DropdownMenuItem(
+                                                        text = { Text(stringResource(R.string.quickplaylists_menu_cancel_next), color = Color.White) },
+                                                        onClick = {
+                                                            onClearNextTrack()
+                                                            menuOpen = false
+                                                        }
+                                                    )
+                                                }
+                                                DropdownMenuItem(
+                                                    text = {
+                                                        Text(
+                                                            stringResource(R.string.quickplaylists_menu_remove_from_playlist),
+                                                            color = Color.White
+                                                        )
+                                                    },
+                                                    onClick = {
+                                                        internalSelected?.let { pl ->
+                                                            PlaylistRepository.removeSongFromPlaylist(pl, uriString)
+                                                        }
+                                                        songs.remove(uriString)
+                                                        menuOpen = false
+                                                    }
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    if (isExpanded) {
+                                        Text(
+                                            text = stringResource(R.string.library_variant_choose_version),
+                                            color = Color.White.copy(alpha = 0.70f),
+                                            fontSize = 10.sp,
+                                            maxLines = 1,
+                                            modifier = Modifier.padding(start = 26.dp, top = 2.dp, bottom = 5.dp)
+                                        )
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(start = 26.dp)
+                                                .horizontalScroll(rememberScrollState()),
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            orderedSongIds.forEach { songId ->
+                                                val variantTitle = smpTitleById[songId] ?: songId
+                                                val label = variantLabelFor(
+                                                    familyTitle = family.title,
+                                                    displayTitle = variantTitle,
+                                                    originalLabel = originalLabel
+                                                )
+                                                val selected = songId == activeSongId
+                                                Text(
+                                                    text = label,
+                                                    color = if (selected) Color.Black else Color.White,
+                                                    fontSize = 12.sp,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                    modifier = Modifier
+                                                        .clip(RoundedCornerShape(8.dp))
+                                                        .background(
+                                                            if (selected) Color(0xFF81D4FA) else Color.White.copy(alpha = 0.10f)
+                                                        )
+                                                        .border(
+                                                            1.dp,
+                                                            if (selected) Color(0xFF81D4FA) else Color.White.copy(alpha = 0.18f),
+                                                            RoundedCornerShape(8.dp)
+                                                        )
+                                                        .clickable {
+                                                            if (variantFamilyById[family.id] == null) {
+                                                                SongVariantFamiliesStore.upsertFamily(
+                                                                    context,
+                                                                    family.copy(activeSongId = songId)
+                                                                )
+                                                            }
+                                                            SongVariantFamiliesStore.setActiveSongId(context, family.id, songId)
+                                                        }
+                                                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                                return@itemsIndexed
+                            }
+
                             if (isGroupHeader(uriString)) {
                                 val groupTitle = getGroupTitle(uriString).uppercase()
                                 val headerKey = uriString
@@ -1511,8 +1787,9 @@ fun QuickPlaylistsScreen(
                                 if (!groupRange.isEmpty()) {
                                     for (idx in (groupRange.first + 1)..groupRange.last) {
                                         val child = songs[idx]
-                                        if (!isPlayableAudioItem(child)) continue
-                                        val durationSource = getSmpSongId(child)?.let { smpPlaybackUriById[it] } ?: child
+                                        val playbackItem = resolveVariantFamilyPlaybackItem(child, variantFamilyById)
+                                        if (!isPlayableAudioItem(playbackItem)) continue
+                                        val durationSource = getSmpSongId(playbackItem)?.let { smpPlaybackUriById[it] } ?: playbackItem
                                         val cached = durationCache[durationSource]
                                         if (cached != null) {
                                             groupDurationMs += cached
@@ -1626,11 +1903,15 @@ fun QuickPlaylistsScreen(
                                                         .filter { item ->
                                                             !isGroupHeader(item) &&
                                                                 !isGroupEnd(item) &&
-                                                                isPlayableAudioItem(item)
+                                                                (isPlayableAudioItem(item) || isVariantFamilyItem(item))
                                                         }
                                                     if (groupQueue.isNotEmpty()) {
                                                         activePlayingGroupHeaderKey = headerKey
-                                                        onPlayFromHere(groupQueue, 0, currentPlaylist)
+                                                        onPlayFromHere(
+                                                            resolveVariantFamilyPlaybackQueue(groupQueue, variantFamilyById),
+                                                            0,
+                                                            currentPlaylist
+                                                        )
                                                     }
                                                 }
                                             ),
@@ -2013,13 +2294,17 @@ fun QuickPlaylistsScreen(
                                                             .filter { item ->
                                                                 !isGroupHeader(item) &&
                                                                     !isGroupEnd(item) &&
-                                                                    isPlayableAudioItem(item)
+                                                                    (isPlayableAudioItem(item) || isVariantFamilyItem(item))
                                                             }
                                                     }
                                                     val groupStartIndex = groupQueue.indexOf(uriString)
                                                     if (groupStartIndex >= 0) {
                                                         activePlayingGroupHeaderKey = currentGroupHeaderKey
-                                                        onPlayFromHere(groupQueue, groupStartIndex, currentPlaylist)
+                                                        onPlayFromHere(
+                                                            resolveVariantFamilyPlaybackQueue(groupQueue, variantFamilyById),
+                                                            groupStartIndex,
+                                                            currentPlaylist
+                                                        )
                                                     } else {
                                                         onPlaySong(uriString, currentPlaylist, Color.White)
                                                     }
@@ -2157,8 +2442,9 @@ fun QuickPlaylistsScreen(
                                             onClick = {
                                                 val pl = internalSelected
                                                 if (pl != null) {
-                                                    val visibleQueue = songs.toList()
-                                                    val startIndex = visibleQueue.indexOf(uriString)
+                                                    val rawQueue = songs.toList()
+                                                    val visibleQueue = resolveVariantFamilyPlaybackQueue(rawQueue, variantFamilyById)
+                                                    val startIndex = rawQueue.indexOf(uriString)
                                                     if (startIndex >= 0) {
                                                         activePlayingGroupHeaderKey = null
                                                         onPlayFromHere(visibleQueue, startIndex, pl)
@@ -2240,11 +2526,15 @@ fun QuickPlaylistsScreen(
                                                                 .filter { item ->
                                                                     !isGroupHeader(item) &&
                                                                         !isGroupEnd(item) &&
-                                                                        isPlayableAudioItem(item)
+                                                                        (isPlayableAudioItem(item) || isVariantFamilyItem(item))
                                                                 }
                                                             val currentQueueIndex = groupQueue.indexOf(currentGroupedTrack)
                                                             if (currentQueueIndex >= 0) {
-                                                                onArmChainFromCurrent(groupQueue, currentQueueIndex, pl)
+                                                                onArmChainFromCurrent(
+                                                                    resolveVariantFamilyPlaybackQueue(groupQueue, variantFamilyById),
+                                                                    currentQueueIndex,
+                                                                    pl
+                                                                )
                                                             }
                                                         }
                                                     }
@@ -2546,7 +2836,8 @@ fun QuickPlaylistsScreen(
                                                         .clickable {
                                                             internalSelected?.let { pl ->
                                                                 val selectedBatch = songs.filter { key ->
-                                                                    key in selectedTrackKeys && isPlayableAudioItem(key)
+                                                                    key in selectedTrackKeys &&
+                                                                        (isPlayableAudioItem(key) || isVariantFamilyItem(key))
                                                                 }
                                                                 val targets = if (
                                                                     uriString in selectedTrackKeys &&
@@ -3738,6 +4029,13 @@ private fun buildQuickPlaylistSearchTitle(
     item: String,
     smpTitleById: Map<String, String>
 ): String {
+    getVariantFamilyId(item)?.let { familyId ->
+        SongVariantFamiliesStore.load(context)
+            .firstOrNull { it.id == familyId }
+            ?.let { return it.title }
+        getVariantFamilyTitle(item)?.let { return it }
+    }
+
     if (isGroupHeader(item)) {
         return getGroupTitle(item)
     }
@@ -3781,6 +4079,65 @@ private fun isKeyboardSelectablePlaylistItem(item: String): Boolean {
 
 private fun isPlaylistGroupableItem(item: String): Boolean {
     return item.isNotBlank() && !isGroupHeader(item) && !isGroupEnd(item)
+}
+
+private fun activeSongIdForFamily(family: SongVariantFamily): String? {
+    return family.activeSongId?.takeIf { it in family.songIds }
+        ?: family.parentSongId?.takeIf { it in family.songIds }
+        ?: family.songIds.firstOrNull()
+}
+
+private fun variantFamilyForPlaylistItem(
+    item: String,
+    familyById: Map<String, SongVariantFamily>
+): SongVariantFamily? {
+    val familyId = getVariantFamilyId(item) ?: return null
+    familyById[familyId]?.let { return it }
+    val title = getVariantFamilyTitle(item)?.takeIf { it.isNotBlank() } ?: return null
+    val songIds = getVariantFamilySongIds(item)
+    if (songIds.isEmpty()) return null
+    return SongVariantFamily(
+        id = familyId,
+        title = title,
+        songIds = songIds,
+        parentSongId = songIds.firstOrNull(),
+        activeSongId = songIds.firstOrNull()
+    )
+}
+
+private fun resolveVariantFamilyPlaybackItem(
+    item: String,
+    familyById: Map<String, SongVariantFamily>
+): String {
+    val family = variantFamilyForPlaylistItem(item, familyById) ?: return item
+    val activeSongId = activeSongIdForFamily(family) ?: return item
+    return buildSmpItem(activeSongId)
+}
+
+private fun resolveVariantFamilyPlaybackQueue(
+    items: List<String>,
+    familyById: Map<String, SongVariantFamily>
+): List<String> {
+    return items.map { item -> resolveVariantFamilyPlaybackItem(item, familyById) }
+}
+
+private fun variantFamilyPlaylistTitle(
+    family: SongVariantFamily,
+    smpTitleById: Map<String, String>,
+    originalLabel: String
+): String {
+    val activeSongId = activeSongIdForFamily(family)
+    val activeTitle = activeSongId?.let(smpTitleById::get)
+    val label = variantLabelFor(
+        familyTitle = family.title,
+        displayTitle = activeTitle ?: family.title,
+        originalLabel = originalLabel
+    )
+    return if (label.equals(originalLabel, ignoreCase = true)) {
+        family.title
+    } else {
+        "${family.title} [${label.uppercase()}]"
+    }
 }
 
 private fun groupContainsSongId(
