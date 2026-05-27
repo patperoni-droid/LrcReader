@@ -4,6 +4,8 @@ import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -35,6 +37,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -46,7 +49,95 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
 import com.patrick.lrcreader.exo.R
+import java.text.Normalizer
+
+private data class LibrarySongVariantGroup(
+    val family: SongVariantFamily,
+    val songs: List<LibrarySongItem>
+)
+
+private sealed class LibrarySongListRow {
+    data class Single(val song: LibrarySongItem) : LibrarySongListRow()
+    data class Family(val group: LibrarySongVariantGroup) : LibrarySongListRow()
+}
+
+private val knownVariantSuffixes = listOf(
+    "original",
+    "short",
+    "acoustic",
+    "sans guitare",
+    "-1 ton",
+    "restaurant",
+    "mariage"
+)
+
+private fun normalizeVariantText(value: String): String {
+    val noAccents = Normalizer.normalize(value, Normalizer.Form.NFD)
+        .replace(Regex("\\p{Mn}+"), "")
+    return noAccents
+        .lowercase()
+        .replace(Regex("[\\[\\](){}]"), " ")
+        .replace(Regex("\\s+"), " ")
+        .trim()
+}
+
+private fun inferVariantFamilyTitle(title: String): String {
+    val clean = title.trim().replace(Regex("\\s+"), " ")
+    val normalized = normalizeVariantText(clean)
+    val suffix = knownVariantSuffixes.firstOrNull { normalized.endsWith(" ${normalizeVariantText(it)}") }
+        ?: return clean
+    val removeLength = suffix.length
+    return clean.dropLast(removeLength).trim().trim('-', '–', '—', '_', '(', '[', ' ').ifBlank { clean }
+}
+
+internal fun variantLabelFor(familyTitle: String, displayTitle: String, originalLabel: String): String {
+    val title = displayTitle.trim()
+    val family = familyTitle.trim()
+    if (title.equals(family, ignoreCase = true)) return originalLabel
+
+    val suffix = title.removePrefix(family).trim().trim('-', '–', '—', '_', '(', ')', '[', ']', ' ')
+    return suffix.takeIf { it.isNotBlank() } ?: title
+}
+
+private fun buildVariantFamilySongIds(source: LibrarySongItem, songs: List<LibrarySongItem>): Pair<String, Set<String>> {
+    val familyTitle = inferVariantFamilyTitle(source.displayTitle)
+    val normalizedFamily = normalizeVariantText(familyTitle)
+    val ids = songs
+        .filter { normalizeVariantText(inferVariantFamilyTitle(it.displayTitle)) == normalizedFamily }
+        .map { it.songId }
+        .toSet()
+        .ifEmpty { setOf(source.songId) }
+    return familyTitle to ids
+}
+
+private fun buildLibrarySongRows(
+    songs: List<LibrarySongItem>,
+    families: List<SongVariantFamily>
+): List<LibrarySongListRow> {
+    if (families.isEmpty()) return songs.map(LibrarySongListRow::Single)
+
+    val byId = songs.associateBy { it.songId }
+    val groupedSongIds = mutableSetOf<String>()
+    val groupsByFirstSongId = families.mapNotNull { family ->
+        val variants = family.songIds.mapNotNull(byId::get)
+            .sortedBy { it.displayTitle.lowercase() }
+        if (variants.size < 2) return@mapNotNull null
+        groupedSongIds += variants.map { it.songId }
+        variants.first().songId to LibrarySongVariantGroup(family = family, songs = variants)
+    }.toMap()
+
+    return buildList {
+        songs.forEach { song ->
+            val group = groupsByFirstSongId[song.songId]
+            when {
+                group != null -> add(LibrarySongListRow.Family(group))
+                song.songId !in groupedSongIds -> add(LibrarySongListRow.Single(song))
+            }
+        }
+    }
+}
 
 @Composable
 private fun LibrarySongIndicators(song: LibrarySongItem) {
@@ -92,14 +183,200 @@ fun LibrarySongsList(
     onRenameOne: (LibrarySongItem) -> Unit,
     onDeleteOne: (Uri) -> Unit
 ) {
+    val context = LocalContext.current
     val selectionMode = selectedSongs.isNotEmpty()
+    val familyVersion = SongVariantFamiliesStore.version.intValue
+    val variantFamilies = remember(familyVersion) { SongVariantFamiliesStore.load(context) }
+    val rows = remember(songs, variantFamilies) { buildLibrarySongRows(songs, variantFamilies) }
+    var expandedFamilyIds by rememberSaveable { mutableStateOf(setOf<String>()) }
+    val originalLabel = stringResource(R.string.library_variant_original)
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         state = listState,
         contentPadding = PaddingValues(bottom = bottomPadding)
     ) {
-        items(songs, key = { it.songId }) { song ->
+        items(
+            rows,
+            key = { row ->
+                when (row) {
+                    is LibrarySongListRow.Single -> row.song.songId
+                    is LibrarySongListRow.Family -> "variant-family:${row.group.family.id}"
+                }
+            }
+        ) { row ->
+            if (row is LibrarySongListRow.Family) {
+                val group = row.group
+                val primarySong = group.songs.first()
+                val primaryUri = remember(primarySong.playbackItem) { Uri.parse(primarySong.playbackItem) }
+                val isExpanded = group.family.id in expandedFamilyIds
+                val anySelected = group.songs.any { selectedSongs.contains(Uri.parse(it.playbackItem)) }
+                val isCurrentPlaying = group.songs.any { currentPlayingSongId == it.songId }
+                val isKeyboardSelected = group.songs.any { keyboardSelectedSongId == it.songId }
+                val rowShape = RoundedCornerShape(10.dp)
+                val rowBackground = when {
+                    anySelected -> accent.copy(alpha = 0.18f)
+                    isKeyboardSelected -> accent.copy(alpha = 0.10f)
+                    else -> Color.Transparent
+                }
+
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 3.dp)
+                            .background(rowBackground, rowShape)
+                            .border(
+                                if (anySelected || isKeyboardSelected) 2.dp else 0.dp,
+                                if (anySelected) accent else accent.copy(alpha = 0.9f),
+                                rowShape
+                            )
+                            .clickable {
+                                expandedFamilyIds = if (isExpanded) {
+                                    expandedFamilyIds - group.family.id
+                                } else {
+                                    expandedFamilyIds + group.family.id
+                                }
+                            }
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = if (isExpanded) "▼" else "▶",
+                            color = accent,
+                            fontSize = 15.sp,
+                            modifier = Modifier.width(24.dp)
+                        )
+
+                        if (isCurrentPlaying) {
+                            Box(
+                                modifier = Modifier
+                                    .padding(end = 8.dp)
+                                    .width(3.dp)
+                                    .height(28.dp)
+                                    .clip(CircleShape)
+                                    .background(accent.copy(alpha = 0.95f))
+                            )
+                        }
+
+                        Text(
+                            text = group.family.title,
+                            color = if (isCurrentPlaying) Color(0xFFFFFDE7) else Color.White,
+                            fontSize = 15.sp,
+                            fontWeight = if (isCurrentPlaying) FontWeight.SemiBold else FontWeight.Normal,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        Text(
+                            text = group.songs.size.toString(),
+                            color = accent,
+                            fontSize = 12.sp,
+                            modifier = Modifier
+                                .background(accent.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
+                                .padding(horizontal = 8.dp, vertical = 3.dp)
+                        )
+
+                        IconButton(
+                            onClick = { onOpenPlayer(primarySong) },
+                            enabled = primarySong.audioAvailable
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.PlayArrow,
+                                contentDescription = null,
+                                tint = if (primarySong.audioAvailable) accent else Color.White.copy(alpha = 0.35f)
+                            )
+                        }
+
+                        Box {
+                            var familyMenuOpen by remember(group.family.id) { mutableStateOf(false) }
+                            IconButton(onClick = { familyMenuOpen = true }) {
+                                Icon(
+                                    imageVector = Icons.Default.MoreVert,
+                                    contentDescription = null,
+                                    tint = Color.White
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = familyMenuOpen,
+                                onDismissRequest = { familyMenuOpen = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            stringResource(R.string.library_list_assign_to_playlist),
+                                            color = Color.White
+                                        )
+                                    },
+                                    onClick = {
+                                        familyMenuOpen = false
+                                        onAssignOne(primaryUri)
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    if (isExpanded) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = 36.dp, end = 12.dp, bottom = 8.dp)
+                                .background(Color(0xFF101A2D).copy(alpha = 0.78f), RoundedCornerShape(8.dp))
+                                .border(1.dp, accent.copy(alpha = 0.20f), RoundedCornerShape(8.dp))
+                                .padding(horizontal = 8.dp, vertical = 7.dp)
+                        ) {
+                            Text(
+                                text = stringResource(R.string.library_variant_choose_version),
+                                color = Color.White.copy(alpha = 0.72f),
+                                fontSize = 11.sp,
+                                maxLines = 1
+                            )
+                            Spacer(Modifier.height(6.dp))
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                group.songs.forEach { variant ->
+                                    val variantUri = remember(variant.playbackItem) { Uri.parse(variant.playbackItem) }
+                                    val isSelected = selectedSongs.contains(variantUri)
+                                    val label = variantLabelFor(group.family.title, variant.displayTitle, originalLabel)
+                                    Text(
+                                        text = label,
+                                        color = if (isSelected) Color.Black else Color.White,
+                                        fontSize = 12.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(
+                                                if (isSelected) accent else Color.White.copy(alpha = 0.10f)
+                                            )
+                                            .border(
+                                                1.dp,
+                                                if (isSelected) accent else Color.White.copy(alpha = 0.18f),
+                                                RoundedCornerShape(8.dp)
+                                            )
+                                            .clickable {
+                                                onKeyboardSelectedSongChange(variant.songId)
+                                                onToggleSelect(variantUri)
+                                            }
+                                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    HorizontalDivider(color = rowBorder.copy(alpha = 0.5f))
+                }
+                return@items
+            }
+
+            val song = (row as LibrarySongListRow.Single).song
             val songUri = remember(song.playbackItem) { Uri.parse(song.playbackItem) }
             val canPlay = song.audioAvailable
             val isSelected = selectedSongs.contains(songUri)
@@ -256,6 +533,23 @@ fun LibrarySongsList(
                                 onClick = {
                                     menuOpen = false
                                     onAssignOne(songUri)
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        stringResource(R.string.library_variant_create_family),
+                                        color = Color.White
+                                    )
+                                },
+                                onClick = {
+                                    menuOpen = false
+                                    val (familyTitle, familySongIds) = buildVariantFamilySongIds(song, songs)
+                                    SongVariantFamiliesStore.createOrReplaceFamily(
+                                        context = context,
+                                        title = familyTitle,
+                                        songIds = familySongIds
+                                    )
                                 }
                             )
                             DropdownMenuItem(

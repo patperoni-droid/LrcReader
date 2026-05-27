@@ -387,6 +387,7 @@ private fun summarizeSmpSongs(
 private data class PendingPlaylistAssignRequest(
     val playlistName: String,
     val directItemUris: List<String>,
+    val directItemTitles: Map<String, String>,
     val batchPlan: SmpBatchImportProcessor.BatchPlan?,
     val limitedTrackCount: Int
 )
@@ -2617,6 +2618,13 @@ fun LibraryScreen(
                                 songUri = itemUriString,
                                 songId = getSmpSongId(itemUriString)
                             )
+                            request.directItemTitles[itemUriString]?.let { title ->
+                                PlaylistRepository.renameSongInPlaylist(
+                                    playlistName = request.playlistName,
+                                    uri = itemUriString,
+                                    newTitle = title
+                                )
+                            }
                         }.onSuccess {
                             successCount += 1
                             Log.i(
@@ -2703,12 +2711,41 @@ fun LibraryScreen(
         scope.launch {
             val directItemUris = mutableListOf<String>()
             val batchUris = mutableListOf<Uri>()
+            val directItemTitles = mutableMapOf<String, String>()
+            val songByPlaybackItem = songItems.associateBy { it.playbackItem }
+            val familyBySongId = SongVariantFamiliesStore.load(context)
+                .flatMap { family ->
+                    val visibleVariantCount = family.songIds.count { songId ->
+                        songItems.any { it.songId == songId }
+                    }
+                    if (visibleVariantCount < 2) {
+                        emptyList()
+                    } else {
+                        family.songIds.map { songId -> songId to family }
+                    }
+                }
+                .toMap()
+            val originalVariantLabel = context.getString(R.string.library_variant_original)
 
             selection.forEach { uri ->
                 val uriString = uri.toString()
                 when {
                     uriString.startsWith("prompter://") -> directItemUris += uriString
-                    getSmpSongId(uriString) != null -> directItemUris += uriString
+                    getSmpSongId(uriString) != null -> {
+                        directItemUris += uriString
+                        val song = songByPlaybackItem[uriString]
+                        val family = song?.songId?.let(familyBySongId::get)
+                        if (song != null && family != null) {
+                            val label = variantLabelFor(
+                                familyTitle = family.title,
+                                displayTitle = song.displayTitle,
+                                originalLabel = originalVariantLabel
+                            )
+                            if (!label.equals(originalVariantLabel, ignoreCase = true)) {
+                                directItemTitles[uriString] = "${family.title} [${label.uppercase()}]"
+                            }
+                        }
+                    }
                     else -> batchUris += uri
                 }
             }
@@ -2735,6 +2772,7 @@ fun LibraryScreen(
             val request = PendingPlaylistAssignRequest(
                 playlistName = playlistName,
                 directItemUris = directItemUris,
+                directItemTitles = directItemTitles,
                 batchPlan = batchPlan,
                 limitedTrackCount = limitedTrackCount
             )

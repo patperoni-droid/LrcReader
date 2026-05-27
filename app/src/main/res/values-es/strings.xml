@@ -259,6 +259,9 @@
     <string name="library_list_assign_to_playlist">Asignar a una lista de reproducción</string>
     <string name="library_list_move_to_folder">Mover a una carpeta</string>
     <string name="library_list_rename">Renombrar</string>
+    <string name="library_variant_create_family">Crear familia de versiones</string>
+    <string name="library_variant_choose_version">Elección de versión</string>
+    <string name="library_variant_original">Original</string>
     <string name="library_list_delete_permanently">Eliminar permanentemente</string>
     <string name="library_view_mode_songs">Songs</string>
     <string name="library_view_mode_files">Archivos</string>
