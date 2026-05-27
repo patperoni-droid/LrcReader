@@ -4440,14 +4440,14 @@ class MainActivity : AppCompatActivity() {
 
                     if (isNotesOpen) {
                         Box(
-                            modifier = contentModifier
+                            modifier = Modifier
                                 .fillMaxSize()
+                                .windowInsetsPadding(WindowInsets.ime)
                                 .background(Color(0xAA000000))
                         ) {
                             NotesScreen(
                                 modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(bottom = 70.dp),
+                                    .fillMaxSize(),
                                 context = ctx,
                                 onClose = { isNotesOpen = false }
                             )

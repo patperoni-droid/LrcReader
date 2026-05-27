@@ -351,10 +351,10 @@ fun NotesScreen(
                     modifier = modifier
                         .fillMaxSize()
                         .padding(
-                            start = 12.dp,
-                            end = 12.dp,
-                            top = topInset + 12.dp,
-                            bottom = 12.dp
+                            start = 8.dp,
+                            end = 8.dp,
+                            top = topInset + 6.dp,
+                            bottom = 4.dp
                         )
                 ) {
                     // HEADER
@@ -367,10 +367,13 @@ fun NotesScreen(
                             modifier = Modifier.weight(1f),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            IconButton(onClick = {
-                                // retour à la liste
-                                mode = NotesUiMode.LIST
-                            }) {
+                            IconButton(
+                                onClick = {
+                                    // retour à la liste
+                                    mode = NotesUiMode.LIST
+                                },
+                                modifier = Modifier.size(40.dp)
+                            ) {
                                 Icon(
                                     imageVector = Icons.Filled.ArrowBack,
                                     contentDescription = stringResource(R.string.common_cd_back),
@@ -394,21 +397,35 @@ fun NotesScreen(
                             TextButton(
                                 onClick = { shareCurrentNote() },
                                 enabled = canShareCurrentNote,
-                                contentPadding = PaddingValues(horizontal = 8.dp)
+                                modifier = Modifier.height(36.dp),
+                                contentPadding = PaddingValues(horizontal = 6.dp)
                             ) {
-                                Text(stringResource(R.string.backup_share))
+                                Text(
+                                    text = stringResource(R.string.backup_share),
+                                    fontSize = 13.sp,
+                                    maxLines = 1
+                                )
                             }
 
                             // À terme : autosave pour supprimer le besoin d’un bouton Enregistrer.
                             TextButton(
                                 onClick = { saveCurrentNote() },
-                                contentPadding = PaddingValues(horizontal = 8.dp)
+                                modifier = Modifier.height(36.dp),
+                                contentPadding = PaddingValues(horizontal = 6.dp)
                             ) {
-                                Text(stringResource(R.string.notes_save_short), color = Color(0xFF81C784))
+                                Text(
+                                    text = stringResource(R.string.notes_save_short),
+                                    color = Color(0xFF81C784),
+                                    fontSize = 13.sp,
+                                    maxLines = 1
+                                )
                             }
 
                             Box {
-                                IconButton(onClick = { editMenuOpen = true }) {
+                                IconButton(
+                                    onClick = { editMenuOpen = true },
+                                    modifier = Modifier.size(40.dp)
+                                ) {
                                     Icon(
                                         imageVector = Icons.Filled.MoreVert,
                                         contentDescription = stringResource(R.string.common_cd_note_options),
@@ -447,7 +464,7 @@ fun NotesScreen(
                         }
                     }
 
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(4.dp))
 
                     OutlinedTextField(
                         value = titleText,
@@ -457,15 +474,16 @@ fun NotesScreen(
                         modifier = Modifier.fillMaxWidth()
                     )
 
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(4.dp))
 
                     OutlinedTextField(
                         value = contentText,
                         onValueChange = { contentText = it },
                         label = { Text(stringResource(R.string.common_text_label)) },
                         modifier = Modifier
-                            .fillMaxSize(),
-                        minLines = 8
+                            .fillMaxWidth()
+                            .weight(1f),
+                        minLines = 4
                     )
                 }
             }
