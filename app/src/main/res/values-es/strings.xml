@@ -619,6 +619,7 @@
     <string name="notes_menu_rename_edit">Renombrar / editar</string>
     <string name="notes_new_note_title">Nueva nota</string>
     <string name="notes_edit_note_title">Editar nota</string>
+    <string name="notes_save_short">OK</string>
     <string name="notes_delete_note">Eliminar nota</string>
     <string name="notes_no_playlist_available">No hay listas de reproducción disponibles.</string>
 

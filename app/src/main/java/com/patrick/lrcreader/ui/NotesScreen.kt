@@ -306,15 +306,6 @@ fun NotesScreen(
                                                     onDismissRequest = { rowMenuOpen = false },
                                                     modifier = Modifier.background(Color(0xFF222222))
                                                 ) {
-                                                    // Renommer = ouvrir en édition
-                                                    DropdownMenuItem(
-                                                        text = { Text(stringResource(R.string.notes_menu_rename_edit), color = Color.White) },
-                                                        onClick = {
-                                                            rowMenuOpen = false
-                                                            openExistingNote(note)
-                                                        }
-                                                    )
-
                                                     DropdownMenuItem(
                                                         text = { Text(stringResource(R.string.common_assign_to_playlist), color = Color.White) },
                                                         onClick = {
@@ -372,7 +363,10 @@ fun NotesScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             IconButton(onClick = {
                                 // retour à la liste
                                 mode = NotesUiMode.LIST
@@ -390,20 +384,27 @@ fun NotesScreen(
                                     stringResource(R.string.notes_edit_note_title)
                                 },
                                 color = Color.White,
-                                fontSize = 18.sp
+                                fontSize = 18.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
 
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             TextButton(
                                 onClick = { shareCurrentNote() },
-                                enabled = canShareCurrentNote
+                                enabled = canShareCurrentNote,
+                                contentPadding = PaddingValues(horizontal = 8.dp)
                             ) {
                                 Text(stringResource(R.string.backup_share))
                             }
 
-                            TextButton(onClick = { saveCurrentNote() }) {
-                                Text(stringResource(R.string.common_save), color = Color(0xFF81C784))
+                            // À terme : autosave pour supprimer le besoin d’un bouton Enregistrer.
+                            TextButton(
+                                onClick = { saveCurrentNote() },
+                                contentPadding = PaddingValues(horizontal = 8.dp)
+                            ) {
+                                Text(stringResource(R.string.notes_save_short), color = Color(0xFF81C784))
                             }
 
                             Box {

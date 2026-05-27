@@ -697,6 +697,7 @@
     <string name="notes_menu_rename_edit">Rename / edit</string>
     <string name="notes_new_note_title">New note</string>
     <string name="notes_edit_note_title">Edit note</string>
+    <string name="notes_save_short">OK</string>
     <string name="notes_delete_note">Delete note</string>
     <string name="notes_no_playlist_available">No playlist available.</string>
 
