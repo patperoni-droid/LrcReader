@@ -490,10 +490,12 @@ object PlaylistRepository {
                 map.put(cleanUri, clean) != clean
             }
         }
-        Log.i(
-            DEMO_TITLES_TAG,
-            "repo:rename playlist=$playlistName uri=$cleanUri songId=${songId ?: "null"} newTitle=$clean changed=$changed storedTitle=${getCustomTitle(playlistName, cleanUri) ?: "null"}"
-        )
+        runCatching {
+            Log.i(
+                DEMO_TITLES_TAG,
+                "repo:rename playlist=$playlistName uri=$cleanUri songId=${songId ?: "null"} newTitle=$clean changed=$changed storedTitle=${getCustomTitle(playlistName, cleanUri) ?: "null"}"
+            )
+        }
         if (changed) {
             bump()
         }
@@ -671,7 +673,7 @@ object PlaylistRepository {
     private fun normalizeSmpPlaylistUri(uri: String, songId: String): String {
         val normalizedSongId = normalizeSongId(songId) ?: return uri
         val existingSongId = normalizeSongId(getSmpSongId(uri))
-        if (existingSongId == normalizedSongId) return buildSmpItem(normalizedSongId)
+        if (existingSongId == normalizedSongId) return uri
         if (!looksLikeSmpArchiveUri(uri)) return uri
         return buildSmpItem(normalizedSongId)
     }

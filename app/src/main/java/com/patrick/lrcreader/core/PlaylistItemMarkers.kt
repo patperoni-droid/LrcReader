@@ -72,9 +72,18 @@ fun buildSmpItem(songId: String): String {
     return "$SMP_ITEM_PREFIX$encodedSongId"
 }
 
+fun buildSmpOccurrenceItem(songId: String): String {
+    val cleanSongId = songId.trim().ifBlank { UUID.randomUUID().toString() }
+    val encodedSongId = URLEncoder.encode(cleanSongId, StandardCharsets.UTF_8.name())
+    return "$SMP_ITEM_PREFIX$encodedSongId?occ=${UUID.randomUUID()}"
+}
+
 fun getSmpSongId(item: String): String? {
     if (!item.startsWith(SMP_ITEM_PREFIX)) return null
-    val encodedSongId = item.removePrefix(SMP_ITEM_PREFIX).trim()
+    val encodedSongId = item
+        .removePrefix(SMP_ITEM_PREFIX)
+        .substringBefore("?occ=")
+        .trim()
     if (encodedSongId.isEmpty()) return null
     val decodedSongId = runCatching {
         URLDecoder.decode(encodedSongId, StandardCharsets.UTF_8.name()).trim()

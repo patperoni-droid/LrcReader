@@ -638,8 +638,11 @@
     <string name="quickplaylists_menu_remove_from_playlist">Eliminar de la lista</string>
     <string name="quickplaylists_menu_title_color">Color del título</string>
     <string name="quickplaylists_menu_assign_to_group">Asignar al grupo</string>
+    <string name="quickplaylists_menu_also_add_to_group">Añadir también a un grupo…</string>
     <string name="quickplaylists_menu_move_to">Mover a…</string>
     <string name="quickplaylists_assign_group_title">Asignar al grupo</string>
+    <string name="quickplaylists_also_add_group_title">Añadir también a un grupo</string>
+    <string name="quickplaylists_group_already_contains_song">Este grupo ya contiene esta canción.</string>
     <string name="quickplaylists_move_dialog_title">Mover a…</string>
     <string name="quickplaylists_move_top">mover al inicio</string>
     <string name="quickplaylists_move_bottom">mover al final</string>

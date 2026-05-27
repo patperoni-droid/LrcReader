@@ -716,8 +716,11 @@
     <string name="quickplaylists_menu_remove_from_playlist">Remove from playlist</string>
     <string name="quickplaylists_menu_title_color">Title color</string>
     <string name="quickplaylists_menu_assign_to_group">Assign to group</string>
+    <string name="quickplaylists_menu_also_add_to_group">Also add to group…</string>
     <string name="quickplaylists_menu_move_to">Move to…</string>
     <string name="quickplaylists_assign_group_title">Assign to group</string>
+    <string name="quickplaylists_also_add_group_title">Also add to group</string>
+    <string name="quickplaylists_group_already_contains_song">This group already contains this song.</string>
     <string name="quickplaylists_move_dialog_title">Move to…</string>
     <string name="quickplaylists_move_top">move to top</string>
     <string name="quickplaylists_move_bottom">move to bottom</string>

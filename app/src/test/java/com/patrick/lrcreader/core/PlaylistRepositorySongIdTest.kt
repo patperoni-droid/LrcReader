@@ -152,4 +152,29 @@ class PlaylistRepositorySongIdTest {
         assertEquals("Legacy Title", PlaylistRepository.getCustomTitle(playlistName, legacyUri))
         assertEquals(listOf(legacyUri), PlaylistRepository.getPlayedRaw(playlistName))
     }
+
+    @Test
+    fun smp_occurrences_keep_distinct_playlist_entries_for_same_songId() {
+        val playlistName = "Playlist"
+        val base = buildSmpItem("song_007")
+        val occurrence = buildSmpOccurrenceItem("song_007")
+
+        PlaylistRepository.addPlaylist(playlistName)
+        PlaylistRepository.assignSongToPlaylist(
+            playlistName = playlistName,
+            songUri = base,
+            songId = "song_007"
+        )
+        PlaylistRepository.assignSongToPlaylist(
+            playlistName = playlistName,
+            songUri = occurrence,
+            songId = "song_007"
+        )
+
+        assertEquals(listOf(base, occurrence), PlaylistRepository.getAllSongsRaw(playlistName))
+        assertEquals("song_007", PlaylistRepository.getPlaylistItem(playlistName, base)?.songId)
+        assertEquals("song_007", PlaylistRepository.getPlaylistItem(playlistName, occurrence)?.songId)
+        assertEquals("song_007", getSmpSongId(base))
+        assertEquals("song_007", getSmpSongId(occurrence))
+    }
 }

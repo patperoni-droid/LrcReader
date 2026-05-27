@@ -81,4 +81,17 @@ class PlaylistItemMarkersTest {
         assertEquals(uuid, getGroupUuid(end))
         assertFalse(isGroupEnd(start))
     }
+
+    @Test
+    fun smpOccurrenceItem_keepsSameSongIdWithUniquePlaylistKey() {
+        val base = buildSmpItem("song_007")
+        val occurrence = buildSmpOccurrenceItem("song_007")
+
+        assertNotEquals(base, occurrence)
+        assertNotEquals(occurrence, buildSmpOccurrenceItem("song_007"))
+        assertEquals("song_007", getSmpSongId(base))
+        assertEquals("song_007", getSmpSongId(occurrence))
+        assertTrue(isSmpItem(occurrence))
+        assertTrue(isPlayableAudioItem(occurrence))
+    }
 }

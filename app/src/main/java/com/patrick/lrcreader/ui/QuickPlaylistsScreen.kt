@@ -96,6 +96,8 @@ import com.patrick.lrcreader.core.TunerEngine
 import com.patrick.lrcreader.core.TunerState
 import com.patrick.lrcreader.core.buildGroupEnd
 import com.patrick.lrcreader.core.buildGroupHeader
+import com.patrick.lrcreader.core.buildSmpItem
+import com.patrick.lrcreader.core.buildSmpOccurrenceItem
 import com.patrick.lrcreader.core.canonicalPlaylistPlaybackKey
 import com.patrick.lrcreader.core.getGroupColorArgb
 import com.patrick.lrcreader.core.getGroupUuid
@@ -333,6 +335,8 @@ fun QuickPlaylistsScreen(
     var selectedTrackKeys by remember { mutableStateOf(setOf<String>()) }
     var assignGroupTargetUris by remember { mutableStateOf<List<String>>(emptyList()) }
     var assignGroupOptions by remember { mutableStateOf<List<GroupAssignOption>>(emptyList()) }
+    var alsoAddGroupTargetUri by remember { mutableStateOf<String?>(null) }
+    var alsoAddGroupOptions by remember { mutableStateOf<List<GroupAssignOption>>(emptyList()) }
     var moveTargetUri by remember { mutableStateOf<String?>(null) }
     var moveTargetOptions by remember { mutableStateOf<List<PlaylistMoveOption>>(emptyList()) }
 
@@ -772,6 +776,49 @@ fun QuickPlaylistsScreen(
             assignGroupTargetUris = targets
             assignGroupOptions = options
         }
+    }
+
+    fun openAlsoAddDialogForTarget(targetUri: String) {
+        if (getSmpSongId(targetUri).isNullOrBlank()) return
+        val options = songs.asSequence()
+            .filter { isGroupHeader(it) }
+            .map { GroupAssignOption(headerKey = it, title = getGroupTitle(it)) }
+            .toList()
+        if (options.isNotEmpty()) {
+            alsoAddGroupTargetUri = targetUri
+            alsoAddGroupOptions = options
+        }
+    }
+
+    fun addSharedOccurrenceToGroup(targetUri: String, option: GroupAssignOption) {
+        val pl = internalSelected ?: return
+        val songId = getSmpSongId(targetUri) ?: return
+        if (groupContainsSongId(songs, option.headerKey, songId)) {
+            Toast.makeText(
+                context,
+                context.getString(R.string.quickplaylists_group_already_contains_song),
+                Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
+        val headerIndex = songs.indexOf(option.headerKey)
+        if (headerIndex < 0) return
+        val occurrenceUri = buildSmpOccurrenceItem(songId)
+        PlaylistRepository.assignSongToPlaylist(
+            playlistName = pl,
+            songUri = occurrenceUri,
+            songId = songId
+        )
+        val endIndex = findMatchingGroupEndIndex(songs, headerIndex)
+            ?: findGroupRange(songs, headerIndex).last
+        val insertIndex = if (endIndex >= headerIndex) {
+            endIndex.coerceIn(0, songs.size)
+        } else {
+            (headerIndex + 1).coerceIn(0, songs.size)
+        }
+        songs.add(insertIndex, occurrenceUri)
+        collapsedGroupIds = collapsedGroupIds - option.headerKey
+        persistSongsOrder(pl, overwriteOriginal = true)
     }
 
     fun removeTargetsFromGroup(targets: List<String>) {
@@ -1727,7 +1774,7 @@ fun QuickPlaylistsScreen(
                             // 🔹 NOM D’AFFICHAGE
                             val _forceNotes = notesVersion
                             val smpAliasTitle = if (smpSongId != null) {
-                                cleanQuickPlaylistTitle(TitleAliasesStore.getTitleForTrack(context, uriString))
+                                cleanQuickPlaylistTitle(TitleAliasesStore.getTitleForTrack(context, buildSmpItem(smpSongId)))
                             } else {
                                 null
                             }
@@ -2295,6 +2342,41 @@ fun QuickPlaylistsScreen(
                                             },
                                             enabled = songs.any { isGroupHeader(it) }
                                         )
+                                        if (smpSongId != null) {
+                                            DropdownMenuItem(
+                                                text = {
+                                                    Row(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .clip(RoundedCornerShape(12.dp))
+                                                            .background(groupMenuBackground)
+                                                            .border(1.dp, groupMenuBorder, RoundedCornerShape(12.dp))
+                                                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Filled.Folder,
+                                                            contentDescription = null,
+                                                            tint = groupMenuIcon,
+                                                            modifier = Modifier.size(18.dp)
+                                                        )
+                                                        Text(
+                                                            stringResource(R.string.quickplaylists_menu_also_add_to_group),
+                                                            color = Color.White,
+                                                            fontSize = 15.sp,
+                                                            fontWeight = FontWeight.Medium
+                                                        )
+                                                    }
+                                                },
+                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                                onClick = {
+                                                    openAlsoAddDialogForTarget(uriString)
+                                                    menuOpen = false
+                                                },
+                                                enabled = songs.any { isGroupHeader(it) }
+                                            )
+                                        }
                                         if (isInsideGroup) {
                                             DropdownMenuItem(
                                                 text = {
@@ -2617,6 +2699,52 @@ fun QuickPlaylistsScreen(
         )
     }
 
+    if (alsoAddGroupTargetUri != null && internalSelected != null) {
+        AlertDialog(
+            onDismissRequest = {
+                alsoAddGroupTargetUri = null
+                alsoAddGroupOptions = emptyList()
+            },
+            title = { Text(stringResource(R.string.quickplaylists_also_add_group_title), color = Color.White) },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 320.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    alsoAddGroupOptions.forEach { option ->
+                        TextButton(
+                            onClick = {
+                                val targetUri = alsoAddGroupTargetUri
+                                if (!targetUri.isNullOrBlank()) {
+                                    addSharedOccurrenceToGroup(targetUri, option)
+                                }
+                                alsoAddGroupTargetUri = null
+                                alsoAddGroupOptions = emptyList()
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(option.title, color = Color.White)
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        alsoAddGroupTargetUri = null
+                        alsoAddGroupOptions = emptyList()
+                    }
+                ) {
+                    Text(stringResource(R.string.common_cancel), color = Color.White)
+                }
+            },
+            containerColor = Color(0xFF222222)
+        )
+    }
+
     // ─── DIALOG ATTRIBUER AU GROUPE ──────────────────────
     if (assignGroupTargetUris.isNotEmpty() && internalSelected != null) {
         AlertDialog(
@@ -2772,12 +2900,16 @@ fun QuickPlaylistsScreen(
                     }
                 }
             } else {
+                val aliasTarget = getSmpSongId(targetUri)?.let { buildSmpItem(it) } ?: targetUri
                 if (BuildConfig.DEBUG) {
-                    Log.d("ALIAS_RENAME", "commit source=playlist uri=$targetUri newTitle='$newTitle'")
+                    Log.d("ALIAS_RENAME", "commit source=playlist uri=$aliasTarget newTitle='$newTitle'")
                 }
-                val saved = TitleAliasesStore.setTitleForTrack(context, targetUri, newTitle)
+                val saved = TitleAliasesStore.setTitleForTrack(context, aliasTarget, newTitle)
                 if (saved) {
-                    PlaylistRepository.clearCustomTitleEverywhere(targetUri)
+                    PlaylistRepository.clearCustomTitleEverywhere(aliasTarget)
+                    if (aliasTarget != targetUri) {
+                        PlaylistRepository.clearCustomTitleEverywhere(targetUri)
+                    }
                 }
                 if (BuildConfig.DEBUG) {
                     Toast.makeText(
@@ -3628,7 +3760,7 @@ private fun buildQuickPlaylistSearchTitle(
     if (smpSongId != null) {
         return cleanQuickPlaylistTitle(PlaylistRepository.getAnyCustomTitleForUri(item))
             ?: cleanQuickPlaylistTitle(smpTitleById[smpSongId])
-            ?: cleanQuickPlaylistTitle(TitleAliasesStore.getTitleForTrack(context, item))
+            ?: cleanQuickPlaylistTitle(TitleAliasesStore.getTitleForTrack(context, buildSmpItem(smpSongId)))
             ?: context.getString(R.string.quickplaylists_missing_title)
     }
 
@@ -3649,6 +3781,21 @@ private fun isKeyboardSelectablePlaylistItem(item: String): Boolean {
 
 private fun isPlaylistGroupableItem(item: String): Boolean {
     return item.isNotBlank() && !isGroupHeader(item) && !isGroupEnd(item)
+}
+
+private fun groupContainsSongId(
+    items: List<String>,
+    headerKey: String,
+    songId: String
+): Boolean {
+    val headerIndex = items.indexOf(headerKey)
+    if (headerIndex < 0) return false
+    val groupRange = findGroupRange(items, headerIndex)
+    if (groupRange.isEmpty()) return false
+    return ((groupRange.first + 1)..groupRange.last).any { index ->
+        val item = items.getOrNull(index) ?: return@any false
+        !isGroupHeader(item) && !isGroupEnd(item) && getSmpSongId(item) == songId
+    }
 }
 
 private fun buildPlaylistMoveOptions(
