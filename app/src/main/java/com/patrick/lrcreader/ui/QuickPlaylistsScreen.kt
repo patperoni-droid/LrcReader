@@ -1576,7 +1576,22 @@ fun QuickPlaylistsScreen(
                                 val isCurrentPlaying = currentPlayingUri == activePlaybackItem ||
                                     currentPlayingPlaylistItemKey == activePlaybackItem
                                 val isForcedNext = nextTrackUri != null && nextTrackUri == activePlaybackItem
-                                val displayTitle = activeSongId?.let(smpTitleById::get) ?: family.title
+                                val familyAliasTitle = cleanQuickPlaylistTitle(
+                                    TitleAliasesStore.getTitleForTrack(context, uriString)
+                                )
+                                val displayTitle = familyAliasTitle
+                                    ?: activeSongId?.let(smpTitleById::get)
+                                    ?: family.title
+                                val _forceFamilyColor = songColorsVersion
+                                val customFamilyColor = internalSelected?.let { pl ->
+                                    loadSongColor(context, pl, uriString)
+                                }
+                                val familyTitleColor = when {
+                                    customFamilyColor != null -> customFamilyColor
+                                    isCurrentPlaying -> Color(0xFFFFFDE7)
+                                    else -> Color.White
+                                }
+                                val isFamilyInsideGroup = isItemInsideGroup(songs, itemIndex)
                                 val orderedSongIds = remember(family) {
                                     buildList {
                                         family.parentSongId?.takeIf { it in family.songIds }?.let(::add)
@@ -1627,7 +1642,7 @@ fun QuickPlaylistsScreen(
                                         )
                                         Text(
                                             text = displayTitle.uppercase(),
-                                            color = if (isCurrentPlaying) Color(0xFFFFFDE7) else Color.White,
+                                            color = familyTitleColor,
                                             fontSize = 14.sp,
                                             fontWeight = if (isCurrentPlaying) FontWeight.SemiBold else FontWeight.Normal,
                                             maxLines = 1,
@@ -1683,6 +1698,160 @@ fun QuickPlaylistsScreen(
                                                         menuOpen = false
                                                     }
                                                 )
+                                                DropdownMenuItem(
+                                                    text = { Text(stringResource(R.string.quickplaylists_menu_define_next), color = Color.White) },
+                                                    onClick = {
+                                                        onSetNextTrack(activePlaybackItem, displayTitle, internalSelected)
+                                                        menuOpen = false
+                                                    }
+                                                )
+                                                DropdownMenuItem(
+                                                    text = {
+                                                        Text(
+                                                            if (findGroupHeaderKeyByTitle(sQuickplaylistsCurrentGroup) == null) {
+                                                                sQuickplaylistsCreateLiveList
+                                                            } else {
+                                                                sQuickplaylistsAddToLiveList
+                                                            },
+                                                            color = Color.White
+                                                        )
+                                                    },
+                                                    onClick = {
+                                                        val pl = internalSelected
+                                                        if (pl != null) {
+                                                            val (headerKey, createdNow) = ensureCurrentGroupHeader(pl)
+                                                            val currentTrackIndex = if (createdNow) {
+                                                                findCurrentPlayingTrackIndexInPlaylist(pl)
+                                                            } else {
+                                                                null
+                                                            }
+                                                            val clickedWasCurrentTrack = currentTrackIndex == itemIndex
+                                                            if (createdNow && currentTrackIndex != null) {
+                                                                moveTrackToGroupHeader(
+                                                                    playlist = pl,
+                                                                    trackIndex = currentTrackIndex,
+                                                                    headerKey = headerKey
+                                                                )
+                                                            }
+                                                            if (!clickedWasCurrentTrack) {
+                                                                val adjustedTrackIndex = when {
+                                                                    createdNow && currentTrackIndex != null && currentTrackIndex < itemIndex -> itemIndex - 1
+                                                                    else -> itemIndex
+                                                                }
+                                                                moveTrackToGroupHeader(
+                                                                    playlist = pl,
+                                                                    trackIndex = adjustedTrackIndex,
+                                                                    headerKey = headerKey
+                                                                )
+                                                            }
+                                                            activePlayingGroupHeaderKey = headerKey
+                                                            pendingLiveGroupScrollHeaderKey = headerKey
+                                                            val currentGroupedTrackIndex = findCurrentPlayingTrackIndexInPlaylist(pl)
+                                                            val currentGroupedTrack = currentGroupedTrackIndex?.let(songs::getOrNull)
+                                                            val headerIndex = songs.indexOf(headerKey)
+                                                            if (currentGroupedTrack != null && headerIndex >= 0) {
+                                                                val groupRange = findGroupRange(songs, headerIndex)
+                                                                if (!groupRange.isEmpty()) {
+                                                                    val groupQueue = ((groupRange.first + 1)..groupRange.last)
+                                                                        .map { idx -> songs[idx] }
+                                                                        .filter { item ->
+                                                                            !isGroupHeader(item) &&
+                                                                                !isGroupEnd(item) &&
+                                                                                (isPlayableAudioItem(item) || isVariantFamilyItem(item))
+                                                                        }
+                                                                    val currentQueueIndex = groupQueue.indexOf(currentGroupedTrack)
+                                                                    if (currentQueueIndex >= 0) {
+                                                                        onArmChainFromCurrent(
+                                                                            resolveVariantFamilyPlaybackQueue(groupQueue, variantFamilyById),
+                                                                            currentQueueIndex,
+                                                                            pl
+                                                                        )
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                        menuOpen = false
+                                                    }
+                                                )
+                                                DropdownMenuItem(
+                                                    text = { Text(stringResource(R.string.quickplaylists_menu_insert_group_above), color = Color.White) },
+                                                    onClick = {
+                                                        val pl = internalSelected
+                                                        if (pl != null) {
+                                                            val index = songs.indexOf(uriString)
+                                                            if (index >= 0) {
+                                                                val header = buildGroupHeader(sQuickplaylistsNewGroupDefault)
+                                                                val end = getGroupUuid(header)?.let { buildGroupEnd(it) }
+                                                                songs.add(index, header)
+                                                                if (end != null) {
+                                                                    songs.add(index + 1, end)
+                                                                }
+                                                                persistSongsOrder(pl, overwriteOriginal = true)
+                                                                renameGroupTarget = header
+                                                                renameGroupText = getGroupTitle(header)
+                                                            }
+                                                        }
+                                                        menuOpen = false
+                                                    }
+                                                )
+                                                DropdownMenuItem(
+                                                    text = { Text(stringResource(R.string.quickplaylists_menu_assign_to_group), color = Color.White) },
+                                                    onClick = {
+                                                        val selectedBatch = songs.filter { key ->
+                                                            key in selectedTrackKeys && isPlaylistGroupableItem(key)
+                                                        }
+                                                        val targets = if (
+                                                            uriString in selectedTrackKeys &&
+                                                            selectedBatch.size > 1
+                                                        ) {
+                                                            selectedBatch
+                                                        } else {
+                                                            listOf(uriString)
+                                                        }
+                                                        openAssignDialogForTargets(targets)
+                                                        menuOpen = false
+                                                    },
+                                                    enabled = songs.any { isGroupHeader(it) }
+                                                )
+                                                DropdownMenuItem(
+                                                    text = { Text(stringResource(R.string.quickplaylists_menu_also_add_to_group), color = Color.White) },
+                                                    onClick = {
+                                                        openAlsoAddDialogForTarget(activePlaybackItem)
+                                                        menuOpen = false
+                                                    },
+                                                    enabled = songs.any { isGroupHeader(it) } && getSmpSongId(activePlaybackItem) != null
+                                                )
+                                                if (isFamilyInsideGroup) {
+                                                    DropdownMenuItem(
+                                                        text = { Text(stringResource(R.string.quickplaylists_menu_remove_from_group), color = Color.White) },
+                                                        onClick = {
+                                                            val selectedBatch = songs.filter { key ->
+                                                                key in selectedTrackKeys && isPlaylistGroupableItem(key)
+                                                            }
+                                                            val targets = if (
+                                                                uriString in selectedTrackKeys &&
+                                                                selectedBatch.size > 1
+                                                            ) {
+                                                                selectedBatch
+                                                            } else {
+                                                                listOf(uriString)
+                                                            }
+                                                            removeTargetsFromGroup(targets)
+                                                            menuOpen = false
+                                                        }
+                                                    )
+                                                }
+                                                HorizontalDivider(
+                                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                                    color = Color(0xFF2F2F2F)
+                                                )
+                                                DropdownMenuItem(
+                                                    text = { Text(stringResource(R.string.quickplaylists_menu_move_to), color = Color.White) },
+                                                    onClick = {
+                                                        openMoveDialogForTarget(uriString)
+                                                        menuOpen = false
+                                                    }
+                                                )
                                                 if (nextTrackUri != null) {
                                                     DropdownMenuItem(
                                                         text = { Text(stringResource(R.string.quickplaylists_menu_cancel_next), color = Color.White) },
@@ -1707,6 +1876,79 @@ fun QuickPlaylistsScreen(
                                                         menuOpen = false
                                                     }
                                                 )
+                                                DropdownMenuItem(
+                                                    text = { Text(stringResource(R.string.common_rename), color = Color.White) },
+                                                    onClick = {
+                                                        renameTarget = uriString
+                                                        renameText = displayTitle
+                                                        menuOpen = false
+                                                    }
+                                                )
+                                                DropdownMenuItem(
+                                                    text = { Text(stringResource(R.string.quickplaylists_menu_title_color), color = Color.White) },
+                                                    onClick = { }
+                                                )
+                                                Row(
+                                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                ) {
+                                                    val colors = listOf(
+                                                        Color(0xFFD32F2F),
+                                                        Color(0xFFFFEB3B),
+                                                        Color(0xFF1976D2),
+                                                        Color(0xFFFF9800),
+                                                        Color(0xFF388E3C),
+                                                        Color(0xFF7B1FA2),
+                                                        Color(0xFF00ACC1),
+                                                        Color(0xFFE0E0E0)
+                                                    )
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(26.dp)
+                                                            .background(Color(0xFF2A2A2A), RoundedCornerShape(999.dp))
+                                                            .border(1.dp, Color.White, RoundedCornerShape(999.dp))
+                                                            .clickable {
+                                                                internalSelected?.let { pl ->
+                                                                    clearSongColor(context, pl, uriString)
+                                                                    songColorsVersion++
+                                                                }
+                                                                menuOpen = false
+                                                            },
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Text("X", color = Color.White, fontSize = 12.sp)
+                                                    }
+                                                    colors.forEach { c ->
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .size(26.dp)
+                                                                .background(c, RoundedCornerShape(999.dp))
+                                                                .border(1.dp, Color.White, RoundedCornerShape(999.dp))
+                                                                .clickable {
+                                                                    internalSelected?.let { pl ->
+                                                                        val selectedBatch = songs.filter { key ->
+                                                                            key in selectedTrackKeys &&
+                                                                                (isPlayableAudioItem(key) || isVariantFamilyItem(key))
+                                                                        }
+                                                                        val targets = if (
+                                                                            uriString in selectedTrackKeys &&
+                                                                            selectedBatch.size > 1
+                                                                        ) {
+                                                                            selectedBatch
+                                                                        } else {
+                                                                            listOf(uriString)
+                                                                        }
+                                                                        targets.forEach { targetUri ->
+                                                                            saveSongColor(context, pl, targetUri, c)
+                                                                        }
+                                                                        selectedTrackKeys = selectedTrackKeys - targets.toSet()
+                                                                        songColorsVersion++
+                                                                    }
+                                                                    menuOpen = false
+                                                                }
+                                                        )
+                                                    }
+                                                }
                                             }
                                         }
                                     }
@@ -2448,6 +2690,15 @@ fun QuickPlaylistsScreen(
                                                 menuOpen = false
                                             }
                                         )
+                                        if (isPlayableAudioItem(uriString)) {
+                                            DropdownMenuItem(
+                                                text = { Text(stringResource(R.string.quickplaylists_menu_define_next), color = Color.White) },
+                                                onClick = {
+                                                    onSetNextTrack(uriString, displayName, internalSelected)
+                                                    menuOpen = false
+                                                }
+                                            )
+                                        }
                                         DropdownMenuItem(
                                             text = {
                                                 Row(

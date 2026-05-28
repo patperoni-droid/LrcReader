@@ -713,6 +713,7 @@
     <string name="quickplaylists_badge_next">NEXT</string>
     <string name="quickplaylists_menu_play">Auto Play</string>
     <string name="quickplaylists_menu_set_next">Add to current list</string>
+    <string name="quickplaylists_menu_define_next">Define Next</string>
     <string name="quickplaylists_menu_create_live_list">Create live list</string>
     <string name="quickplaylists_menu_add_to_live_list">Add to live list</string>
     <string name="quickplaylists_menu_cancel_next">Cancel NEXT</string>
