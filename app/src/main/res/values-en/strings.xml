@@ -268,7 +268,6 @@
     <string name="library_list_move_to_folder">Move to a folder</string>
     <string name="library_list_rename">Rename</string>
     <string name="library_variant_create_family">Create version family</string>
-    <string name="library_variant_choose_version">Version choice</string>
     <string name="library_variant_family_selection_min">Select at least 2 songs to create a family</string>
     <string name="library_list_delete_permanently">Delete permanently</string>
     <string name="library_view_mode_songs">Songs</string>

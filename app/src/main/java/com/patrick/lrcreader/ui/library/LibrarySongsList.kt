@@ -4,8 +4,6 @@ import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -207,7 +205,12 @@ fun LibrarySongsList(
         ) { row ->
             if (row is LibrarySongListRow.Family) {
                 val group = row.group
-                val primarySong = group.songs.first()
+                val activeSong = group.family.activeSongId
+                    ?.let { activeId -> group.songs.firstOrNull { it.songId == activeId } }
+                    ?: group.family.parentSongId
+                        ?.let { parentId -> group.songs.firstOrNull { it.songId == parentId } }
+                    ?: group.songs.first()
+                val activeSongUri = remember(activeSong.playbackItem) { Uri.parse(activeSong.playbackItem) }
                 val isExpanded = group.family.id in expandedFamilyIds
                 val anySelected = group.songs.any { selectedSongs.contains(Uri.parse(it.playbackItem)) }
                 val isCurrentPlaying = group.songs.any { currentPlayingSongId == it.songId }
@@ -220,7 +223,7 @@ fun LibrarySongsList(
                 }
 
                 Column(modifier = Modifier.fillMaxWidth()) {
-                    Row(
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(vertical = 3.dp)
@@ -230,143 +233,197 @@ fun LibrarySongsList(
                                 if (anySelected) accent else accent.copy(alpha = 0.9f),
                                 rowShape
                             )
-                            .clickable {
-                                expandedFamilyIds = if (isExpanded) {
-                                    expandedFamilyIds - group.family.id
-                                } else {
-                                    expandedFamilyIds + group.family.id
-                                }
-                            }
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                            .clip(rowShape)
                     ) {
-                        Text(
-                            text = if (isExpanded) "▼" else "▶",
-                            color = accent,
-                            fontSize = 15.sp,
-                            modifier = Modifier.width(24.dp)
-                        )
-
-                        if (isCurrentPlaying) {
-                            Box(
-                                modifier = Modifier
-                                    .padding(end = 8.dp)
-                                    .width(3.dp)
-                                    .height(28.dp)
-                                    .clip(CircleShape)
-                                    .background(accent.copy(alpha = 0.95f))
-                            )
-                        }
-
-                        Text(
-                            text = group.family.title,
-                            color = if (isCurrentPlaying) Color(0xFFFFFDE7) else Color.White,
-                            fontSize = 15.sp,
-                            fontWeight = if (isCurrentPlaying) FontWeight.SemiBold else FontWeight.Normal,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f)
-                        )
-
-                        Text(
-                            text = group.songs.size.toString(),
-                            color = accent,
-                            fontSize = 12.sp,
-                            modifier = Modifier
-                                .background(accent.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
-                                .padding(horizontal = 8.dp, vertical = 3.dp)
-                        )
-
-                        IconButton(
-                            onClick = { onOpenPlayer(primarySong) },
-                            enabled = primarySong.audioAvailable
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.PlayArrow,
-                                contentDescription = null,
-                                tint = if (primarySong.audioAvailable) accent else Color.White.copy(alpha = 0.35f)
-                            )
-                        }
-
-                        Box {
-                            var familyMenuOpen by remember(group.family.id) { mutableStateOf(false) }
-                            IconButton(onClick = { familyMenuOpen = true }) {
-                                Icon(
-                                    imageVector = Icons.Default.MoreVert,
-                                    contentDescription = null,
-                                    tint = Color.White
-                                )
-                            }
-                            DropdownMenu(
-                                expanded = familyMenuOpen,
-                                onDismissRequest = { familyMenuOpen = false }
-                            ) {
-                                DropdownMenuItem(
-                                    text = {
-                                        Text(
-                                            stringResource(R.string.library_list_assign_to_playlist),
-                                            color = Color.White
-                                        )
-                                    },
-                                    onClick = {
-                                        familyMenuOpen = false
-                                        onAssignFamily(group.family)
-                                    }
-                                )
-                            }
-                        }
-                    }
-
-                    if (isExpanded) {
-                        Column(
+                        Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(start = 36.dp, end = 12.dp, bottom = 8.dp)
-                                .background(Color(0xFF101A2D).copy(alpha = 0.78f), RoundedCornerShape(8.dp))
-                                .border(1.dp, accent.copy(alpha = 0.20f), RoundedCornerShape(8.dp))
-                                .padding(horizontal = 8.dp, vertical = 7.dp)
+                                .height(48.dp)
+                                .padding(horizontal = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = stringResource(R.string.library_variant_choose_version),
-                                color = Color.White.copy(alpha = 0.72f),
-                                fontSize = 11.sp,
-                                maxLines = 1
-                            )
-                            Spacer(Modifier.height(6.dp))
-                            Row(
+                                text = if (isExpanded) "▼" else "▶",
+                                color = accent,
+                                fontSize = 15.sp,
                                 modifier = Modifier
-                                    .fillMaxWidth()
-                                    .horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                                    .width(28.dp)
+                                    .clickable {
+                                        expandedFamilyIds = if (isExpanded) {
+                                            expandedFamilyIds - group.family.id
+                                        } else {
+                                            expandedFamilyIds + group.family.id
+                                        }
+                                    }
+                            )
+
+                            if (isCurrentPlaying) {
+                                Box(
+                                    modifier = Modifier
+                                        .padding(end = 8.dp)
+                                        .width(3.dp)
+                                        .height(26.dp)
+                                        .clip(CircleShape)
+                                        .background(accent.copy(alpha = 0.95f))
+                                )
+                            }
+
+                            Text(
+                                text = activeSong.displayTitle,
+                                color = if (isCurrentPlaying) Color(0xFFFFFDE7) else Color.White,
+                                fontSize = 15.sp,
+                                fontWeight = if (isCurrentPlaying) FontWeight.SemiBold else FontWeight.Normal,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable {
+                                        onKeyboardSelectedSongChange(activeSong.songId)
+                                        if (selectionMode) {
+                                            onToggleSelect(activeSongUri)
+                                        } else if (activeSong.audioAvailable) {
+                                            onOpenPlayer(activeSong)
+                                        }
+                                    }
+                            )
+
+                            Text(
+                                text = group.songs.size.toString(),
+                                color = accent,
+                                fontSize = 12.sp,
+                                modifier = Modifier
+                                    .background(accent.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
+                                    .padding(horizontal = 8.dp, vertical = 3.dp)
+                            )
+
+                            IconButton(
+                                onClick = {
+                                    onKeyboardSelectedSongChange(activeSong.songId)
+                                    onOpenPlayer(activeSong)
+                                },
+                                enabled = activeSong.audioAvailable
                             ) {
-                                group.songs.forEach { variant ->
-                                    val variantUri = remember(variant.playbackItem) { Uri.parse(variant.playbackItem) }
-                                    val isSelected = selectedSongs.contains(variantUri)
-                                    val label = variantLabelFor(group.family.title, variant.displayTitle)
-                                    Text(
-                                        text = label,
-                                        color = if (isSelected) Color.Black else Color.White,
-                                        fontSize = 12.sp,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(
-                                                if (isSelected) accent else Color.White.copy(alpha = 0.10f)
-                                            )
-                                            .border(
-                                                1.dp,
-                                                if (isSelected) accent else Color.White.copy(alpha = 0.18f),
-                                                RoundedCornerShape(8.dp)
-                                            )
-                                            .clickable {
-                                                onKeyboardSelectedSongChange(variant.songId)
-                                                onToggleSelect(variantUri)
-                                            }
-                                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                                Icon(
+                                    imageVector = Icons.Default.PlayArrow,
+                                    contentDescription = null,
+                                    tint = if (activeSong.audioAvailable) accent else Color.White.copy(alpha = 0.35f)
+                                )
+                            }
+
+                            Box {
+                                var familyMenuOpen by remember(group.family.id) { mutableStateOf(false) }
+                                IconButton(onClick = { familyMenuOpen = true }) {
+                                    Icon(
+                                        imageVector = Icons.Default.MoreVert,
+                                        contentDescription = null,
+                                        tint = Color.White
                                     )
                                 }
+                                DropdownMenu(
+                                    expanded = familyMenuOpen,
+                                    onDismissRequest = { familyMenuOpen = false }
+                                ) {
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                stringResource(R.string.library_list_assign_to_playlist),
+                                                color = Color.White
+                                            )
+                                        },
+                                        onClick = {
+                                            familyMenuOpen = false
+                                            onAssignFamily(group.family)
+                                        }
+                                    )
+                                }
+                            }
+                        }
+
+                        if (isExpanded) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 4.dp)
+                            ) {
+                                group.songs
+                                    .filter { it.songId != activeSong.songId }
+                                    .forEach { variant ->
+                                        val variantUri = remember(variant.playbackItem) { Uri.parse(variant.playbackItem) }
+                                        val isSelected = selectedSongs.contains(variantUri)
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(34.dp)
+                                                .background(
+                                                    if (isSelected) {
+                                                        accent.copy(alpha = 0.16f)
+                                                    } else {
+                                                        Color.White.copy(alpha = 0.045f)
+                                                    }
+                                                )
+                                                .clickable {
+                                                    SongVariantFamiliesStore.setActiveSongId(
+                                                        context = context,
+                                                        familyId = group.family.id,
+                                                        songId = variant.songId
+                                                    )
+                                                    onKeyboardSelectedSongChange(variant.songId)
+                                                    onToggleSelect(variantUri)
+                                                }
+                                                .padding(start = 34.dp, end = 12.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .padding(end = 8.dp)
+                                                    .width(2.dp)
+                                                    .height(18.dp)
+                                                    .clip(RoundedCornerShape(999.dp))
+                                                    .background(accent.copy(alpha = 0.45f))
+                                            )
+                                            Text(
+                                                text = variant.displayTitle,
+                                                color = if (isSelected) Color.White else Color.White.copy(alpha = 0.78f),
+                                                fontSize = 12.sp,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            if (
+                                                showRichIndicators && (
+                                                    variant.hasLyrics ||
+                                                        variant.hasChords ||
+                                                        variant.hasMidi ||
+                                                        variant.hasLight ||
+                                                        variant.hasNotes
+                                                    )
+                                            ) {
+                                                Spacer(Modifier.width(8.dp))
+                                                LibrarySongIndicators(variant)
+                                            }
+                                            if (selectionMode) {
+                                                Spacer(Modifier.width(8.dp))
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(16.dp)
+                                                        .background(
+                                                            if (isSelected) accent.copy(alpha = 0.18f) else Color.Transparent,
+                                                            RoundedCornerShape(4.dp)
+                                                        )
+                                                        .border(
+                                                            1.dp,
+                                                            if (isSelected) accent else Color.White.copy(alpha = 0.45f),
+                                                            RoundedCornerShape(4.dp)
+                                                        ),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    if (isSelected) {
+                                                        Text("✕", color = accent, fontSize = 10.sp)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                             }
                         }
                     }
