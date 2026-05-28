@@ -92,10 +92,10 @@ private fun inferVariantFamilyTitle(title: String): String {
     return clean.dropLast(removeLength).trim().trim('-', '–', '—', '_', '(', '[', ' ').ifBlank { clean }
 }
 
-internal fun variantLabelFor(familyTitle: String, displayTitle: String, originalLabel: String): String {
+internal fun variantLabelFor(familyTitle: String, displayTitle: String): String {
     val title = displayTitle.trim()
     val family = familyTitle.trim()
-    if (title.equals(family, ignoreCase = true)) return originalLabel
+    if (title.equals(family, ignoreCase = true)) return title
 
     val suffix = title.removePrefix(family).trim().trim('-', '–', '—', '_', '(', ')', '[', ']', ' ')
     return suffix.takeIf { it.isNotBlank() } ?: title
@@ -190,7 +190,6 @@ fun LibrarySongsList(
     val variantFamilies = remember(familyVersion) { SongVariantFamiliesStore.load(context) }
     val rows = remember(songs, variantFamilies) { buildLibrarySongRows(songs, variantFamilies) }
     var expandedFamilyIds by rememberSaveable { mutableStateOf(setOf<String>()) }
-    val originalLabel = stringResource(R.string.library_variant_original)
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -344,7 +343,7 @@ fun LibrarySongsList(
                                 group.songs.forEach { variant ->
                                     val variantUri = remember(variant.playbackItem) { Uri.parse(variant.playbackItem) }
                                     val isSelected = selectedSongs.contains(variantUri)
-                                    val label = variantLabelFor(group.family.title, variant.displayTitle, originalLabel)
+                                    val label = variantLabelFor(group.family.title, variant.displayTitle)
                                     Text(
                                         text = label,
                                         color = if (isSelected) Color.Black else Color.White,

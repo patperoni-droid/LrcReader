@@ -35,7 +35,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
@@ -123,7 +122,6 @@ import com.patrick.lrcreader.core.search.SearchEngine
 import com.patrick.lrcreader.exo.BuildConfig
 import com.patrick.lrcreader.ui.library.SongVariantFamiliesStore
 import com.patrick.lrcreader.ui.library.SongVariantFamily
-import com.patrick.lrcreader.ui.library.variantLabelFor
 import kotlinx.coroutines.yield
 import java.io.File
 import java.net.URLDecoder
@@ -1572,14 +1570,13 @@ fun QuickPlaylistsScreen(
                                     return@itemsIndexed
                                 }
 
-                                val originalLabel = stringResource(R.string.library_variant_original)
                                 val activeSongId = activeSongIdForFamily(family)
                                 val activePlaybackItem = activeSongId?.let(::buildSmpItem) ?: uriString
                                 val isExpanded = family.id in expandedVariantFamilyIds
                                 val isCurrentPlaying = currentPlayingUri == activePlaybackItem ||
                                     currentPlayingPlaylistItemKey == activePlaybackItem
                                 val isForcedNext = nextTrackUri != null && nextTrackUri == activePlaybackItem
-                                val displayTitle = variantFamilyPlaylistTitle(family, smpTitleById, originalLabel)
+                                val displayTitle = activeSongId?.let(smpTitleById::get) ?: family.title
                                 val orderedSongIds = remember(family) {
                                     buildList {
                                         family.parentSongId?.takeIf { it in family.songIds }?.let(::add)
@@ -1588,32 +1585,38 @@ fun QuickPlaylistsScreen(
                                         }
                                     }
                                 }
-                                val rowShape = RoundedCornerShape(12.dp)
+                                val rowShape = RoundedCornerShape(10.dp)
+                                val familyBackground = if (isCurrentPlaying) Color(0xFF202020) else Color(0xFF181818)
+                                val familyBorder = if (isCurrentPlaying) {
+                                    Color.White.copy(alpha = 0.75f)
+                                } else {
+                                    Color.White.copy(alpha = 0.20f)
+                                }
 
                                 Column(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(vertical = 4.dp, horizontal = 2.dp)
-                                        .background(Color(0xFF152033), rowShape)
+                                        .padding(vertical = 3.dp, horizontal = 2.dp)
+                                        .background(familyBackground, rowShape)
                                         .border(
                                             width = if (isCurrentPlaying) 2.dp else 1.dp,
-                                            color = if (isCurrentPlaying) Color.White.copy(alpha = 0.85f) else Color(0x664FC3F7),
+                                            color = familyBorder,
                                             shape = rowShape
                                         )
-                                        .padding(horizontal = 8.dp, vertical = 7.dp)
                                 ) {
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .height(36.dp),
+                                            .height(rowHeight - 8.dp)
+                                            .padding(horizontal = 6.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text(
                                             text = if (isExpanded) "▼" else "▶",
-                                            color = Color(0xFF81D4FA),
+                                            color = currentListColor,
                                             fontSize = 14.sp,
                                             modifier = Modifier
-                                                .width(26.dp)
+                                                .width(28.dp)
                                                 .clickable {
                                                     expandedVariantFamilyIds = if (isExpanded) {
                                                         expandedVariantFamilyIds - family.id
@@ -1656,7 +1659,7 @@ fun QuickPlaylistsScreen(
                                                 Icon(
                                                     imageVector = Icons.Filled.MoreVert,
                                                     contentDescription = stringResource(R.string.common_cd_options),
-                                                    tint = Color(0xFF81D4FA)
+                                                    tint = currentListColor
                                                 )
                                             }
                                             DropdownMenu(
@@ -1709,60 +1712,51 @@ fun QuickPlaylistsScreen(
                                     }
 
                                     if (isExpanded) {
-                                        Text(
-                                            text = stringResource(R.string.library_variant_choose_version),
-                                            color = Color.White.copy(alpha = 0.70f),
-                                            fontSize = 10.sp,
-                                            maxLines = 1,
-                                            modifier = Modifier.padding(start = 26.dp, top = 2.dp, bottom = 5.dp)
-                                        )
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(start = 26.dp)
-                                                .horizontalScroll(rememberScrollState()),
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                            verticalAlignment = Alignment.CenterVertically
+                                        Column(
+                                            modifier = Modifier.fillMaxWidth()
                                         ) {
-                                            orderedSongIds.forEach { songId ->
-                                                val variantTitle = smpTitleById[songId] ?: songId
-                                                val label = variantLabelFor(
-                                                    familyTitle = family.title,
-                                                    displayTitle = variantTitle,
-                                                    originalLabel = originalLabel
-                                                )
-                                                val selected = songId == activeSongId
-                                                Text(
-                                                    text = label,
-                                                    color = if (selected) Color.Black else Color.White,
-                                                    fontSize = 12.sp,
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis,
-                                                    modifier = Modifier
-                                                        .clip(RoundedCornerShape(8.dp))
-                                                        .background(
-                                                            if (selected) Color(0xFF81D4FA) else Color.White.copy(alpha = 0.10f)
-                                                        )
-                                                        .border(
-                                                            1.dp,
-                                                            if (selected) Color(0xFF81D4FA) else Color.White.copy(alpha = 0.18f),
-                                                            RoundedCornerShape(8.dp)
-                                                        )
-                                                        .clickable {
-                                                            if (variantFamilyById[family.id] == null) {
-                                                                SongVariantFamiliesStore.upsertFamily(
-                                                                    context,
-                                                                    family.copy(activeSongId = songId)
-                                                                )
+                                            orderedSongIds
+                                                .filter { it != activeSongId }
+                                                .forEach { songId ->
+                                                    val variantTitle = smpTitleById[songId] ?: songId
+                                                    Row(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .height(34.dp)
+                                                            .background(Color.White.copy(alpha = 0.045f))
+                                                            .clickable {
+                                                                if (variantFamilyById[family.id] == null) {
+                                                                    SongVariantFamiliesStore.upsertFamily(
+                                                                        context,
+                                                                        family.copy(activeSongId = songId)
+                                                                    )
+                                                                }
+                                                                SongVariantFamiliesStore.setActiveSongId(context, family.id, songId)
                                                             }
-                                                            SongVariantFamiliesStore.setActiveSongId(context, family.id, songId)
-                                                        }
-                                                        .padding(horizontal = 10.dp, vertical = 6.dp)
-                                                )
-                                            }
+                                                            .padding(start = 34.dp, end = 12.dp),
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .padding(end = 8.dp)
+                                                                .width(2.dp)
+                                                                .height(18.dp)
+                                                                .clip(RoundedCornerShape(999.dp))
+                                                                .background(currentListColor.copy(alpha = 0.45f))
+                                                        )
+                                                        Text(
+                                                            text = variantTitle.uppercase(),
+                                                            color = Color.White.copy(alpha = 0.78f),
+                                                            fontSize = 12.sp,
+                                                            maxLines = 1,
+                                                            overflow = TextOverflow.Ellipsis,
+                                                            modifier = Modifier.weight(1f)
+                                                        )
+                                                    }
                                         }
                                     }
                                 }
+                            }
                                 return@itemsIndexed
                             }
 
@@ -4119,25 +4113,6 @@ private fun resolveVariantFamilyPlaybackQueue(
     familyById: Map<String, SongVariantFamily>
 ): List<String> {
     return items.map { item -> resolveVariantFamilyPlaybackItem(item, familyById) }
-}
-
-private fun variantFamilyPlaylistTitle(
-    family: SongVariantFamily,
-    smpTitleById: Map<String, String>,
-    originalLabel: String
-): String {
-    val activeSongId = activeSongIdForFamily(family)
-    val activeTitle = activeSongId?.let(smpTitleById::get)
-    val label = variantLabelFor(
-        familyTitle = family.title,
-        displayTitle = activeTitle ?: family.title,
-        originalLabel = originalLabel
-    )
-    return if (label.equals(originalLabel, ignoreCase = true)) {
-        family.title
-    } else {
-        "${family.title} [${label.uppercase()}]"
-    }
 }
 
 private fun groupContainsSongId(

@@ -263,7 +263,6 @@
     <string name="library_list_rename">Renommer</string>
     <string name="library_variant_create_family">Créer famille de versions</string>
     <string name="library_variant_choose_version">Choix de version</string>
-    <string name="library_variant_original">Original</string>
     <string name="library_variant_family_selection_min">Sélectionne au moins 2 morceaux pour créer une famille</string>
     <string name="library_list_delete_permanently">Supprimer définitivement</string>
     <string name="library_view_mode_songs">Songs</string>

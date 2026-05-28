@@ -2758,8 +2758,6 @@ fun LibraryScreen(
                     }
                 }
                 .toMap()
-            val originalVariantLabel = context.getString(R.string.library_variant_original)
-
             selection.forEach { uri ->
                 val uriString = uri.toString()
                 when {
@@ -2772,10 +2770,9 @@ fun LibraryScreen(
                         if (song != null && family != null) {
                             val label = variantLabelFor(
                                 familyTitle = family.title,
-                                displayTitle = song.displayTitle,
-                                originalLabel = originalVariantLabel
+                                displayTitle = song.displayTitle
                             )
-                            if (!label.equals(originalVariantLabel, ignoreCase = true)) {
+                            if (!label.equals(family.title, ignoreCase = true)) {
                                 directItemTitles[uriString] = "${family.title} [${label.uppercase()}]"
                             }
                         }
