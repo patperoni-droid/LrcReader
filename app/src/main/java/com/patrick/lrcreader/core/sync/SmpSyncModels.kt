@@ -126,6 +126,7 @@ data class SmpSyncSongEntry(
 data class SmpSyncPlaylistEntry(
     val playlistId: String? = null,
     val playlistName: String,
+    val songIds: List<String> = emptyList(),
     val itemsHash: String,
     val groupsHash: String? = null,
     val colorsHash: String? = null,
@@ -135,6 +136,7 @@ data class SmpSyncPlaylistEntry(
         return JSONObject().apply {
             putNullable("playlistId", playlistId)
             put("playlistName", playlistName)
+            put("songIds", songIds.toJsonArray { it })
             put("itemsHash", itemsHash)
             putNullable("groupsHash", groupsHash)
             putNullable("colorsHash", colorsHash)
@@ -147,6 +149,7 @@ data class SmpSyncPlaylistEntry(
             return SmpSyncPlaylistEntry(
                 playlistId = json.optStringOrNull("playlistId"),
                 playlistName = json.getString("playlistName"),
+                songIds = json.optJSONArray("songIds").toStrings(),
                 itemsHash = json.getString("itemsHash"),
                 groupsHash = json.optStringOrNull("groupsHash"),
                 colorsHash = json.optStringOrNull("colorsHash"),
@@ -219,6 +222,7 @@ enum class SyncEntityType {
 
 enum class SyncDiffStatus {
     ABSENT_ON_B,
+    ABSENT_ON_A,
     IDENTICAL,
     MODIFIED_ON_A,
     MODIFIED_ON_B,
@@ -261,6 +265,7 @@ data class SyncPlan(
     val modifications: List<SyncPlanItem>
         get() = items.filter {
             it.diff.status == SyncDiffStatus.MODIFIED_ON_A ||
+                it.diff.status == SyncDiffStatus.MODIFIED_ON_B ||
                 it.diff.status == SyncDiffStatus.PLAYLIST_DIFFERENT ||
                 it.diff.status == SyncDiffStatus.FAMILY_DIFFERENT
         }

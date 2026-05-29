@@ -6,6 +6,7 @@ import com.patrick.lrcreader.core.PlaylistRepository
 import com.patrick.lrcreader.core.TextSongRepository
 import com.patrick.lrcreader.core.getGroupColorArgb
 import com.patrick.lrcreader.core.getGroupTitle
+import com.patrick.lrcreader.core.getSmpSongId
 import com.patrick.lrcreader.core.getVariantFamilyId
 import com.patrick.lrcreader.core.getVariantFamilySongIds
 import com.patrick.lrcreader.core.getVariantFamilyTitle
@@ -42,6 +43,7 @@ data class SmpSyncPlaylistManifestSource(
     val playlistId: String? = null,
     val playlistName: String,
     val items: List<PlaylistItem> = emptyList(),
+    val songIds: List<String> = emptyList(),
     val groupMarkers: List<String> = emptyList(),
     val colorArgb: Long? = null
 )
@@ -201,6 +203,9 @@ class SmpSyncManifestGenerator(
             .putNullable("playlistColorArgb", source.colorArgb)
 
         val itemsHash = hashing.hashNormalizedText(itemsJson.toString())
+        val songIds = (source.songIds + source.items.flatMap { item -> item.referencedSongIds() })
+            .mapNotNull { it.trim().takeIf(String::isNotEmpty) }
+            .distinct()
         val groupsHash = source.groupMarkers.takeIf { it.isNotEmpty() }
             ?.let { hashing.hashNormalizedText(groupsJson.toString()) }
         val colorsHash = source.colorArgb?.let { hashing.hashCanonicalJson(colorsJson) }
@@ -215,6 +220,7 @@ class SmpSyncManifestGenerator(
         return SmpSyncPlaylistEntry(
             playlistId = source.playlistId,
             playlistName = source.playlistName,
+            songIds = songIds,
             itemsHash = itemsHash,
             groupsHash = groupsHash,
             colorsHash = colorsHash,
@@ -336,6 +342,7 @@ class SmpSyncManifestGenerator(
         return SmpSyncPlaylistManifestSource(
             playlistName = this,
             items = rawItems,
+            songIds = rawItems.flatMap { it.referencedSongIds() },
             groupMarkers = groupMarkers,
             colorArgb = PlaylistRepository.getPlaylistColor(this)
         )
@@ -405,6 +412,13 @@ class SmpSyncManifestGenerator(
             .filter { it.isFile }
             .maxOfOrNull { it.lastModified() }
             ?.takeIf { it > 0L }
+    }
+
+    private fun PlaylistItem.referencedSongIds(): List<String> {
+        if (isVariantFamilyItem(uri)) {
+            return getVariantFamilySongIds(uri).toList()
+        }
+        return listOfNotNull(songId?.trim()?.takeIf(String::isNotEmpty) ?: getSmpSongId(uri))
     }
 }
 
