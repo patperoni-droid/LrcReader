@@ -88,6 +88,7 @@ import com.patrick.lrcreader.core.isGroupHeader
 import com.patrick.lrcreader.core.isPrompterItem
 import com.patrick.lrcreader.core.config.PlaylistStateStore
 import com.patrick.lrcreader.core.config.TitleAliasesStore
+import com.patrick.lrcreader.exo.BuildConfig
 import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.smp.SmpArchiveSongIdResolver
 import com.patrick.lrcreader.smp.SmpExporter
@@ -98,6 +99,7 @@ import com.patrick.lrcreader.smp.SmpUserArchiveCandidate
 import com.patrick.lrcreader.smp.SmpWorkspaceArchiveStore
 import com.patrick.lrcreader.ui.locallink.LocalLinkReceiverScreen
 import com.patrick.lrcreader.ui.locallink.LocalLinkTestSenderScreen
+import com.patrick.lrcreader.ui.sync.SmpSyncDebugScreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -161,6 +163,7 @@ fun MoreScreen(
             onOpenArrangement = { navigate("arrangement") },
             onOpenLocalLinkSender = { navigate("local_link_sender") },
             onOpenLocalLinkReceiver = { navigate("local_link_receiver") },
+            onOpenSmpSyncDebug = { navigate("smp_sync_debug") },
             onOpenWaveformPreview = { navigate("waveform_preview") },
             showDjTab = showDjTab,
             showMainBusTab = showMainBusTab,
@@ -218,6 +221,11 @@ fun MoreScreen(
             onBack = { navigate("root") }
         )
 
+        MoreSection.SmpSyncDebug -> SmpSyncDebugScreen(
+            modifier = modifier,
+            onBack = { navigate("root") }
+        )
+
         MoreSection.WaveformPreview -> WaveformPreviewScreen(
             modifier = modifier,
             onBack = { navigate("root") },
@@ -253,6 +261,7 @@ private enum class MoreSection(val route: String) {
     History("history"),
     LocalLinkSender("local_link_sender"),
     LocalLinkReceiver("local_link_receiver"),
+    SmpSyncDebug("smp_sync_debug"),
     WaveformPreview("waveform_preview"),
     Arrangement("arrangement"),
     ArrangementFromTempo("arrangement_from_tempo")
@@ -348,6 +357,7 @@ private fun MoreRootScreen(
     onOpenArrangement: () -> Unit,
     onOpenLocalLinkSender: () -> Unit,
     onOpenLocalLinkReceiver: () -> Unit,
+    onOpenSmpSyncDebug: () -> Unit,
     onOpenWaveformPreview: () -> Unit,
     showDjTab: Boolean,
     showMainBusTab: Boolean,
@@ -478,6 +488,7 @@ private fun MoreRootScreen(
     val sExportProDialogMessage = stringResource(R.string.export_pro_dialog_message)
     val sUpgradeToPro = stringResource(R.string.library_upgrade_to_pro)
     val isLite = EditionConfig.isLite
+    val showSmpSyncDebug = BuildConfig.DEBUG && BuildConfig.FLAVOR == "labo"
     val currentEdition = EditionConfig.current
     val currentEditionLabel = when (currentEdition) {
         AppEdition.LITE -> stringResource(R.string.more_beta_mode_freemium)
@@ -889,6 +900,13 @@ private fun MoreRootScreen(
                         subtitle = stringResource(R.string.more_item_local_link_experimental_subtitle),
                         onClick = onOpenLocalLinkReceiver
                     )
+                    if (showSmpSyncDebug) {
+                        SettingsItem(
+                            label = stringResource(R.string.more_item_smp_sync_debug),
+                            subtitle = stringResource(R.string.more_item_smp_sync_debug_subtitle),
+                            onClick = onOpenSmpSyncDebug
+                        )
+                    }
 
                     HorizontalDivider(color = Color(0xFF262626))
 
