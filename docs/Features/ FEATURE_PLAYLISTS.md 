@@ -166,6 +166,42 @@ Rules:
 
 ⸻
 
+LIVE SONG FAMILIES
+
+A Library song family can be added to a playlist as one compact entry.
+
+Purpose:
+- keep playlists flat and readable
+- choose the active song/version at the last moment
+- avoid duplicating several alternatives as normal playlist rows
+
+Display:
+- collapsed: one line showing the active choice
+- expanded: other choices appear as compact secondary lines
+- alternatives must not look like normal playlist rows
+
+Behavior:
+- tapping an alternative changes the active choice
+- Play, Auto Play, Define Next, live list, and group actions use the active real songId
+- changing the active choice does not duplicate audio or rebuild runtime data
+
+Rules:
+- family = Playlist/Library UX layer only
+- Player continues to receive one real SongUnit/songId
+- no audio fusion
+- no runtime zip access
+- no complex playback model
+
+Example:
+Flamenco
+- Bamboleo
+- Volare Gipsy
+- Historia de un amor
+
+At show time, the user can switch from Bamboleo to Volare Gipsy before Play or Define Next.
+
+⸻
+
 DEFINE NEXT (CRITICAL)
 
 - User can mark a song as "next"

@@ -261,6 +261,42 @@ Rules:
 
 ⸻
 
+SONG FAMILIES
+
+The Library can group several existing SongUnits into a family.
+
+Purpose:
+- reduce visual duplication in the Library
+- prepare live choices without changing the runtime song model
+- keep each song/version as a real independent SongUnit
+
+Creation:
+- user multi-selects songs in the Library
+- action: create family
+- the first selected song gives the family name by default
+
+Display:
+- a family is shown as one compact collapsible block
+- collapsed: only the active/current choice is visible
+- expanded: the other choices appear as compact secondary lines
+- no "Original" role is imposed
+
+Examples:
+- one song with versions: normal, short, acoustic, -1 tone
+- one live moment with possible choices:
+  Flamenco
+  Bamboleo
+  Volare Gipsy
+  Historia de un amor
+
+Rules:
+- family = Library/Playlist UX grouping only
+- no audio duplication
+- no SongUnit merge
+- selecting a choice always targets the real songId
+
+⸻
+
 PERFORMANCE RULES
 
 Forbidden on main thread:

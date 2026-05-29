@@ -161,6 +161,11 @@ They store:
 
 👉 Playlist = structure, not data
 
+Song families are a UX layer over existing SongUnits:
+- each choice remains an independent SongUnit with its own songId
+- a playlist family resolves to the currently active real songId before playback
+- there is no audio merge, no runtime duplication, and no SongUnit model change
+
 ⸻
 
 TIMELINE INTEGRATION
