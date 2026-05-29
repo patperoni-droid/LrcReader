@@ -42,7 +42,10 @@ class LocalLinkConnection internal constructor(
     }
 
     suspend fun send(message: LocalLinkMessage): Boolean {
-        return sendRawLine(LocalLinkJson.encode(message))
+        val rawLine = withContext(dispatcher) {
+            LocalLinkJson.encode(message)
+        }
+        return sendRawLine(rawLine)
     }
 
     suspend fun sendRawLine(rawLine: String): Boolean = withContext(dispatcher) {

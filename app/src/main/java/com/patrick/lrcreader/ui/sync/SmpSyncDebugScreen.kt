@@ -55,8 +55,10 @@ import com.patrick.lrcreader.core.sync.SmpSyncPlanSummarizer
 import com.patrick.lrcreader.core.sync.SmpSyncSongEntry
 import com.patrick.lrcreader.exo.BuildConfig
 import com.patrick.lrcreader.exo.R
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.net.Inet4Address
 import java.net.NetworkInterface
 import java.util.Collections
@@ -98,6 +100,35 @@ fun SmpSyncDebugScreen(
         )
     }
 
+    suspend fun serializeManifestPayload(
+        requestId: String,
+        manifest: SmpSyncManifest,
+        seqValue: Long
+    ): SyncManifestPayloadMessage = withContext(Dispatchers.Default) {
+        SyncManifestPayloadMessage.fromManifest(
+            requestId = requestId,
+            manifest = manifest,
+            seq = seqValue
+        )
+    }
+
+    suspend fun parseManifestPayload(message: SyncManifestPayloadMessage): SmpSyncManifest? {
+        return withContext(Dispatchers.Default) {
+            message.parseManifestOrNull()
+        }
+    }
+
+    suspend fun buildSummary(
+        source: SmpSyncManifest,
+        target: SmpSyncManifest
+    ): SmpSyncPlanSummary = withContext(Dispatchers.Default) {
+        val plan = SmpSyncManifestComparator().compare(
+            source = source,
+            target = target
+        )
+        SmpSyncPlanSummarizer().summarize(plan)
+    }
+
     fun closeLinks() {
         server?.close()
         client?.close()
@@ -121,13 +152,12 @@ fun SmpSyncDebugScreen(
                 localManifest = generated
                 if (compareAfterGenerate) {
                     val fixture = buildDryRunTargetFixture(generated)
-                    val plan = SmpSyncManifestComparator().compare(
+                    summary = buildSummary(
                         source = generated,
                         target = fixture
                     )
                     comparedManifest = fixture
                     comparedManifestTitleRes = R.string.smp_sync_debug_fixture_manifest
-                    summary = SmpSyncPlanSummarizer().summarize(plan)
                 }
             }.onFailure { error ->
                 errorMessage = error.message
@@ -149,13 +179,12 @@ fun SmpSyncDebugScreen(
             runCatching {
                 val generated = buildLocalManifest(deviceId = "smp-sync-local")
                 localManifest = generated
-                val sent = sendPayload(
-                    SyncManifestPayloadMessage.fromManifest(
-                        requestId = requestId,
-                        manifest = generated,
-                        seq = seq++
-                    )
+                val payload = serializeManifestPayload(
+                    requestId = requestId,
+                    manifest = generated,
+                    seqValue = seq++
                 )
+                val sent = sendPayload(payload)
                 statusRes = if (sent) {
                     R.string.smp_sync_debug_manifest_sent
                 } else {
@@ -176,7 +205,7 @@ fun SmpSyncDebugScreen(
             errorMessage = null
             statusDetail = null
             runCatching {
-                val remote = message.parseManifestOrNull()
+                val remote = parseManifestPayload(message)
                 if (remote == null) {
                     comparedManifest = null
                     summary = null
@@ -184,14 +213,13 @@ fun SmpSyncDebugScreen(
                     return@runCatching
                 }
                 val local = buildLocalManifest(deviceId = "smp-sync-local")
-                val plan = SmpSyncManifestComparator().compare(
+                summary = buildSummary(
                     source = remote,
                     target = local
                 )
                 localManifest = local
                 comparedManifest = remote
                 comparedManifestTitleRes = R.string.smp_sync_debug_remote_manifest
-                summary = SmpSyncPlanSummarizer().summarize(plan)
                 statusRes = R.string.smp_sync_debug_manifest_received
             }.onFailure { error ->
                 errorMessage = error.message
@@ -213,7 +241,9 @@ fun SmpSyncDebugScreen(
                     server?.send(payload) ?: false
                 }
             }
-            is UnknownMessage -> statusRes = R.string.smp_sync_debug_invalid_manifest
+            is UnknownMessage -> {
+                statusRes = R.string.smp_sync_debug_invalid_manifest
+            }
             else -> Unit
         }
     }
@@ -224,8 +254,12 @@ fun SmpSyncDebugScreen(
                 remoteDeviceName = message.deviceName
                 statusRes = R.string.smp_sync_debug_waiting_for_remote
             }
-            is SyncManifestPayloadMessage -> compareWithRemoteManifest(message)
-            is UnknownMessage -> statusRes = R.string.smp_sync_debug_invalid_manifest
+            is SyncManifestPayloadMessage -> {
+                compareWithRemoteManifest(message)
+            }
+            is UnknownMessage -> {
+                statusRes = R.string.smp_sync_debug_invalid_manifest
+            }
             else -> Unit
         }
     }

@@ -35,6 +35,49 @@ class SmpSyncManifestGeneratorTest {
     }
 
     @Test
+    fun bytesFileHash_matchesSha256ForTextFile() {
+        val dir = Files.createTempDirectory("sync_hash_bytes_text_").toFile()
+        try {
+            val content = "Audio-like bytes kept exact\nwith LF only"
+            val file = File(dir, "audio.txt").apply {
+                writeText(content, Charsets.UTF_8)
+            }
+
+            assertEquals(
+                hashing.sha256(content.toByteArray(Charsets.UTF_8)),
+                hashing.hashFileOrNull(file, SmpSyncHashing.FileHashMode.BYTES)
+            )
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun bytesFileHash_handlesLargeFileWithSameSha256() {
+        val dir = Files.createTempDirectory("sync_hash_bytes_large_").toFile()
+        try {
+            val file = File(dir, "large-audio.bin")
+            val digestBytes = mutableListOf<Byte>()
+            file.outputStream().use { output ->
+                repeat(96) { block ->
+                    val bytes = ByteArray(32 * 1024) { index ->
+                        ((block * 31 + index) and 0xFF).toByte()
+                    }
+                    output.write(bytes)
+                    digestBytes.addAll(bytes.toList())
+                }
+            }
+
+            assertEquals(
+                hashing.sha256(digestBytes.toByteArray()),
+                hashing.hashFileOrNull(file, SmpSyncHashing.FileHashMode.BYTES)
+            )
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
     fun emptyFileHash_isDistinctFromAbsentComponent() {
         val dir = Files.createTempDirectory("sync_hash_empty_").toFile()
         try {
@@ -44,6 +87,25 @@ class SmpSyncManifestGeneratorTest {
 
             val emptyHash = hashing.hashFileOrNull(empty, SmpSyncHashing.FileHashMode.NORMALIZED_TEXT)
             val absentHash = hashing.hashFileOrNull(File(dir, "missing.lrc"), SmpSyncHashing.FileHashMode.NORMALIZED_TEXT)
+
+            assertNotNull(emptyHash)
+            assertNull(absentHash)
+            assertNotEquals(emptyHash, absentHash)
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun emptyBytesFileHash_isDistinctFromAbsentComponent() {
+        val dir = Files.createTempDirectory("sync_hash_empty_bytes_").toFile()
+        try {
+            val empty = File(dir, "empty-audio.bin").apply {
+                writeBytes(byteArrayOf())
+            }
+
+            val emptyHash = hashing.hashFileOrNull(empty, SmpSyncHashing.FileHashMode.BYTES)
+            val absentHash = hashing.hashFileOrNull(File(dir, "missing-audio.bin"), SmpSyncHashing.FileHashMode.BYTES)
 
             assertNotNull(emptyHash)
             assertNull(absentHash)

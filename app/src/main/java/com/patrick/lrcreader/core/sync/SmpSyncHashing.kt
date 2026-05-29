@@ -31,7 +31,7 @@ class SmpSyncHashing {
     fun hashFileOrNull(file: File?, mode: FileHashMode): String? {
         if (file == null || !file.isFile) return null
         return when (mode) {
-            FileHashMode.BYTES -> sha256(file.readBytes())
+            FileHashMode.BYTES -> hashFileBytesStreaming(file)
             FileHashMode.NORMALIZED_TEXT -> hashNormalizedText(file.readText(Charsets.UTF_8))
             FileHashMode.CANONICAL_JSON -> hashCanonicalJsonText(file.readText(Charsets.UTF_8))
         }
@@ -59,6 +59,21 @@ class SmpSyncHashing {
             .replace('\r', '\n')
     }
 
+    private fun hashFileBytesStreaming(file: File): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        val buffer = ByteArray(FILE_HASH_BUFFER_SIZE)
+        file.inputStream().use { input ->
+            while (true) {
+                val read = input.read(buffer)
+                if (read < 0) break
+                if (read > 0) {
+                    digest.update(buffer, 0, read)
+                }
+            }
+        }
+        return digest.digest().joinToString(separator = "") { byte -> "%02x".format(byte) }
+    }
+
     private fun canonicalJsonValue(value: Any?): String {
         return when (value) {
             null, JSONObject.NULL -> "null"
@@ -77,5 +92,9 @@ class SmpSyncHashing {
             is Number, is Boolean -> value.toString()
             else -> JSONObject.quote(value.toString())
         }
+    }
+
+    private companion object {
+        const val FILE_HASH_BUFFER_SIZE = 128 * 1024
     }
 }
