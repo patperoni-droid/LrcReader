@@ -1,6 +1,9 @@
 package com.patrick.lrcreader.core.locallink
 
+import com.patrick.lrcreader.core.sync.SmpSyncManifest
+import com.patrick.lrcreader.core.sync.SmpSyncSongEntry
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -51,6 +54,57 @@ class LocalLinkTransportTest {
             assertTrue(server.send(PingMessage(seq = 8L)))
             assertTrue(waitUntil { client.session.lastPing == 8L })
             assertTrue(waitUntil { clientMessages.any { it == PingMessage(seq = 8L) } })
+        } finally {
+            client.close()
+            server.close()
+        }
+    }
+
+    @Test
+    fun clientServer_exchangeSyncManifestRequestAndPayload() = runBlocking {
+        val serverMessages = synchronizedMessages()
+        val clientMessages = synchronizedMessages()
+        val manifest = SmpSyncManifest(
+            appVersion = "1.0",
+            generatedAt = 123L,
+            songs = listOf(
+                SmpSyncSongEntry(
+                    songId = "song-1",
+                    title = "Song one",
+                    fullSongHash = "song-hash"
+                )
+            )
+        )
+        val server = testServer()
+        val port = server.start(this) { message ->
+            serverMessages += message
+            if (message is SyncManifestRequestMessage) {
+                launch {
+                    server.send(
+                        SyncManifestPayloadMessage.fromManifest(
+                            requestId = message.requestId,
+                            manifest = manifest,
+                            seq = 2L
+                        )
+                    )
+                }
+            }
+        }
+        val client = testClient(port)
+
+        try {
+            assertTrue(client.connect(this) { message -> clientMessages += message })
+            assertTrue(waitUntil { server.session.connected && client.session.connected })
+
+            assertTrue(client.send(SyncManifestRequestMessage(requestId = "request-1", seq = 1L)))
+
+            assertTrue(waitUntil {
+                serverMessages.any { it is SyncManifestRequestMessage } &&
+                    clientMessages.any { it is SyncManifestPayloadMessage }
+            })
+            val payload = clientMessages.filterIsInstance<SyncManifestPayloadMessage>().first()
+            assertEquals("request-1", payload.requestId)
+            assertEquals(manifest, payload.parseManifestOrNull())
         } finally {
             client.close()
             server.close()

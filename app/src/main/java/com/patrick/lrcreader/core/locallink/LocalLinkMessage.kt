@@ -1,5 +1,6 @@
 package com.patrick.lrcreader.core.locallink
 
+import com.patrick.lrcreader.core.sync.SmpSyncManifest
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -21,6 +22,8 @@ sealed interface LocalLinkMessage {
         const val TYPE_CLOCK = "clock"
         const val TYPE_PING = "ping"
         const val TYPE_RECEIVER_STATUS = "receiver_status"
+        const val TYPE_SYNC_MANIFEST_REQUEST = "sync_manifest_request"
+        const val TYPE_SYNC_MANIFEST_PAYLOAD = "sync_manifest_payload"
 
         fun fromJsonString(rawJson: String): LocalLinkMessage {
             return runCatching {
@@ -60,12 +63,86 @@ sealed interface LocalLinkMessage {
                 TYPE_CLOCK -> ClockMessage.fromJson(json)
                 TYPE_PING -> PingMessage.fromJson(json)
                 TYPE_RECEIVER_STATUS -> ReceiverStatusMessage.fromJson(json)
+                TYPE_SYNC_MANIFEST_REQUEST -> SyncManifestRequestMessage.fromJson(json)
+                TYPE_SYNC_MANIFEST_PAYLOAD -> SyncManifestPayloadMessage.fromJson(json)
                 else -> UnknownMessage(
                     rawType = type,
                     rawJson = json.toString(),
                     reason = "unknown_type"
                 )
             }
+        }
+    }
+}
+
+data class SyncManifestRequestMessage(
+    val requestId: String,
+    val seq: Long,
+    override val protocol: String = LocalLinkMessage.PROTOCOL,
+    override val version: Int = LocalLinkMessage.VERSION
+) : LocalLinkMessage {
+    override val type: String = LocalLinkMessage.TYPE_SYNC_MANIFEST_REQUEST
+
+    override fun toJson(): JSONObject = baseJson(type, protocol, version).apply {
+        put("requestId", requestId)
+        put("seq", seq.coerceAtLeast(0L))
+    }
+
+    companion object {
+        internal fun fromJson(json: JSONObject): SyncManifestRequestMessage {
+            return SyncManifestRequestMessage(
+                requestId = json.optString("requestId"),
+                seq = json.optLong("seq").coerceAtLeast(0L)
+            )
+        }
+    }
+}
+
+data class SyncManifestPayloadMessage(
+    val requestId: String,
+    val manifestJson: String,
+    val seq: Long,
+    override val protocol: String = LocalLinkMessage.PROTOCOL,
+    override val version: Int = LocalLinkMessage.VERSION
+) : LocalLinkMessage {
+    override val type: String = LocalLinkMessage.TYPE_SYNC_MANIFEST_PAYLOAD
+
+    override fun toJson(): JSONObject = baseJson(type, protocol, version).apply {
+        put("requestId", requestId)
+        put("manifestJson", manifestJson)
+        put("seq", seq.coerceAtLeast(0L))
+    }
+
+    fun parseManifestOrNull(): SmpSyncManifest? {
+        if (manifestJson.length > MAX_MANIFEST_JSON_CHARS) return null
+        return SmpSyncManifest.fromJsonOrNull(manifestJson)
+    }
+
+    companion object {
+        private const val MAX_MANIFEST_JSON_CHARS = 2_000_000
+
+        fun fromManifest(
+            requestId: String,
+            manifest: SmpSyncManifest,
+            seq: Long
+        ): SyncManifestPayloadMessage {
+            return SyncManifestPayloadMessage(
+                requestId = requestId,
+                manifestJson = manifest.toJsonString(indentSpaces = 0),
+                seq = seq
+            )
+        }
+
+        internal fun fromJson(json: JSONObject): SyncManifestPayloadMessage {
+            val manifestJson = json.optString("manifestJson")
+            if (manifestJson.length > MAX_MANIFEST_JSON_CHARS) {
+                error("sync_manifest_too_large")
+            }
+            return SyncManifestPayloadMessage(
+                requestId = json.optString("requestId"),
+                manifestJson = manifestJson,
+                seq = json.optLong("seq").coerceAtLeast(0L)
+            )
         }
     }
 }

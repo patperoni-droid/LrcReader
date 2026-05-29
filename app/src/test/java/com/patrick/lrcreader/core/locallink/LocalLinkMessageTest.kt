@@ -1,5 +1,7 @@
 package com.patrick.lrcreader.core.locallink
 
+import com.patrick.lrcreader.core.sync.SmpSyncManifest
+import com.patrick.lrcreader.core.sync.SmpSyncSongEntry
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -56,6 +58,57 @@ class LocalLinkMessageTest {
         val restored = LocalLinkMessage.fromJsonString(message.toJsonString())
 
         assertEquals(message, restored)
+    }
+
+    @Test
+    fun syncManifestRequest_roundTrip_preservesFields() {
+        val message = SyncManifestRequestMessage(
+            requestId = "request-1",
+            seq = 12L
+        )
+
+        val restored = LocalLinkMessage.fromJsonString(message.toJsonString())
+
+        assertEquals(message, restored)
+    }
+
+    @Test
+    fun syncManifestPayload_roundTrip_preservesManifest() {
+        val manifest = SmpSyncManifest(
+            appVersion = "1.0",
+            generatedAt = 123L,
+            songs = listOf(
+                SmpSyncSongEntry(
+                    songId = "song-1",
+                    title = "Song one",
+                    fullSongHash = "song-hash"
+                )
+            )
+        )
+        val message = SyncManifestPayloadMessage.fromManifest(
+            requestId = "request-1",
+            manifest = manifest,
+            seq = 13L
+        )
+
+        val restored = LocalLinkMessage.fromJsonString(message.toJsonString())
+
+        assertTrue(restored is SyncManifestPayloadMessage)
+        restored as SyncManifestPayloadMessage
+        assertEquals("request-1", restored.requestId)
+        assertEquals(13L, restored.seq)
+        assertEquals(manifest, restored.parseManifestOrNull())
+    }
+
+    @Test
+    fun syncManifestPayload_invalidManifest_returnsNullWithoutThrowing() {
+        val message = SyncManifestPayloadMessage(
+            requestId = "request-1",
+            manifestJson = "{not-json",
+            seq = 14L
+        )
+
+        assertEquals(null, message.parseManifestOrNull())
     }
 
     @Test
