@@ -1,6 +1,8 @@
 package com.patrick.lrcreader.ui.sync
 
+import android.content.Context
 import androidx.compose.foundation.background
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -8,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -34,6 +37,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -63,12 +67,19 @@ import java.net.Inet4Address
 import java.net.NetworkInterface
 import java.util.Collections
 
+private const val SMP_SYNC_PREFS = "smp_sync_debug"
+private const val SMP_SYNC_PREF_HOST = "host"
+private const val SMP_SYNC_PREF_PORT = "port"
+
 @Composable
 fun SmpSyncDebugScreen(
     modifier: Modifier = Modifier,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
+    val prefs = remember(context) {
+        context.getSharedPreferences(SMP_SYNC_PREFS, Context.MODE_PRIVATE)
+    }
     val scope = rememberCoroutineScope()
     val localIp = remember { findLocalIpv4Address() ?: "127.0.0.1" }
     val hostDeviceName = stringResource(R.string.smp_sync_debug_host_device_name)
@@ -84,13 +95,21 @@ fun SmpSyncDebugScreen(
     var server by remember { mutableStateOf<LocalLinkServer?>(null) }
     var client by remember { mutableStateOf<LocalLinkClient?>(null) }
     var boundPort by remember { mutableStateOf<Int?>(null) }
-    var joinHost by remember { mutableStateOf("") }
-    var joinPortText by remember { mutableStateOf("") }
+    var joinHost by remember { mutableStateOf(prefs.getString(SMP_SYNC_PREF_HOST, "").orEmpty()) }
+    var joinPortText by remember { mutableStateOf(prefs.getString(SMP_SYNC_PREF_PORT, "").orEmpty()) }
     var remoteDeviceName by remember { mutableStateOf<String?>(null) }
     var statusRes by remember { mutableStateOf(R.string.smp_sync_debug_status_idle) }
     var statusDetail by remember { mutableStateOf<String?>(null) }
     var seq by remember { mutableLongStateOf(1L) }
     val isBusy = isGenerating || isConnecting
+    val hasSavedConnection = joinHost.isNotBlank() && joinPortText.isNotBlank()
+
+    fun saveJoinTarget() {
+        prefs.edit()
+            .putString(SMP_SYNC_PREF_HOST, joinHost.trim())
+            .putString(SMP_SYNC_PREF_PORT, joinPortText.trim())
+            .apply()
+    }
 
     suspend fun buildLocalManifest(deviceId: String? = null): SmpSyncManifest {
         return SmpSyncManifestGenerator().generate(
@@ -151,6 +170,7 @@ fun SmpSyncDebugScreen(
                 val generated = buildLocalManifest()
                 localManifest = generated
                 if (compareAfterGenerate) {
+                    statusRes = R.string.smp_sync_debug_comparing
                     val fixture = buildDryRunTargetFixture(generated)
                     summary = buildSummary(
                         source = generated,
@@ -158,8 +178,10 @@ fun SmpSyncDebugScreen(
                     )
                     comparedManifest = fixture
                     comparedManifestTitleRes = R.string.smp_sync_debug_fixture_manifest
+                    statusRes = R.string.smp_sync_debug_summary_ready
                 }
             }.onFailure { error ->
+                statusRes = R.string.smp_sync_debug_exchange_error
                 errorMessage = error.message
                     ?: context.getString(R.string.smp_sync_debug_error)
             }
@@ -176,9 +198,11 @@ fun SmpSyncDebugScreen(
             isGenerating = true
             errorMessage = null
             statusDetail = null
+            statusRes = R.string.smp_sync_debug_generating_local_manifest
             runCatching {
                 val generated = buildLocalManifest(deviceId = "smp-sync-local")
                 localManifest = generated
+                statusRes = R.string.smp_sync_debug_sending_manifest
                 val payload = serializeManifestPayload(
                     requestId = requestId,
                     manifest = generated,
@@ -191,6 +215,7 @@ fun SmpSyncDebugScreen(
                     R.string.local_link_no_receiver_connected
                 }
             }.onFailure { error ->
+                statusRes = R.string.smp_sync_debug_exchange_error
                 errorMessage = error.message
                     ?: context.getString(R.string.smp_sync_debug_error)
             }
@@ -204,6 +229,7 @@ fun SmpSyncDebugScreen(
             isGenerating = true
             errorMessage = null
             statusDetail = null
+            statusRes = R.string.smp_sync_debug_receiving_manifest
             runCatching {
                 val remote = parseManifestPayload(message)
                 if (remote == null) {
@@ -213,6 +239,7 @@ fun SmpSyncDebugScreen(
                     return@runCatching
                 }
                 val local = buildLocalManifest(deviceId = "smp-sync-local")
+                statusRes = R.string.smp_sync_debug_comparing
                 summary = buildSummary(
                     source = remote,
                     target = local
@@ -220,8 +247,9 @@ fun SmpSyncDebugScreen(
                 localManifest = local
                 comparedManifest = remote
                 comparedManifestTitleRes = R.string.smp_sync_debug_remote_manifest
-                statusRes = R.string.smp_sync_debug_manifest_received
+                statusRes = R.string.smp_sync_debug_summary_ready
             }.onFailure { error ->
+                statusRes = R.string.smp_sync_debug_exchange_error
                 errorMessage = error.message
                     ?: context.getString(R.string.smp_sync_debug_error)
             }
@@ -233,6 +261,7 @@ fun SmpSyncDebugScreen(
         when (message) {
             is HelloMessage -> {
                 remoteDeviceName = message.deviceName
+                statusDetail = null
                 statusRes = R.string.local_link_state_connected
             }
             is SyncManifestRequestMessage -> {
@@ -252,6 +281,7 @@ fun SmpSyncDebugScreen(
         when (message) {
             is HelloMessage -> {
                 remoteDeviceName = message.deviceName
+                statusDetail = null
                 statusRes = R.string.smp_sync_debug_waiting_for_remote
             }
             is SyncManifestPayloadMessage -> {
@@ -283,13 +313,14 @@ fun SmpSyncDebugScreen(
                 }
             }.onSuccess { startedPort ->
                 boundPort = startedPort
-                statusRes = R.string.smp_sync_debug_session_ready
+                statusRes = R.string.smp_sync_debug_waiting_device
             }.onFailure { error ->
                 nextServer.close()
                 server = null
                 boundPort = null
-                statusRes = R.string.local_link_server_start_failed
-                statusDetail = error.message ?: error::class.java.simpleName
+                statusRes = R.string.smp_sync_debug_connection_error
+                statusDetail = error.message
+                    ?: context.getString(R.string.local_link_server_start_failed)
             }
         }
     }
@@ -298,9 +329,11 @@ fun SmpSyncDebugScreen(
         if (isBusy) return
         val port = joinPortText.toIntOrNull()
         if (joinHost.isBlank() || port == null) {
-            statusRes = R.string.local_link_invalid_address
+            statusRes = R.string.smp_sync_debug_connection_error
+            statusDetail = context.getString(R.string.local_link_invalid_address)
             return
         }
+        saveJoinTarget()
         closeLinks()
         comparedManifest = null
         summary = null
@@ -322,8 +355,9 @@ fun SmpSyncDebugScreen(
             isConnecting = false
             if (!connected) {
                 client = null
-                statusRes = R.string.local_link_connection_failed
+                statusRes = R.string.smp_sync_debug_connection_error
                 statusDetail = nextClient.lastFailureReason
+                    ?: context.getString(R.string.local_link_connection_failed)
                 return@launch
             }
             statusRes = R.string.smp_sync_debug_waiting_for_remote
@@ -335,14 +369,16 @@ fun SmpSyncDebugScreen(
                 )
             )
             if (!sent) {
-                statusRes = R.string.local_link_no_receiver_connected
+                statusRes = R.string.smp_sync_debug_connection_error
+                statusDetail = context.getString(R.string.local_link_no_receiver_connected)
             } else {
                 scope.launch {
                     delay(10_000L)
                     if (client == nextClient &&
                         statusRes == R.string.smp_sync_debug_waiting_for_remote
                     ) {
-                        statusRes = R.string.smp_sync_debug_manifest_timeout
+                        statusRes = R.string.smp_sync_debug_connection_error
+                        statusDetail = context.getString(R.string.smp_sync_debug_manifest_timeout)
                     }
                 }
             }
@@ -366,6 +402,7 @@ fun SmpSyncDebugScreen(
             .fillMaxSize()
             .background(backgroundBrush)
             .verticalScroll(rememberScrollState())
+            .imePadding()
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
@@ -468,8 +505,10 @@ fun SmpSyncDebugScreen(
             isBusy = isBusy,
             isHosting = server != null,
             isJoined = client != null,
+            hasSavedConnection = hasSavedConnection,
             onCreateSession = { createSession() },
             onJoinSession = { joinSession() },
+            onReconnect = { joinSession() },
             onStopSession = { closeLinks() }
         )
 
@@ -505,10 +544,31 @@ private fun LocalLinkDryRunCard(
     isBusy: Boolean,
     isHosting: Boolean,
     isJoined: Boolean,
+    hasSavedConnection: Boolean,
     onCreateSession: () -> Unit,
     onJoinSession: () -> Unit,
+    onReconnect: () -> Unit,
     onStopSession: () -> Unit
 ) {
+    val connected = (isHosting || isJoined) && remoteDeviceName != null
+    val connectionStatus = when {
+        connected -> stringResource(R.string.smp_sync_debug_connected_to, remoteDeviceName.orEmpty())
+        statusRes == R.string.smp_sync_debug_connection_error -> {
+            val detail = statusDetail?.takeIf { it.isNotBlank() }
+                ?: stringResource(R.string.local_link_connection_failed)
+            stringResource(R.string.smp_sync_debug_connection_error_with_detail, detail)
+        }
+        isHosting -> stringResource(R.string.smp_sync_debug_waiting_device)
+        isJoined -> stringResource(R.string.smp_sync_debug_waiting_for_remote)
+        else -> stringResource(R.string.smp_sync_debug_disconnected)
+    }
+    val statusColor = when {
+        connected -> Color(0xFFA5D6A7)
+        statusRes == R.string.smp_sync_debug_connection_error -> Color(0xFFFFAB91)
+        isHosting || isJoined -> Color(0xFFFFCC80)
+        else -> Color(0xFFB0BEC5)
+    }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = Color(0xFF151C20)),
@@ -529,8 +589,18 @@ private fun LocalLinkDryRunCard(
                 color = Color(0xFFB0BEC5),
                 fontSize = 13.sp
             )
+            Text(
+                text = connectionStatus,
+                color = statusColor,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFF202A2F), RoundedCornerShape(8.dp))
+                    .padding(horizontal = 12.dp, vertical = 10.dp)
+            )
             InfoLine(
-                label = stringResource(R.string.local_link_status_label),
+                label = stringResource(R.string.smp_sync_debug_exchange_step_label),
                 value = stringResource(statusRes)
             )
             InfoLine(
@@ -545,13 +615,6 @@ private fun LocalLinkDryRunCard(
                 label = stringResource(R.string.local_link_remote_label),
                 value = remoteDeviceName ?: stringResource(R.string.local_link_empty_value)
             )
-            statusDetail?.let { detail ->
-                Text(
-                    text = detail,
-                    color = Color(0xFFFFCCBC),
-                    fontSize = 12.sp
-                )
-            }
             Button(
                 onClick = onCreateSession,
                 enabled = !isBusy && !isHosting && !isJoined,
@@ -562,6 +625,11 @@ private fun LocalLinkDryRunCard(
             Text(
                 text = stringResource(R.string.smp_sync_debug_join_hint),
                 color = Color(0xFF90A4AE),
+                fontSize = 12.sp
+            )
+            Text(
+                text = stringResource(R.string.smp_sync_debug_qr_todo),
+                color = Color(0xFF78909C),
                 fontSize = 12.sp
             )
             OutlinedTextField(
@@ -576,18 +644,26 @@ private fun LocalLinkDryRunCard(
                 onValueChange = onJoinPortChange,
                 label = { Text(stringResource(R.string.local_link_port_label)) },
                 singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 modifier = Modifier.fillMaxWidth()
             )
+            Button(
+                onClick = onJoinSession,
+                enabled = !isBusy && !isHosting && !isJoined,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(text = stringResource(R.string.local_link_connect))
+            }
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Button(
-                    onClick = onJoinSession,
-                    enabled = !isBusy && !isHosting && !isJoined,
+                TextButton(
+                    onClick = onReconnect,
+                    enabled = hasSavedConnection && !isBusy && !isHosting && !isJoined,
                     modifier = Modifier.weight(1f)
                 ) {
-                    Text(text = stringResource(R.string.smp_sync_debug_join_session))
+                    Text(text = stringResource(R.string.local_link_reconnect))
                 }
                 TextButton(
                     onClick = onStopSession,
