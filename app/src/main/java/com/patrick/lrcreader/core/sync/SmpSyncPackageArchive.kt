@@ -2,6 +2,8 @@ package com.patrick.lrcreader.core.sync
 
 import android.content.Context
 import android.net.Uri
+import android.os.SystemClock
+import android.util.Log
 import com.patrick.lrcreader.core.PlaylistItem
 import com.patrick.lrcreader.core.PlaylistRepository
 import com.patrick.lrcreader.core.buildSmpItem
@@ -13,7 +15,9 @@ import com.patrick.lrcreader.smp.SmpSecureImportPipeline
 import com.patrick.lrcreader.ui.library.SongVariantFamily
 import com.patrick.lrcreader.ui.library.SongVariantFamiliesStore
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -29,6 +33,36 @@ private const val SYNC_PLAYLIST_STATE_ENTRY = "playlist_state.json"
 private const val SYNC_SONGS_DIR = "songs"
 private const val SYNC_BUFFER_SIZE = 128 * 1024
 private const val SYNC_MAX_PACKAGE_BYTES = 2_000L * 1024L * 1024L
+private const val SYNC_PACKAGE_DIAG_TAG = "SMP_SYNC_PACKAGE_DIAG"
+private const val SYNC_PACKAGE_ITEM_TIMEOUT_MS = 120_000L
+
+enum class SmpSyncPackageProgressPhase {
+    STARTED,
+    SCANNED_LIBRARY,
+    BUILT_PLAN_ITEMS,
+    ITEM_STARTED,
+    ITEM_FINISHED,
+    PLAYLISTS_STARTED,
+    PLAYLISTS_FINISHED,
+    HASH_STARTED,
+    FINISHED
+}
+
+data class SmpSyncPackageProgress(
+    val phase: SmpSyncPackageProgressPhase,
+    val itemIndex: Int = 0,
+    val itemCount: Int = 0,
+    val entityId: String? = null,
+    val title: String? = null,
+    val elapsedMs: Long = 0L
+)
+
+class SmpSyncPackagePreparationException(
+    message: String,
+    val entityId: String? = null,
+    val title: String? = null,
+    cause: Throwable? = null
+) : Exception(message, cause)
 
 data class SmpSyncPreparedPackage(
     val syncPackage: SmpSyncPackage,
@@ -73,58 +107,142 @@ class SmpSyncPackageArchiveBuilder(private val context: Context) {
 
     suspend fun build(
         sourceManifest: SmpSyncManifest,
-        plan: SyncPlan
+        plan: SyncPlan,
+        onProgress: (SmpSyncPackageProgress) -> Unit = {}
     ): SmpSyncPreparedPackage = withContext(Dispatchers.IO) {
+        val startedAt = SystemClock.elapsedRealtime()
+        fun elapsed(): Long = SystemClock.elapsedRealtime() - startedAt
+        fun log(message: String) {
+            Log.i(SYNC_PACKAGE_DIAG_TAG, message)
+        }
+        fun progress(
+            phase: SmpSyncPackageProgressPhase,
+            itemIndex: Int = 0,
+            itemCount: Int = 0,
+            item: SmpSyncPackageItem? = null
+        ) {
+            onProgress(
+                SmpSyncPackageProgress(
+                    phase = phase,
+                    itemIndex = itemIndex,
+                    itemCount = itemCount,
+                    entityId = item?.entityId,
+                    title = item?.title,
+                    elapsedMs = elapsed()
+                )
+            )
+        }
+
+        log("prepare:start planItems=${plan.items.size} sourceSongs=${sourceManifest.songs.size} playlists=${sourceManifest.playlists.size} families=${sourceManifest.families.size}")
+        progress(SmpSyncPackageProgressPhase.STARTED)
         val scanner = SmpLibraryScanner(context)
         val songsById = scanner.listSongs().associateBy { it.id }
+        log("prepare:library_scanned songs=${songsById.size} elapsedMs=${elapsed()}")
+        progress(SmpSyncPackageProgressPhase.SCANNED_LIBRARY)
         val basePackage = SyncPackageBuilder().build(
             sourceManifest = sourceManifest,
             plan = plan
         )
+        log("prepare:package_items total=${basePackage.itemCount} fullSongs=${basePackage.fullSongCount} playlists=${basePackage.playlistStateCount} families=${basePackage.familyStateCount} elapsedMs=${elapsed()}")
+        progress(SmpSyncPackageProgressPhase.BUILT_PLAN_ITEMS)
         val packageFile = createTempPackageFile(context)
         val exportedFiles = mutableListOf<File>()
         val updatedItems = mutableListOf<SmpSyncPackageItem>()
 
         try {
             ZipOutputStream(packageFile.outputStream().buffered()).use { zip ->
-                basePackage.items.forEach { item ->
+                basePackage.items.forEachIndexed { index, item ->
+                    progress(
+                        phase = SmpSyncPackageProgressPhase.ITEM_STARTED,
+                        itemIndex = index + 1,
+                        itemCount = basePackage.itemCount,
+                        item = item
+                    )
+                    log("prepare:item_start index=${index + 1}/${basePackage.itemCount} kind=${item.kind} entityId=${item.entityId} title=${item.title ?: "null"} elapsedMs=${elapsed()}")
                     when (item.kind) {
                         SmpSyncPackageKind.SONG_FULL -> {
-                            val song = songsById[item.entityId] ?: return@forEach
-                            val smpFile = SmpExporter.exportSongUnitToCacheSmp(context, song)
-                                ?: return@forEach
-                            exportedFiles += smpFile
-                            val entryName = "$SYNC_SONGS_DIR/${item.entityId}.smp"
-                            zip.putNextEntry(ZipEntry(entryName))
-                            smpFile.inputStream().buffered().use { input ->
-                                input.copyTo(zip, SYNC_BUFFER_SIZE)
+                            try {
+                                withTimeout(SYNC_PACKAGE_ITEM_TIMEOUT_MS) {
+                                    val song = songsById[item.entityId]
+                                        ?: throw SmpSyncPackagePreparationException(
+                                            message = "missing_song",
+                                            entityId = item.entityId,
+                                            title = item.title
+                                        )
+                                    log("prepare:export_song_start songId=${song.id} title=${song.title} elapsedMs=${elapsed()}")
+                                    val smpFile = SmpExporter.exportSongUnitToCacheSmp(context, song)
+                                        ?: throw SmpSyncPackagePreparationException(
+                                            message = "export_failed",
+                                            entityId = item.entityId,
+                                            title = item.title
+                                        )
+                                    exportedFiles += smpFile
+                                    log("prepare:export_song_done songId=${song.id} bytes=${smpFile.length()} elapsedMs=${elapsed()}")
+                                    val entryName = "$SYNC_SONGS_DIR/${item.entityId}.smp"
+                                    zip.putNextEntry(ZipEntry(entryName))
+                                    smpFile.inputStream().buffered().use { input ->
+                                        input.copyTo(zip, SYNC_BUFFER_SIZE)
+                                    }
+                                    zip.closeEntry()
+                                    updatedItems += item.copy(
+                                        estimatedBytes = smpFile.length().takeIf { it >= 0L },
+                                        contentEntry = entryName
+                                    )
+                                }
+                            } catch (error: TimeoutCancellationException) {
+                                Log.e(SYNC_PACKAGE_DIAG_TAG, "prepare:item_timeout entityId=${item.entityId} title=${item.title ?: "null"} elapsedMs=${elapsed()}", error)
+                                throw SmpSyncPackagePreparationException(
+                                    message = "item_timeout",
+                                    entityId = item.entityId,
+                                    title = item.title,
+                                    cause = error
+                                )
                             }
-                            zip.closeEntry()
-                            updatedItems += item.copy(
-                                estimatedBytes = smpFile.length().takeIf { it >= 0L },
-                                contentEntry = entryName
-                            )
                         }
 
                         else -> updatedItems += item
                     }
+                    progress(
+                        phase = SmpSyncPackageProgressPhase.ITEM_FINISHED,
+                        itemIndex = index + 1,
+                        itemCount = basePackage.itemCount,
+                        item = item
+                    )
+                    log("prepare:item_done index=${index + 1}/${basePackage.itemCount} kind=${item.kind} entityId=${item.entityId} elapsedMs=${elapsed()}")
                 }
 
                 val finalPackage = basePackage.copy(items = updatedItems)
                 writeStringEntry(zip, SYNC_SOURCE_ANALYSIS_ENTRY, sourceManifest.toJsonString(indentSpaces = 0))
+                progress(SmpSyncPackageProgressPhase.PLAYLISTS_STARTED)
+                log("prepare:playlist_family_state_start elapsedMs=${elapsed()}")
                 buildPlaylistState(finalPackage)?.let { state ->
                     writeStringEntry(zip, SYNC_PLAYLIST_STATE_ENTRY, state.toJsonString())
                 }
+                progress(SmpSyncPackageProgressPhase.PLAYLISTS_FINISHED)
+                log("prepare:playlist_family_state_done elapsedMs=${elapsed()}")
                 writeStringEntry(zip, SYNC_PACKAGE_ENTRY, finalPackage.toJsonString(indentSpaces = 0))
             }
 
             val finalPackage = readPackageFromArchive(packageFile)
                 ?: basePackage.copy(items = updatedItems)
+            progress(SmpSyncPackageProgressPhase.HASH_STARTED)
+            log("prepare:sha_start bytes=${packageFile.length()} elapsedMs=${elapsed()}")
+            val packageSha = sha256(packageFile)
+            log("prepare:finished bytes=${packageFile.length()} elapsedMs=${elapsed()}")
+            progress(SmpSyncPackageProgressPhase.FINISHED)
             SmpSyncPreparedPackage(
                 syncPackage = finalPackage,
                 file = packageFile,
-                sha256 = sha256(packageFile)
+                sha256 = packageSha
             )
+        } catch (error: SmpSyncPackagePreparationException) {
+            Log.e(SYNC_PACKAGE_DIAG_TAG, "prepare:failed entityId=${error.entityId ?: "null"} title=${error.title ?: "null"} elapsedMs=${elapsed()} reason=${error.message}", error)
+            runCatching { packageFile.delete() }
+            throw error
+        } catch (error: Exception) {
+            Log.e(SYNC_PACKAGE_DIAG_TAG, "prepare:failed elapsedMs=${elapsed()}", error)
+            runCatching { packageFile.delete() }
+            throw error
         } finally {
             exportedFiles.forEach { file ->
                 runCatching { file.delete() }

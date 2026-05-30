@@ -757,6 +757,7 @@
     <string name="smp_sync_debug_connection_error">Error de conexión</string>
     <string name="smp_sync_debug_connection_error_with_detail">Error de conexión: %1$s</string>
     <string name="smp_sync_debug_exchange_step_label">Paso</string>
+    <string name="smp_sync_debug_exchange_detail_label">Detalle</string>
     <string name="smp_sync_debug_generating_local_manifest">Analizando biblioteca local…</string>
     <string name="smp_sync_debug_sending_manifest">Enviando análisis de biblioteca…</string>
     <string name="smp_sync_debug_receiving_manifest">Recibiendo análisis del teléfono principal…</string>
@@ -774,6 +775,19 @@
     <string name="smp_sync_debug_prepare_sync">Preparar sincronización</string>
     <string name="smp_sync_debug_preparing_sync">Preparando sincronización…</string>
     <string name="smp_sync_debug_ready_to_sync">Listo para sincronizar</string>
+    <string name="smp_sync_debug_package_prepare_starting">Preparando %1$d elementos…</string>
+    <string name="smp_sync_debug_package_prepare_started">Preparación iniciada</string>
+    <string name="smp_sync_debug_package_prepare_scanned">Biblioteca revisada</string>
+    <string name="smp_sync_debug_package_prepare_items_ready">Contenido a preparar identificado</string>
+    <string name="smp_sync_debug_package_prepare_item">%1$d/%2$d: %3$s</string>
+    <string name="smp_sync_debug_package_prepare_item_done">%1$d/%2$d listo: %3$s</string>
+    <string name="smp_sync_debug_package_prepare_playlists">Preparando playlists y familias…</string>
+    <string name="smp_sync_debug_package_prepare_playlists_done">Playlists y familias listas</string>
+    <string name="smp_sync_debug_package_prepare_checking">Verificando contenido…</string>
+    <string name="smp_sync_debug_package_prepare_finished">Preparación terminada</string>
+    <string name="smp_sync_debug_package_prepare_done">%1$d elementos listos</string>
+    <string name="smp_sync_debug_package_prepare_timeout">La preparación tardó demasiado. Revisa los logs SMP_SYNC_PACKAGE_DIAG para ver el elemento bloqueado.</string>
+    <string name="smp_sync_debug_package_prepare_failed_item">No se pudo preparar: %1$s</string>
     <string name="smp_sync_debug_package_title">Preparación</string>
     <string name="smp_sync_debug_package_empty">Todavía no hay contenido preparado.</string>
     <string name="smp_sync_debug_package_items">%1$d elementos para preparar</string>

@@ -839,6 +839,7 @@
     <string name="smp_sync_debug_connection_error">Connection error</string>
     <string name="smp_sync_debug_connection_error_with_detail">Connection error: %1$s</string>
     <string name="smp_sync_debug_exchange_step_label">Step</string>
+    <string name="smp_sync_debug_exchange_detail_label">Detail</string>
     <string name="smp_sync_debug_generating_local_manifest">Analyzing local library…</string>
     <string name="smp_sync_debug_sending_manifest">Sending library analysis…</string>
     <string name="smp_sync_debug_receiving_manifest">Receiving main phone analysis…</string>
@@ -856,6 +857,19 @@
     <string name="smp_sync_debug_prepare_sync">Prepare sync</string>
     <string name="smp_sync_debug_preparing_sync">Preparing sync…</string>
     <string name="smp_sync_debug_ready_to_sync">Ready to sync</string>
+    <string name="smp_sync_debug_package_prepare_starting">Preparing %1$d items…</string>
+    <string name="smp_sync_debug_package_prepare_started">Preparation started</string>
+    <string name="smp_sync_debug_package_prepare_scanned">Library scanned again</string>
+    <string name="smp_sync_debug_package_prepare_items_ready">Content to prepare identified</string>
+    <string name="smp_sync_debug_package_prepare_item">%1$d/%2$d: %3$s</string>
+    <string name="smp_sync_debug_package_prepare_item_done">%1$d/%2$d ready: %3$s</string>
+    <string name="smp_sync_debug_package_prepare_playlists">Preparing playlists and families…</string>
+    <string name="smp_sync_debug_package_prepare_playlists_done">Playlists and families ready</string>
+    <string name="smp_sync_debug_package_prepare_checking">Checking content…</string>
+    <string name="smp_sync_debug_package_prepare_finished">Preparation complete</string>
+    <string name="smp_sync_debug_package_prepare_done">%1$d items ready</string>
+    <string name="smp_sync_debug_package_prepare_timeout">Preparation took too long. Check SMP_SYNC_PACKAGE_DIAG logs for the blocked item.</string>
+    <string name="smp_sync_debug_package_prepare_failed_item">Preparation failed on: %1$s</string>
     <string name="smp_sync_debug_package_title">Preparation</string>
     <string name="smp_sync_debug_package_empty">Nothing prepared yet.</string>
     <string name="smp_sync_debug_package_items">%1$d items to prepare</string>

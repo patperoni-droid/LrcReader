@@ -1,6 +1,7 @@
 package com.patrick.lrcreader.ui.sync
 
 import android.content.Context
+import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Arrangement
@@ -57,6 +58,9 @@ import com.patrick.lrcreader.core.sync.SmpSyncManifestGenerator
 import com.patrick.lrcreader.core.sync.SmpSyncPackage
 import com.patrick.lrcreader.core.sync.SmpSyncPackageArchiveBuilder
 import com.patrick.lrcreader.core.sync.SmpSyncPackageArchiveReader
+import com.patrick.lrcreader.core.sync.SmpSyncPackagePreparationException
+import com.patrick.lrcreader.core.sync.SmpSyncPackageProgress
+import com.patrick.lrcreader.core.sync.SmpSyncPackageProgressPhase
 import com.patrick.lrcreader.core.sync.SmpSyncPackageImportResult
 import com.patrick.lrcreader.core.sync.SmpSyncPreparedPackage
 import com.patrick.lrcreader.core.sync.SmpSyncReceivedPackage
@@ -72,9 +76,11 @@ import com.patrick.lrcreader.exo.BuildConfig
 import com.patrick.lrcreader.exo.R
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import java.io.File
 import java.net.Inet4Address
 import java.net.NetworkInterface
@@ -86,6 +92,8 @@ private const val SMP_SYNC_PREFS = "smp_sync_debug"
 private const val SMP_SYNC_PREF_HOST = "host"
 private const val SMP_SYNC_PREF_PORT = "port"
 private const val SMP_SYNC_PACKAGE_CHUNK_BYTES = 64 * 1024
+private const val SMP_SYNC_PACKAGE_PREPARE_TIMEOUT_MS = 300_000L
+private const val SMP_SYNC_PACKAGE_DIAG_TAG = "SMP_SYNC_PACKAGE_DIAG"
 
 @Composable
 fun SmpSyncDebugScreen(
@@ -195,12 +203,16 @@ fun SmpSyncDebugScreen(
 
     suspend fun buildPackageArchive(
         source: SmpSyncManifest,
-        plan: SyncPlan
+        plan: SyncPlan,
+        onProgress: (SmpSyncPackageProgress) -> Unit
     ): SmpSyncPreparedPackage {
-        return SmpSyncPackageArchiveBuilder(context.applicationContext).build(
-            sourceManifest = source,
-            plan = plan
-        )
+        return withTimeout(SMP_SYNC_PACKAGE_PREPARE_TIMEOUT_MS) {
+            SmpSyncPackageArchiveBuilder(context.applicationContext).build(
+                sourceManifest = source,
+                plan = plan,
+                onProgress = onProgress
+            )
+        }
     }
 
     fun clearComparison() {
@@ -605,16 +617,26 @@ fun SmpSyncDebugScreen(
         val plan = syncPlan ?: return
         if (isBusy) return
         scope.launch {
+            val startedAt = System.currentTimeMillis()
             isPreparingPackage = true
             errorMessage = null
-            statusDetail = null
+            statusDetail = context.getString(R.string.smp_sync_debug_package_prepare_starting, plan.items.size)
             statusRes = R.string.smp_sync_debug_preparing_sync
+            Log.i(
+                SMP_SYNC_PACKAGE_DIAG_TAG,
+                "ui:prepare_start planItems=${plan.items.size} sourceSongs=${source.songs.size} playlists=${source.playlists.size} families=${source.families.size}"
+            )
             runCatching {
                 val hosting = server != null
                 if (hosting) {
                     val prepared = buildPackageArchive(
                         source = source,
-                        plan = plan
+                        plan = plan,
+                        onProgress = { progress ->
+                            scope.launch {
+                                statusDetail = packageProgressText(context, progress)
+                            }
+                        }
                     )
                     preparedPackage = prepared
                     syncPackage = prepared.syncPackage
@@ -626,12 +648,42 @@ fun SmpSyncDebugScreen(
                     )
                 }
                 statusRes = R.string.smp_sync_debug_ready_to_sync
+                statusDetail = context.getString(
+                    R.string.smp_sync_debug_package_prepare_done,
+                    syncPackage?.itemCount ?: 0
+                )
+                Log.i(
+                    SMP_SYNC_PACKAGE_DIAG_TAG,
+                    "ui:prepare_success items=${syncPackage?.itemCount ?: 0} elapsedMs=${System.currentTimeMillis() - startedAt}"
+                )
             }.onFailure { error ->
+                Log.e(
+                    SMP_SYNC_PACKAGE_DIAG_TAG,
+                    "ui:prepare_failed elapsedMs=${System.currentTimeMillis() - startedAt}",
+                    error
+                )
                 statusRes = R.string.smp_sync_debug_exchange_error
-                errorMessage = error.message
-                    ?: context.getString(R.string.smp_sync_debug_error)
+                statusDetail = when (error) {
+                    is TimeoutCancellationException -> {
+                        context.getString(R.string.smp_sync_debug_package_prepare_timeout)
+                    }
+                    is SmpSyncPackagePreparationException -> {
+                        context.getString(
+                            R.string.smp_sync_debug_package_prepare_failed_item,
+                            error.title?.takeIf { it.isNotBlank() }
+                                ?: error.entityId?.takeIf { it.isNotBlank() }
+                                ?: context.getString(R.string.local_link_empty_value)
+                        )
+                    }
+                    else -> error.message ?: context.getString(R.string.smp_sync_debug_error)
+                }
+                errorMessage = statusDetail
             }
             isPreparingPackage = false
+            Log.i(
+                SMP_SYNC_PACKAGE_DIAG_TAG,
+                "ui:prepare_loading_false elapsedMs=${System.currentTimeMillis() - startedAt}"
+            )
         }
     }
 
@@ -991,6 +1043,12 @@ private fun LocalLinkDryRunCard(
                 label = stringResource(R.string.smp_sync_debug_exchange_step_label),
                 value = stringResource(statusRes)
             )
+            statusDetail?.takeIf { it.isNotBlank() }?.let { detail ->
+                InfoLine(
+                    label = stringResource(R.string.smp_sync_debug_exchange_detail_label),
+                    value = detail
+                )
+            }
             InfoLine(
                 label = stringResource(R.string.local_link_ip_label),
                 value = localIp
@@ -1498,6 +1556,54 @@ private fun sha256(file: File): String {
         }
     }
     return digest.digest().joinToString("") { "%02x".format(it) }
+}
+
+private fun packageProgressText(
+    context: Context,
+    progress: SmpSyncPackageProgress
+): String {
+    val itemLabel = progress.title?.takeIf { it.isNotBlank() }
+        ?: progress.entityId?.takeIf { it.isNotBlank() }
+        ?: context.getString(R.string.local_link_empty_value)
+    return when (progress.phase) {
+        SmpSyncPackageProgressPhase.STARTED -> {
+            context.getString(R.string.smp_sync_debug_package_prepare_started)
+        }
+        SmpSyncPackageProgressPhase.SCANNED_LIBRARY -> {
+            context.getString(R.string.smp_sync_debug_package_prepare_scanned)
+        }
+        SmpSyncPackageProgressPhase.BUILT_PLAN_ITEMS -> {
+            context.getString(R.string.smp_sync_debug_package_prepare_items_ready)
+        }
+        SmpSyncPackageProgressPhase.ITEM_STARTED -> {
+            context.getString(
+                R.string.smp_sync_debug_package_prepare_item,
+                progress.itemIndex,
+                progress.itemCount,
+                itemLabel
+            )
+        }
+        SmpSyncPackageProgressPhase.ITEM_FINISHED -> {
+            context.getString(
+                R.string.smp_sync_debug_package_prepare_item_done,
+                progress.itemIndex,
+                progress.itemCount,
+                itemLabel
+            )
+        }
+        SmpSyncPackageProgressPhase.PLAYLISTS_STARTED -> {
+            context.getString(R.string.smp_sync_debug_package_prepare_playlists)
+        }
+        SmpSyncPackageProgressPhase.PLAYLISTS_FINISHED -> {
+            context.getString(R.string.smp_sync_debug_package_prepare_playlists_done)
+        }
+        SmpSyncPackageProgressPhase.HASH_STARTED -> {
+            context.getString(R.string.smp_sync_debug_package_prepare_checking)
+        }
+        SmpSyncPackageProgressPhase.FINISHED -> {
+            context.getString(R.string.smp_sync_debug_package_prepare_finished)
+        }
+    }
 }
 
 private data class SyncComparisonResult(
