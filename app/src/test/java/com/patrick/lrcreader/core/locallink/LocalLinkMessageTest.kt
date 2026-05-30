@@ -112,6 +112,40 @@ class LocalLinkMessageTest {
     }
 
     @Test
+    fun syncPackageMessages_roundTrip_preserveTransferFields() {
+        val start = SyncPackageStartMessage(
+            packageId = "package-1",
+            totalBytes = 123_456L,
+            fullSongCount = 3,
+            playlistCount = 2,
+            familyCount = 1,
+            replacementSongCount = 1,
+            seq = 15L
+        )
+        val chunk = SyncPackageChunkMessage.fromBytes(
+            packageId = "package-1",
+            chunkIndex = 2,
+            bytes = "hello".toByteArray(),
+            byteCount = 5,
+            seq = 16L
+        )
+        val end = SyncPackageEndMessage(
+            packageId = "package-1",
+            sha256 = "abc123",
+            seq = 17L
+        )
+
+        assertEquals(start, LocalLinkMessage.fromJsonString(start.toJsonString()))
+        val restoredChunk = LocalLinkMessage.fromJsonString(chunk.toJsonString())
+        assertTrue(restoredChunk is SyncPackageChunkMessage)
+        restoredChunk as SyncPackageChunkMessage
+        assertEquals("package-1", restoredChunk.packageId)
+        assertEquals(2, restoredChunk.chunkIndex)
+        assertEquals("hello", String(restoredChunk.decodedBytes))
+        assertEquals(end, LocalLinkMessage.fromJsonString(end.toJsonString()))
+    }
+
+    @Test
     fun unknownMessage_returnsUnknownWithoutThrowing() {
         val raw = JSONObject()
             .put("type", "future_message")

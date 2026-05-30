@@ -42,7 +42,8 @@ class SyncPackageBuilderTest {
                 entityId = "song_001",
                 title = "Bella Ciao",
                 sourceHash = "song-hash",
-                estimatedBytes = 123_456L
+                estimatedBytes = 123_456L,
+                diffStatus = SyncDiffStatus.ABSENT_ON_B
             ),
             syncPackage.items.single()
         )

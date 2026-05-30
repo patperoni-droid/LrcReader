@@ -46,7 +46,8 @@ class SyncPackageBuilder(
             entityId = song.songId,
             title = song.title,
             sourceHash = song.fullSongHash,
-            estimatedBytes = estimateFullSongBytes(song)
+            estimatedBytes = estimateFullSongBytes(song),
+            diffStatus = planItem.diff.status
         )
     }
 
@@ -66,7 +67,8 @@ class SyncPackageBuilder(
             kind = SmpSyncPackageKind.PLAYLIST_STATE,
             entityId = playlist.identityKey(),
             title = playlist.playlistName,
-            sourceHash = playlist.fullPlaylistHash
+            sourceHash = playlist.fullPlaylistHash,
+            diffStatus = planItem.diff.status
         )
     }
 
@@ -86,7 +88,8 @@ class SyncPackageBuilder(
             kind = SmpSyncPackageKind.FAMILY_STATE,
             entityId = family.familyId,
             title = family.title,
-            sourceHash = family.hash
+            sourceHash = family.hash,
+            diffStatus = planItem.diff.status
         )
     }
 
@@ -105,7 +108,8 @@ class SyncPackageBuilder(
         return SmpSyncPackageItem(
             kind = SmpSyncPackageKind.GLOBAL_STATE,
             entityId = planItem.diff.entityId,
-            sourceHash = globalState.stateHash
+            sourceHash = globalState.stateHash,
+            diffStatus = planItem.diff.status
         )
     }
 

@@ -1,6 +1,8 @@
 package com.patrick.lrcreader.core.locallink
 
 import com.patrick.lrcreader.core.sync.SmpSyncManifest
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -24,6 +26,9 @@ sealed interface LocalLinkMessage {
         const val TYPE_RECEIVER_STATUS = "receiver_status"
         const val TYPE_SYNC_MANIFEST_REQUEST = "sync_manifest_request"
         const val TYPE_SYNC_MANIFEST_PAYLOAD = "sync_manifest_payload"
+        const val TYPE_SYNC_PACKAGE_START = "sync_package_start"
+        const val TYPE_SYNC_PACKAGE_CHUNK = "sync_package_chunk"
+        const val TYPE_SYNC_PACKAGE_END = "sync_package_end"
 
         fun fromJsonString(rawJson: String): LocalLinkMessage {
             return runCatching {
@@ -65,6 +70,9 @@ sealed interface LocalLinkMessage {
                 TYPE_RECEIVER_STATUS -> ReceiverStatusMessage.fromJson(json)
                 TYPE_SYNC_MANIFEST_REQUEST -> SyncManifestRequestMessage.fromJson(json)
                 TYPE_SYNC_MANIFEST_PAYLOAD -> SyncManifestPayloadMessage.fromJson(json)
+                TYPE_SYNC_PACKAGE_START -> SyncPackageStartMessage.fromJson(json)
+                TYPE_SYNC_PACKAGE_CHUNK -> SyncPackageChunkMessage.fromJson(json)
+                TYPE_SYNC_PACKAGE_END -> SyncPackageEndMessage.fromJson(json)
                 else -> UnknownMessage(
                     rawType = type,
                     rawJson = json.toString(),
@@ -141,6 +149,131 @@ data class SyncManifestPayloadMessage(
             return SyncManifestPayloadMessage(
                 requestId = json.optString("requestId"),
                 manifestJson = manifestJson,
+                seq = json.optLong("seq").coerceAtLeast(0L)
+            )
+        }
+    }
+}
+
+data class SyncPackageStartMessage(
+    val packageId: String,
+    val totalBytes: Long,
+    val fullSongCount: Int,
+    val playlistCount: Int,
+    val familyCount: Int,
+    val replacementSongCount: Int,
+    val seq: Long,
+    override val protocol: String = LocalLinkMessage.PROTOCOL,
+    override val version: Int = LocalLinkMessage.VERSION
+) : LocalLinkMessage {
+    override val type: String = LocalLinkMessage.TYPE_SYNC_PACKAGE_START
+
+    override fun toJson(): JSONObject = baseJson(type, protocol, version).apply {
+        put("packageId", packageId)
+        put("totalBytes", totalBytes.coerceAtLeast(0L))
+        put("fullSongCount", fullSongCount.coerceAtLeast(0))
+        put("playlistCount", playlistCount.coerceAtLeast(0))
+        put("familyCount", familyCount.coerceAtLeast(0))
+        put("replacementSongCount", replacementSongCount.coerceAtLeast(0))
+        put("seq", seq.coerceAtLeast(0L))
+    }
+
+    companion object {
+        internal fun fromJson(json: JSONObject): SyncPackageStartMessage {
+            return SyncPackageStartMessage(
+                packageId = json.optString("packageId"),
+                totalBytes = json.optLong("totalBytes").coerceAtLeast(0L),
+                fullSongCount = json.optInt("fullSongCount").coerceAtLeast(0),
+                playlistCount = json.optInt("playlistCount").coerceAtLeast(0),
+                familyCount = json.optInt("familyCount").coerceAtLeast(0),
+                replacementSongCount = json.optInt("replacementSongCount").coerceAtLeast(0),
+                seq = json.optLong("seq").coerceAtLeast(0L)
+            )
+        }
+    }
+}
+
+data class SyncPackageChunkMessage(
+    val packageId: String,
+    val chunkIndex: Int,
+    val dataBase64: String,
+    val seq: Long,
+    override val protocol: String = LocalLinkMessage.PROTOCOL,
+    override val version: Int = LocalLinkMessage.VERSION
+) : LocalLinkMessage {
+    override val type: String = LocalLinkMessage.TYPE_SYNC_PACKAGE_CHUNK
+
+    val decodedBytes: ByteArray
+        @OptIn(ExperimentalEncodingApi::class)
+        get() = Base64.Default.decode(dataBase64)
+
+    override fun toJson(): JSONObject = baseJson(type, protocol, version).apply {
+        put("packageId", packageId)
+        put("chunkIndex", chunkIndex.coerceAtLeast(0))
+        put("dataBase64", dataBase64)
+        put("seq", seq.coerceAtLeast(0L))
+    }
+
+    companion object {
+        private const val MAX_CHUNK_BASE64_CHARS = 256_000
+
+        fun fromBytes(
+            packageId: String,
+            chunkIndex: Int,
+            bytes: ByteArray,
+            byteCount: Int,
+            seq: Long
+        ): SyncPackageChunkMessage {
+            val safeCount = byteCount.coerceIn(0, bytes.size)
+            val encoded = encodeBase64(bytes.copyOfRange(0, safeCount))
+            return SyncPackageChunkMessage(
+                packageId = packageId,
+                chunkIndex = chunkIndex,
+                dataBase64 = encoded,
+                seq = seq
+            )
+        }
+
+        internal fun fromJson(json: JSONObject): SyncPackageChunkMessage {
+            val dataBase64 = json.optString("dataBase64")
+            if (dataBase64.length > MAX_CHUNK_BASE64_CHARS) {
+                error("sync_package_chunk_too_large")
+            }
+            return SyncPackageChunkMessage(
+                packageId = json.optString("packageId"),
+                chunkIndex = json.optInt("chunkIndex").coerceAtLeast(0),
+                dataBase64 = dataBase64,
+                seq = json.optLong("seq").coerceAtLeast(0L)
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalEncodingApi::class)
+private fun encodeBase64(bytes: ByteArray): String {
+    return Base64.Default.encode(bytes)
+}
+
+data class SyncPackageEndMessage(
+    val packageId: String,
+    val sha256: String,
+    val seq: Long,
+    override val protocol: String = LocalLinkMessage.PROTOCOL,
+    override val version: Int = LocalLinkMessage.VERSION
+) : LocalLinkMessage {
+    override val type: String = LocalLinkMessage.TYPE_SYNC_PACKAGE_END
+
+    override fun toJson(): JSONObject = baseJson(type, protocol, version).apply {
+        put("packageId", packageId)
+        put("sha256", sha256)
+        put("seq", seq.coerceAtLeast(0L))
+    }
+
+    companion object {
+        internal fun fromJson(json: JSONObject): SyncPackageEndMessage {
+            return SyncPackageEndMessage(
+                packageId = json.optString("packageId"),
+                sha256 = json.optString("sha256"),
                 seq = json.optLong("seq").coerceAtLeast(0L)
             )
         }

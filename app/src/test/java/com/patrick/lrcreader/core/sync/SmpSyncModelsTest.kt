@@ -157,4 +157,29 @@ class SmpSyncModelsTest {
         assertEquals("", restored.songs[1].audioHash)
         assertFalse(restored.songs[0] == restored.songs[1])
     }
+
+    @Test
+    fun syncPackageJsonRoundTrip_preservesTransferMetadata() {
+        val syncPackage = SmpSyncPackage(
+            generatedAt = 42L,
+            sourceDeviceId = "device-a",
+            items = listOf(
+                SmpSyncPackageItem(
+                    kind = SmpSyncPackageKind.SONG_FULL,
+                    entityId = "song_001",
+                    title = "Bella Ciao",
+                    sourceHash = "hash-a",
+                    estimatedBytes = 123L,
+                    contentEntry = "songs/song_001.smp",
+                    diffStatus = SyncDiffStatus.MODIFIED_ON_A
+                )
+            )
+        )
+
+        val restored = SmpSyncPackage.fromJson(syncPackage.toJsonString())
+
+        assertEquals(syncPackage, restored)
+        assertEquals(123L, restored.estimatedBytes)
+        assertEquals(1, restored.fullSongCount)
+    }
 }

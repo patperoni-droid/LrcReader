@@ -45,6 +45,9 @@ import com.patrick.lrcreader.core.locallink.HelloMessage
 import com.patrick.lrcreader.core.locallink.LocalLinkClient
 import com.patrick.lrcreader.core.locallink.LocalLinkMessage
 import com.patrick.lrcreader.core.locallink.LocalLinkServer
+import com.patrick.lrcreader.core.locallink.SyncPackageChunkMessage
+import com.patrick.lrcreader.core.locallink.SyncPackageEndMessage
+import com.patrick.lrcreader.core.locallink.SyncPackageStartMessage
 import com.patrick.lrcreader.core.locallink.SyncManifestPayloadMessage
 import com.patrick.lrcreader.core.locallink.SyncManifestRequestMessage
 import com.patrick.lrcreader.core.locallink.UnknownMessage
@@ -52,6 +55,11 @@ import com.patrick.lrcreader.core.sync.SmpSyncManifest
 import com.patrick.lrcreader.core.sync.SmpSyncManifestComparator
 import com.patrick.lrcreader.core.sync.SmpSyncManifestGenerator
 import com.patrick.lrcreader.core.sync.SmpSyncPackage
+import com.patrick.lrcreader.core.sync.SmpSyncPackageArchiveBuilder
+import com.patrick.lrcreader.core.sync.SmpSyncPackageArchiveReader
+import com.patrick.lrcreader.core.sync.SmpSyncPackageImportResult
+import com.patrick.lrcreader.core.sync.SmpSyncPreparedPackage
+import com.patrick.lrcreader.core.sync.SmpSyncReceivedPackage
 import com.patrick.lrcreader.core.sync.SmpSyncPlanSummary
 import com.patrick.lrcreader.core.sync.SmpSyncPlanSummaryLine
 import com.patrick.lrcreader.core.sync.SmpSyncPlanSummaryLineKind
@@ -63,16 +71,21 @@ import com.patrick.lrcreader.core.sync.SyncPlan
 import com.patrick.lrcreader.exo.BuildConfig
 import com.patrick.lrcreader.exo.R
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 import java.net.Inet4Address
 import java.net.NetworkInterface
+import java.security.MessageDigest
 import java.util.Collections
+import java.util.UUID
 
 private const val SMP_SYNC_PREFS = "smp_sync_debug"
 private const val SMP_SYNC_PREF_HOST = "host"
 private const val SMP_SYNC_PREF_PORT = "port"
+private const val SMP_SYNC_PACKAGE_CHUNK_BYTES = 64 * 1024
 
 @Composable
 fun SmpSyncDebugScreen(
@@ -95,9 +108,20 @@ fun SmpSyncDebugScreen(
     var syncPlan by remember { mutableStateOf<SyncPlan?>(null) }
     var sourceManifestForPackage by remember { mutableStateOf<SmpSyncManifest?>(null) }
     var syncPackage by remember { mutableStateOf<SmpSyncPackage?>(null) }
+    var preparedPackage by remember { mutableStateOf<SmpSyncPreparedPackage?>(null) }
+    var receivedPackage by remember { mutableStateOf<SmpSyncReceivedPackage?>(null) }
+    var importResult by remember { mutableStateOf<SmpSyncPackageImportResult?>(null) }
+    var receivePackageId by remember { mutableStateOf<String?>(null) }
+    var receiveFile by remember { mutableStateOf<File?>(null) }
+    var receiveExpectedBytes by remember { mutableStateOf(0L) }
+    var receiveBytes by remember { mutableStateOf(0L) }
+    var receiveNextChunkIndex by remember { mutableStateOf(0) }
+    var receiveChain by remember { mutableStateOf<Job?>(null) }
     var summary by remember { mutableStateOf<SmpSyncPlanSummary?>(null) }
     var isGenerating by remember { mutableStateOf(false) }
     var isPreparingPackage by remember { mutableStateOf(false) }
+    var isSendingPackage by remember { mutableStateOf(false) }
+    var isImportingPackage by remember { mutableStateOf(false) }
     var isConnecting by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var server by remember { mutableStateOf<LocalLinkServer?>(null) }
@@ -109,7 +133,7 @@ fun SmpSyncDebugScreen(
     var statusRes by remember { mutableStateOf(R.string.smp_sync_debug_status_idle) }
     var statusDetail by remember { mutableStateOf<String?>(null) }
     var seq by remember { mutableLongStateOf(1L) }
-    val isBusy = isGenerating || isConnecting || isPreparingPackage
+    val isBusy = isGenerating || isConnecting || isPreparingPackage || isSendingPackage || isImportingPackage
     val hasSavedConnection = joinHost.isNotBlank() && joinPortText.isNotBlank()
 
     fun saveJoinTarget() {
@@ -169,12 +193,25 @@ fun SmpSyncDebugScreen(
         )
     }
 
+    suspend fun buildPackageArchive(
+        source: SmpSyncManifest,
+        plan: SyncPlan
+    ): SmpSyncPreparedPackage {
+        return SmpSyncPackageArchiveBuilder(context.applicationContext).build(
+            sourceManifest = source,
+            plan = plan
+        )
+    }
+
     fun clearComparison() {
         comparedManifest = null
         summary = null
         syncPlan = null
         sourceManifestForPackage = null
         syncPackage = null
+        preparedPackage = null
+        receivedPackage = null
+        importResult = null
     }
 
     fun closeLinks() {
@@ -202,15 +239,15 @@ fun SmpSyncDebugScreen(
                 clearComparison()
                 if (compareAfterGenerate) {
                     statusRes = R.string.smp_sync_debug_comparing
-                    val fixture = buildDryRunTargetFixture(generated)
+                    val simulatedTarget = buildSimulatedBackupTarget(generated)
                     val result = buildComparison(
                         source = generated,
-                        target = fixture
+                        target = simulatedTarget
                     )
                     syncPlan = result.plan
                     summary = result.summary
                     sourceManifestForPackage = generated
-                    comparedManifest = fixture
+                    comparedManifest = simulatedTarget
                     comparedManifestTitleRes = R.string.smp_sync_debug_fixture_manifest
                     statusRes = R.string.smp_sync_debug_summary_ready
                 }
@@ -258,7 +295,11 @@ fun SmpSyncDebugScreen(
         }
     }
 
-    fun compareWithRemoteManifest(message: SyncManifestPayloadMessage) {
+    fun compareWithRemoteManifest(
+        message: SyncManifestPayloadMessage,
+        remoteIsSource: Boolean,
+        echoLocalAnalysis: Boolean = false
+    ) {
         if (isGenerating) return
         scope.launch {
             isGenerating = true
@@ -273,19 +314,38 @@ fun SmpSyncDebugScreen(
                     return@runCatching
                 }
                 val local = buildLocalManifest(deviceId = "smp-sync-local")
-                localManifestTitleRes = R.string.smp_sync_debug_backup_phone
                 statusRes = R.string.smp_sync_debug_comparing
+                val source = if (remoteIsSource) remote else local
+                val target = if (remoteIsSource) local else remote
                 val result = buildComparison(
-                    source = remote,
-                    target = local
+                    source = source,
+                    target = target
                 )
                 syncPlan = result.plan
                 summary = result.summary
-                sourceManifestForPackage = remote
+                sourceManifestForPackage = source
                 syncPackage = null
+                preparedPackage = null
                 localManifest = local
+                localManifestTitleRes = if (remoteIsSource) {
+                    R.string.smp_sync_debug_backup_phone
+                } else {
+                    R.string.smp_sync_debug_local_manifest
+                }
                 comparedManifest = remote
-                comparedManifestTitleRes = R.string.smp_sync_debug_remote_manifest
+                comparedManifestTitleRes = if (remoteIsSource) {
+                    R.string.smp_sync_debug_remote_manifest
+                } else {
+                    R.string.smp_sync_debug_backup_phone
+                }
+                if (echoLocalAnalysis) {
+                    val payload = serializeManifestPayload(
+                        requestId = "backup-analysis-${System.currentTimeMillis()}",
+                        manifest = local,
+                        seqValue = seq++
+                    )
+                    client?.send(payload)
+                }
                 statusRes = R.string.smp_sync_debug_summary_ready
             }.onFailure { error ->
                 statusRes = R.string.smp_sync_debug_exchange_error
@@ -309,10 +369,115 @@ fun SmpSyncDebugScreen(
                     server?.send(payload) ?: false
                 }
             }
+            is SyncManifestPayloadMessage -> {
+                compareWithRemoteManifest(
+                    message = message,
+                    remoteIsSource = false
+                )
+            }
+            is SyncPackageStartMessage -> {
+                statusRes = R.string.smp_sync_debug_invalid_package
+            }
+            is SyncPackageChunkMessage -> {
+                statusRes = R.string.smp_sync_debug_invalid_package
+            }
+            is SyncPackageEndMessage -> {
+                statusRes = R.string.smp_sync_debug_invalid_package
+            }
             is UnknownMessage -> {
                 statusRes = R.string.smp_sync_debug_invalid_manifest
             }
             else -> Unit
+        }
+    }
+
+    fun beginReceivingPackage(message: SyncPackageStartMessage) {
+        scope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    receiveFile?.delete()
+                    val dir = File(context.cacheDir, "smp_sync_received")
+                    if (!dir.exists()) dir.mkdirs()
+                    File(dir, "received_${message.packageId}.smpsync").also { file ->
+                        if (file.exists()) file.delete()
+                        file.createNewFile()
+                        receiveFile = file
+                    }
+                }
+                receivedPackage = null
+                importResult = null
+                receivePackageId = message.packageId
+                receiveExpectedBytes = message.totalBytes
+                receiveBytes = 0L
+                receiveNextChunkIndex = 0
+                receiveChain = null
+                statusRes = R.string.smp_sync_debug_package_receiving
+            }.onFailure { error ->
+                statusRes = R.string.smp_sync_debug_connection_error
+                statusDetail = error.message ?: context.getString(R.string.smp_sync_debug_invalid_package)
+            }
+        }
+    }
+
+    fun receivePackageChunk(message: SyncPackageChunkMessage) {
+        val packageId = receivePackageId ?: return
+        val targetFile = receiveFile ?: return
+        val previous = receiveChain
+        receiveChain = scope.launch {
+            previous?.join()
+            if (message.packageId != packageId || message.chunkIndex != receiveNextChunkIndex) {
+                statusRes = R.string.smp_sync_debug_invalid_package
+                return@launch
+            }
+            runCatching {
+                val bytes = withContext(Dispatchers.Default) {
+                    message.decodedBytes
+                }
+                withContext(Dispatchers.IO) {
+                    targetFile.appendBytes(bytes)
+                }
+                receiveBytes += bytes.size
+                receiveNextChunkIndex += 1
+                statusRes = R.string.smp_sync_debug_package_receiving
+            }.onFailure { error ->
+                statusRes = R.string.smp_sync_debug_connection_error
+                statusDetail = error.message ?: context.getString(R.string.smp_sync_debug_invalid_package)
+            }
+        }
+    }
+
+    fun finishReceivingPackage(message: SyncPackageEndMessage) {
+        val packageId = receivePackageId ?: return
+        val targetFile = receiveFile ?: return
+        if (message.packageId != packageId) {
+            statusRes = R.string.smp_sync_debug_invalid_package
+            return
+        }
+        scope.launch {
+            isGenerating = true
+            runCatching {
+                receiveChain?.join()
+                statusRes = R.string.smp_sync_debug_package_validating
+                val actualSha = withContext(Dispatchers.IO) { sha256(targetFile) }
+                if (!actualSha.equals(message.sha256, ignoreCase = true)) {
+                    statusRes = R.string.smp_sync_debug_invalid_package
+                    return@runCatching
+                }
+                val received = SmpSyncPackageArchiveReader(context.applicationContext)
+                    .readReceivedPackage(targetFile)
+                if (received == null) {
+                    statusRes = R.string.smp_sync_debug_invalid_package
+                    return@runCatching
+                }
+                receivedPackage = received
+                receivePackageId = null
+                syncPackage = received.syncPackage
+                statusRes = R.string.smp_sync_debug_package_received
+            }.onFailure { error ->
+                statusRes = R.string.smp_sync_debug_connection_error
+                statusDetail = error.message ?: context.getString(R.string.smp_sync_debug_invalid_package)
+            }
+            isGenerating = false
         }
     }
 
@@ -324,7 +489,20 @@ fun SmpSyncDebugScreen(
                 statusRes = R.string.smp_sync_debug_waiting_for_remote
             }
             is SyncManifestPayloadMessage -> {
-                compareWithRemoteManifest(message)
+                compareWithRemoteManifest(
+                    message = message,
+                    remoteIsSource = true,
+                    echoLocalAnalysis = true
+                )
+            }
+            is SyncPackageStartMessage -> {
+                beginReceivingPackage(message)
+            }
+            is SyncPackageChunkMessage -> {
+                receivePackageChunk(message)
+            }
+            is SyncPackageEndMessage -> {
+                finishReceivingPackage(message)
             }
             is UnknownMessage -> {
                 statusRes = R.string.smp_sync_debug_invalid_manifest
@@ -432,10 +610,21 @@ fun SmpSyncDebugScreen(
             statusDetail = null
             statusRes = R.string.smp_sync_debug_preparing_sync
             runCatching {
-                syncPackage = buildPackagePreview(
-                    source = source,
-                    plan = plan
-                )
+                val hosting = server != null
+                if (hosting) {
+                    val prepared = buildPackageArchive(
+                        source = source,
+                        plan = plan
+                    )
+                    preparedPackage = prepared
+                    syncPackage = prepared.syncPackage
+                } else {
+                    preparedPackage = null
+                    syncPackage = buildPackagePreview(
+                        source = source,
+                        plan = plan
+                    )
+                }
                 statusRes = R.string.smp_sync_debug_ready_to_sync
             }.onFailure { error ->
                 statusRes = R.string.smp_sync_debug_exchange_error
@@ -444,6 +633,119 @@ fun SmpSyncDebugScreen(
             }
             isPreparingPackage = false
         }
+    }
+
+    fun sendPreparedPackage() {
+        val prepared = preparedPackage ?: return
+        val activeServer = server ?: return
+        if (isBusy) return
+        scope.launch {
+            isSendingPackage = true
+            errorMessage = null
+            statusDetail = null
+            statusRes = R.string.smp_sync_debug_package_sending
+            runCatching {
+                val packageId = "package-${System.currentTimeMillis()}-${UUID.randomUUID()}"
+                val started = activeServer.send(
+                    SyncPackageStartMessage(
+                        packageId = packageId,
+                        totalBytes = prepared.sizeBytes,
+                        fullSongCount = prepared.syncPackage.fullSongCount,
+                        playlistCount = prepared.syncPackage.playlistStateCount,
+                        familyCount = prepared.syncPackage.familyStateCount,
+                        replacementSongCount = prepared.syncPackage.items.count {
+                            it.diffStatus == com.patrick.lrcreader.core.sync.SyncDiffStatus.MODIFIED_ON_A
+                        },
+                        seq = seq++
+                    )
+                )
+                if (!started) {
+                    statusRes = R.string.local_link_no_receiver_connected
+                    return@runCatching
+                }
+                withContext(Dispatchers.IO) {
+                    val buffer = ByteArray(SMP_SYNC_PACKAGE_CHUNK_BYTES)
+                    prepared.file.inputStream().buffered().use { input ->
+                        var chunkIndex = 0
+                        while (true) {
+                            val read = input.read(buffer)
+                            if (read < 0) break
+                            if (read == 0) continue
+                            val chunk = SyncPackageChunkMessage.fromBytes(
+                                packageId = packageId,
+                                chunkIndex = chunkIndex,
+                                bytes = buffer,
+                                byteCount = read,
+                                seq = seq++
+                            )
+                            val sent = activeServer.send(chunk)
+                            if (!sent) error("send_failed")
+                            chunkIndex += 1
+                        }
+                    }
+                }
+                val ended = activeServer.send(
+                    SyncPackageEndMessage(
+                        packageId = packageId,
+                        sha256 = prepared.sha256,
+                        seq = seq++
+                    )
+                )
+                statusRes = if (ended) {
+                    R.string.smp_sync_debug_package_sent
+                } else {
+                    R.string.local_link_no_receiver_connected
+                }
+            }.onFailure { error ->
+                statusRes = R.string.smp_sync_debug_connection_error
+                statusDetail = error.message ?: context.getString(R.string.smp_sync_debug_package_send_failed)
+            }
+            isSendingPackage = false
+        }
+    }
+
+    fun importReceivedPackage() {
+        val pendingPackage = receivedPackage ?: return
+        if (isBusy) return
+        scope.launch {
+            isImportingPackage = true
+            errorMessage = null
+            statusDetail = null
+            statusRes = R.string.smp_sync_debug_importing_package
+            runCatching {
+                val result = SmpSyncPackageArchiveReader(context.applicationContext)
+                    .importReceivedPackage(
+                        receivedPackage = pendingPackage,
+                        allowReplace = true
+                    )
+                importResult = result
+                statusRes = if (result.isSuccess) {
+                    R.string.smp_sync_debug_import_done
+                } else {
+                    R.string.smp_sync_debug_import_failed
+                }
+                if (!result.isSuccess) {
+                    statusDetail = result.failureReason
+                }
+            }.onFailure { error ->
+                statusRes = R.string.smp_sync_debug_import_failed
+                statusDetail = error.message ?: context.getString(R.string.smp_sync_debug_import_failed)
+            }
+            isImportingPackage = false
+        }
+    }
+
+    fun cancelReceivedPackage() {
+        receiveFile?.delete()
+        receiveFile = null
+        receivedPackage = null
+        importResult = null
+        receivePackageId = null
+        receiveChain = null
+        receiveBytes = 0L
+        receiveExpectedBytes = 0L
+        receiveNextChunkIndex = 0
+        statusRes = R.string.smp_sync_debug_summary_ready
     }
 
     DisposableEffect(Unit) {
@@ -590,9 +892,25 @@ fun SmpSyncDebugScreen(
         if (summary != null) {
             SyncPackagePreviewCard(
                 syncPackage = syncPackage,
+                preparedPackage = preparedPackage,
                 canPrepare = sourceManifestForPackage != null && syncPlan != null,
                 isPreparing = isPreparingPackage,
-                onPrepare = { prepareSyncPackage() }
+                isSending = isSendingPackage,
+                canSend = server != null && preparedPackage != null,
+                onPrepare = { prepareSyncPackage() },
+                onSend = { sendPreparedPackage() }
+            )
+        }
+
+        if (receivePackageId != null || receivedPackage != null || importResult != null) {
+            ReceivedPackageCard(
+                receivedPackage = receivedPackage,
+                importResult = importResult,
+                receivedBytes = receiveBytes,
+                expectedBytes = receiveExpectedBytes,
+                isImporting = isImportingPackage,
+                onImport = { importReceivedPackage() },
+                onCancel = { cancelReceivedPackage() }
             )
         }
 
@@ -852,9 +1170,13 @@ private fun SummaryCard(summary: SmpSyncPlanSummary?) {
 @Composable
 private fun SyncPackagePreviewCard(
     syncPackage: SmpSyncPackage?,
+    preparedPackage: SmpSyncPreparedPackage?,
     canPrepare: Boolean,
     isPreparing: Boolean,
-    onPrepare: () -> Unit
+    isSending: Boolean,
+    canSend: Boolean,
+    onPrepare: () -> Unit,
+    onSend: () -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -873,13 +1195,20 @@ private fun SyncPackagePreviewCard(
             )
             Button(
                 onClick = onPrepare,
-                enabled = canPrepare && !isPreparing,
+                enabled = canPrepare && !isPreparing && !isSending,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(text = stringResource(R.string.smp_sync_debug_prepare_sync))
             }
+            Button(
+                onClick = onSend,
+                enabled = canSend && !isPreparing && !isSending,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(text = stringResource(R.string.smp_sync_debug_send_package))
+            }
 
-            if (isPreparing) {
+            if (isPreparing || isSending) {
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -888,7 +1217,13 @@ private fun SyncPackagePreviewCard(
                         color = Color(0xFF90CAF9)
                     )
                     Text(
-                        text = stringResource(R.string.smp_sync_debug_preparing_sync),
+                        text = stringResource(
+                            if (isSending) {
+                                R.string.smp_sync_debug_package_sending
+                            } else {
+                                R.string.smp_sync_debug_preparing_sync
+                            }
+                        ),
                         color = Color(0xFFE0E0E0),
                         fontSize = 13.sp
                     )
@@ -915,7 +1250,8 @@ private fun SyncPackagePreviewCard(
             Text(
                 text = stringResource(
                     R.string.smp_sync_debug_package_size,
-                    syncPackage.formattedEstimatedSize()
+                    preparedPackage?.sizeBytes?.formattedByteSize()
+                        ?: syncPackage.formattedEstimatedSize()
                 ),
                 color = Color(0xFFCFD8DC),
                 fontSize = 13.sp
@@ -949,6 +1285,138 @@ private fun SyncPackagePreviewCard(
                 color = Color(0xFF90CAF9),
                 fontSize = 12.sp
             )
+        }
+    }
+}
+
+@Composable
+private fun ReceivedPackageCard(
+    receivedPackage: SmpSyncReceivedPackage?,
+    importResult: SmpSyncPackageImportResult?,
+    receivedBytes: Long,
+    expectedBytes: Long,
+    isImporting: Boolean,
+    onImport: () -> Unit,
+    onCancel: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF1A2024)),
+        shape = RoundedCornerShape(10.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.smp_sync_debug_received_title),
+                color = Color.White,
+                fontSize = 17.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+
+            if (receivedPackage == null) {
+                Text(
+                    text = stringResource(
+                        R.string.smp_sync_debug_receive_progress,
+                        receivedBytes.formattedByteSize(),
+                        expectedBytes.formattedByteSize()
+                    ),
+                    color = Color(0xFFCFD8DC),
+                    fontSize = 13.sp
+                )
+                return@Column
+            }
+
+            Text(
+                text = stringResource(
+                    R.string.smp_sync_debug_received_songs,
+                    receivedPackage.fullSongCount
+                ),
+                color = Color(0xFFCFD8DC),
+                fontSize = 13.sp
+            )
+            Text(
+                text = stringResource(
+                    R.string.smp_sync_debug_received_playlists,
+                    receivedPackage.syncPackage.playlistStateCount
+                ),
+                color = Color(0xFFCFD8DC),
+                fontSize = 13.sp
+            )
+            Text(
+                text = stringResource(
+                    R.string.smp_sync_debug_received_families,
+                    receivedPackage.syncPackage.familyStateCount
+                ),
+                color = Color(0xFFCFD8DC),
+                fontSize = 13.sp
+            )
+            Text(
+                text = stringResource(
+                    R.string.smp_sync_debug_package_size,
+                    receivedPackage.sizeBytes.formattedByteSize()
+                ),
+                color = Color(0xFFCFD8DC),
+                fontSize = 13.sp
+            )
+            if (receivedPackage.replacementSongCount > 0) {
+                Text(
+                    text = stringResource(
+                        R.string.smp_sync_debug_replacements_warning,
+                        receivedPackage.replacementSongCount
+                    ),
+                    color = Color(0xFFFFCC80),
+                    fontSize = 13.sp
+                )
+            }
+            Text(
+                text = stringResource(R.string.smp_sync_debug_line_no_auto_delete),
+                color = Color(0xFF90CAF9),
+                fontSize = 12.sp
+            )
+
+            importResult?.let { result ->
+                val textRes = if (result.isSuccess) {
+                    R.string.smp_sync_debug_import_result
+                } else {
+                    R.string.smp_sync_debug_import_failed_with_reason
+                }
+                Text(
+                    text = if (result.isSuccess) {
+                        stringResource(
+                            textRes,
+                            result.importedSongCount,
+                            result.playlistCount,
+                            result.familyCount
+                        )
+                    } else {
+                        stringResource(textRes, result.failureReason.orEmpty())
+                    },
+                    color = if (result.isSuccess) Color(0xFFA5D6A7) else Color(0xFFFFAB91),
+                    fontSize = 13.sp
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Button(
+                    onClick = onImport,
+                    enabled = !isImporting,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(text = stringResource(R.string.smp_sync_debug_import_package))
+                }
+                TextButton(
+                    onClick = onCancel,
+                    enabled = !isImporting,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(text = stringResource(R.string.common_cancel))
+                }
+            }
         }
     }
 }
@@ -996,6 +1464,12 @@ private fun summaryLineText(line: SmpSyncPlanSummaryLine): String {
 @Composable
 private fun SmpSyncPackage.formattedEstimatedSize(): String {
     val bytes = estimatedBytes ?: return stringResource(R.string.smp_sync_debug_package_size_unknown)
+    return bytes.formattedByteSize()
+}
+
+@Composable
+private fun Long.formattedByteSize(): String {
+    val bytes = coerceAtLeast(0L)
     return when {
         bytes < 1024L -> stringResource(R.string.smp_sync_debug_size_bytes, bytes)
         bytes < 1024L * 1024L -> stringResource(
@@ -1013,18 +1487,31 @@ private fun SmpSyncPackage.formattedEstimatedSize(): String {
     }
 }
 
+private fun sha256(file: File): String {
+    val digest = MessageDigest.getInstance("SHA-256")
+    file.inputStream().buffered().use { input ->
+        val buffer = ByteArray(SMP_SYNC_PACKAGE_CHUNK_BYTES)
+        while (true) {
+            val read = input.read(buffer)
+            if (read < 0) break
+            if (read > 0) digest.update(buffer, 0, read)
+        }
+    }
+    return digest.digest().joinToString("") { "%02x".format(it) }
+}
+
 private data class SyncComparisonResult(
     val plan: SyncPlan,
     val summary: SmpSyncPlanSummary
 )
 
-private fun buildDryRunTargetFixture(source: SmpSyncManifest): SmpSyncManifest {
+private fun buildSimulatedBackupTarget(source: SmpSyncManifest): SmpSyncManifest {
     val targetSongs = when {
         source.songs.isEmpty() -> listOf(
             SmpSyncSongEntry(
-                songId = "fixture_only_on_backup",
-                title = "Fixture backup only",
-                fullSongHash = "fixture-backup-only"
+                songId = "simulated_only_on_backup",
+                title = "Backup-only test song",
+                fullSongHash = "simulated-backup-only"
             )
         )
         source.songs.size == 1 -> emptyList()
@@ -1054,7 +1541,7 @@ private fun buildDryRunTargetFixture(source: SmpSyncManifest): SmpSyncManifest {
     }
 
     return source.copy(
-        deviceId = "fixture-backup",
+        deviceId = "simulated-backup",
         generatedAt = source.generatedAt,
         songs = targetSongs,
         playlists = targetPlaylists,
