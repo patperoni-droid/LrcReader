@@ -51,12 +51,15 @@ import com.patrick.lrcreader.core.locallink.UnknownMessage
 import com.patrick.lrcreader.core.sync.SmpSyncManifest
 import com.patrick.lrcreader.core.sync.SmpSyncManifestComparator
 import com.patrick.lrcreader.core.sync.SmpSyncManifestGenerator
+import com.patrick.lrcreader.core.sync.SmpSyncPackage
 import com.patrick.lrcreader.core.sync.SmpSyncPlanSummary
 import com.patrick.lrcreader.core.sync.SmpSyncPlanSummaryLine
 import com.patrick.lrcreader.core.sync.SmpSyncPlanSummaryLineKind
 import com.patrick.lrcreader.core.sync.SmpSyncPlanSummarySeverity
 import com.patrick.lrcreader.core.sync.SmpSyncPlanSummarizer
 import com.patrick.lrcreader.core.sync.SmpSyncSongEntry
+import com.patrick.lrcreader.core.sync.SyncPackageBuilder
+import com.patrick.lrcreader.core.sync.SyncPlan
 import com.patrick.lrcreader.exo.BuildConfig
 import com.patrick.lrcreader.exo.R
 import kotlinx.coroutines.Dispatchers
@@ -86,10 +89,15 @@ fun SmpSyncDebugScreen(
     val joinDeviceName = stringResource(R.string.smp_sync_debug_join_device_name)
     val experimentalToken = stringResource(R.string.local_link_experimental_token)
     var localManifest by remember { mutableStateOf<SmpSyncManifest?>(null) }
+    var localManifestTitleRes by remember { mutableStateOf(R.string.smp_sync_debug_local_manifest) }
     var comparedManifest by remember { mutableStateOf<SmpSyncManifest?>(null) }
     var comparedManifestTitleRes by remember { mutableStateOf(R.string.smp_sync_debug_fixture_manifest) }
+    var syncPlan by remember { mutableStateOf<SyncPlan?>(null) }
+    var sourceManifestForPackage by remember { mutableStateOf<SmpSyncManifest?>(null) }
+    var syncPackage by remember { mutableStateOf<SmpSyncPackage?>(null) }
     var summary by remember { mutableStateOf<SmpSyncPlanSummary?>(null) }
     var isGenerating by remember { mutableStateOf(false) }
+    var isPreparingPackage by remember { mutableStateOf(false) }
     var isConnecting by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var server by remember { mutableStateOf<LocalLinkServer?>(null) }
@@ -101,7 +109,7 @@ fun SmpSyncDebugScreen(
     var statusRes by remember { mutableStateOf(R.string.smp_sync_debug_status_idle) }
     var statusDetail by remember { mutableStateOf<String?>(null) }
     var seq by remember { mutableLongStateOf(1L) }
-    val isBusy = isGenerating || isConnecting
+    val isBusy = isGenerating || isConnecting || isPreparingPackage
     val hasSavedConnection = joinHost.isNotBlank() && joinPortText.isNotBlank()
 
     fun saveJoinTarget() {
@@ -137,15 +145,36 @@ fun SmpSyncDebugScreen(
         }
     }
 
-    suspend fun buildSummary(
+    suspend fun buildComparison(
         source: SmpSyncManifest,
         target: SmpSyncManifest
-    ): SmpSyncPlanSummary = withContext(Dispatchers.Default) {
+    ): SyncComparisonResult = withContext(Dispatchers.Default) {
         val plan = SmpSyncManifestComparator().compare(
             source = source,
             target = target
         )
-        SmpSyncPlanSummarizer().summarize(plan)
+        SyncComparisonResult(
+            plan = plan,
+            summary = SmpSyncPlanSummarizer().summarize(plan)
+        )
+    }
+
+    suspend fun buildPackagePreview(
+        source: SmpSyncManifest,
+        plan: SyncPlan
+    ): SmpSyncPackage = withContext(Dispatchers.Default) {
+        SyncPackageBuilder().build(
+            sourceManifest = source,
+            plan = plan
+        )
+    }
+
+    fun clearComparison() {
+        comparedManifest = null
+        summary = null
+        syncPlan = null
+        sourceManifestForPackage = null
+        syncPackage = null
     }
 
     fun closeLinks() {
@@ -169,13 +198,18 @@ fun SmpSyncDebugScreen(
             runCatching {
                 val generated = buildLocalManifest()
                 localManifest = generated
+                localManifestTitleRes = R.string.smp_sync_debug_local_manifest
+                clearComparison()
                 if (compareAfterGenerate) {
                     statusRes = R.string.smp_sync_debug_comparing
                     val fixture = buildDryRunTargetFixture(generated)
-                    summary = buildSummary(
+                    val result = buildComparison(
                         source = generated,
                         target = fixture
                     )
+                    syncPlan = result.plan
+                    summary = result.summary
+                    sourceManifestForPackage = generated
                     comparedManifest = fixture
                     comparedManifestTitleRes = R.string.smp_sync_debug_fixture_manifest
                     statusRes = R.string.smp_sync_debug_summary_ready
@@ -202,6 +236,7 @@ fun SmpSyncDebugScreen(
             runCatching {
                 val generated = buildLocalManifest(deviceId = "smp-sync-local")
                 localManifest = generated
+                localManifestTitleRes = R.string.smp_sync_debug_local_manifest
                 statusRes = R.string.smp_sync_debug_sending_manifest
                 val payload = serializeManifestPayload(
                     requestId = requestId,
@@ -233,17 +268,21 @@ fun SmpSyncDebugScreen(
             runCatching {
                 val remote = parseManifestPayload(message)
                 if (remote == null) {
-                    comparedManifest = null
-                    summary = null
+                    clearComparison()
                     statusRes = R.string.smp_sync_debug_invalid_manifest
                     return@runCatching
                 }
                 val local = buildLocalManifest(deviceId = "smp-sync-local")
+                localManifestTitleRes = R.string.smp_sync_debug_backup_phone
                 statusRes = R.string.smp_sync_debug_comparing
-                summary = buildSummary(
+                val result = buildComparison(
                     source = remote,
                     target = local
                 )
+                syncPlan = result.plan
+                summary = result.summary
+                sourceManifestForPackage = remote
+                syncPackage = null
                 localManifest = local
                 comparedManifest = remote
                 comparedManifestTitleRes = R.string.smp_sync_debug_remote_manifest
@@ -297,8 +336,7 @@ fun SmpSyncDebugScreen(
     fun createSession() {
         if (isBusy) return
         closeLinks()
-        comparedManifest = null
-        summary = null
+        clearComparison()
         val nextServer = LocalLinkServer(
             sessionId = "smp-sync-host-${System.currentTimeMillis()}",
             token = experimentalToken,
@@ -335,8 +373,7 @@ fun SmpSyncDebugScreen(
         }
         saveJoinTarget()
         closeLinks()
-        comparedManifest = null
-        summary = null
+        clearComparison()
         val nextClient = LocalLinkClient(
             host = joinHost.trim(),
             port = port,
@@ -382,6 +419,30 @@ fun SmpSyncDebugScreen(
                     }
                 }
             }
+        }
+    }
+
+    fun prepareSyncPackage() {
+        val source = sourceManifestForPackage ?: return
+        val plan = syncPlan ?: return
+        if (isBusy) return
+        scope.launch {
+            isPreparingPackage = true
+            errorMessage = null
+            statusDetail = null
+            statusRes = R.string.smp_sync_debug_preparing_sync
+            runCatching {
+                syncPackage = buildPackagePreview(
+                    source = source,
+                    plan = plan
+                )
+                statusRes = R.string.smp_sync_debug_ready_to_sync
+            }.onFailure { error ->
+                statusRes = R.string.smp_sync_debug_exchange_error
+                errorMessage = error.message
+                    ?: context.getString(R.string.smp_sync_debug_error)
+            }
+            isPreparingPackage = false
         }
     }
 
@@ -514,7 +575,7 @@ fun SmpSyncDebugScreen(
 
         localManifest?.let { manifest ->
             ManifestStatsCard(
-                title = stringResource(R.string.smp_sync_debug_local_manifest),
+                title = stringResource(localManifestTitleRes),
                 manifest = manifest
             )
         }
@@ -523,6 +584,15 @@ fun SmpSyncDebugScreen(
             ManifestStatsCard(
                 title = stringResource(comparedManifestTitleRes),
                 manifest = manifest
+            )
+        }
+
+        if (summary != null) {
+            SyncPackagePreviewCard(
+                syncPackage = syncPackage,
+                canPrepare = sourceManifestForPackage != null && syncPlan != null,
+                isPreparing = isPreparingPackage,
+                onPrepare = { prepareSyncPackage() }
             )
         }
 
@@ -780,6 +850,110 @@ private fun SummaryCard(summary: SmpSyncPlanSummary?) {
 }
 
 @Composable
+private fun SyncPackagePreviewCard(
+    syncPackage: SmpSyncPackage?,
+    canPrepare: Boolean,
+    isPreparing: Boolean,
+    onPrepare: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF151C20)),
+        shape = RoundedCornerShape(10.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.smp_sync_debug_package_title),
+                color = Color.White,
+                fontSize = 17.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Button(
+                onClick = onPrepare,
+                enabled = canPrepare && !isPreparing,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(text = stringResource(R.string.smp_sync_debug_prepare_sync))
+            }
+
+            if (isPreparing) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    CircularProgressIndicator(
+                        color = Color(0xFF90CAF9)
+                    )
+                    Text(
+                        text = stringResource(R.string.smp_sync_debug_preparing_sync),
+                        color = Color(0xFFE0E0E0),
+                        fontSize = 13.sp
+                    )
+                }
+            }
+
+            if (syncPackage == null) {
+                Text(
+                    text = stringResource(R.string.smp_sync_debug_package_empty),
+                    color = Color(0xFFB0BEC5),
+                    fontSize = 13.sp
+                )
+                return@Column
+            }
+
+            Text(
+                text = stringResource(
+                    R.string.smp_sync_debug_package_items,
+                    syncPackage.itemCount
+                ),
+                color = Color(0xFFA5D6A7),
+                fontSize = 14.sp
+            )
+            Text(
+                text = stringResource(
+                    R.string.smp_sync_debug_package_size,
+                    syncPackage.formattedEstimatedSize()
+                ),
+                color = Color(0xFFCFD8DC),
+                fontSize = 13.sp
+            )
+            Text(
+                text = stringResource(
+                    R.string.smp_sync_debug_package_full_songs,
+                    syncPackage.fullSongCount
+                ),
+                color = Color(0xFFCFD8DC),
+                fontSize = 13.sp
+            )
+            Text(
+                text = stringResource(
+                    R.string.smp_sync_debug_package_playlists,
+                    syncPackage.playlistStateCount
+                ),
+                color = Color(0xFFCFD8DC),
+                fontSize = 13.sp
+            )
+            Text(
+                text = stringResource(
+                    R.string.smp_sync_debug_package_families,
+                    syncPackage.familyStateCount
+                ),
+                color = Color(0xFFCFD8DC),
+                fontSize = 13.sp
+            )
+            Text(
+                text = stringResource(R.string.smp_sync_debug_package_not_sent),
+                color = Color(0xFF90CAF9),
+                fontSize = 12.sp
+            )
+        }
+    }
+}
+
+@Composable
 private fun SummaryLine(line: SmpSyncPlanSummaryLine) {
     val color = when (line.severity) {
         SmpSyncPlanSummarySeverity.INFO -> Color(0xFFCFD8DC)
@@ -818,6 +992,31 @@ private fun summaryLineText(line: SmpSyncPlanSummaryLine): String {
             stringResource(R.string.smp_sync_debug_line_no_auto_delete)
     }
 }
+
+@Composable
+private fun SmpSyncPackage.formattedEstimatedSize(): String {
+    val bytes = estimatedBytes ?: return stringResource(R.string.smp_sync_debug_package_size_unknown)
+    return when {
+        bytes < 1024L -> stringResource(R.string.smp_sync_debug_size_bytes, bytes)
+        bytes < 1024L * 1024L -> stringResource(
+            R.string.smp_sync_debug_size_kb,
+            bytes / 1024.0
+        )
+        bytes < 1024L * 1024L * 1024L -> stringResource(
+            R.string.smp_sync_debug_size_mb,
+            bytes / (1024.0 * 1024.0)
+        )
+        else -> stringResource(
+            R.string.smp_sync_debug_size_gb,
+            bytes / (1024.0 * 1024.0 * 1024.0)
+        )
+    }
+}
+
+private data class SyncComparisonResult(
+    val plan: SyncPlan,
+    val summary: SmpSyncPlanSummary
+)
 
 private fun buildDryRunTargetFixture(source: SmpSyncManifest): SmpSyncManifest {
     val targetSongs = when {
