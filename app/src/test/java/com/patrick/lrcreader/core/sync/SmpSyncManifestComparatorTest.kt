@@ -50,6 +50,34 @@ class SmpSyncManifestComparatorTest {
     }
 
     @Test
+    fun fullSongHashOnlyDifference_doesNotCopySong() {
+        val plan = comparator.compare(
+            source = manifest(
+                songs = listOf(
+                    song(
+                        songId = "song_001",
+                        hash = "full-source",
+                        audioHash = "same-audio",
+                        lyricsHash = "same-lyrics"
+                    )
+                )
+            ),
+            target = manifest(
+                songs = listOf(
+                    song(
+                        songId = "song_001",
+                        hash = "full-target",
+                        audioHash = "same-audio",
+                        lyricsHash = "same-lyrics"
+                    )
+                )
+            )
+        )
+
+        assertTrue(plan.items.isEmpty())
+    }
+
+    @Test
     fun playlistDifferent_isDetected() {
         val plan = comparator.compare(
             source = manifest(playlists = listOf(playlist("Set Fiesta", "playlist-source"))),
@@ -161,10 +189,17 @@ class SmpSyncManifestComparatorTest {
         )
     }
 
-    private fun song(songId: String, hash: String): SmpSyncSongEntry {
+    private fun song(
+        songId: String,
+        hash: String,
+        audioHash: String? = hash,
+        lyricsHash: String? = null
+    ): SmpSyncSongEntry {
         return SmpSyncSongEntry(
             songId = songId,
             title = songId,
+            audioHash = audioHash,
+            lyricsHash = lyricsHash,
             fullSongHash = hash
         )
     }

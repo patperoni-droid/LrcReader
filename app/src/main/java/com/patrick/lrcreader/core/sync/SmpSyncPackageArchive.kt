@@ -35,6 +35,7 @@ private const val SYNC_BUFFER_SIZE = 128 * 1024
 private const val SYNC_MAX_PACKAGE_BYTES = 2_000L * 1024L * 1024L
 private const val SYNC_PACKAGE_DIAG_TAG = "SMP_SYNC_PACKAGE_DIAG"
 private const val SYNC_IMPORT_DIAG_TAG = "SMP_SYNC_IMPORT_DIAG"
+private const val SYNC_EDGE_DIAG_TAG = "SMP_SYNC_EDGE_DIAG"
 private const val SYNC_PACKAGE_ITEM_TIMEOUT_MS = 120_000L
 
 enum class SmpSyncPackageProgressPhase {
@@ -458,6 +459,13 @@ class SmpSyncPackageArchiveReader(private val context: Context) {
             plan = remainingPlan,
             syncPackage = receivedPackage.syncPackage
         )
+        logEdgeDiagnostics(
+            sourceManifest = receivedPackage.sourceManifest,
+            targetManifest = localManifest,
+            remainingPlan = remainingPlan,
+            syncPackage = receivedPackage.syncPackage,
+            planDiagnostics = planDiagnostics
+        )
         val localById = localManifest.songs.associateBy { it.songId }
         receivedPackage.syncPackage.items
             .filter { it.kind == SmpSyncPackageKind.SONG_FULL }
@@ -482,6 +490,57 @@ class SmpSyncPackageArchiveReader(private val context: Context) {
             importedSongIds = importedSongIds,
             missingRuntimeSongIds = missingRuntimeSongIds
         )
+    }
+
+    private fun logEdgeDiagnostics(
+        sourceManifest: SmpSyncManifest,
+        targetManifest: SmpSyncManifest,
+        remainingPlan: SyncPlan,
+        syncPackage: SmpSyncPackage,
+        planDiagnostics: SmpSyncPlanDiagnostics
+    ) {
+        val actionableSongs = remainingPlan.items
+            .withIndex()
+            .filter { indexed ->
+                indexed.value.diff.entityType == SyncEntityType.SONG &&
+                    indexed.value.action != SyncPlanAction.KEEP
+            }
+        val edgeSongs = listOfNotNull(
+            actionableSongs.firstOrNull(),
+            actionableSongs.lastOrNull()
+        ).distinctBy { it.value.diff.entityId }
+        if (edgeSongs.isEmpty()) {
+            Log.i(SYNC_EDGE_DIAG_TAG, "edge:no_actionable_song_after_import")
+            return
+        }
+
+        val sourceById = sourceManifest.songs.associateBy { it.songId }
+        val targetById = targetManifest.songs.associateBy { it.songId }
+        val targetByTitle = targetManifest.songs.groupBy { it.title.normalizedTitleKey() }
+        val packageById = syncPackage.items.associateBy { it.entityId }
+        val diagnosticsById = planDiagnostics.modifiedSongs.associateBy { it.sourceSongId }
+
+        edgeSongs.forEach { indexed ->
+            val item = indexed.value
+            val sourceSong = sourceById[item.diff.entityId]
+            val targetSong = targetById[item.diff.entityId]
+                ?: sourceSong?.let { targetByTitle[it.title.normalizedTitleKey()].orEmpty().firstOrNull() }
+            val sourceIndex = sourceManifest.songs.indexOfFirst { it.songId == item.diff.entityId }
+            val targetIndex = targetManifest.songs.indexOfFirst { it.songId == targetSong?.songId }
+            val runtimeDir = File(context.filesDir, "tracks/${item.diff.entityId}")
+            val diagnostic = diagnosticsById[item.diff.entityId]
+            val packageKind = packageById[item.diff.entityId]?.kind ?: item.inferredEdgePackageKind()
+            val components = if (sourceSong != null && targetSong != null) {
+                sourceSong.componentDifferences(targetSong)
+            } else {
+                emptyList()
+            }
+
+            Log.i(
+                SYNC_EDGE_DIAG_TAG,
+                "edge:planIndex=${indexed.index} sourceIndex=$sourceIndex targetIndex=$targetIndex title=${item.diff.title ?: sourceSong?.title ?: targetSong?.title ?: item.diff.entityId} sourceSongId=${item.diff.entityId} targetSongId=${targetSong?.songId ?: "null"} status=${item.diff.status} action=${item.action} reason=${diagnostic?.primaryReason ?: item.diff.status.name} packageKind=${packageKind ?: "none"} runtimeExists=${runtimeDir.isDirectory} sourcePlaylists=${sourceManifest.playlistRefs(item.diff.entityId)} targetPlaylists=${targetManifest.playlistRefs(targetSong?.songId ?: item.diff.entityId)} components=${components.joinToString().ifBlank { "none" }} sourceFull=${sourceSong?.fullSongHash ?: "null"} targetFull=${targetSong?.fullSongHash ?: "null"} sourceAudio=${sourceSong?.audioHash ?: "null"} targetAudio=${targetSong?.audioHash ?: "null"} sourceLyrics=${sourceSong?.lyricsHash ?: "null"} targetLyrics=${targetSong?.lyricsHash ?: "null"} sourceChords=${sourceSong?.chordsHash ?: "null"} targetChords=${targetSong?.chordsHash ?: "null"} sourceNotes=${sourceSong?.notesHash ?: "null"} targetNotes=${targetSong?.notesHash ?: "null"} sourcePrompter=${sourceSong?.prompterHash ?: "null"} targetPrompter=${targetSong?.prompterHash ?: "null"} sourceTimeline=${sourceSong?.timelineHash ?: "null"} targetTimeline=${targetSong?.timelineHash ?: "null"} sourceMidi=${sourceSong?.midiHash ?: "null"} targetMidi=${targetSong?.midiHash ?: "null"} sourceDmx=${sourceSong?.dmxHash ?: "null"} targetDmx=${targetSong?.dmxHash ?: "null"} sourceSettings=${sourceSong?.settingsHash ?: "null"} targetSettings=${targetSong?.settingsHash ?: "null"} sourceArrangement=${sourceSong?.arrangementHash ?: "null"} targetArrangement=${targetSong?.arrangementHash ?: "null"} sourceGrid=${sourceSong?.gridHash ?: "null"} targetGrid=${targetSong?.gridHash ?: "null"}"
+            )
+        }
     }
 
     private fun applyPlaylistState(receivedPackage: SmpSyncReceivedPackage): Int {
@@ -741,6 +800,45 @@ private fun sha256(file: File): String {
 private fun JSONObject.optStringOrNull(key: String): String? {
     if (!has(key) || isNull(key)) return null
     return optString(key).trim().takeIf { it.isNotEmpty() }
+}
+
+private fun SyncPlanItem.inferredEdgePackageKind(): SmpSyncPackageKind? {
+    if (action != SyncPlanAction.COPY_TO_B) return null
+    return when (diff.status) {
+        SyncDiffStatus.ABSENT_ON_B,
+        SyncDiffStatus.MODIFIED_ON_A -> SmpSyncPackageKind.SONG_FULL
+        else -> null
+    }
+}
+
+private fun SmpSyncSongEntry.componentDifferences(other: SmpSyncSongEntry): List<String> {
+    return buildList {
+        if (title != other.title) add("title")
+        if (audioHash != other.audioHash) add("audioHash")
+        if (lyricsHash != other.lyricsHash) add("lyricsHash")
+        if (chordsHash != other.chordsHash) add("chordsHash")
+        if (notesHash != other.notesHash) add("notesHash")
+        if (prompterHash != other.prompterHash) add("prompterHash")
+        if (timelineHash != other.timelineHash) add("timelineHash")
+        if (midiHash != other.midiHash) add("midiHash")
+        if (dmxHash != other.dmxHash) add("dmxHash")
+        if (settingsHash != other.settingsHash) add("settingsHash")
+        if (arrangementHash != other.arrangementHash) add("arrangementHash")
+        if (gridHash != other.gridHash) add("gridHash")
+        if (fullSongHash != other.fullSongHash) add("fullSongHash")
+    }
+}
+
+private fun SmpSyncManifest.playlistRefs(songId: String): List<String> {
+    return playlists
+        .filter { playlist -> songId in playlist.songIds }
+        .map { it.playlistName }
+}
+
+private fun String.normalizedTitleKey(): String {
+    return trim()
+        .lowercase()
+        .replace(Regex("\\s+"), " ")
 }
 
 private fun String?.toFileOrNull(): File? {

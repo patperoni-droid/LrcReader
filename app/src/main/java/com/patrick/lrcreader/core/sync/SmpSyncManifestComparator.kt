@@ -1,5 +1,7 @@
 package com.patrick.lrcreader.core.sync
 
+import java.security.MessageDigest
+
 class SmpSyncManifestComparator {
 
     fun compare(
@@ -40,7 +42,8 @@ class SmpSyncManifestComparator {
             entityType = SyncEntityType.SONG,
             idOf = { it.songId },
             titleOf = { it.title },
-            hashOf = { it.fullSongHash },
+            hashOf = { it.comparisonHash() },
+            diffHashOf = { it.fullSongHash },
             differentStatus = SyncDiffStatus.MODIFIED_ON_A,
             actionForDifference = SyncPlanAction.COPY_TO_B
         )
@@ -98,6 +101,7 @@ class SmpSyncManifestComparator {
         idOf: (T) -> String,
         titleOf: (T) -> String?,
         hashOf: (T) -> String,
+        diffHashOf: (T) -> String = hashOf,
         differentStatus: SyncDiffStatus,
         actionForDifference: SyncPlanAction
     ): List<SyncPlanItem> {
@@ -115,7 +119,7 @@ class SmpSyncManifestComparator {
                         entityId = idOf(target),
                         status = SyncDiffStatus.ABSENT_ON_A,
                         title = titleOf(target),
-                        bHash = hashOf(target)
+                        bHash = diffHashOf(target)
                     )
                 )
 
@@ -126,7 +130,7 @@ class SmpSyncManifestComparator {
                         entityId = idOf(source),
                         status = SyncDiffStatus.ABSENT_ON_B,
                         title = titleOf(source),
-                        aHash = hashOf(source)
+                        aHash = diffHashOf(source)
                     )
                 )
 
@@ -138,6 +142,7 @@ class SmpSyncManifestComparator {
                     idOf = idOf,
                     titleOf = titleOf,
                     hashOf = hashOf,
+                    diffHashOf = diffHashOf,
                     differentStatus = differentStatus,
                     actionForDifference = actionForDifference
                 )
@@ -155,12 +160,15 @@ class SmpSyncManifestComparator {
         idOf: (T) -> String,
         titleOf: (T) -> String?,
         hashOf: (T) -> String,
+        diffHashOf: (T) -> String,
         differentStatus: SyncDiffStatus,
         actionForDifference: SyncPlanAction
     ): SyncPlanItem {
         val sourceHash = hashOf(source)
         val targetHash = hashOf(target)
         val baseHash = base?.let(hashOf)
+        val sourceDiffHash = diffHashOf(source)
+        val targetDiffHash = diffHashOf(target)
 
         if (sourceHash == targetHash) {
             return SyncPlanItem(
@@ -170,8 +178,8 @@ class SmpSyncManifestComparator {
                     entityId = idOf(source),
                     status = SyncDiffStatus.IDENTICAL,
                     title = titleOf(source),
-                    aHash = sourceHash,
-                    bHash = targetHash
+                    aHash = sourceDiffHash,
+                    bHash = targetDiffHash
                 )
             )
         }
@@ -198,8 +206,8 @@ class SmpSyncManifestComparator {
                 entityId = idOf(source),
                 status = status,
                 title = titleOf(source),
-                aHash = sourceHash,
-                bHash = targetHash
+                aHash = sourceDiffHash,
+                bHash = targetDiffHash
             )
         )
     }
@@ -265,5 +273,58 @@ class SmpSyncManifestComparator {
 
     private fun SmpSyncPlaylistEntry.identityKey(): String {
         return playlistId?.trim()?.takeIf { it.isNotEmpty() } ?: playlistName
+    }
+
+    private fun SmpSyncSongEntry.comparisonHash(): String {
+        if (!hasComponentHash()) return fullSongHash
+        return stableDigest(
+            listOf(
+                "title" to title,
+                "audioHash" to audioHash,
+                "lyricsHash" to lyricsHash,
+                "chordsHash" to chordsHash,
+                "notesHash" to notesHash,
+                "prompterHash" to prompterHash,
+                "timelineHash" to timelineHash,
+                "midiHash" to midiHash,
+                "dmxHash" to dmxHash,
+                "settingsHash" to settingsHash,
+                "arrangementHash" to arrangementHash,
+                "gridHash" to gridHash
+            )
+        )
+    }
+
+    private fun SmpSyncSongEntry.hasComponentHash(): Boolean {
+        return listOf(
+            audioHash,
+            lyricsHash,
+            chordsHash,
+            notesHash,
+            prompterHash,
+            timelineHash,
+            midiHash,
+            dmxHash,
+            settingsHash,
+            arrangementHash,
+            gridHash
+        ).any { !it.isNullOrEmpty() }
+    }
+
+    private fun stableDigest(values: List<Pair<String, String?>>): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        values.forEach { (key, value) ->
+            digest.update(key.toByteArray(Charsets.UTF_8))
+            digest.update(0.toByte())
+            if (value == null) {
+                digest.update("<null>".toByteArray(Charsets.UTF_8))
+            } else {
+                digest.update(value.length.toString().toByteArray(Charsets.UTF_8))
+                digest.update(0.toByte())
+                digest.update(value.toByteArray(Charsets.UTF_8))
+            }
+            digest.update(0.toByte())
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
     }
 }
