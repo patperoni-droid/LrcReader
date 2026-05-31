@@ -89,13 +89,63 @@ class SmpSyncDiffDiagnosticsTest {
         assertEquals(1, diagnostics.fullSongReasonCounts["songId différent"])
     }
 
+    @Test
+    fun playlistDifference_reportsPlaylistComponents() {
+        val sourcePlaylist = playlist(
+            name = "Linda",
+            itemsHash = "items-a",
+            groupsHash = "groups-a",
+            colorsHash = "colors-a",
+            fullPlaylistHash = "full-a",
+            songIds = listOf("song_7fda1ffe81beda3fd443")
+        )
+        val targetPlaylist = playlist(
+            name = "Linda",
+            itemsHash = "items-b",
+            groupsHash = "groups-a",
+            colorsHash = "colors-a",
+            fullPlaylistHash = "full-b",
+            songIds = listOf("song_7fda1ffe81beda3fd443")
+        )
+        val plan = SyncPlan(
+            items = listOf(
+                SyncPlanItem(
+                    action = SyncPlanAction.UPDATE_PLAYLIST_ON_B,
+                    diff = SyncDiff(
+                        entityType = SyncEntityType.PLAYLIST,
+                        entityId = "Linda",
+                        status = SyncDiffStatus.PLAYLIST_DIFFERENT,
+                        title = "Linda",
+                        aHash = "full-a",
+                        bHash = "full-b"
+                    )
+                )
+            )
+        )
+
+        val diagnostics = SmpSyncDiffDiagnosticsBuilder().build(
+            source = manifest(playlists = listOf(sourcePlaylist)),
+            target = manifest(playlists = listOf(targetPlaylist)),
+            plan = plan
+        )
+
+        val playlistDiagnostic = diagnostics.modifiedPlaylists.single()
+        assertEquals("Linda", playlistDiagnostic.playlistName)
+        assertEquals("itemsHash", playlistDiagnostic.primaryReason)
+        assertTrue(playlistDiagnostic.differentComponents.contains("itemsHash"))
+        assertTrue(playlistDiagnostic.differentComponents.contains("fullPlaylistHash"))
+        assertEquals(listOf("song_7fda1ffe81beda3fd443"), playlistDiagnostic.sourceSongIds)
+    }
+
     private fun manifest(
-        songs: List<SmpSyncSongEntry>
+        songs: List<SmpSyncSongEntry> = emptyList(),
+        playlists: List<SmpSyncPlaylistEntry> = emptyList()
     ): SmpSyncManifest {
         return SmpSyncManifest(
             appVersion = "test",
             generatedAt = 1L,
-            songs = songs
+            songs = songs,
+            playlists = playlists
         )
     }
 
@@ -112,6 +162,24 @@ class SmpSyncDiffDiagnosticsTest {
             lyricsHash = "lyrics",
             settingsHash = settingsHash,
             fullSongHash = fullSongHash
+        )
+    }
+
+    private fun playlist(
+        name: String,
+        itemsHash: String,
+        groupsHash: String?,
+        colorsHash: String?,
+        fullPlaylistHash: String,
+        songIds: List<String>
+    ): SmpSyncPlaylistEntry {
+        return SmpSyncPlaylistEntry(
+            playlistName = name,
+            songIds = songIds,
+            itemsHash = itemsHash,
+            groupsHash = groupsHash,
+            colorsHash = colorsHash,
+            fullPlaylistHash = fullPlaylistHash
         )
     }
 }

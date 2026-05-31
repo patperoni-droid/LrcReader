@@ -828,6 +828,8 @@
     <string name="smp_sync_debug_modified_songs_title">Canciones consideradas modificadas: %1$d</string>
     <string name="smp_sync_debug_modified_song_line">%1$s - motivo: %2$s - componentes: %3$s</string>
     <string name="smp_sync_debug_more_modified_songs">+ %1$d canciones más en los logs SMP_SYNC_DIFF_DIAG</string>
+    <string name="smp_sync_debug_modified_playlists_title">Playlists diferentes: %1$d</string>
+    <string name="smp_sync_debug_modified_playlist_line">%1$s - motivo: %2$s - componentes: %3$s</string>
     <string name="smp_sync_debug_size_bytes">%1$d B</string>
     <string name="smp_sync_debug_size_kb">%.1f KB</string>
     <string name="smp_sync_debug_size_mb">%.1f MB</string>

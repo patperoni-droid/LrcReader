@@ -519,6 +519,7 @@ class SmpSyncPackageArchiveReader(private val context: Context) {
         val targetByTitle = targetManifest.songs.groupBy { it.title.normalizedTitleKey() }
         val packageById = syncPackage.items.associateBy { it.entityId }
         val diagnosticsById = planDiagnostics.modifiedSongs.associateBy { it.sourceSongId }
+        val playlistDiagnosticsByName = planDiagnostics.modifiedPlaylists.associateBy { it.playlistName }
 
         edgeSongs.forEach { indexed ->
             val item = indexed.value
@@ -541,6 +542,19 @@ class SmpSyncPackageArchiveReader(private val context: Context) {
                 "edge:planIndex=${indexed.index} sourceIndex=$sourceIndex targetIndex=$targetIndex title=${item.diff.title ?: sourceSong?.title ?: targetSong?.title ?: item.diff.entityId} sourceSongId=${item.diff.entityId} targetSongId=${targetSong?.songId ?: "null"} status=${item.diff.status} action=${item.action} reason=${diagnostic?.primaryReason ?: item.diff.status.name} packageKind=${packageKind ?: "none"} runtimeExists=${runtimeDir.isDirectory} sourcePlaylists=${sourceManifest.playlistRefs(item.diff.entityId)} targetPlaylists=${targetManifest.playlistRefs(targetSong?.songId ?: item.diff.entityId)} components=${components.joinToString().ifBlank { "none" }} sourceFull=${sourceSong?.fullSongHash ?: "null"} targetFull=${targetSong?.fullSongHash ?: "null"} sourceAudio=${sourceSong?.audioHash ?: "null"} targetAudio=${targetSong?.audioHash ?: "null"} sourceLyrics=${sourceSong?.lyricsHash ?: "null"} targetLyrics=${targetSong?.lyricsHash ?: "null"} sourceChords=${sourceSong?.chordsHash ?: "null"} targetChords=${targetSong?.chordsHash ?: "null"} sourceNotes=${sourceSong?.notesHash ?: "null"} targetNotes=${targetSong?.notesHash ?: "null"} sourcePrompter=${sourceSong?.prompterHash ?: "null"} targetPrompter=${targetSong?.prompterHash ?: "null"} sourceTimeline=${sourceSong?.timelineHash ?: "null"} targetTimeline=${targetSong?.timelineHash ?: "null"} sourceMidi=${sourceSong?.midiHash ?: "null"} targetMidi=${targetSong?.midiHash ?: "null"} sourceDmx=${sourceSong?.dmxHash ?: "null"} targetDmx=${targetSong?.dmxHash ?: "null"} sourceSettings=${sourceSong?.settingsHash ?: "null"} targetSettings=${targetSong?.settingsHash ?: "null"} sourceArrangement=${sourceSong?.arrangementHash ?: "null"} targetArrangement=${targetSong?.arrangementHash ?: "null"} sourceGrid=${sourceSong?.gridHash ?: "null"} targetGrid=${targetSong?.gridHash ?: "null"}"
             )
         }
+
+        remainingPlan.items
+            .filter { item ->
+                item.diff.entityType == SyncEntityType.PLAYLIST &&
+                    item.action == SyncPlanAction.UPDATE_PLAYLIST_ON_B
+            }
+            .forEach { item ->
+                val diagnostic = playlistDiagnosticsByName[item.diff.title ?: item.diff.entityId]
+                Log.i(
+                    SYNC_EDGE_DIAG_TAG,
+                    "edge:playlist name=${item.diff.title ?: item.diff.entityId} status=${item.diff.status} action=${item.action} reason=${diagnostic?.primaryReason ?: item.diff.status.name} packageKind=${packageById[item.diff.entityId]?.kind ?: SmpSyncPackageKind.PLAYLIST_STATE} components=${diagnostic?.differentComponents?.joinToString()?.ifBlank { "none" } ?: "none"} sourceItems=${diagnostic?.sourceItemsHash ?: "null"} targetItems=${diagnostic?.targetItemsHash ?: "null"} sourceGroups=${diagnostic?.sourceGroupsHash ?: "null"} targetGroups=${diagnostic?.targetGroupsHash ?: "null"} sourceColors=${diagnostic?.sourceColorsHash ?: "null"} targetColors=${diagnostic?.targetColorsHash ?: "null"} sourceFull=${diagnostic?.sourceFullPlaylistHash ?: "null"} targetFull=${diagnostic?.targetFullPlaylistHash ?: "null"} sourceSongIds=${diagnostic?.sourceSongIds?.joinToString(prefix = "[", postfix = "]") ?: "[]"} targetSongIds=${diagnostic?.targetSongIds?.joinToString(prefix = "[", postfix = "]") ?: "[]"}"
+                )
+            }
     }
 
     private fun applyPlaylistState(receivedPackage: SmpSyncReceivedPackage): Int {
@@ -571,6 +585,16 @@ class SmpSyncPackageArchiveReader(private val context: Context) {
                     songId = songId?.takeIf { it in availableSongIds }
                 )
             }
+            val appliedOrder = playlist.items.mapNotNull { item ->
+                val cleanUri = item.uri.trim().takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+                val songId = item.songId?.trim()?.takeIf { it.isNotEmpty() } ?: getSmpSongId(cleanUri)
+                when {
+                    isVirtualPlaylistItem(cleanUri) -> cleanUri
+                    songId != null && songId in availableSongIds -> buildSmpItem(songId)
+                    else -> null
+                }
+            }
+            PlaylistRepository.updatePlayListOrder(cleanName, appliedOrder)
             count += 1
         }
         return count

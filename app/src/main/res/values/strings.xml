@@ -918,6 +918,8 @@
     <string name="smp_sync_debug_modified_songs_title">Morceaux considérés modifiés : %1$d</string>
     <string name="smp_sync_debug_modified_song_line">%1$s — raison : %2$s — composants : %3$s</string>
     <string name="smp_sync_debug_more_modified_songs">+ %1$d autres morceaux dans les logs SMP_SYNC_DIFF_DIAG</string>
+    <string name="smp_sync_debug_modified_playlists_title">Playlists différentes : %1$d</string>
+    <string name="smp_sync_debug_modified_playlist_line">%1$s — raison : %2$s — composants : %3$s</string>
     <string name="smp_sync_debug_size_bytes">%1$d o</string>
     <string name="smp_sync_debug_size_kb">%.1f Ko</string>
     <string name="smp_sync_debug_size_mb">%.1f Mo</string>

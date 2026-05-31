@@ -1462,6 +1462,7 @@ private fun SyncDiagnosticsCard(diagnostics: SmpSyncPlanDiagnostics?) {
     if (diagnostics == null) return
     if (
         diagnostics.modifiedSongs.isEmpty() &&
+        diagnostics.modifiedPlaylists.isEmpty() &&
         diagnostics.sameTitleDifferentSongIds.isEmpty()
     ) {
         return
@@ -1541,6 +1542,34 @@ private fun SyncDiagnosticsCard(diagnostics: SmpSyncPlanDiagnostics?) {
                     color = Color(0xFF90A4AE),
                     fontSize = 12.sp
                 )
+            }
+
+            if (diagnostics.modifiedPlaylists.isNotEmpty()) {
+                Text(
+                    text = stringResource(
+                        R.string.smp_sync_debug_modified_playlists_title,
+                        diagnostics.modifiedPlaylists.size
+                    ),
+                    color = Color(0xFFCFD8DC),
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                diagnostics.modifiedPlaylists.take(8).forEach { playlist ->
+                    val components = playlist.differentComponents
+                        .takeIf { it.isNotEmpty() }
+                        ?.joinToString()
+                        ?: playlist.primaryReason
+                    Text(
+                        text = stringResource(
+                            R.string.smp_sync_debug_modified_playlist_line,
+                            playlist.playlistName,
+                            playlist.primaryReason,
+                            components
+                        ),
+                        color = Color(0xFFCFD8DC),
+                        fontSize = 12.sp
+                    )
+                }
             }
         }
     }

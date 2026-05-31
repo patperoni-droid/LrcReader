@@ -8,6 +8,7 @@ data class SmpSyncPlanDiagnostics(
     val fullSongCount: Int,
     val fullSongReasonCounts: Map<String, Int>,
     val modifiedSongs: List<SmpSyncSongDiffDiagnostic>,
+    val modifiedPlaylists: List<SmpSyncPlaylistDiffDiagnostic>,
     val sameTitleDifferentSongIds: List<SmpSyncSameTitleDifferentIdDiagnostic>
 ) {
     val hasLargeFullSongTransfer: Boolean
@@ -34,6 +35,23 @@ data class SmpSyncSameTitleDifferentIdDiagnostic(
     val targetSongId: String
 )
 
+data class SmpSyncPlaylistDiffDiagnostic(
+    val playlistName: String,
+    val status: SyncDiffStatus,
+    val primaryReason: String,
+    val differentComponents: List<String>,
+    val sourceSongIds: List<String>,
+    val targetSongIds: List<String>,
+    val sourceItemsHash: String?,
+    val targetItemsHash: String?,
+    val sourceGroupsHash: String?,
+    val targetGroupsHash: String?,
+    val sourceColorsHash: String?,
+    val targetColorsHash: String?,
+    val sourceFullPlaylistHash: String?,
+    val targetFullPlaylistHash: String?
+)
+
 class SmpSyncDiffDiagnosticsBuilder {
 
     fun build(
@@ -45,6 +63,8 @@ class SmpSyncDiffDiagnosticsBuilder {
         val sourceById = source.songs.associateBy { it.songId }
         val targetById = target.songs.associateBy { it.songId }
         val targetByTitle = target.songs.groupBy { it.title.normalizedTitleKey() }
+        val sourcePlaylistsById = source.playlists.associateBy { it.identityKey() }
+        val targetPlaylistsById = target.playlists.associateBy { it.identityKey() }
         val packageByEntityId = syncPackage
             ?.items
             .orEmpty()
@@ -102,6 +122,43 @@ class SmpSyncDiffDiagnosticsBuilder {
             }
             .sortedWith(compareBy({ it.title.lowercase() }, { it.sourceSongId }))
 
+        val playlistDiagnostics = plan.items
+            .filter { item -> item.diff.entityType == SyncEntityType.PLAYLIST }
+            .map { item ->
+                val sourcePlaylist = sourcePlaylistsById[item.diff.entityId]
+                val targetPlaylist = targetPlaylistsById[item.diff.entityId]
+                val differentComponents = if (sourcePlaylist != null && targetPlaylist != null) {
+                    playlistComponentDifferences(sourcePlaylist, targetPlaylist)
+                } else {
+                    emptyList()
+                }
+                SmpSyncPlaylistDiffDiagnostic(
+                    playlistName = item.diff.title
+                        ?: sourcePlaylist?.playlistName
+                        ?: targetPlaylist?.playlistName
+                        ?: item.diff.entityId,
+                    status = item.diff.status,
+                    primaryReason = playlistPrimaryReason(
+                        item = item,
+                        sourcePlaylist = sourcePlaylist,
+                        targetPlaylist = targetPlaylist,
+                        differentComponents = differentComponents
+                    ),
+                    differentComponents = differentComponents,
+                    sourceSongIds = sourcePlaylist?.songIds.orEmpty(),
+                    targetSongIds = targetPlaylist?.songIds.orEmpty(),
+                    sourceItemsHash = sourcePlaylist?.itemsHash,
+                    targetItemsHash = targetPlaylist?.itemsHash,
+                    sourceGroupsHash = sourcePlaylist?.groupsHash,
+                    targetGroupsHash = targetPlaylist?.groupsHash,
+                    sourceColorsHash = sourcePlaylist?.colorsHash,
+                    targetColorsHash = targetPlaylist?.colorsHash,
+                    sourceFullPlaylistHash = sourcePlaylist?.fullPlaylistHash,
+                    targetFullPlaylistHash = targetPlaylist?.fullPlaylistHash
+                )
+            }
+            .sortedWith(compareBy({ it.playlistName.lowercase() }))
+
         val fullSongDiagnostics = songDiagnostics.filter { diagnostic ->
             diagnostic.packageKind == SmpSyncPackageKind.SONG_FULL ||
                 diagnostic.status == SyncDiffStatus.ABSENT_ON_B ||
@@ -118,6 +175,7 @@ class SmpSyncDiffDiagnosticsBuilder {
             fullSongCount = fullSongDiagnostics.size,
             fullSongReasonCounts = reasonCounts,
             modifiedSongs = songDiagnostics,
+            modifiedPlaylists = playlistDiagnostics,
             sameTitleDifferentSongIds = sameTitleDifferentIds
         )
         logDiagnostics(diagnostics)
@@ -145,6 +203,19 @@ class SmpSyncDiffDiagnosticsBuilder {
         }
     }
 
+    private fun playlistComponentDifferences(
+        source: SmpSyncPlaylistEntry,
+        target: SmpSyncPlaylistEntry
+    ): List<String> {
+        return buildList {
+            if (source.itemsHash != target.itemsHash) add("itemsHash")
+            if (source.groupsHash != target.groupsHash) add("groupsHash")
+            if (source.colorsHash != target.colorsHash) add("colorsHash")
+            if (source.songIds != target.songIds) add("songIds")
+            if (source.fullPlaylistHash != target.fullPlaylistHash) add("fullPlaylistHash")
+        }
+    }
+
     private fun primaryReason(
         item: SyncPlanItem,
         sourceSong: SmpSyncSongEntry?,
@@ -163,6 +234,21 @@ class SmpSyncDiffDiagnosticsBuilder {
         if (sourceSong == null) return "absent sur téléphone principal"
         return differentComponents
             .firstOrNull { it != "fullSongHash" }
+            ?: differentComponents.firstOrNull()
+            ?: item.diff.status.name
+    }
+
+    private fun playlistPrimaryReason(
+        item: SyncPlanItem,
+        sourcePlaylist: SmpSyncPlaylistEntry?,
+        targetPlaylist: SmpSyncPlaylistEntry?,
+        differentComponents: List<String>
+    ): String {
+        if (item.diff.status == SyncDiffStatus.ABSENT_ON_B) return "playlist absente sur téléphone secours"
+        if (targetPlaylist == null) return "playlist absente sur téléphone secours"
+        if (sourcePlaylist == null) return "playlist absente sur téléphone principal"
+        return differentComponents
+            .firstOrNull { it != "fullPlaylistHash" }
             ?: differentComponents.firstOrNull()
             ?: item.diff.status.name
     }
@@ -188,6 +274,11 @@ class SmpSyncDiffDiagnosticsBuilder {
                 "diff:song title=${song.title} sourceSongId=${song.sourceSongId} targetSongId=${song.targetSongId ?: "null"} status=${song.status} packageKind=${song.packageKind ?: "none"} reason=${song.primaryReason} components=${song.differentComponents.joinToString()}"
             )
         }
+        diagnostics.modifiedPlaylists.take(LOG_LIMIT).forEach { playlist ->
+            logInfo(
+                "diff:playlist name=${playlist.playlistName} status=${playlist.status} reason=${playlist.primaryReason} components=${playlist.differentComponents.joinToString()} sourceItems=${playlist.sourceItemsHash ?: "null"} targetItems=${playlist.targetItemsHash ?: "null"} sourceGroups=${playlist.sourceGroupsHash ?: "null"} targetGroups=${playlist.targetGroupsHash ?: "null"} sourceColors=${playlist.sourceColorsHash ?: "null"} targetColors=${playlist.targetColorsHash ?: "null"} sourceFull=${playlist.sourceFullPlaylistHash ?: "null"} targetFull=${playlist.targetFullPlaylistHash ?: "null"} sourceSongIds=${playlist.sourceSongIds.joinToString(prefix = "[", postfix = "]")} targetSongIds=${playlist.targetSongIds.joinToString(prefix = "[", postfix = "]")}"
+            )
+        }
     }
 
     private fun logInfo(message: String) {
@@ -202,6 +293,10 @@ class SmpSyncDiffDiagnosticsBuilder {
         return trim()
             .lowercase()
             .replace(Regex("\\s+"), " ")
+    }
+
+    private fun SmpSyncPlaylistEntry.identityKey(): String {
+        return playlistId?.trim()?.takeIf { it.isNotEmpty() } ?: playlistName
     }
 
     private companion object {
