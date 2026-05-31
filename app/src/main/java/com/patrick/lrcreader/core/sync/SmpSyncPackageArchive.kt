@@ -34,6 +34,7 @@ private const val SYNC_SONGS_DIR = "songs"
 private const val SYNC_BUFFER_SIZE = 128 * 1024
 private const val SYNC_MAX_PACKAGE_BYTES = 2_000L * 1024L * 1024L
 private const val SYNC_PACKAGE_DIAG_TAG = "SMP_SYNC_PACKAGE_DIAG"
+private const val SYNC_IMPORT_DIAG_TAG = "SMP_SYNC_IMPORT_DIAG"
 private const val SYNC_PACKAGE_ITEM_TIMEOUT_MS = 120_000L
 
 enum class SmpSyncPackageProgressPhase {
@@ -97,10 +98,25 @@ data class SmpSyncPackageImportResult(
     val replacedSongCount: Int,
     val playlistCount: Int,
     val familyCount: Int,
+    val importedSongIds: List<String> = emptyList(),
+    val postImportDiagnostics: SmpSyncPostImportDiagnostics? = null,
     val failureReason: String? = null
 ) {
     val isSuccess: Boolean
         get() = failureReason == null
+}
+
+data class SmpSyncPostImportDiagnostics(
+    val remainingPlan: SyncPlan,
+    val planDiagnostics: SmpSyncPlanDiagnostics,
+    val importedSongIds: List<String>,
+    val missingRuntimeSongIds: List<String>
+) {
+    val remainingItemCount: Int
+        get() = remainingPlan.items.count { it.action != SyncPlanAction.KEEP }
+
+    val isUpToDate: Boolean
+        get() = remainingItemCount == 0 && missingRuntimeSongIds.isEmpty()
 }
 
 class SmpSyncPackageArchiveBuilder(private val context: Context) {
@@ -284,7 +300,7 @@ class SmpSyncPackageArchiveReader(private val context: Context) {
             )
         }
         val existingSongIds = SmpLibraryScanner(context).listSongs().map { it.id }.toSet()
-        val importedIds = mutableSetOf<String>()
+        val importedIds = linkedSetOf<String>()
         var importedSongs = 0
         var replacedSongs = 0
 
@@ -293,9 +309,23 @@ class SmpSyncPackageArchiveReader(private val context: Context) {
                 .filter { it.kind == SmpSyncPackageKind.SONG_FULL }
                 .forEach { item ->
                     val entryName = item.contentEntry
-                        ?: return@forEach
+                        ?: return@withContext SmpSyncPackageImportResult(
+                            importedSongCount = importedSongs,
+                            replacedSongCount = replacedSongs,
+                            playlistCount = 0,
+                            familyCount = 0,
+                            importedSongIds = importedIds.toList(),
+                            failureReason = "contenu manquant pour ${item.title ?: item.entityId}"
+                        )
                     val entry = zip.getEntry(entryName)
-                        ?: return@forEach
+                        ?: return@withContext SmpSyncPackageImportResult(
+                            importedSongCount = importedSongs,
+                            replacedSongCount = replacedSongs,
+                            playlistCount = 0,
+                            familyCount = 0,
+                            importedSongIds = importedIds.toList(),
+                            failureReason = "fichier absent dans le contenu reçu: ${item.title ?: item.entityId}"
+                        )
                     val exists = item.entityId in existingSongIds
                     if (exists && !allowReplace) {
                         return@forEach
@@ -318,8 +348,38 @@ class SmpSyncPackageArchiveReader(private val context: Context) {
                                 replacedSongCount = replacedSongs,
                                 playlistCount = 0,
                                 familyCount = 0,
+                                importedSongIds = importedIds.toList(),
                                 failureReason = result.failureReason ?: "import SMP impossible"
                             )
+                        if (importedSong.id != item.entityId) {
+                            Log.e(
+                                SYNC_IMPORT_DIAG_TAG,
+                                "post_import:song_id_mismatch expected=${item.entityId} actual=${importedSong.id} title=${item.title ?: importedSong.title}"
+                            )
+                            return@withContext SmpSyncPackageImportResult(
+                                importedSongCount = importedSongs,
+                                replacedSongCount = replacedSongs,
+                                playlistCount = 0,
+                                familyCount = 0,
+                                importedSongIds = importedIds.toList() + importedSong.id,
+                                failureReason = "songId importé différent pour ${item.title ?: item.entityId}"
+                            )
+                        }
+                        val runtimeDir = File(context.filesDir, "tracks/${item.entityId}")
+                        Log.i(
+                            SYNC_IMPORT_DIAG_TAG,
+                            "post_import:runtime_check songId=${item.entityId} title=${item.title ?: importedSong.title} dir=${runtimeDir.absolutePath} exists=${runtimeDir.isDirectory}"
+                        )
+                        if (!runtimeDir.isDirectory) {
+                            return@withContext SmpSyncPackageImportResult(
+                                importedSongCount = importedSongs,
+                                replacedSongCount = replacedSongs,
+                                playlistCount = 0,
+                                familyCount = 0,
+                                importedSongIds = importedIds.toList(),
+                                failureReason = "morceau importé introuvable dans le runtime: ${item.title ?: item.entityId}"
+                            )
+                        }
                         importedIds += importedSong.id
                         importedSongs += 1
                         if (exists) replacedSongs += 1
@@ -331,12 +391,96 @@ class SmpSyncPackageArchiveReader(private val context: Context) {
 
         val playlistCount = applyPlaylistState(receivedPackage)
         val familyCount = applyFamilyState(receivedPackage.sourceManifest)
+        val postImportDiagnostics = buildPostImportDiagnostics(
+            receivedPackage = receivedPackage,
+            importedSongIds = importedIds.toList()
+        )
 
         SmpSyncPackageImportResult(
             importedSongCount = importedSongs,
             replacedSongCount = replacedSongs,
             playlistCount = playlistCount,
-            familyCount = familyCount
+            familyCount = familyCount,
+            importedSongIds = importedIds.toList(),
+            postImportDiagnostics = postImportDiagnostics
+        )
+    }
+
+    private suspend fun buildPostImportDiagnostics(
+        receivedPackage: SmpSyncReceivedPackage,
+        importedSongIds: List<String>
+    ): SmpSyncPostImportDiagnostics {
+        val localManifest = SmpSyncManifestGenerator().generateFromSources(
+            appVersion = receivedPackage.sourceManifest.appVersion,
+            deviceId = "post-import-local",
+            songs = SmpLibraryScanner(context)
+                .listSongs()
+                .map { song ->
+                    SmpSyncSongManifestSource(
+                        songId = song.id,
+                        title = song.title,
+                        audioFile = song.audioPath.toFileOrNull(),
+                        lyricsFile = song.lyricsPath.toFileOrNull(),
+                        chordsFile = song.chordsPath.toFileOrNull(),
+                        prompterFile = song.prompterPath.toFileOrNull(),
+                        timelineFile = song.timelinePath.toFileOrNull(),
+                        midiFile = song.midiPath.toFileOrNull(),
+                        dmxFile = song.dmxPath.toFileOrNull(),
+                        settingsFile = song.storageFolder.resolveExisting("config.json"),
+                        arrangementFile = song.storageFolder.resolveExisting("arrangement.json"),
+                        gridFile = song.storageFolder.resolveExisting("grid.json")
+                    )
+                },
+            playlists = PlaylistRepository.getPlaylists().map { playlistName ->
+                SmpSyncPlaylistManifestSource(
+                    playlistName = playlistName,
+                    items = PlaylistRepository.getAllItemsRaw(playlistName),
+                    colorArgb = PlaylistRepository.getPlaylistColor(playlistName)
+                )
+            },
+            families = SongVariantFamiliesStore.load(context).map { family ->
+                SmpSyncFamilyManifestSource(
+                    familyId = family.id,
+                    title = family.title,
+                    songIds = family.songIds.toList(),
+                    parentSongId = family.parentSongId,
+                    activeSongId = family.activeSongId
+                )
+            }
+        )
+        val remainingPlan = SmpSyncManifestComparator().compare(
+            source = receivedPackage.sourceManifest,
+            target = localManifest
+        )
+        val planDiagnostics = SmpSyncDiffDiagnosticsBuilder().build(
+            source = receivedPackage.sourceManifest,
+            target = localManifest,
+            plan = remainingPlan,
+            syncPackage = receivedPackage.syncPackage
+        )
+        val localById = localManifest.songs.associateBy { it.songId }
+        receivedPackage.syncPackage.items
+            .filter { it.kind == SmpSyncPackageKind.SONG_FULL }
+            .forEach { item ->
+                val sourceSong = receivedPackage.sourceManifest.songs.firstOrNull { it.songId == item.entityId }
+                val localSong = localById[item.entityId]
+                Log.i(
+                    SYNC_IMPORT_DIAG_TAG,
+                    "post_import:hash_check songId=${item.entityId} title=${item.title ?: sourceSong?.title ?: item.entityId} sourceFull=${sourceSong?.fullSongHash ?: "null"} localFull=${localSong?.fullSongHash ?: "null"} sourceAudio=${sourceSong?.audioHash ?: "null"} localAudio=${localSong?.audioHash ?: "null"} sourceLyrics=${sourceSong?.lyricsHash ?: "null"} localLyrics=${localSong?.lyricsHash ?: "null"} sourceSettings=${sourceSong?.settingsHash ?: "null"} localSettings=${localSong?.settingsHash ?: "null"}"
+                )
+            }
+        val missingRuntimeSongIds = importedSongIds.filterNot { songId ->
+            File(context.filesDir, "tracks/$songId").isDirectory
+        }
+        Log.i(
+            SYNC_IMPORT_DIAG_TAG,
+            "post_import:summary imported=${importedSongIds.size} missingRuntime=${missingRuntimeSongIds.size} remainingItems=${remainingPlan.items.size} remainingFullSongs=${planDiagnostics.fullSongCount}"
+        )
+        return SmpSyncPostImportDiagnostics(
+            remainingPlan = remainingPlan,
+            planDiagnostics = planDiagnostics,
+            importedSongIds = importedSongIds,
+            missingRuntimeSongIds = missingRuntimeSongIds
         )
     }
 
@@ -597,4 +741,19 @@ private fun sha256(file: File): String {
 private fun JSONObject.optStringOrNull(key: String): String? {
     if (!has(key) || isNull(key)) return null
     return optString(key).trim().takeIf { it.isNotEmpty() }
+}
+
+private fun String?.toFileOrNull(): File? {
+    return this
+        ?.takeIf { it.isNotBlank() }
+        ?.let(::File)
+        ?.takeIf { it.isFile }
+}
+
+private fun String?.resolveExisting(fileName: String): File? {
+    return this
+        ?.takeIf { it.isNotBlank() }
+        ?.let(::File)
+        ?.let { File(it, fileName) }
+        ?.takeIf { it.isFile }
 }

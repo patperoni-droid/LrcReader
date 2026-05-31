@@ -819,6 +819,9 @@
     <string name="smp_sync_debug_import_failed">No se pudo importar</string>
     <string name="smp_sync_debug_import_result">%1$d canciones importadas • %2$d playlists • %3$d familias</string>
     <string name="smp_sync_debug_import_failed_with_reason">No se pudo importar: %1$s</string>
+    <string name="smp_sync_debug_backup_updated">Teléfono de respaldo actualizado</string>
+    <string name="smp_sync_debug_post_import_remaining">Quedan %1$d elementos por revisar</string>
+    <string name="smp_sync_debug_rerun_analysis">Volver a analizar</string>
     <string name="smp_sync_debug_diagnostics_title">Diagnóstico de diferencias</string>
     <string name="smp_sync_debug_same_title_diff_id_title">%1$d títulos iguales con songId diferente</string>
     <string name="smp_sync_debug_same_title_diff_id_line">%1$s - A:%2$s / B:%3$s</string>

@@ -74,6 +74,7 @@ import com.patrick.lrcreader.core.sync.SmpSyncPlanSummarizer
 import com.patrick.lrcreader.core.sync.SmpSyncSongEntry
 import com.patrick.lrcreader.core.sync.SyncPackageBuilder
 import com.patrick.lrcreader.core.sync.SyncPlan
+import com.patrick.lrcreader.core.sync.SyncPlanAction
 import com.patrick.lrcreader.exo.BuildConfig
 import com.patrick.lrcreader.exo.R
 import kotlinx.coroutines.Dispatchers
@@ -782,12 +783,34 @@ fun SmpSyncDebugScreen(
                         allowReplace = true
                     )
                 importResult = result
-                statusRes = if (result.isSuccess) {
-                    R.string.smp_sync_debug_import_done
+                if (result.isSuccess) {
+                    val postImport = result.postImportDiagnostics
+                    syncPlan = postImport?.remainingPlan
+                    summary = postImport?.remainingPlan?.let { remainingPlan ->
+                        SmpSyncPlanSummarizer().summarize(remainingPlan)
+                    }
+                    syncDiagnostics = postImport?.planDiagnostics
+                    syncPackage = null
+                    preparedPackage = null
+                    sourceManifestForPackage = postImport
+                        ?.remainingPlan
+                        ?.takeIf { it.hasPackageActions() }
+                        ?.let { pendingPackage.sourceManifest }
+                    statusRes = if (postImport?.isUpToDate != false) {
+                        R.string.smp_sync_debug_backup_updated
+                    } else {
+                        R.string.smp_sync_debug_import_done
+                    }
+                    statusDetail = postImport
+                        ?.takeIf { !it.isUpToDate }
+                        ?.let {
+                            context.getString(
+                                R.string.smp_sync_debug_post_import_remaining,
+                                it.remainingItemCount
+                            )
+                        }
                 } else {
-                    R.string.smp_sync_debug_import_failed
-                }
-                if (!result.isSuccess) {
+                    statusRes = R.string.smp_sync_debug_import_failed
                     statusDetail = result.failureReason
                 }
             }.onFailure { error ->
@@ -795,6 +818,55 @@ fun SmpSyncDebugScreen(
                 statusDetail = error.message ?: context.getString(R.string.smp_sync_debug_import_failed)
             }
             isImportingPackage = false
+        }
+    }
+
+    fun rerunPostImportAnalysis() {
+        val pendingPackage = receivedPackage ?: return
+        if (isBusy) return
+        scope.launch {
+            isGenerating = true
+            errorMessage = null
+            statusDetail = null
+            statusRes = R.string.smp_sync_debug_generating_local_manifest
+            runCatching {
+                val local = buildLocalManifest(deviceId = "smp-sync-local")
+                statusRes = R.string.smp_sync_debug_comparing
+                val result = buildComparison(
+                    source = pendingPackage.sourceManifest,
+                    target = local
+                )
+                localManifest = local
+                localManifestTitleRes = R.string.smp_sync_debug_backup_phone
+                comparedManifest = pendingPackage.sourceManifest
+                comparedManifestTitleRes = R.string.smp_sync_debug_remote_manifest
+                syncPlan = result.plan
+                summary = result.summary
+                syncDiagnostics = result.diagnostics
+                syncPackage = null
+                preparedPackage = null
+                sourceManifestForPackage = result.plan
+                    .takeIf { it.hasPackageActions() }
+                    ?.let { pendingPackage.sourceManifest }
+                val remainingWorkCount = result.plan.remainingWorkCount()
+                statusRes = if (remainingWorkCount == 0) {
+                    R.string.smp_sync_debug_backup_updated
+                } else {
+                    R.string.smp_sync_debug_summary_ready
+                }
+                statusDetail = remainingWorkCount
+                    .takeIf { it > 0 }
+                    ?.let {
+                        context.getString(
+                            R.string.smp_sync_debug_post_import_remaining,
+                            it
+                        )
+                    }
+            }.onFailure { error ->
+                statusRes = R.string.smp_sync_debug_exchange_error
+                statusDetail = error.message ?: context.getString(R.string.smp_sync_debug_error)
+            }
+            isGenerating = false
         }
     }
 
@@ -974,8 +1046,9 @@ fun SmpSyncDebugScreen(
                 importResult = importResult,
                 receivedBytes = receiveBytes,
                 expectedBytes = receiveExpectedBytes,
-                isImporting = isImportingPackage,
+                isImporting = isImportingPackage || isGenerating,
                 onImport = { importReceivedPackage() },
+                onRerunAnalysis = { rerunPostImportAnalysis() },
                 onCancel = { cancelReceivedPackage() }
             )
         }
@@ -1481,6 +1554,7 @@ private fun ReceivedPackageCard(
     expectedBytes: Long,
     isImporting: Boolean,
     onImport: () -> Unit,
+    onRerunAnalysis: () -> Unit,
     onCancel: () -> Unit
 ) {
     Card(
@@ -1580,18 +1654,45 @@ private fun ReceivedPackageCard(
                     color = if (result.isSuccess) Color(0xFFA5D6A7) else Color(0xFFFFAB91),
                     fontSize = 13.sp
                 )
+                if (result.isSuccess) {
+                    val postImport = result.postImportDiagnostics
+                    val statusText = if (postImport?.isUpToDate != false) {
+                        stringResource(R.string.smp_sync_debug_backup_updated)
+                    } else {
+                        stringResource(
+                            R.string.smp_sync_debug_post_import_remaining,
+                            postImport.remainingItemCount
+                        )
+                    }
+                    Text(
+                        text = statusText,
+                        color = if (postImport?.isUpToDate != false) Color(0xFFA5D6A7) else Color(0xFFFFCC80),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
             }
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Button(
-                    onClick = onImport,
-                    enabled = !isImporting,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text(text = stringResource(R.string.smp_sync_debug_import_package))
+                if (importResult?.isSuccess == true) {
+                    Button(
+                        onClick = onRerunAnalysis,
+                        enabled = !isImporting,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(text = stringResource(R.string.smp_sync_debug_rerun_analysis))
+                    }
+                } else {
+                    Button(
+                        onClick = onImport,
+                        enabled = !isImporting,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(text = stringResource(R.string.smp_sync_debug_import_package))
+                    }
                 }
                 TextButton(
                     onClick = onCancel,
@@ -1737,6 +1838,18 @@ private data class SyncComparisonResult(
     val summary: SmpSyncPlanSummary,
     val diagnostics: SmpSyncPlanDiagnostics
 )
+
+private fun SyncPlan.hasPackageActions(): Boolean {
+    return items.any { item ->
+        item.action == SyncPlanAction.COPY_TO_B ||
+            item.action == SyncPlanAction.UPDATE_PLAYLIST_ON_B ||
+            item.action == SyncPlanAction.UPDATE_FAMILY_ON_B
+    }
+}
+
+private fun SyncPlan.remainingWorkCount(): Int {
+    return items.count { item -> item.action != SyncPlanAction.KEEP }
+}
 
 private fun buildSimulatedBackupTarget(source: SmpSyncManifest): SmpSyncManifest {
     val targetSongs = when {

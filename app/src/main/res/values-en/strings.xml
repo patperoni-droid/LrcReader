@@ -901,6 +901,9 @@
     <string name="smp_sync_debug_import_failed">Import failed</string>
     <string name="smp_sync_debug_import_result">%1$d songs imported • %2$d playlists • %3$d families</string>
     <string name="smp_sync_debug_import_failed_with_reason">Import failed: %1$s</string>
+    <string name="smp_sync_debug_backup_updated">Backup phone updated</string>
+    <string name="smp_sync_debug_post_import_remaining">%1$d items still need checking</string>
+    <string name="smp_sync_debug_rerun_analysis">Run analysis again</string>
     <string name="smp_sync_debug_diagnostics_title">Difference diagnostics</string>
     <string name="smp_sync_debug_same_title_diff_id_title">%1$d matching titles with different songId</string>
     <string name="smp_sync_debug_same_title_diff_id_line">%1$s - A:%2$s / B:%3$s</string>
