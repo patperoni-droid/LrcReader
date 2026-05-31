@@ -58,6 +58,8 @@ import com.patrick.lrcreader.core.sync.SmpSyncManifestGenerator
 import com.patrick.lrcreader.core.sync.SmpSyncPackage
 import com.patrick.lrcreader.core.sync.SmpSyncPackageArchiveBuilder
 import com.patrick.lrcreader.core.sync.SmpSyncPackageArchiveReader
+import com.patrick.lrcreader.core.sync.SmpSyncPlanDiagnostics
+import com.patrick.lrcreader.core.sync.SmpSyncDiffDiagnosticsBuilder
 import com.patrick.lrcreader.core.sync.SmpSyncPackagePreparationException
 import com.patrick.lrcreader.core.sync.SmpSyncPackageProgress
 import com.patrick.lrcreader.core.sync.SmpSyncPackageProgressPhase
@@ -114,6 +116,7 @@ fun SmpSyncDebugScreen(
     var comparedManifest by remember { mutableStateOf<SmpSyncManifest?>(null) }
     var comparedManifestTitleRes by remember { mutableStateOf(R.string.smp_sync_debug_fixture_manifest) }
     var syncPlan by remember { mutableStateOf<SyncPlan?>(null) }
+    var syncDiagnostics by remember { mutableStateOf<SmpSyncPlanDiagnostics?>(null) }
     var sourceManifestForPackage by remember { mutableStateOf<SmpSyncManifest?>(null) }
     var syncPackage by remember { mutableStateOf<SmpSyncPackage?>(null) }
     var preparedPackage by remember { mutableStateOf<SmpSyncPreparedPackage?>(null) }
@@ -187,7 +190,12 @@ fun SmpSyncDebugScreen(
         )
         SyncComparisonResult(
             plan = plan,
-            summary = SmpSyncPlanSummarizer().summarize(plan)
+            summary = SmpSyncPlanSummarizer().summarize(plan),
+            diagnostics = SmpSyncDiffDiagnosticsBuilder().build(
+                source = source,
+                target = target,
+                plan = plan
+            )
         )
     }
 
@@ -219,6 +227,7 @@ fun SmpSyncDebugScreen(
         comparedManifest = null
         summary = null
         syncPlan = null
+        syncDiagnostics = null
         sourceManifestForPackage = null
         syncPackage = null
         preparedPackage = null
@@ -258,6 +267,7 @@ fun SmpSyncDebugScreen(
                     )
                     syncPlan = result.plan
                     summary = result.summary
+                    syncDiagnostics = result.diagnostics
                     sourceManifestForPackage = generated
                     comparedManifest = simulatedTarget
                     comparedManifestTitleRes = R.string.smp_sync_debug_fixture_manifest
@@ -335,6 +345,7 @@ fun SmpSyncDebugScreen(
                 )
                 syncPlan = result.plan
                 summary = result.summary
+                syncDiagnostics = result.diagnostics
                 sourceManifestForPackage = source
                 syncPackage = null
                 preparedPackage = null
@@ -945,6 +956,7 @@ fun SmpSyncDebugScreen(
             SyncPackagePreviewCard(
                 syncPackage = syncPackage,
                 preparedPackage = preparedPackage,
+                diagnostics = syncDiagnostics,
                 canPrepare = sourceManifestForPackage != null && syncPlan != null,
                 isPreparing = isPreparingPackage,
                 isSending = isSendingPackage,
@@ -953,6 +965,8 @@ fun SmpSyncDebugScreen(
                 onSend = { sendPreparedPackage() }
             )
         }
+
+        SyncDiagnosticsCard(diagnostics = syncDiagnostics)
 
         if (receivePackageId != null || receivedPackage != null || importResult != null) {
             ReceivedPackageCard(
@@ -1229,6 +1243,7 @@ private fun SummaryCard(summary: SmpSyncPlanSummary?) {
 private fun SyncPackagePreviewCard(
     syncPackage: SmpSyncPackage?,
     preparedPackage: SmpSyncPreparedPackage?,
+    diagnostics: SmpSyncPlanDiagnostics?,
     canPrepare: Boolean,
     isPreparing: Boolean,
     isSending: Boolean,
@@ -1322,6 +1337,28 @@ private fun SyncPackagePreviewCard(
                 color = Color(0xFFCFD8DC),
                 fontSize = 13.sp
             )
+            if (diagnostics?.hasLargeFullSongTransfer == true) {
+                Text(
+                    text = stringResource(
+                        R.string.smp_sync_debug_many_full_songs_warning,
+                        diagnostics.fullSongCount
+                    ),
+                    color = Color(0xFFFFCC80),
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                diagnostics.fullSongReasonCounts.entries.take(4).forEach { (reason, count) ->
+                    Text(
+                        text = stringResource(
+                            R.string.smp_sync_debug_reason_count,
+                            reason,
+                            count
+                        ),
+                        color = Color(0xFFFFE0B2),
+                        fontSize = 12.sp
+                    )
+                }
+            }
             Text(
                 text = stringResource(
                     R.string.smp_sync_debug_package_playlists,
@@ -1343,6 +1380,95 @@ private fun SyncPackagePreviewCard(
                 color = Color(0xFF90CAF9),
                 fontSize = 12.sp
             )
+        }
+    }
+}
+
+@Composable
+private fun SyncDiagnosticsCard(diagnostics: SmpSyncPlanDiagnostics?) {
+    if (diagnostics == null) return
+    if (
+        diagnostics.modifiedSongs.isEmpty() &&
+        diagnostics.sameTitleDifferentSongIds.isEmpty()
+    ) {
+        return
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF201A16)),
+        shape = RoundedCornerShape(10.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.smp_sync_debug_diagnostics_title),
+                color = Color.White,
+                fontSize = 17.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+
+            if (diagnostics.sameTitleDifferentSongIds.isNotEmpty()) {
+                Text(
+                    text = stringResource(
+                        R.string.smp_sync_debug_same_title_diff_id_title,
+                        diagnostics.sameTitleDifferentSongIds.size
+                    ),
+                    color = Color(0xFFFFCC80),
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                diagnostics.sameTitleDifferentSongIds.take(8).forEach { item ->
+                    Text(
+                        text = stringResource(
+                            R.string.smp_sync_debug_same_title_diff_id_line,
+                            item.title,
+                            item.sourceSongId,
+                            item.targetSongId
+                        ),
+                        color = Color(0xFFFFE0B2),
+                        fontSize = 12.sp
+                    )
+                }
+            }
+
+            Text(
+                text = stringResource(
+                    R.string.smp_sync_debug_modified_songs_title,
+                    diagnostics.modifiedSongs.size
+                ),
+                color = Color(0xFFCFD8DC),
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            diagnostics.modifiedSongs.take(12).forEach { song ->
+                val components = song.differentComponents
+                    .takeIf { it.isNotEmpty() }
+                    ?.joinToString()
+                    ?: song.primaryReason
+                Text(
+                    text = stringResource(
+                        R.string.smp_sync_debug_modified_song_line,
+                        song.title,
+                        song.primaryReason,
+                        components
+                    ),
+                    color = Color(0xFFCFD8DC),
+                    fontSize = 12.sp
+                )
+            }
+            if (diagnostics.modifiedSongs.size > 12) {
+                Text(
+                    text = stringResource(
+                        R.string.smp_sync_debug_more_modified_songs,
+                        diagnostics.modifiedSongs.size - 12
+                    ),
+                    color = Color(0xFF90A4AE),
+                    fontSize = 12.sp
+                )
+            }
         }
     }
 }
@@ -1608,7 +1734,8 @@ private fun packageProgressText(
 
 private data class SyncComparisonResult(
     val plan: SyncPlan,
-    val summary: SmpSyncPlanSummary
+    val summary: SmpSyncPlanSummary,
+    val diagnostics: SmpSyncPlanDiagnostics
 )
 
 private fun buildSimulatedBackupTarget(source: SmpSyncManifest): SmpSyncManifest {

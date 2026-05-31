@@ -876,6 +876,8 @@
     <string name="smp_sync_debug_package_size">Estimated size: %1$s</string>
     <string name="smp_sync_debug_package_size_unknown">unknown</string>
     <string name="smp_sync_debug_package_full_songs">Full songs: %1$d</string>
+    <string name="smp_sync_debug_many_full_songs_warning">Warning: %1$d full songs will be sent</string>
+    <string name="smp_sync_debug_reason_count">%1$s: %2$d</string>
     <string name="smp_sync_debug_package_playlists">Playlists: %1$d</string>
     <string name="smp_sync_debug_package_families">Families: %1$d</string>
     <string name="smp_sync_debug_package_not_sent">No file has been sent yet</string>
@@ -899,6 +901,12 @@
     <string name="smp_sync_debug_import_failed">Import failed</string>
     <string name="smp_sync_debug_import_result">%1$d songs imported • %2$d playlists • %3$d families</string>
     <string name="smp_sync_debug_import_failed_with_reason">Import failed: %1$s</string>
+    <string name="smp_sync_debug_diagnostics_title">Difference diagnostics</string>
+    <string name="smp_sync_debug_same_title_diff_id_title">%1$d matching titles with different songId</string>
+    <string name="smp_sync_debug_same_title_diff_id_line">%1$s - A:%2$s / B:%3$s</string>
+    <string name="smp_sync_debug_modified_songs_title">Songs considered modified: %1$d</string>
+    <string name="smp_sync_debug_modified_song_line">%1$s - reason: %2$s - components: %3$s</string>
+    <string name="smp_sync_debug_more_modified_songs">+ %1$d more songs in SMP_SYNC_DIFF_DIAG logs</string>
     <string name="smp_sync_debug_size_bytes">%1$d B</string>
     <string name="smp_sync_debug_size_kb">%.1f KB</string>
     <string name="smp_sync_debug_size_mb">%.1f MB</string>
