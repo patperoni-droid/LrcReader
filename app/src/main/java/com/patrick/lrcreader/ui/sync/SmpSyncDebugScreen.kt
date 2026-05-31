@@ -58,6 +58,7 @@ import com.patrick.lrcreader.core.sync.SmpSyncManifestGenerator
 import com.patrick.lrcreader.core.sync.SmpSyncPackage
 import com.patrick.lrcreader.core.sync.SmpSyncPackageArchiveBuilder
 import com.patrick.lrcreader.core.sync.SmpSyncPackageArchiveReader
+import com.patrick.lrcreader.core.sync.SmpSyncPackageKind
 import com.patrick.lrcreader.core.sync.SmpSyncPlanDiagnostics
 import com.patrick.lrcreader.core.sync.SmpSyncDiffDiagnosticsBuilder
 import com.patrick.lrcreader.core.sync.SmpSyncPackagePreparationException
@@ -703,6 +704,11 @@ fun SmpSyncDebugScreen(
         val prepared = preparedPackage ?: return
         val activeServer = server ?: return
         if (isBusy) return
+        if (prepared.syncPackage.fullSongCount > SmpSyncPlanDiagnostics.LARGE_FULL_SONG_TRANSFER_THRESHOLD) {
+            statusRes = R.string.smp_sync_debug_package_send_failed
+            statusDetail = context.getString(R.string.smp_sync_debug_excessive_full_sync_blocked)
+            return
+        }
         scope.launch {
             isSendingPackage = true
             errorMessage = null
@@ -1032,7 +1038,9 @@ fun SmpSyncDebugScreen(
                 canPrepare = sourceManifestForPackage != null && syncPlan != null,
                 isPreparing = isPreparingPackage,
                 isSending = isSendingPackage,
-                canSend = server != null && preparedPackage != null,
+                canSend = server != null &&
+                    preparedPackage != null &&
+                    syncPackage?.hasExcessiveFullSongs() != true,
                 onPrepare = { prepareSyncPackage() },
                 onSend = { sendPreparedPackage() }
             )
@@ -1412,15 +1420,20 @@ private fun SyncPackagePreviewCard(
             )
             if (diagnostics?.hasLargeFullSongTransfer == true) {
                 Text(
-                    text = stringResource(
-                        R.string.smp_sync_debug_many_full_songs_warning,
-                        diagnostics.fullSongCount
-                    ),
+                    text = stringResource(R.string.smp_sync_debug_excessive_full_sync_blocked),
                     color = Color(0xFFFFCC80),
                     fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold
                 )
-                diagnostics.fullSongReasonCounts.entries.take(4).forEach { (reason, count) ->
+                Text(
+                    text = stringResource(
+                        R.string.smp_sync_debug_many_full_songs_warning,
+                        diagnostics.fullSongCount
+                    ),
+                    color = Color(0xFFFFE0B2),
+                    fontSize = 12.sp
+                )
+                diagnostics.fullSongReasonCounts.entries.take(6).forEach { (reason, count) ->
                     Text(
                         text = stringResource(
                             R.string.smp_sync_debug_reason_count,
@@ -1517,6 +1530,54 @@ private fun SyncDiagnosticsCard(diagnostics: SmpSyncPlanDiagnostics?) {
                 fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold
             )
+            if (diagnostics.fullSongReasonCounts.isNotEmpty()) {
+                Text(
+                    text = stringResource(R.string.smp_sync_debug_full_song_reasons_title),
+                    color = Color(0xFFFFCC80),
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                diagnostics.fullSongReasonCounts.entries.take(6).forEach { (reason, count) ->
+                    Text(
+                        text = stringResource(
+                            R.string.smp_sync_debug_reason_count,
+                            reason,
+                            count
+                        ),
+                        color = Color(0xFFFFE0B2),
+                        fontSize = 12.sp
+                    )
+                }
+            }
+            val fullSongSamples = diagnostics.modifiedSongs
+                .filter { song -> song.packageKind == SmpSyncPackageKind.SONG_FULL }
+                .take(5)
+            if (fullSongSamples.isNotEmpty()) {
+                Text(
+                    text = stringResource(R.string.smp_sync_debug_full_song_samples_title),
+                    color = Color(0xFFFFCC80),
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                fullSongSamples.forEach { song ->
+                    val components = song.differentComponents
+                        .takeIf { it.isNotEmpty() }
+                        ?.joinToString()
+                        ?: song.primaryReason
+                    Text(
+                        text = stringResource(
+                            R.string.smp_sync_debug_full_song_sample_line,
+                            song.title,
+                            song.sourceSongId,
+                            song.targetSongId ?: "-",
+                            song.status.name,
+                            components
+                        ),
+                        color = Color(0xFFFFE0B2),
+                        fontSize = 12.sp
+                    )
+                }
+            }
             diagnostics.modifiedSongs.take(12).forEach { song ->
                 val components = song.differentComponents
                     .takeIf { it.isNotEmpty() }
@@ -1779,6 +1840,10 @@ private fun summaryLineText(line: SmpSyncPlanSummaryLine): String {
 private fun SmpSyncPackage.formattedEstimatedSize(): String {
     val bytes = estimatedBytes ?: return stringResource(R.string.smp_sync_debug_package_size_unknown)
     return bytes.formattedByteSize()
+}
+
+private fun SmpSyncPackage.hasExcessiveFullSongs(): Boolean {
+    return fullSongCount > SmpSyncPlanDiagnostics.LARGE_FULL_SONG_TRANSFER_THRESHOLD
 }
 
 @Composable
