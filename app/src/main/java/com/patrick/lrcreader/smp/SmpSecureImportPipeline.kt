@@ -150,7 +150,8 @@ class SmpSecureImportPipeline(private val context: Context) {
 
     fun import(
         uri: Uri,
-        importer: SmpImporter = SmpImporter(context)
+        importer: SmpImporter = SmpImporter(context),
+        preserveExistingLyricsOnReplace: Boolean = true
     ): SmpSecureImportResult {
         val importStartMs = SystemClock.elapsedRealtime()
         Log.i(
@@ -197,7 +198,10 @@ class SmpSecureImportPipeline(private val context: Context) {
             }
 
             val runtimeImportStartMs = SystemClock.elapsedRealtime()
-            val importedSong = importer.importSmp(uri)
+            val importedSong = importer.importSmp(
+                uri = uri,
+                preserveExistingLyricsOnReplace = preserveExistingLyricsOnReplace
+            )
                 ?: run {
                     Log.i(
                         IMPORT_TRACE_TAG,

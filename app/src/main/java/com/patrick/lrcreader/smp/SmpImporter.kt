@@ -37,7 +37,10 @@ class SmpImporter(private val context: Context) {
         val bytes: ByteArray
     )
 
-    fun importSmp(uri: Uri): SongUnit? {
+    fun importSmp(
+        uri: Uri,
+        preserveExistingLyricsOnReplace: Boolean = true
+    ): SongUnit? {
         val importStartMs = SystemClock.elapsedRealtime()
         lastFailureReason = null
         Log.i(
@@ -118,9 +121,11 @@ class SmpImporter(private val context: Context) {
                 "step=import_resolved uri=$uri displayName=$displayName rawConfigId=${rawConfigId ?: "null"} stableSongId=${stableConfigId ?: "invalid_or_absent"} finalSongId=$songId destinationDir=${destinationDir.absolutePath}"
             )
             val existingMidiFile = File(destinationDir, SmpMidiCuesStore.MIDI_CUES_FILE_NAME)
-            val preservedLyrics = capturePreservedLyrics(
-                destinationDir = destinationDir
-            )
+            val preservedLyrics = if (preserveExistingLyricsOnReplace) {
+                capturePreservedLyrics(destinationDir = destinationDir)
+            } else {
+                null
+            }
 
             if (stableConfigId != null && destinationDir.exists()) {
                 Log.i(
@@ -168,10 +173,12 @@ class SmpImporter(private val context: Context) {
             )
 
             importedDir = destinationDir
-            restorePreservedLyrics(
-                destinationDir = destinationDir,
-                preservedLyrics = preservedLyrics
-            )
+            if (preserveExistingLyricsOnReplace) {
+                restorePreservedLyrics(
+                    destinationDir = destinationDir,
+                    preservedLyrics = preservedLyrics
+                )
+            }
             val audioPath = extracted.audioFileName?.let { File(destinationDir, it).absolutePath }
 
             restoreWaveformTrims(

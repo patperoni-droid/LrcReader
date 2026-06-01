@@ -9,6 +9,7 @@ import com.patrick.lrcreader.core.PlaylistRepository
 import com.patrick.lrcreader.core.buildSmpItem
 import com.patrick.lrcreader.core.getSmpSongId
 import com.patrick.lrcreader.core.isVirtualPlaylistItem
+import com.patrick.lrcreader.core.lyrics.LyricsMemoryCache
 import com.patrick.lrcreader.smp.SmpExporter
 import com.patrick.lrcreader.smp.SmpLibraryScanner
 import com.patrick.lrcreader.smp.SmpSecureImportPipeline
@@ -40,6 +41,7 @@ private const val SYNC_EDGE_DIAG_TAG = "SMP_SYNC_EDGE_DIAG"
 private const val SYNC_SETTINGS_DIAG_TAG = "SMP_SYNC_SETTINGS_DIAG"
 private const val SYNC_LYRICS_DIAG_TAG = "SMP_SYNC_LYRICS_DIAG"
 private const val SYNC_ARRANGEMENT_DIAG_TAG = "SMP_SYNC_ARRANGEMENT_DIAG"
+private const val SYNC_MANUAL_IMPORT_DIAG_TAG = "SMP_SYNC_MANUAL_IMPORT_DIAG"
 private const val SYNC_PACKAGE_ITEM_TIMEOUT_MS = 120_000L
 
 enum class SmpSyncPackageProgressPhase {
@@ -346,7 +348,18 @@ class SmpSyncPackageArchiveReader(private val context: Context) {
                                 input.copyTo(output, SYNC_BUFFER_SIZE)
                             }
                         }
-                        val result = SmpSecureImportPipeline(context).import(Uri.fromFile(tempSmp))
+                        val runtimeDirBefore = File(context.filesDir, "tracks/${item.entityId}")
+                        val lyricsBefore = File(runtimeDirBefore, "lyrics.lrc")
+                        val beforeLyricsHash = lyricsBefore.takeIf { it.isFile }?.let(::sha256)
+                        val packageHasLyrics = tempSmp.hasZipFileNamed("lyrics.lrc")
+                        Log.i(
+                            SYNC_MANUAL_IMPORT_DIAG_TAG,
+                            "manual_import:start songId=${item.entityId} title=${item.title ?: item.entityId} existsBefore=$exists packageHasLyrics=$packageHasLyrics lyricsBeforeHash=${beforeLyricsHash ?: "null"} lyricsBeforePath=${lyricsBefore.absolutePath}"
+                        )
+                        val result = SmpSecureImportPipeline(context).import(
+                            uri = Uri.fromFile(tempSmp),
+                            preserveExistingLyricsOnReplace = false
+                        )
                         val importedSong = result.importedSong
                             ?: return@withContext SmpSyncPackageImportResult(
                                 importedSongCount = importedSongs,
@@ -371,9 +384,15 @@ class SmpSyncPackageArchiveReader(private val context: Context) {
                             )
                         }
                         val runtimeDir = File(context.filesDir, "tracks/${item.entityId}")
+                        val lyricsAfter = File(runtimeDir, "lyrics.lrc")
+                        val afterLyricsHash = lyricsAfter.takeIf { it.isFile }?.let(::sha256)
                         Log.i(
                             SYNC_IMPORT_DIAG_TAG,
                             "post_import:runtime_check songId=${item.entityId} title=${item.title ?: importedSong.title} dir=${runtimeDir.absolutePath} exists=${runtimeDir.isDirectory}"
+                        )
+                        Log.i(
+                            SYNC_MANUAL_IMPORT_DIAG_TAG,
+                            "manual_import:done songId=${item.entityId} title=${item.title ?: importedSong.title} replaced=$exists runtimeExists=${runtimeDir.isDirectory} packageHasLyrics=$packageHasLyrics lyricsAfterHash=${afterLyricsHash ?: "null"} lyricsAfterPath=${lyricsAfter.absolutePath}"
                         )
                         if (!runtimeDir.isDirectory) {
                             return@withContext SmpSyncPackageImportResult(
@@ -385,6 +404,8 @@ class SmpSyncPackageArchiveReader(private val context: Context) {
                                 failureReason = "morceau importé introuvable dans le runtime: ${item.title ?: item.entityId}"
                             )
                         }
+                        LyricsMemoryCache.invalidate(buildSmpItem(importedSong.id))
+                        importedSong.audioPath?.let(LyricsMemoryCache::invalidate)
                         importedIds += importedSong.id
                         importedSongs += 1
                         if (exists) replacedSongs += 1
@@ -1008,6 +1029,18 @@ private fun sha256(file: File): String {
         }
     }
     return digest.digest().joinToString("") { "%02x".format(it) }
+}
+
+private fun File.hasZipFileNamed(fileName: String): Boolean {
+    if (!isFile) return false
+    return runCatching {
+        ZipFile(this).use { zip ->
+            zip.entries().asSequence().any { entry ->
+                !entry.isDirectory &&
+                    entry.name.substringAfterLast('/').equals(fileName, ignoreCase = true)
+            }
+        }
+    }.getOrDefault(false)
 }
 
 private fun JSONObject.optStringOrNull(key: String): String? {
