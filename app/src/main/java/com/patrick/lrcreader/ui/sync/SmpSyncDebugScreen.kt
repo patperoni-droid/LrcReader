@@ -1510,7 +1510,7 @@ private fun SyncDiagnosticsCard(diagnostics: SmpSyncPlanDiagnostics?) {
                 diagnostics.sameTitleDifferentSongIds.take(8).forEach { item ->
                     Text(
                         text = stringResource(
-                            R.string.smp_sync_debug_same_title_diff_id_line,
+                            R.string.smp_sync_debug_same_title_existing_song_line,
                             item.title,
                             item.sourceSongId,
                             item.targetSongId
@@ -1564,15 +1564,25 @@ private fun SyncDiagnosticsCard(diagnostics: SmpSyncPlanDiagnostics?) {
                         .takeIf { it.isNotEmpty() }
                         ?.joinToString()
                         ?: song.primaryReason
-                    Text(
-                        text = stringResource(
+                    val lineText = if (song.sameTitleDifferentSongId != null) {
+                        stringResource(
+                            R.string.smp_sync_debug_same_title_existing_song_line,
+                            song.title,
+                            song.sourceSongId,
+                            song.sameTitleDifferentSongId
+                        )
+                    } else {
+                        stringResource(
                             R.string.smp_sync_debug_full_song_sample_line,
                             song.title,
                             song.sourceSongId,
                             song.targetSongId ?: "-",
                             song.status.name,
                             components
-                        ),
+                        )
+                    }
+                    Text(
+                        text = lineText,
                         color = Color(0xFFFFE0B2),
                         fontSize = 12.sp
                     )
@@ -1583,13 +1593,23 @@ private fun SyncDiagnosticsCard(diagnostics: SmpSyncPlanDiagnostics?) {
                     .takeIf { it.isNotEmpty() }
                     ?.joinToString()
                     ?: song.primaryReason
-                Text(
-                    text = stringResource(
+                val lineText = if (song.sameTitleDifferentSongId != null) {
+                    stringResource(
+                        R.string.smp_sync_debug_same_title_existing_song_line,
+                        song.title,
+                        song.sourceSongId,
+                        song.sameTitleDifferentSongId
+                    )
+                } else {
+                    stringResource(
                         R.string.smp_sync_debug_modified_song_line,
                         song.title,
                         song.primaryReason,
                         components
-                    ),
+                    )
+                }
+                Text(
+                    text = lineText,
                     color = Color(0xFFCFD8DC),
                     fontSize = 12.sp
                 )

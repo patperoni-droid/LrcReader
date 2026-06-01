@@ -23,6 +23,7 @@ data class SmpSyncSongDiffDiagnostic(
     val title: String,
     val sourceSongId: String,
     val targetSongId: String?,
+    val sameTitleDifferentSongId: String?,
     val status: SyncDiffStatus,
     val packageKind: SmpSyncPackageKind?,
     val primaryReason: String,
@@ -99,12 +100,14 @@ class SmpSyncDiffDiagnosticsBuilder {
                     emptyList()
                 }
                 val packageItem = packageByEntityId[item.diff.entityId]
+                val sameTitleMatches = sameTitleIdsBySourceId[item.diff.entityId].orEmpty()
+                val sameTitleDifferentSongId = sameTitleMatches.firstOrNull()?.targetSongId
                 val primaryReason = primaryReason(
                     item = item,
                     sourceSong = sourceSong,
                     targetSong = targetSong,
                     differentComponents = differentComponents,
-                    sameTitleDifferentIds = sameTitleIdsBySourceId[item.diff.entityId].orEmpty()
+                    sameTitleDifferentIds = sameTitleMatches
                 )
 
                 SmpSyncSongDiffDiagnostic(
@@ -113,7 +116,8 @@ class SmpSyncDiffDiagnosticsBuilder {
                         ?: targetSong?.title
                         ?: item.diff.entityId,
                     sourceSongId = item.diff.entityId,
-                    targetSongId = targetSong?.songId,
+                    targetSongId = targetSong?.songId ?: sameTitleDifferentSongId,
+                    sameTitleDifferentSongId = sameTitleDifferentSongId,
                     status = item.diff.status,
                     packageKind = packageItem?.kind ?: item.inferredPackageKind(),
                     primaryReason = primaryReason,
@@ -271,7 +275,7 @@ class SmpSyncDiffDiagnosticsBuilder {
         }
         diagnostics.modifiedSongs.take(LOG_LIMIT).forEach { song ->
             logInfo(
-                "diff:song title=${song.title} sourceSongId=${song.sourceSongId} targetSongId=${song.targetSongId ?: "null"} status=${song.status} packageKind=${song.packageKind ?: "none"} reason=${song.primaryReason} components=${song.differentComponents.joinToString()}"
+                "diff:song title=${song.title} sourceSongId=${song.sourceSongId} targetSongId=${song.targetSongId ?: "null"} sameTitleDifferentSongId=${song.sameTitleDifferentSongId ?: "null"} status=${song.status} packageKind=${song.packageKind ?: "none"} reason=${song.primaryReason} components=${song.differentComponents.joinToString()}"
             )
         }
         diagnostics.modifiedPlaylists.take(LOG_LIMIT).forEach { playlist ->

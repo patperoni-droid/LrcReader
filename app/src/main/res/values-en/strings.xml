@@ -908,6 +908,7 @@
     <string name="smp_sync_debug_diagnostics_title">Difference diagnostics</string>
     <string name="smp_sync_debug_same_title_diff_id_title">%1$d matching titles with different songId</string>
     <string name="smp_sync_debug_same_title_diff_id_line">%1$s - A:%2$s / B:%3$s</string>
+    <string name="smp_sync_debug_same_title_existing_song_line">%1$s already exists on the backup phone with a different ID. A:%2$s / B:%3$s. Manual check required.</string>
     <string name="smp_sync_debug_modified_songs_title">Songs considered modified: %1$d</string>
     <string name="smp_sync_debug_modified_song_line">%1$s - reason: %2$s - components: %3$s</string>
     <string name="smp_sync_debug_full_song_reasons_title">Main reasons for full songs</string>

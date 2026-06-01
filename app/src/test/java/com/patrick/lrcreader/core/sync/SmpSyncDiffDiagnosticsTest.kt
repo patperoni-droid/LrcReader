@@ -85,7 +85,10 @@ class SmpSyncDiffDiagnosticsTest {
         )
 
         assertEquals(1, diagnostics.sameTitleDifferentSongIds.size)
-        assertEquals("songId différent", diagnostics.modifiedSongs.single().primaryReason)
+        val songDiagnostic = diagnostics.modifiedSongs.single()
+        assertEquals("songId différent", songDiagnostic.primaryReason)
+        assertEquals("song_b", songDiagnostic.targetSongId)
+        assertEquals("song_b", songDiagnostic.sameTitleDifferentSongId)
         assertEquals(1, diagnostics.fullSongReasonCounts["songId différent"])
     }
 

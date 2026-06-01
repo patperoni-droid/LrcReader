@@ -916,6 +916,7 @@
     <string name="smp_sync_debug_diagnostics_title">Diagnostic des différences</string>
     <string name="smp_sync_debug_same_title_diff_id_title">%1$d titres identiques avec songId différent</string>
     <string name="smp_sync_debug_same_title_diff_id_line">%1$s — A:%2$s / B:%3$s</string>
+    <string name="smp_sync_debug_same_title_existing_song_line">%1$s existe déjà sur le téléphone secours, mais avec un identifiant différent. A:%2$s / B:%3$s. Vérification manuelle nécessaire.</string>
     <string name="smp_sync_debug_modified_songs_title">Morceaux considérés modifiés : %1$d</string>
     <string name="smp_sync_debug_modified_song_line">%1$s — raison : %2$s — composants : %3$s</string>
     <string name="smp_sync_debug_full_song_reasons_title">Raisons principales des morceaux complets</string>
