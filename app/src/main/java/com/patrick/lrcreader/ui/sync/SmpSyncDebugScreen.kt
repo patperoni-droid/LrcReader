@@ -2,6 +2,7 @@ package com.patrick.lrcreader.ui.sync
 
 import android.content.Context
 import android.util.Log
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Arrangement
@@ -19,6 +20,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -55,6 +57,7 @@ import com.patrick.lrcreader.core.locallink.UnknownMessage
 import com.patrick.lrcreader.core.sync.SmpSyncManifest
 import com.patrick.lrcreader.core.sync.SmpSyncManifestComparator
 import com.patrick.lrcreader.core.sync.SmpSyncManifestGenerator
+import com.patrick.lrcreader.core.sync.SmpSyncManualSelectionPlanner
 import com.patrick.lrcreader.core.sync.SmpSyncPackage
 import com.patrick.lrcreader.core.sync.SmpSyncPackageArchiveBuilder
 import com.patrick.lrcreader.core.sync.SmpSyncPackageArchiveReader
@@ -72,6 +75,7 @@ import com.patrick.lrcreader.core.sync.SmpSyncPlanSummaryLine
 import com.patrick.lrcreader.core.sync.SmpSyncPlanSummaryLineKind
 import com.patrick.lrcreader.core.sync.SmpSyncPlanSummarySeverity
 import com.patrick.lrcreader.core.sync.SmpSyncPlanSummarizer
+import com.patrick.lrcreader.core.sync.SmpSyncPlaylistEntry
 import com.patrick.lrcreader.core.sync.SmpSyncSongEntry
 import com.patrick.lrcreader.core.sync.SyncPackageBuilder
 import com.patrick.lrcreader.core.sync.SyncPlan
@@ -98,6 +102,13 @@ private const val SMP_SYNC_PREF_PORT = "port"
 private const val SMP_SYNC_PACKAGE_CHUNK_BYTES = 64 * 1024
 private const val SMP_SYNC_PACKAGE_PREPARE_TIMEOUT_MS = 300_000L
 private const val SMP_SYNC_PACKAGE_DIAG_TAG = "SMP_SYNC_PACKAGE_DIAG"
+
+private enum class ManualSyncCategory {
+    SONGS,
+    PLAYLISTS,
+    NOTES,
+    PROMPTERS
+}
 
 @Composable
 fun SmpSyncDebugScreen(
@@ -131,6 +142,11 @@ fun SmpSyncDebugScreen(
     var receiveNextChunkIndex by remember { mutableStateOf(0) }
     var receiveChain by remember { mutableStateOf<Job?>(null) }
     var summary by remember { mutableStateOf<SmpSyncPlanSummary?>(null) }
+    var manualSyncExpanded by remember { mutableStateOf(false) }
+    var manualCategory by remember { mutableStateOf(ManualSyncCategory.SONGS) }
+    var manualSearchQuery by remember { mutableStateOf("") }
+    var selectedManualSongIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var selectedManualPlaylistIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var isGenerating by remember { mutableStateOf(false) }
     var isPreparingPackage by remember { mutableStateOf(false) }
     var isSendingPackage by remember { mutableStateOf(false) }
@@ -700,77 +716,198 @@ fun SmpSyncDebugScreen(
         }
     }
 
-    fun sendPreparedPackage() {
-        val prepared = preparedPackage ?: return
+    suspend fun sendPackageNow(
+        prepared: SmpSyncPreparedPackage,
+        allowLargeFullSongTransfer: Boolean
+    ) {
         val activeServer = server ?: return
-        if (isBusy) return
-        if (prepared.syncPackage.fullSongCount > SmpSyncPlanDiagnostics.LARGE_FULL_SONG_TRANSFER_THRESHOLD) {
+        if (!allowLargeFullSongTransfer &&
+            prepared.syncPackage.fullSongCount > SmpSyncPlanDiagnostics.LARGE_FULL_SONG_TRANSFER_THRESHOLD
+        ) {
             statusRes = R.string.smp_sync_debug_package_send_failed
             statusDetail = context.getString(R.string.smp_sync_debug_excessive_full_sync_blocked)
             return
         }
-        scope.launch {
-            isSendingPackage = true
-            errorMessage = null
-            statusDetail = null
-            statusRes = R.string.smp_sync_debug_package_sending
-            runCatching {
-                val packageId = "package-${System.currentTimeMillis()}-${UUID.randomUUID()}"
-                val started = activeServer.send(
-                    SyncPackageStartMessage(
-                        packageId = packageId,
-                        totalBytes = prepared.sizeBytes,
-                        fullSongCount = prepared.syncPackage.fullSongCount,
-                        playlistCount = prepared.syncPackage.playlistStateCount,
-                        familyCount = prepared.syncPackage.familyStateCount,
-                        replacementSongCount = prepared.syncPackage.items.count {
-                            it.diffStatus == com.patrick.lrcreader.core.sync.SyncDiffStatus.MODIFIED_ON_A
-                        },
-                        seq = seq++
-                    )
+        isSendingPackage = true
+        errorMessage = null
+        statusDetail = null
+        statusRes = R.string.smp_sync_debug_package_sending
+        runCatching {
+            val packageId = "package-${System.currentTimeMillis()}-${UUID.randomUUID()}"
+            val started = activeServer.send(
+                SyncPackageStartMessage(
+                    packageId = packageId,
+                    totalBytes = prepared.sizeBytes,
+                    fullSongCount = prepared.syncPackage.fullSongCount,
+                    playlistCount = prepared.syncPackage.playlistStateCount,
+                    familyCount = prepared.syncPackage.familyStateCount,
+                    replacementSongCount = prepared.syncPackage.items.count {
+                        it.diffStatus == com.patrick.lrcreader.core.sync.SyncDiffStatus.MODIFIED_ON_A
+                    },
+                    seq = seq++
                 )
-                if (!started) {
-                    statusRes = R.string.local_link_no_receiver_connected
-                    return@runCatching
-                }
-                withContext(Dispatchers.IO) {
-                    val buffer = ByteArray(SMP_SYNC_PACKAGE_CHUNK_BYTES)
-                    prepared.file.inputStream().buffered().use { input ->
-                        var chunkIndex = 0
-                        while (true) {
-                            val read = input.read(buffer)
-                            if (read < 0) break
-                            if (read == 0) continue
-                            val chunk = SyncPackageChunkMessage.fromBytes(
-                                packageId = packageId,
-                                chunkIndex = chunkIndex,
-                                bytes = buffer,
-                                byteCount = read,
-                                seq = seq++
-                            )
-                            val sent = activeServer.send(chunk)
-                            if (!sent) error("send_failed")
-                            chunkIndex += 1
-                        }
+            )
+            if (!started) {
+                statusRes = R.string.local_link_no_receiver_connected
+                return@runCatching
+            }
+            withContext(Dispatchers.IO) {
+                val buffer = ByteArray(SMP_SYNC_PACKAGE_CHUNK_BYTES)
+                prepared.file.inputStream().buffered().use { input ->
+                    var chunkIndex = 0
+                    while (true) {
+                        val read = input.read(buffer)
+                        if (read < 0) break
+                        if (read == 0) continue
+                        val chunk = SyncPackageChunkMessage.fromBytes(
+                            packageId = packageId,
+                            chunkIndex = chunkIndex,
+                            bytes = buffer,
+                            byteCount = read,
+                            seq = seq++
+                        )
+                        val sent = activeServer.send(chunk)
+                        if (!sent) error("send_failed")
+                        chunkIndex += 1
                     }
                 }
-                val ended = activeServer.send(
-                    SyncPackageEndMessage(
-                        packageId = packageId,
-                        sha256 = prepared.sha256,
-                        seq = seq++
-                    )
-                )
-                statusRes = if (ended) {
-                    R.string.smp_sync_debug_package_sent
-                } else {
-                    R.string.local_link_no_receiver_connected
-                }
-            }.onFailure { error ->
-                statusRes = R.string.smp_sync_debug_connection_error
-                statusDetail = error.message ?: context.getString(R.string.smp_sync_debug_package_send_failed)
             }
-            isSendingPackage = false
+            val ended = activeServer.send(
+                SyncPackageEndMessage(
+                    packageId = packageId,
+                    sha256 = prepared.sha256,
+                    seq = seq++
+                )
+            )
+            statusRes = if (ended) {
+                R.string.smp_sync_debug_package_sent
+            } else {
+                R.string.local_link_no_receiver_connected
+            }
+        }.onFailure { error ->
+            statusRes = R.string.smp_sync_debug_connection_error
+            statusDetail = error.message ?: context.getString(R.string.smp_sync_debug_package_send_failed)
+        }
+        isSendingPackage = false
+    }
+
+    fun sendPreparedPackage() {
+        val prepared = preparedPackage ?: return
+        if (isBusy) return
+        scope.launch {
+            sendPackageNow(
+                prepared = prepared,
+                allowLargeFullSongTransfer = false
+            )
+        }
+    }
+
+    fun prepareManualSelectionAndSend() {
+        if (isBusy) return
+        val songIds = selectedManualSongIds
+        val playlistIds = selectedManualPlaylistIds
+        if (songIds.isEmpty() && playlistIds.isEmpty()) {
+            statusDetail = context.getString(R.string.smp_sync_manual_empty_selection)
+            return
+        }
+        scope.launch {
+            val startedAt = System.currentTimeMillis()
+            isPreparingPackage = true
+            errorMessage = null
+            statusRes = R.string.smp_sync_debug_preparing_sync
+            statusDetail = context.getString(
+                R.string.smp_sync_manual_prepare_selection,
+                songIds.size + playlistIds.size
+            )
+            runCatching {
+                val baseManifest = localManifest ?: buildLocalManifest(deviceId = hostDeviceName)
+                localManifest = baseManifest
+                localManifestTitleRes = R.string.smp_sync_debug_local_manifest
+                val source = baseManifest.copy(
+                    deviceId = hostDeviceName,
+                    generatedAt = System.currentTimeMillis(),
+                    songs = baseManifest.songs.filter { song -> song.songId in songIds },
+                    playlists = baseManifest.playlists.filter { playlist ->
+                        playlist.uiIdentityKey() in playlistIds
+                    },
+                    families = emptyList(),
+                    globalState = null
+                )
+                val plan = SmpSyncManualSelectionPlanner().buildPlan(
+                    sourceManifest = source,
+                    selectedSongIds = songIds,
+                    selectedPlaylistIds = playlistIds
+                )
+                if (plan.items.isEmpty()) {
+                    statusDetail = context.getString(R.string.smp_sync_manual_empty_selection)
+                    return@runCatching
+                }
+                sourceManifestForPackage = source
+                syncPlan = plan
+                summary = SmpSyncPlanSummarizer().summarize(plan)
+                syncDiagnostics = null
+                comparedManifest = null
+                preparedPackage = null
+                syncPackage = buildPackagePreview(
+                    source = source,
+                    plan = plan
+                )
+
+                val activeServer = server
+                if (activeServer == null) {
+                    statusRes = R.string.smp_sync_debug_ready_to_sync
+                    statusDetail = context.getString(
+                        R.string.smp_sync_manual_ready_without_session,
+                        syncPackage?.itemCount ?: 0
+                    )
+                    return@runCatching
+                }
+
+                val prepared = buildPackageArchive(
+                    source = source,
+                    plan = plan,
+                    onProgress = { progress ->
+                        scope.launch {
+                            statusDetail = packageProgressText(context, progress)
+                        }
+                    }
+                )
+                preparedPackage = prepared
+                syncPackage = prepared.syncPackage
+                statusRes = R.string.smp_sync_debug_ready_to_sync
+                statusDetail = context.getString(
+                    R.string.smp_sync_debug_package_prepare_done,
+                    prepared.syncPackage.itemCount
+                )
+                isPreparingPackage = false
+                sendPackageNow(
+                    prepared = prepared,
+                    allowLargeFullSongTransfer = true
+                )
+            }.onFailure { error ->
+                Log.e(
+                    SMP_SYNC_PACKAGE_DIAG_TAG,
+                    "ui:manual_prepare_failed elapsedMs=${System.currentTimeMillis() - startedAt}",
+                    error
+                )
+                statusRes = R.string.smp_sync_debug_exchange_error
+                statusDetail = when (error) {
+                    is TimeoutCancellationException -> {
+                        context.getString(R.string.smp_sync_debug_package_prepare_timeout)
+                    }
+                    is SmpSyncPackagePreparationException -> {
+                        context.getString(
+                            R.string.smp_sync_debug_package_prepare_failed_item,
+                            error.title?.takeIf { it.isNotBlank() }
+                                ?: error.entityId?.takeIf { it.isNotBlank() }
+                                ?: context.getString(R.string.local_link_empty_value)
+                        )
+                    }
+                    else -> error.message ?: context.getString(R.string.smp_sync_debug_error)
+                }
+                errorMessage = statusDetail
+            }
+            isPreparingPackage = false
         }
     }
 
@@ -1016,6 +1153,54 @@ fun SmpSyncDebugScreen(
             onStopSession = { closeLinks() }
         )
 
+        ManualSelectionSyncCard(
+            manifest = localManifest,
+            expanded = manualSyncExpanded,
+            category = manualCategory,
+            searchQuery = manualSearchQuery,
+            selectedSongIds = selectedManualSongIds,
+            selectedPlaylistIds = selectedManualPlaylistIds,
+            isBusy = isBusy,
+            isConnected = server != null,
+            onToggleExpanded = {
+                val shouldOpen = !manualSyncExpanded
+                manualSyncExpanded = shouldOpen
+                if (shouldOpen && localManifest == null && !isBusy) {
+                    generateLocalManifest(compareAfterGenerate = false)
+                }
+            },
+            onCategoryChange = { category ->
+                manualCategory = category
+                manualSearchQuery = ""
+            },
+            onSearchChange = { manualSearchQuery = it },
+            onToggleSong = { songId ->
+                selectedManualSongIds = if (songId in selectedManualSongIds) {
+                    selectedManualSongIds - songId
+                } else {
+                    selectedManualSongIds + songId
+                }
+            },
+            onTogglePlaylist = { playlistId ->
+                selectedManualPlaylistIds = if (playlistId in selectedManualPlaylistIds) {
+                    selectedManualPlaylistIds - playlistId
+                } else {
+                    selectedManualPlaylistIds + playlistId
+                }
+            },
+            onSelectAllSongs = { songIds ->
+                selectedManualSongIds = selectedManualSongIds + songIds
+            },
+            onSelectAllPlaylists = { playlistIds ->
+                selectedManualPlaylistIds = selectedManualPlaylistIds + playlistIds
+            },
+            onClear = {
+                selectedManualSongIds = emptySet()
+                selectedManualPlaylistIds = emptySet()
+            },
+            onSend = { prepareManualSelectionAndSend() }
+        )
+
         localManifest?.let { manifest ->
             ManifestStatsCard(
                 title = stringResource(localManifestTitleRes),
@@ -1237,6 +1422,315 @@ private fun InfoLine(label: String, value: String) {
             textAlign = TextAlign.End,
             modifier = Modifier.weight(0.58f)
         )
+    }
+}
+
+@Composable
+private fun ManualSelectionSyncCard(
+    manifest: SmpSyncManifest?,
+    expanded: Boolean,
+    category: ManualSyncCategory,
+    searchQuery: String,
+    selectedSongIds: Set<String>,
+    selectedPlaylistIds: Set<String>,
+    isBusy: Boolean,
+    isConnected: Boolean,
+    onToggleExpanded: () -> Unit,
+    onCategoryChange: (ManualSyncCategory) -> Unit,
+    onSearchChange: (String) -> Unit,
+    onToggleSong: (String) -> Unit,
+    onTogglePlaylist: (String) -> Unit,
+    onSelectAllSongs: (Set<String>) -> Unit,
+    onSelectAllPlaylists: (Set<String>) -> Unit,
+    onClear: () -> Unit,
+    onSend: () -> Unit
+) {
+    val selectedCount = selectedSongIds.size + selectedPlaylistIds.size
+    val normalizedQuery = searchQuery.trim().lowercase()
+    val visibleSongs = manifest?.songs
+        ?.asSequence()
+        ?.filter { song ->
+            normalizedQuery.isEmpty() ||
+                song.title.lowercase().contains(normalizedQuery) ||
+                song.songId.lowercase().contains(normalizedQuery)
+        }
+        ?.sortedBy { song -> song.title.lowercase() }
+        ?.take(80)
+        ?.toList()
+        .orEmpty()
+    val visiblePlaylists = manifest?.playlists
+        ?.asSequence()
+        ?.filter { playlist ->
+            val identity = playlist.uiIdentityKey()
+            normalizedQuery.isEmpty() ||
+                playlist.playlistName.lowercase().contains(normalizedQuery) ||
+                identity.lowercase().contains(normalizedQuery)
+        }
+        ?.sortedBy { playlist -> playlist.playlistName.lowercase() }
+        ?.take(80)
+        ?.toList()
+        .orEmpty()
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF182019)),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.smp_sync_manual_title),
+                color = Color.White,
+                fontSize = 17.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = stringResource(R.string.smp_sync_manual_subtitle),
+                color = Color(0xFFB0BEC5),
+                fontSize = 13.sp
+            )
+            Button(
+                onClick = onToggleExpanded,
+                enabled = !isBusy,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(text = stringResource(R.string.smp_sync_manual_choose))
+            }
+
+            if (!expanded) return@Column
+
+            if (!isConnected) {
+                Text(
+                    text = stringResource(R.string.smp_sync_manual_no_session_hint),
+                    color = Color(0xFFFFCC80),
+                    fontSize = 12.sp
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                ManualCategoryButton(
+                    text = stringResource(R.string.smp_sync_manual_category_songs),
+                    selected = category == ManualSyncCategory.SONGS,
+                    enabled = !isBusy,
+                    modifier = Modifier.weight(1f),
+                    onClick = { onCategoryChange(ManualSyncCategory.SONGS) }
+                )
+                ManualCategoryButton(
+                    text = stringResource(R.string.smp_sync_manual_category_playlists),
+                    selected = category == ManualSyncCategory.PLAYLISTS,
+                    enabled = !isBusy,
+                    modifier = Modifier.weight(1f),
+                    onClick = { onCategoryChange(ManualSyncCategory.PLAYLISTS) }
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                ManualCategoryButton(
+                    text = stringResource(R.string.smp_sync_manual_category_notes),
+                    selected = category == ManualSyncCategory.NOTES,
+                    enabled = !isBusy,
+                    modifier = Modifier.weight(1f),
+                    onClick = { onCategoryChange(ManualSyncCategory.NOTES) }
+                )
+                ManualCategoryButton(
+                    text = stringResource(R.string.smp_sync_manual_category_prompters),
+                    selected = category == ManualSyncCategory.PROMPTERS,
+                    enabled = !isBusy,
+                    modifier = Modifier.weight(1f),
+                    onClick = { onCategoryChange(ManualSyncCategory.PROMPTERS) }
+                )
+            }
+
+            if (category == ManualSyncCategory.NOTES || category == ManualSyncCategory.PROMPTERS) {
+                Text(
+                    text = stringResource(R.string.smp_sync_manual_future_category),
+                    color = Color(0xFFB0BEC5),
+                    fontSize = 13.sp
+                )
+            } else {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = onSearchChange,
+                    label = { Text(stringResource(R.string.smp_sync_manual_search)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = stringResource(R.string.smp_sync_manual_selected_count, selectedCount),
+                        color = Color(0xFFA5D6A7),
+                        fontSize = 13.sp,
+                        modifier = Modifier.weight(1f)
+                    )
+                    TextButton(
+                        onClick = {
+                            if (category == ManualSyncCategory.SONGS) {
+                                onSelectAllSongs(visibleSongs.map { it.songId }.toSet())
+                            } else {
+                                onSelectAllPlaylists(visiblePlaylists.map { it.uiIdentityKey() }.toSet())
+                            }
+                        },
+                        enabled = !isBusy && manifest != null
+                    ) {
+                        Text(text = stringResource(R.string.smp_sync_manual_select_all))
+                    }
+                    TextButton(
+                        onClick = onClear,
+                        enabled = !isBusy && selectedCount > 0
+                    ) {
+                        Text(text = stringResource(R.string.smp_sync_manual_clear))
+                    }
+                }
+
+                if (manifest == null) {
+                    Text(
+                        text = stringResource(R.string.smp_sync_manual_manifest_needed),
+                        color = Color(0xFFB0BEC5),
+                        fontSize = 13.sp
+                    )
+                } else if (category == ManualSyncCategory.SONGS) {
+                    ManualSongSelectionList(
+                        songs = visibleSongs,
+                        selectedSongIds = selectedSongIds,
+                        onToggleSong = onToggleSong
+                    )
+                } else {
+                    ManualPlaylistSelectionList(
+                        playlists = visiblePlaylists,
+                        selectedPlaylistIds = selectedPlaylistIds,
+                        onTogglePlaylist = onTogglePlaylist
+                    )
+                }
+
+                if ((category == ManualSyncCategory.SONGS && visibleSongs.size == 80) ||
+                    (category == ManualSyncCategory.PLAYLISTS && visiblePlaylists.size == 80)
+                ) {
+                    Text(
+                        text = stringResource(R.string.smp_sync_manual_list_limited),
+                        color = Color(0xFF90A4AE),
+                        fontSize = 12.sp
+                    )
+                }
+            }
+
+            Button(
+                onClick = onSend,
+                enabled = !isBusy && selectedCount > 0,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(text = stringResource(R.string.smp_sync_manual_send))
+            }
+        }
+    }
+}
+
+@Composable
+private fun ManualCategoryButton(
+    text: String,
+    selected: Boolean,
+    enabled: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    TextButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier
+            .background(
+                if (selected) Color(0xFF26352A) else Color(0xFF202428),
+                RoundedCornerShape(8.dp)
+            )
+    ) {
+        Text(
+            text = text,
+            color = if (selected) Color(0xFFA5D6A7) else Color(0xFFCFD8DC),
+            fontSize = 12.sp
+        )
+    }
+}
+
+@Composable
+private fun ManualSongSelectionList(
+    songs: List<SmpSyncSongEntry>,
+    selectedSongIds: Set<String>,
+    onToggleSong: (String) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        songs.forEach { song ->
+            ManualSelectionRow(
+                title = song.title,
+                subtitle = song.songId,
+                checked = song.songId in selectedSongIds,
+                onClick = { onToggleSong(song.songId) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun ManualPlaylistSelectionList(
+    playlists: List<SmpSyncPlaylistEntry>,
+    selectedPlaylistIds: Set<String>,
+    onTogglePlaylist: (String) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        playlists.forEach { playlist ->
+            val identity = playlist.uiIdentityKey()
+            ManualSelectionRow(
+                title = playlist.playlistName,
+                subtitle = identity,
+                checked = identity in selectedPlaylistIds,
+                onClick = { onTogglePlaylist(identity) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun ManualSelectionRow(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFF202820), RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Checkbox(
+            checked = checked,
+            onCheckedChange = { onClick() }
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                color = Color.White,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium
+            )
+            Text(
+                text = subtitle,
+                color = Color(0xFF90A4AE),
+                fontSize = 11.sp
+            )
+        }
     }
 }
 
@@ -1911,6 +2405,10 @@ private fun SmpSyncPackage.formattedEstimatedSize(): String {
 
 private fun SmpSyncPackage.hasExcessiveFullSongs(): Boolean {
     return fullSongCount > SmpSyncPlanDiagnostics.LARGE_FULL_SONG_TRANSFER_THRESHOLD
+}
+
+private fun SmpSyncPlaylistEntry.uiIdentityKey(): String {
+    return playlistId?.trim()?.takeIf { it.isNotEmpty() } ?: playlistName
 }
 
 @Composable
