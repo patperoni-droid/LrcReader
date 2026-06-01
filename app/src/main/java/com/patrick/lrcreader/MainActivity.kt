@@ -84,6 +84,7 @@ import com.patrick.lrcreader.smp.SmpImportedUiSignal
 import com.patrick.lrcreader.smp.SmpArchiveFinalizeScheduler
 import com.patrick.lrcreader.smp.SmpArchiveFinalizeStore
 import com.patrick.lrcreader.smp.SmpLibraryScanner
+import com.patrick.lrcreader.smp.SmpRuntimeSongCache
 import com.patrick.lrcreader.smp.SmpSecureImportPipeline
 import com.patrick.lrcreader.smp.SmpUserArchiveRebuilder
 import com.patrick.lrcreader.smp.SmpWorkspaceArchiveStore
@@ -464,6 +465,9 @@ class MainActivity : AppCompatActivity() {
                     LibrarySnapshot.isReady = true
                 }
             }
+            val startupSmpSongsById = withContext(Dispatchers.IO) {
+                SmpRuntimeSongCache.load(this@MainActivity).associateBy { it.id }
+            }
             mark("setContent:before")
             setContent {
             LaunchedEffect(Unit) {
@@ -607,7 +611,7 @@ class MainActivity : AppCompatActivity() {
                 )
                 var isSmpImportedSongsDialogOpen by remember { mutableStateOf(false) }
                 var smpImportedSongs by remember { mutableStateOf<List<com.patrick.lrcreader.smp.SongUnit>>(emptyList()) }
-                var smpSongsById by remember { mutableStateOf<Map<String, com.patrick.lrcreader.smp.SongUnit>>(emptyMap()) }
+                var smpSongsById by remember { mutableStateOf(startupSmpSongsById) }
                 var selectedSmpImportedSongDetail by remember { mutableStateOf<SmpImportedSongDetail?>(null) }
                 var pendingPlaylistTrackTarget by remember { mutableStateOf<String?>(null) }
                 var pendingPlaylistBatchPlan by remember {
@@ -1446,6 +1450,9 @@ class MainActivity : AppCompatActivity() {
                     }
                     smpSongsById = withContext(Dispatchers.IO) {
                         smpLibraryScanner.listSongs().associateBy { it.id }
+                    }
+                    withContext(Dispatchers.IO) {
+                        SmpRuntimeSongCache.save(ctx, smpSongsById.values)
                     }
                 }
                 LaunchedEffect(savedRoot, hasSetupPerm, isInternalMode, shouldShowSetup, configInitDoneForRoot) {
