@@ -25,6 +25,7 @@ import java.security.MessageDigest
 import java.util.UUID
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
+import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 
 private const val SYNC_PACKAGE_ENTRY = "package.json"
@@ -36,6 +37,7 @@ private const val SYNC_MAX_PACKAGE_BYTES = 2_000L * 1024L * 1024L
 private const val SYNC_PACKAGE_DIAG_TAG = "SMP_SYNC_PACKAGE_DIAG"
 private const val SYNC_IMPORT_DIAG_TAG = "SMP_SYNC_IMPORT_DIAG"
 private const val SYNC_EDGE_DIAG_TAG = "SMP_SYNC_EDGE_DIAG"
+private const val SYNC_SETTINGS_DIAG_TAG = "SMP_SYNC_SETTINGS_DIAG"
 private const val SYNC_PACKAGE_ITEM_TIMEOUT_MS = 120_000L
 
 enum class SmpSyncPackageProgressPhase {
@@ -466,6 +468,11 @@ class SmpSyncPackageArchiveReader(private val context: Context) {
             syncPackage = receivedPackage.syncPackage,
             planDiagnostics = planDiagnostics
         )
+        logSettingsHashDiagnostics(
+            receivedPackage = receivedPackage,
+            localManifest = localManifest,
+            remainingPlan = remainingPlan
+        )
         val localById = localManifest.songs.associateBy { it.songId }
         receivedPackage.syncPackage.items
             .filter { it.kind == SmpSyncPackageKind.SONG_FULL }
@@ -555,6 +562,76 @@ class SmpSyncPackageArchiveReader(private val context: Context) {
                     "edge:playlist name=${item.diff.title ?: item.diff.entityId} status=${item.diff.status} action=${item.action} reason=${diagnostic?.primaryReason ?: item.diff.status.name} packageKind=${packageById[item.diff.entityId]?.kind ?: SmpSyncPackageKind.PLAYLIST_STATE} components=${diagnostic?.differentComponents?.joinToString()?.ifBlank { "none" } ?: "none"} sourceItems=${diagnostic?.sourceItemsHash ?: "null"} targetItems=${diagnostic?.targetItemsHash ?: "null"} sourceGroups=${diagnostic?.sourceGroupsHash ?: "null"} targetGroups=${diagnostic?.targetGroupsHash ?: "null"} sourceColors=${diagnostic?.sourceColorsHash ?: "null"} targetColors=${diagnostic?.targetColorsHash ?: "null"} sourceFull=${diagnostic?.sourceFullPlaylistHash ?: "null"} targetFull=${diagnostic?.targetFullPlaylistHash ?: "null"} sourceSongIds=${diagnostic?.sourceSongIds?.joinToString(prefix = "[", postfix = "]") ?: "[]"} targetSongIds=${diagnostic?.targetSongIds?.joinToString(prefix = "[", postfix = "]") ?: "[]"}"
                 )
             }
+    }
+
+    private fun logSettingsHashDiagnostics(
+        receivedPackage: SmpSyncReceivedPackage,
+        localManifest: SmpSyncManifest,
+        remainingPlan: SyncPlan
+    ) {
+        val sourceById = receivedPackage.sourceManifest.songs.associateBy { it.songId }
+        val localById = localManifest.songs.associateBy { it.songId }
+        val settingsItems = remainingPlan.items
+            .filter { item ->
+                item.diff.entityType == SyncEntityType.SONG &&
+                    item.action == SyncPlanAction.COPY_TO_B
+            }
+            .mapNotNull { item ->
+                val sourceSong = sourceById[item.diff.entityId] ?: return@mapNotNull null
+                val localSong = localById[item.diff.entityId] ?: return@mapNotNull null
+                if (sourceSong.settingsHash == localSong.settingsHash) return@mapNotNull null
+                item to sourceSong
+            }
+            .take(5)
+        if (settingsItems.isEmpty()) return
+
+        ZipFile(receivedPackage.file).use { packageZip ->
+            settingsItems.forEach { (item, sourceSong) ->
+                val localConfig = File(context.filesDir, "tracks/${item.diff.entityId}/config.json")
+                    .takeIf { it.isFile }
+                    ?.readText(Charsets.UTF_8)
+                val sourceConfig = readSourceConfigFromPackage(
+                    packageZip = packageZip,
+                    syncPackage = receivedPackage.syncPackage,
+                    songId = item.diff.entityId
+                )
+                val sourceCanonical = sourceConfig
+                    ?.let { SmpSyncHashing().syncSettingsCanonicalTextOrNull(it) }
+                val localCanonical = localConfig
+                    ?.let { SmpSyncHashing().syncSettingsCanonicalTextOrNull(it) }
+                val diffs = diffCanonicalJsonFields(sourceCanonical, localCanonical)
+                Log.i(
+                    SYNC_SETTINGS_DIAG_TAG,
+                    "settings:song title=${sourceSong.title} songId=${item.diff.entityId} status=${item.diff.status} sourceHash=${sourceSong.settingsHash ?: "null"} targetHash=${localById[item.diff.entityId]?.settingsHash ?: "null"} fields=${diffs.joinToString { diff -> "${diff.path}:A=${diff.sourceValue ?: "null"}|B=${diff.targetValue ?: "null"}" }.ifBlank { "canonical_unavailable_or_equal" }}"
+                )
+            }
+        }
+    }
+
+    private fun readSourceConfigFromPackage(
+        packageZip: ZipFile,
+        syncPackage: SmpSyncPackage,
+        songId: String
+    ): String? {
+        val contentEntry = syncPackage.items
+            .firstOrNull { item ->
+                item.kind == SmpSyncPackageKind.SONG_FULL &&
+                    item.entityId == songId
+            }
+            ?.contentEntry
+            ?: return null
+        val smpEntry = packageZip.getEntry(contentEntry) ?: return null
+        return packageZip.getInputStream(smpEntry).use { smpInput ->
+            ZipInputStream(smpInput).use { smpZip ->
+                while (true) {
+                    val entry = smpZip.nextEntry ?: break
+                    if (!entry.isDirectory && entry.name == "config.json") {
+                        return smpZip.bufferedReader(Charsets.UTF_8).readText()
+                    }
+                }
+            }
+            null
+        }
     }
 
     private fun applyPlaylistState(receivedPackage: SmpSyncReceivedPackage): Int {
@@ -824,6 +901,69 @@ private fun sha256(file: File): String {
 private fun JSONObject.optStringOrNull(key: String): String? {
     if (!has(key) || isNull(key)) return null
     return optString(key).trim().takeIf { it.isNotEmpty() }
+}
+
+private data class SmpSyncJsonFieldDiff(
+    val path: String,
+    val sourceValue: String?,
+    val targetValue: String?
+)
+
+private fun diffCanonicalJsonFields(
+    sourceCanonical: String?,
+    targetCanonical: String?
+): List<SmpSyncJsonFieldDiff> {
+    if (sourceCanonical == null || targetCanonical == null) {
+        return listOf(
+            SmpSyncJsonFieldDiff(
+                path = "settings",
+                sourceValue = sourceCanonical?.truncateDiagValue(),
+                targetValue = targetCanonical?.truncateDiagValue()
+            )
+        )
+    }
+    val sourceJson = runCatching { JSONObject(sourceCanonical) }.getOrNull()
+    val targetJson = runCatching { JSONObject(targetCanonical) }.getOrNull()
+    if (sourceJson == null || targetJson == null) {
+        return listOf(
+            SmpSyncJsonFieldDiff(
+                path = "settings",
+                sourceValue = sourceCanonical.truncateDiagValue(),
+                targetValue = targetCanonical.truncateDiagValue()
+            )
+        )
+    }
+    val sourceFields = flattenJsonFields(sourceJson)
+    val targetFields = flattenJsonFields(targetJson)
+    return (sourceFields.keys + targetFields.keys)
+        .sorted()
+        .mapNotNull { key ->
+            val sourceValue = sourceFields[key]
+            val targetValue = targetFields[key]
+            if (sourceValue == targetValue) return@mapNotNull null
+            SmpSyncJsonFieldDiff(
+                path = key,
+                sourceValue = sourceValue?.truncateDiagValue(),
+                targetValue = targetValue?.truncateDiagValue()
+            )
+        }
+        .take(12)
+}
+
+private fun flattenJsonFields(json: JSONObject, prefix: String = ""): Map<String, String> {
+    val out = linkedMapOf<String, String>()
+    json.keys().asSequence().toList().sorted().forEach { key ->
+        val path = if (prefix.isBlank()) key else "$prefix.$key"
+        when (val value = json.opt(key)) {
+            is JSONObject -> out.putAll(flattenJsonFields(value, path))
+            else -> out[path] = value?.toString() ?: "null"
+        }
+    }
+    return out
+}
+
+private fun String.truncateDiagValue(maxLength: Int = 80): String {
+    return if (length <= maxLength) this else take(maxLength) + "..."
 }
 
 private fun SyncPlanItem.inferredEdgePackageKind(): SmpSyncPackageKind? {

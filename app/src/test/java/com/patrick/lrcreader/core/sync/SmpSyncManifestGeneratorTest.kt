@@ -197,6 +197,181 @@ class SmpSyncManifestGeneratorTest {
     }
 
     @Test
+    fun localOnlySettingsFields_doNotChangeSettingsHash() {
+        val dir = Files.createTempDirectory("sync_manifest_settings_local_").toFile()
+        try {
+            val config = File(dir, "config.json").apply {
+                writeText(
+                    """
+                    {
+                      "id": "song_a",
+                      "title": "Phone A title",
+                      "files": { "audio": "/absolute/local/a.mp3" },
+                      "playback": { "trimStartMs": 1200, "tempo": 1.1, "pitchSemi": -1, "volumeDb": -3 },
+                      "ui": { "scroll": 42, "expanded": true },
+                      "updatedAt": 111
+                    }
+                    """.trimIndent(),
+                    Charsets.UTF_8
+                )
+            }
+            val generator = SmpSyncManifestGenerator(hashing)
+            val source = SmpSyncSongManifestSource(
+                songId = "song_001",
+                title = "Sync Title",
+                settingsFile = config
+            )
+            val before = runBlocking {
+                generator.generateFromSources(
+                    appVersion = "0.3-beta",
+                    generatedAt = 1L,
+                    songs = listOf(source)
+                )
+            }.songs.first()
+
+            config.writeText(
+                """
+                {
+                  "id": "song_b",
+                  "title": "Phone B title",
+                  "files": { "audio": "/other/device/b.mp3" },
+                  "playback": { "trimStartMs": 1200, "tempo": 1.1, "pitchSemi": -1, "volumeDb": -3 },
+                  "ui": { "scroll": 999, "expanded": false },
+                  "updatedAt": 999
+                }
+                """.trimIndent(),
+                Charsets.UTF_8
+            )
+
+            val after = runBlocking {
+                generator.generateFromSources(
+                    appVersion = "0.3-beta",
+                    generatedAt = 2L,
+                    songs = listOf(source)
+                )
+            }.songs.first()
+
+            assertEquals(before.settingsHash, after.settingsHash)
+            assertEquals(before.fullSongHash, after.fullSongHash)
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun onlyLocalSettingsFields_produceNoSettingsHash() {
+        val dir = Files.createTempDirectory("sync_manifest_settings_local_only_").toFile()
+        try {
+            val config = File(dir, "config.json").apply {
+                writeText(
+                    """{"id":"song_a","title":"Local title","files":{"audio":"/phone/a.mp3"},"ui":{"zoom":1.5},"updatedAt":123}""",
+                    Charsets.UTF_8
+                )
+            }
+
+            val manifest = runBlocking {
+                SmpSyncManifestGenerator(hashing).generateFromSources(
+                    appVersion = "0.3-beta",
+                    generatedAt = 1L,
+                    songs = listOf(
+                        SmpSyncSongManifestSource(
+                            songId = "song_001",
+                            title = "Sync Title",
+                            settingsFile = config
+                        )
+                    )
+                )
+            }
+
+            assertNull(manifest.songs.first().settingsHash)
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun musicalPlaybackSettingChange_updatesSettingsHash() {
+        val dir = Files.createTempDirectory("sync_manifest_settings_music_").toFile()
+        try {
+            val config = File(dir, "config.json").apply {
+                writeText("""{"playback":{"trimStartMs":1200,"tempo":1.1,"pitchSemi":-1,"volumeDb":-3}}""", Charsets.UTF_8)
+            }
+            val generator = SmpSyncManifestGenerator(hashing)
+            val source = SmpSyncSongManifestSource(
+                songId = "song_001",
+                title = "Sync Title",
+                settingsFile = config
+            )
+            val before = runBlocking {
+                generator.generateFromSources(
+                    appVersion = "0.3-beta",
+                    generatedAt = 1L,
+                    songs = listOf(source)
+                )
+            }.songs.first()
+
+            config.writeText("""{"playback":{"trimStartMs":1200,"tempo":1.2,"pitchSemi":-1,"volumeDb":-3}}""", Charsets.UTF_8)
+
+            val after = runBlocking {
+                generator.generateFromSources(
+                    appVersion = "0.3-beta",
+                    generatedAt = 2L,
+                    songs = listOf(source)
+                )
+            }.songs.first()
+
+            assertNotEquals(before.settingsHash, after.settingsHash)
+            assertNotEquals(before.fullSongHash, after.fullSongHash)
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun arrangementUpdatedAtOnly_doesNotChangeArrangementHash() {
+        val dir = Files.createTempDirectory("sync_manifest_arrangement_").toFile()
+        try {
+            val arrangement = File(dir, "arrangement.json").apply {
+                writeText(
+                    """{"version":1,"name":"Arrangement 1","sourceSongId":"song_001","updatedAt":111,"segments":[{"id":"a","name":"Intro","startMs":0,"endMs":1000}],"structureSegmentIds":["a"]}""",
+                    Charsets.UTF_8
+                )
+            }
+            val generator = SmpSyncManifestGenerator(hashing)
+            val source = SmpSyncSongManifestSource(
+                songId = "song_001",
+                title = "Sync Title",
+                arrangementFile = arrangement
+            )
+            val before = runBlocking {
+                generator.generateFromSources(
+                    appVersion = "0.3-beta",
+                    generatedAt = 1L,
+                    songs = listOf(source)
+                )
+            }.songs.first()
+
+            arrangement.writeText(
+                """{"version":1,"name":"Arrangement 1","sourceSongId":"song_001","updatedAt":999,"segments":[{"id":"a","name":"Intro","startMs":0,"endMs":1000}],"structureSegmentIds":["a"]}""",
+                Charsets.UTF_8
+            )
+
+            val after = runBlocking {
+                generator.generateFromSources(
+                    appVersion = "0.3-beta",
+                    generatedAt = 2L,
+                    songs = listOf(source)
+                )
+            }.songs.first()
+
+            assertEquals(before.arrangementHash, after.arrangementHash)
+            assertEquals(before.fullSongHash, after.fullSongHash)
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
     fun absentComponent_doesNotFailManifestGeneration() {
         val dir = Files.createTempDirectory("sync_manifest_absent_").toFile()
         try {

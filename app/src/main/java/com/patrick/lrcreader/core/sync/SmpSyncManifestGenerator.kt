@@ -146,8 +146,8 @@ class SmpSyncManifestGenerator(
         val timelineHash = hashing.hashFileOrNull(source.timelineFile, SmpSyncHashing.FileHashMode.CANONICAL_JSON)
         val midiHash = hashing.hashFileOrNull(source.midiFile, SmpSyncHashing.FileHashMode.CANONICAL_JSON)
         val dmxHash = hashing.hashFileOrNull(source.dmxFile, SmpSyncHashing.FileHashMode.CANONICAL_JSON)
-        val settingsHash = hashing.hashFileOrNull(source.settingsFile, SmpSyncHashing.FileHashMode.CANONICAL_JSON)
-        val arrangementHash = hashing.hashFileOrNull(source.arrangementFile, SmpSyncHashing.FileHashMode.CANONICAL_JSON)
+        val settingsHash = hashing.hashFileOrNull(source.settingsFile, SmpSyncHashing.FileHashMode.SYNC_SETTINGS_JSON)
+        val arrangementHash = hashing.hashFileOrNull(source.arrangementFile, SmpSyncHashing.FileHashMode.SYNC_ARRANGEMENT_JSON)
         val gridHash = hashing.hashFileOrNull(source.gridFile, SmpSyncHashing.FileHashMode.CANONICAL_JSON)
 
         val fullSongHash = hashing.hashCanonicalJson(

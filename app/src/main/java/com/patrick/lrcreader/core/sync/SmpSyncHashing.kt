@@ -10,7 +10,9 @@ class SmpSyncHashing {
     enum class FileHashMode {
         BYTES,
         NORMALIZED_TEXT,
-        CANONICAL_JSON
+        CANONICAL_JSON,
+        SYNC_SETTINGS_JSON,
+        SYNC_ARRANGEMENT_JSON
     }
 
     fun sha256(bytes: ByteArray): String {
@@ -34,11 +36,41 @@ class SmpSyncHashing {
             FileHashMode.BYTES -> hashFileBytesStreaming(file)
             FileHashMode.NORMALIZED_TEXT -> hashNormalizedText(file.readText(Charsets.UTF_8))
             FileHashMode.CANONICAL_JSON -> hashCanonicalJsonText(file.readText(Charsets.UTF_8))
+            FileHashMode.SYNC_SETTINGS_JSON -> hashSyncSettingsJsonTextOrNull(file.readText(Charsets.UTF_8))
+            FileHashMode.SYNC_ARRANGEMENT_JSON -> hashSyncArrangementJsonTextOrNull(file.readText(Charsets.UTF_8))
         }
     }
 
     fun hashCanonicalJson(json: JSONObject): String {
         return hashNormalizedText(canonicalJsonValue(json))
+    }
+
+    fun hashSyncSettingsJsonText(rawJson: String): String {
+        val canonical = syncSettingsCanonicalTextOrNull(rawJson)
+        // TODO SMP Sync: invalid JSON currently falls back to normalized text hashing.
+        return hashNormalizedText(canonical ?: rawJson)
+    }
+
+    fun hashSyncArrangementJsonText(rawJson: String): String {
+        val canonical = syncArrangementCanonicalTextOrNull(rawJson)
+        // TODO SMP Sync: invalid JSON currently falls back to normalized text hashing.
+        return hashNormalizedText(canonical ?: rawJson)
+    }
+
+    fun hashSyncSettingsJsonTextOrNull(rawJson: String): String? {
+        return syncSettingsCanonicalTextOrNull(rawJson)?.let(::hashNormalizedText)
+    }
+
+    fun hashSyncArrangementJsonTextOrNull(rawJson: String): String? {
+        return syncArrangementCanonicalTextOrNull(rawJson)?.let(::hashNormalizedText)
+    }
+
+    fun syncSettingsCanonicalTextOrNull(rawJson: String): String? {
+        return syncSettingsJsonOrNull(rawJson)?.let(::canonicalJsonValue)
+    }
+
+    fun syncArrangementCanonicalTextOrNull(rawJson: String): String? {
+        return syncArrangementJsonOrNull(rawJson)?.let(::canonicalJsonValue)
     }
 
     fun canonicalJsonOrNull(rawJson: String): String? {
@@ -72,6 +104,31 @@ class SmpSyncHashing {
             }
         }
         return digest.digest().joinToString(separator = "") { byte -> "%02x".format(byte) }
+    }
+
+    private fun syncSettingsJsonOrNull(rawJson: String): JSONObject? {
+        val root = runCatching { JSONObject(rawJson.trim()) }.getOrNull() ?: return null
+        val out = JSONObject()
+        root.optJSONObject("playback")?.let { out.put("playback", it) }
+        root.optJSONObject("lyricsLineColors")?.let { out.put("lyricsLineColors", it) }
+        return out.takeIf { it.length() > 0 }
+    }
+
+    private fun syncArrangementJsonOrNull(rawJson: String): JSONObject? {
+        val root = runCatching { JSONObject(rawJson.trim()) }.getOrNull() ?: return null
+        val out = JSONObject()
+        out.copyIfPresent(root, "version")
+        out.copyIfPresent(root, "name")
+        out.copyIfPresent(root, "sourceSongId")
+        out.copyIfPresent(root, "segments")
+        out.copyIfPresent(root, "structureSegmentIds")
+        return out.takeIf { it.length() > 0 }
+    }
+
+    private fun JSONObject.copyIfPresent(source: JSONObject, key: String) {
+        if (source.has(key) && !source.isNull(key)) {
+            put(key, source.opt(key))
+        }
     }
 
     private fun canonicalJsonValue(value: Any?): String {
