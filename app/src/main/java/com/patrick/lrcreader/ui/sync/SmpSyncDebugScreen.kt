@@ -147,6 +147,7 @@ fun SmpSyncDebugScreen(
     var manualSearchQuery by remember { mutableStateOf("") }
     var selectedManualSongIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var selectedManualPlaylistIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var labModeExpanded by remember { mutableStateOf(false) }
     var isGenerating by remember { mutableStateOf(false) }
     var isPreparingPackage by remember { mutableStateOf(false) }
     var isSendingPackage by remember { mutableStateOf(false) }
@@ -1060,78 +1061,16 @@ fun SmpSyncDebugScreen(
         }
 
         Text(
-            text = stringResource(R.string.smp_sync_debug_title),
+            text = stringResource(R.string.smp_sync_live_title),
             color = Color.White,
             fontSize = 24.sp,
             fontWeight = FontWeight.SemiBold
         )
         Text(
-            text = stringResource(R.string.smp_sync_debug_subtitle),
+            text = stringResource(R.string.smp_sync_live_subtitle),
             color = Color(0xFFB0BEC5),
             fontSize = 13.sp
         )
-
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF1B1B1B)),
-            shape = RoundedCornerShape(12.dp)
-        ) {
-            Column(
-                modifier = Modifier.padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Button(
-                        onClick = { generateLocalManifest(compareAfterGenerate = false) },
-                        enabled = !isBusy,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(text = stringResource(R.string.smp_sync_debug_generate_manifest))
-                    }
-                    Button(
-                        onClick = { generateLocalManifest(compareAfterGenerate = true) },
-                        enabled = !isBusy,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(text = stringResource(R.string.smp_sync_debug_compare_fixture))
-                    }
-                }
-
-                Button(
-                    onClick = {},
-                    enabled = false,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(text = stringResource(R.string.smp_sync_debug_sync_disabled))
-                }
-
-                if (isGenerating) {
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        CircularProgressIndicator(
-                            color = Color(0xFF90CAF9)
-                        )
-                        Text(
-                            text = stringResource(R.string.smp_sync_debug_generating),
-                            color = Color(0xFFE0E0E0)
-                        )
-                    }
-                }
-
-                errorMessage?.let { message ->
-                    Text(
-                        text = message,
-                        color = Color(0xFFFFAB91),
-                        fontSize = 13.sp
-                    )
-                }
-            }
-        }
 
         LocalLinkDryRunCard(
             localIp = localIp,
@@ -1151,6 +1090,13 @@ fun SmpSyncDebugScreen(
             onJoinSession = { joinSession() },
             onReconnect = { joinSession() },
             onStopSession = { closeLinks() }
+        )
+
+        SyncUserStatusCard(
+            isBusy = isBusy,
+            statusRes = statusRes,
+            statusDetail = statusDetail,
+            errorMessage = errorMessage
         )
 
         ManualSelectionSyncCard(
@@ -1201,38 +1147,6 @@ fun SmpSyncDebugScreen(
             onSend = { prepareManualSelectionAndSend() }
         )
 
-        localManifest?.let { manifest ->
-            ManifestStatsCard(
-                title = stringResource(localManifestTitleRes),
-                manifest = manifest
-            )
-        }
-
-        comparedManifest?.let { manifest ->
-            ManifestStatsCard(
-                title = stringResource(comparedManifestTitleRes),
-                manifest = manifest
-            )
-        }
-
-        if (summary != null) {
-            SyncPackagePreviewCard(
-                syncPackage = syncPackage,
-                preparedPackage = preparedPackage,
-                diagnostics = syncDiagnostics,
-                canPrepare = sourceManifestForPackage != null && syncPlan != null,
-                isPreparing = isPreparingPackage,
-                isSending = isSendingPackage,
-                canSend = server != null &&
-                    preparedPackage != null &&
-                    syncPackage?.hasExcessiveFullSongs() != true,
-                onPrepare = { prepareSyncPackage() },
-                onSend = { sendPreparedPackage() }
-            )
-        }
-
-        SyncDiagnosticsCard(diagnostics = syncDiagnostics)
-
         if (receivePackageId != null || receivedPackage != null || importResult != null) {
             ReceivedPackageCard(
                 receivedPackage = receivedPackage,
@@ -1241,12 +1155,52 @@ fun SmpSyncDebugScreen(
                 expectedBytes = receiveExpectedBytes,
                 isImporting = isImportingPackage || isGenerating,
                 onImport = { importReceivedPackage() },
-                onRerunAnalysis = { rerunPostImportAnalysis() },
                 onCancel = { cancelReceivedPackage() }
             )
         }
 
-        SummaryCard(summary = summary)
+        LabModeCard(
+            expanded = labModeExpanded,
+            isBusy = isBusy,
+            isGenerating = isGenerating,
+            errorMessage = errorMessage,
+            onToggle = { labModeExpanded = !labModeExpanded },
+            onAnalyze = { generateLocalManifest(compareAfterGenerate = false) },
+            onCompare = { generateLocalManifest(compareAfterGenerate = true) }
+        ) {
+            localManifest?.let { manifest ->
+                ManifestStatsCard(
+                    title = stringResource(localManifestTitleRes),
+                    manifest = manifest
+                )
+            }
+
+            comparedManifest?.let { manifest ->
+                ManifestStatsCard(
+                    title = stringResource(comparedManifestTitleRes),
+                    manifest = manifest
+                )
+            }
+
+            if (summary != null) {
+                SyncPackagePreviewCard(
+                    syncPackage = syncPackage,
+                    preparedPackage = preparedPackage,
+                    diagnostics = syncDiagnostics,
+                    canPrepare = sourceManifestForPackage != null && syncPlan != null,
+                    isPreparing = isPreparingPackage,
+                    isSending = isSendingPackage,
+                    canSend = server != null &&
+                        preparedPackage != null &&
+                        syncPackage?.hasExcessiveFullSongs() != true,
+                    onPrepare = { prepareSyncPackage() },
+                    onSend = { sendPreparedPackage() }
+                )
+            }
+
+            SyncDiagnosticsCard(diagnostics = syncDiagnostics)
+            SummaryCard(summary = summary)
+        }
     }
 }
 
@@ -1299,15 +1253,10 @@ private fun LocalLinkDryRunCard(
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Text(
-                text = stringResource(R.string.smp_sync_debug_real_section_title),
+                text = stringResource(R.string.smp_sync_live_connection_title),
                 color = Color.White,
-                fontSize = 17.sp,
+                fontSize = 19.sp,
                 fontWeight = FontWeight.SemiBold
-            )
-            Text(
-                text = stringResource(R.string.smp_sync_debug_real_section_subtitle),
-                color = Color(0xFFB0BEC5),
-                fontSize = 13.sp
             )
             Text(
                 text = connectionStatus,
@@ -1320,16 +1269,6 @@ private fun LocalLinkDryRunCard(
                     .padding(horizontal = 12.dp, vertical = 10.dp)
             )
             InfoLine(
-                label = stringResource(R.string.smp_sync_debug_exchange_step_label),
-                value = stringResource(statusRes)
-            )
-            statusDetail?.takeIf { it.isNotBlank() }?.let { detail ->
-                InfoLine(
-                    label = stringResource(R.string.smp_sync_debug_exchange_detail_label),
-                    value = detail
-                )
-            }
-            InfoLine(
                 label = stringResource(R.string.local_link_ip_label),
                 value = localIp
             )
@@ -1341,22 +1280,24 @@ private fun LocalLinkDryRunCard(
                 label = stringResource(R.string.local_link_remote_label),
                 value = remoteDeviceName ?: stringResource(R.string.local_link_empty_value)
             )
+            Text(
+                text = stringResource(R.string.smp_sync_live_main_phone),
+                color = Color.White,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold
+            )
             Button(
                 onClick = onCreateSession,
                 enabled = !isBusy && !isHosting && !isJoined,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text(text = stringResource(R.string.smp_sync_debug_create_session))
+                Text(text = stringResource(R.string.smp_sync_live_create_connection))
             }
             Text(
-                text = stringResource(R.string.smp_sync_debug_join_hint),
-                color = Color(0xFF90A4AE),
-                fontSize = 12.sp
-            )
-            Text(
-                text = stringResource(R.string.smp_sync_debug_qr_todo),
-                color = Color(0xFF78909C),
-                fontSize = 12.sp
+                text = stringResource(R.string.smp_sync_live_backup_phone),
+                color = Color.White,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold
             )
             OutlinedTextField(
                 value = joinHost,
@@ -1378,7 +1319,7 @@ private fun LocalLinkDryRunCard(
                 enabled = !isBusy && !isHosting && !isJoined,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text(text = stringResource(R.string.local_link_connect))
+                Text(text = stringResource(R.string.smp_sync_live_join_connection))
             }
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1399,6 +1340,141 @@ private fun LocalLinkDryRunCard(
                     Text(text = stringResource(R.string.smp_sync_debug_stop_session))
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun SyncUserStatusCard(
+    isBusy: Boolean,
+    statusRes: Int,
+    statusDetail: String?,
+    errorMessage: String?
+) {
+    if (!isBusy && statusDetail.isNullOrBlank() && errorMessage.isNullOrBlank()) {
+        return
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF1B1B1B)),
+        shape = RoundedCornerShape(10.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (isBusy) {
+                CircularProgressIndicator(color = Color(0xFF90CAF9))
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(statusRes),
+                    color = if (errorMessage == null) Color.White else Color(0xFFFFAB91),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium
+                )
+                val detail = errorMessage?.takeIf { it.isNotBlank() }
+                    ?: statusDetail?.takeIf { it.isNotBlank() }
+                detail?.let {
+                    Text(
+                        text = it,
+                        color = if (errorMessage == null) Color(0xFFB0BEC5) else Color(0xFFFFAB91),
+                        fontSize = 12.sp
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LabModeCard(
+    expanded: Boolean,
+    isBusy: Boolean,
+    isGenerating: Boolean,
+    errorMessage: String?,
+    onToggle: () -> Unit,
+    onAnalyze: () -> Unit,
+    onCompare: () -> Unit,
+    content: @Composable () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF171717)),
+        shape = RoundedCornerShape(10.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            TextButton(
+                onClick = onToggle,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = stringResource(
+                        if (expanded) {
+                            R.string.smp_sync_lab_hide
+                        } else {
+                            R.string.smp_sync_lab_show
+                        }
+                    )
+                )
+            }
+
+            if (!expanded) return@Column
+
+            Text(
+                text = stringResource(R.string.smp_sync_lab_title),
+                color = Color.White,
+                fontSize = 17.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = stringResource(R.string.smp_sync_lab_subtitle),
+                color = Color(0xFFB0BEC5),
+                fontSize = 12.sp
+            )
+            Button(
+                onClick = onAnalyze,
+                enabled = !isBusy,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(text = stringResource(R.string.smp_sync_debug_generate_manifest))
+            }
+            Button(
+                onClick = onCompare,
+                enabled = !isBusy,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(text = stringResource(R.string.smp_sync_debug_compare_fixture))
+            }
+
+            if (isGenerating) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    CircularProgressIndicator(color = Color(0xFF90CAF9))
+                    Text(
+                        text = stringResource(R.string.smp_sync_debug_generating),
+                        color = Color(0xFFE0E0E0),
+                        fontSize = 13.sp
+                    )
+                }
+            }
+
+            errorMessage?.let { message ->
+                Text(
+                    text = message,
+                    color = Color(0xFFFFAB91),
+                    fontSize = 13.sp
+                )
+            }
+
+            content()
         }
     }
 }
@@ -2205,7 +2281,6 @@ private fun ReceivedPackageCard(
     expectedBytes: Long,
     isImporting: Boolean,
     onImport: () -> Unit,
-    onRerunAnalysis: () -> Unit,
     onCancel: () -> Unit
 ) {
     Card(
@@ -2220,7 +2295,7 @@ private fun ReceivedPackageCard(
             Text(
                 text = stringResource(R.string.smp_sync_debug_received_title),
                 color = Color.White,
-                fontSize = 17.sp,
+                fontSize = 19.sp,
                 fontWeight = FontWeight.SemiBold
             )
 
@@ -2253,32 +2328,6 @@ private fun ReceivedPackageCard(
                 color = Color(0xFFCFD8DC),
                 fontSize = 13.sp
             )
-            Text(
-                text = stringResource(
-                    R.string.smp_sync_debug_received_families,
-                    receivedPackage.syncPackage.familyStateCount
-                ),
-                color = Color(0xFFCFD8DC),
-                fontSize = 13.sp
-            )
-            Text(
-                text = stringResource(
-                    R.string.smp_sync_debug_package_size,
-                    receivedPackage.sizeBytes.formattedByteSize()
-                ),
-                color = Color(0xFFCFD8DC),
-                fontSize = 13.sp
-            )
-            if (receivedPackage.replacementSongCount > 0) {
-                Text(
-                    text = stringResource(
-                        R.string.smp_sync_debug_replacements_warning,
-                        receivedPackage.replacementSongCount
-                    ),
-                    color = Color(0xFFFFCC80),
-                    fontSize = 13.sp
-                )
-            }
             Text(
                 text = stringResource(R.string.smp_sync_debug_line_no_auto_delete),
                 color = Color(0xFF90CAF9),
@@ -2328,15 +2377,7 @@ private fun ReceivedPackageCard(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                if (importResult?.isSuccess == true) {
-                    Button(
-                        onClick = onRerunAnalysis,
-                        enabled = !isImporting,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text(text = stringResource(R.string.smp_sync_debug_rerun_analysis))
-                    }
-                } else {
+                if (importResult?.isSuccess != true) {
                     Button(
                         onClick = onImport,
                         enabled = !isImporting,
@@ -2350,7 +2391,15 @@ private fun ReceivedPackageCard(
                     enabled = !isImporting,
                     modifier = Modifier.weight(1f)
                 ) {
-                    Text(text = stringResource(R.string.common_cancel))
+                    Text(
+                        text = stringResource(
+                            if (importResult?.isSuccess == true) {
+                                R.string.common_ok
+                            } else {
+                                R.string.common_cancel
+                            }
+                        )
+                    )
                 }
             }
         }
