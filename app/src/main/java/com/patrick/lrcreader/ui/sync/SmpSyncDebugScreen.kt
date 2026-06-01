@@ -1510,10 +1510,15 @@ private fun SyncDiagnosticsCard(diagnostics: SmpSyncPlanDiagnostics?) {
                 diagnostics.sameTitleDifferentSongIds.take(8).forEach { item ->
                     Text(
                         text = stringResource(
-                            R.string.smp_sync_debug_same_title_existing_song_line,
-                            item.title,
+                            R.string.smp_sync_debug_identity_candidate_line,
+                            item.sourceTitle,
+                            item.sourceNormalizedTitle,
                             item.sourceSongId,
-                            item.targetSongId
+                            item.targetTitle,
+                            item.targetNormalizedTitle,
+                            item.targetSongId,
+                            item.targetAudioHash ?: "-",
+                            item.targetLyricsHash ?: "-"
                         ),
                         color = Color(0xFFFFE0B2),
                         fontSize = 12.sp
@@ -1565,11 +1570,17 @@ private fun SyncDiagnosticsCard(diagnostics: SmpSyncPlanDiagnostics?) {
                         ?.joinToString()
                         ?: song.primaryReason
                     val lineText = if (song.sameTitleDifferentSongId != null) {
+                        val candidate = song.sameTitleDifferentCandidates.firstOrNull()
                         stringResource(
-                            R.string.smp_sync_debug_same_title_existing_song_line,
-                            song.title,
+                            R.string.smp_sync_debug_identity_candidate_line,
+                            candidate?.sourceTitle ?: song.title,
+                            candidate?.sourceNormalizedTitle ?: song.title,
                             song.sourceSongId,
-                            song.sameTitleDifferentSongId
+                            candidate?.targetTitle ?: song.title,
+                            candidate?.targetNormalizedTitle ?: song.title,
+                            song.sameTitleDifferentSongId,
+                            candidate?.targetAudioHash ?: "-",
+                            candidate?.targetLyricsHash ?: "-"
                         )
                     } else {
                         stringResource(
@@ -1594,11 +1605,17 @@ private fun SyncDiagnosticsCard(diagnostics: SmpSyncPlanDiagnostics?) {
                     ?.joinToString()
                     ?: song.primaryReason
                 val lineText = if (song.sameTitleDifferentSongId != null) {
+                    val candidate = song.sameTitleDifferentCandidates.firstOrNull()
                     stringResource(
-                        R.string.smp_sync_debug_same_title_existing_song_line,
-                        song.title,
+                        R.string.smp_sync_debug_identity_candidate_line,
+                        candidate?.sourceTitle ?: song.title,
+                        candidate?.sourceNormalizedTitle ?: song.title,
                         song.sourceSongId,
-                        song.sameTitleDifferentSongId
+                        candidate?.targetTitle ?: song.title,
+                        candidate?.targetNormalizedTitle ?: song.title,
+                        song.sameTitleDifferentSongId,
+                        candidate?.targetAudioHash ?: "-",
+                        candidate?.targetLyricsHash ?: "-"
                     )
                 } else {
                     stringResource(
@@ -1650,6 +1667,36 @@ private fun SyncDiagnosticsCard(diagnostics: SmpSyncPlanDiagnostics?) {
                         color = Color(0xFFCFD8DC),
                         fontSize = 12.sp
                     )
+                    Text(
+                        text = stringResource(
+                            R.string.smp_sync_debug_playlist_identity_detail,
+                            playlist.sourcePlaylistName ?: playlist.playlistName,
+                            playlist.targetPlaylistName ?: "-",
+                            playlist.sourceItemCount ?: -1,
+                            playlist.targetItemCount ?: -1,
+                            playlist.firstDifferentItem ?: "-",
+                            if (playlist.orderDifferent) {
+                                stringResource(R.string.smp_sync_debug_yes)
+                            } else {
+                                stringResource(R.string.smp_sync_debug_no)
+                            },
+                            playlist.duplicateItems.joinToString().ifBlank { "-" }
+                        ),
+                        color = Color(0xFFB0BEC5),
+                        fontSize = 12.sp
+                    )
+                    if (playlist.sameTitleDifferentSongIds.isNotEmpty()) {
+                        Text(
+                            text = stringResource(
+                                R.string.smp_sync_debug_playlist_same_title_ids,
+                                playlist.sameTitleDifferentSongIds.joinToString { item ->
+                                    "${item.sourceTitle}: ${item.sourceSongId} / ${item.targetSongId}"
+                                }
+                            ),
+                            color = Color(0xFFFFE0B2),
+                            fontSize = 12.sp
+                        )
+                    }
                 }
             }
         }

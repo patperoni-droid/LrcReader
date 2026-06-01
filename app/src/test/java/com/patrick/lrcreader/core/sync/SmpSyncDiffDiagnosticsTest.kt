@@ -55,12 +55,12 @@ class SmpSyncDiffDiagnosticsTest {
     fun absentSongWithSameTitle_reportsDifferentSongId() {
         val sourceSong = song(
             songId = "song_a",
-            title = "Bella Ciao",
+            title = "YÁLLAH",
             fullSongHash = "full-a"
         )
         val targetSong = song(
             songId = "song_b",
-            title = "Bella Ciao",
+            title = "\uFEFFyallah",
             fullSongHash = "full-b"
         )
         val plan = SyncPlan(
@@ -71,7 +71,7 @@ class SmpSyncDiffDiagnosticsTest {
                         entityType = SyncEntityType.SONG,
                         entityId = "song_a",
                         status = SyncDiffStatus.ABSENT_ON_B,
-                        title = "Bella Ciao",
+                        title = "YÁLLAH",
                         aHash = "full-a"
                     )
                 )
@@ -89,6 +89,10 @@ class SmpSyncDiffDiagnosticsTest {
         assertEquals("songId différent", songDiagnostic.primaryReason)
         assertEquals("song_b", songDiagnostic.targetSongId)
         assertEquals("song_b", songDiagnostic.sameTitleDifferentSongId)
+        assertEquals("yallah", diagnostics.sameTitleDifferentSongIds.single().sourceNormalizedTitle)
+        assertEquals("\uFEFFyallah", diagnostics.sameTitleDifferentSongIds.single().targetTitle)
+        assertEquals("audio", diagnostics.sameTitleDifferentSongIds.single().targetAudioHash)
+        assertEquals("lyrics", diagnostics.sameTitleDifferentSongIds.single().targetLyricsHash)
         assertEquals(1, diagnostics.fullSongReasonCounts["songId différent"])
     }
 
@@ -100,7 +104,8 @@ class SmpSyncDiffDiagnosticsTest {
             groupsHash = "groups-a",
             colorsHash = "colors-a",
             fullPlaylistHash = "full-a",
-            songIds = listOf("song_7fda1ffe81beda3fd443")
+            songIds = listOf("song_7fda1ffe81beda3fd443", "song_a"),
+            itemKeys = listOf("song:song_7fda1ffe81beda3fd443", "group:Fiesta", "song:song_a")
         )
         val targetPlaylist = playlist(
             name = "Linda",
@@ -108,7 +113,18 @@ class SmpSyncDiffDiagnosticsTest {
             groupsHash = "groups-a",
             colorsHash = "colors-a",
             fullPlaylistHash = "full-b",
-            songIds = listOf("song_7fda1ffe81beda3fd443")
+            songIds = listOf("song_7fda1ffe81beda3fd443", "song_b"),
+            itemKeys = listOf("song:song_7fda1ffe81beda3fd443", "song:song_b", "group:Fiesta")
+        )
+        val sourceSong = song(
+            songId = "song_a",
+            title = "YÁLLAH",
+            fullSongHash = "song-full-a"
+        )
+        val targetSong = song(
+            songId = "song_b",
+            title = "yallah",
+            fullSongHash = "song-full-b"
         )
         val plan = SyncPlan(
             items = listOf(
@@ -127,8 +143,8 @@ class SmpSyncDiffDiagnosticsTest {
         )
 
         val diagnostics = SmpSyncDiffDiagnosticsBuilder().build(
-            source = manifest(playlists = listOf(sourcePlaylist)),
-            target = manifest(playlists = listOf(targetPlaylist)),
+            source = manifest(songs = listOf(sourceSong), playlists = listOf(sourcePlaylist)),
+            target = manifest(songs = listOf(targetSong), playlists = listOf(targetPlaylist)),
             plan = plan
         )
 
@@ -136,8 +152,13 @@ class SmpSyncDiffDiagnosticsTest {
         assertEquals("Linda", playlistDiagnostic.playlistName)
         assertEquals("itemsHash", playlistDiagnostic.primaryReason)
         assertTrue(playlistDiagnostic.differentComponents.contains("itemsHash"))
+        assertTrue(playlistDiagnostic.differentComponents.contains("itemKeys"))
         assertTrue(playlistDiagnostic.differentComponents.contains("fullPlaylistHash"))
-        assertEquals(listOf("song_7fda1ffe81beda3fd443"), playlistDiagnostic.sourceSongIds)
+        assertEquals(listOf("song_7fda1ffe81beda3fd443", "song_a"), playlistDiagnostic.sourceSongIds)
+        assertEquals(3, playlistDiagnostic.sourceItemCount)
+        assertEquals(3, playlistDiagnostic.targetItemCount)
+        assertEquals("#2 A=group:Fiesta / B=song:song_b", playlistDiagnostic.firstDifferentItem)
+        assertEquals("song_b", playlistDiagnostic.sameTitleDifferentSongIds.single().targetSongId)
     }
 
     private fun manifest(
@@ -174,11 +195,14 @@ class SmpSyncDiffDiagnosticsTest {
         groupsHash: String?,
         colorsHash: String?,
         fullPlaylistHash: String,
-        songIds: List<String>
+        songIds: List<String>,
+        itemKeys: List<String> = emptyList()
     ): SmpSyncPlaylistEntry {
         return SmpSyncPlaylistEntry(
             playlistName = name,
             songIds = songIds,
+            itemCount = itemKeys.size.takeIf { it > 0 },
+            itemKeys = itemKeys,
             itemsHash = itemsHash,
             groupsHash = groupsHash,
             colorsHash = colorsHash,

@@ -203,6 +203,7 @@ class SmpSyncManifestGenerator(
             .putNullable("playlistColorArgb", source.colorArgb)
 
         val itemsHash = hashing.hashNormalizedText(itemsJson.toString())
+        val itemKeys = source.items.map { item -> item.syncDiagnosticKey() }
         val songIds = (source.songIds + source.items.flatMap { item -> item.referencedSongIds() })
             .mapNotNull { it.trim().takeIf(String::isNotEmpty) }
             .distinct()
@@ -221,6 +222,8 @@ class SmpSyncManifestGenerator(
             playlistId = source.playlistId,
             playlistName = source.playlistName,
             songIds = songIds,
+            itemCount = source.items.size.takeIf { it > 0 } ?: source.songIds.size.takeIf { it > 0 },
+            itemKeys = itemKeys.takeIf { it.isNotEmpty() } ?: songIds,
             itemsHash = itemsHash,
             groupsHash = groupsHash,
             colorsHash = colorsHash,
@@ -419,6 +422,20 @@ class SmpSyncManifestGenerator(
             return getVariantFamilySongIds(uri).toList()
         }
         return listOfNotNull(songId?.trim()?.takeIf(String::isNotEmpty) ?: getSmpSongId(uri))
+    }
+
+    private fun PlaylistItem.syncDiagnosticKey(): String {
+        val cleanUri = uri.trim()
+        val resolvedSongId = songId?.trim()?.takeIf(String::isNotEmpty) ?: getSmpSongId(cleanUri)
+        return when {
+            isGroupHeader(cleanUri) -> "group:${getGroupTitle(cleanUri)}"
+            isVariantFamilyItem(cleanUri) -> {
+                val familyId = getVariantFamilyId(cleanUri) ?: cleanUri
+                "family:$familyId:${resolvedSongId.orEmpty()}"
+            }
+            resolvedSongId != null -> "song:$resolvedSongId"
+            else -> "item:$cleanUri"
+        }
     }
 }
 

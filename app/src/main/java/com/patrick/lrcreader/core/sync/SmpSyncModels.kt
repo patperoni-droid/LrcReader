@@ -127,6 +127,8 @@ data class SmpSyncPlaylistEntry(
     val playlistId: String? = null,
     val playlistName: String,
     val songIds: List<String> = emptyList(),
+    val itemCount: Int? = null,
+    val itemKeys: List<String> = emptyList(),
     val itemsHash: String,
     val groupsHash: String? = null,
     val colorsHash: String? = null,
@@ -137,6 +139,8 @@ data class SmpSyncPlaylistEntry(
             putNullable("playlistId", playlistId)
             put("playlistName", playlistName)
             put("songIds", songIds.toJsonArray { it })
+            put("itemCount", itemCount ?: JSONObject.NULL)
+            put("itemKeys", itemKeys.toJsonArray { it })
             put("itemsHash", itemsHash)
             putNullable("groupsHash", groupsHash)
             putNullable("colorsHash", colorsHash)
@@ -150,6 +154,8 @@ data class SmpSyncPlaylistEntry(
                 playlistId = json.optStringOrNull("playlistId"),
                 playlistName = json.getString("playlistName"),
                 songIds = json.optJSONArray("songIds").toStrings(),
+                itemCount = json.optIntOrNull("itemCount"),
+                itemKeys = json.optJSONArray("itemKeys").toStrings(),
                 itemsHash = json.getString("itemsHash"),
                 groupsHash = json.optStringOrNull("groupsHash"),
                 colorsHash = json.optStringOrNull("colorsHash"),
@@ -288,6 +294,11 @@ private fun JSONObject.optStringOrNull(key: String): String? {
 private fun JSONObject.optLongOrNull(key: String): Long? {
     if (!has(key) || isNull(key)) return null
     return getLong(key)
+}
+
+private fun JSONObject.optIntOrNull(key: String): Int? {
+    if (!has(key) || isNull(key)) return null
+    return getInt(key)
 }
 
 private fun JSONObject.putNullable(key: String, value: String?) {

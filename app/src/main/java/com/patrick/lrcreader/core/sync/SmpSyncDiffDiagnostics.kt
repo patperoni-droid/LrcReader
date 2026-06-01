@@ -1,6 +1,7 @@
 package com.patrick.lrcreader.core.sync
 
 import android.util.Log
+import java.text.Normalizer
 
 private const val SYNC_DIFF_DIAG_TAG = "SMP_SYNC_DIFF_DIAG"
 
@@ -24,6 +25,7 @@ data class SmpSyncSongDiffDiagnostic(
     val sourceSongId: String,
     val targetSongId: String?,
     val sameTitleDifferentSongId: String?,
+    val sameTitleDifferentCandidates: List<SmpSyncSameTitleDifferentIdDiagnostic>,
     val status: SyncDiffStatus,
     val packageKind: SmpSyncPackageKind?,
     val primaryReason: String,
@@ -32,17 +34,31 @@ data class SmpSyncSongDiffDiagnostic(
 
 data class SmpSyncSameTitleDifferentIdDiagnostic(
     val title: String,
+    val sourceTitle: String,
+    val sourceNormalizedTitle: String,
     val sourceSongId: String,
-    val targetSongId: String
+    val targetTitle: String,
+    val targetNormalizedTitle: String,
+    val targetSongId: String,
+    val targetAudioHash: String?,
+    val targetLyricsHash: String?
 )
 
 data class SmpSyncPlaylistDiffDiagnostic(
     val playlistName: String,
+    val sourcePlaylistName: String?,
+    val targetPlaylistName: String?,
     val status: SyncDiffStatus,
     val primaryReason: String,
     val differentComponents: List<String>,
     val sourceSongIds: List<String>,
     val targetSongIds: List<String>,
+    val sourceItemCount: Int?,
+    val targetItemCount: Int?,
+    val firstDifferentItem: String?,
+    val orderDifferent: Boolean,
+    val duplicateItems: List<String>,
+    val sameTitleDifferentSongIds: List<SmpSyncSameTitleDifferentIdDiagnostic>,
     val sourceItemsHash: String?,
     val targetItemsHash: String?,
     val sourceGroupsHash: String?,
@@ -63,7 +79,7 @@ class SmpSyncDiffDiagnosticsBuilder {
     ): SmpSyncPlanDiagnostics {
         val sourceById = source.songs.associateBy { it.songId }
         val targetById = target.songs.associateBy { it.songId }
-        val targetByTitle = target.songs.groupBy { it.title.normalizedTitleKey() }
+        val targetByTitle = target.songs.groupBy { it.title.normalizedTitleIdentityKey() }
         val sourcePlaylistsById = source.playlists.associateBy { it.identityKey() }
         val targetPlaylistsById = target.playlists.associateBy { it.identityKey() }
         val packageByEntityId = syncPackage
@@ -73,14 +89,21 @@ class SmpSyncDiffDiagnosticsBuilder {
 
         val sameTitleDifferentIds = source.songs
             .flatMap { sourceSong ->
-                targetByTitle[sourceSong.title.normalizedTitleKey()]
+                val sourceNormalizedTitle = sourceSong.title.normalizedTitleIdentityKey()
+                targetByTitle[sourceNormalizedTitle]
                     .orEmpty()
                     .filter { targetSong -> targetSong.songId != sourceSong.songId }
                     .map { targetSong ->
                         SmpSyncSameTitleDifferentIdDiagnostic(
                             title = sourceSong.title,
+                            sourceTitle = sourceSong.title,
+                            sourceNormalizedTitle = sourceNormalizedTitle,
                             sourceSongId = sourceSong.songId,
-                            targetSongId = targetSong.songId
+                            targetTitle = targetSong.title,
+                            targetNormalizedTitle = targetSong.title.normalizedTitleIdentityKey(),
+                            targetSongId = targetSong.songId,
+                            targetAudioHash = targetSong.audioHash,
+                            targetLyricsHash = targetSong.lyricsHash
                         )
                     }
             }
@@ -118,6 +141,7 @@ class SmpSyncDiffDiagnosticsBuilder {
                     sourceSongId = item.diff.entityId,
                     targetSongId = targetSong?.songId ?: sameTitleDifferentSongId,
                     sameTitleDifferentSongId = sameTitleDifferentSongId,
+                    sameTitleDifferentCandidates = sameTitleMatches,
                     status = item.diff.status,
                     packageKind = packageItem?.kind ?: item.inferredPackageKind(),
                     primaryReason = primaryReason,
@@ -141,6 +165,8 @@ class SmpSyncDiffDiagnosticsBuilder {
                         ?: sourcePlaylist?.playlistName
                         ?: targetPlaylist?.playlistName
                         ?: item.diff.entityId,
+                    sourcePlaylistName = sourcePlaylist?.playlistName,
+                    targetPlaylistName = targetPlaylist?.playlistName,
                     status = item.diff.status,
                     primaryReason = playlistPrimaryReason(
                         item = item,
@@ -151,6 +177,18 @@ class SmpSyncDiffDiagnosticsBuilder {
                     differentComponents = differentComponents,
                     sourceSongIds = sourcePlaylist?.songIds.orEmpty(),
                     targetSongIds = targetPlaylist?.songIds.orEmpty(),
+                    sourceItemCount = sourcePlaylist?.diagnosticItemCount(),
+                    targetItemCount = targetPlaylist?.diagnosticItemCount(),
+                    firstDifferentItem = firstDifferentPlaylistItem(sourcePlaylist, targetPlaylist),
+                    orderDifferent = playlistOrderDifferent(sourcePlaylist, targetPlaylist),
+                    duplicateItems = duplicatePlaylistItems(sourcePlaylist, targetPlaylist),
+                    sameTitleDifferentSongIds = playlistSameTitleDifferentIds(
+                        sourcePlaylist = sourcePlaylist,
+                        targetPlaylist = targetPlaylist,
+                        sourceById = sourceById,
+                        targetById = targetById,
+                        allSameTitleDifferentIds = sameTitleDifferentIds
+                    ),
                     sourceItemsHash = sourcePlaylist?.itemsHash,
                     targetItemsHash = targetPlaylist?.itemsHash,
                     sourceGroupsHash = sourcePlaylist?.groupsHash,
@@ -216,6 +254,7 @@ class SmpSyncDiffDiagnosticsBuilder {
             if (source.groupsHash != target.groupsHash) add("groupsHash")
             if (source.colorsHash != target.colorsHash) add("colorsHash")
             if (source.songIds != target.songIds) add("songIds")
+            if (source.diagnosticItemKeys() != target.diagnosticItemKeys()) add("itemKeys")
             if (source.fullPlaylistHash != target.fullPlaylistHash) add("fullPlaylistHash")
         }
     }
@@ -270,7 +309,7 @@ class SmpSyncDiffDiagnosticsBuilder {
         logInfo("diff:fullSongs=${diagnostics.fullSongCount} reasons=${diagnostics.fullSongReasonCounts}")
         diagnostics.sameTitleDifferentSongIds.take(LOG_LIMIT).forEach { item ->
             logWarn(
-                "diff:same_title_different_songId title=${item.title} sourceSongId=${item.sourceSongId} targetSongId=${item.targetSongId}"
+                "diff:same_title_different_songId sourceTitle=${item.sourceTitle} sourceNormalized=${item.sourceNormalizedTitle} sourceSongId=${item.sourceSongId} targetTitle=${item.targetTitle} targetNormalized=${item.targetNormalizedTitle} targetSongId=${item.targetSongId} targetAudio=${item.targetAudioHash ?: "null"} targetLyrics=${item.targetLyricsHash ?: "null"}"
             )
         }
         diagnostics.modifiedSongs.take(LOG_LIMIT).forEach { song ->
@@ -280,7 +319,7 @@ class SmpSyncDiffDiagnosticsBuilder {
         }
         diagnostics.modifiedPlaylists.take(LOG_LIMIT).forEach { playlist ->
             logInfo(
-                "diff:playlist name=${playlist.playlistName} status=${playlist.status} reason=${playlist.primaryReason} components=${playlist.differentComponents.joinToString()} sourceItems=${playlist.sourceItemsHash ?: "null"} targetItems=${playlist.targetItemsHash ?: "null"} sourceGroups=${playlist.sourceGroupsHash ?: "null"} targetGroups=${playlist.targetGroupsHash ?: "null"} sourceColors=${playlist.sourceColorsHash ?: "null"} targetColors=${playlist.targetColorsHash ?: "null"} sourceFull=${playlist.sourceFullPlaylistHash ?: "null"} targetFull=${playlist.targetFullPlaylistHash ?: "null"} sourceSongIds=${playlist.sourceSongIds.joinToString(prefix = "[", postfix = "]")} targetSongIds=${playlist.targetSongIds.joinToString(prefix = "[", postfix = "]")}"
+                "diff:playlist name=${playlist.playlistName} sourceName=${playlist.sourcePlaylistName ?: "null"} targetName=${playlist.targetPlaylistName ?: "null"} status=${playlist.status} reason=${playlist.primaryReason} components=${playlist.differentComponents.joinToString()} sourceItemCount=${playlist.sourceItemCount ?: -1} targetItemCount=${playlist.targetItemCount ?: -1} firstDifferentItem=${playlist.firstDifferentItem ?: "none"} orderDifferent=${playlist.orderDifferent} duplicates=${playlist.duplicateItems.joinToString().ifBlank { "none" }} sameTitleDifferentSongIds=${playlist.sameTitleDifferentSongIds.joinToString { "${it.sourceSongId}->${it.targetSongId}" }.ifBlank { "none" }} sourceItems=${playlist.sourceItemsHash ?: "null"} targetItems=${playlist.targetItemsHash ?: "null"} sourceGroups=${playlist.sourceGroupsHash ?: "null"} targetGroups=${playlist.targetGroupsHash ?: "null"} sourceColors=${playlist.sourceColorsHash ?: "null"} targetColors=${playlist.targetColorsHash ?: "null"} sourceFull=${playlist.sourceFullPlaylistHash ?: "null"} targetFull=${playlist.targetFullPlaylistHash ?: "null"} sourceSongIds=${playlist.sourceSongIds.joinToString(prefix = "[", postfix = "]")} targetSongIds=${playlist.targetSongIds.joinToString(prefix = "[", postfix = "]")}"
             )
         }
     }
@@ -293,8 +332,85 @@ class SmpSyncDiffDiagnosticsBuilder {
         runCatching { Log.w(SYNC_DIFF_DIAG_TAG, message) }
     }
 
-    private fun String.normalizedTitleKey(): String {
-        return trim()
+    private fun firstDifferentPlaylistItem(
+        source: SmpSyncPlaylistEntry?,
+        target: SmpSyncPlaylistEntry?
+    ): String? {
+        val sourceItems = source?.diagnosticItemKeys().orEmpty()
+        val targetItems = target?.diagnosticItemKeys().orEmpty()
+        val max = maxOf(sourceItems.size, targetItems.size)
+        val index = (0 until max).firstOrNull { itemIndex ->
+            sourceItems.getOrNull(itemIndex) != targetItems.getOrNull(itemIndex)
+        } ?: return null
+        return "#${index + 1} A=${sourceItems.getOrNull(index) ?: "-"} / B=${targetItems.getOrNull(index) ?: "-"}"
+    }
+
+    private fun playlistOrderDifferent(
+        source: SmpSyncPlaylistEntry?,
+        target: SmpSyncPlaylistEntry?
+    ): Boolean {
+        val sourceItems = source?.diagnosticItemKeys().orEmpty()
+        val targetItems = target?.diagnosticItemKeys().orEmpty()
+        return sourceItems != targetItems && sourceItems.sorted() == targetItems.sorted()
+    }
+
+    private fun duplicatePlaylistItems(
+        source: SmpSyncPlaylistEntry?,
+        target: SmpSyncPlaylistEntry?
+    ): List<String> {
+        val sourceDuplicates = source?.diagnosticItemKeys().orEmpty().duplicates()
+            .map { item -> "A:$item" }
+        val targetDuplicates = target?.diagnosticItemKeys().orEmpty().duplicates()
+            .map { item -> "B:$item" }
+        return (sourceDuplicates + targetDuplicates).sorted().take(5)
+    }
+
+    private fun playlistSameTitleDifferentIds(
+        sourcePlaylist: SmpSyncPlaylistEntry?,
+        targetPlaylist: SmpSyncPlaylistEntry?,
+        sourceById: Map<String, SmpSyncSongEntry>,
+        targetById: Map<String, SmpSyncSongEntry>,
+        allSameTitleDifferentIds: List<SmpSyncSameTitleDifferentIdDiagnostic>
+    ): List<SmpSyncSameTitleDifferentIdDiagnostic> {
+        val sourceSongIds = sourcePlaylist?.songIds.orEmpty().toSet()
+        val targetSongIds = targetPlaylist?.songIds.orEmpty().toSet()
+        if (sourceSongIds.isEmpty() || targetSongIds.isEmpty()) return emptyList()
+        val targetTitlesInPlaylist = targetSongIds
+            .mapNotNull { songId -> targetById[songId]?.title?.normalizedTitleIdentityKey() }
+            .toSet()
+        return allSameTitleDifferentIds
+            .filter { item ->
+                item.sourceSongId in sourceSongIds &&
+                    item.targetSongId in targetSongIds &&
+                    sourceById[item.sourceSongId]?.title?.normalizedTitleIdentityKey() in targetTitlesInPlaylist
+            }
+            .take(8)
+    }
+
+    private fun SmpSyncPlaylistEntry.diagnosticItemCount(): Int {
+        return itemCount ?: diagnosticItemKeys().size
+    }
+
+    private fun SmpSyncPlaylistEntry.diagnosticItemKeys(): List<String> {
+        return itemKeys.takeIf { it.isNotEmpty() } ?: songIds.map { "song:$it" }
+    }
+
+    private fun List<String>.duplicates(): List<String> {
+        return groupingBy { it }
+            .eachCount()
+            .filterValues { it > 1 }
+            .keys
+            .toList()
+    }
+
+    private fun String.normalizedTitleIdentityKey(): String {
+        val withoutAccents = Normalizer.normalize(this, Normalizer.Form.NFD)
+            .replace(Regex("\\p{Mn}+"), "")
+        return withoutAccents
+            .replace(Regex("[\\u200B-\\u200D\\uFEFF]"), "")
+            .replace(Regex("[’‘`´]"), "'")
+            .replace(Regex("[‐‑‒–—―]"), "-")
+            .trim()
             .lowercase()
             .replace(Regex("\\s+"), " ")
     }
