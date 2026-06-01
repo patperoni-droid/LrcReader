@@ -1872,13 +1872,29 @@ fun LibraryScreen(
         isEntryBasedViewMode -> searchableEntries.isNotEmpty()
         else -> searchablePlaylists.isNotEmpty()
     }
+    val hasStartupSongCache = isSongBasedViewMode && smpSongsCache.isNotEmpty()
     val showInitialLibraryLoadingState = currentFolderUri != null &&
         !hasVisibleLibraryContent &&
+        !hasStartupSongCache &&
         (
             isLoading ||
                 !initialLoadDone ||
                 (isSongBasedViewMode && songItemsLoading)
             )
+    LaunchedEffect(
+        showInitialLibraryLoadingState,
+        isLoading,
+        initialLoadDone,
+        songItemsLoading,
+        hasStartupSongCache,
+        hasVisibleLibraryContent,
+        moveLabel
+    ) {
+        Log.i(
+            SMP_LIBRARY_SCAN_TRACE_TAG,
+            "event=initial_loader_state visible=$showInitialLibraryLoadingState isLoading=$isLoading initialLoadDone=$initialLoadDone songItemsLoading=$songItemsLoading hasStartupSongCache=$hasStartupSongCache hasVisibleContent=$hasVisibleLibraryContent label=${moveLabel ?: "null"} viewMode=$libraryViewMode"
+        )
+    }
     SideEffect {
         onKeyboardNavigationAvailabilityChange(isSongViewMode)
     }
