@@ -3,7 +3,10 @@ package com.patrick.lrcreader.ui
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Looper
+import android.os.SystemClock
 import android.provider.DocumentsContract
+import android.util.Log
 import androidx.documentfile.provider.DocumentFile
 import com.patrick.lrcreader.core.LibraryIndexCache
 import com.patrick.lrcreader.core.StorageModePrefs
@@ -31,6 +34,8 @@ object LibraryFolderCache {
 
     fun clear() = cache.clear()
 }
+
+private const val SMP_LIBRARY_SCAN_TRACE_TAG = "SMP_LIBRARY_SCAN_TRACE"
 
 /** Entrée affichée dans la bibliothèque (fichier ou dossier). */
 /** Entrée affichée dans la bibliothèque (fichier ou dossier). */
@@ -281,10 +286,23 @@ private fun isSplIndexableFile(
 
 /** Scan récursif COMPLET du dossier Music. 1 seule fois. */
 fun buildFullIndex(context: Context, rootUri: Uri): List<LibraryIndexCache.CachedEntry> {
+    val startMs = SystemClock.elapsedRealtime()
+    val mainThread = Looper.myLooper() == Looper.getMainLooper()
+    val caller = shortLibraryCoreCallerStack()
+    Log.i(
+        SMP_LIBRARY_SCAN_TRACE_TAG,
+        "event=buildFullIndex_start caller=$caller mainThread=$mainThread root=$rootUri"
+    )
     val out = ArrayList<LibraryIndexCache.CachedEntry>()
     val rootDoc = DocumentFile.fromTreeUri(context, rootUri)
         ?: DocumentFile.fromSingleUri(context, rootUri)
-        ?: return emptyList()
+        ?: run {
+            Log.i(
+                SMP_LIBRARY_SCAN_TRACE_TAG,
+                "event=buildFullIndex_no_root caller=$caller mainThread=$mainThread durationMs=${SystemClock.elapsedRealtime() - startMs} root=$rootUri"
+            )
+            return emptyList()
+        }
     fun recurse(folderDoc: DocumentFile, parentKey: String) {
         // 🔒 si ce dossier est DJ -> on coupe ici (pas indexé, pas récursé)
         if (folderDoc.isDirectory && isDjFolderDoc(folderDoc)) return
@@ -315,7 +333,23 @@ fun buildFullIndex(context: Context, rootUri: Uri): List<LibraryIndexCache.Cache
     }
 
     recurse(rootDoc, rootUri.toString())
+    Log.i(
+        SMP_LIBRARY_SCAN_TRACE_TAG,
+        "event=buildFullIndex_done caller=$caller mainThread=$mainThread durationMs=${SystemClock.elapsedRealtime() - startMs} count=${out.size} root=$rootUri"
+    )
     return out
+}
+
+private fun shortLibraryCoreCallerStack(): String {
+    return Throwable().stackTrace
+        .asSequence()
+        .dropWhile { it.fileName == "LibraryCore.kt" || it.methodName == "shortLibraryCoreCallerStack" }
+        .filterNot { it.className.startsWith("java.lang.") }
+        .take(6)
+        .joinToString(" <- ") { frame ->
+            "${frame.className.substringAfterLast('.')}.${frame.methodName}:${frame.lineNumber}"
+        }
+        .ifBlank { "unknown" }
 }
 // ------------------------------------------------------------
 // ✅ SCAN DJ (sur demande) → index séparé (DJ seulement)

@@ -151,6 +151,7 @@ private const val SMP_VIEW_TRACE_TAG = "SMP_VIEW_TRACE"
 private const val LIB_SMP_TRACE_TAG = "LIB_SMP_TRACE"
 private const val LIBRARY_PERF_TRACE_TAG = "LIBRARY_PERF_TRACE"
 private const val SMP_LIBRARY_CACHE_DIAG_TAG = "SMP_LIBRARY_CACHE_DIAG"
+private const val SMP_LIBRARY_SCAN_TRACE_TAG = "SMP_LIBRARY_SCAN_TRACE"
 private val buildEntriesPerfCounter = AtomicInteger(0)
 private val initialLoadEffectPerfCounter = AtomicInteger(0)
 private val refreshCurrentEffectPerfCounter = AtomicInteger(0)
@@ -288,6 +289,18 @@ private fun resolveLibraryNavigationRoot(
 
 private fun resolveFilesInitialFolderForLibrary(filesNavigationRoot: Uri?): Uri? {
     return filesNavigationRoot
+}
+
+private fun shortLibraryScreenCallerStack(): String {
+    return Throwable().stackTrace
+        .asSequence()
+        .dropWhile { it.fileName == "LibraryScreen.kt" || it.methodName == "shortLibraryScreenCallerStack" }
+        .filterNot { it.className.startsWith("java.lang.") }
+        .take(6)
+        .joinToString(" <- ") { frame ->
+            "${frame.className.substringAfterLast('.')}.${frame.methodName}:${frame.lineNumber}"
+        }
+        .ifBlank { "unknown" }
 }
 
 private fun isUriInsideTree(candidate: Uri, treeUri: Uri?): Boolean {
@@ -1316,6 +1329,11 @@ fun LibraryScreen(
     }
 
     suspend fun runGlobalScan(root: Uri, folderToShow: Uri) {
+        val scanStartMs = SystemClock.elapsedRealtime()
+        Log.i(
+            SMP_LIBRARY_SCAN_TRACE_TAG,
+            "event=runGlobalScan_start caller=${shortLibraryScreenCallerStack()} mainThread=${Looper.myLooper() == Looper.getMainLooper()} root=$root folderToShow=$folderToShow"
+        )
         LibraryFolderCache.clear()
         if (isSharedAudioFolderUri(folderToShow)) {
             val refreshed = withContext(Dispatchers.IO) {
@@ -1327,6 +1345,10 @@ fun LibraryScreen(
             }
             applyEntriesIfCurrent(folderToShow, refreshed)
             LibraryFolderCache.put(folderToShow, refreshed)
+            Log.i(
+                SMP_LIBRARY_SCAN_TRACE_TAG,
+                "event=runGlobalScan_done reason=shared_audio caller=${shortLibraryScreenCallerStack()} mainThread=${Looper.myLooper() == Looper.getMainLooper()} durationMs=${SystemClock.elapsedRealtime() - scanStartMs} root=$root folderToShow=$folderToShow"
+            )
             return
         }
         backend.scanAll(
@@ -1338,6 +1360,10 @@ fun LibraryScreen(
                 applyEntriesIfCurrent(folderToShow, decorated)
                 LibraryFolderCache.put(folderToShow, decorated)
             }
+        )
+        Log.i(
+            SMP_LIBRARY_SCAN_TRACE_TAG,
+            "event=runGlobalScan_done reason=backend_scan caller=${shortLibraryScreenCallerStack()} mainThread=${Looper.myLooper() == Looper.getMainLooper()} durationMs=${SystemClock.elapsedRealtime() - scanStartMs} root=$root folderToShow=$folderToShow indexCount=${indexAll.size}"
         )
     }
 
@@ -2537,6 +2563,10 @@ fun LibraryScreen(
     }
 
     fun startLoading(label: String, determinate: Boolean) {
+        Log.i(
+            SMP_LIBRARY_SCAN_TRACE_TAG,
+            "event=loader_show label=$label determinate=$determinate caller=${shortLibraryScreenCallerStack()} mainThread=${Looper.myLooper() == Looper.getMainLooper()} currentFolder=$currentFolderUri initialLoadDone=$initialLoadDone"
+        )
         loadingStartedAt = System.currentTimeMillis()
         isLoading = true
         moveLabel = label
@@ -2550,6 +2580,10 @@ fun LibraryScreen(
         isLoading = false
         moveProgress = null
         moveLabel = null
+        Log.i(
+            SMP_LIBRARY_SCAN_TRACE_TAG,
+            "event=loader_hide caller=${shortLibraryScreenCallerStack()} mainThread=${Looper.myLooper() == Looper.getMainLooper()} visibleMs=$elapsed"
+        )
     }
 
     fun shareSmpSong(uri: Uri) {

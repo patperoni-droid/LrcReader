@@ -1,6 +1,8 @@
 package com.patrick.lrcreader.smp
 
 import android.content.Context
+import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import java.io.File
 
@@ -14,6 +16,7 @@ class SmpLibraryScanner(private val context: Context) {
     companion object {
         private const val TAG = "SMP"
         private const val TRACE_TAG = "SMP_TRACE"
+        private const val SCAN_TRACE_TAG = "SMP_LIBRARY_SCAN_TRACE"
         private const val TRACKS_DIR_NAME = "tracks"
         private const val CONFIG_FILE_NAME = "config.json"
         private const val WAVEFORM_FILE_NAME = "waveform.json"
@@ -29,10 +32,17 @@ class SmpLibraryScanner(private val context: Context) {
     }
 
     fun listSongs(): List<SongUnit> {
+        val startMs = SystemClock.elapsedRealtime()
+        val mainThread = Looper.myLooper() == Looper.getMainLooper()
+        val caller = shortCallerStack()
         val tracksRoot = File(context.filesDir, TRACKS_DIR_NAME)
         if (!tracksRoot.exists() || !tracksRoot.isDirectory) {
             Log.d(TAG, "Aucun dossier SMP importé: ${tracksRoot.absolutePath}")
             Log.i(TRACE_TAG, "step=runtime_scan_empty_root path=${tracksRoot.absolutePath}")
+            Log.i(
+                SCAN_TRACE_TAG,
+                "event=listSongs_empty caller=$caller mainThread=$mainThread durationMs=${SystemClock.elapsedRealtime() - startMs} path=${tracksRoot.absolutePath}"
+            )
             return emptyList()
         }
 
@@ -46,6 +56,10 @@ class SmpLibraryScanner(private val context: Context) {
             TRACE_TAG,
             "step=runtime_scan_start path=${tracksRoot.absolutePath} dirNames=${songDirs.map { it.name }.sorted().joinToString(prefix = "[", postfix = "]", limit = 20, truncated = "...")}"
         )
+        Log.i(
+            SCAN_TRACE_TAG,
+            "event=listSongs_start caller=$caller mainThread=$mainThread dirs=${songDirs.size} path=${tracksRoot.absolutePath}"
+        )
 
         val songs = songDirs
             .mapNotNull { songDir -> readSongUnit(songDir) }
@@ -56,7 +70,23 @@ class SmpLibraryScanner(private val context: Context) {
             TRACE_TAG,
             "step=runtime_scan_done path=${tracksRoot.absolutePath} count=${songs.size} songIds=${songs.map { it.id }.sorted().joinToString(prefix = "[", postfix = "]", limit = 20, truncated = "...")}"
         )
+        Log.i(
+            SCAN_TRACE_TAG,
+            "event=listSongs_done caller=$caller mainThread=$mainThread durationMs=${SystemClock.elapsedRealtime() - startMs} dirs=${songDirs.size} songs=${songs.size}"
+        )
         return songs
+    }
+
+    private fun shortCallerStack(): String {
+        return Throwable().stackTrace
+            .asSequence()
+            .dropWhile { it.className == SmpLibraryScanner::class.java.name || it.methodName == "shortCallerStack" }
+            .filterNot { it.className.startsWith("java.lang.") }
+            .take(6)
+            .joinToString(" <- ") { frame ->
+                "${frame.className.substringAfterLast('.')}.${frame.methodName}:${frame.lineNumber}"
+            }
+            .ifBlank { "unknown" }
     }
 
     fun findSongById(songId: String): SongUnit? {

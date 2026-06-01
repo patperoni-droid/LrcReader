@@ -2,6 +2,8 @@ package com.patrick.lrcreader.core
 
 import android.content.Context
 import android.net.Uri
+import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -16,6 +18,7 @@ import java.io.File
 object LibraryIndexCache {
 
     private const val FILE_NAME = "library_index.json"
+    private const val SCAN_TRACE_TAG = "SMP_LIBRARY_SCAN_TRACE"
 
     data class CachedEntry(
         val uriString: String,
@@ -45,6 +48,9 @@ object LibraryIndexCache {
 
     // ----- IO -----
     fun save(context: Context, items: List<CachedEntry>) {
+        val startMs = SystemClock.elapsedRealtime()
+        val mainThread = Looper.myLooper() == Looper.getMainLooper()
+        val caller = shortCallerStack()
         val arr = JSONArray()
         items.forEach { e ->
             val o = JSONObject()
@@ -56,6 +62,10 @@ object LibraryIndexCache {
         }
 
         File(context.filesDir, FILE_NAME).writeText(arr.toString())
+        Log.i(
+            SCAN_TRACE_TAG,
+            "event=index_cache_save caller=$caller mainThread=$mainThread durationMs=${SystemClock.elapsedRealtime() - startMs} count=${items.size}"
+        )
 
         // ✅ notif UI
         bumpVersion(context)
@@ -63,12 +73,27 @@ object LibraryIndexCache {
     }
 
     fun load(context: Context): List<CachedEntry>? {
+        val startMs = SystemClock.elapsedRealtime()
+        val mainThread = Looper.myLooper() == Looper.getMainLooper()
+        val caller = shortCallerStack()
         val f = File(context.filesDir, FILE_NAME)
-        if (!f.exists()) return null
+        if (!f.exists()) {
+            Log.i(
+                SCAN_TRACE_TAG,
+                "event=index_cache_load_missing caller=$caller mainThread=$mainThread durationMs=${SystemClock.elapsedRealtime() - startMs} file=${f.absolutePath}"
+            )
+            return null
+        }
 
         return try {
             val txt = f.readText()
-            if (txt.isBlank()) return null
+            if (txt.isBlank()) {
+                Log.i(
+                    SCAN_TRACE_TAG,
+                    "event=index_cache_load_blank caller=$caller mainThread=$mainThread durationMs=${SystemClock.elapsedRealtime() - startMs} file=${f.absolutePath}"
+                )
+                return null
+            }
             val arr = JSONArray(txt)
             val out = ArrayList<CachedEntry>(arr.length())
 
@@ -89,6 +114,10 @@ object LibraryIndexCache {
                     parentUriString = parent
                 )
             }
+            Log.i(
+                SCAN_TRACE_TAG,
+                "event=index_cache_load_hit caller=$caller mainThread=$mainThread durationMs=${SystemClock.elapsedRealtime() - startMs} count=${out.size}"
+            )
             out
         } catch (e: Exception) {
             Log.e("LIB_SCAN_DIAG", "indexLoadParseFail deletedCache=true file=${f.absolutePath}", e)
@@ -98,7 +127,13 @@ object LibraryIndexCache {
     }
 
     fun clear(context: Context) {
+        val mainThread = Looper.myLooper() == Looper.getMainLooper()
+        val caller = shortCallerStack()
         File(context.filesDir, FILE_NAME).delete()
+        Log.i(
+            SCAN_TRACE_TAG,
+            "event=index_cache_clear caller=$caller mainThread=$mainThread file=${File(context.filesDir, FILE_NAME).absolutePath}"
+        )
         // ✅ notif UI
         bumpVersion(context)
         _updates.tryEmit(Unit)
@@ -152,5 +187,17 @@ object LibraryIndexCache {
         return all
             .filter { it.parentUriString == key }
             .sortedWith(compareBy<CachedEntry> { !it.isDirectory }.thenBy { it.name.lowercase() })
+    }
+
+    private fun shortCallerStack(): String {
+        return Throwable().stackTrace
+            .asSequence()
+            .dropWhile { it.className == LibraryIndexCache::class.java.name || it.methodName == "shortCallerStack" }
+            .filterNot { it.className.startsWith("java.lang.") }
+            .take(6)
+            .joinToString(" <- ") { frame ->
+                "${frame.className.substringAfterLast('.')}.${frame.methodName}:${frame.lineNumber}"
+            }
+            .ifBlank { "unknown" }
     }
 }

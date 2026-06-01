@@ -1304,29 +1304,35 @@ class MainActivity : AppCompatActivity() {
                         smpUserRebuildAttemptedForRoot = rootKey
                     }
 
-                    val runtimeSongs = withContext(Dispatchers.IO) {
-                        smpLibraryScanner.listSongs()
+                    val userArchives = withContext(Dispatchers.IO) {
+                        smpUserArchiveRebuilder.listUserArchiveUris()
                     }
+                    if (userArchives.isEmpty()) {
+                        Log.i(
+                            "SMP_REBUILD",
+                            "step=sync_skip_no_user_archives trigger=$trigger root=$rootKey"
+                        )
+                        Log.i(
+                            "SMP_TRACE",
+                            "step=sync_skip trigger=$trigger rootKey=$rootKey reason=no_archives runtimeScan=false"
+                        )
+                        return 0
+                    }
+
+                    val runtimeSongsFromCache = smpSongsById.isNotEmpty()
+                    val runtimeSongs = smpSongsById.values.takeIf { it.isNotEmpty() }?.toList()
+                        ?: withContext(Dispatchers.IO) {
+                            smpLibraryScanner.listSongs()
+                        }.also { songs ->
+                            smpSongsById = songs.associateBy { it.id }
+                        }
                     val runtimeSongIds = runtimeSongs.map { it.id }.sorted()
                     Log.i(
                         "SMP_TRACE",
-                        "step=runtime_before_sync trigger=$trigger rootKey=$rootKey count=${runtimeSongs.size} songIds=${runtimeSongIds.joinToString(prefix = "[", postfix = "]", limit = 20, truncated = "...")}"
+                        "step=runtime_before_sync trigger=$trigger rootKey=$rootKey count=${runtimeSongs.size} fromCache=$runtimeSongsFromCache songIds=${runtimeSongIds.joinToString(prefix = "[", postfix = "]", limit = 20, truncated = "...")}"
                     )
-
                     if (runtimeSongs.isEmpty()) {
                         Log.i("SMP_TRACE", "step=global_rebuild_mode trigger=$trigger rootKey=$rootKey")
-                        val userArchives = withContext(Dispatchers.IO) {
-                            smpUserArchiveRebuilder.listUserArchiveUris()
-                        }
-                        if (userArchives.isEmpty()) {
-                            Log.i("SMP_REBUILD", "step=skip_no_user_archives trigger=$trigger root=$rootKey")
-                            Log.i(
-                                "SMP_TRACE",
-                                "step=global_rebuild_skip trigger=$trigger rootKey=$rootKey reason=no_archives"
-                            )
-                            return 0
-                        }
-
                         Log.i(
                             "SMP_REBUILD",
                             "step=start trigger=$trigger root=$rootKey archiveCount=${userArchives.size}"
@@ -1364,18 +1370,6 @@ class MainActivity : AppCompatActivity() {
                     val archiveCandidates = withContext(Dispatchers.IO) {
                         smpUserArchiveRebuilder.listUserArchiveCandidates()
                     }
-                    if (archiveCandidates.isEmpty()) {
-                        Log.i(
-                            "SMP_REBUILD",
-                            "step=partial_skip_no_user_archives trigger=$trigger root=$rootKey runtimeCount=${runtimeSongs.size}"
-                        )
-                        Log.i(
-                            "SMP_TRACE",
-                            "step=partial_sync_skip trigger=$trigger rootKey=$rootKey reason=no_archives"
-                        )
-                        return 0
-                    }
-
                     val partialPlan = SmpUserArchiveRebuilder.buildPartialSyncPlan(
                         runtimeSongIds = runtimeSongIdsSet,
                         candidates = archiveCandidates
@@ -1443,6 +1437,13 @@ class MainActivity : AppCompatActivity() {
                     return rebuildResult.importedCount
                 }
                 LaunchedEffect(smpCacheRefreshTick) {
+                    if (smpCacheRefreshTick == 0 && smpSongsById.isNotEmpty()) {
+                        Log.i(
+                            "SMP_TRACE",
+                            "step=runtime_cache_refresh_skip reason=cache_already_loaded count=${smpSongsById.size}"
+                        )
+                        return@LaunchedEffect
+                    }
                     smpSongsById = withContext(Dispatchers.IO) {
                         smpLibraryScanner.listSongs().associateBy { it.id }
                     }

@@ -21,6 +21,9 @@ internal object TrackSettingsPathResolver {
             return size > MAX_RELATIVE_PATH_CACHE_SIZE
         }
     }
+    private var cachedIndexRootKey: String? = null
+    private var cachedIndexVersion: Long = -1L
+    private var cachedIndexByUri: Map<String, LibraryIndexCache.CachedEntry> = emptyMap()
     private var resolveCallCount: Long = 0
     private var resolveCacheHitCount: Long = 0
     private var resolveTotalMs: Long = 0
@@ -117,14 +120,22 @@ internal object TrackSettingsPathResolver {
     }
 
     private fun resolveFromIndex(context: Context, rootUri: Uri, uriString: String): String? {
-        val indexAll = LibraryIndexCache.load(context).orEmpty()
-        if (indexAll.isEmpty()) return null
+        val rootKey = rootUri.toString()
+        val version = LibraryIndexCache.readVersion(context)
+        val byUri = synchronized(cacheLock) {
+            if (cachedIndexRootKey != rootKey || cachedIndexVersion != version) {
+                val indexAll = LibraryIndexCache.load(context).orEmpty()
+                cachedIndexRootKey = rootKey
+                cachedIndexVersion = version
+                cachedIndexByUri = indexAll.associateBy { it.uriString }
+            }
+            cachedIndexByUri
+        }
+        if (byUri.isEmpty()) return null
 
-        val byUri = indexAll.associateBy { it.uriString }
         var current = byUri[uriString] ?: return null
 
         val parts = ArrayList<String>()
-        val rootKey = rootUri.toString()
         var guard = 0
 
         while (guard < 1024) {
