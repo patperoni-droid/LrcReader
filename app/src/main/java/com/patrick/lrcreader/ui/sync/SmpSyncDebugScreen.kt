@@ -1269,14 +1269,6 @@ private fun LocalLinkDryRunCard(
                     .padding(horizontal = 12.dp, vertical = 10.dp)
             )
             InfoLine(
-                label = stringResource(R.string.local_link_ip_label),
-                value = localIp
-            )
-            InfoLine(
-                label = stringResource(R.string.local_link_port_label),
-                value = boundPort?.toString() ?: stringResource(R.string.local_link_empty_value)
-            )
-            InfoLine(
                 label = stringResource(R.string.local_link_remote_label),
                 value = remoteDeviceName ?: stringResource(R.string.local_link_empty_value)
             )
@@ -1292,6 +1284,29 @@ private fun LocalLinkDryRunCard(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(text = stringResource(R.string.smp_sync_live_create_connection))
+            }
+            if (isHosting && boundPort != null) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFF202A2F), RoundedCornerShape(8.dp))
+                        .padding(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.smp_sync_live_share_connection_details),
+                        color = Color(0xFFB0BEC5),
+                        fontSize = 12.sp
+                    )
+                    InfoLine(
+                        label = stringResource(R.string.local_link_ip_label),
+                        value = localIp
+                    )
+                    InfoLine(
+                        label = stringResource(R.string.local_link_port_label),
+                        value = boundPort.toString()
+                    )
+                }
             }
             Text(
                 text = stringResource(R.string.smp_sync_live_backup_phone),

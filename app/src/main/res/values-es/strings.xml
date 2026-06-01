@@ -723,6 +723,7 @@
     <string name="smp_sync_live_backup_phone">Teléfono de respaldo</string>
     <string name="smp_sync_live_create_connection">Crear conexión</string>
     <string name="smp_sync_live_join_connection">Unirse a conexión</string>
+    <string name="smp_sync_live_share_connection_details">Introdúcelo en el teléfono de respaldo</string>
     <string name="smp_sync_lab_show">Modo labo / diagnóstico</string>
     <string name="smp_sync_lab_hide">Ocultar modo labo</string>
     <string name="smp_sync_lab_title">Modo labo</string>

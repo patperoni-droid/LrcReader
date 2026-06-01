@@ -813,6 +813,7 @@
     <string name="smp_sync_live_backup_phone">Téléphone secours</string>
     <string name="smp_sync_live_create_connection">Créer une connexion</string>
     <string name="smp_sync_live_join_connection">Rejoindre une connexion</string>
+    <string name="smp_sync_live_share_connection_details">À saisir sur le téléphone secours</string>
     <string name="smp_sync_lab_show">Mode labo / diagnostic</string>
     <string name="smp_sync_lab_hide">Masquer le mode labo</string>
     <string name="smp_sync_lab_title">Mode labo</string>

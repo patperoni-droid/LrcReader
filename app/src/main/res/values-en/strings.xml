@@ -805,6 +805,7 @@
     <string name="smp_sync_live_backup_phone">Backup phone</string>
     <string name="smp_sync_live_create_connection">Create connection</string>
     <string name="smp_sync_live_join_connection">Join connection</string>
+    <string name="smp_sync_live_share_connection_details">Enter this on the backup phone</string>
     <string name="smp_sync_lab_show">Lab / diagnostics mode</string>
     <string name="smp_sync_lab_hide">Hide lab mode</string>
     <string name="smp_sync_lab_title">Lab mode</string>
