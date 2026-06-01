@@ -82,6 +82,7 @@ import com.patrick.lrcreader.smp.SmpConverter
 import com.patrick.lrcreader.smp.SmpExporter
 import com.patrick.lrcreader.smp.SmpImportedUiSignal
 import com.patrick.lrcreader.smp.SmpLibraryScanner
+import com.patrick.lrcreader.smp.SongUnit
 import com.patrick.lrcreader.ui.LibraryEntry
 import com.patrick.lrcreader.ui.LibraryFolderCache
 import com.patrick.lrcreader.ui.MoveResult
@@ -149,6 +150,7 @@ private const val IMPORT_TRACE_TAG = "IMPORT_TRACE"
 private const val SMP_VIEW_TRACE_TAG = "SMP_VIEW_TRACE"
 private const val LIB_SMP_TRACE_TAG = "LIB_SMP_TRACE"
 private const val LIBRARY_PERF_TRACE_TAG = "LIBRARY_PERF_TRACE"
+private const val SMP_LIBRARY_CACHE_DIAG_TAG = "SMP_LIBRARY_CACHE_DIAG"
 private val buildEntriesPerfCounter = AtomicInteger(0)
 private val initialLoadEffectPerfCounter = AtomicInteger(0)
 private val refreshCurrentEffectPerfCounter = AtomicInteger(0)
@@ -504,6 +506,7 @@ fun LibraryScreen(
     reselectRootSignal: Int = 0,
     searchToggleSignal: Int = 0,
     smpRefreshVersion: Int = 0,
+    smpSongsCache: Map<String, SongUnit> = emptyMap(),
     lastImportedSmpSignal: SmpImportedUiSignal? = null,
     onConsumeImportedSmpAutoOpen: () -> Unit = {},
     onWorkspaceChanged: () -> Unit = {},
@@ -985,8 +988,7 @@ fun LibraryScreen(
         return resolvedTitle
     }
 
-    fun buildLibrarySongItems(): List<LibrarySongItem> {
-        val songs = smpLibraryScanner.listSongs()
+    fun buildLibrarySongItemsFromSongs(songs: Collection<SongUnit>): List<LibrarySongItem> {
         return songs
             .map { song ->
                 val fallbackTitle = song.title.ifBlank { song.id }
@@ -1001,6 +1003,11 @@ fun LibraryScreen(
                 )
             }
             .sortedBy { it.displayTitle.lowercase() }
+    }
+
+    fun buildLibrarySongItems(): List<LibrarySongItem> {
+        val songs = smpLibraryScanner.listSongs()
+        return buildLibrarySongItemsFromSongs(songs)
     }
 
     suspend fun buildLibrarySongItemsAsync(): List<LibrarySongItem> = withContext(Dispatchers.IO) {
@@ -1943,8 +1950,23 @@ fun LibraryScreen(
         }
     }
 
-    LaunchedEffect(initialLoadDone, smpRefreshVersion, titleAliasVersion) {
+    LaunchedEffect(initialLoadDone, smpRefreshVersion, titleAliasVersion, smpSongsCache) {
         if (!initialLoadDone) return@LaunchedEffect
+        if (smpSongsCache.isNotEmpty()) {
+            Log.i(
+                SMP_LIBRARY_CACHE_DIAG_TAG,
+                "song_cache_hit source=main_activity count=${smpSongsCache.size} refreshVersion=$smpRefreshVersion"
+            )
+            songItems = withContext(Dispatchers.IO) {
+                buildLibrarySongItemsFromSongs(smpSongsCache.values)
+            }
+            songItemsLoading = false
+            return@LaunchedEffect
+        }
+        Log.i(
+            SMP_LIBRARY_CACHE_DIAG_TAG,
+            "song_cache_miss source=main_activity reason=empty_cache refreshVersion=$smpRefreshVersion scan=runtime"
+        )
         songItemsLoading = true
         try {
             songItems = buildLibrarySongItemsAsync()

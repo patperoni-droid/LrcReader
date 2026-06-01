@@ -4057,6 +4057,7 @@ class MainActivity : AppCompatActivity() {
                                         reselectRootSignal = libraryTabReselectSignal,
                                         searchToggleSignal = librarySearchToggleSignal,
                                         smpRefreshVersion = smpCacheRefreshTick,
+                                        smpSongsCache = smpSongsById,
                                         lastImportedSmpSignal = lastImportedSmpUiSignal,
                                         onConsumeImportedSmpAutoOpen = {
                                             lastImportedSmpUiSignal = null
