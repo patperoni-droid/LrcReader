@@ -105,7 +105,7 @@ class SmpSyncDiffDiagnosticsTest {
             colorsHash = "colors-a",
             fullPlaylistHash = "full-a",
             songIds = listOf("song_7fda1ffe81beda3fd443", "song_a"),
-            itemKeys = listOf("song:song_7fda1ffe81beda3fd443", "group:Fiesta", "song:song_a")
+            itemKeys = listOf("song_7fda1ffe81beda3fd443", "group:Fiesta", "song_a")
         )
         val targetPlaylist = playlist(
             name = "Linda",
@@ -114,7 +114,7 @@ class SmpSyncDiffDiagnosticsTest {
             colorsHash = "colors-a",
             fullPlaylistHash = "full-b",
             songIds = listOf("song_7fda1ffe81beda3fd443", "song_b"),
-            itemKeys = listOf("song:song_7fda1ffe81beda3fd443", "song:song_b", "group:Fiesta")
+            itemKeys = listOf("song_7fda1ffe81beda3fd443", "song_b", "group:Fiesta")
         )
         val sourceSong = song(
             songId = "song_a",
@@ -157,8 +157,64 @@ class SmpSyncDiffDiagnosticsTest {
         assertEquals(listOf("song_7fda1ffe81beda3fd443", "song_a"), playlistDiagnostic.sourceSongIds)
         assertEquals(3, playlistDiagnostic.sourceItemCount)
         assertEquals(3, playlistDiagnostic.targetItemCount)
-        assertEquals("#2 A=group:Fiesta / B=song:song_b", playlistDiagnostic.firstDifferentItem)
+        assertEquals("#2 A=group:Fiesta / B=song_b", playlistDiagnostic.firstDifferentItem)
         assertEquals("song_b", playlistDiagnostic.sameTitleDifferentSongIds.single().targetSongId)
+    }
+
+    @Test
+    fun playlistDiagnostics_deduplicateSamePlaylistPlanItems() {
+        val sourcePlaylist = playlist(
+            name = "Linda",
+            itemsHash = "items-a",
+            groupsHash = null,
+            colorsHash = null,
+            fullPlaylistHash = "full-a",
+            songIds = listOf("song_a"),
+            itemKeys = listOf("song_a")
+        )
+        val targetPlaylist = playlist(
+            name = "Linda",
+            itemsHash = "items-b",
+            groupsHash = null,
+            colorsHash = null,
+            fullPlaylistHash = "full-b",
+            songIds = listOf("song_b"),
+            itemKeys = listOf("song_b")
+        )
+        val plan = SyncPlan(
+            items = listOf(
+                SyncPlanItem(
+                    action = SyncPlanAction.UPDATE_PLAYLIST_ON_B,
+                    diff = SyncDiff(
+                        entityType = SyncEntityType.PLAYLIST,
+                        entityId = "Linda",
+                        status = SyncDiffStatus.PLAYLIST_DIFFERENT,
+                        title = "Linda",
+                        aHash = "full-a",
+                        bHash = "full-b"
+                    )
+                ),
+                SyncPlanItem(
+                    action = SyncPlanAction.REVIEW_BROKEN_REFERENCE,
+                    diff = SyncDiff(
+                        entityType = SyncEntityType.PLAYLIST,
+                        entityId = "Linda",
+                        status = SyncDiffStatus.BROKEN_REFERENCE,
+                        title = "Linda",
+                        brokenReferenceIds = listOf("invalid:null")
+                    )
+                )
+            )
+        )
+
+        val diagnostics = SmpSyncDiffDiagnosticsBuilder().build(
+            source = manifest(playlists = listOf(sourcePlaylist)),
+            target = manifest(playlists = listOf(targetPlaylist)),
+            plan = plan
+        )
+
+        assertEquals(1, diagnostics.modifiedPlaylists.size)
+        assertEquals(SyncDiffStatus.PLAYLIST_DIFFERENT, diagnostics.modifiedPlaylists.single().status)
     }
 
     private fun manifest(

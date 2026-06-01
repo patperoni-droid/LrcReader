@@ -1,5 +1,6 @@
 package com.patrick.lrcreader.core.sync
 
+import com.patrick.lrcreader.core.PlaylistItem
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
@@ -195,6 +196,33 @@ class SmpSyncManifestGeneratorTest {
         } finally {
             dir.deleteRecursively()
         }
+    }
+
+    @Test
+    fun playlistReferences_areNormalizedForSyncManifest() {
+        val manifest = runBlocking {
+            SmpSyncManifestGenerator(hashing).generateFromSources(
+                appVersion = "0.3-beta",
+                generatedAt = 1L,
+                playlists = listOf(
+                    SmpSyncPlaylistManifestSource(
+                        playlistName = "Linda",
+                        items = listOf(
+                            PlaylistItem(uri = "smp://song_001"),
+                            PlaylistItem(uri = "song:song_002"),
+                            PlaylistItem(uri = "smp://", songId = "null"),
+                            PlaylistItem(uri = "content://legacy/audio", songId = "song:song_003")
+                        )
+                    )
+                )
+            )
+        }
+
+        val playlist = manifest.playlists.single()
+        assertEquals(listOf("song_001", "song_002", "song_003"), playlist.songIds)
+        assertEquals(listOf("song_001", "song_002", "song_003"), playlist.itemKeys)
+        assertEquals(listOf("invalid:null"), playlist.invalidReferences)
+        assertEquals(3, playlist.itemCount)
     }
 
     @Test

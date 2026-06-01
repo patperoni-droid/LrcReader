@@ -126,6 +126,28 @@ class SmpSyncManifestComparatorTest {
     }
 
     @Test
+    fun invalidPlaylistReference_isReportedAsBrokenReference() {
+        val source = manifest(
+            playlists = listOf(
+                playlist(
+                    name = "Linda",
+                    hash = "playlist-hash",
+                    invalidReferences = listOf("invalid:null")
+                )
+            )
+        )
+
+        val plan = comparator.compare(source = source, target = source)
+
+        val item = plan.items.single()
+        assertEquals(SyncEntityType.PLAYLIST, item.diff.entityType)
+        assertEquals(SyncDiffStatus.BROKEN_REFERENCE, item.diff.status)
+        assertEquals(SyncPlanAction.REVIEW_BROKEN_REFERENCE, item.action)
+        assertEquals(listOf("invalid:null"), item.diff.brokenReferenceIds)
+    }
+
+
+    @Test
     fun brokenFamilyReference_isDetected() {
         val source = manifest(
             families = listOf(
@@ -207,11 +229,13 @@ class SmpSyncManifestComparatorTest {
     private fun playlist(
         name: String,
         hash: String,
-        songIds: List<String> = emptyList()
+        songIds: List<String> = emptyList(),
+        invalidReferences: List<String> = emptyList()
     ): SmpSyncPlaylistEntry {
         return SmpSyncPlaylistEntry(
             playlistName = name,
             songIds = songIds,
+            invalidReferences = invalidReferences,
             itemsHash = "$hash-items",
             fullPlaylistHash = hash
         )

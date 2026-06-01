@@ -127,6 +127,7 @@ data class SmpSyncPlaylistEntry(
     val playlistId: String? = null,
     val playlistName: String,
     val songIds: List<String> = emptyList(),
+    val invalidReferences: List<String> = emptyList(),
     val itemCount: Int? = null,
     val itemKeys: List<String> = emptyList(),
     val itemsHash: String,
@@ -139,6 +140,7 @@ data class SmpSyncPlaylistEntry(
             putNullable("playlistId", playlistId)
             put("playlistName", playlistName)
             put("songIds", songIds.toJsonArray { it })
+            put("invalidReferences", invalidReferences.toJsonArray { it })
             put("itemCount", itemCount ?: JSONObject.NULL)
             put("itemKeys", itemKeys.toJsonArray { it })
             put("itemsHash", itemsHash)
@@ -154,6 +156,7 @@ data class SmpSyncPlaylistEntry(
                 playlistId = json.optStringOrNull("playlistId"),
                 playlistName = json.getString("playlistName"),
                 songIds = json.optJSONArray("songIds").toStrings(),
+                invalidReferences = json.optJSONArray("invalidReferences").toStrings(),
                 itemCount = json.optIntOrNull("itemCount"),
                 itemKeys = json.optJSONArray("itemKeys").toStrings(),
                 itemsHash = json.getString("itemsHash"),

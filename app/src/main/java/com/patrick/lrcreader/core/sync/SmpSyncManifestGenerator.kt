@@ -4,6 +4,7 @@ import android.content.Context
 import com.patrick.lrcreader.core.PlaylistItem
 import com.patrick.lrcreader.core.PlaylistRepository
 import com.patrick.lrcreader.core.TextSongRepository
+import com.patrick.lrcreader.core.getGroupUuid
 import com.patrick.lrcreader.core.getGroupColorArgb
 import com.patrick.lrcreader.core.getGroupTitle
 import com.patrick.lrcreader.core.getSmpSongId
@@ -11,6 +12,7 @@ import com.patrick.lrcreader.core.getVariantFamilyId
 import com.patrick.lrcreader.core.getVariantFamilySongIds
 import com.patrick.lrcreader.core.getVariantFamilyTitle
 import com.patrick.lrcreader.core.isGroupHeader
+import com.patrick.lrcreader.core.isGroupEnd
 import com.patrick.lrcreader.core.isVariantFamilyItem
 import com.patrick.lrcreader.core.config.NotesConfigStore
 import com.patrick.lrcreader.smp.SmpLibraryScanner
@@ -187,11 +189,13 @@ class SmpSyncManifestGenerator(
     }
 
     private fun buildPlaylistEntry(source: SmpSyncPlaylistManifestSource): SmpSyncPlaylistEntry {
+        val normalizedItems = source.items.mapNotNull { item -> item.toSyncPlaylistItemRefOrNull() }
         val itemsJson = JSONArray().apply {
-            source.items.forEach { item ->
+            normalizedItems.forEach { item ->
                 put(
                     JSONObject()
-                        .put("uri", item.uri)
+                        .put("kind", item.kind)
+                        .put("ref", item.ref)
                         .putNullable("songId", item.songId)
                 )
             }
@@ -203,9 +207,10 @@ class SmpSyncManifestGenerator(
             .putNullable("playlistColorArgb", source.colorArgb)
 
         val itemsHash = hashing.hashNormalizedText(itemsJson.toString())
-        val itemKeys = source.items.map { item -> item.syncDiagnosticKey() }
-        val songIds = (source.songIds + source.items.flatMap { item -> item.referencedSongIds() })
-            .mapNotNull { it.trim().takeIf(String::isNotEmpty) }
+        val itemKeys = normalizedItems.map { item -> item.key }
+        val invalidReferences = source.items.mapNotNull { item -> item.invalidSyncReference() }
+            .distinct()
+        val songIds = (source.songIds.mapNotNull { it.cleanSyncSongIdOrNull() } + normalizedItems.mapNotNull { item -> item.songId })
             .distinct()
         val groupsHash = source.groupMarkers.takeIf { it.isNotEmpty() }
             ?.let { hashing.hashNormalizedText(groupsJson.toString()) }
@@ -222,7 +227,8 @@ class SmpSyncManifestGenerator(
             playlistId = source.playlistId,
             playlistName = source.playlistName,
             songIds = songIds,
-            itemCount = source.items.size.takeIf { it > 0 } ?: source.songIds.size.takeIf { it > 0 },
+            invalidReferences = invalidReferences,
+            itemCount = normalizedItems.size.takeIf { it > 0 } ?: songIds.size.takeIf { it > 0 },
             itemKeys = itemKeys.takeIf { it.isNotEmpty() } ?: songIds,
             itemsHash = itemsHash,
             groupsHash = groupsHash,
@@ -419,24 +425,92 @@ class SmpSyncManifestGenerator(
 
     private fun PlaylistItem.referencedSongIds(): List<String> {
         if (isVariantFamilyItem(uri)) {
-            return getVariantFamilySongIds(uri).toList()
+            return getVariantFamilySongIds(uri).mapNotNull { it.cleanSyncSongIdOrNull() }
         }
-        return listOfNotNull(songId?.trim()?.takeIf(String::isNotEmpty) ?: getSmpSongId(uri))
+        return listOfNotNull(resolveSyncSongId())
     }
 
-    private fun PlaylistItem.syncDiagnosticKey(): String {
+    private fun PlaylistItem.toSyncPlaylistItemRefOrNull(): SyncPlaylistItemRef? {
         val cleanUri = uri.trim()
-        val resolvedSongId = songId?.trim()?.takeIf(String::isNotEmpty) ?: getSmpSongId(cleanUri)
         return when {
-            isGroupHeader(cleanUri) -> "group:${getGroupTitle(cleanUri)}"
+            isGroupHeader(cleanUri) -> SyncPlaylistItemRef(
+                kind = "group",
+                ref = getGroupTitle(cleanUri),
+                songId = null
+            )
+            isGroupEnd(cleanUri) -> SyncPlaylistItemRef(
+                kind = "groupEnd",
+                ref = getGroupUuid(cleanUri) ?: cleanUri,
+                songId = null
+            )
             isVariantFamilyItem(cleanUri) -> {
                 val familyId = getVariantFamilyId(cleanUri) ?: cleanUri
-                "family:$familyId:${resolvedSongId.orEmpty()}"
+                val familySongIds = getVariantFamilySongIds(cleanUri)
+                    .mapNotNull { it.cleanSyncSongIdOrNull() }
+                val activeSongId = resolveSyncSongId() ?: familySongIds.firstOrNull()
+                SyncPlaylistItemRef(
+                    kind = "family",
+                    ref = familyId,
+                    songId = activeSongId
+                )
             }
-            resolvedSongId != null -> "song:$resolvedSongId"
-            else -> "item:$cleanUri"
+            else -> resolveSyncSongId()?.let { songId ->
+                SyncPlaylistItemRef(
+                    kind = "song",
+                    ref = songId,
+                    songId = songId
+                )
+            }
         }
     }
+
+    private fun PlaylistItem.invalidSyncReference(): String? {
+        if (toSyncPlaylistItemRefOrNull() != null) return null
+        val cleanSongId = songId?.trim()
+        val cleanUri = uri.trim()
+        return when {
+            cleanSongId.isInvalidSyncSongIdCandidate() -> "invalid:${cleanSongId?.ifBlank { "blank-songId" } ?: "blank-songId"}"
+            cleanUri.isInvalidSyncSongIdCandidate() -> "invalid:${cleanUri.ifBlank { "blank-uri" }}"
+            cleanUri.startsWith("smp://") -> "invalid:$cleanUri"
+            cleanUri.startsWith("song:") -> "invalid:$cleanUri"
+            else -> null
+        }
+    }
+
+    private fun PlaylistItem.resolveSyncSongId(): String? {
+        return songId.cleanSyncSongIdOrNull()
+            ?: getSmpSongId(uri)?.cleanSyncSongIdOrNull()
+            ?: uri.trim().takeIf { it.startsWith("song:") }
+                ?.removePrefix("song:")
+                ?.cleanSyncSongIdOrNull()
+    }
+
+    private fun String?.cleanSyncSongIdOrNull(): String? {
+        val clean = this
+            ?.trim()
+            ?.removePrefix("song:")
+            ?.takeIf { !it.isInvalidSyncSongIdCandidate() }
+            ?: return null
+        return clean
+    }
+
+    private fun String?.isInvalidSyncSongIdCandidate(): Boolean {
+        val clean = this?.trim().orEmpty()
+        return clean.isEmpty() ||
+            clean.equals("null", ignoreCase = true) ||
+            clean == "song_" ||
+            clean == "song:null" ||
+            clean == "smp://"
+    }
+}
+
+private data class SyncPlaylistItemRef(
+    val kind: String,
+    val ref: String,
+    val songId: String?
+) {
+    val key: String
+        get() = songId ?: "$kind:$ref"
 }
 
 private fun JSONObject.putNullable(key: String, value: String?): JSONObject {

@@ -225,7 +225,7 @@ class SmpSyncManifestComparator {
         availableSongIds: Set<String>
     ): List<SyncPlanItem> {
         return source.playlists.mapNotNull { playlist ->
-            val missing = playlist.songIds
+            val missing = (playlist.songIds + playlist.invalidReferences)
                 .filterNot { it in availableSongIds }
                 .distinct()
                 .sorted()

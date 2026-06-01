@@ -152,6 +152,12 @@ class SmpSyncDiffDiagnosticsBuilder {
 
         val playlistDiagnostics = plan.items
             .filter { item -> item.diff.entityType == SyncEntityType.PLAYLIST }
+            .groupBy { item -> item.diff.entityId }
+            .values
+            .map { items ->
+                items.firstOrNull { item -> item.action == SyncPlanAction.UPDATE_PLAYLIST_ON_B }
+                    ?: items.first()
+            }
             .map { item ->
                 val sourcePlaylist = sourcePlaylistsById[item.diff.entityId]
                 val targetPlaylist = targetPlaylistsById[item.diff.entityId]
@@ -392,7 +398,7 @@ class SmpSyncDiffDiagnosticsBuilder {
     }
 
     private fun SmpSyncPlaylistEntry.diagnosticItemKeys(): List<String> {
-        return itemKeys.takeIf { it.isNotEmpty() } ?: songIds.map { "song:$it" }
+        return itemKeys.takeIf { it.isNotEmpty() } ?: songIds
     }
 
     private fun List<String>.duplicates(): List<String> {
