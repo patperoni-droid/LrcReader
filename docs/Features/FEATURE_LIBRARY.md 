@@ -107,6 +107,27 @@ Rules:
 
 ⸻
 
+## SMP SYNC — MANUAL SONG TRANSFER
+
+Library songs can be sent manually through SMP Sync.
+
+Rules:
+- the user explicitly selects the songs to send
+- each selected song is transferred as its real SongUnit data
+- `songId` remains the stable identity
+- no filename, URI, or visual title may replace `songId` identity
+- no automatic deletion is allowed
+
+On the backup phone:
+- import is manual and confirmed by the user
+- if the same `songId` already exists, the received song data may update the existing runtime SongUnit
+- associated data such as `lyrics.lrc`, `chords.lrc`, `config.json`, `arrangement.json`, and timeline files must be imported into normalized runtime storage
+- playback must use the refreshed local runtime data, never the transfer package
+
+👉 SMP Sync is a transfer/import workflow, not a live playback dependency.
+
+⸻
+
 SMP RESTORE CONSISTENCY
 
 A full SMP restore must rebuild the usable app state before any playback:

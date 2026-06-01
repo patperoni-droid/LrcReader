@@ -209,6 +209,54 @@ Export_YYYY-MM-DD_HH-mm
 
 ---
 
+## 🔁 SMP SYNC — TRANSFERT LOCAL MANUEL
+
+SMP Sync complète l’export/import classique avec un transfert local entre deux appareils :
+
+- téléphone principal : appareil de travail
+- téléphone secours : appareil de backup prêt pour le live
+
+Principes :
+
+- pas de cloud
+- pas d’Internet obligatoire
+- transfert via LocalLink / Wi-Fi local / hotspot
+- `.smp` reste un format de transport
+- le téléphone secours importe toujours vers son runtime local normalisé
+- aucun fichier `.smp` n’est utilisé pendant le live
+
+### V1 actuelle : mode manuel
+
+La V1 privilégie la fiabilité :
+
+1. le téléphone principal crée une connexion
+2. le téléphone secours rejoint la connexion
+3. l’utilisateur choisit explicitement ce qu’il envoie
+4. le package est envoyé au téléphone secours
+5. l’utilisateur confirme manuellement l’import
+
+Catégories :
+
+- morceaux
+- playlists
+- bloc-notes : prévu plus tard
+- prompteurs : prévu plus tard
+
+Règles :
+
+- aucune suppression automatique
+- aucun merge automatique
+- `songId` conservé
+- remplacement d’un morceau existant autorisé seulement après confirmation utilisateur
+- playlists transférées comme état de structure, sans duplication audio
+- familles et groupes de playlist doivent rester compatibles avec le transfert
+
+Le moteur d’analyse différentielle existe comme aide/diagnostic, mais le mode manuel reste la référence UX V1.
+
+Voir aussi : `FEATURE_SMP_SYNC.md`
+
+---
+
 ## ⚠️ LIMITATIONS ACTUELLES
 
 ### V1

@@ -1,0 +1,166 @@
+# FEATURE — SMP SYNC
+
+## Objectif Produit
+
+SMP Sync permet de tenir un téléphone secours à jour depuis un téléphone principal avant un concert.
+
+Le but est simple :
+
+- préparer le téléphone principal
+- envoyer localement les éléments choisis
+- importer manuellement sur le téléphone secours
+- garder un backup exploitable sans cloud
+
+SMP Sync est une fonction de confort Premium. Elle ne remplace pas l’export/import manuel classique disponible en sauvegarde.
+
+---
+
+## Principes SMP
+
+- pas de cloud
+- pas d’Internet obligatoire
+- transfert local via LocalLink / Wi-Fi local / hotspot
+- `.smp` reste un format de transport
+- import toujours normalisé vers `/files/tracks/{songId}/`
+- aucun `.smp` lu en runtime live
+- Player, AudioEngine, autoplay, Define Next et timeline restent hors du système Sync
+
+Le runtime live continue de manipuler de vrais `SongUnit` locaux.
+
+---
+
+## Parcours Utilisateur Actuel
+
+1. Téléphone A, principal : créer une connexion
+2. Téléphone B, secours : rejoindre la connexion avec IP/port
+3. Téléphone A : choisir les éléments à synchroniser
+4. Téléphone A : envoyer
+5. Téléphone B : recevoir le package
+6. Téléphone B : importer après confirmation utilisateur
+
+Le flux cible est :
+
+choisir → envoyer → importer
+
+---
+
+## Mode Manuel V1
+
+La V1 actuelle est pilotée par l’utilisateur.
+
+L’utilisateur choisit explicitement ce qui part du téléphone principal :
+
+- morceaux
+- playlists
+
+Prévu plus tard :
+
+- bloc-notes
+- prompteurs
+
+Ce mode ne dépend pas de la détection automatique de différences. Il évite les ambiguïtés liées aux titres similaires, aux anciens `songId`, aux réglages locaux ou aux états playlist.
+
+---
+
+## Import Sur Téléphone Secours
+
+L’import est toujours manuel et confirmé.
+
+Règles :
+
+- aucun import automatique silencieux
+- aucune suppression automatique
+- aucun merge automatique complexe
+- remplacement uniquement après validation utilisateur
+- `songId` conservé
+- si un morceau existe déjà avec le même `songId`, ses données peuvent être mises à jour depuis le package reçu
+
+Pour un morceau, l’import peut mettre à jour les données associées :
+
+- audio
+- paroles
+- accords
+- timeline
+- réglages
+- arrangement
+- autres fichiers normalisés du SongUnit
+
+Après import, le téléphone secours doit travailler depuis son runtime local normalisé.
+
+---
+
+## Playlists Et Familles
+
+Les playlists peuvent être envoyées manuellement via SMP Sync.
+
+Elles restent des structures :
+
+- références `songId`
+- ordre
+- groupes
+- couleurs
+- familles playlist si présentes
+
+Le transfert ne duplique pas l’audio dans les playlists. Une famille playlist reste une couche UX qui résout vers un vrai `songId` actif.
+
+---
+
+## Freemium / Premium
+
+Freemium :
+
+- export manuel
+- import manuel
+- sauvegarde/restauration classique
+
+Premium :
+
+- SMP Sync local
+- confort de transfert entre téléphone principal et téléphone secours
+- analyse différentielle et diagnostics d’aide
+- transfert manuel guidé
+
+---
+
+## Analyse Différentielle
+
+Le moteur automatique de manifest/diff/package reste disponible comme outil de diagnostic et d’aide.
+
+En V1, il ne doit pas être la seule source de vérité utilisateur :
+
+- les faux positifs restent possibles
+- deux morceaux visuellement identiques peuvent avoir des `songId` différents
+- certains états locaux peuvent différer entre appareils
+
+Le mode manuel est donc prioritaire pour l’UX live.
+
+---
+
+## Limites Actuelles
+
+- IP/port encore nécessaires pour rejoindre une connexion
+- QR code et découverte automatique : futur
+- pas de cloud
+- pas de DJ en V1
+- pas de suppression automatique
+- pas de résolution automatique des conflits `songId`
+- pas de merge complexe multi-utilisateur
+
+---
+
+## Règles De Stabilité
+
+SMP Sync ne doit jamais perturber le live.
+
+Interdits :
+
+- lecture de `.smp` pendant le live
+- traitement lourd sur le thread principal
+- remplacement silencieux
+- suppression automatique
+- modification du Player ou de l’AudioEngine pour la sync
+
+Priorité :
+
+stabilité live > automatisation > confort.
+

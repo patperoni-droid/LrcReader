@@ -202,6 +202,27 @@ At show time, the user can switch from Bamboleo to Volare Gipsy before Play or D
 
 ⸻
 
+## SMP SYNC — MANUAL PLAYLIST TRANSFER
+
+Playlists can be sent manually through SMP Sync.
+
+Rules:
+- the user explicitly selects playlists to send
+- playlists remain structure only
+- transferred playlist state may include order, groups, colors, and family entries
+- playlist items must continue to reference real `songId` values
+- no audio is duplicated inside playlist data
+- no automatic deletion is allowed on the backup phone
+
+Compatibility:
+- playlist families must remain a UX layer and resolve to real SongUnits after import
+- group colors and grouping metadata must stay compatible with backup transfer
+- if a playlist references a song missing on the backup phone, the issue must be visible or handled safely; playback must not be used as a repair step
+
+👉 SMP Sync transfers playlist state; Player still receives one real songId/SongUnit at runtime.
+
+⸻
+
 DEFINE NEXT (CRITICAL)
 
 - User can mark a song as "next"
