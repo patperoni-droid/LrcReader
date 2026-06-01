@@ -35,6 +35,46 @@ class SmpSyncManifestGeneratorTest {
     }
 
     @Test
+    fun textFileHash_ignoresBomTrailingSpacesAndFinalBlankLines() {
+        val dir = Files.createTempDirectory("sync_hash_text_clean_").toFile()
+        try {
+            val clean = File(dir, "clean.lrc").apply {
+                writeText("[00:00.00]Café\n[00:01.00]Line two", Charsets.UTF_8)
+            }
+            val decorated = File(dir, "decorated.lrc").apply {
+                writeText("\uFEFF[00:00.00]Cafe\u0301  \r\n[00:01.00]Line two\t\r\n\r\n", Charsets.UTF_8)
+            }
+
+            assertEquals(
+                hashing.hashFileOrNull(clean, SmpSyncHashing.FileHashMode.SYNC_LYRICS_TEXT),
+                hashing.hashFileOrNull(decorated, SmpSyncHashing.FileHashMode.SYNC_LYRICS_TEXT)
+            )
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun textFileHash_detectsRealLyricsChange() {
+        val dir = Files.createTempDirectory("sync_hash_text_change_").toFile()
+        try {
+            val first = File(dir, "first.lrc").apply {
+                writeText("[00:00.00]First lyric", Charsets.UTF_8)
+            }
+            val second = File(dir, "second.lrc").apply {
+                writeText("[00:00.00]Second lyric", Charsets.UTF_8)
+            }
+
+            assertNotEquals(
+                hashing.hashFileOrNull(first, SmpSyncHashing.FileHashMode.SYNC_LYRICS_TEXT),
+                hashing.hashFileOrNull(second, SmpSyncHashing.FileHashMode.SYNC_LYRICS_TEXT)
+            )
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
     fun bytesFileHash_matchesSha256ForTextFile() {
         val dir = Files.createTempDirectory("sync_hash_bytes_text_").toFile()
         try {
@@ -366,6 +406,94 @@ class SmpSyncManifestGeneratorTest {
 
             assertEquals(before.arrangementHash, after.arrangementHash)
             assertEquals(before.fullSongHash, after.fullSongHash)
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun arrangementLocalFields_doNotChangeArrangementHash() {
+        val dir = Files.createTempDirectory("sync_manifest_arrangement_local_").toFile()
+        try {
+            val arrangement = File(dir, "arrangement.json").apply {
+                writeText(
+                    """{"version":1,"name":"Arrangement 1","sourceSongId":"song_a","updatedAt":111,"selectedSegmentId":"a","segments":[{"id":"a","name":"Intro","startMs":0,"endMs":1000,"expanded":true,"cacheKey":"phone-a"}],"structureSegmentIds":["a"],"ui":{"zoom":1.2}}""",
+                    Charsets.UTF_8
+                )
+            }
+            val generator = SmpSyncManifestGenerator(hashing)
+            val source = SmpSyncSongManifestSource(
+                songId = "song_001",
+                title = "Sync Title",
+                arrangementFile = arrangement
+            )
+            val before = runBlocking {
+                generator.generateFromSources(
+                    appVersion = "0.3-beta",
+                    generatedAt = 1L,
+                    songs = listOf(source)
+                )
+            }.songs.first()
+
+            arrangement.writeText(
+                """{"version":9,"name":"Arrangement 1","sourceSongId":"song_b","updatedAt":999,"selectedSegmentId":"b","segments":[{"id":"a","name":"Intro","startMs":0,"endMs":1000,"expanded":false,"cacheKey":"phone-b"}],"structureSegmentIds":["a"],"ui":{"zoom":2.0}}""",
+                Charsets.UTF_8
+            )
+
+            val after = runBlocking {
+                generator.generateFromSources(
+                    appVersion = "0.3-beta",
+                    generatedAt = 2L,
+                    songs = listOf(source)
+                )
+            }.songs.first()
+
+            assertEquals(before.arrangementHash, after.arrangementHash)
+            assertEquals(before.fullSongHash, after.fullSongHash)
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun arrangementMusicalChange_updatesArrangementHash() {
+        val dir = Files.createTempDirectory("sync_manifest_arrangement_music_").toFile()
+        try {
+            val arrangement = File(dir, "arrangement.json").apply {
+                writeText(
+                    """{"name":"Arrangement 1","segments":[{"id":"a","name":"Intro","startMs":0,"endMs":1000}],"structureSegmentIds":["a"]}""",
+                    Charsets.UTF_8
+                )
+            }
+            val generator = SmpSyncManifestGenerator(hashing)
+            val source = SmpSyncSongManifestSource(
+                songId = "song_001",
+                title = "Sync Title",
+                arrangementFile = arrangement
+            )
+            val before = runBlocking {
+                generator.generateFromSources(
+                    appVersion = "0.3-beta",
+                    generatedAt = 1L,
+                    songs = listOf(source)
+                )
+            }.songs.first()
+
+            arrangement.writeText(
+                """{"name":"Arrangement 1","segments":[{"id":"a","name":"Intro","startMs":0,"endMs":1200}],"structureSegmentIds":["a"]}""",
+                Charsets.UTF_8
+            )
+
+            val after = runBlocking {
+                generator.generateFromSources(
+                    appVersion = "0.3-beta",
+                    generatedAt = 2L,
+                    songs = listOf(source)
+                )
+            }.songs.first()
+
+            assertNotEquals(before.arrangementHash, after.arrangementHash)
+            assertNotEquals(before.fullSongHash, after.fullSongHash)
         } finally {
             dir.deleteRecursively()
         }

@@ -4,12 +4,14 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.security.MessageDigest
+import java.text.Normalizer
 
 class SmpSyncHashing {
 
     enum class FileHashMode {
         BYTES,
         NORMALIZED_TEXT,
+        SYNC_LYRICS_TEXT,
         CANONICAL_JSON,
         SYNC_SETTINGS_JSON,
         SYNC_ARRANGEMENT_JSON
@@ -24,6 +26,10 @@ class SmpSyncHashing {
         return sha256(normalizeText(text).toByteArray(Charsets.UTF_8))
     }
 
+    fun hashSyncLyricsText(text: String): String {
+        return sha256(normalizeLyricsText(text).toByteArray(Charsets.UTF_8))
+    }
+
     fun hashCanonicalJsonText(rawJson: String): String {
         val canonical = canonicalJsonOrNull(rawJson)
         // TODO SMP Sync: invalid JSON currently falls back to normalized text hashing.
@@ -35,6 +41,7 @@ class SmpSyncHashing {
         return when (mode) {
             FileHashMode.BYTES -> hashFileBytesStreaming(file)
             FileHashMode.NORMALIZED_TEXT -> hashNormalizedText(file.readText(Charsets.UTF_8))
+            FileHashMode.SYNC_LYRICS_TEXT -> hashSyncLyricsText(file.readText(Charsets.UTF_8))
             FileHashMode.CANONICAL_JSON -> hashCanonicalJsonText(file.readText(Charsets.UTF_8))
             FileHashMode.SYNC_SETTINGS_JSON -> hashSyncSettingsJsonTextOrNull(file.readText(Charsets.UTF_8))
             FileHashMode.SYNC_ARRANGEMENT_JSON -> hashSyncArrangementJsonTextOrNull(file.readText(Charsets.UTF_8))
@@ -91,6 +98,16 @@ class SmpSyncHashing {
             .replace('\r', '\n')
     }
 
+    fun normalizeLyricsText(text: String): String {
+        val normalizedLines = Normalizer.normalize(stripUtf8Bom(text), Normalizer.Form.NFC)
+            .replace("\r\n", "\n")
+            .replace('\r', '\n')
+            .split('\n')
+            .map { line -> line.trimEnd(' ', '\t') }
+            .dropLastWhile { line -> line.isEmpty() }
+        return normalizedLines.joinToString("\n")
+    }
+
     private fun hashFileBytesStreaming(file: File): String {
         val digest = MessageDigest.getInstance("SHA-256")
         val buffer = ByteArray(FILE_HASH_BUFFER_SIZE)
@@ -117,12 +134,42 @@ class SmpSyncHashing {
     private fun syncArrangementJsonOrNull(rawJson: String): JSONObject? {
         val root = runCatching { JSONObject(rawJson.trim()) }.getOrNull() ?: return null
         val out = JSONObject()
-        out.copyIfPresent(root, "version")
         out.copyIfPresent(root, "name")
-        out.copyIfPresent(root, "sourceSongId")
-        out.copyIfPresent(root, "segments")
-        out.copyIfPresent(root, "structureSegmentIds")
+        root.optJSONArray("segments")?.let { segments ->
+            out.put("segments", syncArrangementSegments(segments))
+        }
+        root.optJSONArray("structureSegmentIds")?.let { structureIds ->
+            out.put("structureSegmentIds", syncArrangementStructureIds(structureIds))
+        }
         return out.takeIf { it.length() > 0 }
+    }
+
+    private fun syncArrangementSegments(segments: JSONArray): JSONArray {
+        return JSONArray().apply {
+            for (index in 0 until segments.length()) {
+                val segment = segments.optJSONObject(index) ?: continue
+                val id = segment.optString("id").trim().takeIf { it.isNotEmpty() } ?: continue
+                val name = segment.optString("name").trim().takeIf { it.isNotEmpty() } ?: continue
+                val startMs = segment.optLong("startMs", -1L)
+                val endMs = segment.optLong("endMs", -1L)
+                if (startMs < 0L || endMs <= startMs) continue
+                put(
+                    JSONObject()
+                        .put("id", id)
+                        .put("name", name)
+                        .put("startMs", startMs)
+                        .put("endMs", endMs)
+                )
+            }
+        }
+    }
+
+    private fun syncArrangementStructureIds(structureIds: JSONArray): JSONArray {
+        return JSONArray().apply {
+            for (index in 0 until structureIds.length()) {
+                structureIds.optString(index).trim().takeIf { it.isNotEmpty() }?.let(::put)
+            }
+        }
     }
 
     private fun JSONObject.copyIfPresent(source: JSONObject, key: String) {
@@ -149,6 +196,10 @@ class SmpSyncHashing {
             is Number, is Boolean -> value.toString()
             else -> JSONObject.quote(value.toString())
         }
+    }
+
+    private fun stripUtf8Bom(text: String): String {
+        return if (text.startsWith('\uFEFF')) text.drop(1) else text
     }
 
     private companion object {

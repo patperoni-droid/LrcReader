@@ -38,6 +38,8 @@ private const val SYNC_PACKAGE_DIAG_TAG = "SMP_SYNC_PACKAGE_DIAG"
 private const val SYNC_IMPORT_DIAG_TAG = "SMP_SYNC_IMPORT_DIAG"
 private const val SYNC_EDGE_DIAG_TAG = "SMP_SYNC_EDGE_DIAG"
 private const val SYNC_SETTINGS_DIAG_TAG = "SMP_SYNC_SETTINGS_DIAG"
+private const val SYNC_LYRICS_DIAG_TAG = "SMP_SYNC_LYRICS_DIAG"
+private const val SYNC_ARRANGEMENT_DIAG_TAG = "SMP_SYNC_ARRANGEMENT_DIAG"
 private const val SYNC_PACKAGE_ITEM_TIMEOUT_MS = 120_000L
 
 enum class SmpSyncPackageProgressPhase {
@@ -473,6 +475,16 @@ class SmpSyncPackageArchiveReader(private val context: Context) {
             localManifest = localManifest,
             remainingPlan = remainingPlan
         )
+        logLyricsHashDiagnostics(
+            receivedPackage = receivedPackage,
+            localManifest = localManifest,
+            remainingPlan = remainingPlan
+        )
+        logArrangementHashDiagnostics(
+            receivedPackage = receivedPackage,
+            localManifest = localManifest,
+            remainingPlan = remainingPlan
+        )
         val localById = localManifest.songs.associateBy { it.songId }
         receivedPackage.syncPackage.items
             .filter { it.kind == SmpSyncPackageKind.SONG_FULL }
@@ -613,6 +625,106 @@ class SmpSyncPackageArchiveReader(private val context: Context) {
         syncPackage: SmpSyncPackage,
         songId: String
     ): String? {
+        return readSourceSongEntryFromPackage(
+            packageZip = packageZip,
+            syncPackage = syncPackage,
+            songId = songId,
+            entryName = "config.json"
+        )
+    }
+
+    private fun logLyricsHashDiagnostics(
+        receivedPackage: SmpSyncReceivedPackage,
+        localManifest: SmpSyncManifest,
+        remainingPlan: SyncPlan
+    ) {
+        val sourceById = receivedPackage.sourceManifest.songs.associateBy { it.songId }
+        val localById = localManifest.songs.associateBy { it.songId }
+        val hashing = SmpSyncHashing()
+        val lyricsItems = remainingPlan.items
+            .filter { item ->
+                item.diff.entityType == SyncEntityType.SONG &&
+                    item.action == SyncPlanAction.COPY_TO_B
+            }
+            .mapNotNull { item ->
+                val sourceSong = sourceById[item.diff.entityId] ?: return@mapNotNull null
+                val localSong = localById[item.diff.entityId] ?: return@mapNotNull null
+                if (sourceSong.lyricsHash == localSong.lyricsHash) return@mapNotNull null
+                item to sourceSong
+            }
+            .take(5)
+        if (lyricsItems.isEmpty()) return
+
+        ZipFile(receivedPackage.file).use { packageZip ->
+            lyricsItems.forEach { (item, sourceSong) ->
+                val sourceLyrics = readSourceSongEntryFromPackage(
+                    packageZip = packageZip,
+                    syncPackage = receivedPackage.syncPackage,
+                    songId = item.diff.entityId,
+                    entryName = "lyrics.lrc"
+                )
+                val localLyrics = File(context.filesDir, "tracks/${item.diff.entityId}/lyrics.lrc")
+                    .takeIf { it.isFile }
+                    ?.readText(Charsets.UTF_8)
+                val diff = diffLyricsText(sourceLyrics, localLyrics, hashing)
+                Log.i(
+                    SYNC_LYRICS_DIAG_TAG,
+                    "lyrics:song title=${sourceSong.title} songId=${item.diff.entityId} status=${item.diff.status} sourceHash=${sourceSong.lyricsHash ?: "null"} targetHash=${localById[item.diff.entityId]?.lyricsHash ?: "null"} sourceLen=${sourceLyrics?.length ?: -1} targetLen=${localLyrics?.length ?: -1} sourceNormLen=${diff.sourceNormalizedLength} targetNormLen=${diff.targetNormalizedLength} sourceLines=${diff.sourceLineCount} targetLines=${diff.targetLineCount} firstDiffLine=${diff.firstDifferentLine ?: -1} invisible=${diff.invisibleFlags.joinToString().ifBlank { "none" }} sourceExcerpt=${diff.sourceExcerpt ?: "null"} targetExcerpt=${diff.targetExcerpt ?: "null"}"
+                )
+            }
+        }
+    }
+
+    private fun logArrangementHashDiagnostics(
+        receivedPackage: SmpSyncReceivedPackage,
+        localManifest: SmpSyncManifest,
+        remainingPlan: SyncPlan
+    ) {
+        val sourceById = receivedPackage.sourceManifest.songs.associateBy { it.songId }
+        val localById = localManifest.songs.associateBy { it.songId }
+        val hashing = SmpSyncHashing()
+        val arrangementItems = remainingPlan.items
+            .filter { item ->
+                item.diff.entityType == SyncEntityType.SONG &&
+                    item.action == SyncPlanAction.COPY_TO_B
+            }
+            .mapNotNull { item ->
+                val sourceSong = sourceById[item.diff.entityId] ?: return@mapNotNull null
+                val localSong = localById[item.diff.entityId] ?: return@mapNotNull null
+                if (sourceSong.arrangementHash == localSong.arrangementHash) return@mapNotNull null
+                item to sourceSong
+            }
+            .take(5)
+        if (arrangementItems.isEmpty()) return
+
+        ZipFile(receivedPackage.file).use { packageZip ->
+            arrangementItems.forEach { (item, sourceSong) ->
+                val sourceArrangement = readSourceSongEntryFromPackage(
+                    packageZip = packageZip,
+                    syncPackage = receivedPackage.syncPackage,
+                    songId = item.diff.entityId,
+                    entryName = "arrangement.json"
+                )
+                val localArrangement = File(context.filesDir, "tracks/${item.diff.entityId}/arrangement.json")
+                    .takeIf { it.isFile }
+                    ?.readText(Charsets.UTF_8)
+                val sourceCanonical = sourceArrangement?.let(hashing::syncArrangementCanonicalTextOrNull)
+                val localCanonical = localArrangement?.let(hashing::syncArrangementCanonicalTextOrNull)
+                val diffs = diffCanonicalJsonFields(sourceCanonical, localCanonical, rootPath = "arrangement")
+                Log.i(
+                    SYNC_ARRANGEMENT_DIAG_TAG,
+                    "arrangement:song title=${sourceSong.title} songId=${item.diff.entityId} status=${item.diff.status} sourceHash=${sourceSong.arrangementHash ?: "null"} targetHash=${localById[item.diff.entityId]?.arrangementHash ?: "null"} fields=${diffs.joinToString { diff -> "${diff.path}:A=${diff.sourceValue ?: "null"}|B=${diff.targetValue ?: "null"}" }.ifBlank { "canonical_unavailable_or_equal" }}"
+                )
+            }
+        }
+    }
+
+    private fun readSourceSongEntryFromPackage(
+        packageZip: ZipFile,
+        syncPackage: SmpSyncPackage,
+        songId: String,
+        entryName: String
+    ): String? {
         val contentEntry = syncPackage.items
             .firstOrNull { item ->
                 item.kind == SmpSyncPackageKind.SONG_FULL &&
@@ -625,7 +737,7 @@ class SmpSyncPackageArchiveReader(private val context: Context) {
             ZipInputStream(smpInput).use { smpZip ->
                 while (true) {
                     val entry = smpZip.nextEntry ?: break
-                    if (!entry.isDirectory && entry.name == "config.json") {
+                    if (!entry.isDirectory && entry.name == entryName) {
                         return smpZip.bufferedReader(Charsets.UTF_8).readText()
                     }
                 }
@@ -909,14 +1021,26 @@ private data class SmpSyncJsonFieldDiff(
     val targetValue: String?
 )
 
+private data class SmpSyncLyricsTextDiff(
+    val sourceNormalizedLength: Int,
+    val targetNormalizedLength: Int,
+    val sourceLineCount: Int,
+    val targetLineCount: Int,
+    val firstDifferentLine: Int?,
+    val sourceExcerpt: String?,
+    val targetExcerpt: String?,
+    val invisibleFlags: List<String>
+)
+
 private fun diffCanonicalJsonFields(
     sourceCanonical: String?,
-    targetCanonical: String?
+    targetCanonical: String?,
+    rootPath: String = "settings"
 ): List<SmpSyncJsonFieldDiff> {
     if (sourceCanonical == null || targetCanonical == null) {
         return listOf(
             SmpSyncJsonFieldDiff(
-                path = "settings",
+                path = rootPath,
                 sourceValue = sourceCanonical?.truncateDiagValue(),
                 targetValue = targetCanonical?.truncateDiagValue()
             )
@@ -927,7 +1051,7 @@ private fun diffCanonicalJsonFields(
     if (sourceJson == null || targetJson == null) {
         return listOf(
             SmpSyncJsonFieldDiff(
-                path = "settings",
+                path = rootPath,
                 sourceValue = sourceCanonical.truncateDiagValue(),
                 targetValue = targetCanonical.truncateDiagValue()
             )
@@ -948,6 +1072,56 @@ private fun diffCanonicalJsonFields(
             )
         }
         .take(12)
+}
+
+private fun diffLyricsText(
+    sourceRaw: String?,
+    targetRaw: String?,
+    hashing: SmpSyncHashing
+): SmpSyncLyricsTextDiff {
+    val sourceNormalized = sourceRaw?.let(hashing::normalizeLyricsText)
+    val targetNormalized = targetRaw?.let(hashing::normalizeLyricsText)
+    val sourceLines = sourceNormalized?.split('\n').orEmpty()
+    val targetLines = targetNormalized?.split('\n').orEmpty()
+    val maxLines = maxOf(sourceLines.size, targetLines.size)
+    val firstDiffIndex = (0 until maxLines).firstOrNull { index ->
+        sourceLines.getOrNull(index) != targetLines.getOrNull(index)
+    }
+    return SmpSyncLyricsTextDiff(
+        sourceNormalizedLength = sourceNormalized?.length ?: -1,
+        targetNormalizedLength = targetNormalized?.length ?: -1,
+        sourceLineCount = sourceLines.size.takeIf { sourceNormalized != null } ?: -1,
+        targetLineCount = targetLines.size.takeIf { targetNormalized != null } ?: -1,
+        firstDifferentLine = firstDiffIndex?.plus(1),
+        sourceExcerpt = firstDiffIndex?.let { sourceLines.getOrNull(it)?.truncateDiagValue() },
+        targetExcerpt = firstDiffIndex?.let { targetLines.getOrNull(it)?.truncateDiagValue() },
+        invisibleFlags = lyricsInvisibleFlags(sourceRaw, targetRaw, sourceNormalized, targetNormalized)
+    )
+}
+
+private fun lyricsInvisibleFlags(
+    sourceRaw: String?,
+    targetRaw: String?,
+    sourceNormalized: String?,
+    targetNormalized: String?
+): List<String> {
+    if (sourceRaw == null || targetRaw == null) return emptyList()
+    return buildList {
+        if (sourceRaw.contains("\r") || targetRaw.contains("\r")) add("lineEndings")
+        if (sourceRaw.startsWith('\uFEFF') || targetRaw.startsWith('\uFEFF')) add("utf8Bom")
+        if (sourceRaw.lines().any { it.endsWith(' ') || it.endsWith('\t') } ||
+            targetRaw.lines().any { it.endsWith(' ') || it.endsWith('\t') }
+        ) {
+            add("trailingSpaces")
+        }
+        if (sourceRaw.hasFinalBlankLines() || targetRaw.hasFinalBlankLines()) add("finalBlankLines")
+        if (sourceNormalized == targetNormalized && sourceRaw != targetRaw) add("normalizedEqual")
+    }
+}
+
+private fun String.hasFinalBlankLines(): Boolean {
+    val normalized = replace("\r\n", "\n").replace('\r', '\n')
+    return normalized.endsWith("\n\n") || normalized.lines().dropLastWhile { it.isBlank() }.size < normalized.lines().size - 1
 }
 
 private fun flattenJsonFields(json: JSONObject, prefix: String = ""): Map<String, String> {

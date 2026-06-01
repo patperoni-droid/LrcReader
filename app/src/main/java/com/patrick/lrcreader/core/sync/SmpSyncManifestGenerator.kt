@@ -140,7 +140,7 @@ class SmpSyncManifestGenerator(
 
     private fun buildSongEntry(source: SmpSyncSongManifestSource): SmpSyncSongEntry {
         val audioHash = hashing.hashFileOrNull(source.audioFile, SmpSyncHashing.FileHashMode.BYTES)
-        val lyricsHash = hashing.hashFileOrNull(source.lyricsFile, SmpSyncHashing.FileHashMode.NORMALIZED_TEXT)
+        val lyricsHash = hashing.hashFileOrNull(source.lyricsFile, SmpSyncHashing.FileHashMode.SYNC_LYRICS_TEXT)
         val chordsHash = hashing.hashFileOrNull(source.chordsFile, SmpSyncHashing.FileHashMode.NORMALIZED_TEXT)
         val prompterHash = hashing.hashFileOrNull(source.prompterFile, SmpSyncHashing.FileHashMode.NORMALIZED_TEXT)
         val timelineHash = hashing.hashFileOrNull(source.timelineFile, SmpSyncHashing.FileHashMode.CANONICAL_JSON)
