@@ -79,7 +79,11 @@ data class SmpConfig(
         val tempo: Float? = null,
         val pitchSemi: Int? = null,
         val volumeDb: Int? = null,
-        val volumeSource: String? = null
+        val volumeSource: String? = null,
+        val lufsMeasured: Float? = null,
+        val lufsTarget: Float? = null,
+        val lufsAutoDb: Float? = null,
+        val lufsManualDb: Int? = null
     ) {
         companion object {
             const val VOLUME_SOURCE_MANUAL = "manual"
@@ -91,7 +95,11 @@ data class SmpConfig(
                 tempo: Float? = null,
                 pitchSemi: Int? = null,
                 volumeDb: Int? = null,
-                volumeSource: String? = null
+                volumeSource: String? = null,
+                lufsMeasured: Float? = null,
+                lufsTarget: Float? = null,
+                lufsAutoDb: Float? = null,
+                lufsManualDb: Int? = null
             ): PlaybackConfig? {
                 val trimStartMs = startMs?.takeIf { it > 0L }
                 val trimEndMs = endMs?.takeIf { it > 0L }
@@ -108,7 +116,17 @@ data class SmpConfig(
                     volumeSource.equals(VOLUME_SOURCE_LUFS, ignoreCase = true) -> VOLUME_SOURCE_LUFS
                     else -> VOLUME_SOURCE_MANUAL
                 }
-                if (trimStartMs == null && trimEndMs == null && playbackTempo == null && playbackPitchSemi == null && playbackVolumeDb == null) {
+                if (
+                    trimStartMs == null &&
+                    trimEndMs == null &&
+                    playbackTempo == null &&
+                    playbackPitchSemi == null &&
+                    playbackVolumeDb == null &&
+                    lufsMeasured == null &&
+                    lufsTarget == null &&
+                    lufsAutoDb == null &&
+                    lufsManualDb == null
+                ) {
                     return null
                 }
                 return PlaybackConfig(
@@ -117,7 +135,11 @@ data class SmpConfig(
                     tempo = playbackTempo,
                     pitchSemi = playbackPitchSemi,
                     volumeDb = playbackVolumeDb,
-                    volumeSource = playbackVolumeSource
+                    volumeSource = playbackVolumeSource,
+                    lufsMeasured = lufsMeasured,
+                    lufsTarget = lufsTarget,
+                    lufsAutoDb = lufsAutoDb,
+                    lufsManualDb = lufsManualDb
                 )
             }
 
@@ -130,7 +152,17 @@ data class SmpConfig(
         }
 
         fun toJsonOrNull(): JSONObject? {
-            if (trimStartMs == null && trimEndMs == null && tempo == null && pitchSemi == null && volumeDb == null) {
+            if (
+                trimStartMs == null &&
+                trimEndMs == null &&
+                tempo == null &&
+                pitchSemi == null &&
+                volumeDb == null &&
+                lufsMeasured == null &&
+                lufsTarget == null &&
+                lufsAutoDb == null &&
+                lufsManualDb == null
+            ) {
                 return null
             }
 
@@ -141,6 +173,10 @@ data class SmpConfig(
                 pitchSemi?.let { put("pitchSemi", it) }
                 volumeDb?.let { put("volumeDb", it) }
                 volumeSource?.let { put("volumeSource", it) }
+                lufsMeasured?.let { put("lufsMeasured", it.toDouble()) }
+                lufsTarget?.let { put("lufsTarget", it.toDouble()) }
+                lufsAutoDb?.let { put("lufsAutoDb", it.toDouble()) }
+                lufsManualDb?.let { put("lufsManualDb", it) }
             }
         }
     }
@@ -225,7 +261,11 @@ data class SmpConfig(
                 tempo = tempo,
                 pitchSemi = pitchSemi,
                 volumeDb = volumeDb,
-                volumeSource = volumeSource
+                volumeSource = volumeSource,
+                lufsMeasured = playbackJson.optFloatOrNull("lufsMeasured"),
+                lufsTarget = playbackJson.optFloatOrNull("lufsTarget"),
+                lufsAutoDb = playbackJson.optFloatOrNull("lufsAutoDb"),
+                lufsManualDb = playbackJson.optIntOrNull("lufsManualDb")
             )
         }
 
@@ -363,7 +403,11 @@ data class SmpConfig(
                     tempo = currentConfig.playback?.tempo,
                     pitchSemi = currentConfig.playback?.pitchSemi,
                     volumeDb = currentConfig.playback?.volumeDb,
-                    volumeSource = currentConfig.playback?.volumeSource
+                    volumeSource = currentConfig.playback?.volumeSource,
+                    lufsMeasured = currentConfig.playback?.lufsMeasured,
+                    lufsTarget = currentConfig.playback?.lufsTarget,
+                    lufsAutoDb = currentConfig.playback?.lufsAutoDb,
+                    lufsManualDb = currentConfig.playback?.lufsManualDb
                 )
                 val nextConfig = currentConfig.copy(
                     title = currentConfig.title ?: songUnit.title.takeIf { it.isNotBlank() },
@@ -407,7 +451,11 @@ data class SmpConfig(
                 tempo = storedTempo ?: configPlayback?.tempo,
                 pitchSemi = storedPitchSemi ?: configPlayback?.pitchSemi,
                 volumeDb = storedVolumeDb ?: configPlayback?.volumeDb,
-                volumeSource = configPlayback?.volumeSource
+                volumeSource = configPlayback?.volumeSource,
+                lufsMeasured = configPlayback?.lufsMeasured,
+                lufsTarget = configPlayback?.lufsTarget,
+                lufsAutoDb = configPlayback?.lufsAutoDb,
+                lufsManualDb = configPlayback?.lufsManualDb
             )
         }
 

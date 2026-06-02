@@ -136,8 +136,8 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val DEFAULT_TRACK_GAIN_DB = 0
-        private const val MIN_TRACK_DB = -12
-        private const val MAX_TRACK_DB = 0
+        private const val MIN_TRACK_DB = -24
+        private const val MAX_TRACK_DB = 24
         private const val SMP_PLAY_TRACE_TAG = "SMP_PLAY_TRACE"
         private const val ENABLE_SMP_DEBUG_HOME_BUTTONS = false
         private val AUTO_RESTORE_BG_STARTED = AtomicBoolean(false)
@@ -1821,8 +1821,7 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 fun dbToLinearAttenuation(db: Int): Float {
-                    if (db >= 0) return 1f
-                    return (10f.pow(db / 20f)).coerceIn(0f, 1f)
+                    return (10f.pow(db / 20f)).coerceIn(0f, 16f)
                 }
 
                 fun sanitizeDisplayTrackTitle(value: String?): String? {
@@ -2845,9 +2844,9 @@ class MainActivity : AppCompatActivity() {
                             LightCueDispatcher.resetGlobal()
                             MidiCueDispatcher.resetForTrack(currentPlayingUri)
 
-                            val fromVolume = runCatching { exoPlayer.volume }.getOrDefault(1f).coerceIn(0f, 1f)
+                            val fromVolume = runCatching { exoPlayer.volume }.getOrDefault(1f).coerceIn(0f, 16f)
                             val targetVolume = (dbToLinearAttenuation(targetMixSettings.gainDb) * playerMasterLevel)
-                                .coerceIn(0f, 1f)
+                                .coerceIn(0f, 16f)
                             transitionPlayer.volume = 0f
                             transitionPlayer.playWhenReady = true
                             transitionPlayer.play()
@@ -2857,8 +2856,8 @@ class MainActivity : AppCompatActivity() {
                             val stepDelayMs = (currentManualCrossfadeDurationMs() / steps).coerceAtLeast(1L)
                             repeat(steps) { step ->
                                 val progress = (step + 1).toFloat() / steps.toFloat()
-                                runCatching { exoPlayer.volume = (fromVolume * (1f - progress)).coerceIn(0f, 1f) }
-                                runCatching { transitionPlayer.volume = (targetVolume * progress).coerceIn(0f, 1f) }
+                                runCatching { exoPlayer.volume = (fromVolume * (1f - progress)).coerceIn(0f, 16f) }
+                                runCatching { transitionPlayer.volume = (targetVolume * progress).coerceIn(0f, 16f) }
                                 delay(stepDelayMs)
                             }
 

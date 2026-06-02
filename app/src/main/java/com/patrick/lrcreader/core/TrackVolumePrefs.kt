@@ -12,8 +12,8 @@ object TrackVolumePrefs {
     private const val TAG = "TrackVolumePrefs"
     private const val TRACKS_DIR_NAME = "tracks"
     private const val SMP_CONFIG_FILE_NAME = "config.json"
-    private const val MIN_DB = -12
-    private const val MAX_DB = 0
+    private const val MIN_DB = -24
+    private const val MAX_DB = 24
 
     fun saveDb(
         context: Context,
@@ -38,6 +38,39 @@ object TrackVolumePrefs {
             .edit()
             .putInt(uri, safeDb)
             .apply()
+    }
+
+    fun saveLufsDb(
+        context: Context,
+        uri: String,
+        db: Int,
+        measuredLufs: Float,
+        targetLufs: Float,
+        autoDb: Float,
+        manualDb: Int
+    ) {
+        val safeDb = db.coerceIn(MIN_DB, MAX_DB)
+        val smpSaved = resolveInternalSmpConfigFile(context, uri)?.let { configFile ->
+            writeSmpVolumeDb(
+                configFile = configFile,
+                db = safeDb,
+                source = SmpConfig.PlaybackConfig.VOLUME_SOURCE_LUFS,
+                lufsMeasured = measuredLufs,
+                lufsTarget = targetLufs,
+                lufsAutoDb = autoDb,
+                lufsManualDb = manualDb
+            )
+        }
+        if (smpSaved == true) {
+            return
+        }
+
+        saveDb(
+            context = context,
+            uri = uri,
+            db = safeDb,
+            source = SmpConfig.PlaybackConfig.VOLUME_SOURCE_LUFS
+        )
     }
 
     fun getDb(context: Context, uri: String): Int? {
@@ -90,7 +123,15 @@ object TrackVolumePrefs {
         }
     }
 
-    private fun writeSmpVolumeDb(configFile: File, db: Int, source: String): Boolean {
+    private fun writeSmpVolumeDb(
+        configFile: File,
+        db: Int,
+        source: String,
+        lufsMeasured: Float? = null,
+        lufsTarget: Float? = null,
+        lufsAutoDb: Float? = null,
+        lufsManualDb: Int? = null
+    ): Boolean {
         val songDir = configFile.parentFile ?: return false
         val tmpFile = File(songDir, "$SMP_CONFIG_FILE_NAME.tmp")
 
@@ -103,7 +144,11 @@ object TrackVolumePrefs {
                 tempo = currentConfig.playback?.tempo,
                 pitchSemi = currentConfig.playback?.pitchSemi,
                 volumeDb = db,
-                volumeSource = source
+                volumeSource = source,
+                lufsMeasured = lufsMeasured ?: currentConfig.playback?.lufsMeasured,
+                lufsTarget = lufsTarget ?: currentConfig.playback?.lufsTarget,
+                lufsAutoDb = lufsAutoDb ?: currentConfig.playback?.lufsAutoDb,
+                lufsManualDb = lufsManualDb ?: currentConfig.playback?.lufsManualDb
             )
             val nextConfig = currentConfig.copy(playback = nextPlayback)
             val rawJson = nextConfig.toJsonString()

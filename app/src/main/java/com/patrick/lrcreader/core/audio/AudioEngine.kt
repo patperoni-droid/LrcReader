@@ -331,15 +331,14 @@ object AudioEngine {
     // -----------------------------
     // Conversions / Applis volume
     // -----------------------------
-    private fun dbToLinearAttenuation(db: Int): Float {
-        if (db >= 0) return 1f
-        return (10f.pow(db / 20f)).coerceIn(0f, 1f)
+    private fun dbToLinearGain(db: Int): Float {
+        return (10f.pow(db / 20f)).coerceIn(0f, 16f)
     }
 
     private fun applyFinalVolume() {
         val p = exoPlayer ?: return
 
-        val v = (trackGainLinear * playerBusLevel * fadeMultiplier).coerceIn(0f, 1f)
+        val v = (trackGainLinear * playerBusLevel * fadeMultiplier).coerceIn(0f, 16f)
         p.volume = v
 
         Log.d("BUS", "applyFinalVolume exo.volume=$v track=$trackGainLinear bus=$playerBusLevel fade=$fadeMultiplier")
@@ -373,14 +372,14 @@ object AudioEngine {
 
     fun applyTrackGainDb(gainDb: Int) {
         val p = exoPlayer
-        val safeDb = gainDb.coerceIn(-12, 0)
+        val safeDb = gainDb.coerceIn(-24, 24)
 
         if (p == null) {
             pendingTrackGainDb = safeDb
             return
         }
 
-        trackGainLinear = dbToLinearAttenuation(safeDb)
+        trackGainLinear = dbToLinearGain(safeDb)
         applyFinalVolume()
         pendingTrackGainDb = null
     }
@@ -740,7 +739,7 @@ object AudioEngine {
 
         // Appliquer mix + paramètres mémorisés
         pendingPlayerBus?.let { playerBusLevel = it.coerceIn(0f, 1f) }
-        pendingTrackGainDb?.let { trackGainLinear = dbToLinearAttenuation(it.coerceIn(-12, 0)) }
+        pendingTrackGainDb?.let { trackGainLinear = dbToLinearGain(it.coerceIn(-24, 24)) }
         fadeMultiplier = 1f
         applyFinalVolume()
 

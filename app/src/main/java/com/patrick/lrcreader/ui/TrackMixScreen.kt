@@ -64,8 +64,8 @@ fun TrackMixScreen(
 ) {
     val context = LocalContext.current
 
-    val minDb = -12
-    val maxDb = 0
+    val minDb = -24
+    val maxDb = 24
 
     val minTempo = 0.8f
     val maxTempo = 1.2f

@@ -271,7 +271,11 @@ object EditSoundPrefs {
                 tempo = currentConfig.playback?.tempo,
                 pitchSemi = currentConfig.playback?.pitchSemi,
                 volumeDb = currentConfig.playback?.volumeDb,
-                volumeSource = currentConfig.playback?.volumeSource
+                volumeSource = currentConfig.playback?.volumeSource,
+                lufsMeasured = currentConfig.playback?.lufsMeasured,
+                lufsTarget = currentConfig.playback?.lufsTarget,
+                lufsAutoDb = currentConfig.playback?.lufsAutoDb,
+                lufsManualDb = currentConfig.playback?.lufsManualDb
             )
             val nextConfig = currentConfig.copy(playback = nextPlayback)
             val rawJson = nextConfig.toJsonString()

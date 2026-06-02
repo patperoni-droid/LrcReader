@@ -7,7 +7,12 @@ data class LibrarySongItem(
     val playbackItem: String,
     val displayTitle: String,
     val fallbackTitle: String,
-    val volumeSource: String = "manual"
+    val volumeSource: String = "manual",
+    val volumeDb: Int? = null,
+    val lufsMeasured: Float? = null,
+    val lufsTarget: Float? = null,
+    val lufsAutoDb: Float? = null,
+    val lufsManualDb: Int? = null
 ) {
     val songId: String get() = song.id
     val isLufsActive: Boolean get() = volumeSource == "lufs"

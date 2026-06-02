@@ -98,8 +98,10 @@ import org.json.JSONObject
 import com.patrick.lrcreader.core.StorageModePrefs
 import androidx.compose.runtime.saveable.rememberSaveable
 import java.io.File
+import java.util.Locale
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.ln
+import kotlin.math.pow
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
@@ -143,8 +145,24 @@ private object LibraryHelpPrefs {
     }
 }
 private const val LIBRARY_LUFS_TARGET = -14f
-private const val LIBRARY_LUFS_MIN_DB = -12
-private const val LIBRARY_LUFS_MAX_DB = 0
+private const val LIBRARY_LUFS_MIN_DB = -24
+private const val LIBRARY_LUFS_MAX_DB = 24
+private const val LIBRARY_LUFS_MANUAL_MIN_DB = -24
+private const val LIBRARY_LUFS_MANUAL_MAX_DB = 24
+private const val LIBRARY_LUFS_WARNING_DB = 9
+
+private data class LibraryLufsPreparation(
+    val measuredLufs: Float? = null,
+    val targetLufs: Float = LIBRARY_LUFS_TARGET,
+    val autoDb: Float? = null,
+    val manualDb: Int = 0,
+    val finalDb: Int? = null,
+    val isLoading: Boolean = false
+)
+
+private fun libraryDbToLinearGain(db: Int): Float {
+    return (10f.pow(db / 20f)).coerceIn(0f, 16f)
+}
 private const val IMPORT_PROOF_TAG = "IMPORT_PROOF"
 private const val IMPORT_TRACE_TAG = "IMPORT_TRACE"
 private const val SMP_VIEW_TRACE_TAG = "SMP_VIEW_TRACE"
@@ -605,6 +623,19 @@ fun LibraryScreen(
     val sApplyLufs = stringResource(R.string.library_lufs_apply)
     val sRemoveLufs = stringResource(R.string.library_lufs_remove)
     val sLufsProcessing = stringResource(R.string.library_lufs_processing)
+    val sLufsHeaderTitle = stringResource(R.string.library_lufs_header_title)
+    val sLufsHeaderMeasured = stringResource(R.string.library_lufs_header_measured)
+    val sLufsHeaderCorrection = stringResource(R.string.library_lufs_header_correction)
+    val sLufsHeaderTarget = stringResource(R.string.library_lufs_header_target)
+    val sLufsStatusLoading = stringResource(R.string.library_lufs_status_loading)
+    val sLufsStatusReady = stringResource(R.string.library_lufs_status_ready)
+    val sLufsStatusNotReady = stringResource(R.string.library_lufs_status_not_ready)
+    val sLufsStatusHigh = stringResource(R.string.library_lufs_status_high)
+    val sLufsValueMissing = stringResource(R.string.library_lufs_value_missing)
+    val sLufsPreview = stringResource(R.string.library_lufs_preview)
+    val sLufsPreviewStop = stringResource(R.string.library_lufs_preview_stop)
+    val sLufsManualMinus = stringResource(R.string.library_lufs_manual_minus)
+    val sLufsManualPlus = stringResource(R.string.library_lufs_manual_plus)
     val sLufsHintTitle = stringResource(R.string.library_lufs_hint_title)
     val sLufsHintMessage = stringResource(R.string.library_lufs_hint_message)
     val sLufsHintDoNotShowAgain = stringResource(R.string.library_lufs_hint_do_not_show_again)
@@ -1006,13 +1037,19 @@ fun LibraryScreen(
             .map { song ->
                 val fallbackTitle = song.title.ifBlank { song.id }
                 val playbackItem = buildSmpItem(song.id)
+                val playback = SmpConfig.readPlaybackFromSongUnit(song)
                 LibrarySongItem(
                     song = song,
                     playbackItem = playbackItem,
                     displayTitle = resolveSongDisplayTitle(song.id, fallbackTitle),
                     fallbackTitle = fallbackTitle,
-                    volumeSource = SmpConfig.readPlaybackFromSongUnit(song)?.volumeSource
-                        ?: SmpConfig.PlaybackConfig.VOLUME_SOURCE_MANUAL
+                    volumeSource = playback?.volumeSource
+                        ?: SmpConfig.PlaybackConfig.VOLUME_SOURCE_MANUAL,
+                    volumeDb = playback?.volumeDb,
+                    lufsMeasured = playback?.lufsMeasured,
+                    lufsTarget = playback?.lufsTarget,
+                    lufsAutoDb = playback?.lufsAutoDb,
+                    lufsManualDb = playback?.lufsManualDb
                 )
             }
             .sortedBy { it.displayTitle.lowercase() }
@@ -1049,6 +1086,39 @@ fun LibraryScreen(
         return gainDb.roundToInt().coerceIn(LIBRARY_LUFS_MIN_DB, LIBRARY_LUFS_MAX_DB)
     }
 
+    fun finalLufsDb(autoDb: Float, manualDb: Int): Int {
+        return (autoDb + manualDb)
+            .roundToInt()
+            .coerceIn(LIBRARY_LUFS_MIN_DB, LIBRARY_LUFS_MAX_DB)
+    }
+
+    fun initialLufsPreparation(song: LibrarySongItem): LibraryLufsPreparation {
+        val measured = song.lufsMeasured
+        val target = song.lufsTarget ?: LIBRARY_LUFS_TARGET
+        val auto = song.lufsAutoDb ?: measured?.let { target - it }
+        val manual = song.lufsManualDb ?: if (
+            song.isLufsActive &&
+            song.volumeDb != null &&
+            auto != null
+        ) {
+            song.volumeDb - auto.roundToInt()
+        } else {
+            0
+        }
+        val final = when {
+            song.volumeDb != null -> song.volumeDb
+            auto != null -> finalLufsDb(auto, manual)
+            else -> null
+        }
+        return LibraryLufsPreparation(
+            measuredLufs = measured,
+            targetLufs = target,
+            autoDb = auto,
+            manualDb = manual.coerceIn(LIBRARY_LUFS_MANUAL_MIN_DB, LIBRARY_LUFS_MANUAL_MAX_DB),
+            finalDb = final
+        )
+    }
+
     fun queryWaveformDurationMs(uri: Uri): Int {
         val retriever = MediaMetadataRetriever()
         return try {
@@ -1062,6 +1132,40 @@ fun LibraryScreen(
         } finally {
             runCatching { retriever.release() }
         }
+    }
+
+    suspend fun loadLufsPreparationForSong(song: LibrarySongItem): LibraryLufsPreparation? {
+        val runtimeTrackUri = SongIdKeyResolver.resolveRuntimeTrackUri(context, song.songId) ?: return null
+        val trackUri = Uri.parse(runtimeTrackUri)
+        val durationMs = queryWaveformDurationMs(trackUri)
+        if (durationMs <= 0) return null
+        val peaks = WaveformPeaksCache.getOrCompute(
+            context = context,
+            uri = trackUri,
+            targetPoints = 20_000,
+            durationMs = durationMs
+        ) {
+            WaveformExtractor.extractNormalizedPeaks(
+                context = context,
+                uri = trackUri,
+                targetPoints = 20_000
+            )
+        }
+        val measured = estimateLufsFromPeaksForLibrary(peaks.toFloatArray()) ?: return null
+        val target = song.lufsTarget ?: LIBRARY_LUFS_TARGET
+        val auto = target - measured
+        val manual = song.lufsManualDb ?: if (song.isLufsActive && song.volumeDb != null) {
+            song.volumeDb - auto.roundToInt()
+        } else {
+            0
+        }
+        return LibraryLufsPreparation(
+            measuredLufs = measured,
+            targetLufs = target,
+            autoDb = auto,
+            manualDb = manual.coerceIn(LIBRARY_LUFS_MANUAL_MIN_DB, LIBRARY_LUFS_MANUAL_MAX_DB),
+            finalDb = finalLufsDb(auto, manual)
+        )
     }
 
     fun buildSmpEntries(): List<LibraryEntry> {
@@ -1679,6 +1783,7 @@ fun LibraryScreen(
     var selectedSongIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var pendingLufsBatchAction by remember { mutableStateOf<LufsBatchAction?>(null) }
     var isApplyingLufs by remember { mutableStateOf(false) }
+    var lufsPreparations by remember { mutableStateOf<Map<String, LibraryLufsPreparation>>(emptyMap()) }
     var lufsProgressCurrent by remember { mutableIntStateOf(0) }
     var lufsProgressTotal by remember { mutableIntStateOf(0) }
     var lufsProgressTitle by remember { mutableStateOf("") }
@@ -1703,6 +1808,35 @@ fun LibraryScreen(
         if (!LibraryLufsHintPrefs.isDismissed(context)) {
             lufsHintDoNotShowAgainChecked = false
             showLufsHintDialog = true
+        }
+    }
+
+    LaunchedEffect(isLufsViewMode, songItems) {
+        if (!isLufsViewMode) return@LaunchedEffect
+        val initial = songItems.associate { item ->
+            item.songId to initialLufsPreparation(item)
+        }
+        lufsPreparations = initial
+
+        songItems.forEach { song ->
+            val current = lufsPreparations[song.songId]
+            if (current?.measuredLufs != null && current.autoDb != null) {
+                return@forEach
+            }
+
+            lufsPreparations = lufsPreparations.toMutableMap().apply {
+                put(song.songId, (current ?: initialLufsPreparation(song)).copy(isLoading = true))
+            }
+            val loaded = withContext(Dispatchers.IO) {
+                runCatching { loadLufsPreparationForSong(song) }
+                    .getOrElse { error ->
+                        Log.w("LIBRARY_LUFS", "load preparation failed songId=${song.songId}", error)
+                        null
+                    }
+            }
+            lufsPreparations = lufsPreparations.toMutableMap().apply {
+                put(song.songId, loaded ?: (this[song.songId] ?: initialLufsPreparation(song)).copy(isLoading = false))
+            }
         }
     }
 
@@ -2344,15 +2478,17 @@ fun LibraryScreen(
         }
     }
 
-    fun quickPlayToggle(uri: Uri) {
+    fun quickPlayToggle(uri: Uri, gainDb: Int? = null) {
         try {
             if (quickNowUri == null || quickNowUri != uri) {
                 quickNowUri = uri
+                quickPlayer.volume = gainDb?.let(::libraryDbToLinearGain) ?: 1f
                 quickPlayer.setMediaItem(MediaItem.fromUri(uri))
                 quickPlayer.prepare()
                 quickPlayer.playWhenReady = true
                 return
             }
+            quickPlayer.volume = gainDb?.let(::libraryDbToLinearGain) ?: 1f
             if (quickPlayer.isPlaying) quickPlayer.pause() else quickPlayer.play()
         } catch (e: Exception) {
             Log.e("LibraryQuickPlay", "Erreur quick play", e)
@@ -2429,6 +2565,53 @@ fun LibraryScreen(
         )
     }
 
+    fun adjustLufsManualDb(song: LibrarySongItem, deltaDb: Int) {
+        val current = lufsPreparations[song.songId] ?: initialLufsPreparation(song)
+        val measured = current.measuredLufs ?: return
+        val auto = current.autoDb ?: return
+        val manual = (current.manualDb + deltaDb)
+            .coerceIn(LIBRARY_LUFS_MANUAL_MIN_DB, LIBRARY_LUFS_MANUAL_MAX_DB)
+        val finalDb = finalLufsDb(auto, manual)
+        val updated = current.copy(
+            manualDb = manual,
+            finalDb = finalDb,
+            isLoading = false
+        )
+        lufsPreparations = lufsPreparations.toMutableMap().apply {
+            put(song.songId, updated)
+        }
+        songItems = songItems.map { item ->
+            if (item.songId == song.songId) {
+                item.copy(
+                    volumeSource = SmpConfig.PlaybackConfig.VOLUME_SOURCE_LUFS,
+                    volumeDb = finalDb,
+                    lufsMeasured = measured,
+                    lufsTarget = updated.targetLufs,
+                    lufsAutoDb = auto,
+                    lufsManualDb = manual
+                )
+            } else {
+                item
+            }
+        }
+
+        scope.launch {
+            withContext(Dispatchers.IO) {
+                val runtimeTrackUri = SongIdKeyResolver.resolveRuntimeTrackUri(context, song.songId)
+                    ?: return@withContext
+                TrackVolumePrefs.saveLufsDb(
+                    context = context,
+                    uri = runtimeTrackUri,
+                    db = finalDb,
+                    measuredLufs = measured,
+                    targetLufs = updated.targetLufs,
+                    autoDb = auto,
+                    manualDb = manual
+                )
+            }
+        }
+    }
+
     fun applyLufsToSelectedSongs(selection: Set<String>) {
         if (selection.isEmpty() || isApplyingLufs) return
 
@@ -2440,6 +2623,7 @@ fun LibraryScreen(
             lufsProgressTitle = ""
             var processedCount = 0
             val processedSongIds = mutableSetOf<String>()
+            val processedPreparations = mutableMapOf<String, LibraryLufsPreparation>()
 
             try {
                 songIds.forEachIndexed { index, songId ->
@@ -2467,13 +2651,29 @@ fun LibraryScreen(
                                     targetPoints = 20_000
                                 )
                             }
-                            val volumeDb = estimateMatchedVolumeDbFromPeaksForLibrary(peaks.toFloatArray())
+                            val measured = estimateLufsFromPeaksForLibrary(peaks.toFloatArray())
                                 ?: return@runCatching false
-                            TrackVolumePrefs.saveDb(
+                            val target = LIBRARY_LUFS_TARGET
+                            val auto = target - measured
+                            val manual = SmpConfig.readPlaybackFromSongUnit(song)?.lufsManualDb
+                                ?.coerceIn(LIBRARY_LUFS_MANUAL_MIN_DB, LIBRARY_LUFS_MANUAL_MAX_DB)
+                                ?: 0
+                            val volumeDb = finalLufsDb(auto, manual)
+                            TrackVolumePrefs.saveLufsDb(
                                 context = context,
                                 uri = runtimeTrackUri,
                                 db = volumeDb,
-                                source = SmpConfig.PlaybackConfig.VOLUME_SOURCE_LUFS
+                                measuredLufs = measured,
+                                targetLufs = target,
+                                autoDb = auto,
+                                manualDb = manual
+                            )
+                            processedPreparations[songId] = LibraryLufsPreparation(
+                                measuredLufs = measured,
+                                targetLufs = target,
+                                autoDb = auto,
+                                manualDb = manual,
+                                finalDb = volumeDb
                             )
                             true
                         }.getOrElse { error ->
@@ -2491,9 +2691,22 @@ fun LibraryScreen(
                 if (processedSongIds.isNotEmpty()) {
                     songItems = songItems.map { item ->
                         if (item.songId in processedSongIds) {
-                            item.copy(volumeSource = SmpConfig.PlaybackConfig.VOLUME_SOURCE_LUFS)
+                            val preparation = processedPreparations[item.songId]
+                            item.copy(
+                                volumeSource = SmpConfig.PlaybackConfig.VOLUME_SOURCE_LUFS,
+                                volumeDb = preparation?.finalDb ?: item.volumeDb,
+                                lufsMeasured = preparation?.measuredLufs ?: item.lufsMeasured,
+                                lufsTarget = preparation?.targetLufs ?: item.lufsTarget,
+                                lufsAutoDb = preparation?.autoDb ?: item.lufsAutoDb,
+                                lufsManualDb = preparation?.manualDb ?: item.lufsManualDb
+                            )
                         } else {
                             item
+                        }
+                    }
+                    lufsPreparations = lufsPreparations.toMutableMap().apply {
+                        processedPreparations.forEach { (songId, preparation) ->
+                            put(songId, preparation)
                         }
                     }
                     selectedSongIds = selectedSongIds - processedSongIds
@@ -3998,8 +4211,71 @@ fun LibraryScreen(
                                     LazyColumn(
                                         modifier = Modifier.fillMaxSize()
                                     ) {
+                                        item {
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = sLufsHeaderTitle,
+                                                    color = subtitleColor,
+                                                    fontSize = 11.sp,
+                                                    modifier = Modifier.weight(1.6f)
+                                                )
+                                                Text(
+                                                    text = sLufsHeaderMeasured,
+                                                    color = subtitleColor,
+                                                    fontSize = 11.sp,
+                                                    modifier = Modifier.weight(0.72f)
+                                                )
+                                                Text(
+                                                    text = sLufsHeaderCorrection,
+                                                    color = subtitleColor,
+                                                    fontSize = 11.sp,
+                                                    modifier = Modifier.weight(0.82f)
+                                                )
+                                                Text(
+                                                    text = sLufsHeaderTarget,
+                                                    color = subtitleColor,
+                                                    fontSize = 11.sp,
+                                                    modifier = Modifier.weight(0.52f)
+                                                )
+                                                Spacer(Modifier.width(132.dp))
+                                            }
+                                            androidx.compose.material3.HorizontalDivider(color = rowBorder.copy(alpha = 0.5f))
+                                        }
                                         items(filteredSongItems, key = { it.songId }) { song ->
                                             val isSelected = selectedSongIds.contains(song.songId)
+                                            val preparation = lufsPreparations[song.songId] ?: initialLufsPreparation(song)
+                                            val measuredText = preparation.measuredLufs?.let {
+                                                String.format(Locale.US, "%.1f", it)
+                                            } ?: sLufsValueMissing
+                                            val correctionText = preparation.finalDb?.let { db ->
+                                                if (db >= 0) "+$db dB" else "$db dB"
+                                            } ?: sLufsValueMissing
+                                            val targetText = String.format(Locale.US, "%.0f", preparation.targetLufs)
+                                            val highGain = (preparation.finalDb ?: 0) >= LIBRARY_LUFS_WARNING_DB
+                                            val statusText = when {
+                                                preparation.isLoading -> sLufsStatusLoading
+                                                highGain -> sLufsStatusHigh
+                                                song.isLufsActive -> sLufsStatusReady
+                                                else -> sLufsStatusNotReady
+                                            }
+                                            val statusColor = when {
+                                                highGain -> Color(0xFFFFC107)
+                                                song.isLufsActive -> accent
+                                                else -> subtitleColor
+                                            }
+                                            val canAdjust = !isApplyingLufs &&
+                                                !preparation.isLoading &&
+                                                preparation.measuredLufs != null &&
+                                                preparation.autoDb != null
+                                            val audioUri = song.song.audioPath
+                                                ?.takeIf { it.isNotBlank() }
+                                                ?.let { Uri.fromFile(File(it)) }
+                                            val isPreviewing = audioUri != null && quickNowUri == audioUri && quickIsPlaying
                                             Column(modifier = Modifier.fillMaxWidth()) {
                                                 Row(
                                                     modifier = Modifier
@@ -4012,7 +4288,8 @@ fun LibraryScreen(
                                                             }
                                                         }
                                                         .padding(horizontal = 12.dp, vertical = 8.dp),
-                                                    verticalAlignment = Alignment.CenterVertically
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                                                 ) {
                                                     androidx.compose.material3.Checkbox(
                                                         checked = isSelected,
@@ -4026,31 +4303,68 @@ fun LibraryScreen(
                                                         }
                                                     )
 
-                                                    Spacer(Modifier.width(10.dp))
-
-                                                    Column(modifier = Modifier.weight(1f)) {
-                                                        Row(
-                                                            modifier = Modifier.fillMaxWidth(),
-                                                            verticalAlignment = Alignment.CenterVertically,
-                                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                                        ) {
-                                                            Text(
-                                                                text = song.displayTitle,
-                                                                color = titleColor,
-                                                                fontSize = 15.sp,
-                                                                maxLines = 1,
-                                                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                                                modifier = Modifier.weight(1f)
-                                                            )
-                                                            if (song.isLufsActive) {
-                                                                Text(
-                                                                    text = "LUFS",
-                                                                    color = accent,
-                                                                    fontSize = 11.sp,
-                                                                    maxLines = 1
-                                                                )
+                                                    Column(modifier = Modifier.weight(1.6f)) {
+                                                        Text(
+                                                            text = song.displayTitle,
+                                                            color = titleColor,
+                                                            fontSize = 15.sp,
+                                                            maxLines = 1,
+                                                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                                        )
+                                                        Text(
+                                                            text = statusText,
+                                                            color = statusColor,
+                                                            fontSize = 11.sp,
+                                                            maxLines = 1
+                                                        )
+                                                    }
+                                                    Text(
+                                                        text = measuredText,
+                                                        color = titleColor,
+                                                        fontSize = 13.sp,
+                                                        modifier = Modifier.weight(0.72f)
+                                                    )
+                                                    Column(modifier = Modifier.weight(0.82f)) {
+                                                        Text(
+                                                            text = correctionText,
+                                                            color = titleColor,
+                                                            fontSize = 13.sp,
+                                                            maxLines = 1
+                                                        )
+                                                        Text(
+                                                            text = context.getString(R.string.library_lufs_manual_label, preparation.manualDb),
+                                                            color = subtitleColor,
+                                                            fontSize = 10.sp,
+                                                            maxLines = 1
+                                                        )
+                                                    }
+                                                    Text(
+                                                        text = targetText,
+                                                        color = titleColor,
+                                                        fontSize = 13.sp,
+                                                        modifier = Modifier.weight(0.52f)
+                                                    )
+                                                    androidx.compose.material3.TextButton(
+                                                        onClick = {
+                                                            audioUri?.let { uri ->
+                                                                quickPlayToggle(uri, preparation.finalDb ?: song.volumeDb)
                                                             }
-                                                        }
+                                                        },
+                                                        enabled = audioUri != null && !isApplyingLufs
+                                                    ) {
+                                                        Text(if (isPreviewing) sLufsPreviewStop else sLufsPreview)
+                                                    }
+                                                    androidx.compose.material3.TextButton(
+                                                        onClick = { adjustLufsManualDb(song, -1) },
+                                                        enabled = canAdjust
+                                                    ) {
+                                                        Text(sLufsManualMinus)
+                                                    }
+                                                    androidx.compose.material3.TextButton(
+                                                        onClick = { adjustLufsManualDb(song, 1) },
+                                                        enabled = canAdjust
+                                                    ) {
+                                                        Text(sLufsManualPlus)
                                                     }
                                                 }
                                                 androidx.compose.material3.HorizontalDivider(color = rowBorder.copy(alpha = 0.5f))
