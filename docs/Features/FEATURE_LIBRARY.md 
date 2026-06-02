@@ -318,6 +318,40 @@ Rules:
 
 ⸻
 
+LUFS PREPARATION PREVIEW
+
+The Library LUFS tab provides an isolated preview tool for preparation and rehearsals.
+
+Purpose:
+- compare the real perceived levels of songs quickly
+- avoid waiting through long intros when checking LUFS preparation
+- stay inside the Library preparation workflow
+
+Scope:
+- this feature exists only in Library -> LUFS
+- it reuses the Library LUFS preview player
+- it is not part of the live Player pipeline
+
+UX:
+- simple tap on Play starts preview from 0s
+- long press on Play opens a lightweight start-offset menu
+- available start offsets are 20s, 40s, 60s, and 90s
+- choosing an offset starts preview directly at that position
+
+Rules:
+- no impact on Player live
+- no impact on timeline
+- no impact on Define Next
+- no impact on autoplay
+- no impact on crossfade
+- no impact on anti-blank / anti-silence behavior
+- no new live audio engine behavior
+- no playlist behavior change
+
+👉 LUFS preview offsets are a Library preparation aid only.
+
+⸻
+
 PERFORMANCE RULES
 
 Forbidden on main thread:
