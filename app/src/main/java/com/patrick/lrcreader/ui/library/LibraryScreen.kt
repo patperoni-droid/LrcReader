@@ -4214,17 +4214,21 @@ fun LibraryScreen(
                                         items(filteredSongItems, key = { it.songId }) { song ->
                                             val isSelected = selectedSongIds.contains(song.songId)
                                             val preparation = lufsPreparations[song.songId] ?: initialLufsPreparation(song)
-                                            val displayLufsText = when {
+                                            val displayLufsNumber = when {
                                                 preparation.isLoading -> sLufsStatusLoading
                                                 preparation.measuredLufs == null -> sLufsValueMissing
-                                                song.isLufsActive && preparation.finalDb != null -> context.getString(
-                                                    R.string.library_lufs_measured_value,
+                                                song.isLufsActive && preparation.finalDb != null ->
                                                     formatLufsNumber(preparation.measuredLufs + preparation.finalDb)
-                                                )
-                                                else -> context.getString(
-                                                    R.string.library_lufs_measured_value,
-                                                    formatLufsNumber(preparation.measuredLufs)
-                                                )
+                                                else -> formatLufsNumber(preparation.measuredLufs)
+                                            }
+                                            val displayLufsText = if (
+                                                isSelected &&
+                                                displayLufsNumber != sLufsStatusLoading &&
+                                                displayLufsNumber != sLufsValueMissing
+                                            ) {
+                                                context.getString(R.string.library_lufs_measured_value, displayLufsNumber)
+                                            } else {
+                                                displayLufsNumber
                                             }
                                             val highGain = (preparation.finalDb ?: 0) >= LIBRARY_LUFS_WARNING_DB
                                             val canAdjust = !isApplyingLufs &&
@@ -4246,21 +4250,18 @@ fun LibraryScreen(
                                                     verticalArrangement = Arrangement.spacedBy(5.dp)
                                                 ) {
                                                     Row(
-                                                        modifier = Modifier.fillMaxWidth(),
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .clickable(enabled = !isApplyingLufs) {
+                                                                selectedSongIds = if (isSelected) {
+                                                                    selectedSongIds - song.songId
+                                                                } else {
+                                                                    selectedSongIds + song.songId
+                                                                }
+                                                            },
                                                         verticalAlignment = Alignment.CenterVertically,
                                                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                                                     ) {
-                                                        androidx.compose.material3.Checkbox(
-                                                            checked = isSelected,
-                                                            enabled = !isApplyingLufs,
-                                                            onCheckedChange = { checked ->
-                                                                selectedSongIds = if (checked) {
-                                                                    selectedSongIds + song.songId
-                                                                } else {
-                                                                    selectedSongIds - song.songId
-                                                                }
-                                                            }
-                                                        )
                                                         IconButton(
                                                             onClick = {
                                                                 audioUri?.let { uri ->
@@ -4282,15 +4283,7 @@ fun LibraryScreen(
                                                             fontSize = 16.sp,
                                                             maxLines = 1,
                                                             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                                            modifier = Modifier
-                                                                .weight(1f)
-                                                                .clickable(enabled = !isApplyingLufs) {
-                                                                    selectedSongIds = if (isSelected) {
-                                                                        selectedSongIds - song.songId
-                                                                    } else {
-                                                                        selectedSongIds + song.songId
-                                                                    }
-                                                                }
+                                                            modifier = Modifier.weight(1f)
                                                         )
                                                         Box(
                                                             modifier = Modifier
@@ -4305,7 +4298,7 @@ fun LibraryScreen(
                                                         ) {
                                                             Text(
                                                                 text = displayLufsText,
-                                                                color = titleColor,
+                                                                color = if (isSelected) accent else titleColor,
                                                                 fontSize = 12.sp,
                                                                 maxLines = 1
                                                             )
@@ -4318,7 +4311,7 @@ fun LibraryScreen(
                                                             verticalAlignment = Alignment.CenterVertically,
                                                             horizontalArrangement = Arrangement.spacedBy(7.dp)
                                                         ) {
-                                                            Spacer(Modifier.width(92.dp))
+                                                            Spacer(Modifier.width(52.dp))
                                                             if (highGain) {
                                                                 Text(
                                                                     text = sLufsStatusHigh,
