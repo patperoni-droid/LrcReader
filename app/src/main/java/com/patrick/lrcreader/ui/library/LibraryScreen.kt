@@ -4312,39 +4312,41 @@ fun LibraryScreen(
                                                         }
                                                     }
 
-                                                    Row(
-                                                        modifier = Modifier.fillMaxWidth(),
-                                                        verticalAlignment = Alignment.CenterVertically,
-                                                        horizontalArrangement = Arrangement.spacedBy(7.dp)
-                                                    ) {
-                                                        Spacer(Modifier.width(92.dp))
-                                                        if (highGain) {
-                                                            Text(
-                                                                text = sLufsStatusHigh,
-                                                                color = Color(0xFFE53935),
-                                                                fontSize = 11.sp,
-                                                                maxLines = 1,
-                                                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                                                            )
-                                                        }
-                                                        Spacer(Modifier.weight(1f))
-                                                        androidx.compose.material3.TextButton(
-                                                            onClick = { adjustLufsManualDb(song, -1) },
-                                                            enabled = canAdjust,
-                                                            modifier = Modifier
-                                                                .height(40.dp)
-                                                                .widthIn(min = 42.dp)
+                                                    if (isSelected) {
+                                                        Row(
+                                                            modifier = Modifier.fillMaxWidth(),
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                            horizontalArrangement = Arrangement.spacedBy(7.dp)
                                                         ) {
-                                                            Text(sLufsManualMinusShort, fontSize = 13.sp)
-                                                        }
-                                                        androidx.compose.material3.TextButton(
-                                                            onClick = { adjustLufsManualDb(song, 1) },
-                                                            enabled = canAdjust,
-                                                            modifier = Modifier
-                                                                .height(40.dp)
-                                                                .widthIn(min = 42.dp)
-                                                        ) {
-                                                            Text(sLufsManualPlusShort, fontSize = 13.sp)
+                                                            Spacer(Modifier.width(92.dp))
+                                                            if (highGain) {
+                                                                Text(
+                                                                    text = sLufsStatusHigh,
+                                                                    color = Color(0xFFE53935),
+                                                                    fontSize = 11.sp,
+                                                                    maxLines = 1,
+                                                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                                                )
+                                                            }
+                                                            Spacer(Modifier.weight(1f))
+                                                            androidx.compose.material3.TextButton(
+                                                                onClick = { adjustLufsManualDb(song, -1) },
+                                                                enabled = canAdjust,
+                                                                modifier = Modifier
+                                                                    .height(40.dp)
+                                                                    .widthIn(min = 42.dp)
+                                                            ) {
+                                                                Text(sLufsManualMinusShort, fontSize = 13.sp)
+                                                            }
+                                                            androidx.compose.material3.TextButton(
+                                                                onClick = { adjustLufsManualDb(song, 1) },
+                                                                enabled = canAdjust,
+                                                                modifier = Modifier
+                                                                    .height(40.dp)
+                                                                    .widthIn(min = 42.dp)
+                                                            ) {
+                                                                Text(sLufsManualPlusShort, fontSize = 13.sp)
+                                                            }
                                                         }
                                                     }
                                                 }
