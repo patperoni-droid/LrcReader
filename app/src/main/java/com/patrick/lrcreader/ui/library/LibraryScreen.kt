@@ -13,9 +13,11 @@ import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.layout.*
@@ -113,6 +115,7 @@ private const val LIBRARY_VIEW_MODE_FILES = "files"
 private const val LIBRARY_VIEW_MODE_PLAYLISTS = "playlists"
 private const val LIBRARY_VIEW_MODE_PROMPTERS = "prompters"
 private const val LIBRARY_VIEW_MODE_LUFS = "lufs"
+private val LIBRARY_LUFS_PREVIEW_OFFSETS_SECONDS = listOf(20, 40, 60, 90)
 
 private object LibraryLufsHintPrefs {
     private const val PREFS_NAME = "library_lufs_hint_prefs"
@@ -529,6 +532,7 @@ private fun LibraryViewModeButton(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun LibraryScreen(
     modifier: Modifier = Modifier,
@@ -629,6 +633,7 @@ fun LibraryScreen(
     val sLufsValueMissing = stringResource(R.string.library_lufs_value_missing)
     val sLufsPreview = stringResource(R.string.library_lufs_preview)
     val sLufsPreviewStop = stringResource(R.string.library_lufs_preview_stop)
+    val sLufsPreviewOffsetSeconds = R.string.library_lufs_preview_offset_seconds
     val sLufsManualMinusShort = stringResource(R.string.library_lufs_manual_minus_short)
     val sLufsManualPlusShort = stringResource(R.string.library_lufs_manual_plus_short)
     val sLufsHintTitle = stringResource(R.string.library_lufs_hint_title)
@@ -2490,18 +2495,33 @@ fun LibraryScreen(
         }
     }
 
-    fun quickPlayToggle(uri: Uri, gainDb: Int? = null) {
+    fun quickPlayToggle(
+        uri: Uri,
+        gainDb: Int? = null,
+        startPositionMs: Long? = null
+    ) {
         try {
+            val shouldSeekBeforePlay = startPositionMs != null
             if (quickNowUri == null || quickNowUri != uri) {
                 quickNowUri = uri
                 quickPlayer.volume = gainDb?.let(::libraryDbToLinearGain) ?: 1f
                 quickPlayer.setMediaItem(MediaItem.fromUri(uri))
                 quickPlayer.prepare()
+                if (shouldSeekBeforePlay) {
+                    quickPlayer.seekTo(startPositionMs.coerceAtLeast(0L))
+                }
                 quickPlayer.playWhenReady = true
                 return
             }
             quickPlayer.volume = gainDb?.let(::libraryDbToLinearGain) ?: 1f
-            if (quickPlayer.isPlaying) quickPlayer.pause() else quickPlayer.play()
+            if (shouldSeekBeforePlay) {
+                quickPlayer.seekTo(startPositionMs.coerceAtLeast(0L))
+                quickPlayer.play()
+            } else if (quickPlayer.isPlaying) {
+                quickPlayer.pause()
+            } else {
+                quickPlayer.play()
+            }
         } catch (e: Exception) {
             Log.e("LibraryQuickPlay", "Erreur quick play", e)
         }
@@ -4266,6 +4286,9 @@ fun LibraryScreen(
                                                 ?.takeIf { it.isNotBlank() }
                                                 ?.let { Uri.fromFile(File(it)) }
                                             val isPreviewing = audioUri != null && quickNowUri == audioUri && quickIsPlaying
+                                            var previewOffsetMenuExpanded by remember(song.songId) {
+                                                mutableStateOf(false)
+                                            }
                                             Column(modifier = Modifier.fillMaxWidth()) {
                                                 Column(
                                                     modifier = Modifier
@@ -4289,20 +4312,56 @@ fun LibraryScreen(
                                                         verticalAlignment = Alignment.CenterVertically,
                                                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                                                     ) {
-                                                        IconButton(
-                                                            onClick = {
-                                                                audioUri?.let { uri ->
-                                                                    quickPlayToggle(uri, preparation.finalDb ?: song.volumeDb)
+                                                        Box {
+                                                            Box(
+                                                                modifier = Modifier
+                                                                    .size(44.dp)
+                                                                    .combinedClickable(
+                                                                        enabled = audioUri != null && !isApplyingLufs,
+                                                                        onClick = {
+                                                                            audioUri?.let { uri ->
+                                                                                quickPlayToggle(uri, preparation.finalDb ?: song.volumeDb)
+                                                                            }
+                                                                        },
+                                                                        onLongClick = {
+                                                                            previewOffsetMenuExpanded = true
+                                                                        }
+                                                                    ),
+                                                                contentAlignment = Alignment.Center
+                                                            ) {
+                                                                Icon(
+                                                                    imageVector = Icons.Filled.PlayArrow,
+                                                                    contentDescription = if (isPreviewing) sLufsPreviewStop else sLufsPreview,
+                                                                    tint = if (isPreviewing) accent else titleColor
+                                                                )
+                                                            }
+                                                            androidx.compose.material3.DropdownMenu(
+                                                                expanded = previewOffsetMenuExpanded,
+                                                                onDismissRequest = { previewOffsetMenuExpanded = false }
+                                                            ) {
+                                                                LIBRARY_LUFS_PREVIEW_OFFSETS_SECONDS.forEach { seconds ->
+                                                                    androidx.compose.material3.DropdownMenuItem(
+                                                                        text = {
+                                                                            Text(
+                                                                                text = context.getString(
+                                                                                    sLufsPreviewOffsetSeconds,
+                                                                                    seconds
+                                                                                )
+                                                                            )
+                                                                        },
+                                                                        onClick = {
+                                                                            previewOffsetMenuExpanded = false
+                                                                            audioUri?.let { uri ->
+                                                                                quickPlayToggle(
+                                                                                    uri = uri,
+                                                                                    gainDb = preparation.finalDb ?: song.volumeDb,
+                                                                                    startPositionMs = seconds * 1_000L
+                                                                                )
+                                                                            }
+                                                                        }
+                                                                    )
                                                                 }
-                                                            },
-                                                            enabled = audioUri != null && !isApplyingLufs,
-                                                            modifier = Modifier.size(44.dp)
-                                                        ) {
-                                                            Icon(
-                                                                imageVector = Icons.Filled.PlayArrow,
-                                                                contentDescription = if (isPreviewing) sLufsPreviewStop else sLufsPreview,
-                                                                tint = if (isPreviewing) accent else titleColor
-                                                            )
+                                                            }
                                                         }
                                                         Text(
                                                             text = song.displayTitle,

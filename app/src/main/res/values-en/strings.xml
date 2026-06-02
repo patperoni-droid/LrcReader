@@ -298,6 +298,7 @@
     <string name="library_lufs_value_missing">-</string>
     <string name="library_lufs_preview">Listen</string>
     <string name="library_lufs_preview_stop">Stop</string>
+    <string name="library_lufs_preview_offset_seconds">%1$d s</string>
     <string name="library_lufs_manual_minus">-1 dB</string>
     <string name="library_lufs_manual_plus">+1 dB</string>
     <string name="library_lufs_manual_minus_short">-1</string>
