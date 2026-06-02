@@ -296,6 +296,8 @@
     <string name="library_lufs_manual_plus_short">+1</string>
     <string name="library_lufs_manual_label">Manual %1$+d dB</string>
     <string name="library_lufs_measured_value">%1$s LUFS</string>
+    <string name="library_lufs_adjusted_marker">✓</string>
+    <string name="library_lufs_adjusted_value">%1$s %2$s</string>
     <string name="library_lufs_target_value">Objetivo %1$s LUFS</string>
     <string name="library_lufs_target_short">Objetivo %1$s</string>
     <string name="library_lufs_final_value">Final %1$s LUFS</string>

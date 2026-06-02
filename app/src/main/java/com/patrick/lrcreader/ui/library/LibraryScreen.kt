@@ -1092,6 +1092,18 @@ fun LibraryScreen(
         return formatted.removeSuffix(".0")
     }
 
+    fun effectiveLufsForDisplay(
+        song: LibrarySongItem,
+        preparation: LibraryLufsPreparation
+    ): Float? {
+        val measured = preparation.measuredLufs ?: return null
+        return if (song.isLufsActive && preparation.finalDb != null) {
+            measured + preparation.finalDb
+        } else {
+            measured
+        }
+    }
+
     fun initialLufsPreparation(song: LibrarySongItem): LibraryLufsPreparation {
         val measured = song.lufsMeasured
         val target = song.lufsTarget ?: LIBRARY_LUFS_TARGET
@@ -2569,9 +2581,13 @@ fun LibraryScreen(
         val current = lufsPreparations[song.songId] ?: initialLufsPreparation(song)
         val measured = current.measuredLufs ?: return
         val auto = current.autoDb ?: return
-        val manual = (current.manualDb + deltaDb)
+        val nextEffectiveLufs = (effectiveLufsForDisplay(song, current) ?: measured) + deltaDb
+        val finalDb = (nextEffectiveLufs - measured)
+            .roundToInt()
+            .coerceIn(LIBRARY_LUFS_MIN_DB, LIBRARY_LUFS_MAX_DB)
+        val manual = ((measured + finalDb) - current.targetLufs)
+            .roundToInt()
             .coerceIn(LIBRARY_LUFS_MANUAL_MIN_DB, LIBRARY_LUFS_MANUAL_MAX_DB)
-        val finalDb = finalLufsDb(auto, manual)
         val updated = current.copy(
             manualDb = manual,
             finalDb = finalDb,
@@ -4217,11 +4233,9 @@ fun LibraryScreen(
                                             val displayLufsNumber = when {
                                                 preparation.isLoading -> sLufsStatusLoading
                                                 preparation.measuredLufs == null -> sLufsValueMissing
-                                                song.isLufsActive && preparation.finalDb != null ->
-                                                    formatLufsNumber(preparation.measuredLufs + preparation.finalDb)
-                                                else -> formatLufsNumber(preparation.measuredLufs)
+                                                else -> formatLufsNumber(effectiveLufsForDisplay(song, preparation)!!)
                                             }
-                                            val displayLufsText = if (
+                                            val displayLufsBaseText = if (
                                                 isSelected &&
                                                 displayLufsNumber != sLufsStatusLoading &&
                                                 displayLufsNumber != sLufsValueMissing
@@ -4229,6 +4243,19 @@ fun LibraryScreen(
                                                 context.getString(R.string.library_lufs_measured_value, displayLufsNumber)
                                             } else {
                                                 displayLufsNumber
+                                            }
+                                            val displayLufsText = if (
+                                                song.isLufsActive &&
+                                                displayLufsNumber != sLufsStatusLoading &&
+                                                displayLufsNumber != sLufsValueMissing
+                                            ) {
+                                                context.getString(
+                                                    R.string.library_lufs_adjusted_value,
+                                                    displayLufsBaseText,
+                                                    context.getString(R.string.library_lufs_adjusted_marker)
+                                                )
+                                            } else {
+                                                displayLufsBaseText
                                             }
                                             val highGain = (preparation.finalDb ?: 0) >= LIBRARY_LUFS_WARNING_DB
                                             val canAdjust = !isApplyingLufs &&
