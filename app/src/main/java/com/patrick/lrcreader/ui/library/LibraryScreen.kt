@@ -24,6 +24,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -623,10 +624,6 @@ fun LibraryScreen(
     val sApplyLufs = stringResource(R.string.library_lufs_apply)
     val sRemoveLufs = stringResource(R.string.library_lufs_remove)
     val sLufsProcessing = stringResource(R.string.library_lufs_processing)
-    val sLufsHeaderTitle = stringResource(R.string.library_lufs_header_title)
-    val sLufsHeaderMeasured = stringResource(R.string.library_lufs_header_measured)
-    val sLufsHeaderCorrection = stringResource(R.string.library_lufs_header_correction)
-    val sLufsHeaderTarget = stringResource(R.string.library_lufs_header_target)
     val sLufsStatusLoading = stringResource(R.string.library_lufs_status_loading)
     val sLufsStatusReady = stringResource(R.string.library_lufs_status_ready)
     val sLufsStatusNotReady = stringResource(R.string.library_lufs_status_not_ready)
@@ -4211,51 +4208,38 @@ fun LibraryScreen(
                                     LazyColumn(
                                         modifier = Modifier.fillMaxSize()
                                     ) {
-                                        item {
-                                            Row(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .padding(horizontal = 12.dp, vertical = 6.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Text(
-                                                    text = sLufsHeaderTitle,
-                                                    color = subtitleColor,
-                                                    fontSize = 11.sp,
-                                                    modifier = Modifier.weight(1.6f)
-                                                )
-                                                Text(
-                                                    text = sLufsHeaderMeasured,
-                                                    color = subtitleColor,
-                                                    fontSize = 11.sp,
-                                                    modifier = Modifier.weight(0.72f)
-                                                )
-                                                Text(
-                                                    text = sLufsHeaderCorrection,
-                                                    color = subtitleColor,
-                                                    fontSize = 11.sp,
-                                                    modifier = Modifier.weight(0.82f)
-                                                )
-                                                Text(
-                                                    text = sLufsHeaderTarget,
-                                                    color = subtitleColor,
-                                                    fontSize = 11.sp,
-                                                    modifier = Modifier.weight(0.52f)
-                                                )
-                                                Spacer(Modifier.width(132.dp))
-                                            }
-                                            androidx.compose.material3.HorizontalDivider(color = rowBorder.copy(alpha = 0.5f))
-                                        }
                                         items(filteredSongItems, key = { it.songId }) { song ->
                                             val isSelected = selectedSongIds.contains(song.songId)
                                             val preparation = lufsPreparations[song.songId] ?: initialLufsPreparation(song)
-                                            val measuredText = preparation.measuredLufs?.let {
-                                                String.format(Locale.US, "%.1f", it)
+                                            val measuredText = preparation.measuredLufs?.let { lufs ->
+                                                context.getString(
+                                                    R.string.library_lufs_measured_value,
+                                                    String.format(Locale.US, "%.1f", lufs)
+                                                )
                                             } ?: sLufsValueMissing
                                             val correctionText = preparation.finalDb?.let { db ->
-                                                if (db >= 0) "+$db dB" else "$db dB"
+                                                context.getString(R.string.library_lufs_db_value, db)
                                             } ?: sLufsValueMissing
-                                            val targetText = String.format(Locale.US, "%.0f", preparation.targetLufs)
+                                            val correctionValueText = context.getString(
+                                                R.string.library_lufs_correction_value,
+                                                correctionText
+                                            )
+                                            val targetText = context.getString(
+                                                R.string.library_lufs_target_value,
+                                                String.format(Locale.US, "%.0f", preparation.targetLufs)
+                                            )
+                                            val finalLufsText = if (preparation.measuredLufs != null && preparation.finalDb != null) {
+                                                context.getString(
+                                                    R.string.library_lufs_final_value,
+                                                    String.format(
+                                                        Locale.US,
+                                                        "%.1f",
+                                                        preparation.measuredLufs + preparation.finalDb
+                                                    )
+                                                )
+                                            } else {
+                                                sLufsValueMissing
+                                            }
                                             val highGain = (preparation.finalDb ?: 0) >= LIBRARY_LUFS_WARNING_DB
                                             val statusText = when {
                                                 preparation.isLoading -> sLufsStatusLoading
@@ -4264,7 +4248,7 @@ fun LibraryScreen(
                                                 else -> sLufsStatusNotReady
                                             }
                                             val statusColor = when {
-                                                highGain -> Color(0xFFFFC107)
+                                                highGain -> Color(0xFFE53935)
                                                 song.isLufsActive -> accent
                                                 else -> subtitleColor
                                             }
@@ -4277,7 +4261,7 @@ fun LibraryScreen(
                                                 ?.let { Uri.fromFile(File(it)) }
                                             val isPreviewing = audioUri != null && quickNowUri == audioUri && quickIsPlaying
                                             Column(modifier = Modifier.fillMaxWidth()) {
-                                                Row(
+                                                Column(
                                                     modifier = Modifier
                                                         .fillMaxWidth()
                                                         .clickable(enabled = !isApplyingLufs) {
@@ -4287,84 +4271,138 @@ fun LibraryScreen(
                                                                 selectedSongIds + song.songId
                                                             }
                                                         }
-                                                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                                                    verticalAlignment = Alignment.CenterVertically,
-                                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                                    verticalArrangement = Arrangement.spacedBy(8.dp)
                                                 ) {
-                                                    androidx.compose.material3.Checkbox(
-                                                        checked = isSelected,
-                                                        enabled = !isApplyingLufs,
-                                                        onCheckedChange = { checked ->
-                                                            selectedSongIds = if (checked) {
-                                                                selectedSongIds + song.songId
-                                                            } else {
-                                                                selectedSongIds - song.songId
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                                    ) {
+                                                        androidx.compose.material3.Checkbox(
+                                                            checked = isSelected,
+                                                            enabled = !isApplyingLufs,
+                                                            onCheckedChange = { checked ->
+                                                                selectedSongIds = if (checked) {
+                                                                    selectedSongIds + song.songId
+                                                                } else {
+                                                                    selectedSongIds - song.songId
+                                                                }
                                                             }
-                                                        }
-                                                    )
-
-                                                    Column(modifier = Modifier.weight(1.6f)) {
+                                                        )
                                                         Text(
                                                             text = song.displayTitle,
                                                             color = titleColor,
-                                                            fontSize = 15.sp,
-                                                            maxLines = 1,
-                                                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                                            fontSize = 16.sp,
+                                                            maxLines = 2,
+                                                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                                            modifier = Modifier.weight(1f)
                                                         )
-                                                        Text(
-                                                            text = statusText,
-                                                            color = statusColor,
-                                                            fontSize = 11.sp,
-                                                            maxLines = 1
-                                                        )
+                                                        IconButton(
+                                                            onClick = {
+                                                                audioUri?.let { uri ->
+                                                                    quickPlayToggle(uri, preparation.finalDb ?: song.volumeDb)
+                                                                }
+                                                            },
+                                                            enabled = audioUri != null && !isApplyingLufs,
+                                                            modifier = Modifier.size(48.dp)
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = Icons.Filled.PlayArrow,
+                                                                contentDescription = if (isPreviewing) sLufsPreviewStop else sLufsPreview,
+                                                                tint = if (isPreviewing) accent else titleColor
+                                                            )
+                                                        }
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .widthIn(min = 86.dp)
+                                                                .border(
+                                                                    width = 1.dp,
+                                                                    color = accent.copy(alpha = 0.55f),
+                                                                    shape = RoundedCornerShape(6.dp)
+                                                                )
+                                                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                                                            contentAlignment = Alignment.Center
+                                                        ) {
+                                                            Text(
+                                                                text = measuredText,
+                                                                color = titleColor,
+                                                                fontSize = 13.sp,
+                                                                maxLines = 1
+                                                            )
+                                                        }
                                                     }
-                                                    Text(
-                                                        text = measuredText,
-                                                        color = titleColor,
-                                                        fontSize = 13.sp,
-                                                        modifier = Modifier.weight(0.72f)
-                                                    )
-                                                    Column(modifier = Modifier.weight(0.82f)) {
-                                                        Text(
-                                                            text = correctionText,
-                                                            color = titleColor,
-                                                            fontSize = 13.sp,
-                                                            maxLines = 1
-                                                        )
-                                                        Text(
-                                                            text = context.getString(R.string.library_lufs_manual_label, preparation.manualDb),
-                                                            color = subtitleColor,
-                                                            fontSize = 10.sp,
-                                                            maxLines = 1
-                                                        )
-                                                    }
-                                                    Text(
-                                                        text = targetText,
-                                                        color = titleColor,
-                                                        fontSize = 13.sp,
-                                                        modifier = Modifier.weight(0.52f)
-                                                    )
-                                                    androidx.compose.material3.TextButton(
-                                                        onClick = {
-                                                            audioUri?.let { uri ->
-                                                                quickPlayToggle(uri, preparation.finalDb ?: song.volumeDb)
+
+                                                    Row(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .padding(start = 48.dp),
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                    ) {
+                                                        Column(
+                                                            modifier = Modifier.weight(1f),
+                                                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                                                        ) {
+                                                            Row(
+                                                                verticalAlignment = Alignment.CenterVertically,
+                                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                            ) {
+                                                                Text(
+                                                                    text = finalLufsText,
+                                                                    color = if (highGain) Color(0xFFE53935) else titleColor,
+                                                                    fontSize = 15.sp,
+                                                                    maxLines = 1,
+                                                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                                                    modifier = Modifier.weight(1f)
+                                                                )
+                                                                Text(
+                                                                    text = correctionValueText,
+                                                                    color = if (highGain) Color(0xFFE53935) else accent,
+                                                                    fontSize = 15.sp,
+                                                                    maxLines = 1,
+                                                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                                                    modifier = Modifier.weight(1f)
+                                                                )
                                                             }
-                                                        },
-                                                        enabled = audioUri != null && !isApplyingLufs
-                                                    ) {
-                                                        Text(if (isPreviewing) sLufsPreviewStop else sLufsPreview)
-                                                    }
-                                                    androidx.compose.material3.TextButton(
-                                                        onClick = { adjustLufsManualDb(song, -1) },
-                                                        enabled = canAdjust
-                                                    ) {
-                                                        Text(sLufsManualMinus)
-                                                    }
-                                                    androidx.compose.material3.TextButton(
-                                                        onClick = { adjustLufsManualDb(song, 1) },
-                                                        enabled = canAdjust
-                                                    ) {
-                                                        Text(sLufsManualPlus)
+                                                            Row(
+                                                                verticalAlignment = Alignment.CenterVertically,
+                                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                            ) {
+                                                                Text(
+                                                                    text = targetText,
+                                                                    color = subtitleColor,
+                                                                    fontSize = 12.sp,
+                                                                    maxLines = 1
+                                                                )
+                                                                Text(
+                                                                    text = statusText,
+                                                                    color = statusColor,
+                                                                    fontSize = 12.sp,
+                                                                    maxLines = 1,
+                                                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                                                    modifier = Modifier.weight(1f)
+                                                                )
+                                                            }
+                                                        }
+                                                        androidx.compose.material3.TextButton(
+                                                            onClick = { adjustLufsManualDb(song, -1) },
+                                                            enabled = canAdjust,
+                                                            modifier = Modifier
+                                                                .height(44.dp)
+                                                                .widthIn(min = 54.dp)
+                                                        ) {
+                                                            Text(sLufsManualMinus, fontSize = 12.sp)
+                                                        }
+                                                        androidx.compose.material3.TextButton(
+                                                            onClick = { adjustLufsManualDb(song, 1) },
+                                                            enabled = canAdjust,
+                                                            modifier = Modifier
+                                                                .height(44.dp)
+                                                                .widthIn(min = 54.dp)
+                                                        ) {
+                                                            Text(sLufsManualPlus, fontSize = 12.sp)
+                                                        }
                                                     }
                                                 }
                                                 androidx.compose.material3.HorizontalDivider(color = rowBorder.copy(alpha = 0.5f))

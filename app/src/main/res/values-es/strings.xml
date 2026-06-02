@@ -293,6 +293,11 @@
     <string name="library_lufs_manual_minus">-1 dB</string>
     <string name="library_lufs_manual_plus">+1 dB</string>
     <string name="library_lufs_manual_label">Manual %1$+d dB</string>
+    <string name="library_lufs_measured_value">%1$s LUFS</string>
+    <string name="library_lufs_target_value">Objetivo %1$s LUFS</string>
+    <string name="library_lufs_final_value">Final %1$s LUFS</string>
+    <string name="library_lufs_correction_value">Corrección %1$s</string>
+    <string name="library_lufs_db_value">%1$+d dB</string>
     <string name="library_lufs_hint_title">Normalización de volumen</string>
     <string name="library_lufs_hint_message">Aquí puedes equilibrar el volumen de tus pistas.\n\nEsto evita grandes diferencias de nivel entre canciones, para un resultado más cómodo y profesional en directo.\n\nUtilizamos una referencia cercana a -14 LUFS, un estándar ampliamente utilizado.\n\nPuedes aplicar o quitar este ajuste en cualquier momento.</string>
     <string name="library_lufs_hint_do_not_show_again">No volver a mostrar</string>
