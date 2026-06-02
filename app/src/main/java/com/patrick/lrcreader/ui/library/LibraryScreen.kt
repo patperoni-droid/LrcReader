@@ -625,14 +625,12 @@ fun LibraryScreen(
     val sRemoveLufs = stringResource(R.string.library_lufs_remove)
     val sLufsProcessing = stringResource(R.string.library_lufs_processing)
     val sLufsStatusLoading = stringResource(R.string.library_lufs_status_loading)
-    val sLufsStatusReady = stringResource(R.string.library_lufs_status_ready)
-    val sLufsStatusNotReady = stringResource(R.string.library_lufs_status_not_ready)
     val sLufsStatusHigh = stringResource(R.string.library_lufs_status_high)
     val sLufsValueMissing = stringResource(R.string.library_lufs_value_missing)
     val sLufsPreview = stringResource(R.string.library_lufs_preview)
     val sLufsPreviewStop = stringResource(R.string.library_lufs_preview_stop)
-    val sLufsManualMinus = stringResource(R.string.library_lufs_manual_minus)
-    val sLufsManualPlus = stringResource(R.string.library_lufs_manual_plus)
+    val sLufsManualMinusShort = stringResource(R.string.library_lufs_manual_minus_short)
+    val sLufsManualPlusShort = stringResource(R.string.library_lufs_manual_plus_short)
     val sLufsHintTitle = stringResource(R.string.library_lufs_hint_title)
     val sLufsHintMessage = stringResource(R.string.library_lufs_hint_message)
     val sLufsHintDoNotShowAgain = stringResource(R.string.library_lufs_hint_do_not_show_again)
@@ -4220,38 +4218,12 @@ fun LibraryScreen(
                                             val correctionText = preparation.finalDb?.let { db ->
                                                 context.getString(R.string.library_lufs_db_value, db)
                                             } ?: sLufsValueMissing
-                                            val correctionValueText = context.getString(
-                                                R.string.library_lufs_correction_value,
-                                                correctionText
-                                            )
                                             val targetText = context.getString(
-                                                R.string.library_lufs_target_value,
+                                                R.string.library_lufs_target_short,
                                                 String.format(Locale.US, "%.0f", preparation.targetLufs)
                                             )
-                                            val finalLufsText = if (preparation.measuredLufs != null && preparation.finalDb != null) {
-                                                context.getString(
-                                                    R.string.library_lufs_final_value,
-                                                    String.format(
-                                                        Locale.US,
-                                                        "%.1f",
-                                                        preparation.measuredLufs + preparation.finalDb
-                                                    )
-                                                )
-                                            } else {
-                                                sLufsValueMissing
-                                            }
                                             val highGain = (preparation.finalDb ?: 0) >= LIBRARY_LUFS_WARNING_DB
-                                            val statusText = when {
-                                                preparation.isLoading -> sLufsStatusLoading
-                                                highGain -> sLufsStatusHigh
-                                                song.isLufsActive -> sLufsStatusReady
-                                                else -> sLufsStatusNotReady
-                                            }
-                                            val statusColor = when {
-                                                highGain -> Color(0xFFE53935)
-                                                song.isLufsActive -> accent
-                                                else -> subtitleColor
-                                            }
+                                            val statusText = if (preparation.isLoading) sLufsStatusLoading else null
                                             val canAdjust = !isApplyingLufs &&
                                                 !preparation.isLoading &&
                                                 preparation.measuredLufs != null &&
@@ -4264,40 +4236,17 @@ fun LibraryScreen(
                                                 Column(
                                                     modifier = Modifier
                                                         .fillMaxWidth()
-                                                        .clickable(enabled = !isApplyingLufs) {
-                                                            selectedSongIds = if (isSelected) {
-                                                                selectedSongIds - song.songId
-                                                            } else {
-                                                                selectedSongIds + song.songId
-                                                            }
-                                                        }
-                                                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                                        .background(
+                                                            if (isSelected) accent.copy(alpha = 0.10f) else Color.Transparent
+                                                        )
+                                                        .padding(horizontal = 10.dp, vertical = 7.dp),
+                                                    verticalArrangement = Arrangement.spacedBy(5.dp)
                                                 ) {
                                                     Row(
                                                         modifier = Modifier.fillMaxWidth(),
                                                         verticalAlignment = Alignment.CenterVertically,
-                                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                                                     ) {
-                                                        androidx.compose.material3.Checkbox(
-                                                            checked = isSelected,
-                                                            enabled = !isApplyingLufs,
-                                                            onCheckedChange = { checked ->
-                                                                selectedSongIds = if (checked) {
-                                                                    selectedSongIds + song.songId
-                                                                } else {
-                                                                    selectedSongIds - song.songId
-                                                                }
-                                                            }
-                                                        )
-                                                        Text(
-                                                            text = song.displayTitle,
-                                                            color = titleColor,
-                                                            fontSize = 16.sp,
-                                                            maxLines = 2,
-                                                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                                            modifier = Modifier.weight(1f)
-                                                        )
                                                         IconButton(
                                                             onClick = {
                                                                 audioUri?.let { uri ->
@@ -4305,7 +4254,7 @@ fun LibraryScreen(
                                                                 }
                                                             },
                                                             enabled = audioUri != null && !isApplyingLufs,
-                                                            modifier = Modifier.size(48.dp)
+                                                            modifier = Modifier.size(44.dp)
                                                         ) {
                                                             Icon(
                                                                 imageVector = Icons.Filled.PlayArrow,
@@ -4313,95 +4262,98 @@ fun LibraryScreen(
                                                                 tint = if (isPreviewing) accent else titleColor
                                                             )
                                                         }
+                                                        Text(
+                                                            text = song.displayTitle,
+                                                            color = if (isSelected) accent else titleColor,
+                                                            fontSize = 16.sp,
+                                                            maxLines = 1,
+                                                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                                            modifier = Modifier
+                                                                .weight(1f)
+                                                                .clickable(enabled = !isApplyingLufs) {
+                                                                    selectedSongIds = if (isSelected) {
+                                                                        selectedSongIds - song.songId
+                                                                    } else {
+                                                                        selectedSongIds + song.songId
+                                                                    }
+                                                                }
+                                                        )
                                                         Box(
                                                             modifier = Modifier
-                                                                .widthIn(min = 86.dp)
+                                                                .widthIn(min = 82.dp)
                                                                 .border(
                                                                     width = 1.dp,
                                                                     color = accent.copy(alpha = 0.55f),
                                                                     shape = RoundedCornerShape(6.dp)
                                                                 )
-                                                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                                                                .padding(horizontal = 7.dp, vertical = 5.dp),
                                                             contentAlignment = Alignment.Center
                                                         ) {
                                                             Text(
                                                                 text = measuredText,
                                                                 color = titleColor,
-                                                                fontSize = 13.sp,
+                                                                fontSize = 12.sp,
                                                                 maxLines = 1
                                                             )
                                                         }
                                                     }
 
                                                     Row(
-                                                        modifier = Modifier
-                                                            .fillMaxWidth()
-                                                            .padding(start = 48.dp),
+                                                        modifier = Modifier.fillMaxWidth(),
                                                         verticalAlignment = Alignment.CenterVertically,
-                                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                        horizontalArrangement = Arrangement.spacedBy(7.dp)
                                                     ) {
-                                                        Column(
-                                                            modifier = Modifier.weight(1f),
-                                                            verticalArrangement = Arrangement.spacedBy(4.dp)
-                                                        ) {
-                                                            Row(
-                                                                verticalAlignment = Alignment.CenterVertically,
-                                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                                            ) {
-                                                                Text(
-                                                                    text = finalLufsText,
-                                                                    color = if (highGain) Color(0xFFE53935) else titleColor,
-                                                                    fontSize = 15.sp,
-                                                                    maxLines = 1,
-                                                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                                                    modifier = Modifier.weight(1f)
-                                                                )
-                                                                Text(
-                                                                    text = correctionValueText,
-                                                                    color = if (highGain) Color(0xFFE53935) else accent,
-                                                                    fontSize = 15.sp,
-                                                                    maxLines = 1,
-                                                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                                                    modifier = Modifier.weight(1f)
-                                                                )
-                                                            }
-                                                            Row(
-                                                                verticalAlignment = Alignment.CenterVertically,
-                                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                                            ) {
-                                                                Text(
-                                                                    text = targetText,
-                                                                    color = subtitleColor,
-                                                                    fontSize = 12.sp,
-                                                                    maxLines = 1
-                                                                )
-                                                                Text(
-                                                                    text = statusText,
-                                                                    color = statusColor,
-                                                                    fontSize = 12.sp,
-                                                                    maxLines = 1,
-                                                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                                                    modifier = Modifier.weight(1f)
-                                                                )
-                                                            }
+                                                        Text(
+                                                            text = targetText,
+                                                            color = subtitleColor,
+                                                            fontSize = 12.sp,
+                                                            maxLines = 1
+                                                        )
+                                                        Text(
+                                                            text = correctionText,
+                                                            color = if (highGain) Color(0xFFE53935) else accent,
+                                                            fontSize = 15.sp,
+                                                            maxLines = 1,
+                                                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                                        )
+                                                        if (statusText != null) {
+                                                            Text(
+                                                                text = statusText,
+                                                                color = subtitleColor,
+                                                                fontSize = 11.sp,
+                                                                maxLines = 1,
+                                                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                                                modifier = Modifier.weight(1f)
+                                                            )
+                                                        } else {
+                                                            Spacer(Modifier.weight(1f))
+                                                        }
+                                                        if (highGain) {
+                                                            Text(
+                                                                text = sLufsStatusHigh,
+                                                                color = Color(0xFFE53935),
+                                                                fontSize = 11.sp,
+                                                                maxLines = 1,
+                                                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                                            )
                                                         }
                                                         androidx.compose.material3.TextButton(
                                                             onClick = { adjustLufsManualDb(song, -1) },
                                                             enabled = canAdjust,
                                                             modifier = Modifier
-                                                                .height(44.dp)
-                                                                .widthIn(min = 54.dp)
+                                                                .height(40.dp)
+                                                                .widthIn(min = 42.dp)
                                                         ) {
-                                                            Text(sLufsManualMinus, fontSize = 12.sp)
+                                                            Text(sLufsManualMinusShort, fontSize = 13.sp)
                                                         }
                                                         androidx.compose.material3.TextButton(
                                                             onClick = { adjustLufsManualDb(song, 1) },
                                                             enabled = canAdjust,
                                                             modifier = Modifier
-                                                                .height(44.dp)
-                                                                .widthIn(min = 54.dp)
+                                                                .height(40.dp)
+                                                                .widthIn(min = 42.dp)
                                                         ) {
-                                                            Text(sLufsManualPlus, fontSize = 12.sp)
+                                                            Text(sLufsManualPlusShort, fontSize = 13.sp)
                                                         }
                                                     }
                                                 }
