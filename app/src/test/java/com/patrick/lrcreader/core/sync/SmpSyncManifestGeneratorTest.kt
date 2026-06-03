@@ -396,6 +396,72 @@ class SmpSyncManifestGeneratorTest {
     }
 
     @Test
+    fun lufsPlaybackSettingChange_updatesSettingsHash() {
+        val dir = Files.createTempDirectory("sync_manifest_settings_lufs_").toFile()
+        try {
+            val config = File(dir, "config.json").apply {
+                writeText(
+                    """
+                    {
+                      "playback": {
+                        "volumeDb": 4,
+                        "volumeSource": "lufs",
+                        "lufsMeasured": -18.2,
+                        "lufsTarget": -14.0,
+                        "lufsAutoDb": 4.2,
+                        "lufsManualDb": 0
+                      }
+                    }
+                    """.trimIndent(),
+                    Charsets.UTF_8
+                )
+            }
+            val generator = SmpSyncManifestGenerator(hashing)
+            val source = SmpSyncSongManifestSource(
+                songId = "song_001",
+                title = "Sync Title",
+                settingsFile = config
+            )
+            val before = runBlocking {
+                generator.generateFromSources(
+                    appVersion = "0.3-beta",
+                    generatedAt = 1L,
+                    songs = listOf(source)
+                )
+            }.songs.first()
+
+            config.writeText(
+                """
+                {
+                  "playback": {
+                    "volumeDb": 6,
+                    "volumeSource": "lufs",
+                    "lufsMeasured": -18.2,
+                    "lufsTarget": -14.0,
+                    "lufsAutoDb": 4.2,
+                    "lufsManualDb": 2
+                  }
+                }
+                """.trimIndent(),
+                Charsets.UTF_8
+            )
+
+            val after = runBlocking {
+                generator.generateFromSources(
+                    appVersion = "0.3-beta",
+                    generatedAt = 2L,
+                    songs = listOf(source)
+                )
+            }.songs.first()
+
+            assertNotEquals(before.settingsHash, after.settingsHash)
+            assertNotEquals(before.fullSongHash, after.fullSongHash)
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
     fun arrangementUpdatedAtOnly_doesNotChangeArrangementHash() {
         val dir = Files.createTempDirectory("sync_manifest_arrangement_").toFile()
         try {

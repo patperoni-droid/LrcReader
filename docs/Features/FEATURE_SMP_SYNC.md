@@ -81,11 +81,13 @@ Pour un morceau, l’import peut mettre à jour les données associées :
 - paroles
 - accords
 - timeline
-- réglages
+- réglages, incluant `playback` et les champs LUFS de `config.json`
 - arrangement
 - autres fichiers normalisés du SongUnit
 
 Après import, le téléphone secours doit travailler depuis son runtime local normalisé.
+
+Référence LUFS : `FEATURE_LUFS_PREPARATION.md`. Les réglages LUFS font partie du `SongUnit/config.json` et doivent suivre la sync manuelle avec le morceau.
 
 ---
 

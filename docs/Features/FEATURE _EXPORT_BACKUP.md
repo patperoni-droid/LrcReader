@@ -87,7 +87,7 @@ Arrangement → WAV → SMP → runtime
 
 ### Contenu sauvegardé
 
-- tous les morceaux importés (version runtime)
+- tous les morceaux importés (version runtime), incluant leurs réglages LUFS dans `config.json`
 - tous les `.smp` présents dans le stockage
 - playlists
 - état utilisateur (played, lastPlayed, etc.)
@@ -114,6 +114,8 @@ Export_YYYY-MM-DD_HH-mm
 
 - sauvegarde = création de fichiers `.smp`
 - restauration = réimport des `.smp`
+- les réglages LUFS suivent le morceau via `SongUnit/config.json`
+- référence LUFS : `FEATURE_LUFS_PREPARATION.md`
 - aucune dépendance au runtime Android
 
 ---
