@@ -36,8 +36,10 @@ import androidx.core.view.WindowCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
@@ -3611,16 +3613,356 @@ class MainActivity : AppCompatActivity() {
                                         }
                                     }
                                 )
-                                if (
-                                    adaptiveTokens.tabletMode &&
-                                    adaptiveTokens.isLandscape &&
-                                    tabletExperimentalModeEnabled
-                                ) {
-                                    // TODO(tablet): render the future two-panel live interface here.
-                                    // Current tab UI intentionally remains the fallback for this patch.
+                                val playerPane: @Composable (Modifier) -> Unit = { paneModifier ->
+                                    PlayerScreen(
+                                        modifier = paneModifier,
+                                        exoPlayer = exoPlayer,
+                                        closeMixSignal = closeMixSignal,
+                                        isPlaying = isPlaying,
+                                        onIsPlayingChange = { shouldPlay ->
+                                            if (manualCrossfadeTransitionTitle != null) {
+                                                return@PlayerScreen
+                                            }
+                                            isPlaying = shouldPlay
+                                            if (shouldPlay) exoPlayer.play() else exoPlayer.pause()
+                                        },
+                                        parsedLines = parsedLines,
+                                        lyricsLoading = lyricsLoading,
+                                        onParsedLinesChange = { parsedLines = it },
+                                        highlightColor = currentLyricsColor,
+                                        currentTrackUri = currentPlayingUri,
+                                        nextTrackTitle = effectiveNextTrackTitle,
+                                        currentTrackGainDb = currentTrackGainDb,
+                                        currentTrackVolumeSource = currentTrackVolumeSource,
+                                        onTrackGainChange = { db ->
+                                            if (currentTrackVolumeSource == SmpConfig.PlaybackConfig.VOLUME_SOURCE_LUFS) {
+                                                return@PlayerScreen
+                                            }
+                                            val safeDb = clampTrackDb(db)
+                                            currentTrackGainDb = safeDb
+                                            AudioEngine.applyTrackGainDb(safeDb)
+                                        },
+                                        onTrackGainCommit = { db ->
+                                            if (currentTrackVolumeSource == SmpConfig.PlaybackConfig.VOLUME_SOURCE_LUFS) {
+                                                return@PlayerScreen
+                                            }
+                                            val safeDb = clampTrackDb(db)
+                                            currentTrackGainDb = safeDb
+                                            AudioEngine.applyTrackGainDb(safeDb)
+                                            currentPlayingUri?.let { sourceUri ->
+                                                scope.launch {
+                                                    val migration = withContext(Dispatchers.IO) {
+                                                        smpAutoMigration.migrateLegacyTrack(sourceUri)
+                                                    }
+                                                    val targetUri = migration?.trackUriString ?: sourceUri
+                                                    withContext(Dispatchers.IO) {
+                                                        TrackVolumePrefs.saveDb(ctx, targetUri, safeDb)
+                                                    }
+                                                    if (migration != null && currentPlayingUri == sourceUri) {
+                                                        currentPlayingUri = migration.trackUriString
+                                                        smpSongsById = smpSongsById + (migration.song.id to migration.song)
+                                                        smpCacheRefreshTick++
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        tempo = currentTrackTempo,
+                                        onTempoChange = { newTempo ->
+                                            currentTrackTempo = newTempo
+                                            applyTempoAndPitchToPlayer(currentTrackTempo, currentTrackPitchSemi)
+                                            currentPlayingUri?.let { sourceUri ->
+                                                pendingTempoPersistRequest = sourceUri to newTempo
+                                                if (trackTempoPersistJob?.isActive == true) return@PlayerScreen
+                                                trackTempoPersistJob = scope.launch {
+                                                    val resolvedTargets = mutableMapOf<String, Pair<String, SmpAutoMigrationResult?>>()
+                                                    while (true) {
+                                                        val request = pendingTempoPersistRequest ?: break
+                                                        pendingTempoPersistRequest = null
+
+                                                        val lockedSourceUri = request.first
+                                                        val tempoToSave = request.second
+                                                        val resolvedTarget = resolvedTargets[lockedSourceUri] ?: run {
+                                                            val migration = withContext(Dispatchers.IO) {
+                                                                smpAutoMigration.migrateLegacyTrack(lockedSourceUri)
+                                                            }
+                                                            (migration?.trackUriString ?: lockedSourceUri) to migration
+                                                        }.also {
+                                                            resolvedTargets[lockedSourceUri] = it
+                                                        }
+
+                                                        withContext(Dispatchers.IO) {
+                                                            TrackTempoPrefs.saveTempo(ctx, resolvedTarget.first, tempoToSave)
+                                                        }
+
+                                                        val migration = resolvedTarget.second
+                                                        if (migration != null && currentPlayingUri == lockedSourceUri) {
+                                                            currentPlayingUri = migration.trackUriString
+                                                            smpSongsById = smpSongsById + (migration.song.id to migration.song)
+                                                            smpCacheRefreshTick++
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        pitchSemi = currentTrackPitchSemi,
+                                        onPitchSemiChange = { newSemi ->
+                                            val clamped = newSemi.coerceIn(-6, 6)
+                                            currentTrackPitchSemi = clamped
+                                            applyTempoAndPitchToPlayer(currentTrackTempo, currentTrackPitchSemi)
+                                            currentPlayingUri?.let { sourceUri ->
+                                                pendingPitchPersistRequest = sourceUri to clamped
+                                                if (trackPitchPersistJob?.isActive == true) return@PlayerScreen
+                                                trackPitchPersistJob = scope.launch {
+                                                    val resolvedTargets = mutableMapOf<String, Pair<String, SmpAutoMigrationResult?>>()
+                                                    while (true) {
+                                                        val request = pendingPitchPersistRequest ?: break
+                                                        pendingPitchPersistRequest = null
+
+                                                        val lockedSourceUri = request.first
+                                                        val semiToSave = request.second
+                                                        val resolvedTarget = resolvedTargets[lockedSourceUri] ?: run {
+                                                            val migration = withContext(Dispatchers.IO) {
+                                                                smpAutoMigration.migrateLegacyTrack(lockedSourceUri)
+                                                            }
+                                                            (migration?.trackUriString ?: lockedSourceUri) to migration
+                                                        }.also {
+                                                            resolvedTargets[lockedSourceUri] = it
+                                                        }
+
+                                                        withContext(Dispatchers.IO) {
+                                                            TrackPitchPrefs.saveSemi(ctx, resolvedTarget.first, semiToSave)
+                                                        }
+
+                                                        val migration = resolvedTarget.second
+                                                        if (migration != null && currentPlayingUri == lockedSourceUri) {
+                                                            currentPlayingUri = migration.trackUriString
+                                                            smpSongsById = smpSongsById + (migration.song.id to migration.song)
+                                                            smpCacheRefreshTick++
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        ensureSmpTrackForLyricsSave = { trackUriString ->
+                                            smpAutoMigration.migrateLegacyTrack(trackUriString)
+                                        },
+                                        onTrackPromotedToSmp = { migration: SmpAutoMigrationResult ->
+                                            currentPlayingUri = migration.trackUriString
+                                            smpSongsById = smpSongsById + (migration.song.id to migration.song)
+                                            smpCacheRefreshTick++
+                                        },
+                                        onRequestShowPlaylist = { selectedTab = BottomTab.QuickPlaylists },
+                                        currentSongId = currentPlayingSongId,
+                                        onOpenArrangementHub = {
+                                            moreNavigationTarget = "arrangement_from_tempo"
+                                            moreNavigationToken += 1
+                                            setTabAndPersist(BottomTab.More, reason = "playerOpenArrangementHub")
+                                        },
+                                        manualTransitionTargetTitle = manualCrossfadeTransitionTitle,
+                                        onManualCrossfadeToNext = { launchManualCrossfadeToNext() },
+                                        onImportGeneratedSmp = autoImportGeneratedSmp,
+                                        requestedNavigationTarget = playerNavigationTarget,
+                                        requestedNavigationToken = playerNavigationToken,
+                                        onOpenWaveform = {
+                                            moreNavigationTarget = "waveform_preview"
+                                            moreNavigationToken += 1
+                                            setTabAndPersist(BottomTab.More, reason = "playerOpenWaveform")
+                                        },
+                                        getPositionMs = { exoPlayer.currentPosition },
+                                        getEffectiveDurationMs = {
+                                            resolveEffectiveDurationMs(
+                                                requestedUri = currentPlayingUri,
+                                                activeUri = exoPlayer.currentMediaItem
+                                                    ?.localConfiguration
+                                                    ?.uri
+                                                    ?.toString()
+                                            )
+                                        },
+                                        seekToMs = { ms -> exoPlayer.seekTo(ms) }
+                                    )
                                 }
 
-                                when (selectedTab) {
+                                val quickPlaylistsPane: @Composable (Modifier) -> Unit = { paneModifier ->
+                                    QuickPlaylistsScreen(
+                                        modifier = paneModifier,
+                                        onPlaySong = { uri, playlistName, color ->
+                                            stopChainPlayback()
+                                            PlaybackCoordinator.peekNextTrack()
+                                                ?.takeIf { armed -> armed.uri == uri }
+                                                ?.let {
+                                                    PlaybackCoordinator.clearNextTrack(
+                                                        reason = "manualPlayMatch"
+                                                    )
+                                                }
+                                            Log.d(
+                                                SMP_PLAY_TRACE_TAG,
+                                                "PLAYLIST_TAP item=$uri playlist=$playlistName"
+                                            )
+                                            SmpLaunchTiming.start(
+                                                source = "playlist_tap",
+                                                requestedItem = uri,
+                                                playlistName = playlistName
+                                            )
+
+                                            when (val target = PlaybackRouter.resolve(uri, playlistName)) {
+
+                                                is PlaybackRouter.Target.Prompter -> {
+                                                    Log.d(
+                                                        SMP_PLAY_TRACE_TAG,
+                                                        "PLAYLIST_TARGET prompter id=${target.id} playlist=$playlistName"
+                                                    )
+                                                    textPrompterId = target.id
+                                                    return@QuickPlaylistsScreen
+                                                }
+
+                                                is PlaybackRouter.Target.Audio,
+                                                is PlaybackRouter.Target.Smp -> {
+                                                    Log.d(
+                                                        SMP_PLAY_TRACE_TAG,
+                                                        "PLAYLIST_TARGET type=${target.javaClass.simpleName} value=$target"
+                                                    )
+                                                    val resolvedTarget = resolvePlaylistAudioTarget(
+                                                        playlistItemKey = uri,
+                                                        playlistName = playlistName,
+                                                        rawTarget = target,
+                                                        showToastOnFailure = true
+                                                    ) ?: run {
+                                                        Log.d(
+                                                            SMP_PLAY_TRACE_TAG,
+                                                            "PLAYLIST_RESOLVED null item=$uri playlist=$playlistName target=$target"
+                                                        )
+                                                        return@QuickPlaylistsScreen
+                                                    }
+                                                    Log.d(
+                                                        SMP_PLAY_TRACE_TAG,
+                                                        "PLAYLIST_RESOLVED uri=${resolvedTarget.uri} playlist=${resolvedTarget.playlist}"
+                                                    )
+                                                    SmpLaunchTiming.markResolvedAudioTarget(
+                                                        uri = resolvedTarget.uri,
+                                                        playlistName = resolvedTarget.playlist,
+                                                        songId = getSmpSongId(uri)
+                                                    )
+                                                    LyricsPerf.startOpen(
+                                                        trackUriString = resolvedTarget.uri,
+                                                        source = "quick_play_tap",
+                                                        playlistName = resolvedTarget.playlist
+                                                    )
+                                                    playlistTapPlayJob?.cancel()
+                                                    playlistTapPlayJob = scope.launch {
+                                                        val now = SystemClock.uptimeMillis()
+                                                        val waitMs = (lastPlaylistTapStartedAtMs + 250L) - now
+                                                        if (waitMs > 0L) delay(waitMs)
+                                                        lastPlaylistTapStartedAtMs = SystemClock.uptimeMillis()
+                                                        playWithCrossfadeInternal(
+                                                            uriString = resolvedTarget.uri,
+                                                            playlistName = resolvedTarget.playlist,
+                                                            playlistItemKey = uri
+                                                        )
+                                                    }
+
+                                                    selectedQuickPlaylist = resolvedTarget.playlist
+                                                    currentLyricsColor = color
+                                                }
+
+                                                is PlaybackRouter.Target.Unknown -> {
+                                                    Log.d(
+                                                        SMP_PLAY_TRACE_TAG,
+                                                        "PLAYLIST_TARGET unknown item=$uri playlist=$playlistName"
+                                                    )
+                                                    // rien
+                                                }
+                                            }
+                                        },
+                                        onPlayFromHere = { visibleQueue, startIndex, playlistName ->
+                                            chainQueue = visibleQueue
+                                            chainIndex = -1
+                                            chainPlaylist = playlistName
+                                            isChaining = true
+                                            val resolvedStart = nextPlayableIndexAtOrAfter(visibleQueue, startIndex)
+                                            if (resolvedStart == null || !playChainFrom(resolvedStart)) {
+                                                stopChainPlayback()
+                                            }
+                                        },
+                                        onArmChainFromCurrent = { visibleQueue, currentIndex, playlistName ->
+                                            val resolvedCurrent = nextPlayableIndexAtOrAfter(visibleQueue, currentIndex)
+                                            if (resolvedCurrent == null) {
+                                                stopChainPlayback()
+                                            } else {
+                                                chainQueue = visibleQueue
+                                                chainIndex = resolvedCurrent
+                                                chainPlaylist = playlistName
+                                                isChaining = true
+                                            }
+                                        },
+                                        refreshKey = refreshKey,
+                                        openPrompterSignal = openPrompterSignal,
+                                        libraryLoadedSignal = indexAll.size,
+                                        playlistsReady = playlistsReady,
+                                        nextChainedUri = nextChainedUri,
+                                        nextTrackUri = nextTrack?.uri,
+                                        isPlaying = isPlaying,
+                                        currentPlayingUri = currentPlayingUri,
+                                        currentPlayingPlaylist = currentPlayingPlaylist,
+                                        currentPlayingPlaylistItemKey = currentPlayingPlaylistItemKey,
+                                        selectedPlaylist = selectedQuickPlaylist,
+                                        openedPlaylist = openedPlaylist,
+                                        isRestoringSession = isRestoringSession,
+                                        onSelectedPlaylistChange = { name ->
+                                            setQuickPlaylistAndPersist(name, reason = "quickPlaylistSelect")
+                                        },
+                                        onPlaylistColorChange = { _ -> currentLyricsColor = Color.White },
+                                        onSetNextTrack = { uri, title, playlist ->
+                                            PlaybackCoordinator.setNextTrack(uri, title, playlist)
+                                        },
+                                        onClearNextTrack = {
+                                            PlaybackCoordinator.clearNextTrack(reason = "ui")
+                                        },
+                                        onConsumeOpenPrompterSignal = { openPrompterSignal = 0 },
+                                        onRequestShowPlayer = {
+                                            setTabAndPersist(BottomTab.Player, reason = "quickPlaylistShowPlayer")
+                                        },
+                                        hardwareCommandToken = quickHardwareCommandToken,
+                                        hardwareCommand = quickHardwareCommand,
+                                        hardwareReturnToCurrentToken = quickHardwareReturnToken,
+                                        hardwareReturnCommand = quickHardwareReturnCommand,
+                                        onAddTrackToPlaylist = { playlistName ->
+                                            pendingPlaylistTrackTarget = playlistName
+                                            pickPlaylistTrackLauncher.launch(
+                                                arrayOf(
+                                                    "audio/*",
+                                                    "application/zip",
+                                                    "application/x-zip-compressed",
+                                                    "application/octet-stream",
+                                                    "*/*"
+                                                )
+                                            )
+                                        },
+                                        searchToggleSignal = playlistSearchToggleSignal,
+                                        smpSongsCache = smpSongsById
+                                    )
+                                }
+
+                                val useTabletSplitLiveLayout =
+                                    adaptiveTokens.tabletMode &&
+                                        adaptiveTokens.isLandscape &&
+                                        tabletExperimentalModeEnabled &&
+                                        (selectedTab is BottomTab.Player || selectedTab is BottomTab.QuickPlaylists)
+
+                                if (useTabletSplitLiveLayout) {
+                                    Row(modifier = contentModifier.fillMaxSize()) {
+                                        // Experimental tablet live layout; each pane reuses the existing screen contract.
+                                        quickPlaylistsPane(
+                                            Modifier
+                                                .weight(0.38f)
+                                                .fillMaxHeight()
+                                        )
+                                        playerPane(
+                                            Modifier
+                                                .weight(0.62f)
+                                                .fillMaxHeight()
+                                        )
+                                    }
+                                } else when (selectedTab) {
 
                                     is BottomTab.Home -> Box(
                                         modifier = contentModifier.fillMaxSize()
