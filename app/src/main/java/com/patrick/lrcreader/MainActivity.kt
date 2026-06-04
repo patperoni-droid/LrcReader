@@ -3944,18 +3944,20 @@ class MainActivity : AppCompatActivity() {
 
                                 val tabletSplitBaseEnabled =
                                     adaptiveTokens.tabletMode &&
-                                        adaptiveTokens.isLandscape &&
                                         tabletExperimentalModeEnabled
                                 val selectedTabAllowsTabletSplit =
                                     selectedTab is BottomTab.Player || selectedTab is BottomTab.QuickPlaylists
-                                val useTabletSplitLiveLayout =
+                                val splitEligibleByTabletMode =
                                     tabletSplitBaseEnabled && selectedTabAllowsTabletSplit
+                                val useTabletSplitLiveLayout =
+                                    splitEligibleByTabletMode
 
                                 LaunchedEffect(
                                     adaptiveTokens.tabletMode,
                                     adaptiveTokens.isLandscape,
                                     tabletExperimentalModeEnabled,
                                     selectedTab,
+                                    splitEligibleByTabletMode,
                                     useTabletSplitLiveLayout
                                 ) {
                                     Log.d(
@@ -3964,6 +3966,7 @@ class MainActivity : AppCompatActivity() {
                                             "isLandscape=${adaptiveTokens.isLandscape} " +
                                             "tabletExperimentalModeEnabled=$tabletExperimentalModeEnabled " +
                                             "selectedTab=${tabKeyOf(selectedTab)} " +
+                                            "splitEligibleByTabletMode=$splitEligibleByTabletMode " +
                                             "splitEnabled=$useTabletSplitLiveLayout"
                                     )
                                 }
@@ -4635,7 +4638,6 @@ class MainActivity : AppCompatActivity() {
                                             if (
                                                 enabled &&
                                                 adaptiveTokens.tabletMode &&
-                                                adaptiveTokens.isLandscape &&
                                                 selectedTab is BottomTab.More
                                             ) {
                                                 setTabAndPersist(
