@@ -1,5 +1,6 @@
 package com.patrick.lrcreader.ui.adaptive
 
+import android.content.res.Configuration
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.Dp
@@ -21,7 +22,9 @@ data class SmpAdaptiveTokens(
 fun rememberSmpAdaptiveTokens(): SmpAdaptiveTokens {
     val configuration = LocalConfiguration.current
     val isTablet = configuration.screenWidthDp >= 600
-    val isLandscape = configuration.screenWidthDp > configuration.screenHeightDp
+    val isLandscape =
+        configuration.orientation == Configuration.ORIENTATION_LANDSCAPE ||
+            configuration.screenWidthDp > configuration.screenHeightDp
 
     return if (isTablet) {
         SmpAdaptiveTokens(
