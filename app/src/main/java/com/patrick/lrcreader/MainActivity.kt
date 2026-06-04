@@ -3993,16 +3993,20 @@ class MainActivity : AppCompatActivity() {
                                 if (useTabletSplitLiveLayout) {
                                     Row(modifier = contentModifier.fillMaxSize()) {
                                         // Experimental tablet live layout; each pane reuses the existing screen contract.
-                                        quickPlaylistsPane(
+                                        Box(
                                             Modifier
                                                 .weight(0.38f)
                                                 .fillMaxHeight()
-                                        )
-                                        playerPane(
+                                        ) {
+                                            quickPlaylistsPane(Modifier.fillMaxSize())
+                                        }
+                                        Box(
                                             Modifier
                                                 .weight(0.62f)
                                                 .fillMaxHeight()
-                                        )
+                                        ) {
+                                            playerPane(Modifier.fillMaxSize())
+                                        }
                                     }
                                 } else when (selectedTab) {
 
