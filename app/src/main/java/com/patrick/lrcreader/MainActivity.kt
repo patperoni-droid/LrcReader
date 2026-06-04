@@ -4,6 +4,7 @@ package com.patrick.lrcreader.exo
 
 
 import android.database.Cursor
+import android.content.pm.ActivityInfo
 import android.content.Intent
 import android.provider.OpenableColumns
 import java.io.File
@@ -1154,6 +1155,16 @@ class MainActivity : AppCompatActivity() {
                 val adaptiveTokens = rememberSmpAdaptiveTokens()
                 var tabletExperimentalModeEnabled by rememberSaveable {
                     mutableStateOf(TabletExperimentalModePrefs.isEnabled(ctx))
+                }
+                LaunchedEffect(adaptiveTokens.tabletMode, tabletExperimentalModeEnabled) {
+                    requestedOrientation = if (
+                        adaptiveTokens.tabletMode &&
+                        tabletExperimentalModeEnabled
+                    ) {
+                        ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                    } else {
+                        ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                    }
                 }
                 val tabStateHolder = rememberSaveableStateHolder()
                 var libraryTabReselectSignal by remember { mutableIntStateOf(0) }
