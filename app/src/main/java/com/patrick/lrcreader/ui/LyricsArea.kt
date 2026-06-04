@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.core.DisplayPrefs
 import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.core.LrcLine
+import com.patrick.lrcreader.ui.adaptive.rememberSmpAdaptiveTokens
 
 @Composable
 fun LyricsAreaLazy(
@@ -45,7 +46,8 @@ fun LyricsAreaLazy(
     highlightColor: Color,
     onLineClick: (index: Int, timeMs: Long) -> Unit
 ) {
-    val lyricSizes = lyricsTextSizes(lyricsTextSize)
+    val adaptiveTokens = rememberSmpAdaptiveTokens()
+    val lyricSizes = lyricsTextSizes(lyricsTextSize, adaptiveTokens.lyricsFontBoost)
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -67,7 +69,10 @@ fun LyricsAreaLazy(
             modifier = Modifier.fillMaxSize(),
             state = listState,
             // ✅ grosse marge haut/bas pour permettre le centrage
-            contentPadding = PaddingValues(top = 220.dp, bottom = 220.dp)
+            contentPadding = PaddingValues(
+                top = adaptiveTokens.lyricsVerticalContentPadding,
+                bottom = adaptiveTokens.lyricsVerticalContentPadding
+            )
         ) {
             itemsIndexed(parsedLines, key = { idx, _ -> idx }) { index, line ->
                 val isActiveLine = index == currentLrcIndex
@@ -108,7 +113,7 @@ fun LyricsAreaLazy(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 10.dp, horizontal = 8.dp)
+                        .padding(vertical = 10.dp, horizontal = adaptiveTokens.lyricsHorizontalPadding)
                         .clickable { onLineClick(index, line.timeMs) },
                     contentAlignment = Alignment.Center
                 ) {
@@ -138,34 +143,34 @@ private data class LyricsTextSizes(
     val lineHeightSp: Int
 )
 
-private fun lyricsTextSizes(size: DisplayPrefs.LyricsTextSize): LyricsTextSizes {
+private fun lyricsTextSizes(size: DisplayPrefs.LyricsTextSize, fontBoost: Int): LyricsTextSizes {
     return when (size) {
         DisplayPrefs.LyricsTextSize.SMALL -> LyricsTextSizes(
-            defaultSp = 21,
-            nextSp = 22,
-            activeSp = 23,
-            lineHeightSp = 26
+            defaultSp = 21 + fontBoost,
+            nextSp = 22 + fontBoost,
+            activeSp = 23 + fontBoost,
+            lineHeightSp = 26 + fontBoost
         )
 
         DisplayPrefs.LyricsTextSize.NORMAL -> LyricsTextSizes(
-            defaultSp = 25,
-            nextSp = 26,
-            activeSp = 27,
-            lineHeightSp = 30
+            defaultSp = 25 + fontBoost,
+            nextSp = 26 + fontBoost,
+            activeSp = 27 + fontBoost,
+            lineHeightSp = 30 + fontBoost
         )
 
         DisplayPrefs.LyricsTextSize.LARGE -> LyricsTextSizes(
-            defaultSp = 28,
-            nextSp = 29,
-            activeSp = 30,
-            lineHeightSp = 34
+            defaultSp = 28 + fontBoost,
+            nextSp = 29 + fontBoost,
+            activeSp = 30 + fontBoost,
+            lineHeightSp = 34 + fontBoost
         )
 
         DisplayPrefs.LyricsTextSize.EXTRA_LARGE -> LyricsTextSizes(
-            defaultSp = 31,
-            nextSp = 32,
-            activeSp = 33,
-            lineHeightSp = 38
+            defaultSp = 31 + fontBoost,
+            nextSp = 32 + fontBoost,
+            activeSp = 33 + fontBoost,
+            lineHeightSp = 38 + fontBoost
         )
     }
 }

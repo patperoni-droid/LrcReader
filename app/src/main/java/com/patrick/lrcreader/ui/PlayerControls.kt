@@ -19,6 +19,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.patrick.lrcreader.exo.R
+import com.patrick.lrcreader.ui.adaptive.rememberSmpAdaptiveTokens
 
 @Composable
 fun PlayerControls(
@@ -27,6 +28,8 @@ fun PlayerControls(
     onPrev: () -> Unit,
     onNext: () -> Unit
 ) {
+    val adaptiveTokens = rememberSmpAdaptiveTokens()
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -34,30 +37,39 @@ fun PlayerControls(
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        IconButton(onClick = onPrev) {
+        IconButton(
+            onClick = onPrev,
+            modifier = Modifier.size(adaptiveTokens.playerControlButtonSize)
+        ) {
             Icon(
                 imageVector = Icons.Filled.SkipPrevious,
                 contentDescription = stringResource(R.string.player_cd_prev),
                 tint = Color.White,
-                modifier = Modifier.size(48.dp)
+                modifier = Modifier.size(adaptiveTokens.playerControlButtonSize)
             )
         }
 
-        IconButton(onClick = onPlayPause) {
+        IconButton(
+            onClick = onPlayPause,
+            modifier = Modifier.size(adaptiveTokens.playerPrimaryButtonSize)
+        ) {
             Icon(
                 imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                 contentDescription = stringResource(R.string.player_cd_play_pause),
                 tint = Color.White,
-                modifier = Modifier.size(64.dp)
+                modifier = Modifier.size(adaptiveTokens.playerPrimaryButtonSize)
             )
         }
 
-        IconButton(onClick = onNext) {
+        IconButton(
+            onClick = onNext,
+            modifier = Modifier.size(adaptiveTokens.playerControlButtonSize)
+        ) {
             Icon(
                 imageVector = Icons.Filled.SkipNext,
                 contentDescription = stringResource(R.string.player_cd_next),
                 tint = Color.White,
-                modifier = Modifier.size(48.dp)
+                modifier = Modifier.size(adaptiveTokens.playerControlButtonSize)
             )
         }
     }

@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import android.content.Context
 import com.patrick.lrcreader.ui.theme.DarkBlueGradientBackground
+import com.patrick.lrcreader.ui.adaptive.rememberSmpAdaptiveTokens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -331,7 +332,8 @@ fun QuickPlaylistsScreen(
     }
     val searchFocusRequester = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
-    val rowHeight = 56.dp
+    val adaptiveTokens = rememberSmpAdaptiveTokens()
+    val rowHeight = adaptiveTokens.playlistRowHeight
     val rowHeightPx = with(LocalDensity.current) { rowHeight.toPx() }
     val headerDropPaddingPx = with(LocalDensity.current) { 12.dp.toPx() }
     var draggingUri by remember { mutableStateOf<String?>(null) }
