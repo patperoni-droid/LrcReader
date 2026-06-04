@@ -1087,6 +1087,7 @@
     <string name="more_beta_mode_pro_enabled">Pro mode enabled</string>
     <string name="more_show_old_world_library">Show the old world in the library</string>
     <string name="more_show_light_indicator">Show DMX indicator</string>
+    <string name="more_tablet_experimental_mode">Experimental tablet mode</string>
     <string name="more_show_dj_mode_help">Shows the DJ tab for the separate DJ player, independent from the main Player.</string>
     <string name="more_show_main_bus_help">Shows the Main Bus for controlling the app’s global audio levels.</string>
     <string name="more_show_light_indicator_help">Shows a visual indicator for light/DMX activity during live use.</string>

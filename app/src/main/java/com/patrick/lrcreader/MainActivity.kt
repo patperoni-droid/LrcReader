@@ -89,6 +89,7 @@ import com.patrick.lrcreader.smp.SmpSecureImportPipeline
 import com.patrick.lrcreader.smp.SmpUserArchiveRebuilder
 import com.patrick.lrcreader.smp.SmpWorkspaceArchiveStore
 import com.patrick.lrcreader.ui.*
+import com.patrick.lrcreader.ui.adaptive.rememberSmpAdaptiveTokens
 import com.patrick.lrcreader.ui.library.LibraryScreen
 import com.patrick.lrcreader.ui.library.ensureWorkspaceLibraryFolders
 import com.patrick.lrcreader.ui.locallink.LocalLinkExperimentalSenderRuntime
@@ -1148,6 +1149,10 @@ class MainActivity : AppCompatActivity() {
                 }
                 var showDjTab by rememberSaveable { mutableStateOf(initialShowDjTab) }
                 var showMainBusTab by rememberSaveable { mutableStateOf(initialShowMainBusTab) }
+                val adaptiveTokens = rememberSmpAdaptiveTokens()
+                var tabletExperimentalModeEnabled by rememberSaveable {
+                    mutableStateOf(TabletExperimentalModePrefs.isEnabled(ctx))
+                }
                 val tabStateHolder = rememberSaveableStateHolder()
                 var libraryTabReselectSignal by remember { mutableIntStateOf(0) }
 
@@ -3606,6 +3611,15 @@ class MainActivity : AppCompatActivity() {
                                         }
                                     }
                                 )
+                                if (
+                                    adaptiveTokens.tabletMode &&
+                                    adaptiveTokens.isLandscape &&
+                                    tabletExperimentalModeEnabled
+                                ) {
+                                    // TODO(tablet): render the future two-panel live interface here.
+                                    // Current tab UI intentionally remains the fallback for this patch.
+                                }
+
                                 when (selectedTab) {
 
                                     is BottomTab.Home -> Box(
@@ -4247,11 +4261,15 @@ class MainActivity : AppCompatActivity() {
                                         requestedRouteToken = moreNavigationToken,
                                         showDjTab = showDjTab,
                                         showMainBusTab = showMainBusTab,
+                                        tabletExperimentalModeEnabled = tabletExperimentalModeEnabled,
                                         onShowDjTabChange = { enabled ->
                                             showDjTab = enabled
                                         },
                                         onShowMainBusTabChange = { enabled ->
                                             showMainBusTab = enabled
+                                        },
+                                        onTabletExperimentalModeChange = { enabled ->
+                                            tabletExperimentalModeEnabled = enabled
                                         },
                                         onAfterImport = { refreshKey++ },
                                         onAfterSmpRestore = { importedCount, lastImportedSongId ->

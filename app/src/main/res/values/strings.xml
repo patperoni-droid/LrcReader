@@ -1095,6 +1095,7 @@
     <string name="more_beta_mode_pro_enabled">Mode Pro activé</string>
     <string name="more_show_old_world_library">Afficher l’ancien monde dans la bibliothèque</string>
     <string name="more_show_light_indicator">Afficher le témoin DMX</string>
+    <string name="more_tablet_experimental_mode">Mode tablette expérimental</string>
     <string name="more_show_dj_mode_help">Affiche l’onglet DJ pour accéder au lecteur DJ séparé du Player principal.</string>
     <string name="more_show_main_bus_help">Affiche le Bus principal pour contrôler les niveaux globaux audio de l’application.</string>
     <string name="more_show_light_indicator_help">Affiche un témoin visuel pour suivre l’activité lumière/DMX pendant l’utilisation live.</string>

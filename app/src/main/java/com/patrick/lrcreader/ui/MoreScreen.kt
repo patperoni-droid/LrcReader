@@ -75,6 +75,7 @@ import com.patrick.lrcreader.core.ManualCrossfadePrefs
 import com.patrick.lrcreader.core.PlaylistRepository
 import com.patrick.lrcreader.core.PlayerLaunchMode
 import com.patrick.lrcreader.core.PlayerLaunchPrefs
+import com.patrick.lrcreader.core.TabletExperimentalModePrefs
 import com.patrick.lrcreader.core.TextSongRepository
 import com.patrick.lrcreader.core.UiEntryPrefs
 import com.patrick.lrcreader.core.WorkspaceResolver
@@ -97,6 +98,7 @@ import com.patrick.lrcreader.smp.SmpLibraryScanner
 import com.patrick.lrcreader.smp.SmpUserArchiveRebuilder
 import com.patrick.lrcreader.smp.SmpUserArchiveCandidate
 import com.patrick.lrcreader.smp.SmpWorkspaceArchiveStore
+import com.patrick.lrcreader.ui.adaptive.rememberSmpAdaptiveTokens
 import com.patrick.lrcreader.ui.locallink.LocalLinkReceiverScreen
 import com.patrick.lrcreader.ui.locallink.LocalLinkTestSenderScreen
 import com.patrick.lrcreader.ui.sync.SmpSyncDebugScreen
@@ -131,8 +133,10 @@ fun MoreScreen(
     requestedRouteToken: Int = 0,
     showDjTab: Boolean = false,
     showMainBusTab: Boolean = false,
+    tabletExperimentalModeEnabled: Boolean = false,
     onShowDjTabChange: (Boolean) -> Unit = {},
     onShowMainBusTabChange: (Boolean) -> Unit = {},
+    onTabletExperimentalModeChange: (Boolean) -> Unit = {},
     onAfterImport: (BackupManager.LastPlayed?) -> Unit = {},
     onAfterSmpRestore: (importedCount: Int, lastImportedSongId: String?) -> Unit = { _, _ -> },
     onOpenTuner: () -> Unit = {},     // callback pour l'accordeur
@@ -167,8 +171,10 @@ fun MoreScreen(
             onOpenWaveformPreview = { navigate("waveform_preview") },
             showDjTab = showDjTab,
             showMainBusTab = showMainBusTab,
+            tabletExperimentalModeEnabled = tabletExperimentalModeEnabled,
             onShowDjTabChange = onShowDjTabChange,
             onShowMainBusTabChange = onShowMainBusTabChange,
+            onTabletExperimentalModeChange = onTabletExperimentalModeChange,
             onOpenTuner = onOpenTuner,
             onAfterImport = onAfterImport,
             onAfterSmpRestore = onAfterSmpRestore
@@ -361,14 +367,17 @@ private fun MoreRootScreen(
     onOpenWaveformPreview: () -> Unit,
     showDjTab: Boolean,
     showMainBusTab: Boolean,
+    tabletExperimentalModeEnabled: Boolean,
     onShowDjTabChange: (Boolean) -> Unit,
     onShowMainBusTabChange: (Boolean) -> Unit,
+    onTabletExperimentalModeChange: (Boolean) -> Unit,
     onOpenTuner: () -> Unit,
     onAfterImport: (BackupManager.LastPlayed?) -> Unit,
     onAfterSmpRestore: (importedCount: Int, lastImportedSongId: String?) -> Unit
 ) {
     val context = LocalContext.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val adaptiveTokens = rememberSmpAdaptiveTokens()
     var exportLiveSongsTreeUri by remember {
         mutableStateOf(MoreLiveSongsExportPrefs.getTreeUri(context))
     }
@@ -427,6 +436,7 @@ private fun MoreRootScreen(
     }
     var showDjMode by remember { mutableStateOf(showDjTab) }
     var showMainBusMode by remember { mutableStateOf(showMainBusTab) }
+    var tabletExperimentalMode by remember { mutableStateOf(tabletExperimentalModeEnabled) }
     var betaCode by remember { mutableStateOf("") }
     var settingsHelpTitle by remember { mutableStateOf<String?>(null) }
     var settingsHelpText by remember { mutableStateOf<String?>(null) }
@@ -442,6 +452,10 @@ private fun MoreRootScreen(
 
     androidx.compose.runtime.LaunchedEffect(showMainBusTab) {
         showMainBusMode = showMainBusTab
+    }
+
+    androidx.compose.runtime.LaunchedEffect(tabletExperimentalModeEnabled) {
+        tabletExperimentalMode = tabletExperimentalModeEnabled
     }
 
     val currentLanguageLabel = when (selectedLanguageTag) {
@@ -967,6 +981,18 @@ private fun MoreRootScreen(
                             onShowMainBusTabChange(enabled)
                         }
                     )
+
+                    if (adaptiveTokens.tabletMode) {
+                        SwitchSettingItem(
+                            label = stringResource(R.string.more_tablet_experimental_mode),
+                            checked = tabletExperimentalMode,
+                            onCheckedChange = { enabled ->
+                                tabletExperimentalMode = enabled
+                                TabletExperimentalModePrefs.setEnabled(context, enabled)
+                                onTabletExperimentalModeChange(enabled)
+                            }
+                        )
+                    }
 
                     // 🔁 Retour auto vers la playlist (ON/OFF)
                     val autoReturnLabel = stringResource(R.string.more_auto_return_playlist)
