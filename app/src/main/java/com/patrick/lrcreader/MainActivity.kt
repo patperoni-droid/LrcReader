@@ -3975,7 +3975,9 @@ class MainActivity : AppCompatActivity() {
                                             )
                                         },
                                         searchToggleSignal = playlistSearchToggleSignal,
-                                        smpSongsCache = smpSongsById
+                                        smpSongsCache = smpSongsById,
+                                        compactTabletLayout = adaptiveTokens.tabletMode &&
+                                            tabletExperimentalModeEnabled
                                     )
                                 }
 

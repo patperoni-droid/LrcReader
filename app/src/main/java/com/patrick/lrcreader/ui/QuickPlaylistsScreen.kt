@@ -188,7 +188,8 @@ fun QuickPlaylistsScreen(
     onAddTrackToPlaylist: (String) -> Unit = {},
     searchToggleSignal: Int = 0,
     smpSongsCache: Map<String, com.patrick.lrcreader.smp.SongUnit> = emptyMap(),
-    indexAll: List<LibraryIndexCache.CachedEntry> = emptyList() // ✅ propre + default
+    indexAll: List<LibraryIndexCache.CachedEntry> = emptyList(), // ✅ propre + default
+    compactTabletLayout: Boolean = false
 ) {
 
     val context = LocalContext.current
@@ -333,7 +334,21 @@ fun QuickPlaylistsScreen(
     val searchFocusRequester = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
     val adaptiveTokens = rememberSmpAdaptiveTokens()
-    val rowHeight = adaptiveTokens.playlistRowHeight
+    val rowHeight = if (compactTabletLayout) 52.dp else adaptiveTokens.playlistRowHeight
+    val screenPadding = if (compactTabletLayout) 8.dp else 16.dp
+    val rackPadding = if (compactTabletLayout) 4.dp else 6.dp
+    val rowOuterVerticalPadding = if (compactTabletLayout) 2.dp else 4.dp
+    val rowHorizontalPadding = if (compactTabletLayout) 8.dp else 12.dp
+    val songRowHorizontalPadding = if (compactTabletLayout) 4.dp else 6.dp
+    val titleFontSize = if (compactTabletLayout) 13.sp else 14.sp
+    val secondaryFontSize = if (compactTabletLayout) 10.sp else 12.sp
+    val groupMetaFontSize = if (compactTabletLayout) 10.sp else 11.sp
+    val badgeFontSize = if (compactTabletLayout) 9.sp else 10.sp
+    val dragHandleSize = if (compactTabletLayout) 30.dp else 34.dp
+    val markerHeight = if (compactTabletLayout) 22.dp else 28.dp
+    val groupAccentHeight = if (compactTabletLayout) 22.dp else 26.dp
+    val rowMenuSize = if (compactTabletLayout) 30.dp else 32.dp
+    val topSpacerHeight = if (compactTabletLayout) 6.dp else 10.dp
     val rowHeightPx = with(LocalDensity.current) { rowHeight.toPx() }
     val headerDropPaddingPx = with(LocalDensity.current) { 12.dp.toPx() }
     var draggingUri by remember { mutableStateOf<String?>(null) }
@@ -1194,7 +1209,7 @@ fun QuickPlaylistsScreen(
             modifier = modifier
                 .fillMaxSize()
                 .semantics { testTag = "quick_playlists_root" }
-                .padding(16.dp)
+                .padding(screenPadding)
         ) {
             // ─── HEADER encadré + flèche + icônes ───────────────────────────────
             Row(
@@ -1433,7 +1448,7 @@ fun QuickPlaylistsScreen(
                     }
                 )
 
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(topSpacerHeight))
             }
 
             if (isMiniTunerVisible) {
@@ -1454,7 +1469,7 @@ fun QuickPlaylistsScreen(
                     }
                 )
 
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(topSpacerHeight))
             }
 
             if (!internalSelected.isNullOrBlank() && songs.isEmpty() && (isRestoringSession || !playlistsReady)) {
@@ -1492,7 +1507,7 @@ fun QuickPlaylistsScreen(
                     .fillMaxWidth()
                     .background(Color(0xFF101010), RoundedCornerShape(18.dp))
                     .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(18.dp))
-                    .padding(6.dp)
+                    .padding(rackPadding)
             ) {
                 if (internalSelected == null) {
                     Box(
@@ -1523,7 +1538,7 @@ fun QuickPlaylistsScreen(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .height(rowHeight)
-                                            .padding(vertical = 4.dp, horizontal = 2.dp)
+                                            .padding(vertical = rowOuterVerticalPadding, horizontal = 2.dp)
                                             .background(Color(0xFF181818), RoundedCornerShape(12.dp))
                                             .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(12.dp))
                                             .padding(horizontal = 10.dp),
@@ -1532,7 +1547,7 @@ fun QuickPlaylistsScreen(
                                         Text(
                                             text = quickPlaylistFallbackName(uriString).uppercase(),
                                             color = Color.White.copy(alpha = 0.65f),
-                                            fontSize = 13.sp,
+                                            fontSize = if (compactTabletLayout) 12.sp else 13.sp,
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis,
                                             modifier = Modifier.weight(1f)
@@ -1613,7 +1628,10 @@ fun QuickPlaylistsScreen(
                                 Column(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(vertical = 3.dp, horizontal = 2.dp)
+                                        .padding(
+                                            vertical = if (compactTabletLayout) 2.dp else 3.dp,
+                                            horizontal = 2.dp
+                                        )
                                         .background(familyBackground, rowShape)
                                         .border(
                                             width = if (isCurrentPlaying) 2.dp else 1.dp,
@@ -1631,7 +1649,7 @@ fun QuickPlaylistsScreen(
                                         Text(
                                             text = if (isExpanded) "▼" else "▶",
                                             color = currentListColor,
-                                            fontSize = 14.sp,
+                                            fontSize = titleFontSize,
                                             modifier = Modifier
                                                 .width(28.dp)
                                                 .clickable {
@@ -1645,7 +1663,7 @@ fun QuickPlaylistsScreen(
                                         Text(
                                             text = displayTitle.uppercase(),
                                             color = familyTitleColor,
-                                            fontSize = 14.sp,
+                                            fontSize = titleFontSize,
                                             fontWeight = if (isCurrentPlaying) FontWeight.SemiBold else FontWeight.Normal,
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis,
@@ -1663,7 +1681,7 @@ fun QuickPlaylistsScreen(
                                             Text(
                                                 text = stringResource(R.string.quickplaylists_badge_next_forced),
                                                 color = Color.White,
-                                                fontSize = 10.sp,
+                                                fontSize = badgeFontSize,
                                                 modifier = Modifier
                                                     .padding(end = 6.dp)
                                                     .background(Color(0xFFD32F2F), RoundedCornerShape(999.dp))
@@ -2084,11 +2102,11 @@ fun QuickPlaylistsScreen(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .height(rowHeight)
-                                        .padding(vertical = 4.dp, horizontal = 2.dp)
+                                        .padding(vertical = rowOuterVerticalPadding, horizontal = 2.dp)
                                         .clip(RoundedCornerShape(10.dp))
                                         .background(rowBackground)
                                         .border(1.dp, rowBorder, RoundedCornerShape(10.dp))
-                                        .padding(horizontal = 12.dp),
+                                        .padding(horizontal = rowHorizontalPadding),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(
@@ -2096,7 +2114,7 @@ fun QuickPlaylistsScreen(
                                         contentDescription = stringResource(R.string.common_cd_move),
                                         tint = dragTint,
                                         modifier = Modifier
-                                            .size(34.dp)
+                                            .size(dragHandleSize)
                                             .padding(end = 6.dp)
                                             .alpha(0.9f)
                                             .then(dragHandleModifier(uriString))
@@ -2159,7 +2177,7 @@ fun QuickPlaylistsScreen(
                                         Text(
                                             text = groupTitle,
                                             color = headerText,
-                                            fontSize = 14.sp,
+                                            fontSize = titleFontSize,
                                             fontWeight = FontWeight.SemiBold,
                                             maxLines = 1,
                                             modifier = Modifier.weight(1f)
@@ -2167,7 +2185,7 @@ fun QuickPlaylistsScreen(
                                         Text(
                                             text = groupMetaText,
                                             color = headerMuted,
-                                            fontSize = 11.sp
+                                            fontSize = groupMetaFontSize
                                         )
                                         if (isDropTargetHeader) {
                                             Box(
@@ -2184,7 +2202,7 @@ fun QuickPlaylistsScreen(
                                                 Text(
                                                     text = stringResource(R.string.quickplaylists_drop_here),
                                                     color = Color.White,
-                                                    fontSize = 10.sp,
+                                                    fontSize = badgeFontSize,
                                                     fontWeight = FontWeight.Medium
                                                 )
                                             }
@@ -2194,7 +2212,7 @@ fun QuickPlaylistsScreen(
                                     Text(
                                         text = if (isCollapsed) "▶" else "▼",
                                         color = headerChevron,
-                                        fontSize = 16.sp,
+                                        fontSize = if (compactTabletLayout) 14.sp else 16.sp,
                                         modifier = Modifier.padding(end = 4.dp)
                                     )
 
@@ -2203,7 +2221,7 @@ fun QuickPlaylistsScreen(
 
                                         Box(
                                             modifier = Modifier
-                                                .size(32.dp)
+                                                .size(rowMenuSize)
                                                 .border(
                                                     width = 1.dp,
                                                     color = badgeBorder,
@@ -2427,7 +2445,7 @@ fun QuickPlaylistsScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(rowHeight)
-                                    .padding(vertical = 4.dp, horizontal = 2.dp)
+                                    .padding(vertical = rowOuterVerticalPadding, horizontal = 2.dp)
                                     .background(
                                         color = rowBaseBackground,
                                         shape = rowShape
@@ -2446,7 +2464,7 @@ fun QuickPlaylistsScreen(
                                         color = rowBorderColor,
                                         shape = rowShape
                                     )
-                                    .padding(horizontal = 6.dp),
+                                    .padding(horizontal = songRowHorizontalPadding),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 if (isSelected) {
@@ -2454,7 +2472,7 @@ fun QuickPlaylistsScreen(
                                         modifier = Modifier
                                             .padding(end = 8.dp)
                                             .width(4.dp)
-                                            .height(28.dp)
+                                            .height(markerHeight)
                                             .clip(RoundedCornerShape(999.dp))
                                             .background(selectedMarkerColor)
                                     )
@@ -2464,7 +2482,7 @@ fun QuickPlaylistsScreen(
                                         modifier = Modifier
                                             .padding(end = 8.dp)
                                             .width(3.dp)
-                                            .height(26.dp)
+                                            .height(groupAccentHeight)
                                             .clip(RoundedCornerShape(999.dp))
                                             .background(Color(0xFFFFFDE7).copy(alpha = 0.9f))
                                     )
@@ -2474,7 +2492,7 @@ fun QuickPlaylistsScreen(
                                     contentDescription = stringResource(R.string.common_cd_move),
                                     tint = if (isPlayed) Color(0xFF9E9E9E) else Color.White,
                                     modifier = Modifier
-                                        .size(34.dp)
+                                        .size(dragHandleSize)
                                         .padding(end = 6.dp)
                                         .alpha(if (isPlayed) 0.6f else 1f)
                                         .then(dragHandleModifier(uriString))
@@ -2484,7 +2502,7 @@ fun QuickPlaylistsScreen(
                                         modifier = Modifier
                                             .padding(end = 8.dp)
                                             .width(3.dp)
-                                            .height(26.dp)
+                                            .height(groupAccentHeight)
                                             .clip(RoundedCornerShape(999.dp))
                                             .background(if (isInsideActivePlayingGroup) activeGroupAccent else groupAccent)
                                     )
@@ -2570,7 +2588,7 @@ fun QuickPlaylistsScreen(
                                     Text(
                                         text = (prefix + displayName).uppercase(),
                                         color = titleColor,
-                                        fontSize = 14.sp,
+                                        fontSize = titleFontSize,
                                         modifier = Modifier.weight(1f)
                                     )
                                     if (isPlayed) {
@@ -2578,7 +2596,7 @@ fun QuickPlaylistsScreen(
                                         Text(
                                             text = "✔",
                                             color = Color(0xFFD0D0D0),
-                                            fontSize = 12.sp
+                                            fontSize = secondaryFontSize
                                         )
                                     }
                                 }
@@ -2597,7 +2615,7 @@ fun QuickPlaylistsScreen(
                                         Text(
                                             text = stringResource(R.string.quickplaylists_badge_next_forced),
                                             color = Color.White,
-                                            fontSize = 10.sp
+                                            fontSize = badgeFontSize
                                         )
                                     }
                                 } else if (isChainedNext) {
@@ -2614,7 +2632,7 @@ fun QuickPlaylistsScreen(
                                         Text(
                                             text = stringResource(R.string.quickplaylists_badge_next),
                                             color = Color(0xFF111111),
-                                            fontSize = 10.sp
+                                            fontSize = badgeFontSize
                                         )
                                     }
                                 }
@@ -2625,7 +2643,7 @@ fun QuickPlaylistsScreen(
 
                                     Box(
                                         modifier = Modifier
-                                            .size(32.dp)
+                                            .size(rowMenuSize)
                                             .border(
                                                 width = 1.dp,
                                                 color = if (isPlayed) playedTextColor else currentListColor,
