@@ -3797,7 +3797,9 @@ class MainActivity : AppCompatActivity() {
                                                     ?.toString()
                                             )
                                         },
-                                        seekToMs = { ms -> exoPlayer.seekTo(ms) }
+                                        seekToMs = { ms -> exoPlayer.seekTo(ms) },
+                                        compactTabletLayout = adaptiveTokens.tabletMode &&
+                                            tabletExperimentalModeEnabled
                                     )
                                 }
 

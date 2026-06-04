@@ -26,50 +26,54 @@ fun PlayerControls(
     isPlaying: Boolean,
     onPlayPause: () -> Unit,
     onPrev: () -> Unit,
-    onNext: () -> Unit
+    onNext: () -> Unit,
+    compact: Boolean = false
 ) {
     val adaptiveTokens = rememberSmpAdaptiveTokens()
+    val controlButtonSize = if (compact) 48.dp else adaptiveTokens.playerControlButtonSize
+    val primaryButtonSize = if (compact) 60.dp else adaptiveTokens.playerPrimaryButtonSize
+    val verticalPadding = if (compact) 4.dp else 14.dp
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 14.dp),
+            .padding(vertical = verticalPadding),
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically
     ) {
         IconButton(
             onClick = onPrev,
-            modifier = Modifier.size(adaptiveTokens.playerControlButtonSize)
+            modifier = Modifier.size(controlButtonSize)
         ) {
             Icon(
                 imageVector = Icons.Filled.SkipPrevious,
                 contentDescription = stringResource(R.string.player_cd_prev),
                 tint = Color.White,
-                modifier = Modifier.size(adaptiveTokens.playerControlButtonSize)
+                modifier = Modifier.size(controlButtonSize)
             )
         }
 
         IconButton(
             onClick = onPlayPause,
-            modifier = Modifier.size(adaptiveTokens.playerPrimaryButtonSize)
+            modifier = Modifier.size(primaryButtonSize)
         ) {
             Icon(
                 imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                 contentDescription = stringResource(R.string.player_cd_play_pause),
                 tint = Color.White,
-                modifier = Modifier.size(adaptiveTokens.playerPrimaryButtonSize)
+                modifier = Modifier.size(primaryButtonSize)
             )
         }
 
         IconButton(
             onClick = onNext,
-            modifier = Modifier.size(adaptiveTokens.playerControlButtonSize)
+            modifier = Modifier.size(controlButtonSize)
         ) {
             Icon(
                 imageVector = Icons.Filled.SkipNext,
                 contentDescription = stringResource(R.string.player_cd_next),
                 tint = Color.White,
-                modifier = Modifier.size(adaptiveTokens.playerControlButtonSize)
+                modifier = Modifier.size(controlButtonSize)
             )
         }
     }

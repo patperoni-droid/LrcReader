@@ -37,22 +37,27 @@ fun TimeBar(
     onSeekLivePreview: (Int) -> Unit,
     onSeekCommit: (Int) -> Unit,
     highlightColor: Color,
+    compact: Boolean = false
 ) {
     val posText = remember(positionMs) { formatMsLocal(positionMs) }
     val durText = remember(durationMs) { formatMsLocal(durationMs.coerceAtLeast(0)) }
     val trackColor = highlightColor.copy(alpha = 0.25f)
+    val textSize = if (compact) 10.sp else 12.sp
+    val sidePadding = if (compact) 4.dp else 6.dp
+    val sliderHeight = if (compact) 14.dp else 20.dp
+    val bottomPadding = if (compact) 0.dp else 4.dp
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(bottom = 4.dp),
+            .padding(bottom = bottomPadding),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
             text = posText,
             color = Color.LightGray,
-            fontSize = 12.sp,
-            modifier = Modifier.padding(end = 6.dp)
+            fontSize = textSize,
+            modifier = Modifier.padding(end = sidePadding)
         )
 
         val sliderValue = when {
@@ -75,7 +80,7 @@ fun TimeBar(
             enabled = durationMs > 0,
             modifier = Modifier
                 .weight(1f)
-                .height(20.dp),
+                .height(sliderHeight),
             colors = SliderDefaults.colors(
                 thumbColor = highlightColor,
                 activeTrackColor = trackColor,
@@ -86,8 +91,8 @@ fun TimeBar(
         Text(
             text = durText,
             color = Color.LightGray,
-            fontSize = 12.sp,
-            modifier = Modifier.padding(start = 6.dp)
+            fontSize = textSize,
+            modifier = Modifier.padding(start = sidePadding)
         )
     }
 }

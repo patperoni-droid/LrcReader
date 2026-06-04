@@ -170,7 +170,8 @@ fun PlayerScreen(
     onOpenWaveform: (String) -> Unit = {},
     getPositionMs: () -> Long,
     getEffectiveDurationMs: () -> Long,
-    seekToMs: (Long) -> Unit
+    seekToMs: (Long) -> Unit,
+    compactTabletLayout: Boolean = false
 ) {
     val isManualTransitionActive = !manualTransitionTargetTitle.isNullOrBlank()
     val listState = rememberSaveable(currentTrackUri, saver = LazyListState.Saver) {
@@ -208,6 +209,14 @@ fun PlayerScreen(
     val sDeleteLiveNote = stringResource(R.string.player_cd_delete_live_note)
     val sTimelineSaveFailed = stringResource(R.string.timeline_save_failed)
     val sLightGenerateFailed = stringResource(R.string.light_generate_failed)
+    val outerPadding = if (compactTabletLayout) 6.dp else 12.dp
+    val cardHorizontalPadding = if (compactTabletLayout) 10.dp else 16.dp
+    val cardVerticalPadding = if (compactTabletLayout) 4.dp else 10.dp
+    val headerSpacerHeight = if (compactTabletLayout) 4.dp else 8.dp
+    val viewSelectorHeight = if (compactTabletLayout) 32.dp else 38.dp
+    val lyricsTopSpacerHeight = if (compactTabletLayout) 2.dp else 8.dp
+    val nextTrackTopPadding = if (compactTabletLayout) 2.dp else 4.dp
+    val nextTrackFontSize = if (compactTabletLayout) 10.sp else 11.sp
     val sTrackMixProTitle = stringResource(R.string.track_mix_lite_dialog_title)
     val sTrackMixProMessage = stringResource(R.string.track_mix_lite_dialog_message)
     val sUpgradeToPro = stringResource(R.string.library_upgrade_to_pro)
@@ -2741,7 +2750,7 @@ fun PlayerScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(12.dp)
+                    .padding(outerPadding)
             ) {
                 Card(
                     modifier = Modifier.fillMaxSize(),
@@ -2752,11 +2761,14 @@ fun PlayerScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(horizontal = 16.dp, vertical = 10.dp)
+                            .padding(
+                                horizontal = cardHorizontalPadding,
+                                vertical = cardVerticalPadding
+                            )
                     ) {
                         if (showHqOffBanner) {
                             HqOffBanner()
-                            Spacer(Modifier.height(8.dp))
+                            Spacer(Modifier.height(headerSpacerHeight))
                         }
 
                         ReaderHeader(
@@ -2843,9 +2855,9 @@ fun PlayerScreen(
                             Text(
                                 text = stringResource(R.string.player_next_track, nextTrackTitle),
                                 color = Color(0xFFEF9A9A),
-                                fontSize = 11.sp,
+                                fontSize = nextTrackFontSize,
                                 modifier = Modifier
-                                    .padding(start = 2.dp, top = 4.dp)
+                                    .padding(start = 2.dp, top = nextTrackTopPadding)
                                     .alpha(blinkAlpha)
                             )
                         }
@@ -2853,7 +2865,7 @@ fun PlayerScreen(
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(38.dp),
+                                .height(viewSelectorHeight),
                             contentAlignment = Alignment.TopCenter
                         ) {
                             if (showViewToggle) {
@@ -2912,7 +2924,7 @@ fun PlayerScreen(
                             }
                         }
 
-                        Spacer(Modifier.height(8.dp))
+                        Spacer(Modifier.height(lyricsTopSpacerHeight))
 
                         Box(modifier = Modifier.weight(1f)) {
                             if (isManualTransitionActive) {
@@ -3095,7 +3107,8 @@ fun PlayerScreen(
                                     )
                                 }
                             },
-                            highlightColor = highlightColor
+                            highlightColor = highlightColor,
+                            compact = compactTabletLayout
                         )
 
                         PlayerControls(
@@ -3152,7 +3165,8 @@ fun PlayerScreen(
                                 LightCueDispatcher.resetGlobal()
                                 PlaybackCoordinator.onFillerStart()
                                 runCatching { FillerSoundManager.startIfConfigured(context) }
-                            }
+                            },
+                            compact = compactTabletLayout
                         )
                     }
                 }
