@@ -3942,11 +3942,31 @@ class MainActivity : AppCompatActivity() {
                                     )
                                 }
 
-                                val useTabletSplitLiveLayout =
+                                val tabletSplitBaseEnabled =
                                     adaptiveTokens.tabletMode &&
                                         adaptiveTokens.isLandscape &&
-                                        tabletExperimentalModeEnabled &&
-                                        (selectedTab is BottomTab.Player || selectedTab is BottomTab.QuickPlaylists)
+                                        tabletExperimentalModeEnabled
+                                val selectedTabAllowsTabletSplit =
+                                    selectedTab is BottomTab.Player || selectedTab is BottomTab.QuickPlaylists
+                                val useTabletSplitLiveLayout =
+                                    tabletSplitBaseEnabled && selectedTabAllowsTabletSplit
+
+                                LaunchedEffect(
+                                    adaptiveTokens.tabletMode,
+                                    adaptiveTokens.isLandscape,
+                                    tabletExperimentalModeEnabled,
+                                    selectedTab,
+                                    useTabletSplitLiveLayout
+                                ) {
+                                    Log.d(
+                                        "TABLET_SPLIT_DIAG",
+                                        "tabletMode=${adaptiveTokens.tabletMode} " +
+                                            "isLandscape=${adaptiveTokens.isLandscape} " +
+                                            "tabletExperimentalModeEnabled=$tabletExperimentalModeEnabled " +
+                                            "selectedTab=${tabKeyOf(selectedTab)} " +
+                                            "splitEnabled=$useTabletSplitLiveLayout"
+                                    )
+                                }
 
                                 if (useTabletSplitLiveLayout) {
                                     Row(modifier = contentModifier.fillMaxSize()) {
@@ -4612,6 +4632,17 @@ class MainActivity : AppCompatActivity() {
                                         },
                                         onTabletExperimentalModeChange = { enabled ->
                                             tabletExperimentalModeEnabled = enabled
+                                            if (
+                                                enabled &&
+                                                adaptiveTokens.tabletMode &&
+                                                adaptiveTokens.isLandscape &&
+                                                selectedTab is BottomTab.More
+                                            ) {
+                                                setTabAndPersist(
+                                                    BottomTab.Player,
+                                                    reason = "tabletExperimentalModeEnabled"
+                                                )
+                                            }
                                         },
                                         onAfterImport = { refreshKey++ },
                                         onAfterSmpRestore = { importedCount, lastImportedSongId ->
