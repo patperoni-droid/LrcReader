@@ -34,6 +34,8 @@ import android.widget.Toast
 import androidx.activity.compose.setContent
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -1164,6 +1166,20 @@ class MainActivity : AppCompatActivity() {
                         ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
                     } else {
                         ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                    }
+                }
+                DisposableEffect(adaptiveTokens.tabletMode, tabletExperimentalModeEnabled) {
+                    val controller = WindowCompat.getInsetsController(window, window.decorView)
+                    val systemBars = WindowInsetsCompat.Type.systemBars()
+                    if (adaptiveTokens.tabletMode && tabletExperimentalModeEnabled) {
+                        controller.systemBarsBehavior =
+                            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                        controller.hide(systemBars)
+                    } else {
+                        controller.show(systemBars)
+                    }
+                    onDispose {
+                        controller.show(systemBars)
                     }
                 }
                 val tabStateHolder = rememberSaveableStateHolder()
