@@ -3537,8 +3537,16 @@ class MainActivity : AppCompatActivity() {
                                 hardwareAction = prompterHardwareAction
                             )
                         } ?: run {
+                            val tabletSplitStateEligible =
+                                adaptiveTokens.tabletMode &&
+                                    tabletExperimentalModeEnabled &&
+                                    (selectedTab is BottomTab.Player || selectedTab is BottomTab.QuickPlaylists)
                             tabStateHolder.SaveableStateProvider(
-                                key = "tab_${tabKeyOf(selectedTab)}"
+                                key = if (tabletSplitStateEligible) {
+                                    "tablet_split_live"
+                                } else {
+                                    "tab_${tabKeyOf(selectedTab)}"
+                                }
                             ) {
                                 SmpPreparationNoticeDialog(
                                     show = pendingPlaylistBatchPlan != null,
