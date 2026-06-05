@@ -1125,4 +1125,11 @@ No olvides guardar.</string>
     <string name="more_item_arrangement">🎼  Arrangement</string>
     <string name="more_item_arrangement_disabled_hint">Abre primero una canción SMP</string>
     <string name="more_item_arrangement_requires_song">Abre primero una canción SMP</string>
+    <string name="tablet_split_menu_library">Biblioteca</string>
+    <string name="tablet_split_menu_main_bus">Bus principal</string>
+    <string name="tablet_split_menu_playlist">Playlist</string>
+    <string name="tablet_split_menu_filler">Sonido de fondo</string>
+    <string name="tablet_split_menu_dj">DJ</string>
+    <string name="tablet_split_menu_search">Buscar</string>
+    <string name="tablet_split_menu_settings">Ajustes</string>
 </resources>

@@ -1224,4 +1224,11 @@ N’oubliez pas de sauvegarder.</string>
     <string name="main_menu_prompter">📝 Prompteur</string>
     <string name="main_menu_more">Paramètres / Plus</string>
     <string name="main_menu_tuner">Accordeur</string>
+    <string name="tablet_split_menu_library">Bibliothèque</string>
+    <string name="tablet_split_menu_main_bus">Bus principal</string>
+    <string name="tablet_split_menu_playlist">Playlist</string>
+    <string name="tablet_split_menu_filler">Fond sonore</string>
+    <string name="tablet_split_menu_dj">DJ</string>
+    <string name="tablet_split_menu_search">Recherche</string>
+    <string name="tablet_split_menu_settings">Paramètres</string>
 </resources>
