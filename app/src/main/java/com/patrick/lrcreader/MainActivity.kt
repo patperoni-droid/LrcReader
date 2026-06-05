@@ -3464,6 +3464,7 @@ class MainActivity : AppCompatActivity() {
                         (
                             isFillerSettingsOpen ||
                                 isGlobalMixOpen ||
+                                selectedTab is BottomTab.Home ||
                                 selectedTab is BottomTab.Library ||
                                 selectedTab is BottomTab.Dj ||
                                 selectedTab is BottomTab.More
@@ -3762,7 +3763,10 @@ class MainActivity : AppCompatActivity() {
                                                 onClick = {
                                                     prepareTabletSplitMenuNavigation()
                                                     isTabletCockpitDestinationOpen = true
-                                                    isGlobalMixOpen = true
+                                                    setTabAndPersist(
+                                                        BottomTab.Home,
+                                                        reason = "tabletSplitMenuMainBus"
+                                                    )
                                                 }
                                             )
                                             DropdownMenuItem(
@@ -4220,7 +4224,7 @@ class MainActivity : AppCompatActivity() {
                                 } else when (selectedTab) {
 
                                     is BottomTab.Home -> Box(
-                                        modifier = contentModifier.fillMaxSize()
+                                        modifier = tabletCockpitDestinationContentModifier.fillMaxSize()
                                     ) {
                                         if (isSmpImportedSongsDialogOpen) {
                                             SmpImportedSongsDialog(
