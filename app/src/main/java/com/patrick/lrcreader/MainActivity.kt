@@ -100,6 +100,7 @@ import com.patrick.lrcreader.smp.SmpWorkspaceArchiveStore
 import com.patrick.lrcreader.ui.*
 import com.patrick.lrcreader.ui.adaptive.rememberSmpAdaptiveTokens
 import com.patrick.lrcreader.ui.library.LibraryScreen
+import com.patrick.lrcreader.ui.library.SongVariantFamiliesStore
 import com.patrick.lrcreader.ui.library.ensureWorkspaceLibraryFolders
 import com.patrick.lrcreader.ui.locallink.LocalLinkExperimentalSenderRuntime
 import kotlinx.coroutines.channels.BufferOverflow
@@ -382,6 +383,11 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun warmQuickPlaylistComposeStores() {
+        TitleAliasesStore.version.intValue
+        SongVariantFamiliesStore.version.intValue
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         AppLanguagePrefs.applySavedLanguage(this)
         EditionConfig.initialize(this)
@@ -478,6 +484,7 @@ class MainActivity : AppCompatActivity() {
             val startupSmpSongsById = withContext(Dispatchers.IO) {
                 SmpRuntimeSongCache.load(this@MainActivity).associateBy { it.id }
             }
+            warmQuickPlaylistComposeStores()
             mark("setContent:before")
             setContent {
             LaunchedEffect(Unit) {
