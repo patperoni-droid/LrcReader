@@ -3668,6 +3668,105 @@ class MainActivity : AppCompatActivity() {
                                         }
                                     }
                                 )
+                                fun prepareTabletSplitMenuNavigation() {
+                                    isTabletSplitMenuOpen = false
+                                    textPrompterId = null
+                                    isNotesOpen = false
+                                    isFillerSettingsOpen = false
+                                    isGlobalMixOpen = false
+                                    isSearchOpen = false
+                                    isMixerPreviewOpen = false
+                                }
+
+                                @Composable
+                                fun TabletSplitCockpitMenuButton() {
+                                    Box {
+                                        IconButton(onClick = { isTabletSplitMenuOpen = true }) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Settings,
+                                                contentDescription = stringResource(R.string.common_cd_options),
+                                                tint = Color.White.copy(alpha = 0.72f)
+                                            )
+                                        }
+                                        DropdownMenu(
+                                            expanded = isTabletSplitMenuOpen,
+                                            onDismissRequest = { isTabletSplitMenuOpen = false }
+                                        ) {
+                                            DropdownMenuItem(
+                                                text = { Text(stringResource(R.string.tablet_split_menu_library)) },
+                                                onClick = {
+                                                    prepareTabletSplitMenuNavigation()
+                                                    setTabAndPersist(
+                                                        BottomTab.Library,
+                                                        reason = "tabletSplitMenuLibrary"
+                                                    )
+                                                }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text(stringResource(R.string.tablet_split_menu_main_bus)) },
+                                                enabled = EditionConfig.isPro && showMainBusTab,
+                                                onClick = {
+                                                    prepareTabletSplitMenuNavigation()
+                                                    isGlobalMixOpen = true
+                                                }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text(stringResource(R.string.tablet_split_menu_playlist)) },
+                                                onClick = {
+                                                    prepareTabletSplitMenuNavigation()
+                                                    setTabAndPersist(
+                                                        BottomTab.QuickPlaylists,
+                                                        reason = "tabletSplitMenuPlaylist"
+                                                    )
+                                                }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text(stringResource(R.string.tablet_split_menu_filler)) },
+                                                onClick = {
+                                                    prepareTabletSplitMenuNavigation()
+                                                    isFillerSettingsOpen = true
+                                                }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text(stringResource(R.string.tablet_split_menu_dj)) },
+                                                enabled = showDjTab,
+                                                onClick = {
+                                                    prepareTabletSplitMenuNavigation()
+                                                    setTabAndPersist(
+                                                        BottomTab.Dj,
+                                                        reason = "tabletSplitMenuDj"
+                                                    )
+                                                }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text(stringResource(R.string.tablet_split_menu_search)) },
+                                                onClick = {
+                                                    prepareTabletSplitMenuNavigation()
+                                                    searchMode = if (
+                                                        selectedTab is BottomTab.QuickPlaylists &&
+                                                        !selectedQuickPlaylist.isNullOrBlank()
+                                                    ) {
+                                                        SearchMode.PLAYLIST
+                                                    } else {
+                                                        SearchMode.PLAYER
+                                                    }
+                                                    isSearchOpen = true
+                                                }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text(stringResource(R.string.tablet_split_menu_settings)) },
+                                                onClick = {
+                                                    prepareTabletSplitMenuNavigation()
+                                                    setTabAndPersist(
+                                                        BottomTab.More,
+                                                        reason = "tabletSplitMenuSettings"
+                                                    )
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+
                                 val playerPane: @Composable (Modifier) -> Unit = { paneModifier ->
                                     PlayerScreen(
                                         modifier = paneModifier,
@@ -3835,7 +3934,10 @@ class MainActivity : AppCompatActivity() {
                                         },
                                         seekToMs = { ms -> exoPlayer.seekTo(ms) },
                                         compactTabletLayout = adaptiveTokens.tabletMode &&
-                                            tabletExperimentalModeEnabled
+                                            tabletExperimentalModeEnabled,
+                                        readerHeaderEndContent = {
+                                            TabletSplitCockpitMenuButton()
+                                        }
                                     )
                                 }
 
@@ -4033,22 +4135,10 @@ class MainActivity : AppCompatActivity() {
                                     }
                                 }
 
-                                fun prepareTabletSplitMenuNavigation() {
-                                    isTabletSplitMenuOpen = false
-                                    textPrompterId = null
-                                    isNotesOpen = false
-                                    isFillerSettingsOpen = false
-                                    isGlobalMixOpen = false
-                                    isSearchOpen = false
-                                    isMixerPreviewOpen = false
-                                }
-
                                 if (useTabletSplitLiveLayout) {
                                     Box(modifier = contentModifier.fillMaxSize()) {
                                         Row(
-                                            modifier = Modifier
-                                                .fillMaxSize()
-                                                .padding(top = 48.dp)
+                                            modifier = Modifier.fillMaxSize()
                                         ) {
                                             // Experimental tablet live layout; each pane reuses the existing screen contract.
                                             Box(
@@ -4064,96 +4154,6 @@ class MainActivity : AppCompatActivity() {
                                                     .fillMaxHeight()
                                             ) {
                                                 playerPane(Modifier.fillMaxSize())
-                                            }
-                                        }
-
-                                        Box(
-                                            modifier = Modifier
-                                                .align(Alignment.TopEnd)
-                                                .padding(top = 2.dp, end = 8.dp)
-                                        ) {
-                                            IconButton(onClick = { isTabletSplitMenuOpen = true }) {
-                                                Icon(
-                                                    imageVector = Icons.Filled.Settings,
-                                                    contentDescription = stringResource(R.string.common_cd_options),
-                                                    tint = Color.White.copy(alpha = 0.72f)
-                                                )
-                                            }
-                                            DropdownMenu(
-                                                expanded = isTabletSplitMenuOpen,
-                                                onDismissRequest = { isTabletSplitMenuOpen = false }
-                                            ) {
-                                                DropdownMenuItem(
-                                                    text = { Text(stringResource(R.string.tablet_split_menu_library)) },
-                                                    onClick = {
-                                                        prepareTabletSplitMenuNavigation()
-                                                        setTabAndPersist(
-                                                            BottomTab.Library,
-                                                            reason = "tabletSplitMenuLibrary"
-                                                        )
-                                                    }
-                                                )
-                                                DropdownMenuItem(
-                                                    text = { Text(stringResource(R.string.tablet_split_menu_main_bus)) },
-                                                    enabled = EditionConfig.isPro && showMainBusTab,
-                                                    onClick = {
-                                                        prepareTabletSplitMenuNavigation()
-                                                        isGlobalMixOpen = true
-                                                    }
-                                                )
-                                                DropdownMenuItem(
-                                                    text = { Text(stringResource(R.string.tablet_split_menu_playlist)) },
-                                                    onClick = {
-                                                        prepareTabletSplitMenuNavigation()
-                                                        setTabAndPersist(
-                                                            BottomTab.QuickPlaylists,
-                                                            reason = "tabletSplitMenuPlaylist"
-                                                        )
-                                                    }
-                                                )
-                                                DropdownMenuItem(
-                                                    text = { Text(stringResource(R.string.tablet_split_menu_filler)) },
-                                                    onClick = {
-                                                        prepareTabletSplitMenuNavigation()
-                                                        isFillerSettingsOpen = true
-                                                    }
-                                                )
-                                                DropdownMenuItem(
-                                                    text = { Text(stringResource(R.string.tablet_split_menu_dj)) },
-                                                    enabled = showDjTab,
-                                                    onClick = {
-                                                        prepareTabletSplitMenuNavigation()
-                                                        setTabAndPersist(
-                                                            BottomTab.Dj,
-                                                            reason = "tabletSplitMenuDj"
-                                                        )
-                                                    }
-                                                )
-                                                DropdownMenuItem(
-                                                    text = { Text(stringResource(R.string.tablet_split_menu_search)) },
-                                                    onClick = {
-                                                        prepareTabletSplitMenuNavigation()
-                                                        searchMode = if (
-                                                            selectedTab is BottomTab.QuickPlaylists &&
-                                                            !selectedQuickPlaylist.isNullOrBlank()
-                                                        ) {
-                                                            SearchMode.PLAYLIST
-                                                        } else {
-                                                            SearchMode.PLAYER
-                                                        }
-                                                        isSearchOpen = true
-                                                    }
-                                                )
-                                                DropdownMenuItem(
-                                                    text = { Text(stringResource(R.string.tablet_split_menu_settings)) },
-                                                    onClick = {
-                                                        prepareTabletSplitMenuNavigation()
-                                                        setTabAndPersist(
-                                                            BottomTab.More,
-                                                            reason = "tabletSplitMenuSettings"
-                                                        )
-                                                    }
-                                                )
                                             }
                                         }
                                     }

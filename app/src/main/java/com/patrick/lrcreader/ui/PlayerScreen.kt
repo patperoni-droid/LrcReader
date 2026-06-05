@@ -171,7 +171,8 @@ fun PlayerScreen(
     getPositionMs: () -> Long,
     getEffectiveDurationMs: () -> Long,
     seekToMs: (Long) -> Unit,
-    compactTabletLayout: Boolean = false
+    compactTabletLayout: Boolean = false,
+    readerHeaderEndContent: @Composable RowScope.() -> Unit = {}
 ) {
     val isManualTransitionActive = !manualTransitionTargetTitle.isNullOrBlank()
     val listState = rememberSaveable(currentTrackUri, saver = LazyListState.Saver) {
@@ -2836,6 +2837,7 @@ fun PlayerScreen(
                             onOpenWaveform = {
                                 currentSongId?.takeIf { it.isNotBlank() }?.let(onOpenWaveform)
                             },
+                            endContent = readerHeaderEndContent,
                         )
 
                         if (!isManualTransitionActive && !nextTrackTitle.isNullOrBlank()) {
@@ -3442,6 +3444,7 @@ private fun ReaderHeader(
     onOpenArrangement: () -> Unit,
     showWaveformAction: Boolean,
     onOpenWaveform: () -> Unit,
+    endContent: @Composable RowScope.() -> Unit = {},
 ) {
     Box(
         modifier = Modifier
@@ -3528,6 +3531,8 @@ private fun ReaderHeader(
                     )
                 }
             }
+
+            endContent()
         }
     }
 }
