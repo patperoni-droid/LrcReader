@@ -1223,4 +1223,5 @@ Don’t forget to save.</string>
     <string name="tablet_split_menu_dj">DJ</string>
     <string name="tablet_split_menu_search">Search</string>
     <string name="tablet_split_menu_settings">Settings</string>
+    <string name="tablet_split_return_cockpit">← Back to cockpit</string>
 </resources>

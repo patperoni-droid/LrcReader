@@ -1231,4 +1231,5 @@ N’oubliez pas de sauvegarder.</string>
     <string name="tablet_split_menu_dj">DJ</string>
     <string name="tablet_split_menu_search">Recherche</string>
     <string name="tablet_split_menu_settings">Paramètres</string>
+    <string name="tablet_split_return_cockpit">← Retour cockpit</string>
 </resources>

@@ -1132,4 +1132,5 @@ No olvides guardar.</string>
     <string name="tablet_split_menu_dj">DJ</string>
     <string name="tablet_split_menu_search">Buscar</string>
     <string name="tablet_split_menu_settings">Ajustes</string>
+    <string name="tablet_split_return_cockpit">← Volver al cockpit</string>
 </resources>

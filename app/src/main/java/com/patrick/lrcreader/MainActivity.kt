@@ -39,11 +39,13 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -56,6 +58,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -1246,6 +1249,7 @@ class MainActivity : AppCompatActivity() {
                 var isFillerSettingsOpen by remember { mutableStateOf(false) }
                 var libraryKeyboardNavigationEnabled by remember { mutableStateOf(false) }
                 var isTabletSplitMenuOpen by remember { mutableStateOf(false) }
+                var isTabletCockpitDestinationOpen by rememberSaveable { mutableStateOf(false) }
 
                 var currentTrackTempo by remember { mutableStateOf(1f) }
                 var currentTrackPitchSemi by remember { mutableStateOf(0) }
@@ -3432,6 +3436,11 @@ class MainActivity : AppCompatActivity() {
                         isGlobalMixOpen = false
                     }
                 }
+                LaunchedEffect(adaptiveTokens.tabletMode, tabletExperimentalModeEnabled) {
+                    if (!adaptiveTokens.tabletMode || !tabletExperimentalModeEnabled) {
+                        isTabletCockpitDestinationOpen = false
+                    }
+                }
 
                 val imeBottomPadding = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
                 val shouldHideBottomBarForPlayerIme =
@@ -3444,11 +3453,41 @@ class MainActivity : AppCompatActivity() {
                         !isGlobalMixOpen &&
                         !isMixerPreviewOpen &&
                         (selectedTab is BottomTab.Player || selectedTab is BottomTab.QuickPlaylists)
+                val shouldShowTabletCockpitDestinationChrome =
+                    adaptiveTokens.tabletMode &&
+                        tabletExperimentalModeEnabled &&
+                        isTabletCockpitDestinationOpen &&
+                        textPrompterId == null &&
+                        !isNotesOpen &&
+                        !isSearchOpen &&
+                        !isMixerPreviewOpen &&
+                        (
+                            isFillerSettingsOpen ||
+                                isGlobalMixOpen ||
+                                selectedTab is BottomTab.Library ||
+                                selectedTab is BottomTab.Dj ||
+                                selectedTab is BottomTab.More
+                        )
+                fun returnToTabletCockpit() {
+                    isTabletCockpitDestinationOpen = false
+                    isTabletSplitMenuOpen = false
+                    textPrompterId = null
+                    isNotesOpen = false
+                    isFillerSettingsOpen = false
+                    isGlobalMixOpen = false
+                    isSearchOpen = false
+                    isMixerPreviewOpen = false
+                    setTabAndPersist(BottomTab.Player, reason = "tabletCockpitReturn")
+                }
 
                 Scaffold(
                     containerColor = Color.Black,
                     bottomBar = {
-                        if (!shouldHideBottomBarForPlayerIme && !shouldHideBottomBarForTabletSplit) {
+                        if (
+                            !shouldHideBottomBarForPlayerIme &&
+                            !shouldHideBottomBarForTabletSplit &&
+                            !shouldShowTabletCockpitDestinationChrome
+                        ) {
                             BottomTabsBar(
                                 selected = selectedTab,
                                 showMainBusTab = showMainBusTab,
@@ -3526,6 +3565,12 @@ class MainActivity : AppCompatActivity() {
                     val contentModifier = Modifier
                         .padding(innerPadding)
                         .windowInsetsPadding(WindowInsets.ime)
+                    val tabletCockpitDestinationContentModifier =
+                        if (shouldShowTabletCockpitDestinationChrome) {
+                            contentModifier.padding(top = 48.dp)
+                        } else {
+                            contentModifier
+                        }
 
                     if (isMixerPreviewOpen) {
                         MixerHomePreviewScreen(
@@ -3550,13 +3595,18 @@ class MainActivity : AppCompatActivity() {
                             }
                         )
                     } else if (isFillerSettingsOpen) {
-                        FillerSoundScreen(
-                            context = ctx,
-                            onBack = { isFillerSettingsOpen = false }
-                        )
+                        Box(modifier = tabletCockpitDestinationContentModifier.fillMaxSize()) {
+                            FillerSoundScreen(
+                                context = ctx,
+                                onBack = {
+                                    isTabletCockpitDestinationOpen = false
+                                    isFillerSettingsOpen = false
+                                }
+                            )
+                        }
                     } else if (isGlobalMixOpen && EditionConfig.isPro) {
                         GlobalMixScreen(
-                            modifier = contentModifier,
+                            modifier = tabletCockpitDestinationContentModifier,
                             playerLevel = playerMasterLevel,
                             onPlayerLevelChange = { lvl ->
                                 playerMasterLevel = lvl
@@ -3569,7 +3619,10 @@ class MainActivity : AppCompatActivity() {
                             },
                             fillerLevel = fillerMasterLevel,
                             onFillerLevelChange = { lvl -> fillerMasterLevel = lvl },
-                            onBack = { isGlobalMixOpen = false }
+                            onBack = {
+                                isTabletCockpitDestinationOpen = false
+                                isGlobalMixOpen = false
+                            }
                         )
                     } else if (isGlobalMixOpen) {
                         isGlobalMixOpen = false
@@ -3696,6 +3749,7 @@ class MainActivity : AppCompatActivity() {
                                                 text = { Text(stringResource(R.string.tablet_split_menu_library)) },
                                                 onClick = {
                                                     prepareTabletSplitMenuNavigation()
+                                                    isTabletCockpitDestinationOpen = true
                                                     setTabAndPersist(
                                                         BottomTab.Library,
                                                         reason = "tabletSplitMenuLibrary"
@@ -3707,6 +3761,7 @@ class MainActivity : AppCompatActivity() {
                                                 enabled = EditionConfig.isPro && showMainBusTab,
                                                 onClick = {
                                                     prepareTabletSplitMenuNavigation()
+                                                    isTabletCockpitDestinationOpen = true
                                                     isGlobalMixOpen = true
                                                 }
                                             )
@@ -3714,6 +3769,7 @@ class MainActivity : AppCompatActivity() {
                                                 text = { Text(stringResource(R.string.tablet_split_menu_playlist)) },
                                                 onClick = {
                                                     prepareTabletSplitMenuNavigation()
+                                                    isTabletCockpitDestinationOpen = false
                                                     setTabAndPersist(
                                                         BottomTab.QuickPlaylists,
                                                         reason = "tabletSplitMenuPlaylist"
@@ -3724,6 +3780,7 @@ class MainActivity : AppCompatActivity() {
                                                 text = { Text(stringResource(R.string.tablet_split_menu_filler)) },
                                                 onClick = {
                                                     prepareTabletSplitMenuNavigation()
+                                                    isTabletCockpitDestinationOpen = true
                                                     isFillerSettingsOpen = true
                                                 }
                                             )
@@ -3732,6 +3789,7 @@ class MainActivity : AppCompatActivity() {
                                                 enabled = showDjTab,
                                                 onClick = {
                                                     prepareTabletSplitMenuNavigation()
+                                                    isTabletCockpitDestinationOpen = true
                                                     setTabAndPersist(
                                                         BottomTab.Dj,
                                                         reason = "tabletSplitMenuDj"
@@ -3742,6 +3800,7 @@ class MainActivity : AppCompatActivity() {
                                                 text = { Text(stringResource(R.string.tablet_split_menu_search)) },
                                                 onClick = {
                                                     prepareTabletSplitMenuNavigation()
+                                                    isTabletCockpitDestinationOpen = false
                                                     searchMode = if (
                                                         selectedTab is BottomTab.QuickPlaylists &&
                                                         !selectedQuickPlaylist.isNullOrBlank()
@@ -3757,6 +3816,7 @@ class MainActivity : AppCompatActivity() {
                                                 text = { Text(stringResource(R.string.tablet_split_menu_settings)) },
                                                 onClick = {
                                                     prepareTabletSplitMenuNavigation()
+                                                    isTabletCockpitDestinationOpen = true
                                                     setTabAndPersist(
                                                         BottomTab.More,
                                                         reason = "tabletSplitMenuSettings"
@@ -4608,7 +4668,7 @@ class MainActivity : AppCompatActivity() {
                                     )
 
                                     is BottomTab.Library -> LibraryScreen(
-                                        modifier = contentModifier,
+                                        modifier = tabletCockpitDestinationContentModifier,
                                         workspaceSnapshot = workspaceSnapshot,
                                         workspaceVersion = setupTick,
                                         currentPlayingSongId = currentPlayingSongId,
@@ -4742,10 +4802,13 @@ class MainActivity : AppCompatActivity() {
                                         }
                                     )
 
-                                    is BottomTab.Dj -> DjScreen(modifier = contentModifier, context = ctx)
+                                    is BottomTab.Dj -> DjScreen(
+                                        modifier = tabletCockpitDestinationContentModifier,
+                                        context = ctx
+                                    )
 
                                     is BottomTab.More -> MoreScreen(
-                                        modifier = contentModifier,
+                                        modifier = tabletCockpitDestinationContentModifier,
                                         context = ctx,
                                         currentWaveformSongId = currentPlayingSongId,
                                         currentPlayingSongId = currentPlayingSongId,
@@ -4807,6 +4870,9 @@ class MainActivity : AppCompatActivity() {
                                         },
                                         onTabletExperimentalModeChange = { enabled ->
                                             tabletExperimentalModeEnabled = enabled
+                                            if (!enabled) {
+                                                isTabletCockpitDestinationOpen = false
+                                            }
                                             if (
                                                 enabled &&
                                                 adaptiveTokens.tabletMode &&
@@ -4860,6 +4926,23 @@ class MainActivity : AppCompatActivity() {
                                         Text(stringResource(R.string.main_unknown_screen), color = Color.White)
                                     }
                                 }
+                            }
+                        }
+                    }
+
+                    if (shouldShowTabletCockpitDestinationChrome) {
+                        Box(
+                            modifier = contentModifier
+                                .fillMaxWidth()
+                                .height(48.dp)
+                                .background(Color.Black),
+                            contentAlignment = Alignment.CenterStart
+                        ) {
+                            TextButton(onClick = { returnToTabletCockpit() }) {
+                                Text(
+                                    text = stringResource(R.string.tablet_split_return_cockpit),
+                                    color = Color.White
+                                )
                             }
                         }
                     }
