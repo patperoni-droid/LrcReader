@@ -200,6 +200,31 @@ This requires:
 - full reconstruction from package
 - no hidden dependencies
 
+Field-validated device roles:
+
+Phone:
+- preparation
+- editing
+- rehearsal
+- backup / emergency device
+- mobility
+
+Tablet:
+- main stage device
+- wider live overview
+- playlist visible alongside Player/lyrics
+- comfortable reading during performance
+
+Recommended workflow:
+- prepare on phone
+- periodically sync to tablet
+- use tablet as the main live cockpit
+
+Architecture implication:
+- sync must produce complete local runtime data on the tablet
+- live playback must never depend on the phone being present
+- the tablet must be able to run the show from normalized internal storage only
+
 ⸻
 
 FORBIDDEN PATTERNS

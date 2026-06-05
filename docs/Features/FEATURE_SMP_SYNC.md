@@ -13,6 +13,17 @@ Le but est simple :
 
 SMP Sync est une fonction de confort Premium. Elle ne remplace pas l’export/import manuel classique disponible en sauvegarde.
 
+Retour terrain concert réel :
+
+Le même principe s'applique au couple téléphone → tablette :
+
+- préparation sur téléphone
+- synchronisation périodique vers tablette
+- tablette utilisée comme cockpit live principal
+
+Le téléphone reste utile pour la préparation, la mobilité, la répétition et le secours.
+La tablette est plus adaptée à la scène grâce à la vision globale, la playlist visible en permanence et les paroles simultanées.
+
 ---
 
 ## Principes SMP
@@ -165,4 +176,3 @@ Interdits :
 Priorité :
 
 stabilité live > automatisation > confort.
-

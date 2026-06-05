@@ -21,6 +21,33 @@ Zéro stress > Zéro blanc > Fluidité
 
 ## 🧠 PRINCIPES FONDAMENTAUX
 
+### 📱 Téléphone / tablette
+
+Retour terrain concert réel :
+
+Le téléphone et la tablette n'ont pas le même rôle.
+
+Téléphone :
+
+- préparation
+- édition
+- répétition
+- secours
+- mobilité
+
+Tablette :
+
+- utilisation scène principale
+- vision globale
+- playlist visible en permanence
+- paroles simultanées
+- confort de lecture
+
+👉 Le téléphone reste l'outil flexible et mobile.
+👉 La tablette devient le cockpit live principal.
+
+---
+
 ### 🔥 Lecture fiable
 
 - ExoPlayer = source de vérité du temps (`timeMs`)
@@ -109,6 +136,31 @@ Quand un morceau est lancé depuis la recherche :
 ✔ action en 1 clic  
 ✔ aucune navigation complexe  
 ✔ toujours visible à temps
+
+---
+
+## 🔄 SMP SYNC — USAGE LIVE RECOMMANDÉ
+
+Retour terrain concert réel :
+
+Le flux recommandé est :
+
+1. préparer sur téléphone
+2. synchroniser périodiquement vers tablette
+3. utiliser la tablette en live
+
+Objectif :
+
+- conserver le confort d'édition du téléphone
+- préparer la tablette avant la scène
+- disposer d'un environnement live stable et lisible
+- garder le téléphone comme secours possible
+
+Règles :
+
+✔ la tablette doit travailler sur des données locales déjà importées
+✔ aucun `.smp` ne doit être lu directement pendant le live
+✔ aucune synchronisation lourde ne doit interférer avec la lecture
 
 ---
 
@@ -224,6 +276,10 @@ stop
 
 - amélioration liste live
 - gestion avancée du prochain morceau
+- contrôle au pied Bluetooth :
+  - navigation playlist
+  - lancement morceau
+  - réduction des manipulations écran en situation de stress ou fatigue
 
 ---
 
@@ -231,6 +287,10 @@ stop
 
 - intégration complète mode DJ simplifié
 - enchaînements intelligents
+- mode concert simplifié :
+  - interface réduite
+  - accès ultra rapide aux morceaux
+  - moins de surcharge cognitive
 
 ---
 
