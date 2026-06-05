@@ -47,8 +47,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -1234,6 +1238,7 @@ class MainActivity : AppCompatActivity() {
                 var isNotesOpen by remember { mutableStateOf(false) }
                 var isFillerSettingsOpen by remember { mutableStateOf(false) }
                 var libraryKeyboardNavigationEnabled by remember { mutableStateOf(false) }
+                var isTabletSplitMenuOpen by remember { mutableStateOf(false) }
 
                 var currentTrackTempo by remember { mutableStateOf(1f) }
                 var currentTrackPitchSemi by remember { mutableStateOf(0) }
@@ -3424,11 +3429,19 @@ class MainActivity : AppCompatActivity() {
                 val imeBottomPadding = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
                 val shouldHideBottomBarForPlayerIme =
                     selectedTab is BottomTab.Player && imeBottomPadding > 0.dp
+                val shouldHideBottomBarForTabletSplit =
+                    adaptiveTokens.tabletMode &&
+                        tabletExperimentalModeEnabled &&
+                        textPrompterId == null &&
+                        !isFillerSettingsOpen &&
+                        !isGlobalMixOpen &&
+                        !isMixerPreviewOpen &&
+                        (selectedTab is BottomTab.Player || selectedTab is BottomTab.QuickPlaylists)
 
                 Scaffold(
                     containerColor = Color.Black,
                     bottomBar = {
-                        if (!shouldHideBottomBarForPlayerIme) {
+                        if (!shouldHideBottomBarForPlayerIme && !shouldHideBottomBarForTabletSplit) {
                             BottomTabsBar(
                                 selected = selectedTab,
                                 showMainBusTab = showMainBusTab,
@@ -4008,24 +4021,68 @@ class MainActivity : AppCompatActivity() {
                                             "splitEligibleByTabletMode=$splitEligibleByTabletMode " +
                                             "splitEnabled=$useTabletSplitLiveLayout"
                                     )
+                                    if (!useTabletSplitLiveLayout) {
+                                        isTabletSplitMenuOpen = false
+                                    }
                                 }
 
                                 if (useTabletSplitLiveLayout) {
-                                    Row(modifier = contentModifier.fillMaxSize()) {
-                                        // Experimental tablet live layout; each pane reuses the existing screen contract.
-                                        Box(
-                                            Modifier
-                                                .weight(0.38f)
-                                                .fillMaxHeight()
-                                        ) {
-                                            quickPlaylistsPane(Modifier.fillMaxSize())
+                                    Box(modifier = contentModifier.fillMaxSize()) {
+                                        Row(modifier = Modifier.fillMaxSize()) {
+                                            // Experimental tablet live layout; each pane reuses the existing screen contract.
+                                            Box(
+                                                Modifier
+                                                    .weight(0.38f)
+                                                    .fillMaxHeight()
+                                            ) {
+                                                quickPlaylistsPane(Modifier.fillMaxSize())
+                                            }
+                                            Box(
+                                                Modifier
+                                                    .weight(0.62f)
+                                                    .fillMaxHeight()
+                                            ) {
+                                                playerPane(Modifier.fillMaxSize())
+                                            }
                                         }
+
                                         Box(
-                                            Modifier
-                                                .weight(0.62f)
-                                                .fillMaxHeight()
+                                            modifier = Modifier
+                                                .align(Alignment.TopEnd)
+                                                .padding(8.dp)
                                         ) {
-                                            playerPane(Modifier.fillMaxSize())
+                                            IconButton(onClick = { isTabletSplitMenuOpen = true }) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.Settings,
+                                                    contentDescription = stringResource(R.string.common_cd_options),
+                                                    tint = Color.White.copy(alpha = 0.72f)
+                                                )
+                                            }
+                                            DropdownMenu(
+                                                expanded = isTabletSplitMenuOpen,
+                                                onDismissRequest = { isTabletSplitMenuOpen = false }
+                                            ) {
+                                                DropdownMenuItem(
+                                                    text = { Text(stringResource(R.string.tab_library)) },
+                                                    onClick = {
+                                                        isTabletSplitMenuOpen = false
+                                                        setTabAndPersist(
+                                                            BottomTab.Library,
+                                                            reason = "tabletSplitMenuLibrary"
+                                                        )
+                                                    }
+                                                )
+                                                DropdownMenuItem(
+                                                    text = { Text(stringResource(R.string.tab_more)) },
+                                                    onClick = {
+                                                        isTabletSplitMenuOpen = false
+                                                        setTabAndPersist(
+                                                            BottomTab.More,
+                                                            reason = "tabletSplitMenuMore"
+                                                        )
+                                                    }
+                                                )
+                                            }
                                         }
                                     }
                                 } else when (selectedTab) {
