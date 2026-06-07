@@ -55,6 +55,61 @@ choisir → envoyer → importer
 
 ---
 
+## Base V2 — Identité Et Reconnexion
+
+SMP Sync V2 prépare un parcours plus simple sans remplacer le moteur V1.
+
+Chaque appareil possède une identité locale persistante :
+
+- `localDeviceId`
+- `localDeviceName`
+- rôle préféré : téléphone principal, appareil secours ou non défini
+- appareil associé si connu
+- dernier endpoint connu : host + port
+
+LocalLink transporte maintenant l’identité SMP Sync dans le message `Hello` :
+
+- `deviceId`
+- `deviceName`
+- `deviceRole`
+
+Ces champs restent optionnels pour préserver la compatibilité avec les anciens messages.
+
+Règles :
+
+- ne jamais régénérer l’identifiant local sans action explicite future
+- ne pas écraser silencieusement un appareil associé différent
+- mémoriser l’endpoint dès qu’une connexion client LocalLink réussit
+- compléter ensuite nom, identifiant et rôle quand le `Hello` est reçu
+- conserver le mode manuel IP/port comme fallback
+
+---
+
+## Mode Recevoir
+
+Le mode `Recevoir` sert à rendre l’appareil secours joignable de façon explicite.
+
+Workflow recommandé :
+
+1. Tablette ou appareil secours : ouvrir SMP Sync
+2. appuyer sur `Recevoir`
+3. vérifier l’état `Prêt à recevoir`
+4. téléphone principal : appuyer sur `Reconnecter` si un endpoint est connu
+
+Le serveur LocalLink reste actif tant que l’écran Sync est ouvert ou que le mode réception est actif dans cet écran.
+
+Contraintes :
+
+- pas de service Android permanent
+- pas de découverte NSD/mDNS à cette étape
+- pas d’import automatique
+- pas de transfert automatique silencieux
+- si la reconnexion échoue, l’utilisateur doit ouvrir SMP Sync sur l’appareil secours et appuyer sur `Recevoir`
+
+Le port de réception peut être réutilisé pour rendre la reconnexion plus stable après redémarrage. Si le port préféré est indisponible, l’application peut basculer vers un autre port et l’afficher clairement.
+
+---
+
 ## Mode Manuel V1
 
 La V1 actuelle est pilotée par l’utilisateur.
@@ -151,7 +206,7 @@ Le mode manuel est donc prioritaire pour l’UX live.
 
 ## Limites Actuelles
 
-- IP/port encore nécessaires pour rejoindre une connexion
+- IP/port restent disponibles comme fallback manuel
 - QR code et découverte automatique : futur
 - pas de cloud
 - pas de DJ en V1
