@@ -554,6 +554,7 @@ fun LibraryScreen(
     onDeleteSmpSong: suspend (String) -> Boolean = { false },
     onKeyboardNavigationAvailabilityChange: (Boolean) -> Unit = {},
     onOpenPlaylistFromLibrary: (String) -> Unit = {},
+    onLufsManualGainChanged: (String, Int) -> Unit = { _, _ -> },
     onPlayFromLibrary: (String, Boolean) -> Unit,
     hardwareCommandToken: Int = 0,
     hardwareCommand: HardwareListCommand = HardwareListCommand.ACTIVATE,
@@ -2630,6 +2631,7 @@ fun LibraryScreen(
                 item
             }
         }
+        onLufsManualGainChanged(song.songId, finalDb)
 
         scope.launch {
             withContext(Dispatchers.IO) {

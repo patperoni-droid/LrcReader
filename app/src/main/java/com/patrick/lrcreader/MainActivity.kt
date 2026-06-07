@@ -4720,6 +4720,15 @@ class MainActivity : AppCompatActivity() {
                                             openedPlaylist = name
                                             setTabAndPersist(BottomTab.QuickPlaylists, reason = "libraryOpenPlaylist")
                                         },
+                                        onLufsManualGainChanged = { songId, gainDb ->
+                                            if (songId == currentPlayingSongId) {
+                                                val safeDb = clampTrackDb(gainDb)
+                                                currentTrackGainDb = safeDb
+                                                currentTrackVolumeSource =
+                                                    SmpConfig.PlaybackConfig.VOLUME_SOURCE_LUFS
+                                                AudioEngine.applyTrackGainDb(safeDb)
+                                            }
+                                        },
                                         onPlayFromLibrary = { uriString, openRichPlayer ->
                                             Log.d(
                                                 SMP_PLAY_TRACE_TAG,
