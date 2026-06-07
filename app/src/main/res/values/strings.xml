@@ -839,6 +839,10 @@
     <string name="smp_sync_live_create_connection">Créer une connexion</string>
     <string name="smp_sync_receive_button">Recevoir</string>
     <string name="smp_sync_receive_ready">Prêt à recevoir</string>
+    <string name="smp_sync_simple_title">Mode simple</string>
+    <string name="smp_sync_simple_sync_action">Synchroniser</string>
+    <string name="smp_sync_advanced_show">Options avancées</string>
+    <string name="smp_sync_advanced_hide">Masquer les options avancées</string>
     <string name="smp_sync_live_join_connection">Rejoindre une connexion</string>
     <string name="smp_sync_live_share_connection_details">À saisir sur le téléphone secours</string>
     <string name="smp_sync_peer_identity_title">Identité SMP Sync</string>

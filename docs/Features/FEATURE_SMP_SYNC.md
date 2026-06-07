@@ -110,6 +110,40 @@ Le port de réception peut être réutilisé pour rendre la reconnexion plus sta
 
 ---
 
+## UX — Mode Simple Et Mode Avancé
+
+SMP Sync propose désormais deux niveaux d’interface :
+
+- mode simple destiné aux musiciens
+- mode avancé destiné au diagnostic et aux réglages techniques
+
+Le mode simple est l’entrée par défaut.
+
+Il affiche uniquement :
+
+- nom de l’appareil local
+- appareil associé
+- dernière synchro connue
+- état de connexion
+- actions principales : `Recevoir`, `Synchroniser`, `Reconnecter` si disponible
+
+Les détails réseau et outils techniques restent disponibles dans les options avancées :
+
+- IP
+- port
+- host manuel
+- identité détaillée
+- appairage
+- sélection manuelle
+- comparaison
+- diagnostics
+
+Objectif UX :
+
+un musicien doit pouvoir comprendre l’écran rapidement et choisir entre `Recevoir` ou `Synchroniser` sans être exposé immédiatement aux détails réseau.
+
+---
+
 ## Mode Manuel V1
 
 La V1 actuelle est pilotée par l’utilisateur.

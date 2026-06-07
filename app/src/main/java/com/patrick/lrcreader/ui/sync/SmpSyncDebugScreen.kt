@@ -166,6 +166,7 @@ fun SmpSyncDebugScreen(
     var manualSearchQuery by remember { mutableStateOf("") }
     var selectedManualSongIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var selectedManualPlaylistIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var advancedExpanded by remember { mutableStateOf(false) }
     var labModeExpanded by remember { mutableStateOf(false) }
     var isGenerating by remember { mutableStateOf(false) }
     var isPreparingPackage by remember { mutableStateOf(false) }
@@ -1274,45 +1275,23 @@ fun SmpSyncDebugScreen(
             fontSize = 13.sp
         )
 
-        SyncPeerIdentityCard(
+        SimpleSyncCard(
             peerState = peerState,
-            remoteDeviceId = remoteDeviceId,
-            remoteDeviceRole = remoteDeviceRole,
-            newDeviceDetected = newDeviceDetected,
-            onSetMain = { updatePreferredRole(SmpSyncDeviceRole.MAIN) },
-            onSetBackup = { updatePreferredRole(SmpSyncDeviceRole.BACKUP) },
-            onForgetPeer = { forgetPairedDevice() }
-        )
-
-        KnownPeerReconnectCard(
-            peerState = peerState,
-            remoteDeviceRole = remoteDeviceRole,
             isBusy = isBusy,
             isHosting = server != null,
             isJoined = client != null,
-            onReconnect = { reconnectKnownPeer() }
-        )
-
-        LocalLinkDryRunCard(
-            localIp = localIp,
-            boundPort = boundPort,
-            localDeviceName = peerState.localDeviceName,
-            pairedDeviceName = peerState.peer.pairedDeviceName,
-            joinHost = joinHost,
-            onJoinHostChange = { joinHost = it.trim() },
-            joinPortText = joinPortText,
-            onJoinPortChange = { joinPortText = it.filter(Char::isDigit) },
             remoteDeviceName = remoteDeviceName,
             statusRes = statusRes,
             statusDetail = statusDetail,
-            isBusy = isBusy,
-            isHosting = server != null,
-            isJoined = client != null,
-            hasSavedConnection = hasSavedConnection,
-            onCreateSession = { createSession() },
-            onJoinSession = { joinSession() },
-            onReconnect = { joinSession() },
-            onStopSession = { closeLinks("user_stop") }
+            onReceive = { createSession() },
+            onSync = {
+                if (peerState.peer.hasKnownEndpoint) {
+                    reconnectKnownPeer()
+                } else {
+                    joinSession()
+                }
+            },
+            onReconnect = { reconnectKnownPeer() }
         )
 
         SyncUserStatusCard(
@@ -1320,54 +1299,6 @@ fun SmpSyncDebugScreen(
             statusRes = statusRes,
             statusDetail = statusDetail,
             errorMessage = errorMessage
-        )
-
-        ManualSelectionSyncCard(
-            manifest = localManifest,
-            expanded = manualSyncExpanded,
-            category = manualCategory,
-            searchQuery = manualSearchQuery,
-            selectedSongIds = selectedManualSongIds,
-            selectedPlaylistIds = selectedManualPlaylistIds,
-            isBusy = isBusy,
-            isConnected = server != null,
-            onToggleExpanded = {
-                val shouldOpen = !manualSyncExpanded
-                manualSyncExpanded = shouldOpen
-                if (shouldOpen && localManifest == null && !isBusy) {
-                    generateLocalManifest(compareAfterGenerate = false)
-                }
-            },
-            onCategoryChange = { category ->
-                manualCategory = category
-                manualSearchQuery = ""
-            },
-            onSearchChange = { manualSearchQuery = it },
-            onToggleSong = { songId ->
-                selectedManualSongIds = if (songId in selectedManualSongIds) {
-                    selectedManualSongIds - songId
-                } else {
-                    selectedManualSongIds + songId
-                }
-            },
-            onTogglePlaylist = { playlistId ->
-                selectedManualPlaylistIds = if (playlistId in selectedManualPlaylistIds) {
-                    selectedManualPlaylistIds - playlistId
-                } else {
-                    selectedManualPlaylistIds + playlistId
-                }
-            },
-            onSelectAllSongs = { songIds ->
-                selectedManualSongIds = selectedManualSongIds + songIds
-            },
-            onSelectAllPlaylists = { playlistIds ->
-                selectedManualPlaylistIds = selectedManualPlaylistIds + playlistIds
-            },
-            onClear = {
-                selectedManualSongIds = emptySet()
-                selectedManualPlaylistIds = emptySet()
-            },
-            onSend = { prepareManualSelectionAndSend() }
         )
 
         if (receivePackageId != null || receivedPackage != null || importResult != null) {
@@ -1382,47 +1313,276 @@ fun SmpSyncDebugScreen(
             )
         }
 
-        LabModeCard(
-            expanded = labModeExpanded,
-            isBusy = isBusy,
-            isGenerating = isGenerating,
-            errorMessage = errorMessage,
-            onToggle = { labModeExpanded = !labModeExpanded },
-            onAnalyze = { generateLocalManifest(compareAfterGenerate = false) },
-            onCompare = { generateLocalManifest(compareAfterGenerate = true) }
+        AdvancedOptionsCard(
+            expanded = advancedExpanded,
+            onToggle = { advancedExpanded = !advancedExpanded }
         ) {
-            localManifest?.let { manifest ->
-                ManifestStatsCard(
-                    title = stringResource(localManifestTitleRes),
-                    manifest = manifest
+            SyncPeerIdentityCard(
+                peerState = peerState,
+                remoteDeviceId = remoteDeviceId,
+                remoteDeviceRole = remoteDeviceRole,
+                newDeviceDetected = newDeviceDetected,
+                onSetMain = { updatePreferredRole(SmpSyncDeviceRole.MAIN) },
+                onSetBackup = { updatePreferredRole(SmpSyncDeviceRole.BACKUP) },
+                onForgetPeer = { forgetPairedDevice() }
+            )
+
+            KnownPeerReconnectCard(
+                peerState = peerState,
+                remoteDeviceRole = remoteDeviceRole,
+                isBusy = isBusy,
+                isHosting = server != null,
+                isJoined = client != null,
+                onReconnect = { reconnectKnownPeer() }
+            )
+
+            LocalLinkDryRunCard(
+                localIp = localIp,
+                boundPort = boundPort,
+                localDeviceName = peerState.localDeviceName,
+                pairedDeviceName = peerState.peer.pairedDeviceName,
+                joinHost = joinHost,
+                onJoinHostChange = { joinHost = it.trim() },
+                joinPortText = joinPortText,
+                onJoinPortChange = { joinPortText = it.filter(Char::isDigit) },
+                remoteDeviceName = remoteDeviceName,
+                statusRes = statusRes,
+                statusDetail = statusDetail,
+                isBusy = isBusy,
+                isHosting = server != null,
+                isJoined = client != null,
+                hasSavedConnection = hasSavedConnection,
+                onCreateSession = { createSession() },
+                onJoinSession = { joinSession() },
+                onReconnect = { joinSession() },
+                onStopSession = { closeLinks("user_stop") }
+            )
+
+            ManualSelectionSyncCard(
+                manifest = localManifest,
+                expanded = manualSyncExpanded,
+                category = manualCategory,
+                searchQuery = manualSearchQuery,
+                selectedSongIds = selectedManualSongIds,
+                selectedPlaylistIds = selectedManualPlaylistIds,
+                isBusy = isBusy,
+                isConnected = server != null,
+                onToggleExpanded = {
+                    val shouldOpen = !manualSyncExpanded
+                    manualSyncExpanded = shouldOpen
+                    if (shouldOpen && localManifest == null && !isBusy) {
+                        generateLocalManifest(compareAfterGenerate = false)
+                    }
+                },
+                onCategoryChange = { category ->
+                    manualCategory = category
+                    manualSearchQuery = ""
+                },
+                onSearchChange = { manualSearchQuery = it },
+                onToggleSong = { songId ->
+                    selectedManualSongIds = if (songId in selectedManualSongIds) {
+                        selectedManualSongIds - songId
+                    } else {
+                        selectedManualSongIds + songId
+                    }
+                },
+                onTogglePlaylist = { playlistId ->
+                    selectedManualPlaylistIds = if (playlistId in selectedManualPlaylistIds) {
+                        selectedManualPlaylistIds - playlistId
+                    } else {
+                        selectedManualPlaylistIds + playlistId
+                    }
+                },
+                onSelectAllSongs = { songIds ->
+                    selectedManualSongIds = selectedManualSongIds + songIds
+                },
+                onSelectAllPlaylists = { playlistIds ->
+                    selectedManualPlaylistIds = selectedManualPlaylistIds + playlistIds
+                },
+                onClear = {
+                    selectedManualSongIds = emptySet()
+                    selectedManualPlaylistIds = emptySet()
+                },
+                onSend = { prepareManualSelectionAndSend() }
+            )
+
+            LabModeCard(
+                expanded = labModeExpanded,
+                isBusy = isBusy,
+                isGenerating = isGenerating,
+                errorMessage = errorMessage,
+                onToggle = { labModeExpanded = !labModeExpanded },
+                onAnalyze = { generateLocalManifest(compareAfterGenerate = false) },
+                onCompare = { generateLocalManifest(compareAfterGenerate = true) }
+            ) {
+                localManifest?.let { manifest ->
+                    ManifestStatsCard(
+                        title = stringResource(localManifestTitleRes),
+                        manifest = manifest
+                    )
+                }
+
+                comparedManifest?.let { manifest ->
+                    ManifestStatsCard(
+                        title = stringResource(comparedManifestTitleRes),
+                        manifest = manifest
+                    )
+                }
+
+                if (summary != null) {
+                    SyncPackagePreviewCard(
+                        syncPackage = syncPackage,
+                        preparedPackage = preparedPackage,
+                        diagnostics = syncDiagnostics,
+                        canPrepare = sourceManifestForPackage != null && syncPlan != null,
+                        isPreparing = isPreparingPackage,
+                        isSending = isSendingPackage,
+                        canSend = server != null &&
+                            preparedPackage != null &&
+                            syncPackage?.hasExcessiveFullSongs() != true,
+                        onPrepare = { prepareSyncPackage() },
+                        onSend = { sendPreparedPackage() }
+                    )
+                }
+
+                SyncDiagnosticsCard(diagnostics = syncDiagnostics)
+                SummaryCard(summary = summary)
+            }
+        }
+    }
+}
+
+@Composable
+private fun SimpleSyncCard(
+    peerState: SmpSyncPairingState,
+    isBusy: Boolean,
+    isHosting: Boolean,
+    isJoined: Boolean,
+    remoteDeviceName: String?,
+    statusRes: Int,
+    statusDetail: String?,
+    onReceive: () -> Unit,
+    onSync: () -> Unit,
+    onReconnect: () -> Unit
+) {
+    val emptyValue = stringResource(R.string.local_link_empty_value)
+    val lastSync = peerState.peer.lastSyncAt?.let { timestamp ->
+        DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(timestamp))
+    } ?: emptyValue
+    val connected = (isHosting || isJoined) && remoteDeviceName != null
+    val statusText = when {
+        connected -> stringResource(R.string.smp_sync_debug_connected_to, remoteDeviceName.orEmpty())
+        statusRes == R.string.smp_sync_debug_connection_error -> {
+            statusDetail?.takeIf { it.isNotBlank() }
+                ?: stringResource(R.string.local_link_connection_failed)
+        }
+        isHosting -> stringResource(R.string.smp_sync_receive_ready)
+        isJoined -> stringResource(R.string.smp_sync_debug_waiting_for_remote)
+        else -> stringResource(R.string.smp_sync_debug_disconnected)
+    }
+    val canStart = !isBusy && !isHosting && !isJoined
+    val hasKnownEndpoint = peerState.peer.hasKnownEndpoint
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF151F24)),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.smp_sync_simple_title),
+                color = Color.White,
+                fontSize = 19.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            InfoLine(
+                label = stringResource(R.string.smp_sync_peer_local_name),
+                value = peerState.localDeviceName
+            )
+            InfoLine(
+                label = stringResource(R.string.smp_sync_peer_paired_device),
+                value = peerState.peer.pairedDeviceName ?: emptyValue
+            )
+            InfoLine(
+                label = stringResource(R.string.smp_sync_peer_last_sync),
+                value = lastSync
+            )
+            Text(
+                text = statusText,
+                color = if (statusRes == R.string.smp_sync_debug_connection_error) {
+                    Color(0xFFFFAB91)
+                } else {
+                    Color(0xFFA5D6A7)
+                },
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFF202A2F), RoundedCornerShape(8.dp))
+                    .padding(horizontal = 12.dp, vertical = 10.dp)
+            )
+            Button(
+                onClick = onReceive,
+                enabled = canStart,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(text = stringResource(R.string.smp_sync_receive_button))
+            }
+            Button(
+                onClick = onSync,
+                enabled = canStart && hasKnownEndpoint,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(text = stringResource(R.string.smp_sync_simple_sync_action))
+            }
+            if (hasKnownEndpoint) {
+                TextButton(
+                    onClick = onReconnect,
+                    enabled = canStart,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(text = stringResource(R.string.local_link_reconnect))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AdvancedOptionsCard(
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    content: @Composable () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF141414)),
+        shape = RoundedCornerShape(10.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            TextButton(
+                onClick = onToggle,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = stringResource(
+                        if (expanded) {
+                            R.string.smp_sync_advanced_hide
+                        } else {
+                            R.string.smp_sync_advanced_show
+                        }
+                    )
                 )
             }
-
-            comparedManifest?.let { manifest ->
-                ManifestStatsCard(
-                    title = stringResource(comparedManifestTitleRes),
-                    manifest = manifest
-                )
+            if (expanded) {
+                content()
             }
-
-            if (summary != null) {
-                SyncPackagePreviewCard(
-                    syncPackage = syncPackage,
-                    preparedPackage = preparedPackage,
-                    diagnostics = syncDiagnostics,
-                    canPrepare = sourceManifestForPackage != null && syncPlan != null,
-                    isPreparing = isPreparingPackage,
-                    isSending = isSendingPackage,
-                    canSend = server != null &&
-                        preparedPackage != null &&
-                        syncPackage?.hasExcessiveFullSongs() != true,
-                    onPrepare = { prepareSyncPackage() },
-                    onSend = { sendPreparedPackage() }
-                )
-            }
-
-            SyncDiagnosticsCard(diagnostics = syncDiagnostics)
-            SummaryCard(summary = summary)
         }
     }
 }
