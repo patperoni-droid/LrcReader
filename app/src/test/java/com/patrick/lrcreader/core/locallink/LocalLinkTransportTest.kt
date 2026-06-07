@@ -28,7 +28,11 @@ class LocalLinkTransportTest {
             assertTrue(waitUntil { serverMessages.any { it is HelloMessage } })
             assertTrue(waitUntil { clientMessages.any { it is HelloMessage } })
             assertEquals("client-device", server.session.remoteDeviceName)
+            assertEquals("client-id", server.session.remoteDeviceId)
+            assertEquals("BACKUP", server.session.remoteDeviceRole)
             assertEquals("server-device", client.session.remoteDeviceName)
+            assertEquals("server-id", client.session.remoteDeviceId)
+            assertEquals("MAIN", client.session.remoteDeviceRole)
         } finally {
             client.close()
             server.close()
@@ -204,7 +208,9 @@ class LocalLinkTransportTest {
         return LocalLinkServer(
             sessionId = "session-1",
             token = "token",
-            deviceName = "server-device"
+            deviceName = "server-device",
+            deviceId = "server-id",
+            deviceRole = "MAIN"
         )
     }
 
@@ -215,6 +221,8 @@ class LocalLinkTransportTest {
             sessionId = "session-1",
             token = "token",
             deviceName = "client-device",
+            deviceId = "client-id",
+            deviceRole = "BACKUP",
             reconnectAttempts = 0,
             reconnectDelayMs = 10L,
             connectTimeoutMs = 500

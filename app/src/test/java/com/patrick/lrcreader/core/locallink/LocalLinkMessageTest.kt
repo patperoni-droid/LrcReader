@@ -23,6 +23,43 @@ class LocalLinkMessageTest {
     }
 
     @Test
+    fun hello_oldFormatWithoutDeviceId_staysReadable() {
+        val raw = JSONObject()
+            .put("type", LocalLinkMessage.TYPE_HELLO)
+            .put("protocol", LocalLinkMessage.PROTOCOL)
+            .put("version", LocalLinkMessage.VERSION)
+            .put("sessionId", "session-legacy")
+            .put("token", "short-token")
+            .put("deviceName", "Legacy SMP")
+            .toString()
+
+        val restored = LocalLinkMessage.fromJsonString(raw)
+
+        assertTrue(restored is HelloMessage)
+        restored as HelloMessage
+        assertEquals("session-legacy", restored.sessionId)
+        assertEquals("short-token", restored.token)
+        assertEquals("Legacy SMP", restored.deviceName)
+        assertEquals(null, restored.deviceId)
+        assertEquals(null, restored.deviceRole)
+    }
+
+    @Test
+    fun hello_newFormat_preservesDeviceIdentity() {
+        val message = HelloMessage(
+            sessionId = "session-123",
+            token = "short-token",
+            deviceName = "Lenovo Tab",
+            deviceId = "smp-device-123",
+            deviceRole = "BACKUP"
+        )
+
+        val restored = LocalLinkMessage.fromJsonString(message.toJsonString())
+
+        assertEquals(message, restored)
+    }
+
+    @Test
     fun lyricsPacket_roundTrip_preservesParsedLines() {
         val message = LyricsPacketMessage(
             songId = "song_123",

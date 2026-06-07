@@ -840,6 +840,9 @@
     <string name="smp_sync_peer_paired_device">Paired device</string>
     <string name="smp_sync_peer_last_endpoint">Last IP / port</string>
     <string name="smp_sync_peer_last_sync">Last sync</string>
+    <string name="smp_sync_peer_known_device">Device recognized</string>
+    <string name="smp_sync_peer_new_device_detected">New device detected</string>
+    <string name="smp_sync_peer_remote_role">Remote role</string>
     <string name="smp_sync_peer_set_main">Set as main phone</string>
     <string name="smp_sync_peer_set_backup">Set as backup device</string>
     <string name="smp_sync_peer_forget">Forget paired device</string>

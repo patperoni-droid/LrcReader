@@ -29,4 +29,18 @@ class SmpSyncPeerStoreTest {
         assertTrue(SmpSyncPeerInfo(pairedDeviceId = "smp-device").hasPairedDevice)
         assertTrue(SmpSyncPeerInfo(lastHost = "192.168.1.10", lastPort = 4567).hasPairedDevice)
     }
+
+    @Test
+    fun canRememberDevice_rejectsDifferentKnownPair() {
+        val current = SmpSyncPairingState(
+            localDeviceId = "local",
+            localDeviceName = "Phone",
+            preferredRole = SmpSyncDeviceRole.MAIN,
+            peer = SmpSyncPeerInfo(pairedDeviceId = "known-backup")
+        )
+
+        assertTrue(SmpSyncPeerStore.canRememberDevice(current, null))
+        assertTrue(SmpSyncPeerStore.canRememberDevice(current, "known-backup"))
+        assertFalse(SmpSyncPeerStore.canRememberDevice(current, "other-device"))
+    }
 }

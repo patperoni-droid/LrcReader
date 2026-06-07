@@ -13,6 +13,8 @@ class LocalLinkServer(
     private val sessionId: String,
     private val token: String,
     private val deviceName: String,
+    private val deviceId: String? = null,
+    private val deviceRole: String? = null,
     private val port: Int = 0,
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO
 ) : Closeable {
@@ -77,7 +79,9 @@ class LocalLinkServer(
             is HelloMessage -> {
                 session = session.copy(
                     connected = true,
-                    remoteDeviceName = message.deviceName
+                    remoteDeviceName = message.deviceName,
+                    remoteDeviceId = message.deviceId,
+                    remoteDeviceRole = message.deviceRole
                 )
             }
             is PingMessage -> {
@@ -91,7 +95,9 @@ class LocalLinkServer(
         return HelloMessage(
             sessionId = sessionId,
             token = token,
-            deviceName = deviceName
+            deviceName = deviceName,
+            deviceId = deviceId,
+            deviceRole = deviceRole
         )
     }
 

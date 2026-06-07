@@ -4,5 +4,7 @@ data class LocalLinkSession(
     val sessionId: String,
     val connected: Boolean = false,
     val lastPing: Long? = null,
-    val remoteDeviceName: String? = null
+    val remoteDeviceName: String? = null,
+    val remoteDeviceId: String? = null,
+    val remoteDeviceRole: String? = null
 )

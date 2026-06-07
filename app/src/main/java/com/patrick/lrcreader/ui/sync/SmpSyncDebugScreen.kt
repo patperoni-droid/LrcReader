@@ -178,6 +178,9 @@ fun SmpSyncDebugScreen(
         )
     }
     var remoteDeviceName by remember { mutableStateOf<String?>(null) }
+    var remoteDeviceId by remember { mutableStateOf<String?>(null) }
+    var remoteDeviceRole by remember { mutableStateOf<String?>(null) }
+    var newDeviceDetected by remember { mutableStateOf(false) }
     var statusRes by remember { mutableStateOf(R.string.smp_sync_debug_status_idle) }
     var statusDetail by remember { mutableStateOf<String?>(null) }
     var seq by remember { mutableLongStateOf(1L) }
@@ -216,20 +219,29 @@ fun SmpSyncDebugScreen(
     fun rememberConnectedPeer(
         host: String? = null,
         port: Int? = null,
-        deviceName: String? = null
+        deviceName: String? = null,
+        deviceId: String? = null,
+        deviceRole: String? = null
     ) {
+        remoteDeviceName = deviceName ?: deviceId
+        remoteDeviceId = deviceId
+        remoteDeviceRole = deviceRole
+        newDeviceDetected = !SmpSyncPeerStore.canRememberDevice(peerState, deviceId)
+        if (newDeviceDetected) return
+
         peerState = if (!host.isNullOrBlank() && port != null) {
             SmpSyncPeerStore.rememberEndpoint(
                 context = context.applicationContext,
                 host = host,
                 port = port,
-                pairedDeviceName = deviceName
+                pairedDeviceName = deviceName,
+                pairedDeviceId = deviceId
             )
         } else {
-            // TODO SMP Sync V2: store pairedDeviceId once LocalLink hello advertises it.
             SmpSyncPeerStore.rememberPairedDevice(
                 context = context.applicationContext,
-                pairedDeviceName = deviceName
+                pairedDeviceName = deviceName,
+                pairedDeviceId = deviceId
             )
         }
     }
@@ -314,6 +326,9 @@ fun SmpSyncDebugScreen(
         client = null
         boundPort = null
         remoteDeviceName = null
+        remoteDeviceId = null
+        remoteDeviceRole = null
+        newDeviceDetected = false
         isConnecting = false
         statusDetail = null
         statusRes = R.string.smp_sync_debug_status_idle
@@ -454,8 +469,11 @@ fun SmpSyncDebugScreen(
     fun handleServerMessage(message: LocalLinkMessage) {
         when (message) {
             is HelloMessage -> {
-                remoteDeviceName = message.deviceName
-                rememberConnectedPeer(deviceName = message.deviceName)
+                rememberConnectedPeer(
+                    deviceName = message.deviceName,
+                    deviceId = message.deviceId,
+                    deviceRole = message.deviceRole
+                )
                 statusDetail = null
                 statusRes = R.string.local_link_state_connected
             }
@@ -580,11 +598,12 @@ fun SmpSyncDebugScreen(
     fun handleClientMessage(message: LocalLinkMessage) {
         when (message) {
             is HelloMessage -> {
-                remoteDeviceName = message.deviceName
                 rememberConnectedPeer(
                     host = joinHost,
                     port = joinPortText.toIntOrNull(),
-                    deviceName = message.deviceName
+                    deviceName = message.deviceName,
+                    deviceId = message.deviceId,
+                    deviceRole = message.deviceRole
                 )
                 statusDetail = null
                 statusRes = R.string.smp_sync_debug_waiting_for_remote
@@ -619,7 +638,9 @@ fun SmpSyncDebugScreen(
         val nextServer = LocalLinkServer(
             sessionId = "smp-sync-host-${System.currentTimeMillis()}",
             token = experimentalToken,
-            deviceName = hostDeviceName
+            deviceName = hostDeviceName,
+            deviceId = peerState.localDeviceId,
+            deviceRole = peerState.preferredRole.name
         )
         server = nextServer
         statusRes = R.string.smp_sync_debug_session_starting
@@ -659,6 +680,8 @@ fun SmpSyncDebugScreen(
             sessionId = "smp-sync-join-${System.currentTimeMillis()}",
             token = experimentalToken,
             deviceName = joinDeviceName,
+            deviceId = peerState.localDeviceId,
+            deviceRole = peerState.preferredRole.name,
             reconnectAttempts = 1
         )
         client = nextClient
@@ -676,11 +699,6 @@ fun SmpSyncDebugScreen(
                     ?: context.getString(R.string.local_link_connection_failed)
                 return@launch
             }
-            rememberConnectedPeer(
-                host = joinHost,
-                port = port,
-                deviceName = nextClient.session.remoteDeviceName
-            )
             statusRes = R.string.smp_sync_debug_waiting_for_remote
             val requestId = "manifest-${System.currentTimeMillis()}"
             val sent = nextClient.send(
@@ -1140,6 +1158,9 @@ fun SmpSyncDebugScreen(
 
         SyncPeerIdentityCard(
             peerState = peerState,
+            remoteDeviceId = remoteDeviceId,
+            remoteDeviceRole = remoteDeviceRole,
+            newDeviceDetected = newDeviceDetected,
             onSetMain = { updatePreferredRole(SmpSyncDeviceRole.MAIN) },
             onSetBackup = { updatePreferredRole(SmpSyncDeviceRole.BACKUP) },
             onForgetPeer = { forgetPairedDevice() }
@@ -1280,6 +1301,9 @@ fun SmpSyncDebugScreen(
 @Composable
 private fun SyncPeerIdentityCard(
     peerState: SmpSyncPairingState,
+    remoteDeviceId: String?,
+    remoteDeviceRole: String?,
+    newDeviceDetected: Boolean,
     onSetMain: () -> Unit,
     onSetBackup: () -> Unit,
     onForgetPeer: () -> Unit
@@ -1298,6 +1322,15 @@ private fun SyncPeerIdentityCard(
     val lastSync = peerState.peer.lastSyncAt?.let { timestamp ->
         DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(timestamp))
     } ?: emptyValue
+    val remoteRoleLabel = remoteDeviceRole
+        ?.let(SmpSyncDeviceRole::fromStoredValue)
+        ?.let { role ->
+            when (role) {
+                SmpSyncDeviceRole.MAIN -> stringResource(R.string.smp_sync_peer_role_main)
+                SmpSyncDeviceRole.BACKUP -> stringResource(R.string.smp_sync_peer_role_backup)
+                SmpSyncDeviceRole.UNKNOWN -> stringResource(R.string.smp_sync_peer_role_unknown)
+            }
+        }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -1334,6 +1367,26 @@ private fun SyncPeerIdentityCard(
                 label = stringResource(R.string.smp_sync_peer_last_sync),
                 value = lastSync
             )
+            if (!remoteDeviceId.isNullOrBlank()) {
+                Text(
+                    text = stringResource(
+                        if (newDeviceDetected) {
+                            R.string.smp_sync_peer_new_device_detected
+                        } else {
+                            R.string.smp_sync_peer_known_device
+                        }
+                    ),
+                    color = if (newDeviceDetected) Color(0xFFFFCC80) else Color(0xFFA5D6A7),
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+            remoteRoleLabel?.let { label ->
+                InfoLine(
+                    label = stringResource(R.string.smp_sync_peer_remote_role),
+                    value = label
+                )
+            }
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)

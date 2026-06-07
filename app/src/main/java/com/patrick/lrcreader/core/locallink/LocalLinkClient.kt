@@ -15,6 +15,8 @@ class LocalLinkClient(
     private val sessionId: String,
     private val token: String,
     private val deviceName: String,
+    private val deviceId: String? = null,
+    private val deviceRole: String? = null,
     private val reconnectAttempts: Int = 0,
     private val reconnectDelayMs: Long = 500L,
     private val connectTimeoutMs: Int = 1_500,
@@ -84,7 +86,9 @@ class LocalLinkClient(
             is HelloMessage -> {
                 session = session.copy(
                     connected = true,
-                    remoteDeviceName = message.deviceName
+                    remoteDeviceName = message.deviceName,
+                    remoteDeviceId = message.deviceId,
+                    remoteDeviceRole = message.deviceRole
                 )
             }
             is PingMessage -> {
@@ -98,7 +102,9 @@ class LocalLinkClient(
         return HelloMessage(
             sessionId = sessionId,
             token = token,
-            deviceName = deviceName
+            deviceName = deviceName,
+            deviceId = deviceId,
+            deviceRole = deviceRole
         )
     }
 

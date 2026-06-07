@@ -110,6 +110,8 @@ object SmpSyncPeerStore {
         val cleanName = pairedDeviceName?.trim()?.takeIf { it.isNotBlank() }
         val cleanId = pairedDeviceId?.trim()?.takeIf { it.isNotBlank() }
         if (cleanName == null && cleanId == null) return get(context)
+        val current = get(context)
+        if (!canRememberDevice(current, cleanId)) return current
 
         val editor = context.applicationContext
             .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -131,6 +133,8 @@ object SmpSyncPeerStore {
         val safePort = port.takeIf { it in 1..65535 } ?: return get(context)
         val cleanName = pairedDeviceName?.trim()?.takeIf { it.isNotBlank() }
         val cleanId = pairedDeviceId?.trim()?.takeIf { it.isNotBlank() }
+        val current = get(context)
+        if (!canRememberDevice(current, cleanId)) return current
 
         val editor = context.applicationContext
             .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -141,6 +145,12 @@ object SmpSyncPeerStore {
         cleanId?.let { editor.putString(KEY_PAIRED_DEVICE_ID, it) }
         editor.apply()
         return get(context)
+    }
+
+    fun canRememberDevice(current: SmpSyncPairingState, incomingDeviceId: String?): Boolean {
+        val knownDeviceId = current.peer.pairedDeviceId?.trim()?.takeIf { it.isNotBlank() }
+        val cleanIncoming = incomingDeviceId?.trim()?.takeIf { it.isNotBlank() }
+        return knownDeviceId == null || cleanIncoming == null || knownDeviceId == cleanIncoming
     }
 
     fun markSyncCompleted(context: Context, timestampMs: Long = System.currentTimeMillis()): SmpSyncPairingState {

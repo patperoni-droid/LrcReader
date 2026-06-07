@@ -283,7 +283,9 @@ data class SyncPackageEndMessage(
 data class HelloMessage(
     val sessionId: String,
     val token: String,
-    val deviceName: String,
+    val deviceName: String? = null,
+    val deviceId: String? = null,
+    val deviceRole: String? = null,
     override val protocol: String = LocalLinkMessage.PROTOCOL,
     override val version: Int = LocalLinkMessage.VERSION
 ) : LocalLinkMessage {
@@ -292,7 +294,9 @@ data class HelloMessage(
     override fun toJson(): JSONObject = baseJson(type, protocol, version).apply {
         put("sessionId", sessionId)
         put("token", token)
-        put("deviceName", deviceName)
+        deviceName?.takeIf { it.isNotBlank() }?.let { put("deviceName", it) }
+        deviceId?.takeIf { it.isNotBlank() }?.let { put("deviceId", it) }
+        deviceRole?.takeIf { it.isNotBlank() }?.let { put("deviceRole", it) }
     }
 
     companion object {
@@ -300,7 +304,9 @@ data class HelloMessage(
             return HelloMessage(
                 sessionId = json.optString("sessionId"),
                 token = json.optString("token"),
-                deviceName = json.optString("deviceName")
+                deviceName = json.optStringOrNull("deviceName"),
+                deviceId = json.optStringOrNull("deviceId"),
+                deviceRole = json.optStringOrNull("deviceRole")
             )
         }
     }

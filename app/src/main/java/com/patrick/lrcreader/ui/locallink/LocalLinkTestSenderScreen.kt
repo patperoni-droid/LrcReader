@@ -158,7 +158,7 @@ fun LocalLinkTestSenderScreen(
     fun handleIncoming(message: LocalLinkMessage) {
         when (message) {
             is HelloMessage -> {
-                runtime.remoteStatus = message.deviceName
+                runtime.remoteStatus = message.deviceName ?: emptyValue
                 Log.d(LOCAL_LINK_DIAG_TAG, "sender_received_hello remote=${message.deviceName}")
             }
             is ReceiverStatusMessage -> runtime.remoteStatus = if (message.state == "ready") {
