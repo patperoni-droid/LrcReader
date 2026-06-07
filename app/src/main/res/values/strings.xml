@@ -851,6 +851,8 @@
     <string name="smp_sync_peer_known_device">Appareil reconnu</string>
     <string name="smp_sync_peer_new_device_detected">Nouvel appareil détecté</string>
     <string name="smp_sync_peer_remote_role">Rôle distant</string>
+    <string name="smp_sync_known_peer_title">Appareil connu</string>
+    <string name="smp_sync_known_peer_reconnect_failed">Impossible de joindre l’appareil connu</string>
     <string name="smp_sync_peer_set_main">Définir comme téléphone principal</string>
     <string name="smp_sync_peer_set_backup">Définir comme appareil secours</string>
     <string name="smp_sync_peer_forget">Oublier appareil associé</string>

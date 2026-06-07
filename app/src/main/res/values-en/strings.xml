@@ -843,6 +843,8 @@
     <string name="smp_sync_peer_known_device">Device recognized</string>
     <string name="smp_sync_peer_new_device_detected">New device detected</string>
     <string name="smp_sync_peer_remote_role">Remote role</string>
+    <string name="smp_sync_known_peer_title">Known device</string>
+    <string name="smp_sync_known_peer_reconnect_failed">Unable to reach known device</string>
     <string name="smp_sync_peer_set_main">Set as main phone</string>
     <string name="smp_sync_peer_set_backup">Set as backup device</string>
     <string name="smp_sync_peer_forget">Forget paired device</string>

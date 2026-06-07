@@ -187,10 +187,10 @@ fun SmpSyncDebugScreen(
     val isBusy = isGenerating || isConnecting || isPreparingPackage || isSendingPackage || isImportingPackage
     val hasSavedConnection = joinHost.isNotBlank() && joinPortText.isNotBlank()
 
-    fun saveJoinTarget() {
+    fun saveJoinTarget(host: String = joinHost, portText: String = joinPortText) {
         prefs.edit()
-            .putString(SMP_SYNC_PREF_HOST, joinHost.trim())
-            .putString(SMP_SYNC_PREF_PORT, joinPortText.trim())
+            .putString(SMP_SYNC_PREF_HOST, host.trim())
+            .putString(SMP_SYNC_PREF_PORT, portText.trim())
             .apply()
     }
 
@@ -663,19 +663,26 @@ fun SmpSyncDebugScreen(
         }
     }
 
-    fun joinSession() {
+    fun joinSession(
+        targetHost: String = joinHost,
+        targetPortText: String = joinPortText,
+        connectionFailedDetailRes: Int? = null
+    ) {
         if (isBusy) return
-        val port = joinPortText.toIntOrNull()
-        if (joinHost.isBlank() || port == null) {
+        val cleanHost = targetHost.trim()
+        val port = targetPortText.toIntOrNull()
+        if (cleanHost.isBlank() || port == null) {
             statusRes = R.string.smp_sync_debug_connection_error
             statusDetail = context.getString(R.string.local_link_invalid_address)
             return
         }
-        saveJoinTarget()
+        joinHost = cleanHost
+        joinPortText = port.toString()
+        saveJoinTarget(cleanHost, port.toString())
         closeLinks()
         clearComparison()
         val nextClient = LocalLinkClient(
-            host = joinHost.trim(),
+            host = cleanHost,
             port = port,
             sessionId = "smp-sync-join-${System.currentTimeMillis()}",
             token = experimentalToken,
@@ -695,7 +702,8 @@ fun SmpSyncDebugScreen(
             if (!connected) {
                 client = null
                 statusRes = R.string.smp_sync_debug_connection_error
-                statusDetail = nextClient.lastFailureReason
+                statusDetail = connectionFailedDetailRes?.let(context::getString)
+                    ?: nextClient.lastFailureReason
                     ?: context.getString(R.string.local_link_connection_failed)
                 return@launch
             }
@@ -722,6 +730,17 @@ fun SmpSyncDebugScreen(
                 }
             }
         }
+    }
+
+    fun reconnectKnownPeer() {
+        val host = peerState.peer.lastHost
+        val port = peerState.peer.lastPort
+        if (host.isNullOrBlank() || port == null) return
+        joinSession(
+            targetHost = host,
+            targetPortText = port.toString(),
+            connectionFailedDetailRes = R.string.smp_sync_known_peer_reconnect_failed
+        )
     }
 
     fun prepareSyncPackage() {
@@ -1166,6 +1185,15 @@ fun SmpSyncDebugScreen(
             onForgetPeer = { forgetPairedDevice() }
         )
 
+        KnownPeerReconnectCard(
+            peerState = peerState,
+            remoteDeviceRole = remoteDeviceRole,
+            isBusy = isBusy,
+            isHosting = server != null,
+            isJoined = client != null,
+            onReconnect = { reconnectKnownPeer() }
+        )
+
         LocalLinkDryRunCard(
             localIp = localIp,
             boundPort = boundPort,
@@ -1294,6 +1322,75 @@ fun SmpSyncDebugScreen(
 
             SyncDiagnosticsCard(diagnostics = syncDiagnostics)
             SummaryCard(summary = summary)
+        }
+    }
+}
+
+@Composable
+private fun KnownPeerReconnectCard(
+    peerState: SmpSyncPairingState,
+    remoteDeviceRole: String?,
+    isBusy: Boolean,
+    isHosting: Boolean,
+    isJoined: Boolean,
+    onReconnect: () -> Unit
+) {
+    val peer = peerState.peer
+    val host = peer.lastHost
+    val port = peer.lastPort
+    if (host.isNullOrBlank() || port == null) return
+
+    val emptyValue = stringResource(R.string.local_link_empty_value)
+    val remoteRoleLabel = remoteDeviceRole
+        ?.let(SmpSyncDeviceRole::fromStoredValue)
+        ?.let { role ->
+            when (role) {
+                SmpSyncDeviceRole.MAIN -> stringResource(R.string.smp_sync_peer_role_main)
+                SmpSyncDeviceRole.BACKUP -> stringResource(R.string.smp_sync_peer_role_backup)
+                SmpSyncDeviceRole.UNKNOWN -> stringResource(R.string.smp_sync_peer_role_unknown)
+            }
+        }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF142126)),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.smp_sync_known_peer_title),
+                color = Color.White,
+                fontSize = 17.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            InfoLine(
+                label = stringResource(R.string.smp_sync_peer_paired_device),
+                value = peer.pairedDeviceName ?: emptyValue
+            )
+            remoteRoleLabel?.let { role ->
+                InfoLine(
+                    label = stringResource(R.string.smp_sync_peer_remote_role),
+                    value = role
+                )
+            }
+            InfoLine(
+                label = stringResource(R.string.local_link_ip_label),
+                value = host
+            )
+            InfoLine(
+                label = stringResource(R.string.local_link_port_label),
+                value = port.toString()
+            )
+            Button(
+                onClick = onReconnect,
+                enabled = !isBusy && !isHosting && !isJoined,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(text = stringResource(R.string.local_link_reconnect))
+            }
         }
     }
 }
