@@ -73,6 +73,13 @@ Restore live rule:
 - Library titles and playlist titles must not require opening or playing a song to repair themselves
 - playlists restored from another device must survive restart without manual cleanup
 
+Instant Library rule:
+- the last known Library song list must be available from persistent cache as early as possible
+- if cached songs are available, background verification scans must not replace them with a temporary empty list
+- already known songs must remain searchable while the scan refreshes
+- if no cached or live data exists yet, the UI must show clear loading feedback instead of appearing blank
+- scan freshness is secondary to immediate live access to known songs
+
 ⸻
 
 TIMELINE SAFETY

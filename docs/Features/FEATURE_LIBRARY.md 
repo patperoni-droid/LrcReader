@@ -223,6 +223,18 @@ Rules:
 - rescan should refresh visible data only
 - avoid repeated expensive full scans
 
+Instant startup rule:
+- after a successful scan, the last known Library song list must be kept in persistent local cache
+- on app restart, known songs must be displayed from cache as soon as possible
+- if cached songs are available, a scan must run in the background and must never temporarily replace the visible Library with an empty list
+- access to already known songs has priority over perfect scan freshness in live conditions
+- if no cache or usable data exists yet, the UI must show clear loading feedback instead of appearing empty or frozen
+- when a scan completes with no songs, the UI must show a real empty state, not an infinite loader
+
+Live UX rule:
+- in concert, the user must always understand whether the app is showing cached content, updating in background, loading for the first time, or truly empty
+- no heavy scan or cache rebuild may run on the main thread
+
 ⸻
 
 MULTI-SELECTION
