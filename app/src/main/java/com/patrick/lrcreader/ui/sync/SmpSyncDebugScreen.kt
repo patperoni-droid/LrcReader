@@ -69,6 +69,9 @@ import com.patrick.lrcreader.core.sync.SmpSyncPackageProgress
 import com.patrick.lrcreader.core.sync.SmpSyncPackageProgressPhase
 import com.patrick.lrcreader.core.sync.SmpSyncPackageImportResult
 import com.patrick.lrcreader.core.sync.SmpSyncPreparedPackage
+import com.patrick.lrcreader.core.sync.SmpSyncDeviceRole
+import com.patrick.lrcreader.core.sync.SmpSyncPairingState
+import com.patrick.lrcreader.core.sync.SmpSyncPeerStore
 import com.patrick.lrcreader.core.sync.SmpSyncReceivedPackage
 import com.patrick.lrcreader.core.sync.SmpSyncPlanSummary
 import com.patrick.lrcreader.core.sync.SmpSyncPlanSummaryLine
@@ -93,7 +96,9 @@ import java.io.File
 import java.net.Inet4Address
 import java.net.NetworkInterface
 import java.security.MessageDigest
+import java.text.DateFormat
 import java.util.Collections
+import java.util.Date
 import java.util.UUID
 
 private const val SMP_SYNC_PREFS = "smp_sync_debug"
@@ -119,10 +124,13 @@ fun SmpSyncDebugScreen(
     val prefs = remember(context) {
         context.getSharedPreferences(SMP_SYNC_PREFS, Context.MODE_PRIVATE)
     }
+    var peerState by remember(context) {
+        mutableStateOf(SmpSyncPeerStore.get(context.applicationContext))
+    }
     val scope = rememberCoroutineScope()
     val localIp = remember { findLocalIpv4Address() ?: "127.0.0.1" }
-    val hostDeviceName = stringResource(R.string.smp_sync_debug_host_device_name)
-    val joinDeviceName = stringResource(R.string.smp_sync_debug_join_device_name)
+    val hostDeviceName = peerState.localDeviceName
+    val joinDeviceName = peerState.localDeviceName
     val experimentalToken = stringResource(R.string.local_link_experimental_token)
     var localManifest by remember { mutableStateOf<SmpSyncManifest?>(null) }
     var localManifestTitleRes by remember { mutableStateOf(R.string.smp_sync_debug_local_manifest) }
@@ -157,8 +165,18 @@ fun SmpSyncDebugScreen(
     var server by remember { mutableStateOf<LocalLinkServer?>(null) }
     var client by remember { mutableStateOf<LocalLinkClient?>(null) }
     var boundPort by remember { mutableStateOf<Int?>(null) }
-    var joinHost by remember { mutableStateOf(prefs.getString(SMP_SYNC_PREF_HOST, "").orEmpty()) }
-    var joinPortText by remember { mutableStateOf(prefs.getString(SMP_SYNC_PREF_PORT, "").orEmpty()) }
+    var joinHost by remember {
+        mutableStateOf(
+            prefs.getString(SMP_SYNC_PREF_HOST, "").orEmpty()
+                .ifBlank { peerState.peer.lastHost.orEmpty() }
+        )
+    }
+    var joinPortText by remember {
+        mutableStateOf(
+            prefs.getString(SMP_SYNC_PREF_PORT, "").orEmpty()
+                .ifBlank { peerState.peer.lastPort?.toString().orEmpty() }
+        )
+    }
     var remoteDeviceName by remember { mutableStateOf<String?>(null) }
     var statusRes by remember { mutableStateOf(R.string.smp_sync_debug_status_idle) }
     var statusDetail by remember { mutableStateOf<String?>(null) }
@@ -177,8 +195,43 @@ fun SmpSyncDebugScreen(
         return SmpSyncManifestGenerator().generate(
             context = context.applicationContext,
             appVersion = BuildConfig.VERSION_NAME,
-            deviceId = deviceId
+            deviceId = deviceId ?: peerState.localDeviceId
         )
+    }
+
+    fun updatePreferredRole(role: SmpSyncDeviceRole) {
+        peerState = SmpSyncPeerStore.setPreferredRole(context.applicationContext, role)
+    }
+
+    fun forgetPairedDevice() {
+        peerState = SmpSyncPeerStore.forgetPairedDevice(context.applicationContext)
+        joinHost = ""
+        joinPortText = ""
+        prefs.edit()
+            .remove(SMP_SYNC_PREF_HOST)
+            .remove(SMP_SYNC_PREF_PORT)
+            .apply()
+    }
+
+    fun rememberConnectedPeer(
+        host: String? = null,
+        port: Int? = null,
+        deviceName: String? = null
+    ) {
+        peerState = if (!host.isNullOrBlank() && port != null) {
+            SmpSyncPeerStore.rememberEndpoint(
+                context = context.applicationContext,
+                host = host,
+                port = port,
+                pairedDeviceName = deviceName
+            )
+        } else {
+            // TODO SMP Sync V2: store pairedDeviceId once LocalLink hello advertises it.
+            SmpSyncPeerStore.rememberPairedDevice(
+                context = context.applicationContext,
+                pairedDeviceName = deviceName
+            )
+        }
     }
 
     suspend fun serializeManifestPayload(
@@ -312,7 +365,7 @@ fun SmpSyncDebugScreen(
             statusDetail = null
             statusRes = R.string.smp_sync_debug_generating_local_manifest
             runCatching {
-                val generated = buildLocalManifest(deviceId = "smp-sync-local")
+                val generated = buildLocalManifest()
                 localManifest = generated
                 localManifestTitleRes = R.string.smp_sync_debug_local_manifest
                 statusRes = R.string.smp_sync_debug_sending_manifest
@@ -354,7 +407,7 @@ fun SmpSyncDebugScreen(
                     statusRes = R.string.smp_sync_debug_invalid_manifest
                     return@runCatching
                 }
-                val local = buildLocalManifest(deviceId = "smp-sync-local")
+                val local = buildLocalManifest()
                 statusRes = R.string.smp_sync_debug_comparing
                 val source = if (remoteIsSource) remote else local
                 val target = if (remoteIsSource) local else remote
@@ -402,6 +455,7 @@ fun SmpSyncDebugScreen(
         when (message) {
             is HelloMessage -> {
                 remoteDeviceName = message.deviceName
+                rememberConnectedPeer(deviceName = message.deviceName)
                 statusDetail = null
                 statusRes = R.string.local_link_state_connected
             }
@@ -527,6 +581,11 @@ fun SmpSyncDebugScreen(
         when (message) {
             is HelloMessage -> {
                 remoteDeviceName = message.deviceName
+                rememberConnectedPeer(
+                    host = joinHost,
+                    port = joinPortText.toIntOrNull(),
+                    deviceName = message.deviceName
+                )
                 statusDetail = null
                 statusRes = R.string.smp_sync_debug_waiting_for_remote
             }
@@ -617,6 +676,11 @@ fun SmpSyncDebugScreen(
                     ?: context.getString(R.string.local_link_connection_failed)
                 return@launch
             }
+            rememberConnectedPeer(
+                host = joinHost,
+                port = port,
+                deviceName = nextClient.session.remoteDeviceName
+            )
             statusRes = R.string.smp_sync_debug_waiting_for_remote
             val requestId = "manifest-${System.currentTimeMillis()}"
             val sent = nextClient.send(
@@ -781,6 +845,7 @@ fun SmpSyncDebugScreen(
                 )
             )
             statusRes = if (ended) {
+                peerState = SmpSyncPeerStore.markSyncCompleted(context.applicationContext)
                 R.string.smp_sync_debug_package_sent
             } else {
                 R.string.local_link_no_receiver_connected
@@ -821,11 +886,11 @@ fun SmpSyncDebugScreen(
                 songIds.size + playlistIds.size
             )
             runCatching {
-                val baseManifest = localManifest ?: buildLocalManifest(deviceId = hostDeviceName)
+                val baseManifest = localManifest ?: buildLocalManifest()
                 localManifest = baseManifest
                 localManifestTitleRes = R.string.smp_sync_debug_local_manifest
                 val source = baseManifest.copy(
-                    deviceId = hostDeviceName,
+                    deviceId = peerState.localDeviceId,
                     generatedAt = System.currentTimeMillis(),
                     songs = baseManifest.songs.filter { song -> song.songId in songIds },
                     playlists = baseManifest.playlists.filter { playlist ->
@@ -925,9 +990,10 @@ fun SmpSyncDebugScreen(
                     .importReceivedPackage(
                         receivedPackage = pendingPackage,
                         allowReplace = true
-                    )
+                )
                 importResult = result
                 if (result.isSuccess) {
+                    peerState = SmpSyncPeerStore.markSyncCompleted(context.applicationContext)
                     val postImport = result.postImportDiagnostics
                     syncPlan = postImport?.remainingPlan
                     summary = postImport?.remainingPlan?.let { remainingPlan ->
@@ -974,7 +1040,7 @@ fun SmpSyncDebugScreen(
             statusDetail = null
             statusRes = R.string.smp_sync_debug_generating_local_manifest
             runCatching {
-                val local = buildLocalManifest(deviceId = "smp-sync-local")
+                val local = buildLocalManifest()
                 statusRes = R.string.smp_sync_debug_comparing
                 val result = buildComparison(
                     source = pendingPackage.sourceManifest,
@@ -1070,6 +1136,13 @@ fun SmpSyncDebugScreen(
             text = stringResource(R.string.smp_sync_live_subtitle),
             color = Color(0xFFB0BEC5),
             fontSize = 13.sp
+        )
+
+        SyncPeerIdentityCard(
+            peerState = peerState,
+            onSetMain = { updatePreferredRole(SmpSyncDeviceRole.MAIN) },
+            onSetBackup = { updatePreferredRole(SmpSyncDeviceRole.BACKUP) },
+            onForgetPeer = { forgetPairedDevice() }
         )
 
         LocalLinkDryRunCard(
@@ -1200,6 +1273,91 @@ fun SmpSyncDebugScreen(
 
             SyncDiagnosticsCard(diagnostics = syncDiagnostics)
             SummaryCard(summary = summary)
+        }
+    }
+}
+
+@Composable
+private fun SyncPeerIdentityCard(
+    peerState: SmpSyncPairingState,
+    onSetMain: () -> Unit,
+    onSetBackup: () -> Unit,
+    onForgetPeer: () -> Unit
+) {
+    val emptyValue = stringResource(R.string.local_link_empty_value)
+    val roleLabel = when (peerState.preferredRole) {
+        SmpSyncDeviceRole.MAIN -> stringResource(R.string.smp_sync_peer_role_main)
+        SmpSyncDeviceRole.BACKUP -> stringResource(R.string.smp_sync_peer_role_backup)
+        SmpSyncDeviceRole.UNKNOWN -> stringResource(R.string.smp_sync_peer_role_unknown)
+    }
+    val endpoint = if (peerState.peer.hasKnownEndpoint) {
+        "${peerState.peer.lastHost}:${peerState.peer.lastPort}"
+    } else {
+        emptyValue
+    }
+    val lastSync = peerState.peer.lastSyncAt?.let { timestamp ->
+        DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(timestamp))
+    } ?: emptyValue
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF161E24)),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.smp_sync_peer_identity_title),
+                color = Color.White,
+                fontSize = 17.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            InfoLine(
+                label = stringResource(R.string.smp_sync_peer_local_name),
+                value = peerState.localDeviceName
+            )
+            InfoLine(
+                label = stringResource(R.string.smp_sync_peer_role),
+                value = roleLabel
+            )
+            InfoLine(
+                label = stringResource(R.string.smp_sync_peer_paired_device),
+                value = peerState.peer.pairedDeviceName ?: emptyValue
+            )
+            InfoLine(
+                label = stringResource(R.string.smp_sync_peer_last_endpoint),
+                value = endpoint
+            )
+            InfoLine(
+                label = stringResource(R.string.smp_sync_peer_last_sync),
+                value = lastSync
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                TextButton(
+                    onClick = onSetMain,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(text = stringResource(R.string.smp_sync_peer_set_main))
+                }
+                TextButton(
+                    onClick = onSetBackup,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(text = stringResource(R.string.smp_sync_peer_set_backup))
+                }
+            }
+            TextButton(
+                onClick = onForgetPeer,
+                enabled = peerState.peer.hasPairedDevice,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(text = stringResource(R.string.smp_sync_peer_forget))
+            }
         }
     }
 }
