@@ -1494,13 +1494,40 @@ class MainActivity : AppCompatActivity() {
                     if (smpCacheRefreshTick == 0 && smpSongsById.isNotEmpty()) {
                         Log.i(
                             "SMP_TRACE",
-                            "step=runtime_cache_refresh_skip reason=cache_already_loaded count=${smpSongsById.size}"
+                            "step=runtime_cache_refresh_verify reason=cache_already_loaded count=${smpSongsById.size}"
                         )
+                        val refreshedSongsById = withContext(Dispatchers.IO) {
+                            smpLibraryScanner.listSongs().associateBy { it.id }
+                        }
+                        if (refreshedSongsById.isEmpty()) {
+                            Log.w(
+                                "SMP_TRACE",
+                                "step=runtime_cache_refresh_keep_cache reason=empty_runtime_scan cachedCount=${smpSongsById.size}"
+                            )
+                            return@LaunchedEffect
+                        }
+                        if (refreshedSongsById != smpSongsById) {
+                            smpSongsById = refreshedSongsById
+                        }
+                        withContext(Dispatchers.IO) {
+                            SmpRuntimeSongCache.save(ctx, refreshedSongsById.values)
+                        }
                         return@LaunchedEffect
                     }
-                    smpSongsById = withContext(Dispatchers.IO) {
+                    val refreshedSongsById = withContext(Dispatchers.IO) {
                         smpLibraryScanner.listSongs().associateBy { it.id }
                     }
+                    if (refreshedSongsById.isEmpty() && smpSongsById.isNotEmpty()) {
+                        Log.w(
+                            "SMP_TRACE",
+                            "step=runtime_cache_refresh_keep_cache reason=empty_runtime_scan refreshTick=$smpCacheRefreshTick cachedCount=${smpSongsById.size}"
+                        )
+                        withContext(Dispatchers.IO) {
+                            SmpRuntimeSongCache.save(ctx, smpSongsById.values)
+                        }
+                        return@LaunchedEffect
+                    }
+                    smpSongsById = refreshedSongsById
                     withContext(Dispatchers.IO) {
                         SmpRuntimeSongCache.save(ctx, smpSongsById.values)
                     }

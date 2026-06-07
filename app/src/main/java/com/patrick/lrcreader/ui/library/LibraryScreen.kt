@@ -2145,11 +2145,10 @@ fun LibraryScreen(
     }
 
     LaunchedEffect(initialLoadDone, smpRefreshVersion, titleAliasVersion, smpSongsCache) {
-        if (!initialLoadDone) return@LaunchedEffect
         if (smpSongsCache.isNotEmpty()) {
             Log.i(
                 SMP_LIBRARY_CACHE_DIAG_TAG,
-                "song_cache_hit source=main_activity count=${smpSongsCache.size} refreshVersion=$smpRefreshVersion"
+                "song_cache_hit source=main_activity count=${smpSongsCache.size} refreshVersion=$smpRefreshVersion initialLoadDone=$initialLoadDone"
             )
             songItems = withContext(Dispatchers.IO) {
                 buildLibrarySongItemsFromSongs(smpSongsCache.values)
@@ -2157,6 +2156,7 @@ fun LibraryScreen(
             songItemsLoading = false
             return@LaunchedEffect
         }
+        if (!initialLoadDone) return@LaunchedEffect
         Log.i(
             SMP_LIBRARY_CACHE_DIAG_TAG,
             "song_cache_miss source=main_activity reason=empty_cache refreshVersion=$smpRefreshVersion scan=runtime"
