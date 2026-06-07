@@ -2025,14 +2025,16 @@ fun LibraryScreen(
         else -> searchablePlaylists.isNotEmpty()
     }
     val hasStartupSongCache = isSongBasedViewMode && smpSongsCache.isNotEmpty()
-    val showInitialLibraryLoadingState = currentFolderUri != null &&
-        !hasVisibleLibraryContent &&
-        !hasStartupSongCache &&
-        (
-            isLoading ||
-                !initialLoadDone ||
-                (isSongBasedViewMode && songItemsLoading)
-            )
+    val isLibraryLoadInProgress = isLoading ||
+        !initialLoadDone ||
+        (isSongBasedViewMode && songItemsLoading)
+    val showInitialLibraryLoadingState =
+        !hasVisibleLibraryContent && isLibraryLoadInProgress
+    val showBackgroundLibraryUpdateIndicator =
+        hasVisibleLibraryContent &&
+            isSongBasedViewMode &&
+            (songItemsLoading || (isLoading && moveLabel == sScanning))
+    val showBlockingLoadingOverlay = isLoading && !showBackgroundLibraryUpdateIndicator
     LaunchedEffect(
         showInitialLibraryLoadingState,
         isLoading,
@@ -2042,9 +2044,15 @@ fun LibraryScreen(
         hasVisibleLibraryContent,
         moveLabel
     ) {
+        val displayState = when {
+            showInitialLibraryLoadingState -> "loading"
+            showBackgroundLibraryUpdateIndicator -> "cache_with_background_update"
+            hasVisibleLibraryContent -> "content"
+            else -> "empty"
+        }
         Log.i(
             SMP_LIBRARY_SCAN_TRACE_TAG,
-            "event=initial_loader_state visible=$showInitialLibraryLoadingState isLoading=$isLoading initialLoadDone=$initialLoadDone songItemsLoading=$songItemsLoading hasStartupSongCache=$hasStartupSongCache hasVisibleContent=$hasVisibleLibraryContent label=${moveLabel ?: "null"} viewMode=$libraryViewMode"
+            "event=initial_loader_state displayState=$displayState visible=$showInitialLibraryLoadingState backgroundUpdate=$showBackgroundLibraryUpdateIndicator isLoading=$isLoading initialLoadDone=$initialLoadDone songItemsLoading=$songItemsLoading cacheCount=${smpSongsCache.size} hasStartupSongCache=$hasStartupSongCache hasVisibleContent=$hasVisibleLibraryContent label=${moveLabel ?: "null"} viewMode=$libraryViewMode"
         )
     }
     SideEffect {
@@ -2163,7 +2171,15 @@ fun LibraryScreen(
         )
         songItemsLoading = true
         try {
+            Log.i(
+                SMP_LIBRARY_SCAN_TRACE_TAG,
+                "event=song_items_runtime_scan_start refreshVersion=$smpRefreshVersion"
+            )
             songItems = buildLibrarySongItemsAsync()
+            Log.i(
+                SMP_LIBRARY_SCAN_TRACE_TAG,
+                "event=song_items_runtime_scan_done refreshVersion=$smpRefreshVersion count=${songItems.size}"
+            )
         } finally {
             songItemsLoading = false
         }
@@ -4103,6 +4119,28 @@ fun LibraryScreen(
                             Spacer(Modifier.height(8.dp))
                         }
 
+                        if (showBackgroundLibraryUpdateIndicator) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    color = accent,
+                                    strokeWidth = 2.dp
+                                )
+                                Text(
+                                    text = sScanning,
+                                    color = subtitleColor,
+                                    fontSize = 12.sp
+                                )
+                            }
+                            Spacer(Modifier.height(4.dp))
+                        }
+
                         if (isSongViewMode) {
                             if (searchableSongItems.isEmpty()) {
                                 Box(
@@ -4725,7 +4763,11 @@ fun LibraryScreen(
                     }
                 }
 
-                LibraryLoadingOverlay(isLoading = isLoading, moveProgress = moveProgress, moveLabel = moveLabel)
+                LibraryLoadingOverlay(
+                    isLoading = showBlockingLoadingOverlay,
+                    moveProgress = moveProgress,
+                    moveLabel = moveLabel
+                )
             }
 
             // ---------- dialogs ----------
