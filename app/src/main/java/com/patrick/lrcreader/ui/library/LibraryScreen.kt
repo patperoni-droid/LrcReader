@@ -2632,6 +2632,14 @@ fun LibraryScreen(
             }
         }
         onLufsManualGainChanged(song.songId, finalDb)
+        runCatching {
+            SongIdKeyResolver.resolveRuntimeTrackUri(context, song.songId)
+                ?.let(Uri::parse)
+                ?.takeIf { uri -> quickNowUri == uri }
+                ?.let {
+                    quickPlayer.volume = libraryDbToLinearGain(finalDb)
+                }
+        }
 
         scope.launch {
             withContext(Dispatchers.IO) {
