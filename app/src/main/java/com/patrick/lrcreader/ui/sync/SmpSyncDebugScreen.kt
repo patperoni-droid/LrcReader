@@ -104,9 +104,12 @@ import java.util.UUID
 private const val SMP_SYNC_PREFS = "smp_sync_debug"
 private const val SMP_SYNC_PREF_HOST = "host"
 private const val SMP_SYNC_PREF_PORT = "port"
+private const val SMP_SYNC_PREF_RECEIVE_PORT = "receivePort"
+private const val SMP_SYNC_DEFAULT_RECEIVE_PORT = 45873
 private const val SMP_SYNC_PACKAGE_CHUNK_BYTES = 64 * 1024
 private const val SMP_SYNC_PACKAGE_PREPARE_TIMEOUT_MS = 300_000L
 private const val SMP_SYNC_PACKAGE_DIAG_TAG = "SMP_SYNC_PACKAGE_DIAG"
+private const val SMP_SYNC_RECEIVE_DIAG_TAG = "SMP_SYNC_RECEIVE_DIAG"
 
 private enum class ManualSyncCategory {
     SONGS,
@@ -192,6 +195,18 @@ fun SmpSyncDebugScreen(
             .putString(SMP_SYNC_PREF_HOST, host.trim())
             .putString(SMP_SYNC_PREF_PORT, portText.trim())
             .apply()
+    }
+
+    fun preferredReceivePort(): Int {
+        return prefs.getInt(SMP_SYNC_PREF_RECEIVE_PORT, SMP_SYNC_DEFAULT_RECEIVE_PORT)
+            .takeIf { it in 1..65535 }
+            ?: SMP_SYNC_DEFAULT_RECEIVE_PORT
+    }
+
+    fun saveReceivePort(port: Int) {
+        if (port in 1..65535) {
+            prefs.edit().putInt(SMP_SYNC_PREF_RECEIVE_PORT, port).apply()
+        }
     }
 
     suspend fun buildLocalManifest(deviceId: String? = null): SmpSyncManifest {
@@ -319,7 +334,9 @@ fun SmpSyncDebugScreen(
         importResult = null
     }
 
-    fun closeLinks() {
+    fun closeLinks(reason: String = "stop") {
+        val wasHosting = server != null
+        val stoppedPort = boundPort
         server?.close()
         client?.close()
         server = null
@@ -332,6 +349,12 @@ fun SmpSyncDebugScreen(
         isConnecting = false
         statusDetail = null
         statusRes = R.string.smp_sync_debug_status_idle
+        if (wasHosting) {
+            Log.i(
+                SMP_SYNC_RECEIVE_DIAG_TAG,
+                "server_stopped reason=$reason port=${stoppedPort ?: "unknown"}"
+            )
+        }
     }
 
     fun generateLocalManifest(compareAfterGenerate: Boolean) {
@@ -633,32 +656,69 @@ fun SmpSyncDebugScreen(
 
     fun createSession() {
         if (isBusy) return
-        closeLinks()
+        closeLinks("receive_start")
         clearComparison()
-        val nextServer = LocalLinkServer(
+        val receivePort = preferredReceivePort()
+        Log.i(
+            SMP_SYNC_RECEIVE_DIAG_TAG,
+            "receive_start preferredPort=$receivePort device=${peerState.localDeviceId}"
+        )
+
+        fun buildServer(port: Int): LocalLinkServer = LocalLinkServer(
             sessionId = "smp-sync-host-${System.currentTimeMillis()}",
             token = experimentalToken,
             deviceName = hostDeviceName,
             deviceId = peerState.localDeviceId,
-            deviceRole = peerState.preferredRole.name
+            deviceRole = peerState.preferredRole.name,
+            port = port
         )
+
+        val nextServer = buildServer(receivePort)
         server = nextServer
         statusRes = R.string.smp_sync_debug_session_starting
         scope.launch {
-            runCatching {
-                nextServer.start(scope) { message ->
+            suspend fun startServer(candidate: LocalLinkServer): Int {
+                return candidate.start(scope) { message ->
                     scope.launch { handleServerMessage(message) }
                 }
+            }
+
+            runCatching {
+                startServer(nextServer)
             }.onSuccess { startedPort ->
                 boundPort = startedPort
+                saveReceivePort(startedPort)
                 statusRes = R.string.smp_sync_debug_waiting_device
+                Log.i(
+                    SMP_SYNC_RECEIVE_DIAG_TAG,
+                    "server_started host=$localIp port=$startedPort stable=${startedPort == receivePort}"
+                )
             }.onFailure { error ->
                 nextServer.close()
-                server = null
-                boundPort = null
-                statusRes = R.string.smp_sync_debug_connection_error
-                statusDetail = error.message
-                    ?: context.getString(R.string.local_link_server_start_failed)
+                Log.i(
+                    SMP_SYNC_RECEIVE_DIAG_TAG,
+                    "server_start_failed preferredPort=$receivePort reason=${error.message ?: error::class.java.simpleName}"
+                )
+                val fallbackServer = buildServer(0)
+                server = fallbackServer
+                runCatching {
+                    startServer(fallbackServer)
+                }.onSuccess { fallbackPort ->
+                    boundPort = fallbackPort
+                    saveReceivePort(fallbackPort)
+                    statusRes = R.string.smp_sync_debug_waiting_device
+                    Log.i(
+                        SMP_SYNC_RECEIVE_DIAG_TAG,
+                        "server_started host=$localIp port=$fallbackPort stable=false"
+                    )
+                }.onFailure { fallbackError ->
+                    fallbackServer.close()
+                    server = null
+                    boundPort = null
+                    statusRes = R.string.smp_sync_debug_connection_error
+                    statusDetail = fallbackError.message
+                        ?: context.getString(R.string.local_link_server_start_failed)
+                }
             }
         }
     }
@@ -679,7 +739,10 @@ fun SmpSyncDebugScreen(
         joinHost = cleanHost
         joinPortText = port.toString()
         saveJoinTarget(cleanHost, port.toString())
-        closeLinks()
+        if (connectionFailedDetailRes != null) {
+            Log.i(SMP_SYNC_RECEIVE_DIAG_TAG, "reconnect_attempt host=$cleanHost port=$port")
+        }
+        closeLinks("join_session")
         clearComparison()
         val nextClient = LocalLinkClient(
             host = cleanHost,
@@ -705,7 +768,16 @@ fun SmpSyncDebugScreen(
                 statusDetail = connectionFailedDetailRes?.let(context::getString)
                     ?: nextClient.lastFailureReason
                     ?: context.getString(R.string.local_link_connection_failed)
+                if (connectionFailedDetailRes != null) {
+                    Log.i(
+                        SMP_SYNC_RECEIVE_DIAG_TAG,
+                        "reconnect_fail host=$cleanHost port=$port reason=${nextClient.lastFailureReason ?: "unknown"}"
+                    )
+                }
                 return@launch
+            }
+            if (connectionFailedDetailRes != null) {
+                Log.i(SMP_SYNC_RECEIVE_DIAG_TAG, "reconnect_success host=$cleanHost port=$port")
             }
             statusRes = R.string.smp_sync_debug_waiting_for_remote
             val requestId = "manifest-${System.currentTimeMillis()}"
@@ -1131,7 +1203,7 @@ fun SmpSyncDebugScreen(
     }
 
     DisposableEffect(Unit) {
-        onDispose { closeLinks() }
+        onDispose { closeLinks("screen_dispose") }
     }
 
     val backgroundBrush = Brush.verticalGradient(
@@ -1153,7 +1225,7 @@ fun SmpSyncDebugScreen(
     ) {
         TextButton(
             onClick = {
-                closeLinks()
+                closeLinks("back")
                 onBack()
             }
         ) {
@@ -1197,6 +1269,8 @@ fun SmpSyncDebugScreen(
         LocalLinkDryRunCard(
             localIp = localIp,
             boundPort = boundPort,
+            localDeviceName = peerState.localDeviceName,
+            pairedDeviceName = peerState.peer.pairedDeviceName,
             joinHost = joinHost,
             onJoinHostChange = { joinHost = it.trim() },
             joinPortText = joinPortText,
@@ -1211,7 +1285,7 @@ fun SmpSyncDebugScreen(
             onCreateSession = { createSession() },
             onJoinSession = { joinSession() },
             onReconnect = { joinSession() },
-            onStopSession = { closeLinks() }
+            onStopSession = { closeLinks("user_stop") }
         )
 
         SyncUserStatusCard(
@@ -1516,6 +1590,8 @@ private fun SyncPeerIdentityCard(
 private fun LocalLinkDryRunCard(
     localIp: String,
     boundPort: Int?,
+    localDeviceName: String,
+    pairedDeviceName: String?,
     joinHost: String,
     onJoinHostChange: (String) -> Unit,
     joinPortText: String,
@@ -1540,6 +1616,7 @@ private fun LocalLinkDryRunCard(
                 ?: stringResource(R.string.local_link_connection_failed)
             stringResource(R.string.smp_sync_debug_connection_error_with_detail, detail)
         }
+        isHosting && boundPort != null -> stringResource(R.string.smp_sync_receive_ready)
         isHosting -> stringResource(R.string.smp_sync_debug_waiting_device)
         isJoined -> stringResource(R.string.smp_sync_debug_waiting_for_remote)
         else -> stringResource(R.string.smp_sync_debug_disconnected)
@@ -1591,7 +1668,7 @@ private fun LocalLinkDryRunCard(
                 enabled = !isBusy && !isHosting && !isJoined,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text(text = stringResource(R.string.smp_sync_live_create_connection))
+                Text(text = stringResource(R.string.smp_sync_receive_button))
             }
             if (isHosting && boundPort != null) {
                 Column(
@@ -1602,9 +1679,17 @@ private fun LocalLinkDryRunCard(
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     Text(
-                        text = stringResource(R.string.smp_sync_live_share_connection_details),
+                        text = stringResource(R.string.smp_sync_receive_ready),
                         color = Color(0xFFB0BEC5),
                         fontSize = 12.sp
+                    )
+                    InfoLine(
+                        label = stringResource(R.string.smp_sync_peer_local_name),
+                        value = localDeviceName
+                    )
+                    InfoLine(
+                        label = stringResource(R.string.smp_sync_peer_paired_device),
+                        value = pairedDeviceName ?: stringResource(R.string.local_link_empty_value)
                     )
                     InfoLine(
                         label = stringResource(R.string.local_link_ip_label),

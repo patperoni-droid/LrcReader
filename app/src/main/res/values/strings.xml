@@ -837,6 +837,8 @@
     <string name="smp_sync_live_main_phone">Téléphone principal</string>
     <string name="smp_sync_live_backup_phone">Téléphone secours</string>
     <string name="smp_sync_live_create_connection">Créer une connexion</string>
+    <string name="smp_sync_receive_button">Recevoir</string>
+    <string name="smp_sync_receive_ready">Prêt à recevoir</string>
     <string name="smp_sync_live_join_connection">Rejoindre une connexion</string>
     <string name="smp_sync_live_share_connection_details">À saisir sur le téléphone secours</string>
     <string name="smp_sync_peer_identity_title">Identité SMP Sync</string>
@@ -852,7 +854,7 @@
     <string name="smp_sync_peer_new_device_detected">Nouvel appareil détecté</string>
     <string name="smp_sync_peer_remote_role">Rôle distant</string>
     <string name="smp_sync_known_peer_title">Appareil connu</string>
-    <string name="smp_sync_known_peer_reconnect_failed">Impossible de joindre l’appareil connu</string>
+    <string name="smp_sync_known_peer_reconnect_failed">Ouvrez SMP Sync sur la tablette et appuyez sur Recevoir</string>
     <string name="smp_sync_peer_set_main">Définir comme téléphone principal</string>
     <string name="smp_sync_peer_set_backup">Définir comme appareil secours</string>
     <string name="smp_sync_peer_forget">Oublier appareil associé</string>
