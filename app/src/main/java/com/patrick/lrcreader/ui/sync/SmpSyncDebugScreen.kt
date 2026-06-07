@@ -110,6 +110,7 @@ private const val SMP_SYNC_PACKAGE_CHUNK_BYTES = 64 * 1024
 private const val SMP_SYNC_PACKAGE_PREPARE_TIMEOUT_MS = 300_000L
 private const val SMP_SYNC_PACKAGE_DIAG_TAG = "SMP_SYNC_PACKAGE_DIAG"
 private const val SMP_SYNC_RECEIVE_DIAG_TAG = "SMP_SYNC_RECEIVE_DIAG"
+private const val SMP_SYNC_PEER_DIAG_TAG = "SMP_SYNC_PEER_DIAG"
 
 private enum class ManualSyncCategory {
     SONGS,
@@ -128,7 +129,14 @@ fun SmpSyncDebugScreen(
         context.getSharedPreferences(SMP_SYNC_PREFS, Context.MODE_PRIVATE)
     }
     var peerState by remember(context) {
-        mutableStateOf(SmpSyncPeerStore.get(context.applicationContext))
+        val loaded = SmpSyncPeerStore.get(context.applicationContext)
+        Log.i(
+            SMP_SYNC_PEER_DIAG_TAG,
+            "peer_loaded pairedName=${loaded.peer.pairedDeviceName ?: "-"} " +
+                "pairedId=${loaded.peer.pairedDeviceId ?: "-"} " +
+                "host=${loaded.peer.lastHost ?: "-"} port=${loaded.peer.lastPort ?: "-"}"
+        )
+        mutableStateOf(loaded)
     }
     val scope = rememberCoroutineScope()
     val localIp = remember { findLocalIpv4Address() ?: "127.0.0.1" }
@@ -259,6 +267,13 @@ fun SmpSyncDebugScreen(
                 pairedDeviceId = deviceId
             )
         }
+        Log.i(
+            SMP_SYNC_PEER_DIAG_TAG,
+            "peer_completed name=${peerState.peer.pairedDeviceName ?: "-"} " +
+                "id=${peerState.peer.pairedDeviceId ?: "-"} " +
+                "host=${peerState.peer.lastHost ?: "-"} port=${peerState.peer.lastPort ?: "-"} " +
+                "role=${deviceRole ?: "-"}"
+        )
     }
 
     suspend fun serializeManifestPayload(
@@ -779,6 +794,18 @@ fun SmpSyncDebugScreen(
             if (connectionFailedDetailRes != null) {
                 Log.i(SMP_SYNC_RECEIVE_DIAG_TAG, "reconnect_success host=$cleanHost port=$port")
             }
+            peerState = SmpSyncPeerStore.rememberEndpoint(
+                context = context.applicationContext,
+                host = cleanHost,
+                port = port
+            )
+            Log.i(
+                SMP_SYNC_PEER_DIAG_TAG,
+                "endpoint_saved host=${peerState.peer.lastHost ?: "-"} " +
+                    "port=${peerState.peer.lastPort ?: "-"} " +
+                    "pairedName=${peerState.peer.pairedDeviceName ?: "-"} " +
+                    "pairedId=${peerState.peer.pairedDeviceId ?: "-"}"
+            )
             statusRes = R.string.smp_sync_debug_waiting_for_remote
             val requestId = "manifest-${System.currentTimeMillis()}"
             val sent = nextClient.send(
