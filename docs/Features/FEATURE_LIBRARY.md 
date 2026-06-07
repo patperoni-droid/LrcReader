@@ -324,10 +324,17 @@ Detailed contract: `FEATURE_LUFS_PREPARATION.md`.
 
 The Library LUFS tab provides an isolated preview tool for preparation and rehearsals.
 
+Current naming note:
+- the UI keeps the LUFS wording for compatibility and simplicity
+- SMP V1 level preparation is based on waveform level estimation / normalization
+- it is not a broadcast-compliant ITU-R BS.1770 / EBU R128 LUFS implementation
+- the product goal is live-perceived consistency between songs
+
 Purpose:
 - compare the real perceived levels of songs quickly
 - avoid waiting through long intros when checking LUFS preparation
 - stay inside the Library preparation workflow
+- calibrate playlists before concert by reaching representative passages quickly
 
 Scope:
 - this feature exists only in Library -> LUFS
@@ -339,6 +346,8 @@ UX:
 - long press on Play opens a lightweight start-offset menu
 - available start offsets are 20s, 40s, 60s, and 90s
 - choosing an offset starts preview directly at that position
+- manual `+1` / `-1` corrections are audible immediately during preview or current-song playback
+- manual gain is saved per song
 
 Rules:
 - no impact on Player live
@@ -349,8 +358,10 @@ Rules:
 - no impact on anti-blank / anti-silence behavior
 - no new live audio engine behavior
 - no playlist behavior change
+- no heavy level analysis during live playback
 
 👉 LUFS preview offsets are a Library preparation aid only.
+👉 This page also acts as a playlist calibration workshop before concert.
 
 ⸻
 

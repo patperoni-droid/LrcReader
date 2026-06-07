@@ -164,6 +164,38 @@ Règles :
 
 ---
 
+## 🎚️ UNIFORMISATION DES NIVEAUX EN CONCERT
+
+Retour terrain concert réel :
+
+Le critère SMP n'est pas la conformité broadcast.
+
+Le critère SMP est :
+
+"Éviter les gros écarts de volume perçu entre deux morceaux en concert."
+
+Workflow recommandé :
+
+1. utiliser `Appliquer LUFS` SMP pendant la préparation pour rapprocher automatiquement le morceau d'un niveau de référence
+2. corriger ensuite à l'oreille avec le gain manuel
+3. écouter immédiatement le résultat pendant la préécoute ou la lecture
+4. conserver le gain manuel mémorisé par morceau
+
+La page d'ajustement volume sert aussi d'atelier d'uniformisation des playlists :
+
+- sauts rapides vers les passages représentatifs
+- accès au refrain, passage dense ou passage dansant
+- correction `+1` / `-1` audible immédiatement
+- sauvegarde automatique du gain manuel
+
+Règles live :
+
+✔ aucune analyse lourde pendant le live
+✔ analyse uniquement à l'import, sur action volontaire ou en préparation avant concert
+✔ Track Console doit rester cohérente avec le niveau réellement entendu
+
+---
+
 ## 🔁 ENCHAÎNEMENT
 
 ### Manuel
@@ -287,6 +319,11 @@ stop
 
 - intégration complète mode DJ simplifié
 - enchaînements intelligents
+- étude d'un système "Niveau Live" offline :
+  - détection des passages forts
+  - analyse d'environ 10 secondes représentatives
+  - mesure plus proche du ressenti réel en concert
+  - conservation du gain manuel utilisateur
 - mode concert simplifié :
   - interface réduite
   - accès ultra rapide aux morceaux

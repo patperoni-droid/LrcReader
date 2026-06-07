@@ -61,6 +61,13 @@ ALL required data must be prepared BEFORE playback:
 
 👉 ZERO preparation during playback.
 
+Level preparation rule:
+- LUFS SMP / waveform-based level analysis is preparation work only
+- level analysis may run at import, on an explicit user action, or during pre-concert preparation
+- no heavy level analysis may run during live playback
+- manual gain changes may be applied during playback only as lightweight volume updates to the active player
+- manual gain updates must not restart the track or rebuild playback structures
+
 Restore live rule:
 - a restored backup must be immediately exploitable in live conditions
 - Library titles and playlist titles must not require opening or playing a song to repair themselves

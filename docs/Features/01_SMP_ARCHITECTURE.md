@@ -138,6 +138,13 @@ All song-related data must:
 
 👉 No duplicated storage logic allowed
 
+Level metadata:
+- SMP V1 currently keeps the UI LUFS wording for compatibility
+- this is waveform-based level estimation / normalization, not a broadcast-compliant ITU-R BS.1770 / EBU R128 LUFS implementation
+- automatic SMP level data and manual gain corrections are song metadata
+- the effective live gain must be stored per songId and applied from normalized internal storage
+- live playback applies prepared gain values only; it must not perform heavy level analysis
+
 Restore consistency:
 - complete restore must rebuild runtime SongUnits, the Library index, and playlists before playback
 - restored .smp packages must be imported into `/files/tracks/{songId}/`
