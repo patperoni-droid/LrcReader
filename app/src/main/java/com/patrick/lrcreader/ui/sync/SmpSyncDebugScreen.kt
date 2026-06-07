@@ -111,6 +111,7 @@ private const val SMP_SYNC_PACKAGE_PREPARE_TIMEOUT_MS = 300_000L
 private const val SMP_SYNC_PACKAGE_DIAG_TAG = "SMP_SYNC_PACKAGE_DIAG"
 private const val SMP_SYNC_RECEIVE_DIAG_TAG = "SMP_SYNC_RECEIVE_DIAG"
 private const val SMP_SYNC_PEER_DIAG_TAG = "SMP_SYNC_PEER_DIAG"
+private const val SMP_SYNC_IMPORT_DIAG_TAG = "SMP_SYNC_IMPORT_DIAG"
 
 private enum class ManualSyncCategory {
     SONGS,
@@ -505,46 +506,11 @@ fun SmpSyncDebugScreen(
         }
     }
 
-    fun handleServerMessage(message: LocalLinkMessage) {
-        when (message) {
-            is HelloMessage -> {
-                rememberConnectedPeer(
-                    deviceName = message.deviceName,
-                    deviceId = message.deviceId,
-                    deviceRole = message.deviceRole
-                )
-                statusDetail = null
-                statusRes = R.string.local_link_state_connected
-            }
-            is SyncManifestRequestMessage -> {
-                statusRes = R.string.smp_sync_debug_manifest_request_received
-                sendLocalManifestResponse(message.requestId) { payload ->
-                    server?.send(payload) ?: false
-                }
-            }
-            is SyncManifestPayloadMessage -> {
-                compareWithRemoteManifest(
-                    message = message,
-                    remoteIsSource = false
-                )
-            }
-            is SyncPackageStartMessage -> {
-                statusRes = R.string.smp_sync_debug_invalid_package
-            }
-            is SyncPackageChunkMessage -> {
-                statusRes = R.string.smp_sync_debug_invalid_package
-            }
-            is SyncPackageEndMessage -> {
-                statusRes = R.string.smp_sync_debug_invalid_package
-            }
-            is UnknownMessage -> {
-                statusRes = R.string.smp_sync_debug_invalid_manifest
-            }
-            else -> Unit
-        }
-    }
-
     fun beginReceivingPackage(message: SyncPackageStartMessage) {
+        Log.i(
+            SMP_SYNC_IMPORT_DIAG_TAG,
+            "receive_package_start id=${message.packageId} bytes=${message.totalBytes} songs=${message.fullSongCount}"
+        )
         scope.launch {
             runCatching {
                 withContext(Dispatchers.IO) {
@@ -566,6 +532,7 @@ fun SmpSyncDebugScreen(
                 receiveChain = null
                 statusRes = R.string.smp_sync_debug_package_receiving
             }.onFailure { error ->
+                Log.e(SMP_SYNC_IMPORT_DIAG_TAG, "receive_package_start_error id=${message.packageId}", error)
                 statusRes = R.string.smp_sync_debug_connection_error
                 statusDetail = error.message ?: context.getString(R.string.smp_sync_debug_invalid_package)
             }
@@ -613,12 +580,14 @@ fun SmpSyncDebugScreen(
                 statusRes = R.string.smp_sync_debug_package_validating
                 val actualSha = withContext(Dispatchers.IO) { sha256(targetFile) }
                 if (!actualSha.equals(message.sha256, ignoreCase = true)) {
+                    Log.i(SMP_SYNC_IMPORT_DIAG_TAG, "receive_package_error id=${message.packageId} reason=sha_mismatch")
                     statusRes = R.string.smp_sync_debug_invalid_package
                     return@runCatching
                 }
                 val received = SmpSyncPackageArchiveReader(context.applicationContext)
                     .readReceivedPackage(targetFile)
                 if (received == null) {
+                    Log.i(SMP_SYNC_IMPORT_DIAG_TAG, "receive_package_error id=${message.packageId} reason=read_failed")
                     statusRes = R.string.smp_sync_debug_invalid_package
                     return@runCatching
                 }
@@ -626,11 +595,59 @@ fun SmpSyncDebugScreen(
                 receivePackageId = null
                 syncPackage = received.syncPackage
                 statusRes = R.string.smp_sync_debug_package_received
+                Log.i(
+                    SMP_SYNC_IMPORT_DIAG_TAG,
+                    "receive_package_done id=${message.packageId} songs=${received.fullSongCount} playlists=${received.syncPackage.playlistStateCount}"
+                )
+                Log.i(
+                    SMP_SYNC_IMPORT_DIAG_TAG,
+                    "pending_import_set songs=${received.fullSongCount} playlists=${received.syncPackage.playlistStateCount}"
+                )
             }.onFailure { error ->
+                Log.e(SMP_SYNC_IMPORT_DIAG_TAG, "receive_package_error id=${message.packageId}", error)
                 statusRes = R.string.smp_sync_debug_connection_error
                 statusDetail = error.message ?: context.getString(R.string.smp_sync_debug_invalid_package)
             }
             isGenerating = false
+        }
+    }
+
+    fun handleServerMessage(message: LocalLinkMessage) {
+        when (message) {
+            is HelloMessage -> {
+                rememberConnectedPeer(
+                    deviceName = message.deviceName,
+                    deviceId = message.deviceId,
+                    deviceRole = message.deviceRole
+                )
+                statusDetail = null
+                statusRes = R.string.local_link_state_connected
+            }
+            is SyncManifestRequestMessage -> {
+                statusRes = R.string.smp_sync_debug_manifest_request_received
+                sendLocalManifestResponse(message.requestId) { payload ->
+                    server?.send(payload) ?: false
+                }
+            }
+            is SyncManifestPayloadMessage -> {
+                compareWithRemoteManifest(
+                    message = message,
+                    remoteIsSource = false
+                )
+            }
+            is SyncPackageStartMessage -> {
+                beginReceivingPackage(message)
+            }
+            is SyncPackageChunkMessage -> {
+                receivePackageChunk(message)
+            }
+            is SyncPackageEndMessage -> {
+                finishReceivingPackage(message)
+            }
+            is UnknownMessage -> {
+                statusRes = R.string.smp_sync_debug_invalid_manifest
+            }
+            else -> Unit
         }
     }
 
@@ -936,6 +953,10 @@ fun SmpSyncDebugScreen(
         statusRes = R.string.smp_sync_debug_package_sending
         runCatching {
             val packageId = "package-${System.currentTimeMillis()}-${UUID.randomUUID()}"
+            Log.i(
+                SMP_SYNC_IMPORT_DIAG_TAG,
+                "send_package_start id=$packageId bytes=${prepared.sizeBytes} songs=${prepared.syncPackage.fullSongCount}"
+            )
             val started = activeServer.send(
                 SyncPackageStartMessage(
                     packageId = packageId,
@@ -983,11 +1004,14 @@ fun SmpSyncDebugScreen(
             )
             statusRes = if (ended) {
                 peerState = SmpSyncPeerStore.markSyncCompleted(context.applicationContext)
+                Log.i(SMP_SYNC_IMPORT_DIAG_TAG, "send_package_done id=$packageId success=true")
                 R.string.smp_sync_debug_package_sent
             } else {
+                Log.i(SMP_SYNC_IMPORT_DIAG_TAG, "send_package_done id=$packageId success=false")
                 R.string.local_link_no_receiver_connected
             }
         }.onFailure { error ->
+            Log.e(SMP_SYNC_IMPORT_DIAG_TAG, "send_package_error", error)
             statusRes = R.string.smp_sync_debug_connection_error
             statusDetail = error.message ?: context.getString(R.string.smp_sync_debug_package_send_failed)
         }
@@ -1122,6 +1146,10 @@ fun SmpSyncDebugScreen(
             errorMessage = null
             statusDetail = null
             statusRes = R.string.smp_sync_debug_importing_package
+            Log.i(
+                SMP_SYNC_IMPORT_DIAG_TAG,
+                "import_start songs=${pendingPackage.fullSongCount} playlists=${pendingPackage.syncPackage.playlistStateCount}"
+            )
             runCatching {
                 val result = SmpSyncPackageArchiveReader(context.applicationContext)
                     .importReceivedPackage(
@@ -1131,6 +1159,10 @@ fun SmpSyncDebugScreen(
                 importResult = result
                 if (result.isSuccess) {
                     peerState = SmpSyncPeerStore.markSyncCompleted(context.applicationContext)
+                    Log.i(
+                        SMP_SYNC_IMPORT_DIAG_TAG,
+                        "import_done success=true songs=${result.importedSongCount} playlists=${result.playlistCount}"
+                    )
                     val postImport = result.postImportDiagnostics
                     syncPlan = postImport?.remainingPlan
                     summary = postImport?.remainingPlan?.let { remainingPlan ->
@@ -1157,10 +1189,15 @@ fun SmpSyncDebugScreen(
                             )
                         }
                 } else {
+                    Log.i(
+                        SMP_SYNC_IMPORT_DIAG_TAG,
+                        "import_error reason=${result.failureReason ?: "unknown"}"
+                    )
                     statusRes = R.string.smp_sync_debug_import_failed
                     statusDetail = result.failureReason
                 }
             }.onFailure { error ->
+                Log.e(SMP_SYNC_IMPORT_DIAG_TAG, "import_error", error)
                 statusRes = R.string.smp_sync_debug_import_failed
                 statusDetail = error.message ?: context.getString(R.string.smp_sync_debug_import_failed)
             }
@@ -2878,6 +2915,10 @@ private fun ReceivedPackageCard(
     onImport: () -> Unit,
     onCancel: () -> Unit
 ) {
+    Log.i(
+        SMP_SYNC_IMPORT_DIAG_TAG,
+        "import_button_visible pending=${receivedPackage != null} importing=$isImporting success=${importResult?.isSuccess ?: false}"
+    )
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = Color(0xFF1A2024)),
@@ -2888,7 +2929,13 @@ private fun ReceivedPackageCard(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text(
-                text = stringResource(R.string.smp_sync_debug_received_title),
+                text = stringResource(
+                    if (receivedPackage == null) {
+                        R.string.smp_sync_debug_received_title
+                    } else {
+                        R.string.smp_sync_debug_package_received
+                    }
+                ),
                 color = Color.White,
                 fontSize = 19.sp,
                 fontWeight = FontWeight.SemiBold
