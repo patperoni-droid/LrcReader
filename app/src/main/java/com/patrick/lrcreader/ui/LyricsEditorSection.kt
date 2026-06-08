@@ -133,7 +133,8 @@ fun LyricsEditorSection(
     enableCueEditing: Boolean = true,
     showChordPalette: Boolean = false,
     saveAndCloseRequestToken: Int = 0,
-    chordPaletteStorageKey: String? = null
+    chordPaletteStorageKey: String? = null,
+    headerEndContent: @Composable RowScope.() -> Unit = {}
 ) {
     if (!isEditingLyrics) return
 
@@ -881,6 +882,8 @@ fun LyricsEditorSection(
                     )
                 }
             }
+
+            headerEndContent()
         }
 
         Spacer(Modifier.height(8.dp))

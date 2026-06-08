@@ -2480,7 +2480,8 @@ fun PlayerScreen(
                     editingResolvedLrcFileName
                 } else {
                     null
-                }
+                },
+                headerEndContent = readerHeaderEndContent
             )
             if (showUnsavedLyricsDialog) {
                 AlertDialog(
