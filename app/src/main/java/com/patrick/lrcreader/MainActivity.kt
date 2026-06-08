@@ -144,7 +144,8 @@ class MainActivity : AppCompatActivity() {
 
     private enum class TabletSplitRightPanel {
         LYRICS,
-        LIBRARY
+        LIBRARY,
+        SETTINGS
     }
 
     private data class SessionSnapshot(
@@ -3866,11 +3867,8 @@ class MainActivity : AppCompatActivity() {
                                                 text = { Text(stringResource(R.string.tablet_split_menu_settings)) },
                                                 onClick = {
                                                     prepareTabletSplitMenuNavigation()
-                                                    isTabletCockpitDestinationOpen = true
-                                                    setTabAndPersist(
-                                                        BottomTab.More,
-                                                        reason = "tabletSplitMenuSettings"
-                                                    )
+                                                    isTabletCockpitDestinationOpen = false
+                                                    tabletRightPanel = TabletSplitRightPanel.SETTINGS
                                                 }
                                             )
                                         }
@@ -4188,6 +4186,144 @@ class MainActivity : AppCompatActivity() {
                                     )
                                 }
 
+                                val settingsPane: @Composable (Modifier) -> Unit = { paneModifier ->
+                                    MoreScreen(
+                                        modifier = paneModifier,
+                                        context = ctx,
+                                        currentWaveformSongId = currentPlayingSongId,
+                                        currentPlayingSongId = currentPlayingSongId,
+                                        currentPlayingTitle = currentPlayingTitle
+                                            ?: currentPlayingSongId
+                                                ?.let { songId -> sanitizeDisplayTrackTitle(smpSongsById[songId]?.title) }
+                                            ?: currentPlayingUri
+                                                ?.let { uri -> sanitizeDisplayTrackTitle(TitleAliasesStore.getTitleForTrack(ctx, uri)) }
+                                            ?: currentPlayingUri
+                                                ?.let { uri -> sanitizeDisplayTrackTitle(indexAll.firstOrNull { it.uriString == uri }?.name) }
+                                            ?: currentPlayingUri
+                                                ?.let { uri -> sanitizeDisplayTrackTitle(Uri.parse(uri).lastPathSegment) },
+                                        currentParsedLines = parsedLines,
+                                        getCurrentPositionMs = {
+                                            runCatching { exoPlayer.currentPosition }.getOrDefault(0L)
+                                        },
+                                        getCurrentDurationMs = {
+                                            runCatching {
+                                                resolveEffectiveDurationMs(
+                                                    requestedUri = currentPlayingUri,
+                                                    activeUri = exoPlayer.currentMediaItem
+                                                        ?.localConfiguration
+                                                        ?.uri
+                                                        ?.toString()
+                                                )
+                                            }.getOrDefault(C.TIME_UNSET)
+                                                .takeIf { it > 0L && it != C.TIME_UNSET }
+                                        },
+                                        isCurrentTrackPlaying = {
+                                            runCatching { exoPlayer.isPlaying }.getOrDefault(isPlaying)
+                                        },
+                                        loadCurrentParsedLines = {
+                                            val uri = currentPlayingUri
+                                            when {
+                                                parsedLines.isNotEmpty() -> parsedLines
+                                                uri.isNullOrBlank() -> emptyList()
+                                                else -> {
+                                                    LyricsMemoryCache.updateScope(LrcStorage.currentWorkspaceScopeKey(ctx))
+                                                    LyricsMemoryCache.get(uri)?.parsedLines?.takeIf { it.isNotEmpty() }
+                                                        ?: withContext(Dispatchers.IO) {
+                                                            LrcStorage.loadForTrack(ctx, uri)
+                                                                ?.takeIf { it.isNotBlank() }
+                                                                ?.let { parseLrc(it) }
+                                                                .orEmpty()
+                                                        }
+                                                }
+                                            }
+                                        },
+                                        requestedRoute = moreNavigationTarget,
+                                        requestedRouteToken = moreNavigationToken,
+                                        showDjTab = showDjTab,
+                                        showMainBusTab = showMainBusTab,
+                                        tabletExperimentalModeEnabled = tabletExperimentalModeEnabled,
+                                        onShowDjTabChange = { enabled ->
+                                            showDjTab = enabled
+                                        },
+                                        onShowMainBusTabChange = { enabled ->
+                                            showMainBusTab = enabled
+                                        },
+                                        onTabletExperimentalModeChange = { enabled ->
+                                            tabletExperimentalModeEnabled = enabled
+                                            if (!enabled) {
+                                                isTabletCockpitDestinationOpen = false
+                                                tabletRightPanel = TabletSplitRightPanel.LYRICS
+                                            }
+                                            if (
+                                                enabled &&
+                                                adaptiveTokens.tabletMode &&
+                                                selectedTab is BottomTab.More
+                                            ) {
+                                                setTabAndPersist(
+                                                    BottomTab.Player,
+                                                    reason = "tabletExperimentalModeEnabled"
+                                                )
+                                            }
+                                        },
+                                        onAfterImport = { refreshKey++ },
+                                        onAfterSmpRestore = { importedCount, lastImportedSongId ->
+                                            if (importedCount > 0) {
+                                                smpCacheRefreshTick++
+                                                lastImportedSongId?.takeIf { it.isNotBlank() }?.let { songId ->
+                                                    lastImportedSmpUiSignal = SmpImportedUiSignal(
+                                                        songId = songId,
+                                                        title = songId,
+                                                        requestVersion = smpCacheRefreshTick
+                                                    )
+                                                }
+                                            }
+                                        },
+                                        onAfterSyncImport = { importedSongIds ->
+                                            scope.launch {
+                                                Log.i(
+                                                    "SMP_SYNC_IMPORT_DIAG",
+                                                    "cache_refresh_start source=main_activity imported=${importedSongIds.size}"
+                                                )
+                                                val refreshedSongsById = withContext(Dispatchers.IO) {
+                                                    smpLibraryScanner.listSongs().associateBy { it.id }
+                                                }
+                                                if (refreshedSongsById.isNotEmpty()) {
+                                                    smpSongsById = refreshedSongsById
+                                                    withContext(Dispatchers.IO) {
+                                                        SmpRuntimeSongCache.save(ctx, refreshedSongsById.values)
+                                                    }
+                                                }
+                                                smpCacheRefreshTick++
+                                                importedSongIds.firstOrNull { it.isNotBlank() }?.let { songId ->
+                                                    lastImportedSmpUiSignal = SmpImportedUiSignal(
+                                                        songId = songId,
+                                                        title = refreshedSongsById[songId]?.title ?: songId,
+                                                        requestVersion = smpCacheRefreshTick
+                                                    )
+                                                }
+                                                refreshKey++
+                                                Log.i(
+                                                    "SMP_SYNC_IMPORT_DIAG",
+                                                    "library_visible_after_import count=${refreshedSongsById.size} importedVisible=${importedSongIds.count { songId -> songId in refreshedSongsById }}"
+                                                )
+                                            }
+                                        },
+                                        onOpenTempoFromArrangement = {
+                                            playerNavigationTarget = "grid_setup"
+                                            playerNavigationToken += 1
+                                            setTabAndPersist(BottomTab.Player, reason = "arrangementBackToTempo")
+                                        },
+                                        onStopCurrentPlayback = {
+                                            isPlaying = false
+                                            exoPlayer.pause()
+                                            exoPlayer.playWhenReady = false
+                                        },
+                                        onOpenTuner = {
+                                            setTabAndPersist(BottomTab.Tuner, reason = "moreOpenTuner")
+                                        }
+                                    )
+                                }
+
                                 val quickPlaylistsPane: @Composable (Modifier) -> Unit = { paneModifier ->
                                     QuickPlaylistsScreen(
                                         modifier = paneModifier,
@@ -4415,6 +4551,23 @@ class MainActivity : AppCompatActivity() {
                                                                 TabletSplitCockpitMenuButton()
                                                             }
                                                             libraryPane(
+                                                                Modifier
+                                                                    .weight(1f)
+                                                                    .fillMaxWidth()
+                                                            )
+                                                        }
+                                                    }
+
+                                                    TabletSplitRightPanel.SETTINGS -> {
+                                                        Column(Modifier.fillMaxSize()) {
+                                                            Row(
+                                                                modifier = Modifier.fillMaxWidth(),
+                                                                horizontalArrangement = Arrangement.End,
+                                                                verticalAlignment = Alignment.CenterVertically
+                                                            ) {
+                                                                TabletSplitCockpitMenuButton()
+                                                            }
+                                                            settingsPane(
                                                                 Modifier
                                                                     .weight(1f)
                                                                     .fillMaxWidth()
