@@ -126,6 +126,9 @@ Il affiche uniquement :
 - dernière synchro connue
 - état de connexion
 - actions principales : `Recevoir`, `Synchroniser`, `Reconnecter` si disponible
+- recherche compacte des morceaux
+- liste simple de morceaux à cocher
+- compteur de sélection et action `Envoyer`
 
 Les détails réseau et outils techniques restent disponibles dans les options avancées :
 
@@ -134,13 +137,12 @@ Les détails réseau et outils techniques restent disponibles dans les options a
 - host manuel
 - identité détaillée
 - appairage
-- sélection manuelle
 - comparaison
 - diagnostics
 
 Objectif UX :
 
-un musicien doit pouvoir comprendre l’écran rapidement et choisir entre `Recevoir` ou `Synchroniser` sans être exposé immédiatement aux détails réseau.
+un musicien doit pouvoir comprendre l’écran rapidement, cocher des morceaux et appuyer sur `Envoyer` sans ouvrir les options avancées ni être exposé immédiatement aux détails réseau.
 
 ---
 

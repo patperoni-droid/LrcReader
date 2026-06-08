@@ -878,7 +878,10 @@
     <string name="smp_sync_manual_category_prompters">Prompteurs</string>
     <string name="smp_sync_manual_search">Rechercher</string>
     <string name="smp_sync_manual_select_all">Tout sélectionner</string>
+    <string name="smp_sync_manual_select_all_short">Tout</string>
+    <string name="smp_sync_manual_actions_separator">|</string>
     <string name="smp_sync_manual_clear">Vider</string>
+    <string name="smp_sync_manual_clear_short">Aucun</string>
     <string name="smp_sync_manual_send">Envoyer</string>
     <string name="smp_sync_manual_selected_count">%1$d sélectionné(s)</string>
     <string name="smp_sync_manual_manifest_needed">Chargement de la bibliothèque…</string>

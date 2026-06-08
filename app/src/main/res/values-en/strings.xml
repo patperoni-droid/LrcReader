@@ -870,7 +870,10 @@
     <string name="smp_sync_manual_category_prompters">Prompters</string>
     <string name="smp_sync_manual_search">Search</string>
     <string name="smp_sync_manual_select_all">Select all</string>
+    <string name="smp_sync_manual_select_all_short">All</string>
+    <string name="smp_sync_manual_actions_separator">|</string>
     <string name="smp_sync_manual_clear">Clear</string>
+    <string name="smp_sync_manual_clear_short">None</string>
     <string name="smp_sync_manual_send">Send</string>
     <string name="smp_sync_manual_selected_count">%1$d selected</string>
     <string name="smp_sync_manual_manifest_needed">Loading library…</string>

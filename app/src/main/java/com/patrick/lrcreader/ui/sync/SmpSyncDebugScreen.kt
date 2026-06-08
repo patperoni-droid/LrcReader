@@ -27,6 +27,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -164,13 +165,12 @@ fun SmpSyncDebugScreen(
     var receiveNextChunkIndex by remember { mutableStateOf(0) }
     var receiveChain by remember { mutableStateOf<Job?>(null) }
     var summary by remember { mutableStateOf<SmpSyncPlanSummary?>(null) }
-    var manualSyncExpanded by remember { mutableStateOf(false) }
-    var manualCategory by remember { mutableStateOf(ManualSyncCategory.SONGS) }
     var manualSearchQuery by remember { mutableStateOf("") }
     var selectedManualSongIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var selectedManualPlaylistIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var advancedExpanded by remember { mutableStateOf(false) }
     var labModeExpanded by remember { mutableStateOf(false) }
+    var simpleManifestLoadRequested by remember { mutableStateOf(false) }
     var isGenerating by remember { mutableStateOf(false) }
     var isPreparingPackage by remember { mutableStateOf(false) }
     var isSendingPackage by remember { mutableStateOf(false) }
@@ -1328,6 +1328,13 @@ fun SmpSyncDebugScreen(
         onDispose { closeLinks("screen_dispose") }
     }
 
+    LaunchedEffect(isBusy) {
+        if (!simpleManifestLoadRequested && localManifest == null && !isBusy) {
+            simpleManifestLoadRequested = true
+            generateLocalManifest(compareAfterGenerate = false)
+        }
+    }
+
     val backgroundBrush = Brush.verticalGradient(
         listOf(
             Color(0xFF121212),
@@ -1386,6 +1393,28 @@ fun SmpSyncDebugScreen(
                 }
             },
             onReconnect = { reconnectKnownPeer() }
+        )
+
+        SimpleSongSelectionCard(
+            manifest = localManifest,
+            searchQuery = manualSearchQuery,
+            selectedSongIds = selectedManualSongIds,
+            isBusy = isBusy,
+            onSearchChange = { manualSearchQuery = it },
+            onToggleSong = { songId ->
+                selectedManualSongIds = if (songId in selectedManualSongIds) {
+                    selectedManualSongIds - songId
+                } else {
+                    selectedManualSongIds + songId
+                }
+            },
+            onSelectAllVisible = { songIds ->
+                selectedManualSongIds = selectedManualSongIds + songIds
+            },
+            onClear = {
+                selectedManualSongIds = emptySet()
+            },
+            onSend = { prepareManualSelectionAndSend() }
         )
 
         SyncUserStatusCard(
@@ -1452,54 +1481,6 @@ fun SmpSyncDebugScreen(
                 onStopSession = { closeLinks("user_stop") }
             )
 
-            ManualSelectionSyncCard(
-                manifest = localManifest,
-                expanded = manualSyncExpanded,
-                category = manualCategory,
-                searchQuery = manualSearchQuery,
-                selectedSongIds = selectedManualSongIds,
-                selectedPlaylistIds = selectedManualPlaylistIds,
-                isBusy = isBusy,
-                isConnected = hasActiveConnection,
-                onToggleExpanded = {
-                    val shouldOpen = !manualSyncExpanded
-                    manualSyncExpanded = shouldOpen
-                    if (shouldOpen && localManifest == null && !isBusy) {
-                        generateLocalManifest(compareAfterGenerate = false)
-                    }
-                },
-                onCategoryChange = { category ->
-                    manualCategory = category
-                    manualSearchQuery = ""
-                },
-                onSearchChange = { manualSearchQuery = it },
-                onToggleSong = { songId ->
-                    selectedManualSongIds = if (songId in selectedManualSongIds) {
-                        selectedManualSongIds - songId
-                    } else {
-                        selectedManualSongIds + songId
-                    }
-                },
-                onTogglePlaylist = { playlistId ->
-                    selectedManualPlaylistIds = if (playlistId in selectedManualPlaylistIds) {
-                        selectedManualPlaylistIds - playlistId
-                    } else {
-                        selectedManualPlaylistIds + playlistId
-                    }
-                },
-                onSelectAllSongs = { songIds ->
-                    selectedManualSongIds = selectedManualSongIds + songIds
-                },
-                onSelectAllPlaylists = { playlistIds ->
-                    selectedManualPlaylistIds = selectedManualPlaylistIds + playlistIds
-                },
-                onClear = {
-                    selectedManualSongIds = emptySet()
-                    selectedManualPlaylistIds = emptySet()
-                },
-                onSend = { prepareManualSelectionAndSend() }
-            )
-
             LabModeCard(
                 expanded = labModeExpanded,
                 isBusy = isBusy,
@@ -1531,11 +1512,7 @@ fun SmpSyncDebugScreen(
                         canPrepare = sourceManifestForPackage != null && syncPlan != null,
                         isPreparing = isPreparingPackage,
                         isSending = isSendingPackage,
-                        canSend = hasActiveConnection &&
-                            preparedPackage != null &&
-                            syncPackage?.hasExcessiveFullSongs() != true,
-                        onPrepare = { prepareSyncPackage() },
-                        onSend = { sendPreparedPackage() }
+                        onPrepare = { prepareSyncPackage() }
                     )
                 }
 
@@ -1678,6 +1655,145 @@ private fun AdvancedOptionsCard(
                 content()
             }
         }
+    }
+}
+
+@Composable
+private fun SimpleSongSelectionCard(
+    manifest: SmpSyncManifest?,
+    searchQuery: String,
+    selectedSongIds: Set<String>,
+    isBusy: Boolean,
+    onSearchChange: (String) -> Unit,
+    onToggleSong: (String) -> Unit,
+    onSelectAllVisible: (Set<String>) -> Unit,
+    onClear: () -> Unit,
+    onSend: () -> Unit
+) {
+    val normalizedQuery = searchQuery.trim().lowercase()
+    val visibleSongs = manifest?.songs
+        ?.asSequence()
+        ?.filter { song ->
+            normalizedQuery.isEmpty() ||
+                song.title.lowercase().contains(normalizedQuery)
+        }
+        ?.sortedBy { song -> song.title.lowercase() }
+        ?.take(120)
+        ?.toList()
+        .orEmpty()
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF161A1D)),
+        shape = RoundedCornerShape(10.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = onSearchChange,
+                placeholder = { Text(stringResource(R.string.smp_sync_manual_search)) },
+                singleLine = true,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+            )
+
+            if (manifest == null) {
+                Text(
+                    text = stringResource(R.string.smp_sync_manual_manifest_needed),
+                    color = Color(0xFFB0BEC5),
+                    fontSize = 13.sp
+                )
+            } else {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(1.dp)
+                ) {
+                    visibleSongs.forEach { song ->
+                        SimpleSongSelectionRow(
+                            title = song.title,
+                            checked = song.songId in selectedSongIds,
+                            onClick = { onToggleSong(song.songId) }
+                        )
+                    }
+                }
+                if (visibleSongs.size == 120) {
+                    Text(
+                        text = stringResource(R.string.smp_sync_manual_list_limited),
+                        color = Color(0xFF90A4AE),
+                        fontSize = 12.sp
+                    )
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.smp_sync_manual_selected_count, selectedSongIds.size),
+                    color = Color(0xFFA5D6A7),
+                    fontSize = 13.sp,
+                    modifier = Modifier.weight(1f)
+                )
+                TextButton(
+                    onClick = { onSelectAllVisible(visibleSongs.map { it.songId }.toSet()) },
+                    enabled = !isBusy && visibleSongs.isNotEmpty()
+                ) {
+                    Text(text = stringResource(R.string.smp_sync_manual_select_all_short))
+                }
+                Text(
+                    text = stringResource(R.string.smp_sync_manual_actions_separator),
+                    color = Color(0xFF607D8B),
+                    fontSize = 13.sp
+                )
+                TextButton(
+                    onClick = onClear,
+                    enabled = !isBusy && selectedSongIds.isNotEmpty()
+                ) {
+                    Text(text = stringResource(R.string.smp_sync_manual_clear_short))
+                }
+            }
+
+            Button(
+                onClick = onSend,
+                enabled = !isBusy && selectedSongIds.isNotEmpty(),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(text = stringResource(R.string.smp_sync_manual_send))
+            }
+        }
+    }
+}
+
+@Composable
+private fun SimpleSongSelectionRow(
+    title: String,
+    checked: Boolean,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 2.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Checkbox(
+            checked = checked,
+            onCheckedChange = { onClick() }
+        )
+        Text(
+            text = title,
+            color = Color.White,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Normal,
+            modifier = Modifier.weight(1f)
+        )
     }
 }
 
@@ -2587,9 +2703,7 @@ private fun SyncPackagePreviewCard(
     canPrepare: Boolean,
     isPreparing: Boolean,
     isSending: Boolean,
-    canSend: Boolean,
-    onPrepare: () -> Unit,
-    onSend: () -> Unit
+    onPrepare: () -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -2612,13 +2726,6 @@ private fun SyncPackagePreviewCard(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(text = stringResource(R.string.smp_sync_debug_prepare_sync))
-            }
-            Button(
-                onClick = onSend,
-                enabled = canSend && !isPreparing && !isSending,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(text = stringResource(R.string.smp_sync_debug_send_package))
             }
 
             if (isPreparing || isSending) {
