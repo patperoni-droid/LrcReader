@@ -3230,6 +3230,7 @@ fun PlayerScreen(
                         }
                     },
                     currentTrackUri = currentTrackUri,
+                    showLyricsReturnButton = compactTabletLayout,
                     onClose = {
                         if (EditionConfig.isLite && liteTrackMixModified) {
                             showTrackMixProDialog = true
@@ -3237,13 +3238,7 @@ fun PlayerScreen(
                             showMixScreen = false
                         }
                     },
-                    cockpitEndContent = {
-                        if (compactTabletLayout) {
-                            Row {
-                                readerHeaderEndContent()
-                            }
-                        }
-                    }
+                    onReturnToLyrics = { showMixScreen = false }
                 )
             }
         }

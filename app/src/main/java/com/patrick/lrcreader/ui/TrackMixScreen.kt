@@ -61,7 +61,8 @@ fun TrackMixScreen(
 
     currentTrackUri: String?,
     onClose: () -> Unit,
-    cockpitEndContent: @Composable () -> Unit = {}
+    showLyricsReturnButton: Boolean = false,
+    onReturnToLyrics: () -> Unit = onClose
 ) {
     val context = LocalContext.current
 
@@ -194,12 +195,20 @@ fun TrackMixScreen(
                     title = stringResource(R.string.track_mix_console_title),
                     accent = amber
                 )
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.CenterEnd)
-                        .padding(end = 8.dp)
-                ) {
-                    cockpitEndContent()
+                if (showLyricsReturnButton) {
+                    TextButton(
+                        onClick = onReturnToLyrics,
+                        modifier = Modifier
+                            .align(Alignment.CenterEnd)
+                            .padding(end = 8.dp)
+                            .background(Color(0x33212121), RoundedCornerShape(8.dp))
+                    ) {
+                        Text(
+                            text = stringResource(R.string.player_view_lyrics),
+                            color = Color.White,
+                            fontSize = 13.sp
+                        )
+                    }
                 }
             }
 
