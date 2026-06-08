@@ -139,6 +139,7 @@ fun MoreScreen(
     onTabletExperimentalModeChange: (Boolean) -> Unit = {},
     onAfterImport: (BackupManager.LastPlayed?) -> Unit = {},
     onAfterSmpRestore: (importedCount: Int, lastImportedSongId: String?) -> Unit = { _, _ -> },
+    onAfterSyncImport: (importedSongIds: List<String>) -> Unit = {},
     onOpenTuner: () -> Unit = {},     // callback pour l'accordeur
     onOpenTempoFromArrangement: () -> Unit = {},
     onStopCurrentPlayback: () -> Unit = {}
@@ -229,7 +230,8 @@ fun MoreScreen(
 
         MoreSection.SmpSyncDebug -> SmpSyncDebugScreen(
             modifier = modifier,
-            onBack = { navigate("root") }
+            onBack = { navigate("root") },
+            onAfterImport = onAfterSyncImport
         )
 
         MoreSection.WaveformPreview -> WaveformPreviewScreen(

@@ -988,6 +988,7 @@
     <string name="smp_sync_debug_import_package">Importer</string>
     <string name="smp_sync_debug_importing_package">Import en cours…</string>
     <string name="smp_sync_debug_import_done">Import terminé</string>
+    <string name="smp_sync_debug_import_done_songs">Import terminé : %1$d morceau(x) ajouté(s)</string>
     <string name="smp_sync_debug_import_failed">Import impossible</string>
     <string name="smp_sync_debug_import_result">%1$d morceaux importés • %2$d playlists • %3$d familles</string>
     <string name="smp_sync_debug_import_failed_with_reason">Import impossible : %1$s</string>

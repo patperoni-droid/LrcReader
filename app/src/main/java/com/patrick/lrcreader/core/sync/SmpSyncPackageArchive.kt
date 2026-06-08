@@ -12,6 +12,7 @@ import com.patrick.lrcreader.core.isVirtualPlaylistItem
 import com.patrick.lrcreader.core.lyrics.LyricsMemoryCache
 import com.patrick.lrcreader.smp.SmpExporter
 import com.patrick.lrcreader.smp.SmpLibraryScanner
+import com.patrick.lrcreader.smp.SmpRuntimeSongCache
 import com.patrick.lrcreader.smp.SmpSecureImportPipeline
 import com.patrick.lrcreader.ui.library.SongVariantFamily
 import com.patrick.lrcreader.ui.library.SongVariantFamiliesStore
@@ -311,10 +312,18 @@ class SmpSyncPackageArchiveReader(private val context: Context) {
         var importedSongs = 0
         var replacedSongs = 0
 
+        Log.i(
+            SYNC_IMPORT_DIAG_TAG,
+            "import_archive_start file=${receivedPackage.file.absolutePath} songs=${receivedPackage.fullSongCount} playlists=${receivedPackage.syncPackage.playlistStateCount}"
+        )
         ZipFile(receivedPackage.file).use { zip ->
             receivedPackage.syncPackage.items
                 .filter { it.kind == SmpSyncPackageKind.SONG_FULL }
                 .forEach { item ->
+                    Log.i(
+                        SYNC_IMPORT_DIAG_TAG,
+                        "import_item_start songId=${item.entityId} title=${item.title ?: item.entityId}"
+                    )
                     val entryName = item.contentEntry
                         ?: return@withContext SmpSyncPackageImportResult(
                             importedSongCount = importedSongs,
@@ -356,6 +365,10 @@ class SmpSyncPackageArchiveReader(private val context: Context) {
                             SYNC_MANUAL_IMPORT_DIAG_TAG,
                             "manual_import:start songId=${item.entityId} title=${item.title ?: item.entityId} existsBefore=$exists packageHasLyrics=$packageHasLyrics lyricsBeforeHash=${beforeLyricsHash ?: "null"} lyricsBeforePath=${lyricsBefore.absolutePath}"
                         )
+                        Log.i(
+                            SYNC_IMPORT_DIAG_TAG,
+                            "smp_import_start songId=${item.entityId} title=${item.title ?: item.entityId} temp=${tempSmp.absolutePath}"
+                        )
                         val result = SmpSecureImportPipeline(context).import(
                             uri = Uri.fromFile(tempSmp),
                             preserveExistingLyricsOnReplace = false
@@ -388,7 +401,15 @@ class SmpSyncPackageArchiveReader(private val context: Context) {
                         val afterLyricsHash = lyricsAfter.takeIf { it.isFile }?.let(::sha256)
                         Log.i(
                             SYNC_IMPORT_DIAG_TAG,
+                            "smp_import_done songId=${importedSong.id} path=${runtimeDir.absolutePath}"
+                        )
+                        Log.i(
+                            SYNC_IMPORT_DIAG_TAG,
                             "post_import:runtime_check songId=${item.entityId} title=${item.title ?: importedSong.title} dir=${runtimeDir.absolutePath} exists=${runtimeDir.isDirectory}"
+                        )
+                        Log.i(
+                            SYNC_IMPORT_DIAG_TAG,
+                            "runtime_track_exists songId=${item.entityId} value=${runtimeDir.isDirectory}"
                         )
                         Log.i(
                             SYNC_MANUAL_IMPORT_DIAG_TAG,
@@ -420,6 +441,16 @@ class SmpSyncPackageArchiveReader(private val context: Context) {
         val postImportDiagnostics = buildPostImportDiagnostics(
             receivedPackage = receivedPackage,
             importedSongIds = importedIds.toList()
+        )
+        Log.i(
+            SYNC_IMPORT_DIAG_TAG,
+            "cache_refresh_start imported=${importedIds.size}"
+        )
+        val refreshedSongs = SmpLibraryScanner(context).listSongs()
+        SmpRuntimeSongCache.save(context, refreshedSongs)
+        Log.i(
+            SYNC_IMPORT_DIAG_TAG,
+            "cache_refresh_done count=${refreshedSongs.size} importedVisible=${importedIds.count { songId -> refreshedSongs.any { it.id == songId } }}"
         )
 
         SmpSyncPackageImportResult(

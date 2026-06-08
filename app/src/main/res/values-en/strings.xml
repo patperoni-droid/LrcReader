@@ -980,6 +980,7 @@
     <string name="smp_sync_debug_import_package">Import</string>
     <string name="smp_sync_debug_importing_package">Importing…</string>
     <string name="smp_sync_debug_import_done">Import complete</string>
+    <string name="smp_sync_debug_import_done_songs">Import complete: %1$d song(s) added</string>
     <string name="smp_sync_debug_import_failed">Import failed</string>
     <string name="smp_sync_debug_import_result">%1$d songs imported • %2$d playlists • %3$d families</string>
     <string name="smp_sync_debug_import_failed_with_reason">Import failed: %1$s</string>

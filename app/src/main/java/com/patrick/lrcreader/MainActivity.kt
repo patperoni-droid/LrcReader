@@ -4937,6 +4937,36 @@ class MainActivity : AppCompatActivity() {
                                                 }
                                             }
                                         },
+                                        onAfterSyncImport = { importedSongIds ->
+                                            scope.launch {
+                                                Log.i(
+                                                    "SMP_SYNC_IMPORT_DIAG",
+                                                    "cache_refresh_start source=main_activity imported=${importedSongIds.size}"
+                                                )
+                                                val refreshedSongsById = withContext(Dispatchers.IO) {
+                                                    smpLibraryScanner.listSongs().associateBy { it.id }
+                                                }
+                                                if (refreshedSongsById.isNotEmpty()) {
+                                                    smpSongsById = refreshedSongsById
+                                                    withContext(Dispatchers.IO) {
+                                                        SmpRuntimeSongCache.save(ctx, refreshedSongsById.values)
+                                                    }
+                                                }
+                                                smpCacheRefreshTick++
+                                                importedSongIds.firstOrNull { it.isNotBlank() }?.let { songId ->
+                                                    lastImportedSmpUiSignal = SmpImportedUiSignal(
+                                                        songId = songId,
+                                                        title = refreshedSongsById[songId]?.title ?: songId,
+                                                        requestVersion = smpCacheRefreshTick
+                                                    )
+                                                }
+                                                refreshKey++
+                                                Log.i(
+                                                    "SMP_SYNC_IMPORT_DIAG",
+                                                    "library_visible_after_import count=${refreshedSongsById.size} importedVisible=${importedSongIds.count { songId -> songId in refreshedSongsById }}"
+                                                )
+                                            }
+                                        },
                                         onOpenTempoFromArrangement = {
                                             playerNavigationTarget = "grid_setup"
                                             playerNavigationToken += 1

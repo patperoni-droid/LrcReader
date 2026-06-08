@@ -124,7 +124,8 @@ private enum class ManualSyncCategory {
 @Composable
 fun SmpSyncDebugScreen(
     modifier: Modifier = Modifier,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onAfterImport: (List<String>) -> Unit = {}
 ) {
     val context = LocalContext.current
     val prefs = remember(context) {
@@ -1186,6 +1187,10 @@ fun SmpSyncDebugScreen(
     }
 
     fun importReceivedPackage() {
+        Log.i(
+            SMP_SYNC_IMPORT_DIAG_TAG,
+            "import_button_clicked pending=${receivedPackage != null} busy=$isBusy"
+        )
         val pendingPackage = receivedPackage ?: return
         if (isBusy) return
         scope.launch {
@@ -1210,6 +1215,7 @@ fun SmpSyncDebugScreen(
                         SMP_SYNC_IMPORT_DIAG_TAG,
                         "import_done success=true songs=${result.importedSongCount} playlists=${result.playlistCount}"
                     )
+                    onAfterImport(result.importedSongIds)
                     val postImport = result.postImportDiagnostics
                     syncPlan = postImport?.remainingPlan
                     summary = postImport?.remainingPlan?.let { remainingPlan ->
@@ -1235,6 +1241,10 @@ fun SmpSyncDebugScreen(
                                 it.remainingItemCount
                             )
                         }
+                        ?: context.getString(
+                            R.string.smp_sync_debug_import_done_songs,
+                            result.importedSongCount
+                        )
                 } else {
                     Log.i(
                         SMP_SYNC_IMPORT_DIAG_TAG,
