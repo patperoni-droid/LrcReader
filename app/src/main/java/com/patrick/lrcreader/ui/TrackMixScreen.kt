@@ -60,7 +60,9 @@ fun TrackMixScreen(
     onPitchSemiChange: (Int) -> Unit,
 
     currentTrackUri: String?,
-    onClose: () -> Unit
+    onClose: () -> Unit,
+    showLyricsReturnButton: Boolean = false,
+    onReturnToLyrics: () -> Unit = onClose
 ) {
     val context = LocalContext.current
 
@@ -188,10 +190,27 @@ fun TrackMixScreen(
         // ✅ IMPORTANT : le toggle doit être DECLARE APRES la Column pour être AU-DESSUS (overlay)
         Column(Modifier.fillMaxSize()) {
 
-            ConsoleHeader(
-                title = stringResource(R.string.track_mix_console_title),
-                accent = amber
-            )
+            Box(modifier = Modifier.fillMaxWidth()) {
+                ConsoleHeader(
+                    title = stringResource(R.string.track_mix_console_title),
+                    accent = amber
+                )
+                if (showLyricsReturnButton) {
+                    TextButton(
+                        onClick = onReturnToLyrics,
+                        modifier = Modifier
+                            .align(Alignment.CenterEnd)
+                            .padding(end = 8.dp)
+                            .background(Color(0x33212121), RoundedCornerShape(8.dp))
+                    ) {
+                        Text(
+                            text = stringResource(R.string.player_view_lyrics),
+                            color = Color.White,
+                            fontSize = 13.sp
+                        )
+                    }
+                }
+            }
 
             Spacer(Modifier.height(10.dp))
 

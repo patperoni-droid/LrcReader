@@ -3230,13 +3230,15 @@ fun PlayerScreen(
                         }
                     },
                     currentTrackUri = currentTrackUri,
+                    showLyricsReturnButton = compactTabletLayout,
                     onClose = {
                         if (EditionConfig.isLite && liteTrackMixModified) {
                             showTrackMixProDialog = true
                         } else {
                             showMixScreen = false
                         }
-                    }
+                    },
+                    onReturnToLyrics = { showMixScreen = false }
                 )
             }
         }
