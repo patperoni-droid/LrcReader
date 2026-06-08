@@ -3774,6 +3774,18 @@ class MainActivity : AppCompatActivity() {
                                             onDismissRequest = { isTabletSplitMenuOpen = false }
                                         ) {
                                             DropdownMenuItem(
+                                                text = { Text(stringResource(R.string.player_view_lyrics)) },
+                                                onClick = {
+                                                    prepareTabletSplitMenuNavigation()
+                                                    isTabletCockpitDestinationOpen = false
+                                                    closeMixSignal++
+                                                    setTabAndPersist(
+                                                        BottomTab.Player,
+                                                        reason = "tabletSplitMenuLyrics"
+                                                    )
+                                                }
+                                            )
+                                            DropdownMenuItem(
                                                 text = { Text(stringResource(R.string.tablet_split_menu_library)) },
                                                 onClick = {
                                                     prepareTabletSplitMenuNavigation()
