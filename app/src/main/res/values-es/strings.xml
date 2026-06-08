@@ -795,6 +795,8 @@
     <string name="smp_sync_manual_future_category">Previsto para más adelante. La V1 manual admite canciones y playlists.</string>
     <string name="smp_sync_manual_no_session_hint">Crea una sesión para enviar al teléfono de respaldo. Sin sesión, solo se prepara localmente.</string>
     <string name="smp_sync_manual_empty_selection">Selecciona al menos un elemento para sincronizar.</string>
+    <string name="smp_sync_send_prepare_first">Prepara primero la sincronización.</string>
+    <string name="smp_sync_send_not_connected">Dispositivo no conectado.</string>
     <string name="smp_sync_manual_prepare_selection">Preparando %1$d elemento(s) seleccionado(s)…</string>
     <string name="smp_sync_manual_ready_without_session">%1$d elemento(s) listo(s). Crea una sesión para enviar.</string>
     <string name="smp_sync_manual_list_limited">Lista limitada a los primeros 80 resultados. Usa la búsqueda para filtrar.</string>

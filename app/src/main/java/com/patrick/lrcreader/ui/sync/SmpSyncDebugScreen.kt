@@ -112,6 +112,7 @@ private const val SMP_SYNC_PACKAGE_DIAG_TAG = "SMP_SYNC_PACKAGE_DIAG"
 private const val SMP_SYNC_RECEIVE_DIAG_TAG = "SMP_SYNC_RECEIVE_DIAG"
 private const val SMP_SYNC_PEER_DIAG_TAG = "SMP_SYNC_PEER_DIAG"
 private const val SMP_SYNC_IMPORT_DIAG_TAG = "SMP_SYNC_IMPORT_DIAG"
+private const val SMP_SYNC_SEND_DIAG_TAG = "SMP_SYNC_SEND_DIAG"
 
 private enum class ManualSyncCategory {
     SONGS,
@@ -199,6 +200,7 @@ fun SmpSyncDebugScreen(
     var seq by remember { mutableLongStateOf(1L) }
     val isBusy = isGenerating || isConnecting || isPreparingPackage || isSendingPackage || isImportingPackage
     val hasSavedConnection = joinHost.isNotBlank() && joinPortText.isNotBlank()
+    val hasActiveConnection = server != null || client != null
 
     fun saveJoinTarget(host: String = joinHost, portText: String = joinPortText) {
         prefs.edit()
@@ -875,8 +877,7 @@ fun SmpSyncDebugScreen(
                 "ui:prepare_start planItems=${plan.items.size} sourceSongs=${source.songs.size} playlists=${source.playlists.size} families=${source.families.size}"
             )
             runCatching {
-                val hosting = server != null
-                if (hosting) {
+                if (hasActiveConnection) {
                     val prepared = buildPackageArchive(
                         source = source,
                         plan = plan,
@@ -939,10 +940,26 @@ fun SmpSyncDebugScreen(
         prepared: SmpSyncPreparedPackage,
         allowLargeFullSongTransfer: Boolean
     ) {
-        val activeServer = server ?: return
+        val sendMessage: suspend (LocalLinkMessage) -> Boolean = when {
+            server != null -> { message -> server?.send(message) ?: false }
+            client != null -> { message -> client?.send(message) ?: false }
+            else -> {
+                Log.i(
+                    SMP_SYNC_SEND_DIAG_TAG,
+                    "send_blocked_reason=no_connection package_available=true connection_available=false"
+                )
+                statusRes = R.string.smp_sync_debug_connection_error
+                statusDetail = context.getString(R.string.smp_sync_send_not_connected)
+                return
+            }
+        }
         if (!allowLargeFullSongTransfer &&
             prepared.syncPackage.fullSongCount > SmpSyncPlanDiagnostics.LARGE_FULL_SONG_TRANSFER_THRESHOLD
         ) {
+            Log.i(
+                SMP_SYNC_SEND_DIAG_TAG,
+                "send_blocked_reason=large_full_song_transfer package_available=true connection_available=true"
+            )
             statusRes = R.string.smp_sync_debug_package_send_failed
             statusDetail = context.getString(R.string.smp_sync_debug_excessive_full_sync_blocked)
             return
@@ -957,7 +974,11 @@ fun SmpSyncDebugScreen(
                 SMP_SYNC_IMPORT_DIAG_TAG,
                 "send_package_start id=$packageId bytes=${prepared.sizeBytes} songs=${prepared.syncPackage.fullSongCount}"
             )
-            val started = activeServer.send(
+            Log.i(
+                SMP_SYNC_SEND_DIAG_TAG,
+                "send_start id=$packageId package_available=true connection_available=true"
+            )
+            val started = sendMessage(
                 SyncPackageStartMessage(
                     packageId = packageId,
                     totalBytes = prepared.sizeBytes,
@@ -971,6 +992,7 @@ fun SmpSyncDebugScreen(
                 )
             )
             if (!started) {
+                Log.i(SMP_SYNC_SEND_DIAG_TAG, "send_blocked_reason=start_not_sent package_available=true connection_available=true")
                 statusRes = R.string.local_link_no_receiver_connected
                 return@runCatching
             }
@@ -989,13 +1011,13 @@ fun SmpSyncDebugScreen(
                             byteCount = read,
                             seq = seq++
                         )
-                        val sent = activeServer.send(chunk)
+                        val sent = sendMessage(chunk)
                         if (!sent) error("send_failed")
                         chunkIndex += 1
                     }
                 }
             }
-            val ended = activeServer.send(
+            val ended = sendMessage(
                 SyncPackageEndMessage(
                     packageId = packageId,
                     sha256 = prepared.sha256,
@@ -1005,13 +1027,16 @@ fun SmpSyncDebugScreen(
             statusRes = if (ended) {
                 peerState = SmpSyncPeerStore.markSyncCompleted(context.applicationContext)
                 Log.i(SMP_SYNC_IMPORT_DIAG_TAG, "send_package_done id=$packageId success=true")
+                Log.i(SMP_SYNC_SEND_DIAG_TAG, "send_done id=$packageId success=true")
                 R.string.smp_sync_debug_package_sent
             } else {
                 Log.i(SMP_SYNC_IMPORT_DIAG_TAG, "send_package_done id=$packageId success=false")
+                Log.i(SMP_SYNC_SEND_DIAG_TAG, "send_done id=$packageId success=false")
                 R.string.local_link_no_receiver_connected
             }
         }.onFailure { error ->
             Log.e(SMP_SYNC_IMPORT_DIAG_TAG, "send_package_error", error)
+            Log.e(SMP_SYNC_SEND_DIAG_TAG, "send_error", error)
             statusRes = R.string.smp_sync_debug_connection_error
             statusDetail = error.message ?: context.getString(R.string.smp_sync_debug_package_send_failed)
         }
@@ -1019,8 +1044,21 @@ fun SmpSyncDebugScreen(
     }
 
     fun sendPreparedPackage() {
-        val prepared = preparedPackage ?: return
-        if (isBusy) return
+        Log.i(
+            SMP_SYNC_SEND_DIAG_TAG,
+            "send_button_clicked source=prepared package_available=${preparedPackage != null} " +
+                "connection_available=$hasActiveConnection selected_items_count=${selectedManualSongIds.size + selectedManualPlaylistIds.size}"
+        )
+        val prepared = preparedPackage
+        if (prepared == null) {
+            Log.i(SMP_SYNC_SEND_DIAG_TAG, "send_blocked_reason=no_prepared_package package_available=false connection_available=$hasActiveConnection")
+            statusDetail = context.getString(R.string.smp_sync_send_prepare_first)
+            return
+        }
+        if (isBusy) {
+            Log.i(SMP_SYNC_SEND_DIAG_TAG, "send_blocked_reason=busy package_available=true connection_available=$hasActiveConnection")
+            return
+        }
         scope.launch {
             sendPackageNow(
                 prepared = prepared,
@@ -1030,10 +1068,19 @@ fun SmpSyncDebugScreen(
     }
 
     fun prepareManualSelectionAndSend() {
-        if (isBusy) return
+        Log.i(
+            SMP_SYNC_SEND_DIAG_TAG,
+            "send_button_clicked source=manual package_available=${preparedPackage != null} " +
+                "connection_available=$hasActiveConnection selected_items_count=${selectedManualSongIds.size + selectedManualPlaylistIds.size}"
+        )
+        if (isBusy) {
+            Log.i(SMP_SYNC_SEND_DIAG_TAG, "send_blocked_reason=busy package_available=${preparedPackage != null} connection_available=$hasActiveConnection")
+            return
+        }
         val songIds = selectedManualSongIds
         val playlistIds = selectedManualPlaylistIds
         if (songIds.isEmpty() && playlistIds.isEmpty()) {
+            Log.i(SMP_SYNC_SEND_DIAG_TAG, "send_blocked_reason=no_content package_available=${preparedPackage != null} connection_available=$hasActiveConnection selected_items_count=0")
             statusDetail = context.getString(R.string.smp_sync_manual_empty_selection)
             return
         }
@@ -1080,13 +1127,13 @@ fun SmpSyncDebugScreen(
                     plan = plan
                 )
 
-                val activeServer = server
-                if (activeServer == null) {
-                    statusRes = R.string.smp_sync_debug_ready_to_sync
-                    statusDetail = context.getString(
-                        R.string.smp_sync_manual_ready_without_session,
-                        syncPackage?.itemCount ?: 0
+                if (!hasActiveConnection) {
+                    Log.i(
+                        SMP_SYNC_SEND_DIAG_TAG,
+                        "send_blocked_reason=no_connection package_available=${syncPackage != null} connection_available=false selected_items_count=${songIds.size + playlistIds.size}"
                     )
+                    statusRes = R.string.smp_sync_debug_ready_to_sync
+                    statusDetail = context.getString(R.string.smp_sync_send_not_connected)
                     return@runCatching
                 }
 
@@ -1403,7 +1450,7 @@ fun SmpSyncDebugScreen(
                 selectedSongIds = selectedManualSongIds,
                 selectedPlaylistIds = selectedManualPlaylistIds,
                 isBusy = isBusy,
-                isConnected = server != null,
+                isConnected = hasActiveConnection,
                 onToggleExpanded = {
                     val shouldOpen = !manualSyncExpanded
                     manualSyncExpanded = shouldOpen
@@ -1474,7 +1521,7 @@ fun SmpSyncDebugScreen(
                         canPrepare = sourceManifestForPackage != null && syncPlan != null,
                         isPreparing = isPreparingPackage,
                         isSending = isSendingPackage,
-                        canSend = server != null &&
+                        canSend = hasActiveConnection &&
                             preparedPackage != null &&
                             syncPackage?.hasExcessiveFullSongs() != true,
                         onPrepare = { prepareSyncPackage() },

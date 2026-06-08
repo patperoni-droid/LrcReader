@@ -885,6 +885,8 @@
     <string name="smp_sync_manual_future_category">Prévu plus tard. La V1 manuelle prend en charge les morceaux et playlists.</string>
     <string name="smp_sync_manual_no_session_hint">Créez une session pour envoyer vers le téléphone secours. Sans session, seule la préparation locale est faite.</string>
     <string name="smp_sync_manual_empty_selection">Sélectionnez au moins un élément à synchroniser.</string>
+    <string name="smp_sync_send_prepare_first">Préparez d’abord la synchronisation.</string>
+    <string name="smp_sync_send_not_connected">Appareil non connecté.</string>
     <string name="smp_sync_manual_prepare_selection">Préparation de %1$d élément(s) sélectionné(s)…</string>
     <string name="smp_sync_manual_ready_without_session">%1$d élément(s) prêt(s). Créez une session pour envoyer.</string>
     <string name="smp_sync_manual_list_limited">Liste limitée aux 80 premiers résultats. Utilisez la recherche pour filtrer.</string>
