@@ -232,6 +232,20 @@ Architecture implication:
 - live playback must never depend on the phone being present
 - the tablet must be able to run the show from normalized internal storage only
 
+Tablet split navigation rule:
+- tablet stage mode is based on a Split Layout, not on two independent screens
+- left pane is the fixed Playlist pane
+- right pane hosts the active live destination
+- the Playlist is not a destination screen in this mode; it is the stable left part of the Split Layout
+- the default right-pane destination is Lyrics
+- Lyrics is the home state of the right pane
+- compatible right-pane destinations may include Lyrics, Library, Track Console, Settings, and future tablet-safe panels
+- every secondary right-pane destination must provide a simple and visible path back to `Playlist | Lyrics`
+- some tools may leave the Split Layout and use a Fullscreen mode when they need the full tablet width
+- Arrangement, Timeline, and future wide editing tools may use Fullscreen instead of the Split Layout
+- fullscreen tools must return explicitly to the live cockpit without changing playback state
+- phone UX remains the default behavior and must not inherit tablet split assumptions
+
 ⸻
 
 FORBIDDEN PATTERNS

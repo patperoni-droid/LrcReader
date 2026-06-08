@@ -199,6 +199,13 @@ UI BEHAVIOR DURING LIVE
 
 👉 Smooth UI = safe live experience.
 
+Tablet live navigation:
+- in tablet split mode, the Playlist remains fixed on the left
+- the right pane defaults to Lyrics and must always be able to return to Lyrics from secondary panels
+- secondary panels such as Track Console, Library, or Settings must not trap the user away from `Playlist | Lyrics`
+- fullscreen tablet tools such as Arrangement or Timeline must be explicit and must return cleanly to the live cockpit
+- tablet navigation changes must not alter phone behavior or playback state
+
 ⸻
 
 STATE MANAGEMENT
