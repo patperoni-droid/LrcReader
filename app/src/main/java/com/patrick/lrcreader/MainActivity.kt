@@ -38,7 +38,9 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
@@ -138,6 +140,11 @@ class MainActivity : AppCompatActivity() {
         LIBRARY_SONGS,
         PROMPTER,
         PLAYER
+    }
+
+    private enum class TabletSplitRightPanel {
+        LYRICS,
+        LIBRARY
     }
 
     private data class SessionSnapshot(
@@ -1250,6 +1257,9 @@ class MainActivity : AppCompatActivity() {
                 var libraryKeyboardNavigationEnabled by remember { mutableStateOf(false) }
                 var isTabletSplitMenuOpen by remember { mutableStateOf(false) }
                 var isTabletCockpitDestinationOpen by rememberSaveable { mutableStateOf(false) }
+                var tabletRightPanel by rememberSaveable {
+                    mutableStateOf(TabletSplitRightPanel.LYRICS)
+                }
 
                 var currentTrackTempo by remember { mutableStateOf(1f) }
                 var currentTrackPitchSemi by remember { mutableStateOf(0) }
@@ -3466,6 +3476,7 @@ class MainActivity : AppCompatActivity() {
                 LaunchedEffect(adaptiveTokens.tabletMode, tabletExperimentalModeEnabled) {
                     if (!adaptiveTokens.tabletMode || !tabletExperimentalModeEnabled) {
                         isTabletCockpitDestinationOpen = false
+                        tabletRightPanel = TabletSplitRightPanel.LYRICS
                     }
                 }
 
@@ -3505,6 +3516,7 @@ class MainActivity : AppCompatActivity() {
                     isGlobalMixOpen = false
                     isSearchOpen = false
                     isMixerPreviewOpen = false
+                    tabletRightPanel = TabletSplitRightPanel.LYRICS
                     setTabAndPersist(BottomTab.Player, reason = "tabletCockpitReturn")
                 }
 
@@ -3774,14 +3786,19 @@ class MainActivity : AppCompatActivity() {
                                             onDismissRequest = { isTabletSplitMenuOpen = false }
                                         ) {
                                             DropdownMenuItem(
+                                                text = { Text(stringResource(R.string.player_view_lyrics)) },
+                                                onClick = {
+                                                    prepareTabletSplitMenuNavigation()
+                                                    isTabletCockpitDestinationOpen = false
+                                                    tabletRightPanel = TabletSplitRightPanel.LYRICS
+                                                }
+                                            )
+                                            DropdownMenuItem(
                                                 text = { Text(stringResource(R.string.tablet_split_menu_library)) },
                                                 onClick = {
                                                     prepareTabletSplitMenuNavigation()
-                                                    isTabletCockpitDestinationOpen = true
-                                                    setTabAndPersist(
-                                                        BottomTab.Library,
-                                                        reason = "tabletSplitMenuLibrary"
-                                                    )
+                                                    isTabletCockpitDestinationOpen = false
+                                                    tabletRightPanel = TabletSplitRightPanel.LIBRARY
                                                 }
                                             )
                                             DropdownMenuItem(
@@ -3801,6 +3818,7 @@ class MainActivity : AppCompatActivity() {
                                                 onClick = {
                                                     prepareTabletSplitMenuNavigation()
                                                     isTabletCockpitDestinationOpen = false
+                                                    tabletRightPanel = TabletSplitRightPanel.LYRICS
                                                     setTabAndPersist(
                                                         BottomTab.QuickPlaylists,
                                                         reason = "tabletSplitMenuPlaylist"
@@ -4032,6 +4050,143 @@ class MainActivity : AppCompatActivity() {
                                     )
                                 }
 
+                                val libraryPane: @Composable (Modifier) -> Unit = { paneModifier ->
+                                    LibraryScreen(
+                                        modifier = paneModifier,
+                                        workspaceSnapshot = workspaceSnapshot,
+                                        workspaceVersion = setupTick,
+                                        currentPlayingSongId = currentPlayingSongId,
+                                        reselectRootSignal = libraryTabReselectSignal,
+                                        searchToggleSignal = librarySearchToggleSignal,
+                                        smpRefreshVersion = smpCacheRefreshTick,
+                                        smpSongsCache = smpSongsById,
+                                        lastImportedSmpSignal = lastImportedSmpUiSignal,
+                                        onConsumeImportedSmpAutoOpen = {
+                                            lastImportedSmpUiSignal = null
+                                        },
+                                        onWorkspaceChanged = {
+                                            forceSetup = false
+                                            setupTick++
+                                        },
+                                        onAfterBackupImport = { refreshKey++ },
+                                        onImportExternalSmp = {
+                                            pickSmpFileLauncher.launch(
+                                                arrayOf(
+                                                    "application/zip",
+                                                    "application/x-zip-compressed",
+                                                    "application/octet-stream",
+                                                    "*/*"
+                                                )
+                                            )
+                                        },
+                                        onSyncWorkspaceSmpArchives = {
+                                            syncWorkspaceSmpArchivesToRuntime(
+                                                trigger = "library_manual_rescan",
+                                                useAttemptGate = false
+                                            )
+                                        },
+                                        onImportGeneratedSmp = autoImportGeneratedSmp,
+                                        onImportGeneratedSmpFailureReason = {
+                                            lastSmpImportFailureReason.get() ?: smpImporter.lastFailureReason
+                                        },
+                                        onDeleteSmpSong = { songId ->
+                                            deleteSmpSongById(songId)
+                                        },
+                                        onKeyboardNavigationAvailabilityChange = { enabled ->
+                                            libraryKeyboardNavigationEnabled = enabled
+                                        },
+                                        onOpenPlaylistFromLibrary = { name ->
+                                            selectedQuickPlaylist = name
+                                            openedPlaylist = name
+                                            setTabAndPersist(BottomTab.QuickPlaylists, reason = "libraryOpenPlaylist")
+                                        },
+                                        onLufsManualGainChanged = { songId, gainDb ->
+                                            if (songId == currentPlayingSongId) {
+                                                val safeDb = clampTrackDb(gainDb)
+                                                currentTrackGainDb = safeDb
+                                                currentTrackVolumeSource =
+                                                    SmpConfig.PlaybackConfig.VOLUME_SOURCE_LUFS
+                                                AudioEngine.applyTrackGainDb(safeDb)
+                                            }
+                                        },
+                                        onPlayFromLibrary = { uriString, openRichPlayer ->
+                                            Log.d(
+                                                SMP_PLAY_TRACE_TAG,
+                                                "LIBRARY_TAP item=$uriString"
+                                            )
+                                            SmpLaunchTiming.start(
+                                                source = "library_tap",
+                                                requestedItem = uriString,
+                                                playlistName = null,
+                                                songId = getSmpSongId(uriString)
+                                            )
+                                            when (val target = PlaybackRouter.resolve(uriString, null)) {
+                                                is PlaybackRouter.Target.Audio,
+                                                is PlaybackRouter.Target.Smp -> {
+                                                    Log.d(
+                                                        SMP_PLAY_TRACE_TAG,
+                                                        "LIBRARY_TARGET type=${target.javaClass.simpleName} value=$target"
+                                                    )
+                                                    val resolvedTarget = resolveAudioTarget(
+                                                        target = target,
+                                                        showToastOnFailure = true
+                                                    ) ?: run {
+                                                        Log.d(
+                                                            SMP_PLAY_TRACE_TAG,
+                                                            "LIBRARY_RESOLVED null item=$uriString target=$target"
+                                                        )
+                                                        return@LibraryScreen
+                                                    }
+                                                    Log.d(
+                                                        SMP_PLAY_TRACE_TAG,
+                                                        "LIBRARY_RESOLVED uri=${resolvedTarget.uri} playlist=${resolvedTarget.playlist}"
+                                                    )
+                                                    SmpLaunchTiming.markResolvedAudioTarget(
+                                                        uri = resolvedTarget.uri,
+                                                        playlistName = resolvedTarget.playlist,
+                                                        songId = getSmpSongId(uriString)
+                                                    )
+                                                    stopChainPlayback()
+                                                    LyricsPerf.startOpen(
+                                                        trackUriString = resolvedTarget.uri,
+                                                        source = "library_tap",
+                                                        playlistName = resolvedTarget.playlist
+                                                    )
+                                                    scope.launch {
+                                                        playWithCrossfadeInternal(
+                                                            uriString = resolvedTarget.uri,
+                                                            playlistName = resolvedTarget.playlist,
+                                                            playlistItemKey = null,
+                                                            openPlayerScreen = openRichPlayer
+                                                        )
+                                                    }
+                                                    currentLyricsColor = Color.White
+                                                }
+
+                                                is PlaybackRouter.Target.Prompter -> {
+                                                    Log.d(
+                                                        SMP_PLAY_TRACE_TAG,
+                                                        "LIBRARY_TARGET prompter id=${target.id}"
+                                                    )
+                                                    textPrompterId = target.id
+                                                }
+
+                                                is PlaybackRouter.Target.Unknown -> {
+                                                    Log.d(
+                                                        SMP_PLAY_TRACE_TAG,
+                                                        "LIBRARY_TARGET unknown item=$uriString"
+                                                    )
+                                                    // rien
+                                                }
+                                            }
+                                        },
+                                        hardwareCommandToken = libraryHardwareCommandToken,
+                                        hardwareCommand = libraryHardwareCommand,
+                                        hardwareReturnToCurrentToken = libraryHardwareReturnToken,
+                                        hardwareReturnCommand = libraryHardwareReturnCommand
+                                    )
+                                }
+
                                 val quickPlaylistsPane: @Composable (Modifier) -> Unit = { paneModifier ->
                                     QuickPlaylistsScreen(
                                         modifier = paneModifier,
@@ -4244,7 +4399,28 @@ class MainActivity : AppCompatActivity() {
                                                     .weight(0.62f)
                                                     .fillMaxHeight()
                                             ) {
-                                                playerPane(Modifier.fillMaxSize())
+                                                when (tabletRightPanel) {
+                                                    TabletSplitRightPanel.LYRICS -> {
+                                                        playerPane(Modifier.fillMaxSize())
+                                                    }
+
+                                                    TabletSplitRightPanel.LIBRARY -> {
+                                                        Column(Modifier.fillMaxSize()) {
+                                                            Row(
+                                                                modifier = Modifier.fillMaxWidth(),
+                                                                horizontalArrangement = Arrangement.End,
+                                                                verticalAlignment = Alignment.CenterVertically
+                                                            ) {
+                                                                TabletSplitCockpitMenuButton()
+                                                            }
+                                                            libraryPane(
+                                                                Modifier
+                                                                    .weight(1f)
+                                                                    .fillMaxWidth()
+                                                            )
+                                                        }
+                                                    }
+                                                }
                                             }
                                         }
                                     }
