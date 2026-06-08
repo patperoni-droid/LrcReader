@@ -3790,6 +3790,7 @@ class MainActivity : AppCompatActivity() {
                                                 onClick = {
                                                     prepareTabletSplitMenuNavigation()
                                                     isTabletCockpitDestinationOpen = false
+                                                    closeMixSignal++
                                                     tabletRightPanel = TabletSplitRightPanel.LYRICS
                                                 }
                                             )
