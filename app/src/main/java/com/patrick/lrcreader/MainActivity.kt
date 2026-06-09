@@ -146,8 +146,7 @@ class MainActivity : AppCompatActivity() {
         LYRICS,
         LIBRARY,
         SETTINGS,
-        BACKGROUND_SOUND,
-        SEARCH
+        BACKGROUND_SOUND
     }
 
     private data class SessionSnapshot(
@@ -3854,16 +3853,14 @@ class MainActivity : AppCompatActivity() {
                                                 onClick = {
                                                     prepareTabletSplitMenuNavigation()
                                                     isTabletCockpitDestinationOpen = false
-                                                    searchMode = if (
-                                                        tabletRightPanel != TabletSplitRightPanel.LIBRARY &&
-                                                        selectedTab is BottomTab.QuickPlaylists &&
-                                                        !selectedQuickPlaylist.isNullOrBlank()
-                                                    ) {
-                                                        SearchMode.PLAYLIST
+                                                    if (tabletRightPanel == TabletSplitRightPanel.LIBRARY) {
+                                                        librarySearchToggleSignal++
+                                                    } else if (!selectedQuickPlaylist.isNullOrBlank()) {
+                                                        playlistSearchToggleSignal++
                                                     } else {
-                                                        SearchMode.PLAYER
+                                                        tabletRightPanel = TabletSplitRightPanel.LIBRARY
+                                                        librarySearchToggleSignal++
                                                     }
-                                                    tabletRightPanel = TabletSplitRightPanel.SEARCH
                                                 }
                                             )
                                             DropdownMenuItem(
@@ -4338,71 +4335,6 @@ class MainActivity : AppCompatActivity() {
                                     }
                                 }
 
-                                val searchPane: @Composable (Modifier) -> Unit = { paneModifier ->
-                                    SearchScreen(
-                                        modifier = paneModifier,
-                                        indexAll = indexAll,
-                                        onBack = {
-                                            tabletRightPanel = TabletSplitRightPanel.LYRICS
-                                        },
-                                        onPlay = { uriString ->
-                                            when (searchMode) {
-                                                SearchMode.PLAYER -> {
-                                                    stopChainPlayback()
-                                                    LyricsPerf.startOpen(
-                                                        trackUriString = uriString,
-                                                        source = "search_player_tap",
-                                                        playlistName = null
-                                                    )
-                                                    scope.launch {
-                                                        playWithCrossfadeInternal(
-                                                            uriString = uriString,
-                                                            playlistName = null,
-                                                            playlistItemKey = null,
-                                                            openPlayerScreen = true
-                                                        )
-                                                    }
-                                                }
-
-                                                SearchMode.DJ -> {
-                                                    playFromSearchInDj(uriString)
-                                                }
-
-                                                SearchMode.PLAYLIST -> {
-                                                    stopChainPlayback()
-                                                    LyricsPerf.startOpen(
-                                                        trackUriString = uriString,
-                                                        source = "search_playlist_tap",
-                                                        playlistName = selectedQuickPlaylist
-                                                    )
-                                                    scope.launch {
-                                                        playWithCrossfadeInternal(
-                                                            uriString = uriString,
-                                                            playlistName = selectedQuickPlaylist,
-                                                            playlistItemKey = uriString,
-                                                            openPlayerScreen = true
-                                                        )
-                                                    }
-                                                    currentLyricsColor = Color(0xFFE040FB)
-                                                }
-                                            }
-                                            tabletRightPanel = TabletSplitRightPanel.LYRICS
-                                        },
-                                        restrictToUriStrings = if (searchMode == SearchMode.PLAYLIST) {
-                                            selectedQuickPlaylist?.let { plName ->
-                                                PlaylistRepository.getSongsFor(plName)
-                                                    .asSequence()
-                                                    .filter { isPlayableAudioItem(it) }
-                                                    .toSet()
-                                            }
-                                        } else {
-                                            null
-                                        },
-                                        searchModeLabel = searchMode.name,
-                                        searchPlaylistName = if (searchMode == SearchMode.PLAYLIST) selectedQuickPlaylist else null
-                                    )
-                                }
-
                                 val quickPlaylistsPane: @Composable (Modifier) -> Unit = { paneModifier ->
                                     QuickPlaylistsScreen(
                                         modifier = paneModifier,
@@ -4671,22 +4603,6 @@ class MainActivity : AppCompatActivity() {
                                                         }
                                                     }
 
-                                                    TabletSplitRightPanel.SEARCH -> {
-                                                        Column(Modifier.fillMaxSize()) {
-                                                            Row(
-                                                                modifier = Modifier.fillMaxWidth(),
-                                                                horizontalArrangement = Arrangement.End,
-                                                                verticalAlignment = Alignment.CenterVertically
-                                                            ) {
-                                                                TabletSplitCockpitMenuButton()
-                                                            }
-                                                            searchPane(
-                                                                Modifier
-                                                                    .weight(1f)
-                                                                    .fillMaxWidth()
-                                                            )
-                                                        }
-                                                    }
                                                 }
                                             }
                                         }
