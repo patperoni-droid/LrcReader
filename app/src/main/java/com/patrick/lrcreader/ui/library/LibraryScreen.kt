@@ -4189,6 +4189,7 @@ fun LibraryScreen(
                                     accent = accent,
                                     bottomPadding = selectionBottomPadding,
                                     showRichIndicators = isLibraryFullModeEnabled,
+                                    compactTabletLayout = compactTabletLayout,
                                     selectedSongs = selectedSongs,
                                     onToggleSelect = { uri ->
                                         toggleSelection(uri)

@@ -172,6 +172,7 @@ fun LibrarySongsList(
     accent: Color,
     bottomPadding: Dp,
     showRichIndicators: Boolean = true,
+    compactTabletLayout: Boolean = false,
     selectedSongs: Set<Uri>,
     onToggleSelect: (Uri) -> Unit,
     onKeyboardSelectedSongChange: (String) -> Unit,
@@ -188,6 +189,16 @@ fun LibrarySongsList(
     val variantFamilies = remember(familyVersion) { SongVariantFamiliesStore.load(context) }
     val rows = remember(songs, variantFamilies) { buildLibrarySongRows(songs, variantFamilies) }
     var expandedFamilyIds by rememberSaveable { mutableStateOf(setOf<String>()) }
+    val rowOuterVerticalPadding = if (compactTabletLayout) 1.dp else 3.dp
+    val rowHorizontalPadding = if (compactTabletLayout) 8.dp else 12.dp
+    val rowVerticalPadding = if (compactTabletLayout) 4.dp else 8.dp
+    val rowHeight = if (compactTabletLayout) 44.dp else 48.dp
+    val variantRowHeight = if (compactTabletLayout) 30.dp else 34.dp
+    val titleFontSize = if (compactTabletLayout) 14.sp else 15.sp
+    val checkboxSize = if (compactTabletLayout) 18.dp else 20.dp
+    val leadingSpacerWidth = if (compactTabletLayout) 7.dp else 10.dp
+    val actionButtonSize = if (compactTabletLayout) 40.dp else 48.dp
+    val dividerAlpha = if (compactTabletLayout) 0.28f else 0.5f
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -226,7 +237,7 @@ fun LibrarySongsList(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 3.dp)
+                            .padding(vertical = rowOuterVerticalPadding)
                             .background(rowBackground, rowShape)
                             .border(
                                 if (anySelected || isKeyboardSelected) 2.dp else 0.dp,
@@ -238,7 +249,7 @@ fun LibrarySongsList(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(48.dp)
+                                .height(rowHeight)
                                 .padding(horizontal = 8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -271,7 +282,7 @@ fun LibrarySongsList(
                             Text(
                                 text = activeSong.displayTitle,
                                 color = if (isCurrentPlaying) Color(0xFFFFFDE7) else Color.White,
-                                fontSize = 15.sp,
+                                fontSize = titleFontSize,
                                 fontWeight = if (isCurrentPlaying) FontWeight.SemiBold else FontWeight.Normal,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
@@ -297,6 +308,7 @@ fun LibrarySongsList(
                             )
 
                             IconButton(
+                                modifier = Modifier.size(actionButtonSize),
                                 onClick = {
                                     onKeyboardSelectedSongChange(activeSong.songId)
                                     onOpenPlayer(activeSong)
@@ -312,7 +324,10 @@ fun LibrarySongsList(
 
                             Box {
                                 var familyMenuOpen by remember(group.family.id) { mutableStateOf(false) }
-                                IconButton(onClick = { familyMenuOpen = true }) {
+                                IconButton(
+                                    modifier = Modifier.size(actionButtonSize),
+                                    onClick = { familyMenuOpen = true }
+                                ) {
                                     Icon(
                                         imageVector = Icons.Default.MoreVert,
                                         contentDescription = null,
@@ -353,7 +368,7 @@ fun LibrarySongsList(
                                         Row(
                                             modifier = Modifier
                                                 .fillMaxWidth()
-                                                .height(34.dp)
+                                                .height(variantRowHeight)
                                                 .background(
                                                     if (isSelected) {
                                                         accent.copy(alpha = 0.16f)
@@ -427,7 +442,7 @@ fun LibrarySongsList(
                             }
                         }
                     }
-                    HorizontalDivider(color = rowBorder.copy(alpha = 0.5f))
+                    HorizontalDivider(color = rowBorder.copy(alpha = dividerAlpha))
                 }
                 return@items
             }
@@ -474,7 +489,7 @@ fun LibrarySongsList(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 3.dp)
+                        .padding(vertical = rowOuterVerticalPadding)
                         .background(rowBackground, rowShape)
                         .then(
                             if (rowStrokeWidth > 0.dp) {
@@ -485,12 +500,12 @@ fun LibrarySongsList(
                         )
                         .then(rowClick)
                         .alpha(if (canPlay) 1f else 0.72f)
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                        .padding(horizontal = rowHorizontalPadding, vertical = rowVerticalPadding),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(20.dp)
+                            .size(checkboxSize)
                             .background(
                                 if (isSelected) accent.copy(alpha = 0.18f) else Color.Transparent,
                                 RoundedCornerShape(4.dp)
@@ -507,11 +522,11 @@ fun LibrarySongsList(
                         contentAlignment = Alignment.Center
                     ) {
                         if (isSelected) {
-                            Text("✕", color = accent, fontSize = 13.sp)
+                            Text("✕", color = accent, fontSize = if (compactTabletLayout) 12.sp else 13.sp)
                         }
                     }
 
-                    Spacer(Modifier.width(10.dp))
+                    Spacer(Modifier.width(leadingSpacerWidth))
 
                     if (isCurrentPlaying) {
                         Box(
@@ -531,7 +546,7 @@ fun LibrarySongsList(
                         Text(
                             text = song.displayTitle,
                             color = titleColor,
-                            fontSize = 15.sp,
+                            fontSize = titleFontSize,
                             fontWeight = if (isCurrentPlaying) FontWeight.SemiBold else FontWeight.Normal,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -553,6 +568,7 @@ fun LibrarySongsList(
                     }
 
                     IconButton(
+                        modifier = Modifier.size(actionButtonSize),
                         onClick = {
                             onKeyboardSelectedSongChange(song.songId)
                             if (selectionMode) onToggleSelect(songUri) else onOpenPlayer(song)
@@ -567,7 +583,10 @@ fun LibrarySongsList(
                     }
 
                     Box {
-                        IconButton(onClick = { menuOpen = true }) {
+                        IconButton(
+                            modifier = Modifier.size(actionButtonSize),
+                            onClick = { menuOpen = true }
+                        ) {
                             Icon(
                                 imageVector = Icons.Default.MoreVert,
                                 contentDescription = null,
@@ -647,7 +666,7 @@ fun LibrarySongsList(
                         }
                     }
                 }
-                HorizontalDivider(color = rowBorder.copy(alpha = 0.5f))
+                HorizontalDivider(color = rowBorder.copy(alpha = dividerAlpha))
             }
         }
     }
