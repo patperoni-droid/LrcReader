@@ -145,7 +145,8 @@ class MainActivity : AppCompatActivity() {
     private enum class TabletSplitRightPanel {
         LYRICS,
         LIBRARY,
-        SETTINGS
+        SETTINGS,
+        BACKGROUND_SOUND
     }
 
     private data class SessionSnapshot(
@@ -3831,8 +3832,8 @@ class MainActivity : AppCompatActivity() {
                                                 text = { Text(stringResource(R.string.tablet_split_menu_filler)) },
                                                 onClick = {
                                                     prepareTabletSplitMenuNavigation()
-                                                    isTabletCockpitDestinationOpen = true
-                                                    isFillerSettingsOpen = true
+                                                    isTabletCockpitDestinationOpen = false
+                                                    tabletRightPanel = TabletSplitRightPanel.BACKGROUND_SOUND
                                                 }
                                             )
                                             DropdownMenuItem(
@@ -4324,6 +4325,17 @@ class MainActivity : AppCompatActivity() {
                                     )
                                 }
 
+                                val backgroundSoundPane: @Composable (Modifier) -> Unit = { paneModifier ->
+                                    Box(modifier = paneModifier) {
+                                        FillerSoundScreen(
+                                            context = ctx,
+                                            onBack = {
+                                                tabletRightPanel = TabletSplitRightPanel.LYRICS
+                                            }
+                                        )
+                                    }
+                                }
+
                                 val quickPlaylistsPane: @Composable (Modifier) -> Unit = { paneModifier ->
                                     QuickPlaylistsScreen(
                                         modifier = paneModifier,
@@ -4568,6 +4580,23 @@ class MainActivity : AppCompatActivity() {
                                                                 TabletSplitCockpitMenuButton()
                                                             }
                                                             settingsPane(
+                                                                Modifier
+                                                                    .weight(1f)
+                                                                    .fillMaxWidth()
+                                                            )
+                                                        }
+                                                    }
+
+                                                    TabletSplitRightPanel.BACKGROUND_SOUND -> {
+                                                        Column(Modifier.fillMaxSize()) {
+                                                            Row(
+                                                                modifier = Modifier.fillMaxWidth(),
+                                                                horizontalArrangement = Arrangement.End,
+                                                                verticalAlignment = Alignment.CenterVertically
+                                                            ) {
+                                                                TabletSplitCockpitMenuButton()
+                                                            }
+                                                            backgroundSoundPane(
                                                                 Modifier
                                                                     .weight(1f)
                                                                     .fillMaxWidth()
