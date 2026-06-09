@@ -1300,6 +1300,8 @@ class MainActivity : AppCompatActivity() {
                 var isSearchOpen by remember { mutableStateOf(false) }
                 var playlistSearchToggleSignal by remember { mutableIntStateOf(0) }
                 var librarySearchToggleSignal by remember { mutableIntStateOf(0) }
+                var tabletLibrarySearchToggleSignal by remember { mutableIntStateOf(0) }
+                var tabletLibrarySearchCloseSignal by remember { mutableIntStateOf(0) }
 
                 // ✅ MODE de recherche (PLAYER ou DJ)
                 var searchMode by remember { mutableStateOf(SearchMode.PLAYER) }
@@ -3801,6 +3803,8 @@ class MainActivity : AppCompatActivity() {
                                                 onClick = {
                                                     prepareTabletSplitMenuNavigation()
                                                     isTabletCockpitDestinationOpen = false
+                                                    tabletLibrarySearchToggleSignal = 0
+                                                    tabletLibrarySearchCloseSignal++
                                                     tabletRightPanel = TabletSplitRightPanel.LIBRARY
                                                 }
                                             )
@@ -3854,12 +3858,12 @@ class MainActivity : AppCompatActivity() {
                                                     prepareTabletSplitMenuNavigation()
                                                     isTabletCockpitDestinationOpen = false
                                                     if (tabletRightPanel == TabletSplitRightPanel.LIBRARY) {
-                                                        librarySearchToggleSignal++
+                                                        tabletLibrarySearchToggleSignal++
                                                     } else if (!selectedQuickPlaylist.isNullOrBlank()) {
                                                         playlistSearchToggleSignal++
                                                     } else {
                                                         tabletRightPanel = TabletSplitRightPanel.LIBRARY
-                                                        librarySearchToggleSignal++
+                                                        tabletLibrarySearchToggleSignal++
                                                     }
                                                 }
                                             )
@@ -4056,7 +4060,8 @@ class MainActivity : AppCompatActivity() {
                                         workspaceVersion = setupTick,
                                         currentPlayingSongId = currentPlayingSongId,
                                         reselectRootSignal = libraryTabReselectSignal,
-                                        searchToggleSignal = librarySearchToggleSignal,
+                                        searchToggleSignal = tabletLibrarySearchToggleSignal,
+                                        searchCloseSignal = tabletLibrarySearchCloseSignal,
                                         smpRefreshVersion = smpCacheRefreshTick,
                                         smpSongsCache = smpSongsById,
                                         lastImportedSmpSignal = lastImportedSmpUiSignal,

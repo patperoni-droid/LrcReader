@@ -541,6 +541,7 @@ fun LibraryScreen(
     currentPlayingSongId: String? = null,
     reselectRootSignal: Int = 0,
     searchToggleSignal: Int = 0,
+    searchCloseSignal: Int = 0,
     smpRefreshVersion: Int = 0,
     smpSongsCache: Map<String, SongUnit> = emptyMap(),
     lastImportedSmpSignal: SmpImportedUiSignal? = null,
@@ -2119,6 +2120,15 @@ fun LibraryScreen(
             focusManager.clearFocus(force = true)
         } else {
             isSearchVisible = true
+        }
+    }
+
+    LaunchedEffect(searchCloseSignal) {
+        if (searchCloseSignal == 0) return@LaunchedEffect
+        if (isSearchVisible) {
+            searchQuery = ""
+            isSearchVisible = false
+            focusManager.clearFocus(force = true)
         }
     }
 
