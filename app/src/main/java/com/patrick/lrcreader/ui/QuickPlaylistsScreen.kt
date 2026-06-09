@@ -82,6 +82,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
@@ -349,6 +350,8 @@ fun QuickPlaylistsScreen(
     val groupAccentHeight = if (compactTabletLayout) 22.dp else 26.dp
     val rowMenuSize = if (compactTabletLayout) 30.dp else 32.dp
     val topSpacerHeight = if (compactTabletLayout) 6.dp else 10.dp
+    val searchFieldHeight = if (compactTabletLayout) 38.dp else 56.dp
+    val searchTextSize = if (compactTabletLayout) 13.sp else 16.sp
     val rowHeightPx = with(LocalDensity.current) { rowHeight.toPx() }
     val headerDropPaddingPx = with(LocalDensity.current) { 12.dp.toPx() }
     var draggingUri by remember { mutableStateOf<String?>(null) }
@@ -1428,9 +1431,16 @@ fun QuickPlaylistsScreen(
                     onValueChange = { playlistSearchQuery = it },
                     modifier = Modifier
                         .fillMaxWidth()
+                        .height(searchFieldHeight)
                         .focusRequester(searchFocusRequester)
                         .semantics { testTag = "quick_playlists_search" },
-                    placeholder = { Text(stringResource(R.string.common_search_placeholder)) },
+                    textStyle = TextStyle(fontSize = searchTextSize),
+                    placeholder = {
+                        Text(
+                            text = stringResource(R.string.common_search_placeholder),
+                            fontSize = searchTextSize
+                        )
+                    },
                     singleLine = true,
                     trailingIcon = {
                         IconButton(

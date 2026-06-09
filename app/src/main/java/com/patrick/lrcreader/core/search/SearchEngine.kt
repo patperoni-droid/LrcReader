@@ -56,15 +56,43 @@ object SearchEngine {
     ): List<IndexedItem> {
         val normalizedQuery = normalize(query, removeAccents)
         if (normalizedQuery.isBlank()) return items
-        return items.filter { item ->
-            val haystack = if (removeAccents) {
-                item.normalizedSearchText
-            } else {
-                normalize(item.searchText, removeAccents = false)
+        return items
+            .asSequence()
+            .mapNotNull { item ->
+                val haystack = if (removeAccents) {
+                    item.normalizedSearchText
+                } else {
+                    normalize(item.searchText, removeAccents = false)
+                }
+                val matchIndex = haystack.indexOf(normalizedQuery)
+                if (matchIndex < 0) {
+                    null
+                } else {
+                    val title = normalize(item.displayTitle, removeAccents)
+                    val titleIndex = title.indexOf(normalizedQuery)
+                    val rank = when {
+                        title.startsWith(normalizedQuery) -> 0
+                        titleIndex >= 0 -> 1
+                        matchIndex == 0 -> 2
+                        else -> 3
+                    }
+                    SearchRank(item = item, rank = rank, matchIndex = minOf(titleIndex.takeIf { it >= 0 } ?: Int.MAX_VALUE, matchIndex))
+                }
             }
-            haystack.contains(normalizedQuery)
-        }
+            .sortedWith(
+                compareBy<SearchRank> { it.rank }
+                    .thenBy { it.matchIndex }
+                    .thenBy { it.item.displayTitle.lowercase() }
+            )
+            .map { it.item }
+            .toList()
     }
+
+    private data class SearchRank(
+        val item: IndexedItem,
+        val rank: Int,
+        val matchIndex: Int
+    )
 
     fun restrictToIds(
         items: List<IndexedItem>,

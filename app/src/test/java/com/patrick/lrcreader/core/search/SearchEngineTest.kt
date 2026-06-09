@@ -70,6 +70,20 @@ class SearchEngineTest {
     }
 
     @Test
+    fun test_single_letter_search_filters_and_prioritizes_title_start() {
+        val items = listOf(
+            SearchEngine.index(id = "uri-1", displayTitle = "Hotel California", fallbackName = "hotel.mp3"),
+            SearchEngine.index(id = "uri-2", displayTitle = "Tennessee Waltz", fallbackName = "tennessee.mp3"),
+            SearchEngine.index(id = "uri-3", displayTitle = "Poppy Luciano", fallbackName = "poppy.mp3"),
+            SearchEngine.index(id = "uri-4", displayTitle = "La Bamba", fallbackName = "la-bamba.mp3")
+        )
+
+        val results = SearchEngine.filter(items, "t")
+
+        assertEquals(listOf("uri-2", "uri-1"), results.map { it.id })
+    }
+
+    @Test
     fun test_blank_query() {
         val items = listOf(
             SearchEngine.index(id = "uri-1", displayTitle = "Volare", fallbackName = "a.mp3"),

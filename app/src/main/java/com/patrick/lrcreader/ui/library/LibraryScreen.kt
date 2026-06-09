@@ -42,6 +42,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
@@ -542,6 +543,7 @@ fun LibraryScreen(
     reselectRootSignal: Int = 0,
     searchToggleSignal: Int = 0,
     searchCloseSignal: Int = 0,
+    compactTabletLayout: Boolean = false,
     smpRefreshVersion: Int = 0,
     smpSongsCache: Map<String, SongUnit> = emptyMap(),
     lastImportedSmpSignal: SmpImportedUiSignal? = null,
@@ -573,6 +575,9 @@ fun LibraryScreen(
     val cardBg = Color(0xFF181818)
     val rowBorder = Color(0x33FFFFFF)
     val accent = Color(0xFFFFC107)
+    val searchFieldHeight = if (compactTabletLayout) 38.dp else 56.dp
+    val searchTextSize = if (compactTabletLayout) 13.sp else 16.sp
+    val searchSpacerHeight = if (compactTabletLayout) 4.dp else 8.dp
 
     val scope = rememberCoroutineScope()
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
@@ -1936,13 +1941,11 @@ fun LibraryScreen(
         if (normalizedQuery.isBlank()) {
             searchableEntries.map { it.entry }
         } else {
-            val filteredIds = SearchEngine.filter(
+            val entryById = searchableEntries.associateBy { it.indexedItem.id }
+            SearchEngine.filter(
                 items = searchableEntries.map { it.indexedItem },
                 query = searchQuery
-            ).asSequence().map { it.id }.toSet()
-            searchableEntries
-                .filter { it.indexedItem.id in filteredIds }
-                .map { it.entry }
+            ).mapNotNull { filteredItem -> entryById[filteredItem.id]?.entry }
         }
     }
     val filteredSongItems = remember(searchQuery, searchableSongItems) {
@@ -1950,13 +1953,11 @@ fun LibraryScreen(
         if (normalizedQuery.isBlank()) {
             searchableSongItems.map { it.item }
         } else {
-            val filteredIds = SearchEngine.filter(
+            val itemById = searchableSongItems.associateBy { it.indexedItem.id }
+            SearchEngine.filter(
                 items = searchableSongItems.map { it.indexedItem },
                 query = searchQuery
-            ).asSequence().map { it.id }.toSet()
-            searchableSongItems
-                .filter { it.indexedItem.id in filteredIds }
-                .map { it.item }
+            ).mapNotNull { filteredItem -> itemById[filteredItem.id]?.item }
         }
     }
     val filteredPlaylists = remember(searchQuery, searchablePlaylists) {
@@ -1964,13 +1965,11 @@ fun LibraryScreen(
         if (normalizedQuery.isBlank()) {
             searchablePlaylists.map { it.name }
         } else {
-            val filteredIds = SearchEngine.filter(
+            val playlistById = searchablePlaylists.associateBy { it.indexedItem.id }
+            SearchEngine.filter(
                 items = searchablePlaylists.map { it.indexedItem },
                 query = searchQuery
-            ).asSequence().map { it.id }.toSet()
-            searchablePlaylists
-                .filter { it.indexedItem.id in filteredIds }
-                .map { it.name }
+            ).mapNotNull { filteredItem -> playlistById[filteredItem.id]?.name }
         }
     }
     suspend fun injectSmpEntriesAndCheckVisible(
@@ -4000,9 +3999,17 @@ fun LibraryScreen(
                                 onValueChange = { searchQuery = it },
                                 modifier = Modifier
                                     .fillMaxWidth()
+                                    .height(searchFieldHeight)
                                     .focusRequester(searchFocusRequester),
                                 singleLine = true,
-                                placeholder = { Text(sSearch, color = subtitleColor) },
+                                textStyle = TextStyle(fontSize = searchTextSize),
+                                placeholder = {
+                                    Text(
+                                        text = sSearch,
+                                        color = subtitleColor,
+                                        fontSize = searchTextSize
+                                    )
+                                },
                                 trailingIcon = {
                                     if (searchQuery.isNotEmpty()) {
                                         IconButton(onClick = { searchQuery = "" }) {
@@ -4011,7 +4018,7 @@ fun LibraryScreen(
                                     }
                                 }
                             )
-                            Spacer(Modifier.height(8.dp))
+                            Spacer(Modifier.height(searchSpacerHeight))
                         }
 
                         if (filteredPlaylists.isEmpty()) {
@@ -4106,9 +4113,15 @@ fun LibraryScreen(
                                 onValueChange = { searchQuery = it },
                                 modifier = Modifier
                                     .fillMaxWidth(0.85f)
-                                    .heightIn(min = 44.dp)
+                                    .height(searchFieldHeight)
                                     .focusRequester(searchFocusRequester),
-                                placeholder = { Text(sSearch) },
+                                textStyle = TextStyle(fontSize = searchTextSize),
+                                placeholder = {
+                                    Text(
+                                        text = sSearch,
+                                        fontSize = searchTextSize
+                                    )
+                                },
                                 singleLine = true,
                                 trailingIcon = {
                                     IconButton(

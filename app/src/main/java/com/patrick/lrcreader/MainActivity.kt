@@ -4062,6 +4062,8 @@ class MainActivity : AppCompatActivity() {
                                         reselectRootSignal = libraryTabReselectSignal,
                                         searchToggleSignal = tabletLibrarySearchToggleSignal,
                                         searchCloseSignal = tabletLibrarySearchCloseSignal,
+                                        compactTabletLayout = adaptiveTokens.tabletMode &&
+                                            tabletExperimentalModeEnabled,
                                         smpRefreshVersion = smpCacheRefreshTick,
                                         smpSongsCache = smpSongsById,
                                         lastImportedSmpSignal = lastImportedSmpUiSignal,
