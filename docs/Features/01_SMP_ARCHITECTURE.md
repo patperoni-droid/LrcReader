@@ -246,6 +246,16 @@ Tablet split navigation rule:
 - fullscreen tools must return explicitly to the live cockpit without changing playback state
 - phone UX remains the default behavior and must not inherit tablet split assumptions
 
+Phone mode protection rule:
+- the phone remains the SMP reference platform
+- tablet mode is an interface extension and must never degrade phone behavior
+- every tablet-related change must be explicitly guarded by tablet mode or Split Layout conditions
+- existing phone behavior must remain unchanged unless a task explicitly asks to change it
+- before committing a tablet navigation change, validate compilation, tablet behavior, and phone behavior
+- minimum phone checks: Library opening, Search opening, Settings opening, return to Player, and main navigation
+- if phone impact is uncertain, stop the patch, diagnose, and request validation
+- principle: Phone = stable base; Tablet = extension
+
 ⸻
 
 FORBIDDEN PATTERNS
