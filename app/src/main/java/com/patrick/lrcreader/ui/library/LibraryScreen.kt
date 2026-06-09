@@ -509,6 +509,7 @@ private fun LibraryViewModeButton(
     label: String,
     selected: Boolean,
     accent: Color,
+    compact: Boolean = false,
     onClick: () -> Unit
 ) {
     Box(
@@ -523,12 +524,15 @@ private fun LibraryViewModeButton(
                 shape = RoundedCornerShape(8.dp)
             )
             .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 8.dp)
+            .padding(
+                horizontal = if (compact) 8.dp else 12.dp,
+                vertical = if (compact) 6.dp else 8.dp
+            )
     ) {
         Text(
             text = label,
             color = if (selected) accent else Color.White.copy(alpha = 0.78f),
-            fontSize = 12.sp
+            fontSize = if (compact) 11.sp else 12.sp
         )
     }
 }
@@ -3730,201 +3734,203 @@ fun LibraryScreen(
     DarkBlueGradientBackground {
         Column(modifier = modifier.fillMaxSize().padding(16.dp)) {
 
-            LibraryHeader(
-                titleColor = titleColor,
-                subtitleColor = subtitleColor,
-                currentFolderUri = headerFolderUri,
-                folderNameOverride = headerFolderNameOverride,
-                isFilesViewMode = isFilesViewMode,
-                showActions = !isPlaylistsViewMode,
-                canGoBack = isFilesViewMode && folderStack.isNotEmpty(),
-
-                onBack = {
-                    val parentUri = resolveFilesBackTarget(
-                        folderStack = folderStack,
-                        filesNavigationRoot = filesNavigationRoot,
-                        workspaceRootUri = workspaceRootUri
-                    )
-                    val newStack = folderStack.dropLast(1)
-                    Log.i(
-                        LIB_SMP_TRACE_TAG,
-                        "step=navigation_back from=$currentFolderUri to=$parentUri stackBefore=${folderStack.size} stackAfter=${newStack.size}"
-                    )
-                    currentFolderUri = parentUri
-                    if (parentUri == null) {
-                        entries = emptyList()
-                    } else if (!showCachedEntries(parentUri)) {
-                        entries = emptyList()
-                    }
-                    folderStack = newStack
-                    selectedSongs = emptySet()
-                },
-                onOpenStorage = openStorageView,
-
-                onPickRoot = { pickRootFolderLauncher.launch(null) },
-
-                onRescan = {
-
-                    scope.launch {
-                        val workspaceRootNow = workspaceRootUri ?: return@launch
-                        val filesRootNow = filesNavigationRoot ?: workspaceRootNow
-                        startLoading(sScanning, determinate = false)
-                        try {
-                            val syncedArchiveCount = onSyncWorkspaceSmpArchives()
-                            Log.i(
-                                LIB_SMP_TRACE_TAG,
-                                "step=manual_rescan_workspace_sync importedCount=$syncedArchiveCount currentFolderUri=$currentFolderUri viewMode=$libraryViewMode"
-                            )
-                            songItems = buildLibrarySongItemsAsync()
-                            if (isSmpFolderUri(currentFolderUri)) {
-                                Log.i(
-                                    SMP_VIEW_TRACE_TAG,
-                                    "elapsedMs=${SystemClock.elapsedRealtime()} step=manual_smp_rescan_start currentFolderUri=$currentFolderUri"
-                                )
-                                showSmpEntriesImmediately(refreshSmpEntriesAsync())
-                                Log.i(
-                                    SMP_VIEW_TRACE_TAG,
-                                    "elapsedMs=${SystemClock.elapsedRealtime()} step=manual_smp_rescan_end currentFolderUri=$currentFolderUri entriesSize=${entries.size}"
-                                )
-                                return@launch
-                            }
-                            val folderToShow = currentFolderUri
-                                ?.takeUnless { isPrompterFolderUri(it) || isSmpFolderUri(it) }
-                                ?: if (libraryViewMode == LIBRARY_VIEW_MODE_FILES) {
-                                    resolveFilesInitialFolderForLibrary(filesRootNow) ?: workspaceRootNow
-                                } else {
-                                    workspaceRootNow
-                                }
-                            if (libraryViewMode == LIBRARY_VIEW_MODE_FILES &&
-                                currentFolderUri?.toString() != folderToShow.toString()
-                            ) {
-                                currentFolderUri = folderToShow
-                                folderStack = buildFilesInitialFolderStack(filesRootNow, folderToShow)
-                            }
-                            runGlobalScan(
-                                root = workspaceRootNow,
-                                folderToShow = folderToShow
-                            )
-                        } finally {
-                            stopLoadingNice()
-                        }
-                    }
-                },
-
-                onForget = {
-                    stopQuickPlay()
-
-                    clearPersistedUris(context)
-                    BackupFolderPrefs.clear(context)
-                    BackupFolderPrefsInternal.clear(context)
-                    BackupFolderPrefsSaf.clear(context)
-                    LibraryIndexCache.clear(context)
-                    StorageModePrefs.set(context, StorageModePrefs.Mode.SAF)
-                    currentFolderUri = null
+            val onLibraryHeaderBack: () -> Unit = {
+                val parentUri = resolveFilesBackTarget(
+                    folderStack = folderStack,
+                    filesNavigationRoot = filesNavigationRoot,
+                    workspaceRootUri = workspaceRootUri
+                )
+                val newStack = folderStack.dropLast(1)
+                Log.i(
+                    LIB_SMP_TRACE_TAG,
+                    "step=navigation_back from=$currentFolderUri to=$parentUri stackBefore=${folderStack.size} stackAfter=${newStack.size}"
+                )
+                currentFolderUri = parentUri
+                if (parentUri == null) {
                     entries = emptyList()
-                    songItems = emptyList()
-                    selectedSongs = emptySet()
-                    folderStack = emptyList()
-                    LibraryFolderCache.clear()
-                    onWorkspaceChanged()
-                },
-
-                onImportBackingTracks = {
-                    importTargetFolderUri = currentFolderUri?.takeUnless {
-                        isPrompterFolderUri(it) || isSmpFolderUri(it)
-                    }
-                    importAudioLauncher.launch(
-                        arrayOf(
-                            "audio/*",
-                            "application/zip",
-                            "application/x-zip-compressed",
-                            "application/octet-stream",
-                            "*/*"
+                } else if (!showCachedEntries(parentUri)) {
+                    entries = emptyList()
+                }
+                folderStack = newStack
+                selectedSongs = emptySet()
+            }
+            val onLibraryHeaderRescan: () -> Unit = {
+                scope.launch {
+                    val workspaceRootNow = workspaceRootUri ?: return@launch
+                    val filesRootNow = filesNavigationRoot ?: workspaceRootNow
+                    startLoading(sScanning, determinate = false)
+                    try {
+                        val syncedArchiveCount = onSyncWorkspaceSmpArchives()
+                        Log.i(
+                            LIB_SMP_TRACE_TAG,
+                            "step=manual_rescan_workspace_sync importedCount=$syncedArchiveCount currentFolderUri=$currentFolderUri viewMode=$libraryViewMode"
                         )
-                    )
-                },
-
-                onConvertFolderToSmp = {
-                    val folderUri = currentFolderUri?.takeUnless {
-                        isPrompterFolderUri(it) || isSmpFolderUri(it)
-                    } ?: return@LibraryHeader
-
-                    scope.launch {
-                        startLoading(sConvertingSmp, determinate = false)
-                        try {
-                            val results = withContext(Dispatchers.IO) {
-                                smpConverter.convertFolder(folderUri)
-                            }
-
-                            if (results.isEmpty()) {
-                                Toast.makeText(context, sConvertSmpNoMp3, Toast.LENGTH_SHORT).show()
-                            } else {
-                                var successCount = 0
-                                var failureCount = 0
-                                results.forEach { result ->
-                                    val importedSong = result.getOrNull()?.let { outputUri ->
-                                        onImportGeneratedSmp(outputUri)
-                                    }
-                                    if (importedSong != null) {
-                                        successCount += 1
-                                    } else {
-                                        failureCount += 1
-                                    }
-                                }
-                                Toast.makeText(
-                                    context,
-                                    context.getString(
-                                        R.string.library_convert_smp_folder_summary,
-                                        successCount,
-                                        failureCount
-                                    ),
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                            }
-                        } finally {
-                            stopLoadingNice()
+                        songItems = buildLibrarySongItemsAsync()
+                        if (isSmpFolderUri(currentFolderUri)) {
+                            Log.i(
+                                SMP_VIEW_TRACE_TAG,
+                                "elapsedMs=${SystemClock.elapsedRealtime()} step=manual_smp_rescan_start currentFolderUri=$currentFolderUri"
+                            )
+                            showSmpEntriesImmediately(refreshSmpEntriesAsync())
+                            Log.i(
+                                SMP_VIEW_TRACE_TAG,
+                                "elapsedMs=${SystemClock.elapsedRealtime()} step=manual_smp_rescan_end currentFolderUri=$currentFolderUri entriesSize=${entries.size}"
+                            )
+                            return@launch
                         }
+                        val folderToShow = currentFolderUri
+                            ?.takeUnless { isPrompterFolderUri(it) || isSmpFolderUri(it) }
+                            ?: if (libraryViewMode == LIBRARY_VIEW_MODE_FILES) {
+                                resolveFilesInitialFolderForLibrary(filesRootNow) ?: workspaceRootNow
+                            } else {
+                                workspaceRootNow
+                            }
+                        if (libraryViewMode == LIBRARY_VIEW_MODE_FILES &&
+                            currentFolderUri?.toString() != folderToShow.toString()
+                        ) {
+                            currentFolderUri = folderToShow
+                            folderStack = buildFilesInitialFolderStack(filesRootNow, folderToShow)
+                        }
+                        runGlobalScan(
+                            root = workspaceRootNow,
+                            folderToShow = folderToShow
+                        )
+                    } finally {
+                        stopLoadingNice()
                     }
-                },
+                }
+            }
+            val onLibraryHeaderForget: () -> Unit = {
+                stopQuickPlay()
 
-                onImportSmp = {
-                    onImportExternalSmp()
-                },
-                selectionCount = if (isFilesSelectionContext || showSelectionBottomBar) selectedSongs.size else 0,
-                onCopySelection = if (isFilesSelectionContext) {
-                    { openCopyBrowserForSelection(selectedSongs) }
-                } else {
-                    null
-                },
-                onMoveSelection = if (isFilesSelectionContext) {
-                    { openMoveBrowserForSelection(selectedSongs) }
-                } else {
-                    null
-                },
-                onDeleteSelection = if (isFilesSelectionContext) {
-                    { pendingDeleteSelection = normalizeSelection(selectedSongs) }
-                } else if (showSelectionBottomBar) {
-                    { pendingDeleteSmpSelection = normalizeSelection(selectedSongs) }
-                } else {
-                    null
-                },
-                onClearSelection = if (isFilesSelectionContext || showSelectionBottomBar) {
-                    { selectedSongs = emptySet() }
-                } else {
-                    null
-                },
-                onSecretMultiTap = { handleHiddenFullModeTap() }
-            )
+                clearPersistedUris(context)
+                BackupFolderPrefs.clear(context)
+                BackupFolderPrefsInternal.clear(context)
+                BackupFolderPrefsSaf.clear(context)
+                LibraryIndexCache.clear(context)
+                StorageModePrefs.set(context, StorageModePrefs.Mode.SAF)
+                currentFolderUri = null
+                entries = emptyList()
+                songItems = emptyList()
+                selectedSongs = emptySet()
+                folderStack = emptyList()
+                LibraryFolderCache.clear()
+                onWorkspaceChanged()
+            }
+            val onLibraryHeaderImportBackingTracks: () -> Unit = {
+                importTargetFolderUri = currentFolderUri?.takeUnless {
+                    isPrompterFolderUri(it) || isSmpFolderUri(it)
+                }
+                importAudioLauncher.launch(
+                    arrayOf(
+                        "audio/*",
+                        "application/zip",
+                        "application/x-zip-compressed",
+                        "application/octet-stream",
+                        "*/*"
+                    )
+                )
+            }
+            val onLibraryHeaderConvertFolderToSmp: () -> Unit = convert@{
+                val folderUri = currentFolderUri?.takeUnless {
+                    isPrompterFolderUri(it) || isSmpFolderUri(it)
+                } ?: return@convert
 
-            Spacer(Modifier.height(10.dp))
+                scope.launch {
+                    startLoading(sConvertingSmp, determinate = false)
+                    try {
+                        val results = withContext(Dispatchers.IO) {
+                            smpConverter.convertFolder(folderUri)
+                        }
+
+                        if (results.isEmpty()) {
+                            Toast.makeText(context, sConvertSmpNoMp3, Toast.LENGTH_SHORT).show()
+                        } else {
+                            var successCount = 0
+                            var failureCount = 0
+                            results.forEach { result ->
+                                val importedSong = result.getOrNull()?.let { outputUri ->
+                                    onImportGeneratedSmp(outputUri)
+                                }
+                                if (importedSong != null) {
+                                    successCount += 1
+                                } else {
+                                    failureCount += 1
+                                }
+                            }
+                            Toast.makeText(
+                                context,
+                                context.getString(
+                                    R.string.library_convert_smp_folder_summary,
+                                    successCount,
+                                    failureCount
+                                ),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    } finally {
+                        stopLoadingNice()
+                    }
+                }
+            }
+
+            if (!compactTabletLayout) {
+                LibraryHeader(
+                    titleColor = titleColor,
+                    subtitleColor = subtitleColor,
+                    currentFolderUri = headerFolderUri,
+                    folderNameOverride = headerFolderNameOverride,
+                    isFilesViewMode = isFilesViewMode,
+                    showActions = !isPlaylistsViewMode,
+                    canGoBack = isFilesViewMode && folderStack.isNotEmpty(),
+                    onBack = onLibraryHeaderBack,
+                    onOpenStorage = openStorageView,
+                    onPickRoot = { pickRootFolderLauncher.launch(null) },
+                    onRescan = onLibraryHeaderRescan,
+                    onForget = onLibraryHeaderForget,
+                    onImportBackingTracks = onLibraryHeaderImportBackingTracks,
+                    onConvertFolderToSmp = onLibraryHeaderConvertFolderToSmp,
+                    onImportSmp = { onImportExternalSmp() },
+                    selectionCount = if (isFilesSelectionContext || showSelectionBottomBar) selectedSongs.size else 0,
+                    onCopySelection = if (isFilesSelectionContext) {
+                        { openCopyBrowserForSelection(selectedSongs) }
+                    } else {
+                        null
+                    },
+                    onMoveSelection = if (isFilesSelectionContext) {
+                        { openMoveBrowserForSelection(selectedSongs) }
+                    } else {
+                        null
+                    },
+                    onDeleteSelection = if (isFilesSelectionContext) {
+                        { pendingDeleteSelection = normalizeSelection(selectedSongs) }
+                    } else if (showSelectionBottomBar) {
+                        { pendingDeleteSmpSelection = normalizeSelection(selectedSongs) }
+                    } else {
+                        null
+                    },
+                    onClearSelection = if (isFilesSelectionContext || showSelectionBottomBar) {
+                        { selectedSongs = emptySet() }
+                    } else {
+                        null
+                    },
+                    onSecretMultiTap = { handleHiddenFullModeTap() }
+                )
+            }
+
+            if (!compactTabletLayout) {
+                Spacer(Modifier.height(10.dp))
+            }
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(if (compactTabletLayout) 4.dp else 8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 LibraryViewModeButton(
                     label = sSongsView,
                     selected = isSongViewMode,
                     accent = accent,
+                    compact = compactTabletLayout,
                     onClick = {
                         libraryViewMode = LIBRARY_VIEW_MODE_SONGS
                         selectedSongs = emptySet()
@@ -3936,6 +3942,7 @@ fun LibraryScreen(
                     label = sPlaylistsView,
                     selected = isPlaylistsViewMode,
                     accent = accent,
+                    compact = compactTabletLayout,
                     onClick = {
                         libraryViewMode = LIBRARY_VIEW_MODE_PLAYLISTS
                         selectedSongs = emptySet()
@@ -3946,6 +3953,7 @@ fun LibraryScreen(
                     label = sPromptersView,
                     selected = isPrompterViewMode,
                     accent = accent,
+                    compact = compactTabletLayout,
                     onClick = {
                         libraryViewMode = LIBRARY_VIEW_MODE_PROMPTERS
                         selectedSongs = emptySet()
@@ -3960,6 +3968,7 @@ fun LibraryScreen(
                     label = sLufsView,
                     selected = isLufsViewMode,
                     accent = accent,
+                    compact = compactTabletLayout,
                     onClick = {
                         if (EditionConfig.isLite) {
                             showLufsLiteDialog = true
@@ -3970,9 +3979,54 @@ fun LibraryScreen(
                         }
                     }
                 )
+                if (compactTabletLayout) {
+                    Spacer(Modifier.weight(1f))
+                    LibraryHeader(
+                        titleColor = titleColor,
+                        subtitleColor = subtitleColor,
+                        currentFolderUri = headerFolderUri,
+                        folderNameOverride = headerFolderNameOverride,
+                        isFilesViewMode = isFilesViewMode,
+                        showActions = !isPlaylistsViewMode,
+                        canGoBack = isFilesViewMode && folderStack.isNotEmpty(),
+                        onBack = onLibraryHeaderBack,
+                        onOpenStorage = openStorageView,
+                        onPickRoot = { pickRootFolderLauncher.launch(null) },
+                        onRescan = onLibraryHeaderRescan,
+                        onForget = onLibraryHeaderForget,
+                        onImportBackingTracks = onLibraryHeaderImportBackingTracks,
+                        onConvertFolderToSmp = onLibraryHeaderConvertFolderToSmp,
+                        onImportSmp = { onImportExternalSmp() },
+                        selectionCount = if (isFilesSelectionContext || showSelectionBottomBar) selectedSongs.size else 0,
+                        onCopySelection = if (isFilesSelectionContext) {
+                            { openCopyBrowserForSelection(selectedSongs) }
+                        } else {
+                            null
+                        },
+                        onMoveSelection = if (isFilesSelectionContext) {
+                            { openMoveBrowserForSelection(selectedSongs) }
+                        } else {
+                            null
+                        },
+                        onDeleteSelection = if (isFilesSelectionContext) {
+                            { pendingDeleteSelection = normalizeSelection(selectedSongs) }
+                        } else if (showSelectionBottomBar) {
+                            { pendingDeleteSmpSelection = normalizeSelection(selectedSongs) }
+                        } else {
+                            null
+                        },
+                        onClearSelection = if (isFilesSelectionContext || showSelectionBottomBar) {
+                            { selectedSongs = emptySet() }
+                        } else {
+                            null
+                        },
+                        compactActionsOnly = true,
+                        modifier = Modifier
+                    )
+                }
             }
 
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(if (compactTabletLayout) 6.dp else 10.dp))
             Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                 if (showInitialLibraryLoadingState) {
                     Box(

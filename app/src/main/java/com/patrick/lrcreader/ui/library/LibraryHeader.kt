@@ -50,6 +50,7 @@ fun LibraryHeader(
     onDeleteSelection: (() -> Unit)? = null,
     onClearSelection: (() -> Unit)? = null,
     onSecretMultiTap: (() -> Unit)? = null,
+    compactActionsOnly: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -94,6 +95,145 @@ fun LibraryHeader(
         currentFolderUri.scheme != "spl-smp"
     val isSelectionContext = selectionCount > 0 &&
         (onCopySelection != null || onMoveSelection != null || onDeleteSelection != null || onClearSelection != null)
+
+    @Composable
+    fun HeaderActionsMenu() {
+        DropdownMenu(
+            expanded = actionsExpanded,
+            onDismissRequest = { actionsExpanded = false }
+        ) {
+            if (isSelectionContext) {
+                if (onCopySelection != null) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.library_bottom_copy)) },
+                        onClick = {
+                            actionsExpanded = false
+                            onCopySelection()
+                        }
+                    )
+                }
+                if (onMoveSelection != null) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.library_bottom_move)) },
+                        onClick = {
+                            actionsExpanded = false
+                            onMoveSelection()
+                        }
+                    )
+                }
+                if (onDeleteSelection != null) {
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                text = stringResource(R.string.library_bottom_delete),
+                                color = Color(0xFFD32F2F)
+                            )
+                        },
+                        onClick = {
+                            actionsExpanded = false
+                            onDeleteSelection()
+                        }
+                    )
+                }
+                if (onClearSelection != null) {
+                    HorizontalDivider()
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.library_bottom_clear_selection)) },
+                        onClick = {
+                            actionsExpanded = false
+                            onClearSelection()
+                        }
+                    )
+                }
+            } else if (isFilesViewMode) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.library_header_rescan)) },
+                    enabled = hasRoot,
+                    onClick = { actionsExpanded = false; onRescan() }
+                )
+            } else {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.library_header_choose_folder)) },
+                    onClick = {
+                        actionsExpanded = false
+                        onPickRoot()
+                    }
+                )
+
+                HorizontalDivider()
+
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.library_header_rescan)) },
+                    enabled = hasRoot,
+                    onClick = { actionsExpanded = false; onRescan() }
+                )
+
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.library_header_import_music)) },
+                    enabled = hasRoot,
+                    onClick = { actionsExpanded = false; onImportBackingTracks() }
+                )
+
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.library_header_convert_folder_to_smp)) },
+                    enabled = canConvertFolder,
+                    onClick = { actionsExpanded = false; onConvertFolderToSmp() }
+                )
+
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.library_header_import_smp)) },
+                    enabled = hasRoot,
+                    onClick = { actionsExpanded = false; onImportSmp() }
+                )
+
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.library_header_forget_folder)) },
+                    enabled = hasRoot,
+                    onClick = { actionsExpanded = false; onForget() }
+                )
+            }
+        }
+    }
+
+    if (compactActionsOnly) {
+        Row(
+            modifier = modifier,
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            if (canGoBack) {
+                IconButton(onClick = onBack) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = stringResource(R.string.library_header_cd_back),
+                        tint = Color.White
+                    )
+                }
+            }
+
+            IconButton(onClick = onOpenStorage) {
+                Icon(
+                    Icons.Default.Folder,
+                    contentDescription = stringResource(R.string.library_header_cd_storage),
+                    tint = Color.White
+                )
+            }
+
+            if (showActions) {
+                Box {
+                    IconButton(onClick = { actionsExpanded = true }) {
+                        Icon(
+                            Icons.Default.MoreVert,
+                            contentDescription = stringResource(R.string.library_header_cd_actions),
+                            tint = Color.White
+                        )
+                    }
+                    HeaderActionsMenu()
+                }
+            }
+        }
+        return
+    }
 
     Row(
         modifier = modifier
@@ -147,101 +287,7 @@ fun LibraryHeader(
                 )
             }
 
-            DropdownMenu(
-                expanded = actionsExpanded,
-                onDismissRequest = { actionsExpanded = false }
-            ) {
-                if (isSelectionContext) {
-                    if (onCopySelection != null) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.library_bottom_copy)) },
-                            onClick = {
-                                actionsExpanded = false
-                                onCopySelection()
-                            }
-                        )
-                    }
-                    if (onMoveSelection != null) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.library_bottom_move)) },
-                            onClick = {
-                                actionsExpanded = false
-                                onMoveSelection()
-                            }
-                        )
-                    }
-                    if (onDeleteSelection != null) {
-                        DropdownMenuItem(
-                            text = {
-                                Text(
-                                    text = stringResource(R.string.library_bottom_delete),
-                                    color = Color(0xFFD32F2F)
-                                )
-                            },
-                            onClick = {
-                                actionsExpanded = false
-                                onDeleteSelection()
-                            }
-                        )
-                    }
-                    if (onClearSelection != null) {
-                        HorizontalDivider()
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.library_bottom_clear_selection)) },
-                            onClick = {
-                                actionsExpanded = false
-                                onClearSelection()
-                            }
-                        )
-                    }
-                } else if (isFilesViewMode) {
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.library_header_rescan)) },
-                        enabled = hasRoot,
-                        onClick = { actionsExpanded = false; onRescan() }
-                    )
-                } else {
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.library_header_choose_folder)) },
-                        onClick = {
-                            actionsExpanded = false
-                            onPickRoot()
-                        }
-                    )
-
-                    HorizontalDivider()
-
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.library_header_rescan)) },
-                        enabled = hasRoot,
-                        onClick = { actionsExpanded = false; onRescan() }
-                    )
-
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.library_header_import_music)) },
-                        enabled = hasRoot,
-                        onClick = { actionsExpanded = false; onImportBackingTracks() }
-                    )
-
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.library_header_convert_folder_to_smp)) },
-                        enabled = canConvertFolder,
-                        onClick = { actionsExpanded = false; onConvertFolderToSmp() }
-                    )
-
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.library_header_import_smp)) },
-                        enabled = hasRoot,
-                        onClick = { actionsExpanded = false; onImportSmp() }
-                    )
-
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.library_header_forget_folder)) },
-                        enabled = hasRoot,
-                        onClick = { actionsExpanded = false; onForget() }
-                    )
-                }
-            }
+            HeaderActionsMenu()
         }
     }
 }
