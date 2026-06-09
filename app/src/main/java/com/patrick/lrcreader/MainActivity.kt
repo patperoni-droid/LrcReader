@@ -4064,6 +4064,9 @@ class MainActivity : AppCompatActivity() {
                                         searchCloseSignal = tabletLibrarySearchCloseSignal,
                                         compactTabletLayout = adaptiveTokens.tabletMode &&
                                             tabletExperimentalModeEnabled,
+                                        compactHeaderEndContent = {
+                                            TabletSplitCockpitMenuButton()
+                                        },
                                         smpRefreshVersion = smpCacheRefreshTick,
                                         smpSongsCache = smpSongsById,
                                         lastImportedSmpSignal = lastImportedSmpUiSignal,
@@ -4560,20 +4563,7 @@ class MainActivity : AppCompatActivity() {
                                                     }
 
                                                     TabletSplitRightPanel.LIBRARY -> {
-                                                        Column(Modifier.fillMaxSize()) {
-                                                            Row(
-                                                                modifier = Modifier.fillMaxWidth(),
-                                                                horizontalArrangement = Arrangement.End,
-                                                                verticalAlignment = Alignment.CenterVertically
-                                                            ) {
-                                                                TabletSplitCockpitMenuButton()
-                                                            }
-                                                            libraryPane(
-                                                                Modifier
-                                                                    .weight(1f)
-                                                                    .fillMaxWidth()
-                                                            )
-                                                        }
+                                                        libraryPane(Modifier.fillMaxSize())
                                                     }
 
                                                     TabletSplitRightPanel.SETTINGS -> {

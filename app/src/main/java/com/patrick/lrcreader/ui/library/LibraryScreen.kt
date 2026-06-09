@@ -548,6 +548,7 @@ fun LibraryScreen(
     searchToggleSignal: Int = 0,
     searchCloseSignal: Int = 0,
     compactTabletLayout: Boolean = false,
+    compactHeaderEndContent: @Composable () -> Unit = {},
     smpRefreshVersion: Int = 0,
     smpSongsCache: Map<String, SongUnit> = emptyMap(),
     lastImportedSmpSignal: SmpImportedUiSignal? = null,
@@ -4023,6 +4024,7 @@ fun LibraryScreen(
                         compactActionsOnly = true,
                         modifier = Modifier
                     )
+                    compactHeaderEndContent()
                 }
             }
 
