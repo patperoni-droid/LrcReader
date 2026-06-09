@@ -4119,6 +4119,8 @@ class MainActivity : AppCompatActivity() {
                                             }
                                         },
                                         onPlayFromLibrary = { uriString, openRichPlayer ->
+                                            isTabletCockpitDestinationOpen = false
+                                            tabletRightPanel = TabletSplitRightPanel.LYRICS
                                             Log.d(
                                                 SMP_PLAY_TRACE_TAG,
                                                 "LIBRARY_TAP item=$uriString"

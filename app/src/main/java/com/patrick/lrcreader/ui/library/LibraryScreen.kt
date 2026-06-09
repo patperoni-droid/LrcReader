@@ -4258,6 +4258,13 @@ fun LibraryScreen(
                                         stopQuickPlay()
                                         onPlayFromLibrary(song.playbackItem, isLibraryFullModeEnabled)
                                     },
+                                    onPreviewToggle = { song ->
+                                        keyboardSelectedSongId = song.songId
+                                        song.song.audioPath
+                                            ?.takeIf { it.isNotBlank() }
+                                            ?.let { Uri.fromFile(File(it)) }
+                                            ?.let { uri -> quickPlayToggle(uri, song.volumeDb) }
+                                    },
                                     onAssignOne = { uri ->
                                         selectedSongs = setOf(uri)
                                         showAssignDialog = true

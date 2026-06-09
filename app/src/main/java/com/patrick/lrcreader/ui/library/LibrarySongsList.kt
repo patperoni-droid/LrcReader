@@ -176,6 +176,7 @@ fun LibrarySongsList(
     onToggleSelect: (Uri) -> Unit,
     onKeyboardSelectedSongChange: (String) -> Unit,
     onOpenPlayer: (LibrarySongItem) -> Unit,
+    onPreviewToggle: (LibrarySongItem) -> Unit,
     onAssignOne: (Uri) -> Unit,
     onAssignFamily: (SongVariantFamily) -> Unit,
     onShareOne: (Uri) -> Unit,
@@ -299,7 +300,7 @@ fun LibrarySongsList(
                             IconButton(
                                 onClick = {
                                     onKeyboardSelectedSongChange(activeSong.songId)
-                                    onOpenPlayer(activeSong)
+                                    onPreviewToggle(activeSong)
                                 },
                                 enabled = activeSong.audioAvailable
                             ) {
@@ -555,7 +556,7 @@ fun LibrarySongsList(
                     IconButton(
                         onClick = {
                             onKeyboardSelectedSongChange(song.songId)
-                            if (selectionMode) onToggleSelect(songUri) else onOpenPlayer(song)
+                            onPreviewToggle(song)
                         },
                         enabled = canPlay
                     ) {
