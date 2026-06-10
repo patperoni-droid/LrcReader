@@ -131,6 +131,18 @@ class PlaylistGroupMoveTest {
     }
 
     @Test
+    fun findMatchingGroupEndIndex_handlesNestedLegacyGroupMarkers() {
+        val headerA = buildGroupHeader("A")
+        val endA = buildGroupEnd(getGroupUuid(headerA)!!)
+        val headerB = buildGroupHeader("B")
+        val endB = buildGroupEnd(getGroupUuid(headerB)!!)
+        val items = listOf(headerA, headerB, "b1", endB, "a1", endA, "x1")
+
+        assertEquals(5, findMatchingGroupEndIndex(items, 0))
+        assertEquals(0..5, findGroupRange(items, 0))
+    }
+
+    @Test
     fun moveItemOutOfGroup_nominal_placesTrackRightAfterEndMarker() {
         val headerA = buildGroupHeader("A")
         val endA = buildGroupEnd(getGroupUuid(headerA)!!)

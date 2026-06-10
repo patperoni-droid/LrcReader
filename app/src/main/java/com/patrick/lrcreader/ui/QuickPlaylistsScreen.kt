@@ -3907,10 +3907,14 @@ internal fun findMatchingGroupEndIndex(items: List<String>, headerIndex: Int): I
     if (!isGroupHeader(header)) return null
     val uuid = getGroupUuid(header) ?: return null
 
+    var depth = 0
     for (cursor in (headerIndex + 1) until items.size) {
         val item = items[cursor]
-        if (isGroupHeader(item)) return null
-        if (isGroupEnd(item) && getGroupUuid(item) == uuid) return cursor
+        when {
+            isGroupHeader(item) -> depth++
+            isGroupEnd(item) && depth > 0 -> depth--
+            isGroupEnd(item) && getGroupUuid(item) == uuid -> return cursor
+        }
     }
     return null
 }
