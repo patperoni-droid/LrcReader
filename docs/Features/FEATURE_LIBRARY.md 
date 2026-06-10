@@ -237,6 +237,49 @@ Live UX rule:
 
 ⸻
 
+TABLET SPLIT LIBRARY
+
+In tablet split mode, the Library may be shown as the right pane:
+
+Playlist | Library
+
+Rules:
+- the Playlist remains visible on the left
+- the Library remains a right-pane destination, not a full replacement of the live cockpit
+- the cockpit menu must remain reachable from the Library
+- the user must be able to return quickly to `Playlist | Lyrics`
+- phone Library behavior remains the default and must not inherit tablet split assumptions
+
+Compact tablet header:
+- in compact tablet Library mode, the visible title `Library` and its subtitle are removed
+- the mode controls are grouped on one line:
+  - Songs
+  - Lists
+  - Lyrics
+  - LUFS
+  - storage/folder action
+  - Library actions menu
+  - cockpit menu
+- the goal is to recover vertical space so more songs remain visible during live use
+- the song rows are not reduced for now because a previous row-compaction attempt caused runtime instability
+- future row compaction must be treated as a separate high-risk UI patch and validated on real tablet and phone
+
+Library row actions:
+- tapping the main row/title launches the song through the normal Player flow
+- in tablet split mode, tapping the main row/title must return to `Playlist | Lyrics`
+- tapping the row Play button is a local preview/control and must not force navigation away from the Library
+- this separation keeps live navigation predictable while preserving quick audio checks
+
+Search in tablet mode:
+- Search is not an autonomous tablet destination
+- Search is a filter mode for the active screen or pane
+- Library + Search means filtering the Library list
+- Playlist + Search means filtering the Playlist list
+- opening Library alone must not automatically open Search or the keyboard
+- phone search behavior remains unchanged
+
+⸻
+
 MULTI-SELECTION
 
 User must be able to:

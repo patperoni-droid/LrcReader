@@ -46,6 +46,48 @@ Tablette :
 👉 Le téléphone reste l'outil flexible et mobile.
 👉 La tablette devient le cockpit live principal.
 
+### 🧭 Cockpit tablette
+
+En mode tablette, SMP peut utiliser un Split Layout :
+
+- panneau gauche : Playlist
+- panneau droit : destination active
+
+Destination principale :
+
+- Paroles défilantes
+
+Destinations compatibles :
+
+- Bibliothèque
+- Paramètres
+- Fond sonore
+- Éditeur de paroles
+- autres panneaux compatibles plus tard
+
+Le menu cockpit est le mécanisme privilégié pour naviguer entre ces destinations.
+
+Règles :
+
+✔ `Paroles` signifie toujours `Playlist | Paroles défilantes`  
+✔ `Paroles` ne signifie pas l'éditeur de paroles  
+✔ aucun panneau droit ne doit bloquer le retour vers les paroles  
+✔ les écrans nécessitant toute la largeur, comme Arrangement ou Timeline, restent en Fullscreen  
+✔ le téléphone reste la base stable ; la tablette est une extension conditionnée au mode tablette/split
+
+Bibliothèque tablette :
+
+- l'en-tête compact regroupe `Songs / Lists / Lyrics / LUFS / dossier / menu / cockpit`
+- le titre `Bibliothèque` et le sous-titre sont masqués en mode tablette compact pour gagner de la hauteur
+- les lignes de morceaux ne sont pas compactées pour l'instant à cause d'un risque runtime déjà rencontré
+
+Recherche tablette :
+
+- Recherche est un mode de filtre de l'écran actif
+- Recherche n'est pas une destination autonome
+- Bibliothèque + Recherche filtre la Bibliothèque
+- Playlist + Recherche filtre la Playlist
+
 ---
 
 ### 🔥 Lecture fiable

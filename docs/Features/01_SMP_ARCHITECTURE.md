@@ -238,13 +238,20 @@ Tablet split navigation rule:
 - right pane hosts the active live destination
 - the Playlist is not a destination screen in this mode; it is the stable left part of the Split Layout
 - the default right-pane destination is Lyrics
+- in tablet split mode, `Lyrics` always means the scrolling playback lyrics: `Playlist | Lyrics`
+- `Lyrics` never means the lyrics editor; the editor is a secondary right-pane destination
 - Lyrics is the home state of the right pane
-- compatible right-pane destinations may include Lyrics, Library, Track Console, Settings, and future tablet-safe panels
-- every secondary right-pane destination must provide a simple and visible path back to `Playlist | Lyrics`
+- compatible right-pane destinations may include Lyrics, Library, Track Console, Settings, Background Sound, Lyrics Editor, and future tablet-safe panels
+- the cockpit menu is the preferred navigation mechanism between right-pane destinations
+- every compatible right-pane destination must avoid trapping the user and must provide a simple visible path back to `Playlist | Lyrics`
 - some tools may leave the Split Layout and use a Fullscreen mode when they need the full tablet width
 - Arrangement, Timeline, and future wide editing tools may use Fullscreen instead of the Split Layout
 - fullscreen tools must return explicitly to the live cockpit without changing playback state
 - phone UX remains the default behavior and must not inherit tablet split assumptions
+
+Tablet split roadmap:
+- study an option to invert the split, with Playlist on the left or on the right
+- field motivation: a right-handed musician with the tablet on the right may reach the playlist faster without releasing the guitar chord or losing sustain
 
 Phone mode protection rule:
 - the phone remains the SMP reference platform
