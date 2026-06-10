@@ -117,6 +117,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.resume
 import kotlin.math.pow
+import kotlin.math.roundToInt
 
 private fun sanitizeDisplayTrackTitle(value: String?): String? {
     return value
@@ -3776,6 +3777,71 @@ class MainActivity : AppCompatActivity() {
                                     isMixerPreviewOpen = false
                                 }
 
+                                fun currentLufsPlaybackConfig(): SmpConfig.PlaybackConfig? {
+                                    val songId = currentPlayingSongId?.takeIf { it.isNotBlank() } ?: return null
+                                    val song = smpSongsById[songId] ?: return null
+                                    return SmpConfig.readPlaybackFromSongUnit(song)
+                                }
+
+                                fun canAdjustTabletLiveGain(): Boolean {
+                                    if (currentPlayingUri.isNullOrBlank()) return false
+                                    if (currentTrackVolumeSource != SmpConfig.PlaybackConfig.VOLUME_SOURCE_LUFS) {
+                                        return true
+                                    }
+                                    val playback = currentLufsPlaybackConfig() ?: return false
+                                    return playback.lufsMeasured != null &&
+                                        playback.lufsTarget != null &&
+                                        playback.lufsAutoDb != null
+                                }
+
+                                fun adjustTabletLiveGain(deltaDb: Int) {
+                                    val sourceUri = currentPlayingUri ?: return
+                                    val safeDb = clampTrackDb(currentTrackGainDb + deltaDb)
+                                    if (currentTrackVolumeSource == SmpConfig.PlaybackConfig.VOLUME_SOURCE_LUFS) {
+                                        val playback = currentLufsPlaybackConfig() ?: return
+                                        val measured = playback.lufsMeasured ?: return
+                                        val target = playback.lufsTarget ?: return
+                                        val auto = playback.lufsAutoDb ?: return
+                                        val manual = ((measured + safeDb) - target)
+                                            .roundToInt()
+                                            .coerceIn(MIN_TRACK_DB, MAX_TRACK_DB)
+                                        currentTrackGainDb = safeDb
+                                        currentTrackVolumeSource = SmpConfig.PlaybackConfig.VOLUME_SOURCE_LUFS
+                                        AudioEngine.applyTrackGainDb(safeDb)
+                                        scope.launch {
+                                            withContext(Dispatchers.IO) {
+                                                TrackVolumePrefs.saveLufsDb(
+                                                    context = ctx,
+                                                    uri = sourceUri,
+                                                    db = safeDb,
+                                                    measuredLufs = measured,
+                                                    targetLufs = target,
+                                                    autoDb = auto,
+                                                    manualDb = manual
+                                                )
+                                            }
+                                        }
+                                        return
+                                    }
+
+                                    currentTrackGainDb = safeDb
+                                    AudioEngine.applyTrackGainDb(safeDb)
+                                    scope.launch {
+                                        val migration = withContext(Dispatchers.IO) {
+                                            smpAutoMigration.migrateLegacyTrack(sourceUri)
+                                        }
+                                        val targetUri = migration?.trackUriString ?: sourceUri
+                                        withContext(Dispatchers.IO) {
+                                            TrackVolumePrefs.saveDb(ctx, targetUri, safeDb)
+                                        }
+                                        if (migration != null && currentPlayingUri == sourceUri) {
+                                            currentPlayingUri = migration.trackUriString
+                                            smpSongsById = smpSongsById + (migration.song.id to migration.song)
+                                            smpCacheRefreshTick++
+                                        }
+                                    }
+                                }
+
                                 @Composable
                                 fun TabletSplitCockpitMenuButton() {
                                     Box {
@@ -4046,6 +4112,9 @@ class MainActivity : AppCompatActivity() {
                                         compactTabletLayout = adaptiveTokens.tabletMode &&
                                             tabletExperimentalModeEnabled,
                                         showAutoReturnButton = false,
+                                        showLiveGainControls = true,
+                                        liveGainControlsEnabled = canAdjustTabletLiveGain(),
+                                        onLiveGainDelta = ::adjustTabletLiveGain,
                                         readerHeaderEndContent = {
                                             TabletSplitCockpitMenuButton()
                                         }

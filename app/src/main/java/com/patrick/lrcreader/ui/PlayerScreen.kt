@@ -173,6 +173,9 @@ fun PlayerScreen(
     seekToMs: (Long) -> Unit,
     compactTabletLayout: Boolean = false,
     showAutoReturnButton: Boolean = true,
+    showLiveGainControls: Boolean = false,
+    liveGainControlsEnabled: Boolean = true,
+    onLiveGainDelta: (Int) -> Unit = {},
     readerHeaderEndContent: @Composable RowScope.() -> Unit = {}
 ) {
     val isManualTransitionActive = !manualTransitionTargetTitle.isNullOrBlank()
@@ -2840,6 +2843,10 @@ fun PlayerScreen(
                                 currentSongId?.takeIf { it.isNotBlank() }?.let(onOpenWaveform)
                             },
                             showAutoReturnButton = showAutoReturnButton,
+                            showLiveGainControls = showLiveGainControls,
+                            liveGainDb = currentTrackGainDb,
+                            liveGainEnabled = liveGainControlsEnabled,
+                            onLiveGainDelta = onLiveGainDelta,
                             endContent = readerHeaderEndContent,
                         )
 
@@ -3439,6 +3446,10 @@ private fun ReaderHeader(
     autoReturnEnabled: Boolean,
     onToggleAutoReturn: () -> Unit,
     showAutoReturnButton: Boolean,
+    showLiveGainControls: Boolean,
+    liveGainDb: Int,
+    liveGainEnabled: Boolean,
+    onLiveGainDelta: (Int) -> Unit,
     highlightColor: Color,
     onOpenMix: () -> Unit,
     showMixAction: Boolean,
@@ -3488,6 +3499,15 @@ private fun ReaderHeader(
                         fontSize = 12.sp
                     )
                 }
+            }
+
+            if (showLiveGainControls) {
+                CompactLiveGainControls(
+                    gainDb = liveGainDb,
+                    enabled = liveGainEnabled,
+                    onMinus = { onLiveGainDelta(-1) },
+                    onPlus = { onLiveGainDelta(1) }
+                )
             }
 
             if (showMixAction) {
@@ -3542,6 +3562,51 @@ private fun ReaderHeader(
 
             endContent()
         }
+    }
+}
+
+@Composable
+private fun RowScope.CompactLiveGainControls(
+    gainDb: Int,
+    enabled: Boolean,
+    onMinus: () -> Unit,
+    onPlus: () -> Unit
+) {
+    val controlTint = if (enabled) Color.White else Color.White.copy(alpha = 0.34f)
+    val valueTint = if (enabled) Color(0xFFE0E0E0) else Color.White.copy(alpha = 0.32f)
+    TextButton(
+        onClick = onMinus,
+        enabled = enabled,
+        modifier = Modifier
+            .height(34.dp)
+            .widthIn(min = 36.dp)
+            .padding(horizontal = 0.dp)
+    ) {
+        Text(
+            text = stringResource(R.string.library_lufs_manual_minus_short),
+            color = controlTint,
+            fontSize = 12.sp
+        )
+    }
+    Text(
+        text = stringResource(R.string.library_lufs_db_value, gainDb.coerceIn(-24, 24)),
+        color = valueTint,
+        fontSize = 11.sp,
+        maxLines = 1
+    )
+    TextButton(
+        onClick = onPlus,
+        enabled = enabled,
+        modifier = Modifier
+            .height(34.dp)
+            .widthIn(min = 36.dp)
+            .padding(horizontal = 0.dp)
+    ) {
+        Text(
+            text = stringResource(R.string.library_lufs_manual_plus_short),
+            color = controlTint,
+            fontSize = 12.sp
+        )
     }
 }
 
