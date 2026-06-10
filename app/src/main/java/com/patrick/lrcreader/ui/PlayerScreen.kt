@@ -172,6 +172,7 @@ fun PlayerScreen(
     getEffectiveDurationMs: () -> Long,
     seekToMs: (Long) -> Unit,
     compactTabletLayout: Boolean = false,
+    showAutoReturnButton: Boolean = true,
     readerHeaderEndContent: @Composable RowScope.() -> Unit = {}
 ) {
     val isManualTransitionActive = !manualTransitionTargetTitle.isNullOrBlank()
@@ -2838,6 +2839,7 @@ fun PlayerScreen(
                             onOpenWaveform = {
                                 currentSongId?.takeIf { it.isNotBlank() }?.let(onOpenWaveform)
                             },
+                            showAutoReturnButton = showAutoReturnButton,
                             endContent = readerHeaderEndContent,
                         )
 
@@ -3436,6 +3438,7 @@ private fun ReaderHeader(
     onToggleReadabilityMode: () -> Unit,
     autoReturnEnabled: Boolean,
     onToggleAutoReturn: () -> Unit,
+    showAutoReturnButton: Boolean,
     highlightColor: Color,
     onOpenMix: () -> Unit,
     showMixAction: Boolean,
@@ -3477,12 +3480,14 @@ private fun ReaderHeader(
 
             Spacer(modifier = Modifier.weight(1f))
 
-            IconButton(onClick = onToggleAutoReturn) {
-                Text(
-                    text = stringResource(R.string.player_auto_return_button),
-                    color = if (autoReturnEnabled) Color.White else Color(0xFF888888),
-                    fontSize = 12.sp
-                )
+            if (showAutoReturnButton) {
+                IconButton(onClick = onToggleAutoReturn) {
+                    Text(
+                        text = stringResource(R.string.player_auto_return_button),
+                        color = if (autoReturnEnabled) Color.White else Color(0xFF888888),
+                        fontSize = 12.sp
+                    )
+                }
             }
 
             if (showMixAction) {

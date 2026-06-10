@@ -4045,6 +4045,7 @@ class MainActivity : AppCompatActivity() {
                                         seekToMs = { ms -> exoPlayer.seekTo(ms) },
                                         compactTabletLayout = adaptiveTokens.tabletMode &&
                                             tabletExperimentalModeEnabled,
+                                        showAutoReturnButton = false,
                                         readerHeaderEndContent = {
                                             TabletSplitCockpitMenuButton()
                                         }
