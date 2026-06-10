@@ -92,6 +92,16 @@ object TrackVolumePrefs {
         return SmpConfig.PlaybackConfig.VOLUME_SOURCE_MANUAL
     }
 
+    fun getPlaybackConfig(context: Context, uri: String): SmpConfig.PlaybackConfig? {
+        val configFile = resolveInternalSmpConfigFile(context, uri) ?: return null
+        return runCatching {
+            SmpConfig.fromJsonOrNull(configFile.readText(Charsets.UTF_8))?.playback
+        }.getOrElse { error ->
+            Log.w(TAG, "getPlaybackConfig: SMP config read failed path=${configFile.absolutePath}", error)
+            null
+        }
+    }
+
     private fun readSmpVolumeDb(configFile: File): Int? {
         if (!configFile.isFile) {
             return null

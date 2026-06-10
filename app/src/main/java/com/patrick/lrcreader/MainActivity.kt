@@ -3778,6 +3778,10 @@ class MainActivity : AppCompatActivity() {
                                 }
 
                                 fun currentLufsPlaybackConfig(): SmpConfig.PlaybackConfig? {
+                                    currentPlayingUri
+                                        ?.takeIf { it.isNotBlank() }
+                                        ?.let { TrackVolumePrefs.getPlaybackConfig(ctx, it) }
+                                        ?.let { return it }
                                     val songId = currentPlayingSongId?.takeIf { it.isNotBlank() } ?: return null
                                     val song = smpSongsById[songId] ?: return null
                                     return SmpConfig.readPlaybackFromSongUnit(song)
@@ -3785,59 +3789,36 @@ class MainActivity : AppCompatActivity() {
 
                                 fun canAdjustTabletLiveGain(): Boolean {
                                     if (currentPlayingUri.isNullOrBlank()) return false
-                                    if (currentTrackVolumeSource != SmpConfig.PlaybackConfig.VOLUME_SOURCE_LUFS) {
-                                        return true
-                                    }
                                     val playback = currentLufsPlaybackConfig() ?: return false
                                     return playback.lufsMeasured != null &&
-                                        playback.lufsTarget != null &&
-                                        playback.lufsAutoDb != null
+                                        playback.lufsTarget != null
                                 }
 
                                 fun adjustTabletLiveGain(deltaDb: Int) {
                                     val sourceUri = currentPlayingUri ?: return
-                                    val safeDb = clampTrackDb(currentTrackGainDb + deltaDb)
-                                    if (currentTrackVolumeSource == SmpConfig.PlaybackConfig.VOLUME_SOURCE_LUFS) {
-                                        val playback = currentLufsPlaybackConfig() ?: return
-                                        val measured = playback.lufsMeasured ?: return
-                                        val target = playback.lufsTarget ?: return
-                                        val auto = playback.lufsAutoDb ?: return
-                                        val manual = ((measured + safeDb) - target)
-                                            .roundToInt()
-                                            .coerceIn(MIN_TRACK_DB, MAX_TRACK_DB)
-                                        currentTrackGainDb = safeDb
-                                        currentTrackVolumeSource = SmpConfig.PlaybackConfig.VOLUME_SOURCE_LUFS
-                                        AudioEngine.applyTrackGainDb(safeDb)
-                                        scope.launch {
-                                            withContext(Dispatchers.IO) {
-                                                TrackVolumePrefs.saveLufsDb(
-                                                    context = ctx,
-                                                    uri = sourceUri,
-                                                    db = safeDb,
-                                                    measuredLufs = measured,
-                                                    targetLufs = target,
-                                                    autoDb = auto,
-                                                    manualDb = manual
-                                                )
-                                            }
-                                        }
-                                        return
-                                    }
-
+                                    val playback = currentLufsPlaybackConfig() ?: return
+                                    val measured = playback.lufsMeasured ?: return
+                                    val target = playback.lufsTarget ?: return
+                                    val auto = playback.lufsAutoDb ?: (target - measured)
+                                    val currentFinalDb = playback.volumeDb ?: currentTrackGainDb
+                                    val safeDb = clampTrackDb(currentFinalDb + deltaDb)
+                                    val manual = ((measured + safeDb) - target)
+                                        .roundToInt()
+                                        .coerceIn(MIN_TRACK_DB, MAX_TRACK_DB)
                                     currentTrackGainDb = safeDb
+                                    currentTrackVolumeSource = SmpConfig.PlaybackConfig.VOLUME_SOURCE_LUFS
                                     AudioEngine.applyTrackGainDb(safeDb)
                                     scope.launch {
-                                        val migration = withContext(Dispatchers.IO) {
-                                            smpAutoMigration.migrateLegacyTrack(sourceUri)
-                                        }
-                                        val targetUri = migration?.trackUriString ?: sourceUri
                                         withContext(Dispatchers.IO) {
-                                            TrackVolumePrefs.saveDb(ctx, targetUri, safeDb)
-                                        }
-                                        if (migration != null && currentPlayingUri == sourceUri) {
-                                            currentPlayingUri = migration.trackUriString
-                                            smpSongsById = smpSongsById + (migration.song.id to migration.song)
-                                            smpCacheRefreshTick++
+                                            TrackVolumePrefs.saveLufsDb(
+                                                context = ctx,
+                                                uri = sourceUri,
+                                                db = safeDb,
+                                                measuredLufs = measured,
+                                                targetLufs = target,
+                                                autoDb = auto,
+                                                manualDb = manual
+                                            )
                                         }
                                     }
                                 }
