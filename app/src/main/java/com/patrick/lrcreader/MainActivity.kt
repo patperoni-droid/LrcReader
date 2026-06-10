@@ -146,7 +146,8 @@ class MainActivity : AppCompatActivity() {
         LYRICS,
         LIBRARY,
         SETTINGS,
-        BACKGROUND_SOUND
+        BACKGROUND_SOUND,
+        DJ
     }
 
     private data class SessionSnapshot(
@@ -3845,11 +3846,8 @@ class MainActivity : AppCompatActivity() {
                                                 enabled = showDjTab,
                                                 onClick = {
                                                     prepareTabletSplitMenuNavigation()
-                                                    isTabletCockpitDestinationOpen = true
-                                                    setTabAndPersist(
-                                                        BottomTab.Dj,
-                                                        reason = "tabletSplitMenuDj"
-                                                    )
+                                                    isTabletCockpitDestinationOpen = false
+                                                    tabletRightPanel = TabletSplitRightPanel.DJ
                                                 }
                                             )
                                             DropdownMenuItem(
@@ -4347,6 +4345,13 @@ class MainActivity : AppCompatActivity() {
                                     }
                                 }
 
+                                val djPane: @Composable (Modifier) -> Unit = { paneModifier ->
+                                    DjScreen(
+                                        modifier = paneModifier,
+                                        context = ctx
+                                    )
+                                }
+
                                 val quickPlaylistsPane: @Composable (Modifier) -> Unit = { paneModifier ->
                                     QuickPlaylistsScreen(
                                         modifier = paneModifier,
@@ -4602,6 +4607,22 @@ class MainActivity : AppCompatActivity() {
                                                         }
                                                     }
 
+                                                    TabletSplitRightPanel.DJ -> {
+                                                        Column(Modifier.fillMaxSize()) {
+                                                            Row(
+                                                                modifier = Modifier.fillMaxWidth(),
+                                                                horizontalArrangement = Arrangement.End,
+                                                                verticalAlignment = Alignment.CenterVertically
+                                                            ) {
+                                                                TabletSplitCockpitMenuButton()
+                                                            }
+                                                            djPane(
+                                                                Modifier
+                                                                    .weight(1f)
+                                                                    .fillMaxWidth()
+                                                            )
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }
