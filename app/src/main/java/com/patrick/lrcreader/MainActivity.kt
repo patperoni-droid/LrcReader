@@ -3789,36 +3789,50 @@ class MainActivity : AppCompatActivity() {
 
                                 fun canAdjustTabletLiveGain(): Boolean {
                                     if (currentPlayingUri.isNullOrBlank()) return false
-                                    val playback = currentLufsPlaybackConfig() ?: return false
-                                    return playback.lufsMeasured != null &&
-                                        playback.lufsTarget != null
+                                    return !currentPlayingSongId.isNullOrBlank()
                                 }
 
                                 fun adjustTabletLiveGain(deltaDb: Int) {
                                     val sourceUri = currentPlayingUri ?: return
-                                    val playback = currentLufsPlaybackConfig() ?: return
-                                    val measured = playback.lufsMeasured ?: return
-                                    val target = playback.lufsTarget ?: return
-                                    val auto = playback.lufsAutoDb ?: (target - measured)
-                                    val currentFinalDb = playback.volumeDb ?: currentTrackGainDb
+                                    val playback = currentLufsPlaybackConfig()
+                                    val currentFinalDb = playback?.volumeDb ?: currentTrackGainDb
                                     val safeDb = clampTrackDb(currentFinalDb + deltaDb)
-                                    val manual = ((measured + safeDb) - target)
-                                        .roundToInt()
-                                        .coerceIn(MIN_TRACK_DB, MAX_TRACK_DB)
                                     currentTrackGainDb = safeDb
-                                    currentTrackVolumeSource = SmpConfig.PlaybackConfig.VOLUME_SOURCE_LUFS
                                     AudioEngine.applyTrackGainDb(safeDb)
+
+                                    val measured = playback?.lufsMeasured
+                                    val target = playback?.lufsTarget
+                                    val auto = if (measured != null && target != null) {
+                                        playback.lufsAutoDb ?: (target - measured)
+                                    } else {
+                                        null
+                                    }
+
+                                    if (measured != null && target != null && auto != null) {
+                                        val manual = ((measured + safeDb) - target)
+                                            .roundToInt()
+                                            .coerceIn(MIN_TRACK_DB, MAX_TRACK_DB)
+                                        currentTrackVolumeSource = SmpConfig.PlaybackConfig.VOLUME_SOURCE_LUFS
+                                        scope.launch {
+                                            withContext(Dispatchers.IO) {
+                                                TrackVolumePrefs.saveLufsDb(
+                                                    context = ctx,
+                                                    uri = sourceUri,
+                                                    db = safeDb,
+                                                    measuredLufs = measured,
+                                                    targetLufs = target,
+                                                    autoDb = auto,
+                                                    manualDb = manual
+                                                )
+                                            }
+                                        }
+                                        return
+                                    }
+
+                                    currentTrackVolumeSource = SmpConfig.PlaybackConfig.VOLUME_SOURCE_MANUAL
                                     scope.launch {
                                         withContext(Dispatchers.IO) {
-                                            TrackVolumePrefs.saveLufsDb(
-                                                context = ctx,
-                                                uri = sourceUri,
-                                                db = safeDb,
-                                                measuredLufs = measured,
-                                                targetLufs = target,
-                                                autoDb = auto,
-                                                manualDb = manual
-                                            )
+                                            TrackVolumePrefs.saveDb(ctx, sourceUri, safeDb)
                                         }
                                     }
                                 }
