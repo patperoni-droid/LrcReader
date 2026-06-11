@@ -4278,9 +4278,7 @@ class MainActivity : AppCompatActivity() {
                                         showLiveGainControls = true,
                                         liveGainControlsEnabled = canAdjustTabletLiveGain(),
                                         onLiveGainDelta = ::adjustTabletLiveGain,
-                                        readerHeaderEndContent = {
-                                            TabletSplitCockpitMenuButton()
-                                        }
+                                        readerHeaderEndContent = {}
                                     )
                                 }
 
@@ -4799,7 +4797,14 @@ class MainActivity : AppCompatActivity() {
                                             ) {
                                                 when (tabletRightPanel) {
                                                     TabletSplitRightPanel.LYRICS -> {
-                                                        playerPane(Modifier.fillMaxSize())
+                                                        Column(Modifier.fillMaxSize()) {
+                                                            TabletSplitTopNavigationShortcuts()
+                                                            playerPane(
+                                                                Modifier
+                                                                    .weight(1f)
+                                                                    .fillMaxWidth()
+                                                            )
+                                                        }
                                                     }
 
                                                     TabletSplitRightPanel.LIBRARY -> {
