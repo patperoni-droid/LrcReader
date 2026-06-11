@@ -4293,7 +4293,9 @@ class MainActivity : AppCompatActivity() {
                                         searchCloseSignal = tabletLibrarySearchCloseSignal,
                                         compactTabletLayout = adaptiveTokens.tabletMode &&
                                             tabletExperimentalModeEnabled,
-                                        compactHeaderEndContent = {},
+                                        compactHeaderEndContent = {
+                                            TabletSplitCockpitMenuButton()
+                                        },
                                         smpRefreshVersion = smpCacheRefreshTick,
                                         smpSongsCache = smpSongsById,
                                         lastImportedSmpSignal = lastImportedSmpUiSignal,
@@ -4806,14 +4808,7 @@ class MainActivity : AppCompatActivity() {
                                                     }
 
                                                     TabletSplitRightPanel.LIBRARY -> {
-                                                        Column(Modifier.fillMaxSize()) {
-                                                            TabletSplitTopNavigationShortcuts()
-                                                            libraryPane(
-                                                                Modifier
-                                                                    .weight(1f)
-                                                                    .fillMaxWidth()
-                                                            )
-                                                        }
+                                                        libraryPane(Modifier.fillMaxSize())
                                                     }
 
                                                     TabletSplitRightPanel.SETTINGS -> {
