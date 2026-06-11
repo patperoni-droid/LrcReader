@@ -151,6 +151,10 @@ private object QuickPlaylistsUiCache {
     fun put(playlist: String?, snapshot: QuickPlaylistUiSnapshot) {
         snapshots[playlist.orEmpty()] = snapshot
     }
+
+    fun remove(playlist: String?) {
+        snapshots.remove(playlist.orEmpty())
+    }
 }
 
 /**
@@ -3664,17 +3668,18 @@ fun QuickPlaylistsScreen(
                         if (pl.isNullOrBlank()) return@TextButton
 
                         val currentRaw = PlaylistRepository.getAllSongsRaw(pl)
-                        val restored = loadManualOrder(context, pl, currentRaw)
-                            ?.takeIf { it.isNotEmpty() }
-                            ?: originalOrderByPlaylist[pl]
+                        val restored = originalOrderByPlaylist[pl]
                                 ?.takeIf { it.isNotEmpty() }
                             ?: loadOriginalOrder(context, pl)
+                            ?: loadManualOrder(context, pl, currentRaw)
+                                ?.takeIf { it.isNotEmpty() }
                             ?: currentRaw
 
                         PlaylistRepository.resetPlayedFor(pl)
                         PlaylistRepository.updatePlayListOrder(pl, restored)
                         saveManualOrder(context, pl, restored)
                         originalOrderByPlaylist[pl] = restored
+                        QuickPlaylistsUiCache.remove(pl)
 
                         songs.clear()
                         songs.addAll(PlaylistRepository.getSongsFor(pl))
