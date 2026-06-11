@@ -16,6 +16,7 @@ Before any structural or important decision, read and strictly follow:
 - /docs/00_PROJECT_RULES.md
 - /docs/01_SMP_ARCHITECTURE.md
 - /docs/02_LIVE_STABILITY_RULES.md
+- /docs/03_RELEASE_SAFETY_RULES.md
 - SMP_RULES.md
 - SMP_SPEC_AGENT.md
 
@@ -46,6 +47,7 @@ For Library / import / files:
 For SMP / architecture / storage:
 - /docs/01_SMP_ARCHITECTURE.md
 - /docs/02_LIVE_STABILITY_RULES.md
+- /docs/03_RELEASE_SAFETY_RULES.md
 - SMP_RULES.md
 - SMP_SPEC_AGENT.md
 
