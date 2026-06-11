@@ -340,8 +340,18 @@ Must restore:
 - original order
 - original positions
 - remove "played" state
+- preserve groups
 
 👉 Essential for next performance
+
+Tablet split consistency:
+- tablet split is a presentation variant only
+- playlist reset logic must stay unique and device-independent
+- never implement separate phone/tablet reset behavior
+- tablet split layouts may keep the Playlist UI mounted permanently
+- therefore reset / played-state / order restoration must invalidate cached UI snapshots when the screen remains mounted
+- after reset, played tracks must return to their initial positions and played markers/notches must be cleared
+- phone and tablet split must both be tested explicitly after any playlist reset change
 
 ⸻
 
