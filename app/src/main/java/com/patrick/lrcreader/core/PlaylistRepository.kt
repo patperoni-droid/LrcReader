@@ -223,7 +223,7 @@ object PlaylistRepository {
      * - puis les joués (toujours dans leur ordre relatif).
      */
     fun getSongsFor(playlistName: String): List<String> {
-        val all = playlists[playlistName] ?: emptyList()
+        val all = playlistSongsSnapshot(playlistName)
         val notPlayed = all.filterNot { isSongPlayed(playlistName, it) }
         val alreadyPlayed = all.filter { isSongPlayed(playlistName, it) }
         return notPlayed + alreadyPlayed
@@ -231,7 +231,7 @@ object PlaylistRepository {
 
     /** Vue brute telle qu’elle est stockée, pour la sauvegarde. */
     fun getAllSongsRaw(playlistName: String): List<String> {
-        return playlists[playlistName]?.toList() ?: emptyList()
+        return playlistSongsSnapshot(playlistName)
     }
 
     fun getItemsFor(playlistName: String): List<PlaylistItem> {
@@ -787,12 +787,18 @@ object PlaylistRepository {
     }
 
     private fun playlistContainsSongId(playlistName: String, songId: String): Boolean {
-        return playlists[playlistName]?.any { item ->
+        return playlistSongsSnapshot(playlistName).any { item ->
             resolveSongIdForState(playlistName, item) == songId
-        } ?: false
+        }
     }
 
     private fun playlistSongIdOccurrenceCount(playlistName: String, songId: String): Int {
-        return playlists[playlistName]?.count { item -> resolveSongIdForState(playlistName, item) == songId } ?: 0
+        return playlistSongsSnapshot(playlistName).count { item ->
+            resolveSongIdForState(playlistName, item) == songId
+        }
+    }
+
+    private fun playlistSongsSnapshot(playlistName: String): List<String> {
+        return playlists[playlistName]?.toList() ?: emptyList()
     }
 }
