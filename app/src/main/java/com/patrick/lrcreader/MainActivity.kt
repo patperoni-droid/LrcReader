@@ -50,9 +50,17 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Headset
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.PlaylistPlay
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Waves
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -1260,6 +1268,7 @@ class MainActivity : AppCompatActivity() {
                 var isFillerSettingsOpen by remember { mutableStateOf(false) }
                 var libraryKeyboardNavigationEnabled by remember { mutableStateOf(false) }
                 var isTabletSplitMenuOpen by remember { mutableStateOf(false) }
+                var isTabletShortcutMoreOpen by remember { mutableStateOf(false) }
                 var isTabletCockpitDestinationOpen by rememberSaveable { mutableStateOf(false) }
                 var tabletRightPanel by rememberSaveable {
                     mutableStateOf(TabletSplitRightPanel.LYRICS)
@@ -3769,12 +3778,101 @@ class MainActivity : AppCompatActivity() {
                                 )
                                 fun prepareTabletSplitMenuNavigation() {
                                     isTabletSplitMenuOpen = false
+                                    isTabletShortcutMoreOpen = false
                                     textPrompterId = null
                                     isNotesOpen = false
                                     isFillerSettingsOpen = false
                                     isGlobalMixOpen = false
                                     isSearchOpen = false
                                     isMixerPreviewOpen = false
+                                }
+
+                                fun openTabletSplitLyrics() {
+                                    prepareTabletSplitMenuNavigation()
+                                    isTabletCockpitDestinationOpen = false
+                                    closeMixSignal++
+                                    tabletRightPanel = TabletSplitRightPanel.LYRICS
+                                }
+
+                                fun openTabletSplitLibrary(openSearch: Boolean = false) {
+                                    prepareTabletSplitMenuNavigation()
+                                    isTabletCockpitDestinationOpen = false
+                                    if (!openSearch) {
+                                        tabletLibrarySearchToggleSignal = 0
+                                        tabletLibrarySearchCloseSignal++
+                                    }
+                                    tabletRightPanel = TabletSplitRightPanel.LIBRARY
+                                    if (openSearch) {
+                                        tabletLibrarySearchToggleSignal++
+                                    }
+                                }
+
+                                fun openTabletSplitPlaylist() {
+                                    prepareTabletSplitMenuNavigation()
+                                    isTabletCockpitDestinationOpen = false
+                                    tabletRightPanel = TabletSplitRightPanel.LYRICS
+                                    setTabAndPersist(
+                                        BottomTab.QuickPlaylists,
+                                        reason = "tabletSplitShortcutPlaylist"
+                                    )
+                                }
+
+                                fun openTabletSplitFiller() {
+                                    prepareTabletSplitMenuNavigation()
+                                    isTabletCockpitDestinationOpen = false
+                                    tabletRightPanel = TabletSplitRightPanel.BACKGROUND_SOUND
+                                }
+
+                                fun openTabletSplitDj() {
+                                    prepareTabletSplitMenuNavigation()
+                                    isTabletCockpitDestinationOpen = false
+                                    tabletRightPanel = TabletSplitRightPanel.DJ
+                                }
+
+                                fun openTabletSplitSettings() {
+                                    prepareTabletSplitMenuNavigation()
+                                    isTabletCockpitDestinationOpen = false
+                                    tabletRightPanel = TabletSplitRightPanel.SETTINGS
+                                }
+
+                                fun openTabletSplitSearch() {
+                                    prepareTabletSplitMenuNavigation()
+                                    isTabletCockpitDestinationOpen = false
+                                    if (tabletRightPanel == TabletSplitRightPanel.LIBRARY) {
+                                        tabletLibrarySearchToggleSignal++
+                                    } else if (!selectedQuickPlaylist.isNullOrBlank()) {
+                                        playlistSearchToggleSignal++
+                                    } else {
+                                        tabletRightPanel = TabletSplitRightPanel.LIBRARY
+                                        tabletLibrarySearchToggleSignal++
+                                    }
+                                }
+
+                                fun openTabletShortcutNotes() {
+                                    prepareTabletSplitMenuNavigation()
+                                    isNotesOpen = true
+                                }
+
+                                fun openTabletShortcutAllPlaylists() {
+                                    prepareTabletSplitMenuNavigation()
+                                    setTabAndPersist(
+                                        BottomTab.AllPlaylists,
+                                        reason = "tabletShortcutAllPlaylists"
+                                    )
+                                }
+
+                                fun openTabletShortcutPrompter() {
+                                    prepareTabletSplitMenuNavigation()
+                                    setTabAndPersist(
+                                        BottomTab.QuickPlaylists,
+                                        reason = "tabletShortcutPrompter"
+                                    )
+                                    openPrompterSignal++
+                                }
+
+                                fun openTabletShortcutTuner() {
+                                    prepareTabletSplitMenuNavigation()
+                                    setTabAndPersist(BottomTab.Tuner, reason = "tabletShortcutTuner")
                                 }
 
                                 fun currentLufsPlaybackConfig(): SmpConfig.PlaybackConfig? {
@@ -3853,22 +3951,11 @@ class MainActivity : AppCompatActivity() {
                                         ) {
                                             DropdownMenuItem(
                                                 text = { Text(stringResource(R.string.player_view_lyrics)) },
-                                                onClick = {
-                                                    prepareTabletSplitMenuNavigation()
-                                                    isTabletCockpitDestinationOpen = false
-                                                    closeMixSignal++
-                                                    tabletRightPanel = TabletSplitRightPanel.LYRICS
-                                                }
+                                                onClick = ::openTabletSplitLyrics
                                             )
                                             DropdownMenuItem(
                                                 text = { Text(stringResource(R.string.tablet_split_menu_library)) },
-                                                onClick = {
-                                                    prepareTabletSplitMenuNavigation()
-                                                    isTabletCockpitDestinationOpen = false
-                                                    tabletLibrarySearchToggleSignal = 0
-                                                    tabletLibrarySearchCloseSignal++
-                                                    tabletRightPanel = TabletSplitRightPanel.LIBRARY
-                                                }
+                                                onClick = { openTabletSplitLibrary(openSearch = false) }
                                             )
                                             DropdownMenuItem(
                                                 text = { Text(stringResource(R.string.tablet_split_menu_main_bus)) },
@@ -3884,56 +3971,134 @@ class MainActivity : AppCompatActivity() {
                                             )
                                             DropdownMenuItem(
                                                 text = { Text(stringResource(R.string.tablet_split_menu_playlist)) },
-                                                onClick = {
-                                                    prepareTabletSplitMenuNavigation()
-                                                    isTabletCockpitDestinationOpen = false
-                                                    tabletRightPanel = TabletSplitRightPanel.LYRICS
-                                                    setTabAndPersist(
-                                                        BottomTab.QuickPlaylists,
-                                                        reason = "tabletSplitMenuPlaylist"
-                                                    )
-                                                }
+                                                onClick = ::openTabletSplitPlaylist
                                             )
                                             DropdownMenuItem(
                                                 text = { Text(stringResource(R.string.tablet_split_menu_filler)) },
-                                                onClick = {
-                                                    prepareTabletSplitMenuNavigation()
-                                                    isTabletCockpitDestinationOpen = false
-                                                    tabletRightPanel = TabletSplitRightPanel.BACKGROUND_SOUND
-                                                }
+                                                onClick = ::openTabletSplitFiller
                                             )
                                             DropdownMenuItem(
                                                 text = { Text(stringResource(R.string.tablet_split_menu_dj)) },
                                                 enabled = showDjTab,
-                                                onClick = {
-                                                    prepareTabletSplitMenuNavigation()
-                                                    isTabletCockpitDestinationOpen = false
-                                                    tabletRightPanel = TabletSplitRightPanel.DJ
-                                                }
+                                                onClick = ::openTabletSplitDj
                                             )
                                             DropdownMenuItem(
                                                 text = { Text(stringResource(R.string.tablet_split_menu_search)) },
-                                                onClick = {
-                                                    prepareTabletSplitMenuNavigation()
-                                                    isTabletCockpitDestinationOpen = false
-                                                    if (tabletRightPanel == TabletSplitRightPanel.LIBRARY) {
-                                                        tabletLibrarySearchToggleSignal++
-                                                    } else if (!selectedQuickPlaylist.isNullOrBlank()) {
-                                                        playlistSearchToggleSignal++
-                                                    } else {
-                                                        tabletRightPanel = TabletSplitRightPanel.LIBRARY
-                                                        tabletLibrarySearchToggleSignal++
-                                                    }
-                                                }
+                                                onClick = ::openTabletSplitSearch
                                             )
                                             DropdownMenuItem(
                                                 text = { Text(stringResource(R.string.tablet_split_menu_settings)) },
-                                                onClick = {
-                                                    prepareTabletSplitMenuNavigation()
-                                                    isTabletCockpitDestinationOpen = false
-                                                    tabletRightPanel = TabletSplitRightPanel.SETTINGS
-                                                }
+                                                onClick = ::openTabletSplitSettings
                                             )
+                                        }
+                                    }
+                                }
+
+                                @Composable
+                                fun TabletSplitTopNavigationShortcuts() {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.End,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        IconButton(
+                                            modifier = Modifier.size(36.dp),
+                                            onClick = ::openTabletSplitPlaylist
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.PlaylistPlay,
+                                                contentDescription = stringResource(R.string.tablet_split_menu_playlist),
+                                                tint = Color.White.copy(alpha = 0.78f)
+                                            )
+                                        }
+                                        IconButton(
+                                            modifier = Modifier.size(36.dp),
+                                            onClick = ::openTabletSplitLyrics
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.MusicNote,
+                                                contentDescription = stringResource(R.string.tab_player),
+                                                tint = Color.White.copy(alpha = 0.78f)
+                                            )
+                                        }
+                                        IconButton(
+                                            modifier = Modifier.size(36.dp),
+                                            onClick = ::openTabletSplitFiller
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Waves,
+                                                contentDescription = stringResource(R.string.tablet_split_menu_filler),
+                                                tint = Color.White.copy(alpha = 0.78f)
+                                            )
+                                        }
+                                        IconButton(
+                                            modifier = Modifier.size(36.dp),
+                                            enabled = showDjTab,
+                                            onClick = ::openTabletSplitDj
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Headset,
+                                                contentDescription = stringResource(R.string.tablet_split_menu_dj),
+                                                tint = Color.White.copy(alpha = if (showDjTab) 0.78f else 0.32f)
+                                            )
+                                        }
+                                        IconButton(
+                                            modifier = Modifier.size(36.dp),
+                                            onClick = { openTabletSplitLibrary(openSearch = false) }
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Folder,
+                                                contentDescription = stringResource(R.string.tablet_split_menu_library),
+                                                tint = Color.White.copy(alpha = 0.78f)
+                                            )
+                                        }
+                                        IconButton(
+                                            modifier = Modifier.size(36.dp),
+                                            onClick = ::openTabletSplitSearch
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Search,
+                                                contentDescription = stringResource(R.string.tablet_split_menu_search),
+                                                tint = Color.White.copy(alpha = 0.78f)
+                                            )
+                                        }
+                                        TabletSplitCockpitMenuButton()
+                                        Box {
+                                            IconButton(
+                                                modifier = Modifier.size(36.dp),
+                                                onClick = { isTabletShortcutMoreOpen = true }
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.MoreVert,
+                                                    contentDescription = stringResource(R.string.common_cd_options),
+                                                    tint = Color.White.copy(alpha = 0.78f)
+                                                )
+                                            }
+                                            DropdownMenu(
+                                                expanded = isTabletShortcutMoreOpen,
+                                                onDismissRequest = { isTabletShortcutMoreOpen = false }
+                                            ) {
+                                                DropdownMenuItem(
+                                                    text = { Text(stringResource(R.string.main_menu_notes)) },
+                                                    onClick = ::openTabletShortcutNotes
+                                                )
+                                                DropdownMenuItem(
+                                                    text = { Text(stringResource(R.string.main_menu_playlists)) },
+                                                    onClick = ::openTabletShortcutAllPlaylists
+                                                )
+                                                DropdownMenuItem(
+                                                    text = { Text(stringResource(R.string.main_menu_prompter)) },
+                                                    onClick = ::openTabletShortcutPrompter
+                                                )
+                                                DropdownMenuItem(
+                                                    text = { Text(stringResource(R.string.main_menu_more)) },
+                                                    onClick = ::openTabletSplitSettings
+                                                )
+                                                DropdownMenuItem(
+                                                    text = { Text(stringResource(R.string.main_menu_tuner)) },
+                                                    onClick = ::openTabletShortcutTuner
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -4640,13 +4805,7 @@ class MainActivity : AppCompatActivity() {
 
                                                     TabletSplitRightPanel.SETTINGS -> {
                                                         Column(Modifier.fillMaxSize()) {
-                                                            Row(
-                                                                modifier = Modifier.fillMaxWidth(),
-                                                                horizontalArrangement = Arrangement.End,
-                                                                verticalAlignment = Alignment.CenterVertically
-                                                            ) {
-                                                                TabletSplitCockpitMenuButton()
-                                                            }
+                                                            TabletSplitTopNavigationShortcuts()
                                                             settingsPane(
                                                                 Modifier
                                                                     .weight(1f)
@@ -4657,13 +4816,7 @@ class MainActivity : AppCompatActivity() {
 
                                                     TabletSplitRightPanel.BACKGROUND_SOUND -> {
                                                         Column(Modifier.fillMaxSize()) {
-                                                            Row(
-                                                                modifier = Modifier.fillMaxWidth(),
-                                                                horizontalArrangement = Arrangement.End,
-                                                                verticalAlignment = Alignment.CenterVertically
-                                                            ) {
-                                                                TabletSplitCockpitMenuButton()
-                                                            }
+                                                            TabletSplitTopNavigationShortcuts()
                                                             backgroundSoundPane(
                                                                 Modifier
                                                                     .weight(1f)
@@ -4674,13 +4827,7 @@ class MainActivity : AppCompatActivity() {
 
                                                     TabletSplitRightPanel.DJ -> {
                                                         Column(Modifier.fillMaxSize()) {
-                                                            Row(
-                                                                modifier = Modifier.fillMaxWidth(),
-                                                                horizontalArrangement = Arrangement.End,
-                                                                verticalAlignment = Alignment.CenterVertically
-                                                            ) {
-                                                                TabletSplitCockpitMenuButton()
-                                                            }
+                                                            TabletSplitTopNavigationShortcuts()
                                                             djPane(
                                                                 Modifier
                                                                     .weight(1f)
