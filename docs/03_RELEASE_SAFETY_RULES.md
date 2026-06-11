@@ -118,6 +118,77 @@ Le confort tablette ne justifie jamais de perdre une version téléphone utilisa
 
 ⸻
 
+CURRENT STABLE PHONE RELEASE
+
+Date:
+2026-06-11
+
+Tag:
+phone-stable-before-tablet-ux
+
+Commit:
+3fe1ec7
+
+APK backup:
+backups/phone-stable-before-tablet-ux.apk
+
+Purpose:
+First officially protected phone version before major tablet UX evolution.
+
+Validated features:
+
+- bus principal OK
+- DJ OK
+- faders lecteurs OK
+- mixage titre OK
+- bloc-notes OK
+- accordeur OK
+- playlists stables
+- partage des paroles OK
+- navigation téléphone stable
+- tablette en cours d'évolution UX
+
+This section is the authoritative record for the currently protected phone release.
+
+⸻
+
+EMERGENCY RECOVERY PROCEDURE
+
+If the phone version becomes unstable:
+
+1. Locate the APK:
+   backups/phone-stable-before-tablet-ux.apk
+
+2. Reinstall the APK on the concert phone if immediate recovery is required.
+
+3. Identify the protected tag:
+   phone-stable-before-tablet-ux
+
+4. Compare the protected tag with the current HEAD to identify the patch that introduced the regression.
+
+5. Restore phone stability before continuing any tablet development.
+
+6. Do not continue feature work until the phone version is validated again.
+
+The APK path and tag above must be sufficient for an external developer to restore the protected phone version without relying on memory or chat history.
+
+⸻
+
+IMPORTANT PRINCIPLE
+
+The project owner must not be required to remember Git procedures.
+
+All recovery information must be written inside this document.
+
+Any new protected phone release must update this section with:
+
+- tag name
+- commit id
+- APK location
+- validation scope
+
+⸻
+
 RÈGLE ABSOLUE
 
 En cas de conflit entre :
