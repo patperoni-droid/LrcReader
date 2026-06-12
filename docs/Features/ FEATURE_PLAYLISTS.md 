@@ -443,6 +443,32 @@ KNOWN PITFALLS
 
 ⸻
 
+RUNTIME SAFETY — PLAYLIST SNAPSHOTS
+
+Playlists may be read by asynchronous tasks while they are being modified.
+
+Examples:
+- auto-backup during `MainActivity.onStop`
+- backup/export
+- played-state export
+
+Rules:
+- backup/export code must never iterate directly over live mutable playlist collections
+- playlist reads used outside the main mutation flow must use a defensive immutable snapshot or equivalent protection
+- snapshot reads must preserve the same business behavior; they must not create separate phone/tablet playlist logic
+- `ConcurrentModificationException` during backup/export is a critical regression
+- any new backup/export/played-state feature touching playlists must validate concurrent playlist modification
+
+Incident documented:
+- Date: 2026-06-11
+- Symptom: `ConcurrentModificationException` during `MainActivity.onStop` auto-backup
+- Components: `PlaylistRepository`, `BackupManager`
+- Fix: `PlaylistRepository` creates defensive snapshots before playlist read/count/filter operations used by backup/export and played-state checks
+
+👉 Runtime backup safety is part of playlist live stability.
+
+⸻
+
 TEST SCENARIOS (MANDATORY)
 
 Test at least:
@@ -470,6 +496,9 @@ Test at least:
 - multi-select operations
 - verify reorder on real phone
 - verify drag continuity during recomposition
+- modify a playlist, then put the app in background to trigger auto-backup
+- verify no `ConcurrentModificationException` during backup/export
+- verify played-state and backup export remain stable while playlist modifications are happening
 
 👉 Must be tested on real device
 
