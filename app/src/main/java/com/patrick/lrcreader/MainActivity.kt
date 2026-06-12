@@ -55,6 +55,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Headset
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PlaylistPlay
@@ -4002,6 +4003,23 @@ class MainActivity : AppCompatActivity() {
                                         ),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
+                                        IconButton(
+                                            modifier = Modifier.size(36.dp),
+                                            enabled = EditionConfig.isPro && showMainBusTab,
+                                            onClick = {
+                                                prepareTabletSplitMenuNavigation()
+                                                isTabletCockpitDestinationOpen = false
+                                                tabletRightPanel = TabletSplitRightPanel.MAIN_BUS
+                                            }
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Home,
+                                                contentDescription = stringResource(R.string.tablet_split_menu_main_bus),
+                                                tint = Color.White.copy(
+                                                    alpha = if (EditionConfig.isPro && showMainBusTab) 0.78f else 0.32f
+                                                )
+                                            )
+                                        }
                                         IconButton(
                                             modifier = Modifier.size(36.dp),
                                             onClick = ::openTabletSplitPlaylist
