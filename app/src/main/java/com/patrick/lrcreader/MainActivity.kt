@@ -54,11 +54,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Headset
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.MusicNote
-import androidx.compose.material.icons.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Waves
@@ -4028,16 +4028,6 @@ class MainActivity : AppCompatActivity() {
                                         }
                                         IconButton(
                                             modifier = Modifier.size(36.dp),
-                                            onClick = ::openTabletSplitPlaylist
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Filled.PlaylistPlay,
-                                                contentDescription = stringResource(R.string.tablet_split_menu_playlist),
-                                                tint = Color.White.copy(alpha = 0.78f)
-                                            )
-                                        }
-                                        IconButton(
-                                            modifier = Modifier.size(36.dp),
                                             onClick = ::openTabletSplitLyrics
                                         ) {
                                             Icon(
@@ -4074,6 +4064,16 @@ class MainActivity : AppCompatActivity() {
                                             Icon(
                                                 imageVector = Icons.Filled.Folder,
                                                 contentDescription = stringResource(R.string.tablet_split_menu_library),
+                                                tint = Color.White.copy(alpha = 0.78f)
+                                            )
+                                        }
+                                        IconButton(
+                                            modifier = Modifier.size(36.dp),
+                                            onClick = ::openTabletSplitTuner
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.GraphicEq,
+                                                contentDescription = stringResource(R.string.main_menu_tuner),
                                                 tint = Color.White.copy(alpha = 0.78f)
                                             )
                                         }
