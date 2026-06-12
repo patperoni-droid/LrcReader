@@ -78,7 +78,8 @@ fun MixerHomePreviewScreen(
     onOpenDj: () -> Unit = {},
     onOpenTuner: () -> Unit = {},// appelé par l’icône Accordeur
     openNotesSignal: Int = 0,
-    showBackButton: Boolean = true
+    showBackButton: Boolean = true,
+    compactTabletMode: Boolean = false
 ) {
 
     val context = LocalContext.current
@@ -175,76 +176,78 @@ fun MixerHomePreviewScreen(
         Column(modifier = Modifier.fillMaxSize()) {
 
             // ---- BARRE DU HAUT ----
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                if (showBackButton) {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = Icons.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.mixer_cd_back),
-                            tint = Color(0xFFEEEEEE)
+            if (!compactTabletMode) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (showBackButton) {
+                        IconButton(onClick = onBack) {
+                            Icon(
+                                imageVector = Icons.Filled.ArrowBack,
+                                contentDescription = stringResource(R.string.mixer_cd_back),
+                                tint = Color(0xFFEEEEEE)
+                            )
+                        }
+                        Spacer(Modifier.width(8.dp))
+                    }
+
+                    Column {
+                        Text(
+                            text = stringResource(R.string.mixer_app_title),
+                            color = Color(0xFFFFE082),
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = stringResource(R.string.mixer_console_studio),
+                            color = Color(0xFFB0BEC5),
+                            fontSize = 12.sp
                         )
                     }
-                    Spacer(Modifier.width(8.dp))
-                }
 
-                Column {
-                    Text(
-                        text = stringResource(R.string.mixer_app_title),
-                        color = Color(0xFFFFE082),
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = stringResource(R.string.mixer_console_studio),
-                        color = Color(0xFFB0BEC5),
-                        fontSize = 12.sp
-                    )
-                }
+                    Spacer(Modifier.weight(1f))
 
-                Spacer(Modifier.weight(1f))
-
-                // Icône existante (EQ) – décorative
-                Icon(
-                    imageVector = Icons.Filled.GraphicEq,
-                    contentDescription = null,
-                    tint = Color(0xFFFFC107),
-                    modifier = Modifier.size(24.dp)
-                )
-
-                Spacer(Modifier.width(4.dp))
-
-                Spacer(Modifier.width(4.dp))
-
-                // Toggle visibilité mini-accordeur (source partagée playlist + BUS)
-                IconButton(
-                    onClick = {
-                        val next = !isMiniTunerVisible
-                        MiniTunerVisibilityStore.setVisible(context, next)
-                        if (next && !hasMicPermission) {
-                            micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                        }
-                    }
-                ) {
+                    // Icône existante (EQ) – décorative
                     Icon(
-                        imageVector = if (isMiniTunerVisible) {
-                            Icons.Filled.Visibility
-                        } else {
-                            Icons.Filled.VisibilityOff
-                        },
-                        contentDescription = if (isMiniTunerVisible) {
-                            "Masquer l'accordeur mini"
-                        } else {
-                            "Afficher l'accordeur mini"
-                        },
-                        tint = if (isMiniTunerVisible) Color(0xFF80DEEA) else Color(0xFF78909C)
+                        imageVector = Icons.Filled.GraphicEq,
+                        contentDescription = null,
+                        tint = Color(0xFFFFC107),
+                        modifier = Modifier.size(24.dp)
                     )
-                }
-            }
 
-            Spacer(Modifier.height(12.dp))
+                    Spacer(Modifier.width(4.dp))
+
+                    Spacer(Modifier.width(4.dp))
+
+                    // Toggle visibilité mini-accordeur (source partagée playlist + BUS)
+                    IconButton(
+                        onClick = {
+                            val next = !isMiniTunerVisible
+                            MiniTunerVisibilityStore.setVisible(context, next)
+                            if (next && !hasMicPermission) {
+                                micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                            }
+                        }
+                    ) {
+                        Icon(
+                            imageVector = if (isMiniTunerVisible) {
+                                Icons.Filled.Visibility
+                            } else {
+                                Icons.Filled.VisibilityOff
+                            },
+                            contentDescription = if (isMiniTunerVisible) {
+                                "Masquer l'accordeur mini"
+                            } else {
+                                "Afficher l'accordeur mini"
+                            },
+                            tint = if (isMiniTunerVisible) Color(0xFF80DEEA) else Color(0xFF78909C)
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(12.dp))
+            }
 
             // ---- PANNEAU PRINCIPAL ----
             Card(

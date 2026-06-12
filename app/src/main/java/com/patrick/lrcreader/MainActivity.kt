@@ -4599,7 +4599,8 @@ class MainActivity : AppCompatActivity() {
                                             setTabAndPersist(BottomTab.Tuner, reason = "tabletSplitMainBusOpenTuner")
                                         },
                                         openNotesSignal = openNotesSignal,
-                                        showBackButton = false
+                                        showBackButton = false,
+                                        compactTabletMode = true
                                     )
                                 }
 
