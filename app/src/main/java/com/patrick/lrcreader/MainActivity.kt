@@ -156,7 +156,8 @@ class MainActivity : AppCompatActivity() {
         LIBRARY,
         SETTINGS,
         BACKGROUND_SOUND,
-        DJ
+        DJ,
+        MAIN_BUS
     }
 
     private data class SessionSnapshot(
@@ -3962,11 +3963,8 @@ class MainActivity : AppCompatActivity() {
                                                 enabled = EditionConfig.isPro && showMainBusTab,
                                                 onClick = {
                                                     prepareTabletSplitMenuNavigation()
-                                                    isTabletCockpitDestinationOpen = true
-                                                    setTabAndPersist(
-                                                        BottomTab.Home,
-                                                        reason = "tabletSplitMenuMainBus"
-                                                    )
+                                                    isTabletCockpitDestinationOpen = false
+                                                    tabletRightPanel = TabletSplitRightPanel.MAIN_BUS
                                                 }
                                             )
                                             DropdownMenuItem(
@@ -4581,6 +4579,28 @@ class MainActivity : AppCompatActivity() {
                                     )
                                 }
 
+                                val mainBusPane: @Composable (Modifier) -> Unit = { paneModifier ->
+                                    GlobalMixScreen(
+                                        modifier = paneModifier,
+                                        playerLevel = playerMasterLevel,
+                                        onPlayerLevelChange = { lvl ->
+                                            playerMasterLevel = lvl
+                                            AudioEngine.setPlayerBusLevel(lvl)
+                                        },
+                                        djLevel = djMasterLevel,
+                                        onDjLevelChange = { lvl ->
+                                            djMasterLevel = lvl
+                                            DjEngine.setMasterVolume(lvl)
+                                        },
+                                        fillerLevel = fillerMasterLevel,
+                                        onFillerLevelChange = { lvl -> fillerMasterLevel = lvl },
+                                        onBack = {
+                                            tabletRightPanel = TabletSplitRightPanel.LYRICS
+                                        },
+                                        showBackButton = false
+                                    )
+                                }
+
                                 val quickPlaylistsPane: @Composable (Modifier) -> Unit = { paneModifier ->
                                     QuickPlaylistsScreen(
                                         modifier = paneModifier,
@@ -4842,6 +4862,17 @@ class MainActivity : AppCompatActivity() {
                                                         Column(Modifier.fillMaxSize()) {
                                                             TabletSplitTopNavigationShortcuts()
                                                             djPane(
+                                                                Modifier
+                                                                    .weight(1f)
+                                                                    .fillMaxWidth()
+                                                            )
+                                                        }
+                                                    }
+
+                                                    TabletSplitRightPanel.MAIN_BUS -> {
+                                                        Column(Modifier.fillMaxSize()) {
+                                                            TabletSplitTopNavigationShortcuts()
+                                                            mainBusPane(
                                                                 Modifier
                                                                     .weight(1f)
                                                                     .fillMaxWidth()

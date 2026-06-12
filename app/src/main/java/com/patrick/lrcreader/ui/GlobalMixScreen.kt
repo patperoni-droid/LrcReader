@@ -35,7 +35,8 @@ fun GlobalMixScreen(
     onDjLevelChange: (Float) -> Unit,   // on renvoie un niveau « réel » (0..1)
     fillerLevel: Float,                 // pas utilisé directement (on passe par les prefs)
     onFillerLevelChange: (Float) -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    showBackButton: Boolean = true
 ) {
     val context = LocalContext.current
 
@@ -83,11 +84,13 @@ fun GlobalMixScreen(
                 .padding(horizontal = 16.dp, vertical = 16.dp)
         ) {
             // HEADER
-            TextButton(onClick = onBack) {
-                Text(stringResource(R.string.common_back_arrow), color = onBg)
-            }
+            if (showBackButton) {
+                TextButton(onClick = onBack) {
+                    Text(stringResource(R.string.common_back_arrow), color = onBg)
+                }
 
-            Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(6.dp))
+            }
 
             Text(
                 text = stringResource(R.string.global_mix_title),
