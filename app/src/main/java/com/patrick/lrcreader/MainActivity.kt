@@ -158,7 +158,8 @@ class MainActivity : AppCompatActivity() {
         SETTINGS,
         BACKGROUND_SOUND,
         DJ,
-        MAIN_BUS
+        MAIN_BUS,
+        TUNER
     }
 
     private data class SessionSnapshot(
@@ -3837,6 +3838,12 @@ class MainActivity : AppCompatActivity() {
                                     tabletRightPanel = TabletSplitRightPanel.SETTINGS
                                 }
 
+                                fun openTabletSplitTuner() {
+                                    prepareTabletSplitMenuNavigation()
+                                    isTabletCockpitDestinationOpen = false
+                                    tabletRightPanel = TabletSplitRightPanel.TUNER
+                                }
+
                                 fun openTabletSplitSearch() {
                                     prepareTabletSplitMenuNavigation()
                                     isTabletCockpitDestinationOpen = false
@@ -3873,8 +3880,7 @@ class MainActivity : AppCompatActivity() {
                                 }
 
                                 fun openTabletShortcutTuner() {
-                                    prepareTabletSplitMenuNavigation()
-                                    setTabAndPersist(BottomTab.Tuner, reason = "tabletShortcutTuner")
+                                    openTabletSplitTuner()
                                 }
 
                                 fun currentLufsPlaybackConfig(): SmpConfig.PlaybackConfig? {
@@ -4574,7 +4580,7 @@ class MainActivity : AppCompatActivity() {
                                             exoPlayer.playWhenReady = false
                                         },
                                         onOpenTuner = {
-                                            setTabAndPersist(BottomTab.Tuner, reason = "moreOpenTuner")
+                                            openTabletSplitTuner()
                                         }
                                     )
                                 }
@@ -4613,12 +4619,20 @@ class MainActivity : AppCompatActivity() {
                                             tabletRightPanel = TabletSplitRightPanel.DJ
                                         },
                                         onOpenTuner = {
-                                            prepareTabletSplitMenuNavigation()
-                                            setTabAndPersist(BottomTab.Tuner, reason = "tabletSplitMainBusOpenTuner")
+                                            openTabletSplitTuner()
                                         },
                                         openNotesSignal = openNotesSignal,
                                         showBackButton = false,
                                         compactTabletMode = true
+                                    )
+                                }
+
+                                val tunerPane: @Composable (Modifier) -> Unit = { paneModifier ->
+                                    TunerScreen(
+                                        modifier = paneModifier,
+                                        onClose = {
+                                            tabletRightPanel = TabletSplitRightPanel.LYRICS
+                                        }
                                     )
                                 }
 
@@ -4894,6 +4908,17 @@ class MainActivity : AppCompatActivity() {
                                                         Column(Modifier.fillMaxSize()) {
                                                             TabletSplitTopNavigationShortcuts()
                                                             mainBusPane(
+                                                                Modifier
+                                                                    .weight(1f)
+                                                                    .fillMaxWidth()
+                                                            )
+                                                        }
+                                                    }
+
+                                                    TabletSplitRightPanel.TUNER -> {
+                                                        Column(Modifier.fillMaxSize()) {
+                                                            TabletSplitTopNavigationShortcuts()
+                                                            tunerPane(
                                                                 Modifier
                                                                     .weight(1f)
                                                                     .fillMaxWidth()
