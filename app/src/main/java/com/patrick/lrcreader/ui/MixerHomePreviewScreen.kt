@@ -77,7 +77,8 @@ fun MixerHomePreviewScreen(
     onOpenFondSonore: () -> Unit = {},
     onOpenDj: () -> Unit = {},
     onOpenTuner: () -> Unit = {},// appelé par l’icône Accordeur
-    openNotesSignal: Int = 0
+    openNotesSignal: Int = 0,
+    showBackButton: Boolean = true
 ) {
 
     val context = LocalContext.current
@@ -178,14 +179,16 @@ fun MixerHomePreviewScreen(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = onBack) {
-                    Icon(
-                        imageVector = Icons.Filled.ArrowBack,
-                        contentDescription = stringResource(R.string.mixer_cd_back),
-                        tint = Color(0xFFEEEEEE)
-                    )
+                if (showBackButton) {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            imageVector = Icons.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.mixer_cd_back),
+                            tint = Color(0xFFEEEEEE)
+                        )
+                    }
+                    Spacer(Modifier.width(8.dp))
                 }
-                Spacer(Modifier.width(8.dp))
 
                 Column {
                     Text(

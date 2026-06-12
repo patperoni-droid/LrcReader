@@ -4580,23 +4580,25 @@ class MainActivity : AppCompatActivity() {
                                 }
 
                                 val mainBusPane: @Composable (Modifier) -> Unit = { paneModifier ->
-                                    GlobalMixScreen(
+                                    MixerHomePreviewScreen(
                                         modifier = paneModifier,
-                                        playerLevel = playerMasterLevel,
-                                        onPlayerLevelChange = { lvl ->
-                                            playerMasterLevel = lvl
-                                            AudioEngine.setPlayerBusLevel(lvl)
-                                        },
-                                        djLevel = djMasterLevel,
-                                        onDjLevelChange = { lvl ->
-                                            djMasterLevel = lvl
-                                            DjEngine.setMasterVolume(lvl)
-                                        },
-                                        fillerLevel = fillerMasterLevel,
-                                        onFillerLevelChange = { lvl -> fillerMasterLevel = lvl },
                                         onBack = {
                                             tabletRightPanel = TabletSplitRightPanel.LYRICS
                                         },
+                                        onOpenPlayer = {
+                                            tabletRightPanel = TabletSplitRightPanel.LYRICS
+                                        },
+                                        onOpenFondSonore = {
+                                            tabletRightPanel = TabletSplitRightPanel.BACKGROUND_SOUND
+                                        },
+                                        onOpenDj = {
+                                            tabletRightPanel = TabletSplitRightPanel.DJ
+                                        },
+                                        onOpenTuner = {
+                                            prepareTabletSplitMenuNavigation()
+                                            setTabAndPersist(BottomTab.Tuner, reason = "tabletSplitMainBusOpenTuner")
+                                        },
+                                        openNotesSignal = openNotesSignal,
                                         showBackButton = false
                                     )
                                 }
