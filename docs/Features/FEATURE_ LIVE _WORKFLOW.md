@@ -59,13 +59,34 @@ Destination principale :
 
 Destinations compatibles :
 
+- Bus principal
+- Lecteur / Paroles
 - Bibliothèque
 - Paramètres
 - Fond sonore
+- DJ
+- Accordeur
 - Éditeur de paroles
 - autres panneaux compatibles plus tard
 
 Le menu cockpit est le mécanisme privilégié pour naviguer entre ces destinations.
+
+Barre SMP tablette :
+
+- la barre supérieure commune est affichée dans le panneau droit
+- elle change uniquement la destination active du panneau droit
+- elle ne doit pas modifier la logique métier téléphone
+- elle donne accès à :
+  - Bus principal
+  - Lecteur / Paroles
+  - Fond sonore
+  - DJ
+  - Bibliothèque
+  - Accordeur
+  - Recherche
+  - menu trois points SMP
+  - roue cockpit
+- la Playlist n'a pas d'icône dans cette barre car elle reste visible en permanence à gauche
 
 Règles :
 
@@ -74,6 +95,7 @@ Règles :
 ✔ aucun panneau droit ne doit bloquer le retour vers les paroles  
 ✔ les écrans nécessitant toute la largeur, comme Arrangement ou Timeline, restent en Fullscreen  
 ✔ le téléphone reste la base stable ; la tablette est une extension conditionnée au mode tablette/split
+✔ le split tablette est une variante de présentation, pas une logique métier séparée
 
 Bibliothèque tablette :
 
