@@ -7,7 +7,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -213,7 +215,7 @@ fun LibraryHeader(
 
             IconButton(onClick = onOpenStorage) {
                 Icon(
-                    Icons.Default.Folder,
+                    Icons.Default.FolderOpen,
                     contentDescription = stringResource(R.string.library_header_cd_storage),
                     tint = Color.White
                 )
@@ -223,7 +225,7 @@ fun LibraryHeader(
                 Box {
                     IconButton(onClick = { actionsExpanded = true }) {
                         Icon(
-                            Icons.Default.MoreVert,
+                            Icons.Default.Tune,
                             contentDescription = stringResource(R.string.library_header_cd_actions),
                             tint = Color.White
                         )
