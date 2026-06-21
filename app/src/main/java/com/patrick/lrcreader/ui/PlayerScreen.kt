@@ -752,41 +752,23 @@ fun PlayerScreen(
         }
     }
 
-    val editorStateTrackKey = if (
-        compactTabletLayout &&
-        isEditingLyrics &&
-        !editingTrackUri.isNullOrBlank()
-    ) {
-        editingTrackUri
-    } else {
-        currentTrackUri
-    }
-    var rawLyricsText by remember(editorStateTrackKey) { mutableStateOf("") }
-    var editingLines by remember(editorStateTrackKey) { mutableStateOf<List<LrcLine>>(emptyList()) }
-    var editingLinesDirty by remember(editorStateTrackKey) { mutableStateOf(false) }
-    var currentEditTab by rememberSaveable(editorStateTrackKey) { mutableStateOf(0) }
+    var rawLyricsText by remember(currentTrackUri) { mutableStateOf("") }
+    var editingLines by remember(currentTrackUri) { mutableStateOf<List<LrcLine>>(emptyList()) }
+    var editingLinesDirty by remember(currentTrackUri) { mutableStateOf(false) }
+    var currentEditTab by rememberSaveable(currentTrackUri) { mutableStateOf(0) }
     var showUnsavedLyricsDialog by remember { mutableStateOf(false) }
     var saveAndCloseRequestToken by remember { mutableIntStateOf(0) }
     val inlineLrcTimeTagRegex = remember { Regex("""\[(\d{1,2}):(\d{1,2})(?:\.(\d{1,3}))?]""") }
 
     LaunchedEffect(currentTrackUri) {
-        val keepTabletLyricsEditorForSameTrack =
-            compactTabletLayout &&
-                isEditingLyrics &&
-                !editingTrackUri.isNullOrBlank() &&
-                !currentTrackUri.isNullOrBlank() &&
-                LrcStorage.resolveRuntimeAlias(context, editingTrackUri!!) == currentTrackUri
-
-        if (!keepTabletLyricsEditorForSameTrack) {
-            isEditingLyrics = false
-            editingTrackUri = null
-            showUnsavedLyricsDialog = false
-            isEditingTimeline = openGridSetupOnEntry
-            startTimelineInGridSetup = openGridSetupOnEntry
-            editingTimelineMidiMarkerIndex = null
-            editingTimelineLightCueTimeMs = null
-            showLightGenerationDialog = false
-        }
+        isEditingLyrics = false
+        editingTrackUri = null
+        showUnsavedLyricsDialog = false
+        isEditingTimeline = openGridSetupOnEntry
+        startTimelineInGridSetup = openGridSetupOnEntry
+        editingTimelineMidiMarkerIndex = null
+        editingTimelineLightCueTimeMs = null
+        showLightGenerationDialog = false
     }
 
     LaunchedEffect(requestedNavigationToken) {
