@@ -177,6 +177,7 @@ fun PlayerScreen(
     liveGainControlsEnabled: Boolean = true,
     onLiveGainDelta: (Int) -> Unit = {},
     onTabletFocusEditingChange: (Boolean) -> Unit = {},
+    tabletFocusEditingExitSignal: Int = 0,
     readerHeaderEndContent: @Composable RowScope.() -> Unit = {}
 ) {
     val isManualTransitionActive = !manualTransitionTargetTitle.isNullOrBlank()
@@ -2488,6 +2489,7 @@ fun PlayerScreen(
                 },
                 tabletFocusEditingMode = compactTabletLayout,
                 onTabletFocusEditingChange = onTabletFocusEditingChange,
+                tabletFocusEditingExitSignal = tabletFocusEditingExitSignal,
                 headerEndContent = readerHeaderEndContent
             )
             if (showUnsavedLyricsDialog) {

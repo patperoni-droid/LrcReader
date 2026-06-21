@@ -39,6 +39,8 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
@@ -137,6 +139,7 @@ fun LyricsEditorSection(
     chordPaletteStorageKey: String? = null,
     tabletFocusEditingMode: Boolean = false,
     onTabletFocusEditingChange: (Boolean) -> Unit = {},
+    tabletFocusEditingExitSignal: Int = 0,
     headerEndContent: @Composable RowScope.() -> Unit = {}
 ) {
     if (!isEditingLyrics) return
@@ -144,6 +147,8 @@ fun LyricsEditorSection(
     BackHandler(onBack = onCloseEditor)
 
     val context = LocalContext.current
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
     val scope = rememberCoroutineScope()
     val lazyListState = rememberLazyListState()
     var isPersistBusy by remember { mutableStateOf(false) }
@@ -168,6 +173,15 @@ fun LyricsEditorSection(
     var lineMenuColorArgb by remember { mutableStateOf<Int?>(null) }
     val tabletLineEditFocusActive = tabletFocusEditingMode &&
         (lineMenuIndex != null || (currentEditTab == 0 && rawTextFieldFocused))
+    LaunchedEffect(tabletFocusEditingExitSignal) {
+        if (tabletFocusEditingExitSignal == 0) return@LaunchedEffect
+        rawTextFieldFocused = false
+        lineMenuIndex = null
+        lineMenuColorArgb = null
+        keyboardController?.hide()
+        focusManager.clearFocus(force = true)
+        onTabletFocusEditingChange(false)
+    }
     var selectedSyncLineIndices by remember(currentTrackUri) { mutableStateOf<Set<Int>>(emptySet()) }
     var previousEditingLines by remember(currentTrackUri) { mutableStateOf<List<LrcLine>?>(null) }
     var showEditorHintDialog by remember { mutableStateOf(false) }
