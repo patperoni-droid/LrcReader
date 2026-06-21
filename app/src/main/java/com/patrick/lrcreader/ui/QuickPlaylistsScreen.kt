@@ -573,15 +573,17 @@ fun QuickPlaylistsScreen(
             playlistTotalMs = withContext(Dispatchers.IO) {
                 var acc = 0L
                 for (u in listSnapshot) {
-                    val playbackItem = resolveVariantFamilyPlaybackItem(u, variantFamilyById)
-                    if (!isPlayableAudioItem(playbackItem)) continue
-                    val durationSource = getSmpSongId(playbackItem)?.let { smpPlaybackUriById[it] } ?: playbackItem
-                    val cached = durationCache[durationSource]
+                    val durationSource = resolvePlaylistDurationSource(
+                        item = u,
+                        familyById = variantFamilyById,
+                        smpPlaybackUriById = smpPlaybackUriById
+                    ) ?: continue
+                    val cached = durationCache[durationSource]?.takeIf { it > 0L }
                     val d = cached
-                        ?: (getAudioDurationMsQP(context, durationSource) ?: 0L).also {
+                        ?: getAudioDurationMsQP(context, durationSource)?.takeIf { it > 0L }?.also {
                             durationCache[durationSource] = it
                         }
-                    acc += d
+                    if (d != null) acc += d
                 }
                 acc
             }
@@ -2040,37 +2042,21 @@ fun QuickPlaylistsScreen(
                                 val isDraggingTrack = draggingUri?.let { !isGroupHeader(it) } == true
                                 val isDropTargetHeader = isDraggingTrack && hoverHeaderKey == uriString
                                 val groupRange = findGroupRange(songs, itemIndex)
-                                val groupTrackCount = if (groupRange.isEmpty()) {
-                                    0
-                                } else {
-                                    (groupRange.first + 1..groupRange.last).count { idx ->
-                                        !isGroupHeader(songs[idx]) && !isGroupEnd(songs[idx])
-                                    }
-                                }
-                                var groupDurationMs = 0L
-                                var groupDurationPending = false
-                                if (!groupRange.isEmpty()) {
-                                    for (idx in (groupRange.first + 1)..groupRange.last) {
-                                        val child = songs[idx]
-                                        val playbackItem = resolveVariantFamilyPlaybackItem(child, variantFamilyById)
-                                        if (!isPlayableAudioItem(playbackItem)) continue
-                                        val durationSource = getSmpSongId(playbackItem)?.let { smpPlaybackUriById[it] } ?: playbackItem
-                                        val cached = durationCache[durationSource]
-                                        if (cached != null) {
-                                            groupDurationMs += cached
-                                        } else {
-                                            groupDurationPending = true
-                                        }
-                                    }
-                                }
+                                val groupDurationStats = calculatePlaylistGroupDurationStats(
+                                    items = songs,
+                                    headerIndex = itemIndex,
+                                    familyById = variantFamilyById,
+                                    smpPlaybackUriById = smpPlaybackUriById,
+                                    durationCache = durationCache
+                                )
                                 val groupMetaText = buildString {
-                                    append(groupTrackCount)
+                                    append(groupDurationStats.trackCount)
                                     append(" • ")
                                     append(
                                         when {
-                                            groupTrackCount == 0 -> formatDuration(0L)
-                                            groupDurationPending -> "…"
-                                            else -> formatDuration(groupDurationMs)
+                                            groupDurationStats.trackCount == 0 -> formatDuration(0L)
+                                            groupDurationStats.hasUnknownDuration -> "…"
+                                            else -> formatDuration(groupDurationStats.knownDurationMs)
                                         }
                                     )
                                 }
@@ -4398,6 +4384,74 @@ private fun resolveVariantFamilyPlaybackQueue(
     familyById: Map<String, SongVariantFamily>
 ): List<String> {
     return items.map { item -> resolveVariantFamilyPlaybackItem(item, familyById) }
+}
+
+internal data class PlaylistGroupDurationStats(
+    val trackCount: Int,
+    val knownDurationMs: Long,
+    val hasUnknownDuration: Boolean
+)
+
+internal fun calculatePlaylistGroupDurationStats(
+    items: List<String>,
+    headerIndex: Int,
+    familyById: Map<String, SongVariantFamily>,
+    smpPlaybackUriById: Map<String, String>,
+    durationCache: Map<String, Long>
+): PlaylistGroupDurationStats {
+    val groupRange = findGroupRange(items, headerIndex)
+    if (groupRange.isEmpty()) {
+        return PlaylistGroupDurationStats(
+            trackCount = 0,
+            knownDurationMs = 0L,
+            hasUnknownDuration = false
+        )
+    }
+
+    var trackCount = 0
+    var knownDurationMs = 0L
+    var hasUnknownDuration = false
+
+    for (index in (groupRange.first + 1)..groupRange.last) {
+        val child = items.getOrNull(index) ?: continue
+        val playbackItem = resolveVariantFamilyPlaybackItem(child, familyById)
+        if (!isPlayableAudioItem(playbackItem)) continue
+
+        trackCount++
+        val durationSource = resolvePlaylistDurationSource(
+            item = child,
+            familyById = familyById,
+            smpPlaybackUriById = smpPlaybackUriById
+        )
+        val durationMs = durationSource?.let(durationCache::get)?.takeIf { it > 0L }
+        if (durationMs != null) {
+            knownDurationMs += durationMs
+        } else {
+            hasUnknownDuration = true
+        }
+    }
+
+    return PlaylistGroupDurationStats(
+        trackCount = trackCount,
+        knownDurationMs = knownDurationMs,
+        hasUnknownDuration = hasUnknownDuration
+    )
+}
+
+private fun resolvePlaylistDurationSource(
+    item: String,
+    familyById: Map<String, SongVariantFamily>,
+    smpPlaybackUriById: Map<String, String>
+): String? {
+    val playbackItem = resolveVariantFamilyPlaybackItem(item, familyById)
+    if (!isPlayableAudioItem(playbackItem)) return null
+
+    val songId = getSmpSongId(playbackItem)
+    if (songId != null) {
+        return smpPlaybackUriById[songId]
+    }
+
+    return playbackItem
 }
 
 private fun groupContainsSongId(
