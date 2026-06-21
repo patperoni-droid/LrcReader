@@ -53,7 +53,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Headset
@@ -1319,7 +1318,6 @@ class MainActivity : AppCompatActivity() {
                 var tabletLibrarySearchCloseSignal by remember { mutableIntStateOf(0) }
                 var tabletLibraryOpenStorageSignal by remember { mutableIntStateOf(0) }
                 var tabletLyricsEditorFocusMode by remember { mutableStateOf(false) }
-                var tabletLyricsEditorFocusExitSignal by remember { mutableIntStateOf(0) }
 
                 // ✅ MODE de recherche (PLAYER ou DJ)
                 var searchMode by remember { mutableStateOf(SearchMode.PLAYER) }
@@ -4305,7 +4303,6 @@ class MainActivity : AppCompatActivity() {
                                         liveGainControlsEnabled = canAdjustTabletLiveGain(),
                                         onLiveGainDelta = ::adjustTabletLiveGain,
                                         onTabletFocusEditingChange = { tabletLyricsEditorFocusMode = it },
-                                        tabletFocusEditingExitSignal = tabletLyricsEditorFocusExitSignal,
                                         readerHeaderEndContent = {}
                                     )
                                 }
@@ -4855,39 +4852,15 @@ class MainActivity : AppCompatActivity() {
                                             ) {
                                                 when (tabletRightPanel) {
                                                     TabletSplitRightPanel.LYRICS -> {
-                                                        Box(Modifier.fillMaxSize()) {
-                                                            Column(Modifier.fillMaxSize()) {
-                                                                if (!tabletLyricsEditorFocusMode) {
-                                                                    TabletSplitTopNavigationShortcuts()
-                                                                }
-                                                                playerPane(
-                                                                    Modifier
-                                                                        .weight(1f)
-                                                                        .fillMaxWidth()
-                                                                )
+                                                        Column(Modifier.fillMaxSize()) {
+                                                            if (!tabletLyricsEditorFocusMode) {
+                                                                TabletSplitTopNavigationShortcuts()
                                                             }
-                                                            if (tabletLyricsEditorFocusMode) {
-                                                                IconButton(
-                                                                    modifier = Modifier
-                                                                        .align(Alignment.TopEnd)
-                                                                        .padding(top = 8.dp, end = 8.dp)
-                                                                        .size(40.dp)
-                                                                        .background(
-                                                                            color = Color.Black.copy(alpha = 0.54f),
-                                                                            shape = androidx.compose.foundation.shape.CircleShape
-                                                                        ),
-                                                                    onClick = {
-                                                                        tabletLyricsEditorFocusExitSignal++
-                                                                        tabletLyricsEditorFocusMode = false
-                                                                    }
-                                                                ) {
-                                                                    Icon(
-                                                                        imageVector = Icons.Filled.Close,
-                                                                        contentDescription = stringResource(R.string.common_cd_close),
-                                                                        tint = Color.White.copy(alpha = 0.9f)
-                                                                    )
-                                                                }
-                                                            }
+                                                            playerPane(
+                                                                Modifier
+                                                                    .weight(1f)
+                                                                    .fillMaxWidth()
+                                                            )
                                                         }
                                                     }
 
