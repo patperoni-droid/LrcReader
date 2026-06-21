@@ -4853,8 +4853,18 @@ class MainActivity : AppCompatActivity() {
                                                 when (tabletRightPanel) {
                                                     TabletSplitRightPanel.LYRICS -> {
                                                         Column(Modifier.fillMaxSize()) {
-                                                            if (!tabletLyricsEditorFocusMode) {
-                                                                TabletSplitTopNavigationShortcuts()
+                                                            Box(
+                                                                modifier = if (tabletLyricsEditorFocusMode) {
+                                                                    Modifier
+                                                                        .fillMaxWidth()
+                                                                        .height(0.dp)
+                                                                } else {
+                                                                    Modifier.fillMaxWidth()
+                                                                }
+                                                            ) {
+                                                                if (!tabletLyricsEditorFocusMode) {
+                                                                    TabletSplitTopNavigationShortcuts()
+                                                                }
                                                             }
                                                             playerPane(
                                                                 Modifier
