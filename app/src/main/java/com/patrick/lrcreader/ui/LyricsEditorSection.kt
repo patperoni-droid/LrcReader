@@ -35,6 +35,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -161,10 +162,12 @@ fun LyricsEditorSection(
     var pendingCapturedLine by remember { mutableStateOf<LrcLine?>(null) }
     var highlightedCapturedIndex by remember { mutableStateOf<Int?>(null) }
 
+    var rawTextFieldFocused by remember { mutableStateOf(false) }
     var lineMenuIndex by remember { mutableStateOf<Int?>(null) }
     var lineMenuText by remember { mutableStateOf("") }
     var lineMenuColorArgb by remember { mutableStateOf<Int?>(null) }
-    val tabletLineEditFocusActive = tabletFocusEditingMode && lineMenuIndex != null
+    val tabletLineEditFocusActive = tabletFocusEditingMode &&
+        (lineMenuIndex != null || (currentEditTab == 0 && rawTextFieldFocused))
     var selectedSyncLineIndices by remember(currentTrackUri) { mutableStateOf<Set<Int>>(emptySet()) }
     var previousEditingLines by remember(currentTrackUri) { mutableStateOf<List<LrcLine>?>(null) }
     var showEditorHintDialog by remember { mutableStateOf(false) }
@@ -988,7 +991,10 @@ fun LyricsEditorSection(
                             },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .weight(1f),
+                                .weight(1f)
+                                .onFocusChanged { focusState ->
+                                    rawTextFieldFocused = focusState.isFocused
+                                },
                             textStyle = androidx.compose.ui.text.TextStyle(
                                 color = Color.White,
                                 fontSize = 16.sp
